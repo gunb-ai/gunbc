@@ -20,8 +20,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data umount_program: ProgramIdentity = uncataloged_program(invocation: "umount")
+fn umount_program() -> ProgramIdentity = uncataloged_program(invocation: "umount")
 
 fn umount_command(mount_point: String) -> ArgvCommand {
-  argv_command(program: umount_program, arguments: [mount_point])
+  argv_command(program: umount_program(), arguments: [mount_point])
 }

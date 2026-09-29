@@ -245,16 +245,16 @@ fn hostname_set_execute_plan(plan: HostnameSetAdmittedProcessPlan) -> ProcessObs
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data hostname_program: ProgramIdentity = uncataloged_program(invocation: "hostname")
+fn hostname_program() -> ProgramIdentity = uncataloged_program(invocation: "hostname")
 
 // TWO BUILDERS BECAUSE THEY ANSWER DIFFERENT QUESTIONS. `hostname` prints whatever the host is
 // configured to call itself, which may be fully qualified; `hostname -s` prints the first label
 // only. A receipt that records identity wants the former, a converge that matches a fleet member's
 // short name wants the latter, and collapsing them would silently change which one a caller got.
 fn hostname_read_command() -> ArgvCommand {
-  argv_command(program: hostname_program.invocation, arguments: [])
+  argv_command(program: hostname_program(), arguments: [])
 }
 
 fn hostname_short_read_command() -> ArgvCommand {
-  argv_command(program: hostname_program.invocation, arguments: ["-s"])
+  argv_command(program: hostname_program(), arguments: ["-s"])
 }

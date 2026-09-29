@@ -32,6 +32,12 @@ type ProgramIdentity sole_constructor {
   catalog: ProgramCatalogStanding
 }
 
+// EVERY IDENTITY ROW IS A NULLARY fn, NOT A data DECLARATION. That is a workaround of a language
+// gap, not a modeling choice: admission names no caller for a data declaration, so a data row
+// could never be admitted. The gap and its trigger are
+// gunbc.recurring_failure_mode admit_callers_names_no_caller_for_a_data_declaration; when it
+// climbs, the rows return to `data`.
+//
 // Whether a CliTool row carries this program. It is stamped at the mint rather than looked up,
 // because the two mints below are separately sealed: which one a program's row calls is the
 // classification, and the compiler holds it.
@@ -76,6 +82,13 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
 // path, so the builder mints the identity itself. Each leaves this list by taking a
 // ProgramIdentity parameter instead, which moves the identity to the caller's row.
 //
+// RUNG, stated at what was measured: the seals refuse an unlisted caller of either mint and a
+// spelled record (test.claim.infer_program_identity_admission_witness). They do NOT refuse a
+// NonEmptyStr handed to a ProgramIdentity position: that is accepted in silence today, which is
+// gunbc.recurring_failure_mode refined_alias_argument_exempt_from_declared_type_inhabitance. Until
+// that row climbs, an admitted argv builder could pass a string and skip both mints, so the census
+// holds at admission plus review of the builder, not by construction alone.
+//
 // SCOPE, stated so it is not read as a clean bill: programs named inside STRING carriers -- a
 // sudo/systemd-run/docker-exec argv carried as List<String>, a `sh -c` or bash script body, a
 // systemd ExecStart line, a TransportScript -- never reach this mint and are outside the census
@@ -83,7 +96,7 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
 fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
   admit_callers: [
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program"),
-    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_program"),
+    decl_ref(module_path: "extdeps.cargo_build", decl_name: "cargo_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_program"),

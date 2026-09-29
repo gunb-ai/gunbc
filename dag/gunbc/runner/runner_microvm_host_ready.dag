@@ -511,7 +511,7 @@ fn observe_firecracker_host_standing_wet(root: String, login: NonEmptyStr) -> Fi
       _ => ""
     }
   } else { "" }
-  let gnu_time = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: gnu_time_program.invocation), transport: LocalExec))
+  let gnu_time = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: gnu_time_program().invocation), transport: LocalExec))
   let cgroup_peak = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: cgroup_v2_memory_peak_path()), transport: LocalExec))
   let systemd_version = match run_shell_command_capture(command: systemctl_version_command(), transport: LocalExec) {
     ProcessOutputPresent { text: t } =>

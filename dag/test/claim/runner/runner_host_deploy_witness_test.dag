@@ -130,13 +130,13 @@ test fn srv4_enables_its_declared_runner_instances() -> Bool {
         && string_contains(
              s: enable,
              pattern: concat(
-               concat("'", sudo_program.invocation as String),
+               concat("'", sudo_program().invocation as String),
                concat("' '", concat(sudo_non_interactive_flag as String, "'")),
              ),
            )
         && string_contains(
              s: enable,
-             pattern: concat(concat("'", systemctl_path_resolved_program.invocation as String), "' 'enable' '--now'"),
+             pattern: concat(concat("'", systemctl_path_resolved_program().invocation as String), "' 'enable' '--now'"),
            )
     }
   }

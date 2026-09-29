@@ -114,14 +114,14 @@ service crypto.Sha256Sum {
   }
 }
 
-data sha256sum_program: ProgramIdentity = cataloged_program(invocation: "sha256sum")
+fn sha256sum_program() -> ProgramIdentity = cataloged_program(invocation: "sha256sum")
 
 fn sha256sum_argv(path: String) -> List<String> {
-  [sha256sum_program.invocation as String, "--", path]
+  [sha256sum_program().invocation as String, "--", path]
 }
 
 fn sha256sum_file_command(path: String) -> ArgvCommand {
-  argv_command(program: sha256sum_program.invocation, arguments: skip(xs: sha256sum_argv(path: path), n: 1))
+  argv_command(program: sha256sum_program(), arguments: skip(xs: sha256sum_argv(path: path), n: 1))
 }
 
 // The first field of the output line, admitted only at the digest's exact length.

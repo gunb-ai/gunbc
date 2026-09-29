@@ -255,7 +255,7 @@ data sshpass_authority: ExternalAuthority = ExternalAuthority {
 
 // The transport's own program, split from its flags for the same reason ArgvCommand splits them:
 // sshpass is what gets executed, `-e` is what it is told.
-data sshpass_program: ProgramIdentity = cataloged_program(invocation: "sshpass")
+fn sshpass_program() -> ProgramIdentity = cataloged_program(invocation: "sshpass")
 
 fn ssh_host_key_override_opts() -> List<String> {
   ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
@@ -263,7 +263,7 @@ fn ssh_host_key_override_opts() -> List<String> {
 
 fn scp_command(local_path: NonEmptyStr, remote_target: NonEmptyStr) -> ArgvCommand {
   argv_command(
-    program: sshpass_program,
+    program: sshpass_program(),
     arguments: append(
       append(
         append(["-e", "scp"], items: ssh_host_key_override_opts()),
@@ -290,7 +290,7 @@ fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> 
           let s = remote_exec_command_rendered(command: sealed)
           CommandOverTransportBuilt {
             command: argv_command(
-              program: sshpass_program,
+              program: sshpass_program(),
               arguments: append(
                 append(["-e", "ssh"], items: ssh_host_key_override_opts()),
                 items: [t as String, s as String],
@@ -348,12 +348,12 @@ data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PRO
 // layout this repository declares (the approval host's /usr/bin), and the point of the wrapper is
 // that nothing ambient reaches the command -- so its program is not left to PATH either.
 fn env_cleared_command(command: ArgvCommand) -> ArgvCommand {
-  argv_command(program: env_absolute_program, arguments: concat([env_ignore_environment_flag as String], argv_words(command: command)))
+  argv_command(program: env_absolute_program(), arguments: concat([env_ignore_environment_flag as String], argv_words(command: command)))
 }
 
 fn env_prefixed_command(bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
   argv_command(
-    program: env_path_resolved_program.invocation,
+    program: env_path_resolved_program(),
     arguments: env_prefixed_args(bindings: bindings, command_argv: argv_words(command: command)),
   )
 }

@@ -265,7 +265,7 @@ fn required_witnesses_build_work(source: RequiredBuildSource) -> RequiredBuildWo
           source: source,
           checkout_materialization: [action_ref_material(action: checkout_action), "fetch-depth=0", ci_toolchain_home_isolation_script()],
           toolchain_provenance: [action_ref_material(action: setup_rust_action), "rust-toolchain.toml:1.93.0+clippy+rustfmt", ci_pin_rustup_default_script()],
-          executable_provenance: [repo_self_build_all_bins_command(), claim_executor_program.invocation],
+          executable_provenance: [repo_self_build_all_bins_command(), claim_executor_program().invocation],
           command: build_lane_run_command(),
           environment: [
             RequiredBuildEnvironmentEntry { name: "CARGO_TERM_COLOR", value: "always" },

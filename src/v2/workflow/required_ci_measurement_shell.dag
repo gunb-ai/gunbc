@@ -42,7 +42,7 @@ fn required_ci_measurement_finalize_stmts(receipt_path: String) -> List<Node> {
           bash_build_word_lit(text: required_ci_measurement_build_success)
         ]),
         then_stmts: [required_ci_command(words: [
-          claim_executor_program.invocation,
+          claim_executor_program().invocation,
           "--measurement-unreached-receipt",
           receipt_path,
           "--measurement-unreached-cause",
@@ -77,7 +77,7 @@ fn required_ci_measurement_adjudicate_stmts(receipt_path: String) -> List<Node> 
         bash_build_word_lit(text: required_ci_measurement_build_success)
       ]),
       then_stmts: [required_ci_command(words: [
-        claim_executor_program.invocation,
+        claim_executor_program().invocation,
         "--adjudicate-measurement-receipt",
         receipt_path
       ])]

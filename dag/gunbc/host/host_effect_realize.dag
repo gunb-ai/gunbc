@@ -834,7 +834,7 @@ fn srv3_seeded_install_media_toolchain_receipt_line(outcome: NonEmptyStr) -> Str
 
 fn srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated() -> Bool {
   let elevated = sudo_elevate(command: srv3_actuator_toolchain_apt_install_command(package: package_xorriso))
-  elevated.bin_path == sudo_program.invocation as String &&
+  elevated.bin_path == sudo_program().invocation as String &&
     elevated.args == ["-n", apt_get_binary_path as String, "install", "-y", package_xorriso as String]
 }
 
@@ -2211,7 +2211,7 @@ fn srv3_actuator_toolchain_websocat_release_download_url() -> String {
 
 fn srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated() -> Bool {
   let elevated = sudo_elevate(command: srv3_actuator_toolchain_apt_install_command(package: package_curl))
-  elevated.bin_path == sudo_program.invocation as String &&
+  elevated.bin_path == sudo_program().invocation as String &&
     elevated.args == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
 }
 

@@ -116,7 +116,7 @@ test fn chown_argv_names_the_binary_then_the_owner_then_the_path() -> Bool {
 // flag in front -- one place, rather than the four call sites that each spelled both.
 test fn elevation_prefixes_sudo_and_the_non_interactive_flag() -> Bool {
   let elevated = sudo_elevate(command: ["/usr/bin/chown", "1000:1000", "/opt/gunbc"])
-  elevated.bin_path == sudo_program.invocation as String &&
+  elevated.bin_path == sudo_program().invocation as String &&
     elevated.args == ["-n", "/usr/bin/chown", "1000:1000", "/opt/gunbc"]
 }
 
