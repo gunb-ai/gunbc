@@ -25,9 +25,10 @@ import extdeps.languages.rust.representation {
 // both hold the same rule -- a row may be added only for a declaration whose native realization is
 // ALREADY TRUE, never to make a failing site compile. These rows restate, at declaration grain, the
 // realizations the spelling-keyed table was answering by name; they add no new realization. The
-// declarations of the same spelling that are NOT here (v2.std.text String, std.string_type String,
-// v2.std.logic Bool) are the ones v1.compiler.coercion structural_declaration_modules_for already
-// gates as structural, and their absence here is the same fact stated once at the exact key.
+// declarations of the same spelling that are NOT here (v2.std.text String, std.string_type String)
+// are the ones v1.compiler.coercion structural_declaration_modules_for already gates as structural,
+// and their absence here is the same fact stated once at the exact key. (Bool has one declaration
+// since the Bool de-fork, std.types Bool, bound below.)
 fn rust_source_binding(module_path: String, decl_name: String, representation: RustRepresentation) -> SourceTypeTargetBinding<RustRepresentation> {
   SourceTypeTargetBinding {
     source: decl_ref(module_path: module_path, decl_name: decl_name),
