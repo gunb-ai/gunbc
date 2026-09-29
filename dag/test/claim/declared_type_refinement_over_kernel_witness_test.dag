@@ -1,0 +1,79 @@
+module test.claim.declared_type_refinement_over_kernel_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// ReadsLiveTree: compile_dag_diagnostic_census walks the live checkout to resolve the probes'
+// imports (v2.std.text, std.algebra, std.types).
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn refusal_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// THE SPECIMEN (adhoc-0229c068-97e). v2.std.text string_replace(needle: "{ x }" as NonEmptyStr)
+// was ACCEPTED and then crashed in the interpreter with `cannot access field 'head' on String` inside
+// string_split, which reads `delimiter.head` off its declared FreeSemigroup<Char>. string_split was
+// right to: its parameter is the structural nonempty carrier. The earliest unjustified link was the
+// seed's inhabitance relation, v1.compiler.infer_types kernel_value_declared_type_mismatch, which
+// decided "is the value a kernel" by the value's OWN NAME. A plain `String` at FreeSemigroup<Char>
+// refused; NonEmptyStr -- `String where non_empty`, host text with a predicate -- is not spelled like
+// a kernel, so the same host-text value fell through to admission (the class
+// gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel, one more
+// specimen). DESIGN 4 (text ruling 2026-09-27): host text reaches a structural text carrier through
+// the declared Unicode scalar unfold or the crossing refuses; no unfold targets FreeSemigroup<Char>,
+// so the crossing REFUSES, located at the argument, rather than running.
+data refined_host_text_at_structural_needle_source: String = "module probe_refined_text_needle\nimport v2.std.text { String, string_replace }\nimport std.types { NonEmptyStr }\nfn probe(t: String, n: NonEmptyStr) -> String { string_replace(source: t, needle: n, replacement: t) }\n"
+
+test fn w_refined_host_text_at_structural_needle_refuses() -> Bool {
+  refusal_count(source: refined_host_text_at_structural_needle_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// The brief's own spelling: the cast introduces the refinement at the argument itself.
+data cast_refined_literal_at_structural_needle_source: String = "module probe_cast_text_needle\nimport v2.std.text { String, string_replace }\nimport std.types { NonEmptyStr }\nfn probe(t: String) -> String { string_replace(source: t, needle: \"{ x }\" as NonEmptyStr, replacement: t) }\n"
+
+test fn w_cast_refined_literal_at_structural_needle_refuses() -> Bool {
+  refusal_count(source: cast_refined_literal_at_structural_needle_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// CONTROL, THE UNREFINED BASE: the plain host String at the same position refused before this
+// change. It pins that the refinement case now answers exactly as its base does -- the repair peels
+// the value to its base, it does not invent a second wall.
+data host_text_at_structural_needle_source: String = "module probe_host_text_needle\nimport v2.std.text { string_replace }\nimport std.algebra { FreeMonoid }\nimport std.types { Char, String }\nfn probe(t: FreeMonoid<Char>, n: String) -> FreeMonoid<Char> { string_replace(source: t, needle: n, replacement: t) }\n"
+
+test fn w_host_text_at_structural_needle_refuses() -> Bool {
+  refusal_count(source: host_text_at_structural_needle_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// POSITIVE CONTROLS: peeling the value must not refuse a refinement where its base or its own
+// refinement is declared. A peel that over-reached reds here.
+data refined_text_at_its_base_source: String = "module probe_refined_at_base\nimport std.types { NonEmptyStr, String }\nfn takes_text(s: String) -> Int { 1 }\nfn probe(n: NonEmptyStr) -> Int { takes_text(s: n) }\n"
+
+test fn w_refined_text_at_its_kernel_base_is_admitted() -> Bool {
+  refusal_count(source: refined_text_at_its_base_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data refined_text_at_itself_source: String = "module probe_refined_at_itself\nimport std.types { NonEmptyStr }\nfn takes_needle(s: NonEmptyStr) -> Int { 1 }\nfn probe(n: NonEmptyStr) -> Int { takes_needle(s: n) }\n"
+
+test fn w_refined_text_at_its_own_refinement_is_admitted() -> Bool {
+  refusal_count(source: refined_text_at_itself_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// THE REAL PATH STILL RUNS: a structural needle is the carrier string_split declares, and it is
+// admitted. The execution of string_replace over structural values is carried by
+// v2.test.std_text.carrier_claims text_replace_substitutes_at_the_occurrence_holds.
+data structural_needle_source: String = "module probe_structural_needle\nimport v2.std.text { String, string_replace }\nimport std.algebra { FreeSemigroup }\nimport std.types { Char }\nfn probe(t: String, n: FreeSemigroup<Char>) -> String { string_replace(source: t, needle: n, replacement: t) }\n"
+
+test fn w_structural_needle_is_admitted() -> Bool {
+  refusal_count(source: structural_needle_source, wanted: "DeclaredTypeNotInhabited") == 0
+}

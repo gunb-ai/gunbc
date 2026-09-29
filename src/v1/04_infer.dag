@@ -2994,9 +2994,26 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
 // bound stops a multi-type cycle (`type A = B` / `type B = A`) regardless. Both exhaust to the
 // ADMITTING arm -- where an unfollowable reference already landed -- never to a fabricated refusal,
 // because exhausting the walk establishes ignorance, not a mismatch.
+//
+// THE VALUE SIDE IS PEELED TO ITS REFINEMENT BASE, THE SAME PEEL THE FORMAL SIDE ALREADY TAKES.
+// "Is the value a kernel" was decided by the value's OWN NAME, so a where-refinement over a kernel
+// (NonEmptyStr = String where non_empty) was not a kernel here and every structured formal admitted
+// it: a plain String at FreeSemigroup<Char> refused while the same host text as NonEmptyStr ran,
+// and v2.std.text string_split then read `.head` off host text in the interpreter
+// (adhoc-0229c068-97e; test.claim.declared_type_refinement_over_kernel_witness). A predicate
+// constrains which host values inhabit the refinement, never their representation, so the refined
+// value answers exactly as its base does. Only a where-refinement is peeled: every other actual
+// reaches the relation unchanged.
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let actual_resolved = match lookup_type_for(env: type_env, node: actual) {
+    Present { value: resolved } => resolved
+    Absent => actual
+  }
+  let actual_base = if is_where_refinement_type(ty: actual_resolved) {
+    peel_where_refinement_base(ty: actual_resolved, type_env: type_env)
+  } else { actual }
   kernel_value_declared_type_mismatch_bounded(
-    formal: formal, actual: actual, type_env: type_env, source_indices: source_indices,
+    formal: formal, actual: actual_base, type_env: type_env, source_indices: source_indices,
     formal_name_override: "", depth: 0)
 }
 
