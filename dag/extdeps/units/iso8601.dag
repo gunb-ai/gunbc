@@ -1,6 +1,7 @@
 module extdeps.units.iso8601
 
-import std.types { Int, String }
+import std.types { Int }
+import std.string_type { String }
 import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
