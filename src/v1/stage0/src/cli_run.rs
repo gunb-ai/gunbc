@@ -40625,8 +40625,10 @@ mod compile_clean_loader_closure_fork_regression {
     fn scoped_gate_loader_pulls_bare_referenced_providers() {
         std::env::set_current_dir(workspace_root()).expect("chdir workspace root");
         // A hermetic zero-import consumer whose only edge to its provider is a bare service call.
-        let mut roots = witness_layer_roots();
-        roots.push("fixtures/bare_service_provider".to_string());
+        // The fixture root comes FIRST: `load_compile_clean_entry_sources` enumerates entries from
+        // `source_roots[0]` only, and the layer roots behind it supply `std`.
+        let mut roots = vec!["fixtures/bare_service_provider".to_string()];
+        roots.extend(witness_layer_roots());
         let mei = build_multi_entry_index_primary_precedence(&roots);
 
         let consumer_rel = "fixtures/bare_service_provider/consumer.dag".to_string();
