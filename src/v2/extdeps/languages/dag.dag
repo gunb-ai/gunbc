@@ -94,6 +94,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member,
 }
 import v2.std.node {
+  symbol_lexeme,
   Arrow,
   Atom,
   Bind,
@@ -193,7 +194,7 @@ import v2.std.integer {
   NonZeroD2
 }
 import v2.std.text { String }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_snoc }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.extdeps.languages.fidelity {
   DeclaredNormalized,
@@ -3621,6 +3622,43 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 
 fn dag_int_type_binding() -> Symbol {
   ^dag_binding_type_int
+}
+
+// THE KERNEL TYPE SPELLINGS AND THEIR CANONICAL BINDINGS, declared at the language authority. The
+// table is keyed by spelling, so v2.compiler.resolve asks it only where no declaration answered the
+// name (unbound). It also gates the ambiguous case, whose candidates are read through
+// dag_kernel_type_declaration_binding_optional. Where a declaration answered, resolve reads
+// dag_kernel_type_declaration_binding_optional instead
+// (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
+fn dag_kernel_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
+  if sym == dag_int_type_binding() {
+    optional_present(value: sym)
+  } else if symbol_lexeme(sym: sym) == "Int" {
+    optional_present(value: dag_int_type_binding())
+  } else if symbol_lexeme(sym: sym) == "Bool" {
+    optional_present(value: ^bool_node_symbol)
+  } else {
+    optional_absent()
+  }
+}
+
+// THE DECLARATIONS A KERNEL TYPE SPELLING DENOTES. A kernel spelling that resolves, through an
+// import or another module's declaration, to a declaration in this table takes its canonical
+// binding. Resolving to any other declaration is refused rather than captured
+// (v2.compiler.resolve resolve_kernel_type_reading). The table lists the declarations the corpus
+// carries today. Two Int and two Bool declarations stand until their de-fork lanes consolidate them
+// (docs/plans/dag-v2-defork-audit.md), and the table follows those lanes rather than choosing
+// between them.
+fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional<Symbol> {
+  if path == qualified_name_from_dotted_string(dotted: "v2.std.integer.Int")
+    || path == qualified_name_from_dotted_string(dotted: "std.integer.Int") {
+    optional_present(value: dag_int_type_binding())
+  } else if path == qualified_name_from_dotted_string(dotted: "v2.std.logic.Bool")
+    || path == qualified_name_from_dotted_string(dotted: "std.types.Bool") {
+    optional_present(value: ^bool_node_symbol)
+  } else {
+    optional_absent()
+  }
 }
 
 // THE BINDING→DENOTATION JOIN, declared once at the language authority. The resolver binds the
