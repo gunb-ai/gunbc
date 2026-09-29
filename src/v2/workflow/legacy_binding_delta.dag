@@ -112,12 +112,21 @@ fn insertion_provenance_entry(
   identity: NodeOccurrenceIdentity
 ) -> InsertionProvenanceDerivation {
   match identity {
+    // A cause in the TARGET's own scope is a same-graph lowering member (std.occurrence_identity
+    // derive_projected_occurrence), not a projector insertion: its cause is authored in the graph
+    // it lives in, so it relates to the base exactly as that cause does and is no insertion row.
     OccurrenceProjected { id: id, caused_by: caused_by } =>
-      InsertionEntryDerived {
-        entry: ProjectedAsInsertion {
+      if scoped_occurrence_ref_in_scope(occurrence_ref: caused_by, scope: target_scope) {
+        NotAnInsertion {
           target: ScopedOccurrenceRef { scope: target_scope, occurrence: id },
-          caused_by: caused_by,
-        },
+        }
+      } else {
+        InsertionEntryDerived {
+          entry: ProjectedAsInsertion {
+            target: ScopedOccurrenceRef { scope: target_scope, occurrence: id },
+            caused_by: caused_by,
+          },
+        }
       }
     OccurrenceMinted { id: id } =>
       NotAnInsertion {

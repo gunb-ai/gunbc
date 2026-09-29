@@ -317,6 +317,16 @@ fn scoped_occurrence_ref_in_scope(
 // mechanically preventable at that join, and the next rung here would be a construction that can
 // only be reached from a resolved base transport.
 //
+// ONE ARM, TWO PRODUCERS, AND THE CAUSE'S SCOPE IS WHAT TELLS THEM APART. The arm's contract is
+// "a real occurrence of the containing graph that has a cause and no author", and two producers
+// meet it. A projector INSERTION's cause is in a different allocator domain, as above. A same-graph
+// LOWERING MEMBER (derive_projected_occurrence) has its cause in its own graph's domain, and its id
+// is derived above that domain's authored range rather than allocated. The two have different
+// owners and repairs, so they must stay distinguishable, and they are, without a fourth arm:
+// scoped_occurrence_ref_in_scope(caused_by, <the containing graph's scope>) is true exactly for a
+// lowering member. v2.workflow.legacy_binding_delta insertion_provenance_entry branches on it, and
+// any other consumer that needs the distinction asks the same function rather than a new field.
+//
 // NOTE THE ASYMMETRY, WHICH IS DELIBERATE: a carried-forward node gets no arm here. Its
 // correspondence to its base counterpart relates two occurrences that BOTH exist, so the projector
 // can emit that pairing from the copy it performed and nothing needs to ride on the node. An
@@ -406,6 +416,15 @@ fn node_occurrence_identity_projected(
 // insertion, and source annotations are disjoint from allocation (DESIGN section 4c), so a derived
 // id moves exactly when some authored id before it would have moved anyway.
 //
+// THE SNAPSHOT SEALS THE ALLOCATOR. Derived ids occupy [N, N + occurrence_derived_span()), and
+// nothing reserves that range inside the allocator itself, so an allocation made after the
+// snapshot from the ORIGINAL allocator would hand out N, N+1, ... and collide. The sanctioned
+// constructor is occurrence_allocator_seal (the record stays writable, as every .dag record is), which returns the snapshot together with the continuation
+// allocator, already advanced past the derived range. Any allocation after the seal must come from
+// that continuation. RUNG, HONESTLY: mitigatable. An allocator is an immutable value, so a caller
+// can still reuse the pre-seal value. The construction makes the correct continuation the only one
+// the seal hands out; it does not make the stale one unreachable.
+//
 // THE SNAPSHOT IS ONE VALUE, so N and the scope digest cannot come from two different parses. The
 // cause is minted in the SAME allocator as the projected node, and scoping it by that allocator
 // domain's digest is the honest ScopedOccurrenceRef rather than a second cause shape.
@@ -421,6 +440,30 @@ type ProjectedOccurrenceDerivation
 
 fn occurrence_derivation_operand_bound() -> Int {
   1073741824
+}
+
+// Every derived id lies in [N, N + span): both operands are below the bound, so the pairing is
+// below cantor(bound, bound).
+fn occurrence_derived_span() -> Int {
+  occurrence_cantor_pair(a: occurrence_derivation_operand_bound(), b: occurrence_derivation_operand_bound())
+}
+
+type OccurrenceAllocatorSeal {
+  snapshot: OccurrenceAllocatorSnapshot
+  continuation: OccurrenceIdAllocator
+}
+
+fn occurrence_allocator_seal(
+  alloc: OccurrenceIdAllocator,
+  scope: Fnv1a64Structural
+) -> OccurrenceAllocatorSeal {
+  OccurrenceAllocatorSeal {
+    snapshot: OccurrenceAllocatorSnapshot {
+      ordinal_space: authored_token_ordinal_space_from_allocator(alloc: alloc),
+      scope: scope,
+    },
+    continuation: OccurrenceIdAllocator { next_id: alloc.next_id + occurrence_derived_span() },
+  }
 }
 
 fn occurrence_cantor_pair(a: Int, b: Int) -> Int {

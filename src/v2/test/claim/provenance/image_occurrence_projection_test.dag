@@ -15,7 +15,9 @@ import std.occurrence_identity {
   ProjectedOrdinalOutOfRange,
   ProjectedSourceNotAuthoredInSnapshot,
   ScopedOccurrenceRef,
-  authored_token_ordinal_space_from_allocator,
+  alloc_occurrence_id,
+  occurrence_allocator_seal,
+  occurrence_derived_span,
   derive_projected_occurrence,
   scoped_occurrence_ref_in_scope,
 }
@@ -44,10 +46,7 @@ fn iop_foreign_scope() -> Fnv1a64Structural {
 }
 
 fn iop_snapshot() -> OccurrenceAllocatorSnapshot {
-  OccurrenceAllocatorSnapshot {
-    ordinal_space: authored_token_ordinal_space_from_allocator(alloc: OccurrenceIdAllocator { next_id: 10 }),
-    scope: iop_scope(),
-  }
+  occurrence_allocator_seal(alloc: OccurrenceIdAllocator { next_id: 10 }, scope: iop_scope()).snapshot
 }
 
 fn iop_minted(id: Int) -> NodeOccurrenceIdentity {
@@ -237,5 +236,21 @@ test fn image_projection_refuses_a_projected_root_holds() -> Bool {
     ImageRootIsAlreadyProjected { observed: _ } => true
     ImageOccurrencesProjected { root: _ } => false
     ImageDerivationRefused { refusal: _ } => false
+  }
+}
+
+// THE SEAL RESERVES THE DERIVED RANGE. The first id the continuation allocator hands out lies above
+// the largest id the derivation can produce for this snapshot, so allocation after the seal cannot
+// collide with a derived id. A seal that returned the original allocator would hand out 10, the
+// first id of the derived range, and this control would go red.
+test fn image_projection_seal_continuation_allocates_above_every_derived_id_holds() -> Bool {
+  let seal = occurrence_allocator_seal(alloc: OccurrenceIdAllocator { next_id: 10 }, scope: iop_scope())
+  let first_after = alloc_occurrence_id(alloc: seal.continuation).id.value
+  match derive_projected_occurrence(snapshot: seal.snapshot, source: OccurrenceId { value: 9 }, ordinal: 1073741823) {
+    ProjectedOccurrenceDerived { identity: OccurrenceProjected { id: largest, caused_by: _ } } =>
+      first_after > largest.value && first_after == 10 + occurrence_derived_span()
+    ProjectedOccurrenceDerived { identity: _ } => false
+    ProjectedSourceNotAuthoredInSnapshot { source: _, bound: _ } => false
+    ProjectedOrdinalOutOfRange { source: _, ordinal: _ } => false
   }
 }
