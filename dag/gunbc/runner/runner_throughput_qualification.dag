@@ -393,14 +393,26 @@ fn bound_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunnerQ
 // THE HOST AXES JOIN AGAINST THE SELECTED OFFER'S OWN SHAPE: its hard thread count, and the
 // architecture its CPU envelope states. An offer whose envelope states no architecture made no claim
 // the run could be about, so the join refuses rather than admitting any architecture (section 5).
-fn offer_architecture_wire<P>(selection: SelectedRunnerQualification<P>) -> String {
+fn offer_architecture<P>(selection: SelectedRunnerQualification<P>) -> Architecture? {
   match selection.offer.shape.envelope.cpu {
+    Absent => none
+    Present { value: c } => c.architecture
+  }
+}
+
+// THE JOIN DECIDES ON THE OPTIONAL, NOT ON ITS SPELLING: an unstated architecture holds for no run,
+// whatever the observed architecture's diagnostic name happens to be.
+fn architecture_joins<P>(selection: SelectedRunnerQualification<P>, observed: Architecture) -> Bool {
+  match offer_architecture(selection: selection) {
+    Absent => false
+    Present { value: a } => (architecture_diagnostic_name(arch: a) as String) == (architecture_diagnostic_name(arch: observed) as String)
+  }
+}
+
+fn offer_architecture_wire<P>(selection: SelectedRunnerQualification<P>) -> String {
+  match offer_architecture(selection: selection) {
     Absent => "unstated"
-    Present { value: c } =>
-      match c.architecture {
-        Absent => "unstated"
-        Present { value: a } => architecture_diagnostic_name(arch: a) as String
-      }
+    Present { value: a } => architecture_diagnostic_name(arch: a) as String
   }
 }
 
@@ -414,7 +426,7 @@ fn subject_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunne
     join_axis(run: run.run, axis: ImageDigestAxis, holds: (selection.runtime.image_digest as String) == (run.image_digest as String), selected: selection.runtime.image_digest as String, observed: run.image_digest as String),
     join_axis(run: run.run, axis: RuntimeClosureAxis, holds: (selection.runtime.runtime_closure as String) == (run.runtime_closure as String), selected: selection.runtime.runtime_closure as String, observed: run.runtime_closure as String),
     join_axis(run: run.run, axis: HostThreadsAxis, holds: hardware_thread_count_value(t: selection.offer.shape.hard.threads) == hardware_thread_count_value(t: run.host_threads), selected: hardware_thread_count_value(t: selection.offer.shape.hard.threads) as String, observed: hardware_thread_count_value(t: run.host_threads) as String),
-    join_axis(run: run.run, axis: HostArchitectureAxis, holds: offer_architecture_wire(selection: selection) == architecture_diagnostic_name(arch: run.host_architecture) as String, selected: offer_architecture_wire(selection: selection), observed: architecture_diagnostic_name(arch: run.host_architecture) as String),
+    join_axis(run: run.run, axis: HostArchitectureAxis, holds: architecture_joins(selection: selection, observed: run.host_architecture), selected: offer_architecture_wire(selection: selection), observed: architecture_diagnostic_name(arch: run.host_architecture) as String),
     join_axis(run: run.run, axis: SlotUnitAxis, holds: (selection.slot.unit as String) == (run.slot_unit as String), selected: selection.slot.unit as String, observed: run.slot_unit as String),
     join_axis(run: run.run, axis: EffectiveMemoryMaxAxis, holds: byte_size_count(b: want.memory_max) == byte_size_count(b: run.effective.memory_max), selected: byte_size_count(b: want.memory_max) as String, observed: byte_size_count(b: run.effective.memory_max) as String),
     join_axis(run: run.run, axis: EffectiveMemoryHighAxis, holds: byte_size_count(b: want.memory_high) == byte_size_count(b: run.effective.memory_high), selected: byte_size_count(b: want.memory_high) as String, observed: byte_size_count(b: run.effective.memory_high) as String),
