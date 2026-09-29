@@ -3003,10 +3003,10 @@ fn body_lower_last_child_optional(n: Node) -> Optional<Node> {
   fold(n.children, init: body_lower_eq_body_fold_init(), f: body_lower_last_child_fold_step)
 }
 
-fn body_lower_atom_body_optional(expr: Node) -> Optional<Node> {
+fn body_lower_atom_body_read(expr: Node) -> OperandRefRead {
   match body_lower_materialize_int_literal_operand_optional(node: expr) {
-    Present { value: lit } => Present { value: lit }
-    Absent => body_lower_operand_ref_optional(node: expr)
+    Present { value: lit } => OperandRefLowered { lowered: lit }
+    Absent => body_lower_operand_ref_read(node: expr)
   }
 }
 
@@ -3021,25 +3021,27 @@ fn body_lower_eq_expr_to_body(expr: Node) -> Outcome<Optional<Node>> {
             diagnostics: d
           )
         Absent =>
-          match body_lower_atom_body_optional(expr: expr) {
-            Present { value: atom } =>
+          match body_lower_atom_body_read(expr: expr) {
+            OperandRefLowered { lowered: atom } =>
               outcome_with_diagnostics(
                 value: optional_present(value: atom),
                 diagnostics: d
               )
-            Absent =>
+            OperandRefAbsent =>
               match body_lower_last_child_optional(n: expr) {
                 Absent => outcome_with_diagnostics(value: optional_absent(), diagnostics: d)
                 Present { value: last } =>
-                  match body_lower_atom_body_optional(expr: last) {
-                    Present { value: atom } =>
+                  match body_lower_atom_body_read(expr: last) {
+                    OperandRefLowered { lowered: atom } =>
                       outcome_with_diagnostics(
                         value: optional_present(value: atom),
                         diagnostics: d
                       )
-                    Absent => body_lower_eq_expr_to_body(expr: last)
+                    OperandRefAbsent => body_lower_eq_expr_to_body(expr: last)
+                    OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
                   }
               }
+            OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
           }
       }
   }
@@ -3663,21 +3665,21 @@ fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
   )
 }
 
-fn body_lower_arg_operand_optional(arg_capture: Node) -> Optional<Node> {
+fn body_lower_arg_operand_read(arg_capture: Node) -> OperandRefRead {
   match body_lower_find_captured(root: arg_capture, emitted: ^dag_surface_expr) {
-    ParseSubtreeFound { captured: expr } => body_lower_operand_ref_optional(node: expr)
+    ParseSubtreeFound { captured: expr } => body_lower_operand_ref_read(node: expr)
     ParseSubtreeAbsent =>
       match parse_production_emitted_identity_optional(node: arg_capture) {
         Present { value: emitted } =>
           if emitted == ^dag_surface_expr {
             match parse_production_captured_child_optional(node: arg_capture) {
-              Present { value: captured } => body_lower_operand_ref_optional(node: captured)
-              Absent => Absent
+              Present { value: captured } => body_lower_operand_ref_read(node: captured)
+              Absent => OperandRefAbsent
             }
           } else {
-            body_lower_operand_ref_optional(node: arg_capture)
+            body_lower_operand_ref_read(node: arg_capture)
           }
-        Absent => body_lower_operand_ref_optional(node: arg_capture)
+        Absent => body_lower_operand_ref_read(node: arg_capture)
       }
   }
 }
@@ -4325,12 +4327,13 @@ fn body_lower_arg_value_read(arg_capture: Node, value_capture: Node) -> Outcome<
     Accepted { value: Present { value: lowered }, diagnostics: d } =>
       outcome_with_diagnostics(value: lowered, diagnostics: d)
     Accepted { value: Absent, diagnostics: _ } =>
-      match body_lower_arg_operand_optional(arg_capture: value_capture) {
-        Present { value: operand } => outcome_accepted(value: operand)
-        Absent =>
+      match body_lower_arg_operand_read(arg_capture: value_capture) {
+        OperandRefLowered { lowered: operand } => outcome_accepted(value: operand)
+        OperandRefAbsent =>
           outcome_rejected(
             d: body_lower_diagnostic(reason: ^body_lowering_reason_call_argument_unread, n: arg_capture)
           )
+        OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
       }
   }
 }
@@ -4486,18 +4489,19 @@ fn body_lower_call_sequence_node(node: Node) -> Node {
   }
 }
 
-fn body_lower_call_callee_optional(node: Node) -> Optional<Node> {
-  match body_lower_operand_ref_optional(node: node) {
-    Absent => optional_absent()
-    Present { value: callee } =>
+fn body_lower_call_callee_read(node: Node) -> OperandRefRead {
+  match body_lower_operand_ref_read(node: node) {
+    OperandRefAbsent => OperandRefAbsent
+    OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
+    OperandRefLowered { lowered: callee } =>
       match node_atom_identity_optional(node: callee) {
         Present { value: id } =>
           if dag_lex_token_symbol(sym: id) {
-            optional_absent()
+            OperandRefAbsent
           } else {
-            optional_present(value: callee)
+            OperandRefLowered { lowered: callee }
           }
-        Absent => optional_present(value: callee)
+        Absent => OperandRefLowered { lowered: callee }
       }
   }
 }
@@ -4507,9 +4511,9 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => outcome_accepted(value: optional_absent())
     Present { value: pair } =>
-      match body_lower_call_callee_optional(node: pair.left) {
-        Absent => outcome_accepted(value: optional_absent())
-        Present { value: callee_atom } =>
+      match body_lower_call_callee_read(node: pair.left) {
+        OperandRefAbsent => outcome_accepted(value: optional_absent())
+        OperandRefLowered { lowered: callee_atom } =>
           match body_lower_primary_call_suffix_optional(root: pair.right) {
             Absent => outcome_accepted(value: optional_absent())
             Present { value: call_suffix } =>
@@ -4531,6 +4535,7 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
                 Absent => outcome_accepted(value: optional_absent())
               }
           }
+        OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
       }
   }
 }
