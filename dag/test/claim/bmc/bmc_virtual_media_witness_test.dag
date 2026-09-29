@@ -68,9 +68,11 @@ fn configfs_write_value_for(ops: List<ConfigfsOp>, path_suffix: String) -> Strin
 }
 
 // The staged form's value reader: reads the PREPARED ops (validated, still semantic), not the ops
-// as authored -- so a value the staging would refuse never reaches these assertions.
+// as authored -- so a value the staging would refuse never reaches these assertions. The ops are
+// the sealed staged value (review at 51c4ca9e3e, blocker 1): the variant pattern reads the
+// disposition out of the wrapper.
 fn configfs_prepared_write_value_for(ops: List<ConfigfsPreparedOp>, path_suffix: String) -> String {
-  fold(ops, init: "", f: (acc, op) => match op {
+  fold(ops, init: "", f: (acc, op) => match op.disposition {
     ConfigfsPreparedWriteAttr { path: p, value: v } =>
       if string_contains(s: p as String, pattern: path_suffix) { v } else { acc }
     ConfigfsPreparedMkdir { path: _ } => acc

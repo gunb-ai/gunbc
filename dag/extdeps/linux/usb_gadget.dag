@@ -27,7 +27,7 @@ type MassStorageLun {
 
 type UsbGadget {
   config_root: NonEmptyStr
-  name: NonEmptyStr
+  name: UsbGadgetName
   id_vendor: NonEmptyStr
   id_product: NonEmptyStr
   manufacturer: NonEmptyStr
@@ -56,7 +56,7 @@ type ConfigfsOp
   | ConfigfsRmdir { path: NonEmptyStr }
 
 fn usb_gadget_dir(gadget: UsbGadget) -> NonEmptyStr {
-  join([gadget.config_root as String, "/", gadget.name as String], "") as NonEmptyStr
+  join([gadget.config_root as String, "/", gadget.name.segment as String], "") as NonEmptyStr
 }
 
 fn gadget_bool_bit(b: Bool) -> String {
@@ -230,18 +230,66 @@ fn configfs_name_verdict(name: NonEmptyStr) -> ConfigfsNameVerdict {
   }
 }
 
+// ---- THE SEALED GADGET NAME (review at 51c4ca9e3e, blocker 2) ----
+
+// `usb_gadget_dir` is derived by JOINING the gadget's name under the class root, so a gadget
+// named `a/b` would define its own containment boundary: every path staged against it carries
+// the `<mount>/usb_gadget/a/b/` prefix and self-validates as inside a gadget directory the name
+// itself redefined. A bare `NonEmptyStr` cannot carry the "one segment" fact -- the fact has to
+// be minted before any path is derived, so the name field carries `UsbGadgetName`, whose
+// construction is confined to this file: the only in-file mints are the verdict's well-formed
+// arm (for names authored at runtime) and the named data row below (for the estate's constant).
+// Every module outside this one receives a name already proven to be one segment; the proof is
+// the field's type, not a guard a caller can forget, and no `UsbGadget` reaching staging can
+// carry an unvalidated name because no unvalidated spelling constructs the carrier at all.
+type UsbGadgetName sole_constructor { segment: NonEmptyStr }
+
+type UsbGadgetNameVerdict
+  = UsbGadgetNameWellFormed { name: UsbGadgetName }
+  | UsbGadgetNameNotASegment { name: NonEmptyStr }
+
+// The same segment law `configfs_name_verdict` applies to link and configuration names, applied
+// to the gadget's own name: not empty, no `/`, not a dot segment, no leading dot. The empty
+// spelling is refused one rung earlier still, by the type checker, which declines to author it
+// as a NonEmptyStr at all.
+fn usb_gadget_name_verdict(name: NonEmptyStr) -> UsbGadgetNameVerdict {
+  let n = name as String
+  if n == "" || string_contains(s: n, pattern: "/") || n == "." || n == ".." || starts_with(s: n, prefix: ".") {
+    UsbGadgetNameNotASegment { name: name }
+  } else {
+    UsbGadgetNameWellFormed { name: UsbGadgetName { segment: name } }
+  }
+}
+
+// THE ESTATE'S GADGET NAME, minted here where construction is confined (review at 51c4ca9e3e,
+// blocker 2): consumers import the value instead of authoring the spelling, so the constant's
+// well-formedness is established once, at the module that owns the segment law.
+data gunbcvm_gadget_name: UsbGadgetName = UsbGadgetName { segment: "gunbcvm" }
+
 // THE VALIDATED SEMANTIC OPERATIONS staging returns: the same five operations with their paths
 // PROVEN descendants of this gadget's directory (or endpoints derived from this gadget's own
 // record), and with no process form in them at all -- a prepared operation says what configfs
 // will do, never which program spells it (review on a28daf4844, recommended next slice:
 // `ConfigfsOpRunsArgv` stops being a semantic surface and becomes the private process-boundary
-// carrier the realization lowers to).
-type ConfigfsPreparedOp
+// carrier the realization lowers to). The five variants are the PUBLIC descriptive sum
+// (`ConfigfsPreparedDisposition`); consumers match them freely.
+type ConfigfsPreparedDisposition
   = ConfigfsPreparedMkdir { path: NonEmptyStr }
   | ConfigfsPreparedWriteAttr { path: NonEmptyStr, value: String }
   | ConfigfsPreparedLinkFunction { gadget_dir: NonEmptyStr, function: NonEmptyStr, configuration: NonEmptyStr }
   | ConfigfsPreparedUnlinkFunction { gadget_dir: NonEmptyStr, function: NonEmptyStr, configuration: NonEmptyStr }
   | ConfigfsPreparedRmdir { path: NonEmptyStr }
+
+// THE SEALED STAGED VALUE (review at 51c4ca9e3e, blocker 1). A bare public sum is constructible
+// by anyone, so "staged" would be a claim a caller could author rather than a fact staging
+// minted: another module could write the prepared link by hand with a gadget_dir it chose and
+// hand it to the realization, and the containment verdicts above would never have run. The
+// disposition stays public because it is descriptive; the wrapper is a sole_constructor --
+// construction is confined to THIS file, so the only route to a `ConfigfsPreparedOp` is
+// `configfs_op_prepared`, behind those verdicts. `configfs_prepared_realization` takes the
+// sealed value and nothing else, and the eventual executor consumes the sealed prepared value
+// (or a realization receipt it mints from it), never an open command sum as authorization.
+type ConfigfsPreparedOp sole_constructor { disposition: ConfigfsPreparedDisposition }
 
 // THE STAGED RESULT: the validated semantic operations to hand the realization, or the WHOLE
 // staging refused. There is no state in which a refused op sits beside prepared ones, so a bad
@@ -289,14 +337,18 @@ fn configfs_op_prepared(gadget: UsbGadget, op: ConfigfsOp) -> ConfigfsStaging {
     ConfigfsMkdir { path: p } =>
       match configfs_path_verdict(gadget: gadget, path: p) {
         ConfigfsPathInside { path: _ } =>
-          ConfigfsStagingReady { operations: [ConfigfsPreparedMkdir { path: p }] }
+          ConfigfsStagingReady {
+            operations: [ConfigfsPreparedOp { disposition: ConfigfsPreparedMkdir { path: p } }],
+          }
         ConfigfsPathEscaped { path: e } => configfs_staging_refused_escape(op_path: e as String)
         ConfigfsPathOutside { path: o } => configfs_staging_refused_outside_mount(op_path: o as String)
       }
     ConfigfsWriteAttr { path: p, value: v } =>
       match configfs_path_verdict(gadget: gadget, path: p) {
         ConfigfsPathInside { path: _ } =>
-          ConfigfsStagingReady { operations: [ConfigfsPreparedWriteAttr { path: p, value: v }] }
+          ConfigfsStagingReady {
+            operations: [ConfigfsPreparedOp { disposition: ConfigfsPreparedWriteAttr { path: p, value: v } }],
+          }
         ConfigfsPathEscaped { path: e } => configfs_staging_refused_escape(op_path: e as String)
         ConfigfsPathOutside { path: o } => configfs_staging_refused_outside_mount(op_path: o as String)
       }
@@ -308,10 +360,12 @@ fn configfs_op_prepared(gadget: UsbGadget, op: ConfigfsOp) -> ConfigfsStaging {
             ConfigfsNameNotASegment { name: bad } => configfs_staging_refused_name(bad_name: bad as String)
             ConfigfsNameWellFormed { name: _ } =>
               ConfigfsStagingReady {
-                operations: [ConfigfsPreparedLinkFunction {
-                  gadget_dir: g,
-                  function: f,
-                  configuration: c,
+                operations: [ConfigfsPreparedOp {
+                  disposition: ConfigfsPreparedLinkFunction {
+                    gadget_dir: g,
+                    function: f,
+                    configuration: c,
+                  },
                 }],
               }
           }
@@ -324,10 +378,12 @@ fn configfs_op_prepared(gadget: UsbGadget, op: ConfigfsOp) -> ConfigfsStaging {
             ConfigfsNameNotASegment { name: bad } => configfs_staging_refused_name(bad_name: bad as String)
             ConfigfsNameWellFormed { name: _ } =>
               ConfigfsStagingReady {
-                operations: [ConfigfsPreparedUnlinkFunction {
-                  gadget_dir: g,
-                  function: f,
-                  configuration: c,
+                operations: [ConfigfsPreparedOp {
+                  disposition: ConfigfsPreparedUnlinkFunction {
+                    gadget_dir: g,
+                    function: f,
+                    configuration: c,
+                  },
                 }],
               }
           }
@@ -335,7 +391,9 @@ fn configfs_op_prepared(gadget: UsbGadget, op: ConfigfsOp) -> ConfigfsStaging {
     ConfigfsRmdir { path: p } =>
       match configfs_path_verdict(gadget: gadget, path: p) {
         ConfigfsPathInside { path: _ } =>
-          ConfigfsStagingReady { operations: [ConfigfsPreparedRmdir { path: p }] }
+          ConfigfsStagingReady {
+            operations: [ConfigfsPreparedOp { disposition: ConfigfsPreparedRmdir { path: p } }],
+          }
         ConfigfsPathEscaped { path: e } => configfs_staging_refused_escape(op_path: e as String)
         ConfigfsPathOutside { path: o } => configfs_staging_refused_outside_mount(op_path: o as String)
       }
@@ -372,16 +430,22 @@ fn usb_gadget_teardown_staging(gadget: UsbGadget) -> ConfigfsStaging {
 
 // ---- THE REALIZATION BOUNDARY ----
 
-// A prepared semantic operation lowers here to what a process runs: the private process-boundary
-// carrier (`ArgvCommand`) or the native attribute write. Only the executing consumer (the
-// host-effect lane's transport realization) and the tool-realization witnesses are admitted past
-// this point; the domain witnesses stop at `ConfigfsPreparedOp`, and no configfs or BMC consumer
-// learns what an operation means from anything rendered below it (review on a28daf4844,
-// recommended next slice, structural control). The link endpoints are RE-DERIVED from the
+// A prepared semantic operation lowers here to what a process runs: the process-boundary carrier
+// (`ArgvCommand`) or the native attribute write. The boundary is ENFORCED one rung up, at the
+// sealed staged value -- realization accepts only a `ConfigfsPreparedOp`, and only staging
+// constructs one (review at 51c4ca9e3e, blocker 1) -- so "lowered" is a fact about a value
+// staging minted, not a claim about a visibility keyword this language does not have. The
+// executing consumer (the host-effect lane's transport realization) and the tool-realization
+// witnesses read past this point; the domain witnesses stop at the staged value, and no configfs
+// or BMC consumer learns what an operation means from anything rendered below it (review on
+// a28daf4844, recommended next slice, structural control). The link endpoints are RE-DERIVED from the
 // prepared operation's own validated fields, so the realized `ln -sf` carries the functions
 // endpoint as its target and the directory-spelled configuration directory as its destination.
+// The parameter is the SEALED staged value (review at 51c4ca9e3e, blocker 1): a realization of
+// an unprepared operation is not authorable, because an unprepared operation is not
+// constructible -- the match below reads the disposition out of the wrapper staging minted.
 fn configfs_prepared_realization(op: ConfigfsPreparedOp) -> ConfigfsOpCommand {
-  match op {
+  match op.disposition {
     ConfigfsPreparedMkdir { path: p } =>
       ConfigfsOpRunsArgv {
         command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: p as String),

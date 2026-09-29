@@ -1,6 +1,9 @@
 module test.claim.shell.shell_typed_invocation_witness_test
 
 import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 import extdeps.linux.usb_gadget {
   UsbGadget,
   MassStorageLun,
@@ -21,9 +24,14 @@ import extdeps.linux.usb_gadget {
   ConfigfsNameVerdict,
   ConfigfsNameWellFormed,
   ConfigfsNameNotASegment,
+  UsbGadgetNameVerdict,
+  UsbGadgetNameWellFormed,
+  UsbGadgetNameNotASegment,
+  gunbcvm_gadget_name,
   configfs_staging_of,
   configfs_path_verdict,
   configfs_name_verdict,
+  usb_gadget_name_verdict,
   usb_gadget_dir,
   usb_gadget_setup_ops,
   usb_gadget_teardown_ops,
@@ -216,7 +224,7 @@ test fn link_function_relates_this_gadgets_function_to_this_gadgets_configuratio
   match staged {
     ConfigfsStagingReady { operations: os } =>
       list_length(items: os) == 1
-        && all(os, op => match op {
+        && all(os, op => match op.disposition {
           ConfigfsPreparedLinkFunction { gadget_dir: d, function: f, configuration: c } =>
             (d as String) == (gd as String) && f == "mass_storage.0" && c == "c.1"
           _ => false
@@ -283,7 +291,7 @@ test fn usb_gadget_setup_is_typed_configfs_ops_under_the_gadget_root() -> Bool {
 fn alternate_mount_fixture() -> UsbGadget {
   UsbGadget {
     config_root: "/mnt/configfs/usb_gadget",
-    name: "gunbcvm",
+    name: gunbcvm_gadget_name,
     id_vendor: "0x1d6b",
     id_product: "0x0104",
     manufacturer: "gunbc",
@@ -387,4 +395,79 @@ test fn usb_gadget_teardown_walks_detach_unlink_then_five_rmdirs_inside_the_gadg
       ConfigfsRmdir { path: p } => (p as String) == gd
       _ => false
     })) == 1
+}
+
+// ---- THE SEALED GADGET NAME (review at 51c4ca9e3e, blocker 2) ----
+
+// RED, by argument: a gadget name carrying a slash is not one segment, and neither is a dot
+// segment -- the verdict refuses both with the same law `configfs_name_verdict` applies to link
+// names. POSITIVE, by argument and by fixture: the estate's single-segment spelling passes the
+// verdict and is the same value the authority mints as the estate constant, so the fixture's
+// name and the verdict's well-formed arm agree on one spelling. The empty spelling is refused
+// one rung earlier still, by the type checker, which declines to author it as a NonEmptyStr at
+// all (the same fact the link-name guard test records).
+test fn gadget_name_must_be_a_single_well_formed_segment() -> Bool {
+  let slash = usb_gadget_name_verdict(name: "a/b")
+  let dotdot = usb_gadget_name_verdict(name: "..")
+  let good = usb_gadget_name_verdict(name: "gunbcvm")
+  match slash {
+    UsbGadgetNameNotASegment { name: _ } =>
+      match dotdot {
+        UsbGadgetNameNotASegment { name: _ } =>
+          match good {
+            UsbGadgetNameWellFormed { name: w } =>
+              (w.segment as String) == "gunbcvm"
+                && (gunbcvm_gadget_name.segment as String) == "gunbcvm"
+            UsbGadgetNameNotASegment { name: _ } => false
+          }
+        UsbGadgetNameWellFormed { name: _ } => false
+      }
+    UsbGadgetNameWellFormed { name: _ } => false
+  }
+}
+
+// ---- CROSS-MODULE NEGATIVE CONTROLS (review at 51c4ca9e3e, blockers 1 and 2) ----
+
+// The typed tests above prove the honest route works; they do not prove the bypass is
+// unwritable. These probes compile FOREIGN module sources through the guarantee probe corpus --
+// the same harness dag/test/claim/operation_admit_callers_inert_witness_test.dag uses -- and
+// assert the compiler refuses the hand-authored construction. The sources are compiled as DATA,
+// not as modules of this tree: a bypass that resolved would refuse inside the probe's own
+// compilation, never in this file.
+
+// PROBE 1, the exact spelling the review sketched: a foreign module authors the prepared link
+// by hand -- public disposition, a gadget_dir it chose -- and hands it straight to the
+// realization, skipping both verdicts. The wrapper is a sole_constructor declared in
+// extdeps.linux.usb_gadget, so the foreign record literal is a SoleConstructorViolation: a
+// staged fact stays something only staging can mint.
+data prepared_op_bypass_probe_source: String = "module probe.prepared_op_bypass\nimport extdeps.linux.usb_gadget { ConfigfsPreparedOp, ConfigfsPreparedLinkFunction, ConfigfsOpCommand, configfs_prepared_realization }\n\ndata probe_bypass_prepared: ConfigfsPreparedOp = ConfigfsPreparedOp {\n  disposition: ConfigfsPreparedLinkFunction {\n    gadget_dir: \"/sys/kernel/config/usb_gadget/gunbcvm\",\n    function: \"mass_storage.0\",\n    configuration: \"c.1\",\n  },\n}\n\nfn probe_bypass_run(op: ConfigfsPreparedOp) -> ConfigfsOpCommand {\n  configfs_prepared_realization(op: op)\n}\n"
+
+// PROBE 2, the name carrier: a foreign module authors a gadget whose name carries a slash by
+// constructing the sealed carrier itself around the raw spelling. The carrier is confined to
+// extdeps.linux.usb_gadget, so the construction is refused -- the slash spelling cannot enter
+// any UsbGadget from outside, whatever the author's intent for it.
+data gadget_name_bypass_probe_source: String = "module probe.gadget_name_bypass\nimport extdeps.linux.usb_gadget { UsbGadget, MassStorageLun, UsbGadgetName }\n\ndata probe_bypass_gadget: UsbGadget = UsbGadget {\n  config_root: \"/sys/kernel/config/usb_gadget\",\n  name: UsbGadgetName { segment: \"a/b\" },\n  id_vendor: \"0x1d6b\",\n  id_product: \"0x0104\",\n  manufacturer: \"gunbc\",\n  product: \"gunbc-virtual-media\",\n  serial: \"srv4-0001\",\n  config_label: \"c.1\",\n  lun: MassStorageLun {\n    backing_device: \"/dev/nbd0\",\n    cdrom: false,\n    read_only: true,\n    removable: true,\n  },\n  udc: \"1e6a0000.usb-vhub:p3\",\n}\n"
+
+fn bypass_probe_census(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+test fn foreign_module_cannot_hand_author_a_prepared_op_to_the_realization() -> Bool {
+  match census_blocking_count_for_class(
+    census: bypass_probe_census(source: prepared_op_bypass_probe_source),
+    wanted: "SoleConstructorViolation"
+  ) {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
+
+test fn foreign_module_cannot_construct_the_gadget_name_carrier() -> Bool {
+  match census_blocking_count_for_class(
+    census: bypass_probe_census(source: gadget_name_bypass_probe_source),
+    wanted: "SoleConstructorViolation"
+  ) {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
 }
