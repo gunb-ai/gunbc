@@ -204,7 +204,12 @@ fn guest_agent_boot_verdict(runner: ActionsRunnerRelease, observed: ProcessObser
       } else {
         BootConsoleLacksGuestBooted { console: observed.stdout }
       }
-    _ => base
+    BootProducedNoConsole { cause: _ } => base
+    BootConsoleLacksRunnerVersion { expected: _, console: _ } => base
+    BootConsoleLacksGuestBooted { console: _ } => base
+    BootNotAttempted { cause: _ } => base
+    BootExceededHostDeadline { deadline: _, console: _, detail: _ } => base
+    BootVmmFailed { exit_code: _, console: _, detail: _ } => base
   }
 }
 
