@@ -8,6 +8,9 @@ import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMed
 import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, CreationUnconfirmed, HostFileWriteNotConverged, HostFileWriteRefused }
 import gunbc.seeded_install_media_publish { SeededImagePublication, SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused, SeededImagePublishedRecordNotWritten, seeded_image_publication_after_record }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused }
+import gunbc.machine_intake_mtcollins1_census_member_readback {
+  CensusMemberReadback, BootChainIdenticalToStock, BootChainFirstDifference, CasperKernel,
+}
 import gunbc.machine_intake_mtcollins1_census_image_publish {
   CensusRegression, RegressionReproduced, RegressionDiverged, RegressionUnbuilt, RegressionNotApplicable,
   census_regression_of, census_regression_holds,
@@ -17,9 +20,9 @@ import gunbc.machine_intake_mtcollins1_census_image_publish {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data pinned: NonEmptyStr = "30ca88d43f8913995078f6c2c917d5049842f927f3fc886a103f460dd146a706"
-data other_build: NonEmptyStr = "fb94412100f516681e70ca931f6d1abe87f12bfcd60229128247a3fc1ce0c6bf"
-data pinned_key: NonEmptyStr = "8d357a525f078cb4"
+data pinned: NonEmptyStr = "eb23f1746e33cab008317a604d6f27527579d44db95923cbcf351290ecb90a0d"
+data other_build: NonEmptyStr = "d27d584dc8d2c64ad92026cf8a3defb0f8b3ca26199a940dc1ec9cc8c9ee2c18"
+data pinned_key: NonEmptyStr = "bf916c060d072e72"
 
 data work_removed: String = "/tmp/gunbc-seeded-media.AAAAAAAA"
 data scratch_removed_dir: String = "/var/tmp/gunbc-mtcollins1-census-regress.BBBBBBBB"
@@ -28,8 +31,15 @@ fn staged(digest: NonEmptyStr) -> SeededInstallMediaStageOutcome {
   SeededInstallMediaStaged { staging_path: "/var/tmp/x/pinned-rebuild.iso", output_digest: digest, work: Removed { dir: work_removed as NonEmptyStr } }
 }
 
+// The rebuilt image's boot chain as the regression's comparison would read it: kernel and initrd equal
+// to stock (the identity that matters), grub.cfg rewritten. Supplied here; the comparison itself is the
+// member readback's, exercised in its own witness.
+fn stock_chain() -> CensusMemberReadback {
+  BootChainIdenticalToStock { stock_iso: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555", census_iso: pinned, kernel: "k0", initrd: "i0" }
+}
+
 fn reproduced() -> CensusRegression {
-  census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
+  census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned), chain: p => stock_chain(), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
 }
 
 fn census_built() -> UbuntuSeededInstallMediaBuilt? {
@@ -59,7 +69,7 @@ test fn a_reproduced_pinned_digest_holds_and_the_publish_runs() -> Bool {
 // RED: a rebuild that gives other bytes (the host-dependence this gate exists for) stops the run and
 // the publication is NEVER consulted.
 test fn a_diverged_rebuild_stops_before_any_publication() -> Bool {
-  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: other_build), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
+  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: other_build), chain: p => stock_chain(), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
   let a = census_publish_attempt_of(regression: r, publish: ok => published_clean(ok: ok))
   !census_regression_holds(r: r)
     && match r { RegressionDiverged { build_key: _, expected: e, observed: o, build_work: _, scratch: _ } => e == pinned && o == other_build _ => false }
@@ -71,13 +81,13 @@ test fn a_diverged_rebuild_stops_before_any_publication() -> Bool {
 
 // A reproduced digest whose scratch removal was not confirmed does NOT hold: residue on srv2 stops the run.
 test fn a_reproduced_digest_with_unconfirmed_scratch_removal_does_not_hold() -> Bool {
-  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned), scratch: RemovalUnconfirmed { dir: scratch_removed_dir as NonEmptyStr, exit_code: 255, stderr: "Connection closed" })
+  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned), chain: p => stock_chain(), scratch: RemovalUnconfirmed { dir: scratch_removed_dir as NonEmptyStr, exit_code: 255, stderr: "Connection closed" })
   !census_regression_holds(r: r)
     && match census_publish_attempt_of(regression: r, publish: ok => published_clean(ok: ok)) { CensusPublishStoppedAtRegression { regression: _ } => true _ => false }
 }
 
 test fn an_unbuilt_rebuild_stops_the_run() -> Bool {
-  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: SeededInstallMediaStageRefused { reason: "xorriso -osirrox extract: failed exit=5", work: Removed { dir: work_removed as NonEmptyStr } }, scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
+  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: SeededInstallMediaStageRefused { reason: "xorriso -osirrox extract: failed exit=5", work: Removed { dir: work_removed as NonEmptyStr } }, chain: p => stock_chain(), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
   !census_regression_holds(r: r)
     && match r { RegressionUnbuilt { reason: why, build_work: _, scratch: _ } => string_contains(s: why, pattern: "extract") _ => false }
 }
@@ -134,4 +144,15 @@ test fn a_refused_record_write_is_reported_as_refused_with_the_residue_kept() ->
       string_contains(s: text, pattern: "derivation_record=refused: path outside scope") && string_contains(s: text, pattern: "staging_residue=staging left")
     }
   }
+}
+
+// GATE (b): a digest that matches the hermetic receipt is not enough -- a rebuilt image whose kernel
+// differs from stock does not hold, and the publication is never consulted.
+test fn a_reproduced_digest_whose_kernel_differs_from_stock_does_not_hold() -> Bool {
+  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned),
+    chain: p => BootChainFirstDifference { stock_iso: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555", census_iso: pinned, member: CasperKernel, stock: "k0", census: "k1" },
+    scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
+  !census_regression_holds(r: r)
+    && match census_publish_attempt_of(regression: r, publish: ok => published_clean(ok: ok)) { CensusPublishStoppedAtRegression { regression: _ } => true _ => false }
+    && string_contains(s: render_census_publish_attempt(a: CensusPublishStoppedAtRegression { regression: r }), pattern: "verdict=first_difference")
 }
