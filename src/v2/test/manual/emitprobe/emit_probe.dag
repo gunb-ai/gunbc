@@ -16,6 +16,8 @@ import v2.std.optional { Absent, Optional, Present }
 
 data probe_source: String = "module m\n\nfn classical_not(x: Int) -> Int {\n  match x {\n    true => false,\n    false => true\n  }\n}\n"
 
+data probe_nested_source: String = "module m\n\nfn classical_not(x: Int) -> Int {\n  match x {\n    true => match x {\n      true => false,\n      false => true\n    },\n    false => match x {\n      true => false,\n      false => true\n    }\n  }\n}\n"
+
 fn probe_find_arrow(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
@@ -29,10 +31,10 @@ fn probe_find_arrow(root: Node) -> Optional<Node> {
   }
 }
 
-fn probe_resolved() -> Outcome<Node> {
+fn probe_resolved_from(source: String) -> Outcome<Node> {
   let lm = dag_language_model()
   bind_outcome(
-    o: tokenize(text: probe_source, file: ^emit_probe_file, rules: lm.lex),
+    o: tokenize(text: source, file: ^emit_probe_file, rules: lm.lex),
     f: fn(tokens) {
       bind_outcome(
         o: parse_module(tokens: tokens, grammar: lm.grammar),
@@ -47,8 +49,8 @@ fn probe_resolved() -> Outcome<Node> {
   )
 }
 
-fn probe_tree() -> Optional<InferredTree> {
-  match probe_resolved() {
+fn probe_tree_from(source: String) -> Optional<InferredTree> {
+  match probe_resolved_from(source: source) {
     Accepted { value: resolved, diagnostics: _ } =>
       match probe_find_arrow(root: resolved) {
         Present { value: arrow } =>
@@ -68,6 +70,28 @@ test fn probe_ingest_only_holds() -> Bool {
 
 test fn probe_ingest_emit_holds() -> Bool {
   match probe_tree() {
+    Present { value: tree } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn probe_tree() -> Optional<InferredTree> {
+  probe_tree_from(source: probe_source)
+}
+
+test fn probe_nested_ingest_only_holds() -> Bool {
+  match probe_tree_from(source: probe_nested_source) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn probe_nested_ingest_emit_holds() -> Bool {
+  match probe_tree_from(source: probe_nested_source) {
     Present { value: tree } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
         Accepted { value: _, diagnostics: _ } => true

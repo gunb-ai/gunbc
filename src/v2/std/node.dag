@@ -1106,6 +1106,47 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
   }
 }
 
+// THE RELATION content_hash PROJECTS, DECIDED WITHOUT HASHING. Two nodes have the same content
+// hash exactly when (collisions aside) they agree on kind and on their canonically ordered
+// (label, child) sequence, recursively -- the preimage canonicalize_node_for_content_hash fixes.
+// A caller asking WHETHER two nodes are that same shape owes only this relation, and deciding it
+// by comparing two hashes pays a full traversal of both trees where the relation stops at the
+// first disagreement (usually the root kind). Same relation, one canonicalization authority; the
+// hash stays the key wherever a key is what is demanded.
+fn canonical_node_equal(left: Node, right: Node) -> Bool {
+  if left.kind == right.kind && count(left.children) == count(right.children) {
+    canonical_edges_equal(
+      left: canonicalize_edges_for_content_hash(kind: left.kind, children: left.children),
+      right: canonicalize_edges_for_content_hash(kind: right.kind, children: right.children)
+    )
+  } else {
+    false
+  }
+}
+
+fn canonical_edges_equal(left: List<Edge>, right: List<Edge>) -> Bool {
+  match left {
+    Empty =>
+      match right {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: l, tail: left_rest } =>
+      match right {
+        Empty => false
+        Cons { head: r, tail: right_rest } =>
+          canonical_edge_equal(left: l, right: r)
+            && canonical_edges_equal(left: left_rest, right: right_rest)
+      }
+  }
+}
+
+// A named Edge-typed function for the same reason edge_label_of is one: a matched Cons head reads
+// as the free monoid's T, so its fields are reached through a declared Edge parameter.
+fn canonical_edge_equal(left: Edge, right: Edge) -> Bool {
+  left.label == right.label && canonical_node_equal(left: left.target, right: right.target)
+}
+
 fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
   let n = canonicalize_node_for_content_hash(n: n)
   fold(n.children, init: algebra.init(n), f: fn(acc, e) {

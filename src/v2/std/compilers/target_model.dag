@@ -121,6 +121,7 @@ import v2.std.node {
   all_edges_named,
   all_edges_positional,
   connective_edge_discipline,
+  canonical_node_equal,
   content_hash,
   fold_node,
   match_arm_children_conform_skip_first,
@@ -8293,7 +8294,7 @@ fn target_catalog_contains_node_shape(
     cons: fn(acc, candidate) {
       if acc {
         true
-      } else if content_hash(n: slot) == content_hash(n: candidate) {
+      } else if canonical_node_equal(left: slot, right: candidate) {
         true
       } else {
         false
