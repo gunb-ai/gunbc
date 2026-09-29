@@ -145,7 +145,12 @@ fn type_wrapper_edge_count(n: Node, pick: fn(Edge) -> Bool) -> Int {
 fn type_decl_wrapper_params_once(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => type_wrapper_edge_count(n: n, pick: fn(e) { edge_is_type_params(e: e) }) == 1
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -277,7 +282,12 @@ fn cast_target_optional(n: Node) -> Optional<Node> {
       fold(n.children, init: optional_absent(), f: fn(acc, e) {
         if edge_is_cast_target(e: e) { optional_present(value: e.target) } else { acc }
       })
-    _ => optional_absent()
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: Value } => optional_absent()
+    ComputationNode { behavior: Branch } => optional_absent()
+    ComputationNode { behavior: Loop } => optional_absent()
+    ComputationNode { behavior: Bind } => optional_absent()
+    ComputationNode { behavior: Match } => optional_absent()
   }
 }
 
@@ -317,7 +327,12 @@ fn type_annotation_optional(n: Node) -> Optional<Node> {
       fold(n.children, init: optional_absent(), f: fn(acc, e) {
         if edge_is_type_annotation(e: e) { optional_present(value: e.target) } else { acc }
       })
-    _ => optional_absent()
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: Value } => optional_absent()
+    ComputationNode { behavior: Transform } => optional_absent()
+    ComputationNode { behavior: Branch } => optional_absent()
+    ComputationNode { behavior: Loop } => optional_absent()
+    ComputationNode { behavior: Match } => optional_absent()
   }
 }
 
@@ -331,7 +346,10 @@ fn behavior_marker_optional(b: Behavior) -> Optional<Symbol> {
   match b {
     Transform => optional_present(value: cast_target_marker())
     Bind => optional_present(value: type_annotation_marker())
-    _ => optional_absent()
+    Value => optional_absent()
+    Branch => optional_absent()
+    Loop => optional_absent()
+    Match => optional_absent()
   }
 }
 

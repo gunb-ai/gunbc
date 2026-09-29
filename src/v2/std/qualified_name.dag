@@ -244,13 +244,19 @@ fn qualified_name_spine_shape_present(root: Node) -> Bool {
         fold(root.children, init: true, f: fn(acc, edge) {
           acc && (match qn_spine_role(label: edge.label) {
             QnNotSpine => false
-            _ => true
+            QnSpineHead => true
+            QnSpineTail => true
           })
         })
       } else {
         false
       }
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -350,13 +356,18 @@ fn declaration_reference_spine_optional(node: Node) -> Optional<Node> {
               } else {
                 acc
               }
-            _ => acc
+            Positional => acc
           }
         })
       } else {
         optional_absent()
       }
-    _ => optional_absent()
+    TypeNode { connective: Atom { identity: _ } } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 

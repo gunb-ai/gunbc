@@ -58,14 +58,24 @@ fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {
 fn node_is_coproduct(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Disj } => true
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
 fn edge_field_type_name(target: Node) -> Symbol {
   match target.kind {
     TypeNode { connective: Atom { identity: sym } } => sym
-    _ => ^coproduct_unresolved_payload
+    TypeNode { connective: Conj } => ^coproduct_unresolved_payload
+    TypeNode { connective: Disj } => ^coproduct_unresolved_payload
+    TypeNode { connective: Arrow } => ^coproduct_unresolved_payload
+    TypeNode { connective: Cardinality } => ^coproduct_unresolved_payload
+    TypeNode { connective: Instantiation } => ^coproduct_unresolved_payload
+    ComputationNode { behavior: _ } => ^coproduct_unresolved_payload
   }
 }
 
@@ -97,7 +107,11 @@ fn arm_payload_from_target(target: Node) -> ArmPayload {
       }
     TypeNode { connective: Atom { identity: sym } } =>
       Typed { target_ref: sym }
-    _ => Typed { target_ref: ^coproduct_unresolved_payload }
+    TypeNode { connective: Disj } => Typed { target_ref: ^coproduct_unresolved_payload }
+    TypeNode { connective: Arrow } => Typed { target_ref: ^coproduct_unresolved_payload }
+    TypeNode { connective: Cardinality } => Typed { target_ref: ^coproduct_unresolved_payload }
+    TypeNode { connective: Instantiation } => Typed { target_ref: ^coproduct_unresolved_payload }
+    ComputationNode { behavior: _ } => Typed { target_ref: ^coproduct_unresolved_payload }
   }
 }
 
@@ -238,7 +252,12 @@ fn is_wildcard_pattern(pattern: Node) -> Bool {
 fn declared_field_cardinality_of_target(target: Node) -> Cardinality {
   match target.kind {
     TypeNode { connective: Cardinality } => Optional
-    _ => Required
+    TypeNode { connective: Atom { identity: _ } } => Required
+    TypeNode { connective: Conj } => Required
+    TypeNode { connective: Disj } => Required
+    TypeNode { connective: Arrow } => Required
+    TypeNode { connective: Instantiation } => Required
+    ComputationNode { behavior: _ } => Required
   }
 }
 
@@ -268,7 +287,12 @@ fn declared_field_list(payload: Node) -> List<DeclaredField> {
           Absent => acc
         }
       })
-    _ => Empty
+    TypeNode { connective: Atom { identity: _ } } => Empty
+    TypeNode { connective: Disj } => Empty
+    TypeNode { connective: Arrow } => Empty
+    TypeNode { connective: Cardinality } => Empty
+    TypeNode { connective: Instantiation } => Empty
+    ComputationNode { behavior: _ } => Empty
   }
 }
 
@@ -335,13 +359,23 @@ fn construct_tag_optional(n: Node) -> Optional<Symbol> {
                     true => Present { value: label }
                     false => Absent
                   }
-                _ => Absent
+                TypeNode { connective: Conj } => Absent
+                TypeNode { connective: Disj } => Absent
+                TypeNode { connective: Arrow } => Absent
+                TypeNode { connective: Cardinality } => Absent
+                TypeNode { connective: Instantiation } => Absent
+                ComputationNode { behavior: _ } => Absent
               }
             Positional => Absent
           }
         Absent => Absent
       }
-    _ => Absent
+    TypeNode { connective: Atom { identity: _ } } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -430,7 +464,12 @@ fn field_projection_edge_field_optional(e: Edge) -> Optional<Symbol> {
       if n == field_projection_field_name() {
         match e.target.kind {
           TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-          _ => optional_absent()
+          TypeNode { connective: Conj } => optional_absent()
+          TypeNode { connective: Disj } => optional_absent()
+          TypeNode { connective: Arrow } => optional_absent()
+          TypeNode { connective: Cardinality } => optional_absent()
+          TypeNode { connective: Instantiation } => optional_absent()
+          ComputationNode { behavior: _ } => optional_absent()
         }
       } else {
         optional_absent()
@@ -466,7 +505,12 @@ fn field_projection_optional(n: Node) -> Optional<FieldProjection> {
               }
           }
       }
-    _ => optional_absent()
+    TypeNode { connective: Atom { identity: _ } } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -495,14 +539,24 @@ fn variant_declaration_edge_optional(n: Node) -> Optional<Edge> {
                 Named { name: _ } =>
                   match e.target.kind {
                     TypeNode { connective: Conj } => optional_present(value: e)
-                    _ => optional_absent()
+                    TypeNode { connective: Atom { identity: _ } } => optional_absent()
+                    TypeNode { connective: Disj } => optional_absent()
+                    TypeNode { connective: Arrow } => optional_absent()
+                    TypeNode { connective: Cardinality } => optional_absent()
+                    TypeNode { connective: Instantiation } => optional_absent()
+                    ComputationNode { behavior: _ } => optional_absent()
                   }
                 Positional => optional_absent()
               }
             Absent => optional_absent()
           }
       }
-    _ => optional_absent()
+    TypeNode { connective: Atom { identity: _ } } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -684,7 +738,12 @@ fn named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
             }
         }
       })
-    _ => NamedChildMissing
+    TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
+    TypeNode { connective: Disj } => NamedChildMissing
+    TypeNode { connective: Arrow } => NamedChildMissing
+    TypeNode { connective: Cardinality } => NamedChildMissing
+    TypeNode { connective: Instantiation } => NamedChildMissing
+    ComputationNode { behavior: _ } => NamedChildMissing
   }
 }
 
@@ -717,7 +776,7 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
             at: node_locus(node: root),
             correction: Unavailable { reason: ExternalContractUnknown }
           })
-        _ =>
+        Absent =>
           outcome_rejected(d: Diagnostic {
             reason: ^arrow_body_child_missing,
             at: node_locus(node: root),
