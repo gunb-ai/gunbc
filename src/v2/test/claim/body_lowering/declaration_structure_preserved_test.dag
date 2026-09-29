@@ -7,6 +7,7 @@ import v2.compiler.reference_conservation_admission {
   no_explained_drops
 }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

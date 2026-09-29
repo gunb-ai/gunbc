@@ -1,6 +1,7 @@
 module gunbc.language_source_scaffold_index
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority, RealizationDispatch }
 
 // B2 inventory for hand-authored target-language semantics in language files. Every blob of
 // hand-written target source carries a row here whose disposition is a std.disposition Scaffold
