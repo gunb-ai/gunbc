@@ -396,7 +396,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_capture_witness.dag", name: "tenths_dba", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_decode_witness.dag", name: "ReadsLiveTree", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_decode_witness.dag", name: "artifact_path", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_decode_witness.dag", name: "filter", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_decode_witness.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_observation.dag", name: "ReadsLiveTree", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_observation_witness.dag", name: "ReadsLiveTree", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_representability_witness.dag", name: "ReadsLiveTree", standing: ActiveDebt },
