@@ -229,6 +229,20 @@ type GrammarExpr
   | Choice { left: GrammarExpr, right: GrammarExpr }
   | Optional { element: GrammarExpr }
   | Repeat { element: GrammarExpr }
+  | Expect { element: GrammarExpr, reason: Symbol }
+
+// AN EXPECTATION IS A LABEL, NEVER A CUT. `Expect { element, reason }` matches exactly what
+// `element` matches and captures exactly what it captures, in every direction: ingest, emit and
+// coercion read it as `element`. The one thing it adds is located refusal vocabulary: when
+// `element` fails AT THE FURTHEST POSITION the parse reached, the refusal names `reason` at the
+// token before `element` began, rather than collapsing into the generic leftover-token reason.
+// Ordered choice and backtracking are untouched, so wrapping any row in `Expect` changes no
+// accepted tree. `reason` is not free text: it must be a member of the owning
+// `GrammarRoot.expectations` roster, and grammar preparation refuses an Expect whose reason is
+// undeclared and a declared reason no Expect uses.
+fn grammar_expr_expect(element: GrammarExpr, reason: Symbol) -> GrammarExpr {
+  Expect { element: element, reason: reason }
+}
 
 fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
   Optional { element: element }
@@ -278,6 +292,7 @@ type GrammarExprFold<R> {
   choice: fn(R, R) -> R
   optional: fn(R) -> R
   repeat: fn(R) -> R
+  expect: fn(R, Symbol) -> R
 }
 
 fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
@@ -301,6 +316,8 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
       algebra.optional(fold_grammar_expr(expr: element, algebra: algebra))
     Repeat { element: element } =>
       algebra.repeat(fold_grammar_expr(expr: element, algebra: algebra))
+    Expect { element: element, reason: reason } =>
+      algebra.expect(fold_grammar_expr(expr: element, algebra: algebra), reason)
   }
 }
 
@@ -333,6 +350,7 @@ type GrammarRoot {
   start: Symbol
   productions: List<GrammarProduction>
   sync_tokens: List<Symbol>
+  expectations: List<Symbol>
 }
 
 type ValidatedGrammarRoot {
@@ -384,6 +402,10 @@ fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
 }
 
 fn grammar_empty_sync_tokens() -> List<Symbol> {
+  []
+}
+
+fn grammar_empty_expectations() -> List<Symbol> {
   []
 }
 
@@ -2251,6 +2273,12 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
       repeat: fn(element_node) {
         grammar_expr_node(children: [
           grammar_named_edge(name: ^grammar_repeat_element_node_projection, target: element_node)
+        ])
+      },
+      expect: fn(element_node, reason) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_expect_element_node_projection, target: element_node),
+          grammar_named_edge(name: ^grammar_expect_reason_node_projection, target: grammar_atom(identity: reason))
         ])
       }
     }

@@ -181,7 +181,8 @@ fn abandoned_path_root() -> GrammarRoot {
       },
       tail: std.algebra.Empty } }
     },
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens(),
+    expectations: grammar_empty_expectations()
   }
 }
 
@@ -277,7 +278,8 @@ fn nested_frame_root() -> GrammarRoot {
       },
       tail: std.algebra.Empty } }
     },
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens(),
+    expectations: grammar_empty_expectations()
   }
 }
 
@@ -375,7 +377,8 @@ fn linear_root() -> GrammarRoot {
       },
       tail: std.algebra.Empty } }
     },
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens(),
+    expectations: grammar_empty_expectations()
   }
 }
 

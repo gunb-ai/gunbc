@@ -20,6 +20,7 @@ import v2.std.grammar {
   grammar_atom,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
+  grammar_empty_expectations,
   grammar_formal_nonterminal,
   grammar_formal_terminal
 }
@@ -879,7 +880,8 @@ fn lean_grammar_root() -> GrammarRoot {
   GrammarRoot {
     start: ^lean_production_def_dec,
     productions: [start],
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens(),
+    expectations: grammar_empty_expectations()
   }
 }
 

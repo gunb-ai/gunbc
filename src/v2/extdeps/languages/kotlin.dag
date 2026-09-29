@@ -26,6 +26,7 @@ import v2.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
+  grammar_empty_expectations,
   grammar_production_to_node,
   grammar_relation_tokens_node
 }
@@ -2475,7 +2476,8 @@ fn kotlin_grammar_root() -> GrammarRoot {
       call_expr,
       primary_expr
     ],
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens(),
+    expectations: grammar_empty_expectations()
   }
 }
 

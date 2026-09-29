@@ -64,6 +64,7 @@ import v2.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
+  grammar_empty_expectations,
   grammar_production_to_node,
   grammar_relation_tokens_node
 }
@@ -2963,7 +2964,7 @@ fn rust_grammar_production_fn_add() -> GrammarProduction {
 
 fn rust_fn_add_grammar_root() -> GrammarRoot {
   let start = rust_grammar_production_fn_add()
-  GrammarRoot { start: ^rust_production_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
+  GrammarRoot { start: ^rust_production_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens(), expectations: grammar_empty_expectations() }
 }
 
 fn rust_fn_add_grammar() -> ParseGrammar {
@@ -4313,7 +4314,8 @@ fn rust_grammar_root() -> GrammarRoot {
       primary_expr,
       fn_add
     ],
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens(),
+    expectations: grammar_empty_expectations()
   }
 }
 

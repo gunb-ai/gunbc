@@ -26,6 +26,7 @@ import v2.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
+  grammar_empty_expectations,
   derive_grammar_relation_row,
   derive_grammar_relation_row_for_lhs,
   grammar_production_to_node,
@@ -2044,7 +2045,7 @@ fn ts_grammar_production_fn_add() -> GrammarProduction {
 
 fn ts_fn_add_grammar_root() -> GrammarRoot {
   let start = ts_grammar_production_fn_add()
-  GrammarRoot { start: ^ts_production_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
+  GrammarRoot { start: ^ts_production_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens(), expectations: grammar_empty_expectations() }
 }
 
 fn ts_fn_add_grammar() -> ParseGrammar {
@@ -3021,7 +3022,8 @@ fn ts_grammar_root() -> GrammarRoot {
   GrammarRoot {
     start: ^ts_production_item,
     productions: [fn_add, ty_num, ty_str, ty_bool, ty_void, ty_name, rec_field, rec_fields, rec_type, union_type, type_annot, let_decl, const_decl, type_alias_decl, pr3_primary_type, pr3_array_type, pr3_typed_param, pr3_typed_params, pr3_typed_params_opt, pr3_typed_fn_decl, item],
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens(),
+    expectations: grammar_empty_expectations()
   }
 }
 
