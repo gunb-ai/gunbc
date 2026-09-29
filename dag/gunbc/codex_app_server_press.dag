@@ -735,23 +735,37 @@ fn rate_limits_snapshot_has_exhaustion_signal(snapshot: JsonValue) -> Bool {
     key: codex_rate_limits_snapshot_rate_limit_reached_type_key as String,
   ) {
     JsonMemberFound { value: JsonString { value: t } } => t != ""
-    _ =>
-      match json_object_unique_member(
-        v: snapshot,
-        key: codex_rate_limits_snapshot_spend_control_reached_key as String,
-      ) {
-        JsonMemberFound { value: JsonBool { value: true } } => true
-        _ =>
-          rate_limits_snapshot_window_saturated(
-            snapshot: snapshot,
-            key: codex_rate_limits_snapshot_primary_key as String,
-          )
-            || rate_limits_snapshot_window_saturated(
-              snapshot: snapshot,
-              key: codex_rate_limits_snapshot_secondary_key as String,
-            )
-      }
+    JsonMemberFound { value: _ } => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
+    JsonMemberAbsent => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
+    JsonMemberDuplicated { count: _ } => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
+    JsonMemberNotAnObject => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
   }
+}
+
+// No rate-limit-reached type: exhaustion is the spend-control flag, else a saturated window.
+fn rate_limits_snapshot_spend_or_window_signal(snapshot: JsonValue) -> Bool {
+  match json_object_unique_member(
+    v: snapshot,
+    key: codex_rate_limits_snapshot_spend_control_reached_key as String,
+  ) {
+    JsonMemberFound { value: JsonBool { value: true } } => true
+    JsonMemberFound { value: _ } => rate_limits_snapshot_window_signal(snapshot: snapshot)
+    JsonMemberAbsent => rate_limits_snapshot_window_signal(snapshot: snapshot)
+    JsonMemberDuplicated { count: _ } => rate_limits_snapshot_window_signal(snapshot: snapshot)
+    JsonMemberNotAnObject => rate_limits_snapshot_window_signal(snapshot: snapshot)
+  }
+}
+
+// No spend-control flag: exhaustion is a saturated primary or secondary window.
+fn rate_limits_snapshot_window_signal(snapshot: JsonValue) -> Bool {
+  rate_limits_snapshot_window_saturated(
+    snapshot: snapshot,
+    key: codex_rate_limits_snapshot_primary_key as String,
+  )
+    || rate_limits_snapshot_window_saturated(
+      snapshot: snapshot,
+      key: codex_rate_limits_snapshot_secondary_key as String,
+    )
 }
 
 fn rate_limits_snapshot_window_saturated(snapshot: JsonValue, key: String) -> Bool {
@@ -1341,13 +1355,9 @@ fn absorb_account_trip_line(
                   )
                 }
             }
-          _ =>
-            push_unknown_digest(
-              acc: acc,
-              line: trimmed,
-              evidence_root: evidence_root,
-              mode: mode,
-            )
+          JsonMemberAbsent => push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root, mode: mode)
+          JsonMemberDuplicated { count: _ } => push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root, mode: mode)
+          JsonMemberNotAnObject => push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root, mode: mode)
         }
     }
   }

@@ -242,9 +242,9 @@ fn subject_body(id: EmitCopyQualificationCaseId, mutant: MutantPlan) -> String {
         MatchBinding =>
           concat("match ", concat(ecq_classify_call(carrier: c, arg: "x"),
           concat(" {\n    EcqSmallSize => 7\n    EcqLargeSize => ", concat(call_u(carrier: c, k: k, arg: "x"), "\n  }"))))
-        _ =>
-          concat("if ", concat(size_call(carrier: c, arg: "x"),
-          concat(" > 2 { ", concat(call_u(carrier: c, k: k, arg: "x"), " } else { 7 }"))))
+        StraightLine => branch_exclusive_if_body(c: c, k: k)
+        IfSplit => branch_exclusive_if_body(c: c, k: k)
+        LoopRecursion => branch_exclusive_if_body(c: c, k: k)
       }
     ReuseAcrossJoin =>
       match id.control_shape {
@@ -253,11 +253,9 @@ fn subject_body(id: EmitCopyQualificationCaseId, mutant: MutantPlan) -> String {
           concat(" {\n    EcqSmallSize => ", concat(call_u(carrier: c, k: k, arg: "x"),
           concat(" + 1\n    EcqLargeSize => ", concat(call_u(carrier: c, k: k, arg: "x"),
           concat("\n  }\n  a + ", concat(call_u(carrier: c, k: k, arg: "x"), ""))))))))
-        _ =>
-          concat("let a = if ", concat(size_call(carrier: c, arg: "x"),
-          concat(" > 2 { ", concat(call_u(carrier: c, k: k, arg: "x"),
-          concat(" } else { ", concat(call_u(carrier: c, k: k, arg: "x"),
-          concat(" + 1 }\n  a + ", concat(call_u(carrier: c, k: k, arg: "x"), ""))))))))
+        StraightLine => reuse_across_join_if_body(c: c, k: k)
+        IfSplit => reuse_across_join_if_body(c: c, k: k)
+        LoopRecursion => reuse_across_join_if_body(c: c, k: k)
       }
     AliasThenMutate =>
       concat("let y = x\n  let z = ", concat(update_call(carrier: c, arg: "y"),
@@ -277,6 +275,20 @@ fn subject_body(id: EmitCopyQualificationCaseId, mutant: MutantPlan) -> String {
       }
       concat("let f = x.items\n  ", concat(field_callee, "(v: f) + x.tag"))
   }
+}
+
+// BranchExclusive under a non-match control shape: the exclusive branch is an if over the carrier size.
+fn branch_exclusive_if_body(c: CarrierRealization, k: ConsumerContract) -> String {
+  concat("if ", concat(size_call(carrier: c, arg: "x"),
+  concat(" > 2 { ", concat(call_u(carrier: c, k: k, arg: "x"), " } else { 7 }"))))
+}
+
+// ReuseAcrossJoin under a non-match control shape: the join is an if over the carrier size.
+fn reuse_across_join_if_body(c: CarrierRealization, k: ConsumerContract) -> String {
+  concat("let a = if ", concat(size_call(carrier: c, arg: "x"),
+  concat(" > 2 { ", concat(call_u(carrier: c, k: k, arg: "x"),
+  concat(" } else { ", concat(call_u(carrier: c, k: k, arg: "x"),
+  concat(" + 1 }\n  a + ", concat(call_u(carrier: c, k: k, arg: "x"), ""))))))))
 }
 
 fn subject_param_type(id: EmitCopyQualificationCaseId) -> String {

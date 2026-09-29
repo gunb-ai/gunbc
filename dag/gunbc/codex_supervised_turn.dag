@@ -714,31 +714,27 @@ fn absorb_supervised_turn_line(
                 } else {
                   acc
                 }
-              Absent =>
-                match supervised_turn_terminal_from_notification(parsed: parsed) {
-                  SupervisedTurnTerminalAbsent => acc
-                  signal =>
-                    SupervisedTurnParseAcc {
-                      thread_start: acc.thread_start,
-                      turn_start: acc.turn_start,
-                      turn_terminal: signal,
-                      unreadable_lines: acc.unreadable_lines,
-                    }
-                }
+              Absent => absorb_supervised_turn_notification(acc: acc, parsed: parsed)
             }
-          _ =>
-            match supervised_turn_terminal_from_notification(parsed: parsed) {
-              SupervisedTurnTerminalAbsent => acc
-              signal =>
-                SupervisedTurnParseAcc {
-                  thread_start: acc.thread_start,
-                  turn_start: acc.turn_start,
-                  turn_terminal: signal,
-                  unreadable_lines: acc.unreadable_lines,
-                }
-            }
+          JsonMemberAbsent => absorb_supervised_turn_notification(acc: acc, parsed: parsed)
+          JsonMemberDuplicated { count: _ } => absorb_supervised_turn_notification(acc: acc, parsed: parsed)
+          JsonMemberNotAnObject => absorb_supervised_turn_notification(acc: acc, parsed: parsed)
         }
     }
+  }
+}
+
+// A frame that is not an integer-id response: absorb it as a turn-terminal notification when it is one.
+fn absorb_supervised_turn_notification(acc: SupervisedTurnParseAcc, parsed: JsonValue) -> SupervisedTurnParseAcc {
+  match supervised_turn_terminal_from_notification(parsed: parsed) {
+    SupervisedTurnTerminalAbsent => acc
+    signal =>
+      SupervisedTurnParseAcc {
+        thread_start: acc.thread_start,
+        turn_start: acc.turn_start,
+        turn_terminal: signal,
+        unreadable_lines: acc.unreadable_lines,
+      }
   }
 }
 

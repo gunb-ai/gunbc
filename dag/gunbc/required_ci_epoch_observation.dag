@@ -107,12 +107,12 @@ fn required_ci_epoch_from_workflow_source(src: String) -> RequiredCiEpochObserva
             Absent => RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent }
           }
         }
-        _ =>
-          RequiredCiEpochUnobservable {
-            cause: RequiredCiEpochDocumentUnparsable {
-              detail: "the workflow document is not a mapping, so it declares no env block at all",
-            },
-          }
+        YamlNull => RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: "the workflow document is not a mapping, so it declares no env block at all" } }
+        YamlBool { value: _ } => RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: "the workflow document is not a mapping, so it declares no env block at all" } }
+        YamlInt { lexeme: _ } => RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: "the workflow document is not a mapping, so it declares no env block at all" } }
+        YamlFloat { lexeme: _ } => RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: "the workflow document is not a mapping, so it declares no env block at all" } }
+        YamlString { value: _ } => RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: "the workflow document is not a mapping, so it declares no env block at all" } }
+        YamlSequence { elements: _ } => RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: "the workflow document is not a mapping, so it declares no env block at all" } }
       }
   }
 }
