@@ -599,8 +599,11 @@ fn grammar_tokens_fold_list_targets(remaining: Int, node: Node) -> Outcome<List<
   grammar_tokens_fold_list_targets_into(remaining: remaining, node: node, acc: Empty)
 }
 
-// The fold-list cell decision, lifted out of the tail-recursive walk so the walk matches one flat
-// step rather than nested NodeKind patterns (its loop lowering drops nested-pattern arms).
+// The fold-list cell decision, delegated out of the tail-recursive walk: the walk keeps its self-call
+// and matches one flat step. The tail-call match renderer emits a nested variant under an Rc field as a
+// guard, which rustc does not count toward exhaustiveness (E0004), where the ordinary renderer groups it.
+// Recorded, with its dissolution trigger, as gunbc.recurring_failure_mode
+// tail_call_match_lowering_skips_rc_arm_grouping.
 type GrammarTokensFoldListShape = GrammarTokensFoldListCell | GrammarTokensFoldListNotCell
 
 fn grammar_tokens_fold_list_shape(node: Node) -> GrammarTokensFoldListShape {
