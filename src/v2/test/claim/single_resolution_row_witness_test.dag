@@ -1,0 +1,89 @@
+module test.claim.single_resolution_row_witness
+
+import std.types { Bool }
+import v2.std.node { Node }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.witness { Holds, Violates }
+import v2.std.grammar { derive_grammar_relation_row_for_lhs, derive_grammar_relation_row_node, formal_production_for_lhs_exact }
+import v2.compiler.target_serialize { target_serialize_derived_row_bounded, target_serialize_relation_row_from_model_bounded }
+import v2.std.compilers.target_model { render_target_text }
+import v2.extdeps.languages.verilog {
+  verilog_emission_formal_productions, verilog_interlock_emitted, verilog_target_model_with_single_row, verilog_conj
+}
+
+// ONE RESOLUTION, THE SAME ROW. derive_grammar_relation_row_for_lhs resolves the program once and
+// selects and derives from that resolution; the pair it replaced (formal_production_for_lhs_exact,
+// then derive_grammar_relation_row_node) resolved it twice. On the real Verilog emission subject the
+// two produce the identical row, and serializing that derived row directly produces the bytes the
+// reselecting serializer (target_serialize_relation_row_from_model_bounded) produces.
+
+fn two_resolution_row() -> Node {
+  let productions = verilog_emission_formal_productions()
+  match formal_production_for_lhs_exact(productions: productions, lhs: ^verilog_production_ansi_module_decl, child: verilog_interlock_emitted()) {
+    Holds { value: selected } =>
+      match derive_grammar_relation_row_node(production: selected, productions: productions, emitted: verilog_interlock_emitted()) {
+        Holds { value: row } => row
+        Violates { diagnostic: _ } => verilog_conj(children: [])
+      }
+    Violates { diagnostic: _ } => verilog_conj(children: [])
+  }
+}
+
+fn one_resolution_row() -> Node {
+  match derive_grammar_relation_row_for_lhs(productions: verilog_emission_formal_productions(), lhs: ^verilog_production_ansi_module_decl, emitted: verilog_interlock_emitted()) {
+    Holds { value: row } => row
+    Violates { diagnostic: _ } => verilog_conj(children: [])
+  }
+}
+
+test fn one_resolution_derives_the_row_two_resolutions_derived() -> Bool {
+  one_resolution_row() == two_resolution_row() && one_resolution_row() != verilog_conj(children: [])
+}
+
+test fn serializing_the_derived_row_gives_the_reselecting_serializers_bytes() -> Bool {
+  let row = one_resolution_row()
+  let target = verilog_target_model_with_single_row(row: row)
+  match target_serialize_derived_row_bounded(remaining: 4096, target: target, row: row) {
+    Accepted { value: direct, diagnostics: _ } =>
+      match target_serialize_relation_row_from_model_bounded(4096, target, verilog_interlock_emitted()) {
+        Accepted { value: reselected, diagnostics: _ } => render_target_text(t: direct) == render_target_text(t: reselected) && render_target_text(t: direct) != ""
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The refusal is preserved: an lhs with no production over this node refuses, as selection did.
+test fn one_resolution_refuses_where_selection_refused() -> Bool {
+  match derive_grammar_relation_row_for_lhs(productions: verilog_emission_formal_productions(), lhs: ^verilog_production_expr, emitted: verilog_interlock_emitted()) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+// An exhausted budget refuses on the direct route exactly as it does on the reselecting route: the
+// same located reason, never a spelling rendered past the bound. Zero and a negative budget both
+// refuse; the positive control is serializing_the_derived_row_gives_the_reselecting_serializers_bytes
+// (4096 renders non-empty bytes).
+fn exhausted_budget_refuses_on_both_routes(remaining: Int) -> Bool {
+  let row = one_resolution_row()
+  let target = verilog_target_model_with_single_row(row: row)
+  match target_serialize_derived_row_bounded(remaining: remaining, target: target, row: row) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: direct } =>
+      match target_serialize_relation_row_from_model_bounded(remaining, target, verilog_interlock_emitted()) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: reselected } =>
+          direct.head.reason == ^translate_serialize_recursion_limit_exhausted
+            && reselected.head.reason == direct.head.reason
+      }
+  }
+}
+
+test fn derived_row_refuses_a_zero_budget_as_the_reselecting_serializer_does() -> Bool {
+  exhausted_budget_refuses_on_both_routes(remaining: 0)
+}
+
+test fn derived_row_refuses_a_negative_budget_as_the_reselecting_serializer_does() -> Bool {
+  exhausted_budget_refuses_on_both_routes(remaining: 0 - 1)
+}
