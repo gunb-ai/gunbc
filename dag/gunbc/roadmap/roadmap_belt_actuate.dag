@@ -2042,7 +2042,7 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       memberships: declared_roadmap_memberships(),
       attempt_key: progress.attempt_key,
       branch: progress.branch,
-      worker_terminal: belt_provider_is_terminal(provider: progress.provider),
+      worker_terminal: belt_provider_is_terminal(provider: progress.provider) || belt_worker_process_terminal(evidence: progress.process),
       capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
       supervisor_verdict: belt_supervisor_verdict_observe(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
       verification: belt_verification_segment(progress: progress),
@@ -7354,6 +7354,21 @@ fn belt_verify_attempt_for_instance(
 // on ProviderCompleted alone left that work unjudged. The verdict is the judge of partial work, and
 // publication is gated on the verdict, so verifying a failed provider's head is strictly more honest
 // than skipping it. Only a running or not-yet-started worker has nothing to verify.
+// THE WORKER-PROCESS TERMINAL READ (2026-09-29, the continuation-hold gap): the provider's own
+// ledger can miss a terminal event entirely — the slot-population attempt's worker exited on a
+// placement refusal without writing one, and the lineage read the lineage as live forever. The
+// process evidence is the second authority the progress record already carries: a recorded exit
+// settles the lineage even when the provider's events never said so. Unobserved stays
+// non-terminal (fail-closed), exactly as an absent pane.
+fn belt_worker_process_terminal(evidence: WorkerProcessEvidence) -> Bool {
+  match evidence {
+    WorkerProcessExited { exit_code: _, last_command: _ } => true
+    WorkerProcessRunning { command: _ } => false
+    WorkerProcessAbsent => false
+    WorkerProcessUnobserved { reason: _ } => false
+  }
+}
+
 fn belt_provider_is_terminal(provider: ProviderExecutionState) -> Bool {
   match provider {
     ProviderNotStarted => false
