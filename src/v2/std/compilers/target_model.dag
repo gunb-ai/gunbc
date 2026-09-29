@@ -8530,153 +8530,6 @@ fn target_value_expression_to_concrete_tokens(
   }
 }
 
-fn target_declared_inhabitants_edge_targets(root: Node) -> List<Node> {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: Empty, f: fn(acc, edge) {
-        list_snoc_item(xs: acc, item: edge.target)
-      })
-    _ => Empty
-  }
-}
-
-fn target_inhabitant_wire_primary_atom_identity(wire: Node) -> Optional<Symbol> {
-  match wire.kind {
-    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-    TypeNode { connective: Conj } =>
-      match fold(
-        wire.children,
-        init: optional_absent(),
-        f: fn(acc, edge) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match edge.label {
-                Named { name: _ } =>
-                  match edge.target.kind {
-                    TypeNode { connective: Atom { identity: id } } =>
-                      optional_present(value: id)
-                    _ => acc
-                  }
-                Positional => acc
-              }
-          }
-        }
-      ) {
-        Present { value: id } => optional_present(value: id)
-        Absent => optional_absent()
-      }
-    _ => optional_absent()
-  }
-}
-
-fn target_catalog_contains_node_shape(
-  slot: Node,
-  catalog_targets: List<Node>
-) -> Bool {
-  fold_list(
-    xs: catalog_targets,
-    empty: false,
-    cons: fn(acc, candidate) {
-      if acc {
-        true
-      } else if content_hash(n: slot) == content_hash(n: candidate) {
-        true
-      } else {
-        false
-      }
-    }
-  )
-}
-
-fn target_catalog_atom_identity_matches_inhabitant_wires(
-  slot_atom: Symbol,
-  catalog_targets: List<Node>
-) -> Bool {
-  fold_list(
-    xs: catalog_targets,
-    empty: false,
-    cons: fn(acc, candidate) {
-      if acc {
-        true
-      } else {
-        match target_inhabitant_wire_primary_atom_identity(wire: candidate) {
-          Present { value: inhabitant_atom } => slot_atom == inhabitant_atom
-          Absent => false
-        }
-      }
-    }
-  )
-}
-
-fn target_signature_slot_matches_declared_inhabitants(
-  slot: Node,
-  inhabitants_root: Node
-) -> Bool {
-  let catalog_targets = target_declared_inhabitants_edge_targets(root: inhabitants_root)
-  if target_catalog_contains_node_shape(slot: slot, catalog_targets: catalog_targets) {
-    true
-  } else {
-    match slot.kind {
-      TypeNode { connective: Atom { identity: slot_atom } } =>
-        slot_atom == ^dag_binding_type_int
-        || target_catalog_atom_identity_matches_inhabitant_wires(
-          slot_atom: slot_atom,
-          catalog_targets: catalog_targets
-        )
-      _ =>
-        match target_inhabitant_wire_primary_atom_identity(wire: slot) {
-          Present { value: slot_atom } =>
-            target_catalog_atom_identity_matches_inhabitant_wires(
-              slot_atom: slot_atom,
-              catalog_targets: catalog_targets
-            )
-          Absent => false
-        }
-    }
-  }
-}
-
-fn target_add_signature_slot_at(
-  arrow: Node,
-  index: Int,
-  inhabitants_root: Node
-) -> Bool {
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: index) {
-    Present { value: slot } =>
-      target_signature_slot_matches_declared_inhabitants(
-        slot: slot,
-        inhabitants_root: inhabitants_root
-      )
-    Absent => false
-  }
-}
-
-fn target_add_signature_matches(
-  arrow: Node,
-  inhabitants_root: Node
-) -> Bool {
-  match arrow.kind {
-    TypeNode { connective: Arrow } =>
-      target_add_signature_slot_at(
-        arrow: arrow,
-        index: 0,
-        inhabitants_root: inhabitants_root
-      )
-      && target_add_signature_slot_at(
-        arrow: arrow,
-        index: 1,
-        inhabitants_root: inhabitants_root
-      )
-      && target_add_signature_slot_at(
-        arrow: arrow,
-        index: 2,
-        inhabitants_root: inhabitants_root
-      )
-    _ => false
-  }
-}
-
 fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection) -> Node {
   target_model_type_conj_node(
     children: [
@@ -14009,24 +13862,6 @@ fn target_transform_operator_child(node: Node) -> Outcome<Node> {
   }
 }
 
-fn target_value_expr_declared_inhabitants_from_target(target: TargetModel) -> Outcome<Node> {
-  target_model_declared_inhabitants(target: target)
-}
-
-fn target_value_expr_add_signature_matches_for_target(
-  arrow: Node,
-  target: TargetModel
-) -> Bool {
-  match target_value_expr_declared_inhabitants_from_target(target: target) {
-    Accepted { value: inhabitants_root, diagnostics: _ } =>
-      target_add_signature_matches(
-        arrow: arrow,
-        inhabitants_root: inhabitants_root
-      )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn target_value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
@@ -14176,19 +14011,7 @@ fn target_value_expr_arrow_body_scope_binding(
         bindings: bindings,
         target: target
       ) {
-        Present { value: scoped } =>
-          if target_value_expr_add_signature_matches_for_target(arrow: arrow, target: target)
-            || target_value_expr_arrow_has_transform_body(arrow: arrow)
-            || target_value_expr_arrow_has_match_body(arrow: arrow) {
-            outcome_accepted(scoped)
-          } else {
-            outcome_rejected(
-              target_value_expr_diagnostic(
-                reason: ^target_value_expr_reason_body_scope_binding_invalid,
-                node: body
-              )
-            )
-          }
+        Present { value: scoped } => outcome_accepted(scoped)
         Absent =>
           outcome_rejected(
             target_value_expr_diagnostic(
@@ -14509,48 +14332,9 @@ fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol
   }
 }
 
-// CANONICAL PARAMETER NAMES are not literals: they are names, so they resolve through arrow scope or
-// not at all. Only the historical no-literal arm (target_value_expr_mint_unscoped_atom) reads this
-// table; the arrow-scope caller refuses them when they miss scope.
-fn target_value_expr_binding_ref_for_canonical_param_atom(id: Symbol) -> Optional<Symbol> {
-  if id == ^dag_binding_param_r {
-    optional_present(value: ^dag_binding_param_r)
-  } else if id == ^dag_binding_param_x {
-    optional_present(value: ^dag_binding_param_x)
-  } else if id == ^dag_binding_param_y {
-    optional_present(value: ^dag_binding_param_y)
-  } else if id == ^rust_binding_param_x {
-    optional_present(value: ^rust_binding_param_x)
-  } else if id == ^rust_binding_param_y {
-    optional_present(value: ^rust_binding_param_y)
-  } else if id == ^dag_binding_rec_v {
-    optional_present(value: ^dag_binding_rec_v)
-  } else {
-    optional_absent()
-  }
-}
-
-fn target_value_expr_mint_unscoped_atom(id: Symbol) -> Outcome<TargetValueExpression> {
-  match target_value_expr_binding_ref_for_canonical_param_atom(id: id) {
-    Present { value: binding } => outcome_accepted(target_value_expression_binding_ref(binding: binding))
-    Absent => outcome_accepted(target_value_expression_symbol_identity(identity: id))
-  }
-}
-
-fn target_value_expr_project_pick_literal_atom(
-  id: Symbol,
-  source_bool_form: TargetBoolLiteralShape
-) -> Outcome<TargetValueExpression> {
-  target_value_expr_project_pick_literal_atom_or(
-    id: id,
-    source_bool_form: source_bool_form,
-    on_no_literal: fn(sym) { target_value_expr_mint_unscoped_atom(id: sym) }
-  )
-}
-
-// THE ONE LITERAL LADDER. `on_no_literal` is what an atom that spells no literal becomes: the
-// historical callers mint it as a symbol_identity; the arrow-scope caller, for which such an atom is
-// a name that missed scope, refuses (target_value_expr_project_atom_in_arrow_scope).
+// THE ONE LITERAL LADDER. `on_no_literal` is what an atom that spells no literal becomes. Its one
+// caller, target_value_expr_project_atom_in_arrow_scope, refuses it located: such an atom is a name
+// that missed scope, and no caller may mint it as a symbol_identity literal instead.
 fn target_value_expr_project_pick_literal_atom_or(
   id: Symbol,
   source_bool_form: TargetBoolLiteralShape,
@@ -14617,17 +14401,6 @@ fn target_value_expr_project_atom_in_arrow_scope(
           )
       }
     }
-  )
-}
-
-fn target_value_expr_project_atom_literal(
-  node: Node,
-  source_bool_form: TargetBoolLiteralShape
-) -> Outcome<TargetValueExpression> {
-  target_value_expr_project_atom_literal_or(
-    node: node,
-    source_bool_form: source_bool_form,
-    on_no_literal: fn(sym) { target_value_expr_mint_unscoped_atom(id: sym) }
   )
 }
 
@@ -15241,10 +15014,12 @@ fn target_project_loop(
         )
       Present { value: literal_node } =>
         bind_outcome(
-          o: target_value_expr_project_atom_literal(
-          node: literal_node,
-          source_bool_form: source_bool_form
-        ),
+          o: target_value_expr_project_atom_in_arrow_scope(
+            arrow: arrow,
+            node: literal_node,
+            target: target,
+            source_bool_form: source_bool_form
+          ),
           f: fn(projected_body) {
             outcome_accepted(
               target_value_expression_loop(body: projected_body)
