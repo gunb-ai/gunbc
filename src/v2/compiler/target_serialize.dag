@@ -599,31 +599,12 @@ fn grammar_tokens_fold_list_targets(remaining: Int, node: Node) -> Outcome<List<
   grammar_tokens_fold_list_targets_into(remaining: remaining, node: node, acc: Empty)
 }
 
-// The fold-list cell decision, delegated out of the tail-recursive walk: the walk keeps its self-call
-// and matches one flat step. The tail-call match renderer emits a nested variant under an Rc field as a
-// guard, which rustc does not count toward exhaustiveness (E0004), where the ordinary renderer groups it.
-// Recorded, with its dissolution trigger, as gunbc.recurring_failure_mode
-// tail_call_match_lowering_skips_rc_arm_grouping.
-type GrammarTokensFoldListShape = GrammarTokensFoldListCell | GrammarTokensFoldListNotCell
-
-fn grammar_tokens_fold_list_shape(node: Node) -> GrammarTokensFoldListShape {
-  match node.kind {
-    TypeNode { connective: Conj } => GrammarTokensFoldListCell
-    TypeNode { connective: Atom { identity: _ } } => GrammarTokensFoldListNotCell
-    TypeNode { connective: Disj } => GrammarTokensFoldListNotCell
-    TypeNode { connective: Arrow } => GrammarTokensFoldListNotCell
-    TypeNode { connective: Cardinality } => GrammarTokensFoldListNotCell
-    TypeNode { connective: Instantiation } => GrammarTokensFoldListNotCell
-    ComputationNode { behavior: _ } => GrammarTokensFoldListNotCell
-  }
-}
-
 fn grammar_tokens_fold_list_targets_into(remaining: Int, node: Node, acc: List<Node>) -> Outcome<List<Node>> {
   if remaining <= 0 {
     outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
   } else {
-    match grammar_tokens_fold_list_shape(node: node) {
-      GrammarTokensFoldListCell =>
+    match node.kind {
+      TypeNode { connective: Conj } =>
         if is_empty(xs: node.children) {
           Accepted { value: acc, diagnostics: None }
         } else {
@@ -637,7 +618,7 @@ fn grammar_tokens_fold_list_targets_into(remaining: Int, node: Node, acc: List<N
               }
           }
         }
-      GrammarTokensFoldListNotCell => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
+      _ => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
     }
   }
 }

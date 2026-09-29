@@ -14,7 +14,7 @@ data tail_call_match_lowering_skips_rc_arm_grouping: RecurringFailureMode = Recu
 
     "WHY IT WAS DORMANT: every such match on main ended in a `_ =>` wildcard, which gave rustc an unguarded arm to close over. The typed NFR burn-down (gunbc#12610 census) replaced those wildcards with enumerated variants, and the first enumerated nested arm set inside a tail-recursive walk surfaced it: v2.compiler.target_serialize grammar_tokens_fold_list_targets_into, emit-build of the 00_compile closure on gunbc#12667.",
 
-    "INTERIM FORM, and its dissolution condition: that walk now matches a flat two-variant step returned by a non-recursive helper (v2.compiler.target_serialize grammar_tokens_fold_list_shape), which the NFR ruling prescribes for self-calling functions (delegate the decision, keep the self-call). The helper stays correct once the lowering is fixed; what dissolves is the NEED for it -- when emit_rust_tco_match renders nested arm sets through the same grouping as the ordinary renderer, a tail-recursive function may match nested variants directly and the step may be folded back.",
+    "DISPOSITION (silent-koi-310): no per-site workaround. A site that hits this keeps its wildcard until the root fix lands, then is enumerated; grammar_tokens_fold_list_targets_into was reverted to its wildcard on that ruling. The root fix is dispatched as its own lane.",
 
     "RUNG FOUND AT: 1 at best (the target compiler refuses; gunbc accepts). CEILING: 3 -- the emitter can decide exhaustiveness on the same facts for both renderers. NEXT-RUNG TRIGGER: the tail-call match renderer consumes rc_grouped_arm_plan (one grouping authority for both match lowerings), proven by an enumerated nested arm set in a tail-recursive fixture that emits and builds.",
   ],
@@ -22,6 +22,6 @@ data tail_call_match_lowering_skips_rc_arm_grouping: RecurringFailureMode = Recu
   evidence: [
     decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_rust_tco_match"),
     decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rc_grouped_arm_plan"),
-    decl_ref(module_path: "v2.compiler.target_serialize", decl_name: "grammar_tokens_fold_list_shape"),
+    decl_ref(module_path: "v2.compiler.target_serialize", decl_name: "grammar_tokens_fold_list_targets_into"),
   ],
 }
