@@ -16,8 +16,14 @@ import std.content_hash {
 import std.measure { ByteSize, byte_size, measure_count }
 import std.cache_interface {
   CapacityUnbounded, CapacityBounded,
-  ByteCapacity, EntryCountCapacity, ExactLimit, EffectiveLimitUnobserved,
+  CapacityPolicy, ByteCapacity, EntryCountCapacity, ExactLimit, EffectiveLimitUnobserved, RuntimeDerivedLimit,
   ReplaceExisting, RefuseNewStore, LeastRecentlyUsed,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.materialization_store_grant { WitnessScratchRoot }
+import gunbc.materialization_store_capacity {
+  StoreCeiling, StoreCeilingDeclared, StoreCeilingUndeclared,
+  materialization_store_byte_ceiling, materialization_store_byte_ceiling_authority,
 }
 import std.materialization_ladder {
   CacheProvider, CoversAllComputations, ReferenceTier, ArtifactTier, ContentKeyed,
@@ -25,12 +31,15 @@ import std.materialization_ladder {
 }
 import std.artifact_store {
   ArtifactKey, ArtifactRealizationInput, artifact_key_hash, artifact_realization_digest,
-  ArtifactStore, StoreReady, StoreRefusedRetention, store_over_provider,
-  ProviderScopeReleased, CapacityUnitMismatch, CapacityValueUnobserved,
+  ArtifactStore, StoreConstruction, StoreReady, StoreRefusedRetention, StoreRefusalCause,
+  store_over_provider, store_over_provider_resolved, artifact_store_for_ceiling,
+  ProviderScopeReleased, CapacityUnitMismatch, CapacityValueUnobserved, CapacityValueUnresolved,
+  CapacityAuthorityMismatch, ResolvedCeilingBesideExactLimit,
   RefuseNewStoreUnsupported,
   StoreHit, StoreMiss, store_get,
   StorePutReceipt, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit,
   store_put, store_put_fold, store_put_is_admitted, store_put_evicted_keys, store_bytes_used,
+  ArtifactOccupancyRow, artifact_store_with_occupancy,
 }
 import extdeps.realization.emit_on_demand_host {
   ObservedToolIdentity,
@@ -491,4 +500,312 @@ test fn store_put_artifact_exactly_at_budget_is_admitted_holds() -> Bool {
   store_put_is_admitted(
     outcome: store_put(store: oversize_store(), key: key_of(toolchain: "exact"), artifact_bytes: byte_size(count: 100))
   )
+}
+
+// THE ONE CONSTRUCTION OF A STORE FROM A CEILING, AND THE DOOR THAT JUDGES A PROVIDER AGAINST IT (M1.c
+// landing unit L5a): artifact_store_for_ceiling and store_over_provider_resolved. The ceiling is
+// ASKED of its one home, gunbc.materialization_store_capacity, for a witness root -- the only root
+// whose ceiling a fixture may choose -- so every store below is sized by a StoreCeiling that home
+// answered, never by a ByteSize written here. The route this replaces, a caller's ByteSize sizing the
+// store the occupancy seeds, has no spelling any more: the seed takes a built store and no budget, and
+// the construction and the door take only a StoreCeiling, which is sole_constructor, so a literal one
+// outside its home is a compile-time SoleConstructorViolation (the class's wall is enrolled by
+// test.claim.guarantee_probe_corpus_witness_test sole_constructor_forged_literal_red_refuses). What
+// that does NOT close, and these claims do not assert: a hand-built ArtifactStore record, which is an
+// open type, and a WitnessScratchRoot's fixture ceiling, which is a caller's number by design and is
+// admitted only under /tmp/gunbc_*. The claim over the local store's constant catalog row, which the
+// commit path relies on, is not here yet: it lands with that row's retention in landing unit L5b
+// (std.artifact_store artifact_store_for_ceiling's leading comment names it).
+
+fn ceiling_derived_provider_with(id: String, capacity: CapacityPolicy) -> CacheProvider {
+  provider_row(
+    id: id,
+    scope: [],
+    coverage: CoversAllComputations,
+    tier: ArtifactTier { keying: ContentKeyed },
+    retention: persistent_retention(capacity: capacity)
+  )
+}
+
+data ceiling_derived_provider: CacheProvider = ceiling_derived_provider_with(
+  id: "ceiling-derived-test",
+  capacity: CapacityBounded {
+    limit: ByteCapacity { limit: RuntimeDerivedLimit { authority: materialization_store_byte_ceiling_authority } },
+    at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+  }
+)
+
+fn witness_root_ceiling(bytes: Int) -> StoreCeiling? {
+  match materialization_store_byte_ceiling(root: WitnessScratchRoot { root: "/tmp/gunbc_artifact_store_witness", ceiling: byte_size(count: bytes) }) {
+    StoreCeilingDeclared { ceiling: c } => Present { value: c }
+    StoreCeilingUndeclared { root_path: _ } => none
+  }
+}
+
+fn resolved_with_witness_ceiling(provider: CacheProvider, bytes: Int) -> StoreConstruction? {
+  match witness_root_ceiling(bytes: bytes) {
+    Present { value: c } => Present { value: store_over_provider_resolved(provider: provider, resolved: c) }
+    Absent => none
+  }
+}
+
+fn ceiling_store_is_empty_and_sized(bytes: Int) -> Bool {
+  match witness_root_ceiling(bytes: bytes) {
+    Present { value: c } =>
+      let s = artifact_store_for_ceiling(ceiling: c)
+      s.budget == byte_size(count: bytes) && (s.rows |> count) == 0 && s.next_ordinal == 1
+    Absent => false
+  }
+}
+
+fn resolved_is_the_ceiling_store(provider: CacheProvider, bytes: Int) -> Bool {
+  match witness_root_ceiling(bytes: bytes) {
+    Present { value: c } =>
+      store_over_provider_resolved(provider: provider, resolved: c) == StoreReady { store: artifact_store_for_ceiling(ceiling: c) }
+    Absent => false
+  }
+}
+
+fn resolved_refuses_with(provider: CacheProvider, cause: StoreRefusalCause) -> Bool {
+  match resolved_with_witness_ceiling(provider: provider, bytes: 100) {
+    Present { value: construction } => match construction {
+      StoreReady { store: _ } => false
+      StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == cause
+    }
+    Absent => false
+  }
+}
+
+// THE ONE CONSTRUCTION IS SIZED BY THE CEILING ITS HOME ANSWERED, and the store is empty and counts
+// from ordinal 1. Two ceilings, two budgets. RED if the construction sized the store by a constant,
+// started it holding rows, or started its counter anywhere but 1.
+test fn the_ceiling_store_is_empty_and_sized_by_its_ceiling() -> Bool {
+  ceiling_store_is_empty_and_sized(bytes: 100) && ceiling_store_is_empty_and_sized(bytes: 7)
+}
+
+// THE DOOR ANSWERS EXACTLY THE ONE CONSTRUCTION. A provider whose ceiling is the store ceiling's home
+// passes every check, and the door's answer is StoreReady with the very store artifact_store_for_ceiling
+// builds from the same ceiling, compared whole. Two ceilings. RED if the door built a store of its own
+// that differs from that construction in any field, or refused a limit it exists to resolve. This is
+// what keeps a store the commit builds without the door equal to the store the door would answer.
+test fn the_resolved_door_answers_the_one_ceiling_construction() -> Bool {
+  resolved_is_the_ceiling_store(provider: ceiling_derived_provider, bytes: 100)
+    && resolved_is_the_ceiling_store(provider: ceiling_derived_provider, bytes: 7)
+}
+
+// WITHOUT ITS CEILING THE SAME PROVIDER BUILDS NO STORE: the unresolved door still answers
+// CapacityValueUnresolved. RED if that door took a number from anywhere but the ceiling's home.
+test fn without_its_ceiling_a_ceiling_derived_provider_refuses_as_unresolved() -> Bool {
+  match store_over_provider(provider: ceiling_derived_provider) {
+    StoreReady { store: _ } => false
+    StoreRefusedRetention { provider_id: pid, declared: _, cause: c } =>
+      (pid == "ceiling-derived-test") && (c == CapacityValueUnresolved)
+  }
+}
+
+// A CEILING RESOLVES ONLY THE AUTHORITY IT IS. A provider whose byte limit names a different deriving
+// authority is refused, not sized by the store ceiling. RED if the resolved arm ignored the authority.
+test fn a_ceiling_does_not_resolve_a_limit_another_authority_derives() -> Bool {
+  let other_authority = ceiling_derived_provider_with(
+    id: "other-authority-test",
+    capacity: CapacityBounded {
+      limit: ByteCapacity { limit: RuntimeDerivedLimit { authority: DeclarationRef {
+        module_path: "gunbc.typed_module_cache_capacity",
+        decl_name: "typed_module_cache_entry_cap",
+        field: WholeDeclaration
+      } } },
+      at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+    }
+  )
+  resolved_refuses_with(provider: other_authority, cause: CapacityAuthorityMismatch)
+}
+
+// A PROVIDER THAT STATES ITS EXACT CEILING TAKES NO RESOLVED ONE BESIDE IT: two numbers for one bound
+// is refused, whichever is larger. RED if the resolved door let either number win silently.
+test fn a_resolved_ceiling_beside_an_exact_limit_refuses() -> Bool {
+  resolved_refuses_with(provider: byte_bounded_provider, cause: ResolvedCeilingBesideExactLimit)
+}
+
+// THE RESOLVED DOOR MAKES EVERY CHECK store_over_provider MAKES, before any value is consulted and
+// before it answers the one construction. One claim per refusal, each RED if the resolved door
+// skipped that check.
+test fn the_resolved_door_still_refuses_a_scope_released_provider() -> Bool {
+  let scoped = provider_row(
+    id: "scoped-ceiling-derived-test",
+    scope: [],
+    coverage: CoversAllComputations,
+    tier: ArtifactTier { keying: ContentKeyed },
+    retention: scope_released_retention(capacity: CapacityBounded {
+      limit: ByteCapacity { limit: RuntimeDerivedLimit { authority: materialization_store_byte_ceiling_authority } },
+      at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+    })
+  )
+  resolved_refuses_with(provider: scoped, cause: ProviderScopeReleased)
+}
+
+test fn the_resolved_door_still_refuses_an_entry_count_ceiling() -> Bool {
+  let entry_capped = ceiling_derived_provider_with(
+    id: "entry-capped-ceiling-derived-test",
+    capacity: CapacityBounded {
+      limit: EntryCountCapacity { limit: RuntimeDerivedLimit { authority: materialization_store_byte_ceiling_authority } },
+      at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+    }
+  )
+  resolved_refuses_with(provider: entry_capped, cause: CapacityUnitMismatch)
+}
+
+test fn the_resolved_door_still_refuses_a_provider_that_refuses_new_stores() -> Bool {
+  let refuses_new = ceiling_derived_provider_with(
+    id: "refuse-new-ceiling-derived-test",
+    capacity: CapacityBounded {
+      limit: ByteCapacity { limit: RuntimeDerivedLimit { authority: materialization_store_byte_ceiling_authority } },
+      at_capacity: RefuseNewStore
+    }
+  )
+  resolved_refuses_with(provider: refuses_new, cause: RefuseNewStoreUnsupported)
+}
+
+// artifact_store_with_occupancy (M1.c landing unit L5a): the store a persistent commit rebuilds from
+// the entries it finds on disk, seeded into a store already built -- here exactly the construction
+// L5b's commit makes, artifact_store_for_ceiling over a witness root's ceiling, with no provider. The
+// rows are supplied values: the census that observes them is landing unit L5b's, and the
+// real-filesystem run of that census is its inhabitance claim, owed there.
+
+fn occupancy_witness_row(toolchain: String, bytes: Int) -> ArtifactOccupancyRow {
+  ArtifactOccupancyRow { key: key_of(toolchain: toolchain), apparent_file_bytes: byte_size(count: bytes) }
+}
+
+// Absent when the ceiling's home declared no ceiling for the witness root, so every claim below FAILS
+// then rather than running over a store nothing derived.
+fn occupancy_witness_ceiling_store() -> ArtifactStore? {
+  match witness_root_ceiling(bytes: 100) {
+    Present { value: c } => Present { value: artifact_store_for_ceiling(ceiling: c) }
+    Absent => none
+  }
+}
+
+fn occupancy_witness_store(occupancy: List<ArtifactOccupancyRow>) -> ArtifactStore? {
+  match occupancy_witness_ceiling_store() {
+    Present { value: s } => Present { value: artifact_store_with_occupancy(store: s, occupancy: occupancy) }
+    Absent => none
+  }
+}
+
+fn occupancy_witness_ordinal_of(store: ArtifactStore, key: ContentHash) -> Int {
+  fold(store.rows, init: 0, f: (acc, r) => if r.key == key { r.last_use_ordinal } else { acc })
+}
+
+fn occupancy_witness_evicted_by_putting(store: ArtifactStore, toolchain: String, bytes: Int) -> List<ContentHash> {
+  store_put_evicted_keys(outcome: store_put(store: store, key: key_of(toolchain: toolchain), artifact_bytes: byte_size(count: bytes)))
+}
+
+// ROWS IN RECENCY ORDER, LEAST RECENT FIRST: over the empty store artifact_store_for_ceiling built,
+// the i-th observed row takes ordinal i + 1, the next ordinal is one past the last, the budget is the
+// ceiling and the bytes are the rows' apparent file bytes. RED if ordinals were assigned in reverse,
+// from 0, or left to a caller, if next_ordinal could collide with an observed row, or if seeding
+// replaced the store's budget.
+test fn occupancy_rows_become_a_store_in_recency_order() -> Bool {
+  match occupancy_witness_store(occupancy: [occupancy_witness_row(toolchain: "old", bytes: 10), occupancy_witness_row(toolchain: "mid", bytes: 20), occupancy_witness_row(toolchain: "new", bytes: 30)]) {
+    Present { value: store } =>
+      occupancy_witness_ordinal_of(store: store, key: key_of(toolchain: "old")) == 1
+        && occupancy_witness_ordinal_of(store: store, key: key_of(toolchain: "mid")) == 2
+        && occupancy_witness_ordinal_of(store: store, key: key_of(toolchain: "new")) == 3
+        && store.next_ordinal == 4
+        && (store.rows |> count) == 3
+        && store.budget == byte_size(count: 100)
+        && store_bytes_used(store: store) == 60
+    Absent => false
+  }
+}
+
+// SEEDING CONTINUES THE STORE'S OWN COUNTER AND KEEPS WHAT IT HELD: a row the store already carries
+// keeps its ordinal and stays least recent, observed rows follow it, and the budget is untouched. RED
+// if seeding restarted ordinals at 1 (an observed row would tie the held one), dropped the held row,
+// or re-sized the store.
+test fn occupancy_seeding_continues_the_store_s_own_ordinals() -> Bool {
+  match occupancy_witness_ceiling_store() {
+    Present { value: empty } => store_put_fold(
+      outcome: store_put(store: empty, key: key_of(toolchain: "held"), artifact_bytes: byte_size(count: 40)),
+      did_not_fit: (a, b) => false,
+      admitted: fn(held_store, evicted) {
+        let seeded = artifact_store_with_occupancy(store: held_store, occupancy: [occupancy_witness_row(toolchain: "a", bytes: 10), occupancy_witness_row(toolchain: "b", bytes: 20)])
+        occupancy_witness_ordinal_of(store: seeded, key: key_of(toolchain: "held")) == 1
+          && occupancy_witness_ordinal_of(store: seeded, key: key_of(toolchain: "a")) == 2
+          && occupancy_witness_ordinal_of(store: seeded, key: key_of(toolchain: "b")) == 3
+          && seeded.next_ordinal == 4
+          && (seeded.rows |> count) == 3
+          && seeded.budget == held_store.budget
+      }
+    )
+    Absent => false
+  }
+}
+
+// THE OBSERVED ORDER IS THE ORDER EVICTION CONSULTS: the same two entries listed in opposite orders
+// lose opposite victims to the same put. RED if construction ignored position (both orders would
+// evict the same key) or evicted the most recent.
+test fn occupancy_order_decides_the_eviction_victim() -> Bool {
+  let a_then_b = occupancy_witness_store(occupancy: [occupancy_witness_row(toolchain: "a", bytes: 40), occupancy_witness_row(toolchain: "b", bytes: 40)])
+  let b_then_a = occupancy_witness_store(occupancy: [occupancy_witness_row(toolchain: "b", bytes: 40), occupancy_witness_row(toolchain: "a", bytes: 40)])
+  match a_then_b {
+    Present { value: ab } => match b_then_a {
+      Present { value: ba } =>
+        occupancy_witness_evicted_by_putting(store: ab, toolchain: "c", bytes: 40) == [key_of(toolchain: "a")]
+          && occupancy_witness_evicted_by_putting(store: ba, toolchain: "c", bytes: 40) == [key_of(toolchain: "b")]
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// A SERVE'S RECENCY TOUCH SURVIVES THE REBUILD: after a get bumps the least recent observed entry, the
+// next put evicts the other one. This is the hermetic half of the spec's wet witness (commit A and
+// B, touch A, add C: only B is evicted). RED if the constructed store's ordinals did not interleave
+// with store_get's (A would be evicted despite the touch).
+test fn a_touched_occupancy_row_survives_the_next_eviction() -> Bool {
+  match occupancy_witness_store(occupancy: [occupancy_witness_row(toolchain: "a", bytes: 40), occupancy_witness_row(toolchain: "b", bytes: 40)]) {
+    Present { value: observed } => match store_get(store: observed, key: key_of(toolchain: "a")) {
+      StoreHit { store: touched, row: _ } =>
+        occupancy_witness_evicted_by_putting(store: touched, toolchain: "c", bytes: 40) == [key_of(toolchain: "b")]
+      StoreMiss { store: _ } => false
+    }
+    Absent => false
+  }
+}
+
+// OVER-CEILING OCCUPANCY IS KEPT, NOT REPLAYED: 180 observed bytes under a 100-byte ceiling build a
+// store holding all three rows, and the ONE put that follows evicts least-recent rows until the store
+// is within the ceiling, every eviction counted in that put's receipt. RED under per-row replay: a
+// store_put per observed row would already have evicted a and b during construction, so the store
+// would hold one row and the put's receipt would count no eviction at all.
+test fn over_ceiling_occupancy_is_kept_until_the_one_put_evicts_it() -> Bool {
+  match occupancy_witness_store(occupancy: [occupancy_witness_row(toolchain: "a", bytes: 60), occupancy_witness_row(toolchain: "b", bytes: 60), occupancy_witness_row(toolchain: "c", bytes: 60)]) {
+    Present { value: store } =>
+      let kept_all = (store.rows |> count) == 3 && store_bytes_used(store: store) == 180
+      kept_all && store_put_fold(
+        outcome: store_put(store: store, key: key_of(toolchain: "d"), artifact_bytes: byte_size(count: 10)),
+        did_not_fit: (a, b) => false,
+        admitted: (packed, evicted) =>
+          evicted == [key_of(toolchain: "a"), key_of(toolchain: "b")]
+            && store_bytes_used(store: packed) == 70
+            && store_bytes_used(store: packed) <= measure_count(m: packed.budget)
+      )
+    Absent => false
+  }
+}
+
+// AN ARTIFACT LARGER THAN THE CEILING DOES NOT FIT, EVEN OVER AN OVER-CEILING STORE, AND EVICTS
+// NOTHING. RED if the put reached eviction before the fit test (it would have dropped observed rows
+// for an artifact that cannot be stored).
+test fn over_ceiling_occupancy_evicts_nothing_for_an_artifact_that_does_not_fit() -> Bool {
+  match occupancy_witness_store(occupancy: [occupancy_witness_row(toolchain: "a", bytes: 60), occupancy_witness_row(toolchain: "b", bytes: 60)]) {
+    Present { value: store } =>
+      let outcome = store_put(store: store, key: key_of(toolchain: "huge"), artifact_bytes: byte_size(count: 101))
+      store_put_fold(
+        outcome: outcome,
+        admitted: (s, e) => false,
+        did_not_fit: (a, b) => a == byte_size(count: 101) && b == byte_size(count: 100)
+      ) && store_put_evicted_keys(outcome: outcome) == []
+    Absent => false
+  }
 }

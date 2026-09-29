@@ -1,0 +1,94 @@
+module test.claim.materialization_store_grant_witness
+
+import std.types { Bool, String }
+import std.measure { ByteSize, byte_size }
+import std.access { AccessDecision, Permit, Deny }
+import std.effect_grant { Read, Write, admit_effect }
+import std.filesystem_path_grant { absolute_path_position }
+import std.materialization_store_grant {
+  MaterializationStoreRoot, UserCacheRoot, WitnessScratchRoot,
+  materialization_store_root_path,
+  materialization_store_durability,
+  materialization_store_durability_name,
+  materialization_store_envelope,
+  materialization_store_admissible,
+}
+import extdeps.freedesktop.xdg_base_directory {
+  XdgCacheHomeResolution, XdgCacheHomeResolved, XdgCacheHomeRefused, xdg_cache_home,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// HERMETIC CONTROLS FOR THE PER-USER ROOT std.materialization_store_grant GAINED IN M1.c (landing unit
+// L5a): where a UserCacheRoot's store lives, what durability it answers, and exactly what its grant
+// admits. Every UserCacheRoot here is built the only way one can be -- from an XdgCacheHome minted by
+// extdeps.freedesktop.xdg_base_directory xdg_cache_home -- so the path under test is the path the
+// spec's rules chose, not one the claim wrote down.
+
+data grant_witness_scratch_ceiling: ByteSize = byte_size(count: 4096)
+
+fn grant_witness_user_root(r: XdgCacheHomeResolution) -> MaterializationStoreRoot {
+  match r {
+    XdgCacheHomeResolved { cache_home: h, basis: _ } => UserCacheRoot { cache_home: h }
+    XdgCacheHomeRefused { home: _, variable: _ } =>
+      WitnessScratchRoot { root: "/tmp/not_a_user_cache_root", ceiling: grant_witness_scratch_ceiling }
+  }
+}
+
+fn grant_witness_user_root_from_variable(cache_variable: String) -> MaterializationStoreRoot {
+  grant_witness_user_root(r: xdg_cache_home(cache_variable: Present { value: cache_variable }, home_variable: none))
+}
+
+fn grant_witness_permits(d: AccessDecision) -> Bool {
+  match d {
+    Permit => true
+    Deny { refusal: _ } => false
+  }
+}
+
+// <cache home>/gunbc/materialization-store, on both of the spec's routes to a cache home and with or
+// without a trailing slash on it. RED if the store sat at the cache home itself, under another
+// relative path, or carried a doubled separator.
+test fn a_user_cache_root_is_gunbc_materialization_store_under_the_cache_home() -> Bool {
+  let from_variable = materialization_store_root_path(root: grant_witness_user_root_from_variable(cache_variable: "/srv/cache"))
+  let slashed = materialization_store_root_path(root: grant_witness_user_root_from_variable(cache_variable: "/srv/cache/"))
+  let from_home = materialization_store_root_path(root: grant_witness_user_root(r: xdg_cache_home(cache_variable: none, home_variable: Present { value: "/home/u" })))
+  from_variable == "/srv/cache/gunbc/materialization-store"
+    && slashed == "/srv/cache/gunbc/materialization-store"
+    && from_home == "/home/u/.cache/gunbc/materialization-store"
+}
+
+// THE STATED DIVERGENCE, executed: a user cache home under /tmp still answers DurableAcrossRuns,
+// because the arm -- not the path -- decides durability, while a witness scratch root under /tmp stays
+// ephemeral. RED if durability were read off the path (both would then answer ephemeral), or if the
+// scratch arm could answer durable.
+test fn durability_is_the_arm_s_not_the_path_s() -> Bool {
+  let user_under_tmp = grant_witness_user_root_from_variable(cache_variable: "/tmp/x")
+  let scratch = WitnessScratchRoot { root: "/tmp/gunbc_grant_witness", ceiling: grant_witness_scratch_ceiling }
+  materialization_store_durability_name(d: materialization_store_durability(root: user_under_tmp)) == "durable_across_runs"
+    && materialization_store_durability_name(d: materialization_store_durability(root: scratch)) == "ephemeral_to_frame"
+}
+
+// THE GRANT IS THE STORE ROOT, NOT THE CACHE HOME. Read and Write are admitted at the root and beneath
+// it; a sibling in the same cache home and the cache home itself are refused. RED if the grant were
+// rooted at the cache home or wider (the sibling would be admitted), or empty (the root would not be).
+test fn a_user_cache_root_grants_its_store_root_and_nothing_beside_it() -> Bool {
+  let root = grant_witness_user_root_from_variable(cache_variable: "/srv/cache")
+  let env = materialization_store_envelope(root: root)
+  grant_witness_permits(d: materialization_store_admissible(root: root, verb: Read))
+    && grant_witness_permits(d: materialization_store_admissible(root: root, verb: Write))
+    && grant_witness_permits(d: admit_effect(env: env, verb: Write, target: absolute_path_position(path: "/srv/cache/gunbc/materialization-store/entry")))
+    && grant_witness_permits(d: admit_effect(env: env, verb: Write, target: absolute_path_position(path: "/srv/cache/other-application"))) == false
+    && grant_witness_permits(d: admit_effect(env: env, verb: Read, target: absolute_path_position(path: "/srv/cache"))) == false
+}
+
+// THE CEILING FIELD CHANGES NOTHING ABOUT WHICH SCRATCH ROOTS ARE GRANTED: /tmp/gunbc_* is admitted
+// and any other /tmp path is not, whatever ceiling either carries. RED if adding the field had widened
+// or dropped the scratch grant.
+test fn a_witness_scratch_root_is_still_granted_only_under_tmp_gunbc() -> Bool {
+  let granted = WitnessScratchRoot { root: "/tmp/gunbc_grant_witness", ceiling: grant_witness_scratch_ceiling }
+  let ungranted = WitnessScratchRoot { root: "/tmp/not_a_gunbc_store_root", ceiling: grant_witness_scratch_ceiling }
+  grant_witness_permits(d: materialization_store_admissible(root: granted, verb: Write))
+    && grant_witness_permits(d: materialization_store_admissible(root: ungranted, verb: Write)) == false
+}

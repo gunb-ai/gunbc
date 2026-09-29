@@ -1,6 +1,7 @@
 module std.materialization_store_grant
 
 import std.types { String, Bool, List }
+import std.measure { ByteSize }
 import std.access { AccessDecision }
 import std.effect_grant {
   Verb, Read, Write,
@@ -13,6 +14,7 @@ import std.effect_grant {
 import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_tmp_scratch_store_root }
+import extdeps.freedesktop.xdg_base_directory { XdgCacheHome, xdg_cache_path }
 
 // THE DURABLE ROOT GRANT FOR THE MATERIALIZATION STORE, AND WHY IT IS A COPRODUCT RATHER THAN A PATH.
 //
@@ -23,12 +25,40 @@ import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_
 // attempt, so its root is a gunbc-owned PERSISTENT HOST VOLUME reached through the declared guest
 // boundary, not guest /tmp.
 //
-// The caller does not supply that path. `DurableHostVolumeRoot` carries no field: the durable root
-// is the one declared datum below, so a consumer that asks for durability cannot be handed an
-// arbitrary directory (including /tmp) under that name. `WitnessScratchRoot` is the only arm that
-// takes a path, it admits only the existing /tmp/gunbc_* scratch grant, and its durability is
-// DERIVED as ephemeral -- so an executed control can exercise the real store realization in a
-// throwaway directory without that directory ever being able to answer "durable".
+// NO CALLER SUPPLIES A DURABLE PATH. A durable root is exactly one of two things: the declared host
+// volume (`DurableHostVolumeRoot`, which carries no field -- its path is the one datum below), or the
+// per-user cache home resolved by the cited XDG authority (`UserCacheRoot`, whose only field is an
+// XdgCacheHome; XdgCacheHome is sole_constructor, minted only by
+// extdeps.freedesktop.xdg_base_directory xdg_cache_home from the environment readings it is
+// handed). So a consumer that asks for durability cannot be handed an arbitrary directory under that
+// name: it gets the host volume, or the directory the spec's rules selected. The per-user store root
+// is <cache home>/gunbc/materialization-store (materialization_store_user_cache_relative_path,
+// joined by the spec module's own xdg_cache_path). `WitnessScratchRoot` is the only arm that takes a
+// path; it admits only the existing /tmp/gunbc_* scratch grant, its durability is DERIVED as
+// ephemeral -- so an executed control can exercise the real store realization in a throwaway
+// directory without that directory ever being able to answer "durable" -- and it carries the byte
+// `ceiling` its fixture evicts under, which gunbc.materialization_store_capacity (the one home of
+// the ceiling) returns for it, so tests need no second ceiling authority.
+//
+// A STATED DIVERGENCE (DESIGN section 3b) FROM THIS MODULE'S EARLIER INVARIANT, which read
+// "`DurableHostVolumeRoot` carries no field ... `WitnessScratchRoot` is the only arm that takes a
+// path". UserCacheRoot's location comes from the ENVIRONMENT: XDG_CACHE_HOME=/tmp/x yields a root
+// that answers DurableAcrossRuns while it lives under /tmp. That is deliberate. DurableAcrossRuns on
+// this arm means what XDG means by the cache home -- "user-specific non-essential data" kept across
+// runs until the user removes it -- so the claim is scoped to that user's environment: the store
+// outlives the run and is not released by frame teardown, and the user (or a tmpfs) may remove it at
+// any time. Removal costs entries, never correctness, and what makes that true is OBJECT-LEVEL
+// PREIMAGE VERIFICATION, not the directory: an entry is served only when its object's stored
+// evaluation preimage equals the one the request derives (std.materialization_object
+// store_lookup_decide_present, through std.materialization_provider provider_serve_persisted, which
+// refuses a mismatch; executed by test.claim.materialization_store_witness
+// store_hit_requires_evaluation_preimage). So a removed store yields misses, and an object that names
+// a different evaluation is refused however it reached the directory. (Until U3-B no persistent hit
+// is served at all: operator ruling 2026-09-29 on spec gunbc#12581 Q2, option (ii).) The store's
+// identity marker is not that guarantee: extdeps.realization.materialization_store_local
+// store_marker_recognized accepts any instance label under a matching durability line, and this arm
+// and DurableHostVolumeRoot write the same line. DurableHostVolumeRoot is unchanged and stays the
+// fleet runner's root.
 //
 // DECLARED FRONTIER, stated so the grant is not read as the whole boundary: this module grants the
 // guest-side PATH. Attaching the gunbc-owned host volume as a Firecracker drive and mounting it at
@@ -43,10 +73,30 @@ import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_
 // teardown -- that is its purpose -- so it cannot claim LifecycleByConstruction; its release is the
 // retention and eviction the provider machinery owns (std.artifact_store accounting under the
 // provider), which is a cleanup that can fail or be forgotten, i.e. the weaker grade.
+//
+// DECLARED FRONTIER FOR UserCacheRoot (DESIGN section 3c): no production path constructs one yet.
+// Its consumers today are this module's projections (path, durability, envelope, admission), executed
+// by test.claim.materialization_store_grant_witness, and gunbc.materialization_store_capacity,
+// executed by test.claim.materialization_store_capacity_witness. The production constructor is M1.c's
+// store root (landing unit L8: the route root mints the XdgCacheHome from the process environment and
+// opens the per-user store), and the commit that sizes it arrives in landing unit L5b.
+// TRIGGER: L8's route root opens a UserCacheRoot.
+//
+// AN L5b OBLIGATION THIS ARM CREATES: ONE DIRECTORY CAN ANSWER AS TWO ROOTS. XDG_CACHE_HOME=/var/lib
+// makes a UserCacheRoot whose store path is exactly materialization_store_durable_root_path, the
+// fleet root -- one directory under two ceilings (2 GiB for this arm, StoreCeilingUndeclared for
+// DurableHostVolumeRoot in gunbc.materialization_store_capacity), and the marker cannot tell them
+// apart (above). The open and first-use initialization that must refuse it are L5b's
+// (extdeps.realization.materialization_store_local), and either fix closes it: carry the root ARM
+// (user cache or host volume) in the store marker, so an open of one arm refuses a store the other
+// initialized; or refuse a UserCacheRoot whose store path equals, contains or lies inside
+// materialization_store_durable_root_path. TRIGGER: L5b extends local_store_open with first-use
+// initialization (spec section 7.2).
 
 type MaterializationStoreRoot
   = DurableHostVolumeRoot
-  | WitnessScratchRoot { root: String }
+  | UserCacheRoot { cache_home: XdgCacheHome }
+  | WitnessScratchRoot { root: String, ceiling: ByteSize }
 
 type MaterializationStoreDurability
   = DurableAcrossRuns
@@ -59,6 +109,8 @@ data materialization_store_frame: Frame = Frame {
 
 data materialization_store_durable_root_path: String = "/var/lib/gunbc/materialization-store"
 
+data materialization_store_user_cache_relative_path: String = "gunbc/materialization-store"
+
 // DERIVED from the path, never restated as segments (review 63898): the grant root and the
 // admission target are the same projection of one datum, so they cannot drift apart.
 data materialization_store_durable_root: NamespacePosition = absolute_path_position(
@@ -68,14 +120,17 @@ data materialization_store_durable_root: NamespacePosition = absolute_path_posit
 fn materialization_store_root_path(root: MaterializationStoreRoot) -> String {
   match root {
     DurableHostVolumeRoot => materialization_store_durable_root_path
-    WitnessScratchRoot { root: r } => r
+    UserCacheRoot { cache_home: h } =>
+      xdg_cache_path(cache_home: h, relative: materialization_store_user_cache_relative_path)
+    WitnessScratchRoot { root: r, ceiling: _ } => r
   }
 }
 
 fn materialization_store_durability(root: MaterializationStoreRoot) -> MaterializationStoreDurability {
   match root {
     DurableHostVolumeRoot => DurableAcrossRuns
-    WitnessScratchRoot { root: _ } => EphemeralToFrame
+    UserCacheRoot { cache_home: _ } => DurableAcrossRuns
+    WitnessScratchRoot { root: _, ceiling: _ } => EphemeralToFrame
   }
 }
 
@@ -100,7 +155,14 @@ fn materialization_store_envelope(root: MaterializationStoreRoot) -> Envelope {
         frame: materialization_store_frame,
         grants: materialization_store_grants(root_position: materialization_store_durable_root)
       }
-    WitnessScratchRoot { root: r } =>
+    UserCacheRoot { cache_home: _ } =>
+      Envelope {
+        frame: materialization_store_frame,
+        grants: materialization_store_grants(
+          root_position: absolute_path_position(path: materialization_store_root_path(root: root))
+        )
+      }
+    WitnessScratchRoot { root: r, ceiling: _ } =>
       if is_gunbc_tmp_scratch_store_root(store_root: r) {
         Envelope {
           frame: materialization_store_frame,

@@ -569,7 +569,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/bonterms/cloud_terms.dag",
   "dag/extdeps/moonshot/kimi_code.dag",
   "dag/extdeps/tax/new_jersey_sales_and_use.dag",
-  "dag/extdeps/tax/new_york_city_sales_and_use.dag"
+  "dag/extdeps/tax/new_york_city_sales_and_use.dag",
+  "dag/extdeps/freedesktop/xdg_base_directory.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [

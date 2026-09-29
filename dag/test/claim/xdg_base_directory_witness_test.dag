@@ -1,0 +1,167 @@
+module test.claim.xdg_base_directory_witness
+
+import std.types { Bool, String }
+import extdeps.freedesktop.xdg_base_directory {
+  XdgCacheHomeResolution, XdgCacheHomeResolved, XdgCacheHomeRefused,
+  CacheHomeFromVariable, CacheHomeDefaultUnderHome,
+  XdgVariableStanding, XdgVariableUnset, XdgVariableEmpty, XdgVariableRelativeIgnored,
+  HomeUnset, HomeEmpty, HomeNotAbsolute,
+  xdg_cache_home, xdg_cache_path,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// HERMETIC CONTROLS FOR xdg_cache_home, one per rule of the XDG Base Directory Specification 0.8 and
+// one for the rule this module adds where the spec is silent (an unusable HOME refuses). Each claim
+// asserts the ROUTE -- which basis or refusal arm decided -- and not only the path, because two of
+// the rules reach the same path by different arms: an unset, an empty and a relative XDG_CACHE_HOME
+// all land on $HOME/.cache, and a claim that read only the path could not tell a relative value
+// being ignored from one never having been read.
+//
+// The readings are SUPPLIED values (DESIGN section 3, a witness discriminates at one interface): the
+// environment is a host fact, and the production reader of it arrives with M1.c's store root in
+// landing unit L8, where the section 7.3 checkpoint runs with a fresh XDG_CACHE_HOME. That run is
+// this boundary's inhabitance claim, and it is owed there, not here.
+
+fn xdg_witness_path_of(r: XdgCacheHomeResolution) -> String {
+  match r {
+    XdgCacheHomeResolved { cache_home: h, basis: _ } => h.path
+    XdgCacheHomeRefused { home: _, variable: _ } => "<refused>"
+  }
+}
+
+fn xdg_witness_path_under(r: XdgCacheHomeResolution, relative: String) -> String {
+  match r {
+    XdgCacheHomeResolved { cache_home: h, basis: _ } => xdg_cache_path(cache_home: h, relative: relative)
+    XdgCacheHomeRefused { home: _, variable: _ } => "<refused>"
+  }
+}
+
+fn xdg_witness_resolved_from_variable(r: XdgCacheHomeResolution) -> Bool {
+  match r {
+    XdgCacheHomeResolved { cache_home: _, basis: b } => match b {
+      CacheHomeFromVariable => true
+      CacheHomeDefaultUnderHome { variable: _ } => false
+    }
+    XdgCacheHomeRefused { home: _, variable: _ } => false
+  }
+}
+
+fn xdg_witness_defaulted_variable(r: XdgCacheHomeResolution) -> XdgVariableStanding? {
+  match r {
+    XdgCacheHomeResolved { cache_home: _, basis: b } => match b {
+      CacheHomeFromVariable => none
+      CacheHomeDefaultUnderHome { variable: v } => Present { value: v }
+    }
+    XdgCacheHomeRefused { home: _, variable: _ } => none
+  }
+}
+
+fn xdg_witness_variable_was_unset(v: XdgVariableStanding?) -> Bool {
+  match v {
+    Present { value: s } => match s {
+      XdgVariableUnset => true
+      XdgVariableEmpty => false
+      XdgVariableRelativeIgnored { value: _ } => false
+    }
+    Absent => false
+  }
+}
+
+fn xdg_witness_variable_was_empty(v: XdgVariableStanding?) -> Bool {
+  match v {
+    Present { value: s } => match s {
+      XdgVariableUnset => false
+      XdgVariableEmpty => true
+      XdgVariableRelativeIgnored { value: _ } => false
+    }
+    Absent => false
+  }
+}
+
+fn xdg_witness_variable_was_relative_ignored(v: XdgVariableStanding?, expected: String) -> Bool {
+  match v {
+    Present { value: s } => match s {
+      XdgVariableUnset => false
+      XdgVariableEmpty => false
+      XdgVariableRelativeIgnored { value: got } => got == expected
+    }
+    Absent => false
+  }
+}
+
+// RED if HOME were consulted first, or if the default were preferred: HOME is unset here, so either
+// mistake refuses instead of resolving, and a default-first reading would also report the wrong basis.
+test fn an_absolute_xdg_cache_home_wins_without_consulting_home() -> Bool {
+  let r = xdg_cache_home(cache_variable: Present { value: "/srv/cache" }, home_variable: none)
+  xdg_witness_path_of(r: r) == "/srv/cache" && xdg_witness_resolved_from_variable(r: r)
+}
+
+// RED if a relative value were honoured (the path would be "rel/cache") or silently treated as
+// unset (the basis would not carry the ignored value back).
+test fn a_relative_xdg_cache_home_is_ignored_and_named() -> Bool {
+  let r = xdg_cache_home(cache_variable: Present { value: "rel/cache" }, home_variable: Present { value: "/home/u" })
+  xdg_witness_path_of(r: r) == "/home/u/.cache"
+    && xdg_witness_variable_was_relative_ignored(v: xdg_witness_defaulted_variable(r: r), expected: "rel/cache")
+    && xdg_witness_resolved_from_variable(r: r) == false
+}
+
+// RED if the empty string were taken as a path, or conflated with an unset variable.
+test fn an_empty_xdg_cache_home_is_ignored() -> Bool {
+  let r = xdg_cache_home(cache_variable: Present { value: "" }, home_variable: Present { value: "/home/u" })
+  xdg_witness_path_of(r: r) == "/home/u/.cache" && xdg_witness_variable_was_empty(v: xdg_witness_defaulted_variable(r: r))
+}
+
+// RED if the unset arm defaulted anywhere but $HOME/.cache, or reported itself as empty.
+test fn an_unset_xdg_cache_home_defaults_under_home() -> Bool {
+  let r = xdg_cache_home(cache_variable: none, home_variable: Present { value: "/home/u" })
+  xdg_witness_path_of(r: r) == "/home/u/.cache" && xdg_witness_variable_was_unset(v: xdg_witness_defaulted_variable(r: r))
+}
+
+// THE FALLBACK'S SHAPE: exactly one separator between HOME and ".cache", whether or not HOME ends in
+// "/" (root's HOME is "/"). RED if the join doubled the separator ("//.cache") or dropped it.
+test fn the_fallback_joins_home_and_dot_cache_with_one_separator() -> Bool {
+  xdg_witness_path_of(r: xdg_cache_home(cache_variable: none, home_variable: Present { value: "/" })) == "/.cache"
+    && xdg_witness_path_of(r: xdg_cache_home(cache_variable: none, home_variable: Present { value: "/home/u/" })) == "/home/u/.cache"
+}
+
+// THE RELATIVE JOIN the spec names ("relative to which ... files should be stored") has the same
+// shape as the fallback, with or without a trailing slash on the base. RED on a doubled separator.
+test fn a_cache_relative_path_joins_with_one_separator() -> Bool {
+  let bare = xdg_cache_home(cache_variable: Present { value: "/srv/cache" }, home_variable: none)
+  let slashed = xdg_cache_home(cache_variable: Present { value: "/srv/cache/" }, home_variable: none)
+  xdg_witness_path_under(r: bare, relative: "gunbc/x") == "/srv/cache/gunbc/x"
+    && xdg_witness_path_under(r: slashed, relative: "gunbc/x") == "/srv/cache/gunbc/x"
+}
+
+// AN UNUSABLE HOME REFUSES, with its own cause per arm, and the refusal still names what the variable
+// said. RED if any of the three produced a path (a substitute directory is the absorbing fallback
+// DESIGN section 5 forbids) or reported another arm's cause.
+test fn an_unusable_home_refuses_with_its_cause() -> Bool {
+  let unset = match xdg_cache_home(cache_variable: none, home_variable: none) {
+    XdgCacheHomeRefused { home: h, variable: v } => match h {
+      HomeUnset => xdg_witness_variable_was_unset(v: Present { value: v })
+      HomeEmpty => false
+      HomeNotAbsolute { value: _ } => false
+    }
+    XdgCacheHomeResolved { cache_home: _, basis: _ } => false
+  }
+  let empty = match xdg_cache_home(cache_variable: Present { value: "" }, home_variable: Present { value: "" }) {
+    XdgCacheHomeRefused { home: h, variable: v } => match h {
+      HomeUnset => false
+      HomeEmpty => xdg_witness_variable_was_empty(v: Present { value: v })
+      HomeNotAbsolute { value: _ } => false
+    }
+    XdgCacheHomeResolved { cache_home: _, basis: _ } => false
+  }
+  let relative = match xdg_cache_home(cache_variable: Present { value: "rel" }, home_variable: Present { value: "home/u" }) {
+    XdgCacheHomeRefused { home: h, variable: v } => match h {
+      HomeUnset => false
+      HomeEmpty => false
+      HomeNotAbsolute { value: got } => got == "home/u" && xdg_witness_variable_was_relative_ignored(v: Present { value: v }, expected: "rel")
+    }
+    XdgCacheHomeResolved { cache_home: _, basis: _ } => false
+  }
+  unset && empty && relative
+}
