@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_serve_contract_widened_for_one_handler_refuses_every_other
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_serve_contract_widened_for_one_handler_refuses_every_other: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_serve_contract_widened_for_one_handler_refuses_every_other" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: the seed's `gunbc serve` hands every handler a named argument that only one handler declares. The interpreter binds named arguments by exact bijection -- an undeclared name is a call-contract refusal, not a dropped value -- so every handler lacking the parameter refuses every request. gunbc#12482 added peer_user for the fabric door's unix-socket handler and passed it unconditionally, under a seed comment asserting the opposite ('a handler that does not declare it is not handed it'), which nothing executed.",
+
+    "HARM, 2026-09-29: dashboard_deploy run 36584004074 at 178fb76c71 installed the release; gunbc-roadmap.service came back answering /healthz HTTP 500 on every request ('call contract mismatch calling ...: no parameter named peer_user'), the readiness poll ran to the 30-minute step timeout, and the roadmap dashboard on srv1 was down pending a rollback to 361db9017b (the last release it served). The approval broker was spared only because it runs its own pinned pre-change release.",
+
+    "WHY NO GATE SAW IT: every witness of the change called the fabric handler's .dag function directly with its declared parameters; the seed tests exercised the listener and the peer read; nothing ran a real handler that lacks the new parameter through the real serve loop before deploy. The contract is the seed's argument list against EVERY served handler's signature -- a population of handlers, while each check covered one. The comment's false claim is DESIGN section 5's specification-without-execution: asserted behavior that no executed control could contradict.",
+
+    "REPAIR: serve_handler_args passes peer_user only when the listener attests a peer (--unix-socket), so TCP handlers receive exactly the prior argument set; seed test cli_run serve_unix_socket_door_tests a_tcp_handler_is_not_handed_peer_user pins the argument names per listener, and a live `gunbc serve` of a handler without peer_user answered 200 where the defective seed answered 500.",
+
+    "RUNG FOUND AT: silent wrongness shipped to production (the failure was loud only at runtime on the host). RUNG NOW: 2, mechanically preventable for this argument by the seed test. CEILING: 3 -- the served handlers are declared rows (gunbc.live_deploy spec serve_entry/serve_function), so the seed's argument set can be checked against each declared handler's signature at acceptance. NEXT TRIGGER: a required claim that, for every serve unit the deploy spec declares, binds the listener's argument set to that handler's declared parameters and refuses a mismatch before any deploy.",
+  ],
+
+  evidence: [],
+}
