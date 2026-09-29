@@ -12982,6 +12982,8 @@ pub use shared_typecheck_store::{
 };
 
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
+    #[cfg(test)]
+    yield_live_pool_before_building_another();
     new_multi_entry_index_shell(build_module_index(source_roots), source_roots, None)
 }
 
@@ -12992,6 +12994,8 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
 /// requires the `MultiEntryIndex` for its per-tree bare census), dissolving the §3
 /// closure-authority fork the two loaders' doc-comments each falsely claimed to be single.
 fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiEntryIndex {
+    #[cfg(test)]
+    yield_live_pool_before_building_another();
     new_multi_entry_index_shell(
         build_module_index_primary_precedence(source_roots),
         source_roots,
