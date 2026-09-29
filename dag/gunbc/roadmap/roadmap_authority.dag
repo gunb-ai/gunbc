@@ -3130,6 +3130,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_HPROMPT0CONTEXT0MODEL00A",
+      id: "harness-prompt-context-model",
+      owner: "harness",
+      path: "dag/gunbc/harness/harness_prompt_context.dag",
+      t: fields(
+        headline: "A prompt is a projection of an admitted context snapshot, never an authored string",
+        boundary: "Prompt inputs are typed (authority declaration + revision, work contract + revision, evidence with standing, prior conversation turns, guidance receipts); a context snapshot binds them to an attempt lineage, epoch, and source revision; provider envelopes are late projections of a PromptPlan; a render receipt digests exactly what was rendered. A withdrawn item cannot render as established; a conversation turn cannot fork from bytes the lineage does not own.",
+        displaced_cost: "Today the modeled guidance premises collapse into system_prompt: String at the config boundary, so a contradiction between two inputs is concatenated and shipped to the model, and a stale conclusion can resurface from a provider session as if it were a fact.",
+        first_slice: "Stand up the PromptInput/PromptContextSnapshot/PromptSegment/PromptPlan types with the render receipt, and make harness_guidance emit modeled segments rather than the final system-prompt string.",
+        red_control: "Identical snapshots render identical digests; changing an authority revision invalidates the old render; a Withdrawn input cannot reach a rendered segment; compaction cannot drop unresolved guidance or a tool result's matching call; restart reconstructs the same prompt from durable inputs.",
+        out_of_scope: "Segment content is rendered prose, digested -- the type system guards input provenance and revision, not the prose itself. No semantic contradiction inference between free-text inputs; conflicts must be typed to refuse.",
+        handback: "The snapshot/segment/plan model, the render receipt, harness_guidance emitting segments, and the controls."
+      )
+    ),
+    active_small(
       identity: "rn_HCONVO0LOG0FORK0POINTS0A",
       id: "harness-conversation-log-forking",
       owner: "harness",

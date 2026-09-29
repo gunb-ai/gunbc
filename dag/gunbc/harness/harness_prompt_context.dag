@@ -1,0 +1,174 @@
+module gunbc.harness.harness_prompt_context
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import std.content_hash { content_hash_atom }
+import gunbc.roadmap_model { RoadmapNodeId }
+
+// A PROMPT IS A PROJECTION OF AN ADMITTED CONTEXT SNAPSHOT, not an authority and never an authored
+// string handed across a boundary (scoped review against 81e7c779, 2026-09-29; owner direction the
+// same day). This module models the snapshot and its inputs; provider envelopes project from the
+// plan LATE, and the digest receipts make "what the model was told" reconstructable from durable
+// inputs after any restart.
+//
+// WHAT THE TYPES GUARD AND WHAT THEY DO NOT: input provenance, standing, and revision are typed;
+// segment CONTENT is rendered prose, digested but not structured. The value is that inputs are
+// typed and revisioned -- a stale authority revision invalidates the render, a withdrawn item
+// cannot render -- not that the prose is machine-checked. Semantic contradiction between two
+// free-text inputs is not inferred here; a conflict must be typed to refuse.
+
+// THE STANDING OF A CONTEXT ITEM. Withdrawn exists so a retracted assumption cannot linger in a
+// conversation cache and resurface as a fact: it is a first-class state, not a deletion.
+type ContextStanding
+  = EstablishedObservation
+  | DerivedConclusion
+  | OwnerRuling
+  | InstructionInput
+  | Hypothesis
+  | OpenQuestion
+  | Withdrawn
+
+// THE TYPED PROMPT INPUT. Every segment of a rendered prompt traces to one of these; an input
+// carries the REVISION of its authority so a changed authority invalidates any snapshot that
+// consumed it, rather than the old render silently persisting.
+type PromptInput
+  = AuthorityInput { declaration: DeclarationRef, revision: String }
+  | WorkContractInput { node: RoadmapNodeId, revision: String }
+  | EvidenceInput { artifact: String, subject: String, standing: ContextStanding }
+  | ConversationTurnInput { turn_identity: String, parent_identity: String }
+  | GuidanceInput { receipt_identity: String, resolved: Bool }
+
+// THE SNAPSHOT: one immutable binding of inputs to an attempt lineage at an epoch and a source
+// revision. The alignment probes of one checkpoint share a snapshot identity and receive different
+// PROJECTIONS of it; they never share an undifferentiated conversation.
+type PromptContextSnapshot {
+  attempt_lineage: String
+  epoch: Int
+  source_revision: String
+  work_contract_revision: String
+  inputs: List<PromptInput>
+}
+
+fn prompt_input_canonical_text(input: PromptInput) -> String {
+  match input {
+    AuthorityInput { declaration, revision } =>
+      join(["authority", declaration.module_path as String, declaration.decl_name as String, revision], "")
+    WorkContractInput { node, revision } =>
+      join(["work-contract", node as String, revision], "")
+    EvidenceInput { artifact, subject, standing: _ } =>
+      join(["evidence", artifact, subject], "")
+    ConversationTurnInput { turn_identity, parent_identity } =>
+      join(["conversation-turn", turn_identity, parent_identity], "")
+    GuidanceInput { receipt_identity, resolved: _ } =>
+      join(["guidance", receipt_identity], "")
+  }
+}
+
+// THE STANDING DOES NOT ENTER THE DIGEST PREIMAGE for evidence and guidance inputs above: standing
+// governs RENDERING (a withdrawn item is dropped, unresolved guidance is undroppable), so the same
+// artifact under a changed standing must NOT collide with its earlier self -- the render receipt
+// digests what actually rendered, and the assembly rules below are what keep a standing change from
+// being invisible. The snapshot digest binds WHICH inputs; the render digest binds WHAT RENDERED.
+fn prompt_snapshot_digest(snapshot: PromptContextSnapshot) -> String {
+  content_hash_atom(value: join([
+    "prompt-context-snapshot/v1",
+    snapshot.attempt_lineage,
+    to_string(value: snapshot.epoch),
+    snapshot.source_revision,
+    snapshot.work_contract_revision,
+    join(map(snapshot.inputs, i => prompt_input_canonical_text(input: i)), ""),
+  ], "") as NonEmptyStr).digest as String
+}
+
+// A RENDERED SEGMENT: typed source, declared role and purpose, and the content digested at render
+// time. required marks the undroppable population (active work contract, latest instruction,
+// unresolved guidance, owner rulings, a tool result's matching call, the current revision);
+// compaction must refuse rather than drop one.
+type PromptSegment {
+  purpose: String
+  source: PromptInput
+  required: Bool
+  content: String
+  content_digest: String
+}
+
+fn prompt_segment_render(purpose: String, source: PromptInput, required: Bool, content: String) -> PromptSegment {
+  PromptSegment {
+    purpose: purpose,
+    source: source,
+    required: required,
+    content: content,
+    content_digest: content_hash_atom(value: join(["prompt-segment/v1", purpose, content], "") as NonEmptyStr).digest as String,
+  }
+}
+
+type PromptPlan {
+  snapshot: PromptContextSnapshot
+  snapshot_digest: String
+  ordered_segments: List<PromptSegment>
+}
+
+// ASSEMBLY REFUSES rather than concatenate-and-hope. A Withdrawn input is excluded from rendering
+// (its standing is the whole point), but a REQUIRED segment whose source is Withdrawn is a
+// contradiction the plan cannot honor -- refuse and name it. Unresolved guidance is required by
+// construction.
+type PromptPlanAssembly
+  = PromptPlanReady { plan: PromptPlan }
+  | PromptPlanRefused { detail: String }
+
+fn prompt_input_is_withdrawn(input: PromptInput) -> Bool {
+  match input {
+    EvidenceInput { artifact: _, subject: _, standing } =>
+      match standing {
+        Withdrawn => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE ASSEMBLY LAW: the segments rendered are exactly the inputs minus the withdrawn, in declared
+// order; a segment marked required whose source is withdrawn refuses the whole plan. Render
+// functions for each input kind are the caller's -- this module owns the envelope, not the prose.
+fn prompt_plan_assemble(
+  snapshot: PromptContextSnapshot,
+  rendered: List<PromptSegment>,
+) -> PromptPlanAssembly {
+  let withdrawn_required = filter(rendered, seg => seg.required && prompt_input_is_withdrawn(input: seg.source))
+  if count(withdrawn_required) > 0 {
+    PromptPlanRefused {
+      detail: join([
+        "the plan marks ", to_string(value: count(withdrawn_required)),
+        " segment(s) required while their source inputs stand Withdrawn; resolve the standing or",
+        " drop the requirement before assembly",
+      ], ""),
+    }
+  } else {
+    PromptPlanReady {
+      plan: PromptPlan {
+        snapshot: snapshot,
+        snapshot_digest: prompt_snapshot_digest(snapshot: snapshot),
+        ordered_segments: rendered,
+      },
+    }
+  }
+}
+
+// THE RENDER RECEIPT, one per provider projection: which snapshot, which inputs, and the digest of
+// exactly what was rendered. Cache-hit and cache-miss renders of the same plan must produce the
+// same digest -- residency is a performance fact, never part of correctness.
+type PromptRenderReceipt {
+  plan_snapshot_digest: String
+  input_digests: List<String>
+  rendered_digest: String
+  provider_projection: String
+}
+
+fn prompt_render_receipt(plan: PromptPlan, rendered_text: String, provider_projection: String) -> PromptRenderReceipt {
+  PromptRenderReceipt {
+    plan_snapshot_digest: plan.snapshot_digest,
+    input_digests: map(plan.snapshot.inputs, i => content_hash_atom(value: prompt_input_canonical_text(input: i) as NonEmptyStr).digest as String),
+    rendered_digest: content_hash_atom(value: join(["prompt-render/v1", rendered_text], "") as NonEmptyStr).digest as String,
+    provider_projection: provider_projection,
+  }
+}
