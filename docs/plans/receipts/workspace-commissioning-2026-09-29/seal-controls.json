@@ -1,0 +1,54 @@
+{
+  "standing": "three scoped compiler admission controls passed",
+  "memory_max_bytes": 6442450944,
+  "swap_max_bytes": 0,
+  "binary_sha256": "717e9b4159dc7bc722e94a235325e6760f5acd246e63d8bed14b828dac970243",
+  "source_manifest_sha256": "17a1ab972bbdcbd964e3ae0528932679565065c49a8e5f401d1510cd6f02fd11",
+  "source_module_count": 464,
+  "head": "bb9a1d67b6704e2495f9a62d7767d9f505803bcc",
+  "scope": "byte-copied dependency snapshot; store indentation normalized after snapshot, before commit",
+  "claims": [
+    "PASS initial_admission_cannot_forge_committed_supply",
+    "PASS supply_cannot_skip_fresh_provenance_readback",
+    "PASS the_public_fresh_readback_route_preserves_constructor_admission"
+  ],
+  "changed_sources": [
+    {
+      "module": "gunbc.workspace_commissioning",
+      "source": "dag/gunbc/workspace_commissioning.dag",
+      "copy": "target/commissioning-seals-v5/gunbc.workspace_commissioning.dag",
+      "sha256": "cf9bf52cb9a444d2ee691974dd08a8f07b3b4ebf4bf09fac3ada12a59fd89894"
+    },
+    {
+      "module": "gunbc.workspace_commissioning_evidence",
+      "source": "dag/gunbc/workspace_commissioning_evidence.dag",
+      "copy": "target/commissioning-seals-v5/gunbc.workspace_commissioning_evidence.dag",
+      "sha256": "d2e3e0371a65c76bdbfb51994295b9fe054332141ff4341c76ac9cebeea555bf"
+    },
+    {
+      "module": "gunbc.workspace_commissioning_location",
+      "source": "dag/gunbc/workspace_commissioning_location.dag",
+      "copy": "target/commissioning-seals-v5/gunbc.workspace_commissioning_location.dag",
+      "sha256": "bea006be2c947519d36f2135294c772c62862b0f435b2e18808c3d4912c383c5"
+    },
+    {
+      "module": "gunbc.workspace_commissioning_store",
+      "source": "dag/gunbc/workspace_commissioning_store.dag",
+      "copy": "target/commissioning-seals-v5/gunbc.workspace_commissioning_store.dag",
+      "sha256": "a17013e0ee3ae51c6a20f8add733f1946e16cfdf1e8f375880b3cdf3e60701c0"
+    },
+    {
+      "module": "gunbc.workspace_commissioning_transaction",
+      "source": "dag/gunbc/workspace_commissioning_transaction.dag",
+      "copy": "target/commissioning-seals-v5/gunbc.workspace_commissioning_transaction.dag",
+      "sha256": "1df689550b4ce30b819356c456f0a2def3606962d8e2e1e1ad4957cf7c159ae5"
+    },
+    {
+      "module": "test.claim.workspace_commissioning_seal_witness",
+      "source": "dag/test/claim/workspace_commissioning_seal_witness_test.dag",
+      "copy": "target/commissioning-seals-v5/test.claim.workspace_commissioning_seal_witness.dag",
+      "sha256": "02e664c6de75b3ff8b5fe5ae9a177769040fa7a9cd8b1b9d25cb3fbacacbba36"
+    }
+  ],
+  "log_sha256": "bb37db5dd79f81eb4dd70634ec650ad98d7b4560fe584645686b168d5f83f494"
+}

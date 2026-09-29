@@ -1,0 +1,27 @@
+{
+  "revision": "bb9a1d67b6704e2495f9a62d7767d9f505803bcc",
+  "binary_sha256": "717e9b4159dc7bc722e94a235325e6760f5acd246e63d8bed14b828dac970243",
+  "checks": [
+    {
+      "entry": "test.claim.workspace_commissioning_transaction_witness",
+      "returncode": 0,
+      "seconds": 88.443,
+      "passed_claims": 8,
+      "log": "/home/briansrls/scratch-wt/workspace-commissioning-production/target/commissioning-qualification/test.claim.workspace_commissioning_transaction_witness.log"
+    },
+    {
+      "entry": "test.claim.workspace_commissioning_store_witness",
+      "returncode": 0,
+      "seconds": 90.896,
+      "passed_claims": 4,
+      "log": "/home/briansrls/scratch-wt/workspace-commissioning-production/target/commissioning-qualification/test.claim.workspace_commissioning_store_witness.log"
+    },
+    {
+      "entry": "test.manual.workspace_commissioning_typecheck",
+      "returncode": 0,
+      "seconds": 123.295,
+      "passed_claims": 0,
+      "log": "/home/briansrls/scratch-wt/workspace-commissioning-production/target/commissioning-qualification/test.manual.workspace_commissioning_typecheck.log"
+    }
+  ]
+}
