@@ -1,5 +1,6 @@
 module gunbc.runner_microvm_cell_readiness_store
 
+import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
@@ -121,7 +122,7 @@ data cell_readiness_store_filesystem_receipt_gap: DissolutionCondition = unbound
   description: "gunbc.runner_microvm_cell_readiness_store reaches the filesystem -- read_cell_readiness_store lists and reads, persist_one_record writes and reads back -- and none of it has executed against a real filesystem, because the only addressable path is the production store root. TRIGGER: the store root carried as a value (the std.artifact_store MaterializationStoreRoot shape), so a receipt can address a directory it owns. SUFFICIENT FOR deleting this row. NOT satisfied by a wet claim against the production path." as NonEmptyStr,
 )
 
-data cell_readiness_store_dir: String = "/var/lib/gunbc/microvm-cell-readiness"
+data cell_readiness_store_dir: String = cell_readiness_store_location
 
 data cell_record_suffix: String = ".json"
 

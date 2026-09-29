@@ -1,5 +1,6 @@
 module gunbc.live_deploy.emit
 
+import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.live_deploy.belt_cadence { belt_tick_cadence }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
@@ -2141,7 +2142,10 @@ fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeli
         ),
       ),
       concat(
-        [deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir))],
+        [
+          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir)),
+          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: cell_readiness_store_location)),
+        ],
         concat(microvm_slot_unit_write_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
       ),
     ),
