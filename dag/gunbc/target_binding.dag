@@ -41,6 +41,7 @@ type TargetProducer
   | FloorMemoryQualificationProducer
   | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
+  | SelfHostBehavioralEquivalenceProducer
   | NativeClaimProgramProducer { entry: String }
 
 type TargetBinding {

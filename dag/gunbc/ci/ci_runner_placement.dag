@@ -10,17 +10,8 @@ import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation {
-  RunnerSlotCpuQuota,
-  CpuQuotaResolved,
-  SlotCpuQuotaUnbounded,
-  gunbc_runner_slot_desired,
-  gunbc_runner_committed_width,
-  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
-  runner_width_unresolved_cause_text,
-  gunbc_runner_slice_cap_for_width,
-  host_runner_pool_charge,
-}
+import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text, gunbc_runner_slice_cap_for_width, host_runner_pool_charge }
+import gunbc.runner_slot_desired { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
   SessionReservationNotApplicable, SessionReservationAuthorityDisagreement,

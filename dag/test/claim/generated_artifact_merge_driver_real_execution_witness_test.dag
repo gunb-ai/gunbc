@@ -18,7 +18,7 @@ import extdeps.tools.sed
 import extdeps.tools.sed { sed_script_arguments }
 import gunbc.repo_local_git_config { generated_artifact_merge_driver_key }
 import gunbc.ci_spec { generated_artifact_author_regen_command }
-import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
+import gunbc.generated_artifact_registry { heal_regenerated_after_provisional_merge_paths }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

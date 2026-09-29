@@ -1,41 +1,56 @@
 module v2.workflow.ci_release_build_emit
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
-
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_spec {
-  ci_floor_build_verify_script,
+  ci_floor_build_verify_stmt,
   ci_release_build_line
 }
-import gunbc.merge_admission_produce { ci_repo_root_shell }
-import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_script }
-
-// Release-build shell emission (retry + verify) lives here, separate from ci_workflow_run_emit, so gunbc.ci_materialization can import ci_release_build_script without a module cycle (ci_materialization ↔ ci_workflow_run_emit via ci_sccache_provider_shell_injection).
-data ci_release_build_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "v2.workflow.ci_release_build_emit",
-    decl_name: "ci_release_build_script",
-    field: WholeDeclaration
-  }
+import gunbc.fleet_release_bins_key { root_statement }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_from_lits,
+  bash_build_or_else,
+  bash_build_with_redir
 }
+import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_script }
+import v2.workflow.bash_emit { bash_emit_program_sequence_script, bash_emit_stmts }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node }
+import std.types { List }
 
-data ci_release_build_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+// Release-build shell emission (retry + verify) lives here, separate from ci_workflow_run_emit, so
+// gunbc.ci_materialization can import ci_release_build_script without a module cycle
+// (ci_materialization ↔ ci_workflow_run_emit via ci_sccache_provider_shell_injection).
+//
+// The ROOT stamp, the artifact verification and the sccache report are v2.extdeps.languages.bash_build
+// statements serialized by v2.workflow.bash_emit. ROOT is gunbc.fleet_release_bins_key
+// root_statement, the same stamp the release-bins steps of this job use. The EAGAIN retry core between
+// them stays the v2.std.orchestration Retry that v2.workflow.ci_retry_emit already emits, joined by
+// the one program join.
 
-fn ci_release_build_script() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: ci_release_build_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      concat(
-        ci_cargo_eagain_retry_script(command: ci_release_build_line()),
-        concat(
-          ci_floor_build_verify_script(),
-          "sccache --show-stats 2>/dev/null || true"
-        )
-      )
-    )
+fn ci_release_build_sccache_stats_stmt() -> Node {
+  bash_build_or_else(
+    left: bash_build_with_redir(
+      inner: bash_build_command_from_lits(lits: ["sccache", "--show-stats"]),
+      redir: ^bash_production_fold_redir_stderr_null
+    ),
+    right: bash_build_command_from_lits(lits: ["true"])
   )
 }
 
+// A refused emission is a marker that is not valid workflow shell, so the committed-workflow drift
+// gate turns red. It is never a partial script (DESIGN 5: refuse, never widen).
+data ci_release_build_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ v2.workflow.ci_release_build_emit ci_release_build_script: the bash serializer refused a release-build statement; this marker is not valid workflow shell\n"
+
+fn ci_release_build_emit_stmts(statements: List<Node>) -> String {
+  match bash_emit_stmts(statements: statements, set_e: false) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => ci_release_build_refused_poison
+  }
+}
+
+fn ci_release_build_script() -> String {
+  bash_emit_program_sequence_script(programs: [
+    ci_release_build_emit_stmts(statements: [root_statement()]),
+    ci_cargo_eagain_retry_script(command: ci_release_build_line()),
+    ci_release_build_emit_stmts(statements: [ci_floor_build_verify_stmt(), ci_release_build_sccache_stats_stmt()])
+  ])
+}

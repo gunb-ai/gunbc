@@ -1247,6 +1247,18 @@ pub enum InterpError {
         argv0: String,
         cause: String,
     },
+    /// An operation issued while a modeled operation realization is active that the realization
+    /// does not answer: uncovered, bound to another handler, unbound, bound twice, a harness fault,
+    /// or a frame admitted outside Hermetic execution. No real transport, fixture or mock is tried.
+    ModeledOperationRefused {
+        operation: String,
+        cause: String,
+    },
+    /// A modeled realization reported that the worker died after this operation and before any
+    /// reply. The evaluation stops here; the frame returns `WitnessInterrupted`.
+    ModeledWorkerKilled {
+        operation: String,
+    },
     /// A host-tool program could not be resolved to an existing executable path.
     /// `probed` carries every candidate location examined so the refusal is located
     /// and countable by class rather than by grepping a format string.
@@ -1432,6 +1444,16 @@ impl fmt::Display for InterpError {
                 f,
                 "argv exceeds host arg limit: '{}' invocation carries a {}-byte argument > {}-byte host MAX_ARG_STRLEN — route large payloads through stdin, not argv (Linux execve(2) E2BIG; extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen; DESIGN §5 typed refusal in place of an opaque os error 7)",
                 argv0, actual_bytes, limit_bytes
+            ),
+            InterpError::ModeledOperationRefused { operation, cause } => write!(
+                f,
+                "modeled operation realization refused {}: {} (no real transport, recorded fixture or published mock was consulted)",
+                operation, cause
+            ),
+            InterpError::ModeledWorkerKilled { operation } => write!(
+                f,
+                "modeled operation realization: the worker was killed after {} and before any reply",
+                operation
             ),
             InterpError::ShellSpawnRefused { argv0, cause } => write!(
                 f,
@@ -7769,6 +7791,9 @@ impl Drop for WitnessFramePop {
         WITNESS_EVALUATION_FRAMES.with(|frames| {
             let _ = frames.borrow_mut().pop();
         });
+        MODELED_REALIZATION_SLOTS.with(|slots| {
+            let _ = slots.borrow_mut().pop();
+        });
     }
 }
 
@@ -7813,21 +7838,617 @@ fn witness_evaluation_diagnostic_value(
     }
 }
 
-fn witness_evaluation_variant(
-    ctx: &InterpContext,
-    variant: &str,
-    field: &str,
-    value: Value,
-) -> Value {
-    Value::Variant {
-        type_name: ctx.sym("WitnessEvaluation"),
-        variant_name: ctx.sym(variant),
-        fields: Rc::new(vec![(ctx.sym(field), value)]),
+fn current_witness_evaluation_frame() -> Option<Value> {
+    WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow().last().cloned())
+}
+
+// HAND-RUST GATE, seed-retained, admitted by `gunbc.modeled_operation_realization_seed_growth`
+// `modeled_operation_realization_seed_growth_justification` (gunbc#12486, #12423 decision
+// 5858742863). This is the seed realization of a .dag contract: selection
+// (`operation_handler_selection`), duplicate admission, the virtual clock and every scenario
+// transition are .dag; this code keeps a state value, a clock value and the dispatch log, and
+// dispatches. Lane: ROADMAP `v1-materialization-kernel` (rn_53JPH6BB7G588K7DMZNWM0E3AS), with the
+// witness-frame stack above. Deletion condition, checkable by execution: the emitted runtime realizes
+// the evaluation frame and its modeled realization, and `test.claim.operation_realization_witness_test`
+// stays green without this code.
+/// The dynamic-extent state of one witness frame's modeled operation realization. The model is
+/// `.dag` (`v2.std.operation_realization`): this slot only holds its current state, the virtual
+/// clock and the dispatch log the dispatcher writes. It is pushed and popped with its frame, so a
+/// nested frame has its own slot and an outer slot is untouched by an inner scenario.
+struct ModeledRealizationSlot {
+    envelope: Value,
+    realization: Value,
+    identity: String,
+    state: Value,
+    /// The virtual clock, an opaque `std.measure` `Second`: the dispatcher never reads its
+    /// representation, it only passes it to `virtual_clock_after`.
+    now: Value,
+    route: Vec<Value>,
+    interrupted: Option<Value>,
+}
+
+thread_local! {
+    static MODELED_REALIZATION_SLOTS: RefCell<Vec<Option<ModeledRealizationSlot>>> =
+        const { RefCell::new(Vec::new()) };
+    /// Nonzero while a modeled handler or advance function is being applied.
+    static MODELED_HANDLER_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+struct ModeledHandlerScope;
+
+impl ModeledHandlerScope {
+    fn enter() -> Self {
+        MODELED_HANDLER_DEPTH.with(|d| d.set(d.get() + 1));
+        ModeledHandlerScope
     }
 }
 
-fn current_witness_evaluation_frame() -> Option<Value> {
-    WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow().last().cloned())
+impl Drop for ModeledHandlerScope {
+    fn drop(&mut self) {
+        MODELED_HANDLER_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+    }
+}
+
+fn apply_modeled_handler(
+    closure: &Value,
+    args: &[Value],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let _scope = ModeledHandlerScope::enter();
+    apply_closure(closure, args, env, ctx)
+}
+
+fn modeled_refused(operation: &str, cause: impl Into<String>) -> InterpError {
+    InterpError::ModeledOperationRefused {
+        operation: operation.to_string(),
+        cause: cause.into(),
+    }
+}
+
+fn record_field(ctx: &InterpContext, value: &Value, name: &str) -> Option<Value> {
+    match value {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+            ctx.field(fields, name).cloned()
+        }
+        _ => None,
+    }
+}
+
+fn variant_parts(ctx: &InterpContext, value: &Value) -> Option<(String, Rc<Vec<(Symbol, Value)>>)> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => Some((ctx.resolve(*variant_name).to_string(), fields.clone())),
+        _ => None,
+    }
+}
+
+fn record_value(ctx: &InterpContext, type_name: &str, fields: Vec<(&str, Value)>) -> Value {
+    Value::Record {
+        type_name: ctx.sym(type_name),
+        fields: Rc::new(sorted_fields(
+            fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+        )),
+    }
+}
+
+fn variant_value(
+    ctx: &InterpContext,
+    type_name: &str,
+    variant: &str,
+    fields: Vec<(&str, Value)>,
+) -> Value {
+    Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(sorted_fields(
+            fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+        )),
+    }
+}
+
+/// Admits a frame's realization before its subject runs. Refuses outside Hermetic execution (the
+/// realization is the DRY arm; a Wet or Record run -- including any physical qualification -- can
+/// never be answered by a model), a realization binding one identity twice, and a binding whose
+/// identity resolves to no declared operation.
+fn admit_modeled_realization(
+    frame: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Option<ModeledRealizationSlot>> {
+    // FRAME COMPOSITION: while a modeled realization is active, NO further witness frame may open
+    // inside it -- not one without a realization, not one with another realization, not one with
+    // the same. Any nested frame would sit above the active slot and could only weaken it (a
+    // realization-less frame would let the dispatcher fall through to ordinary dispatch while the
+    // parent is still in force). The refusal is independent of what the nested frame carries.
+    let enclosing_modeled =
+        MODELED_REALIZATION_SLOTS.with(|slots| slots.borrow().iter().any(|slot| slot.is_some()));
+    if enclosing_modeled {
+        return Err(modeled_refused(
+            "(frame)",
+            "a witness frame cannot open while a modeled operation realization is active; nested frames are refused whatever they carry",
+        ));
+    }
+    let realization = match record_field(ctx, frame, "realization") {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::Variant {
+            variant_name,
+            fields,
+            ..
+        }) if ctx.resolve(variant_name) == "Present" => {
+            ctx.field(&fields, "value").cloned().ok_or_else(|| {
+                modeled_refused(
+                    "(frame)",
+                    "the frame's realization is Present with no value",
+                )
+            })?
+        }
+        Some(Value::Variant { variant_name, .. }) if ctx.resolve(variant_name) == "Absent" => {
+            return Ok(None)
+        }
+        Some(other) => other,
+    };
+    let mode = variant_value(
+        ctx,
+        "ExecutionMode",
+        match ctx.execution_mode {
+            ExecutionMode::Hermetic => "Hermetic",
+            ExecutionMode::Wet => "Wet",
+            ExecutionMode::Record => "Record",
+        },
+        vec![],
+    );
+    let admitted = run_in_context_with_args(
+        ctx,
+        "modeled_realization_admitted_in",
+        &[(Some("mode".to_string()), mode)],
+        false,
+    )?;
+    if !matches!(admitted, Value::Bool(true)) {
+        return Err(modeled_refused(
+            "(frame)",
+            "a modeled operation realization is admitted only under Hermetic execution; this run dispatches real effects",
+        ));
+    }
+    let envelope = record_field(ctx, frame, "envelope")
+        .ok_or_else(|| modeled_refused("(frame)", "the frame carries no envelope"))?;
+    let identity = match record_field(ctx, &realization, "identity") {
+        Some(Value::Str(s)) => s.to_string(),
+        _ => {
+            return Err(modeled_refused(
+                "(frame)",
+                "the realization carries no identity",
+            ))
+        }
+    };
+    let duplicate = run_in_context_with_args(
+        ctx,
+        "operation_realization_duplicate",
+        &[(Some("realization".to_string()), realization.clone())],
+        false,
+    )?;
+    if let Some((name, fields)) = variant_parts(ctx, &duplicate) {
+        if name == "Present" {
+            let at = ctx
+                .field(&fields, "value")
+                .and_then(|b| record_field(ctx, b, "at"))
+                .map(|at| format!("{at}"))
+                .unwrap_or_default();
+            return Err(modeled_refused(
+                "(frame)",
+                format!("the realization binds one operation identity twice: {at}"),
+            ));
+        }
+    }
+    let bindings = match record_field(ctx, &realization, "bindings") {
+        Some(Value::List(items)) => items,
+        _ => {
+            return Err(modeled_refused(
+                "(frame)",
+                "the realization carries no binding list",
+            ))
+        }
+    };
+    for binding in bindings.iter() {
+        let at = record_field(ctx, binding, "at")
+            .ok_or_else(|| modeled_refused("(frame)", "a binding carries no operation identity"))?;
+        let part = |name: &str| match record_field(ctx, &at, name) {
+            Some(Value::Str(s)) => s.to_string(),
+            _ => String::new(),
+        };
+        let (path, service, operation) = (part("path"), part("service"), part("operation"));
+        let resolves = ctx
+            .indexes
+            .service_ops
+            .get(&format!("{service}.{operation}"))
+            .is_some_and(|(_, op_node)| op_node.span.file.as_ref() as &str == path.as_str());
+        if !resolves {
+            return Err(modeled_refused(
+                "(frame)",
+                format!(
+                    "binding {service}.{operation} declared at {path} resolves to no declared operation with that identity"
+                ),
+            ));
+        }
+    }
+    let initial = record_field(ctx, &realization, "initial")
+        .ok_or_else(|| modeled_refused("(frame)", "the realization carries no initial state"))?;
+    // The realization's clock starts at its declared epoch -- the origin for a fresh scenario, the
+    // interrupted attempt's clock (plus any absence the supervisor declares) for a resume -- and
+    // every event due by then fires before the subject issues anything.
+    let now = record_field(ctx, &realization, "epoch")
+        .ok_or_else(|| modeled_refused("(frame)", "the realization carries no epoch"))?;
+    let advance = record_field(ctx, &realization, "advance")
+        .ok_or_else(|| modeled_refused("(frame)", "the realization carries no advance function"))?;
+    let state = apply_modeled_handler(&advance, &[initial, now.clone()], env, ctx)?;
+    Ok(Some(ModeledRealizationSlot {
+        envelope,
+        realization,
+        identity,
+        state,
+        now,
+        route: Vec::new(),
+        interrupted: None,
+    }))
+}
+
+fn op_declared_readonly(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
+    op_node.properties.iter().any(|p| {
+        matches!(
+            crate::v1_std_core::field_init_operation_modifier(p.clone(), ctx.si()),
+            Some(crate::v1_std_core::OperationModifier::Readonly)
+        )
+    })
+}
+
+/// The BoundOperationInvocation (`v2.std.operation_argv`) of one dispatched operation: its resolved
+/// identity -- declaring file, service, operation -- and each declared input by name.
+fn bound_operation_invocation_value(
+    service_name: &str,
+    op_name: &str,
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let at = operation_ref_value(&op_node.span.file, service_name, op_name, ctx);
+    let mut bindings = Vec::new();
+    for p in op_node.params.iter() {
+        let name = param_node_name_at(p.clone(), ctx.si());
+        let Some(value) = param_env.lookup(ctx.sym(&name)) else {
+            continue;
+        };
+        let bound = match value {
+            Value::List(items) => {
+                let texts: Vec<Value> = items.iter().map(|v| str_value(render_input(v))).collect();
+                variant_value(
+                    ctx,
+                    "OperationInputValue",
+                    "InputTextList",
+                    vec![("items", list_value(texts))],
+                )
+            }
+            other => variant_value(
+                ctx,
+                "OperationInputValue",
+                "InputText",
+                vec![("text", str_value(render_input(&other)))],
+            ),
+        };
+        bindings.push(record_value(
+            ctx,
+            "OperationInputBinding",
+            vec![("name", str_value(name)), ("value", bound)],
+        ));
+    }
+    Ok(record_value(
+        ctx,
+        "BoundOperationInvocation",
+        vec![("at", at), ("bindings", list_value(bindings))],
+    ))
+}
+
+fn render_input(value: &Value) -> String {
+    match value {
+        Value::Str(s) => s.to_string(),
+        Value::Int(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        other => format!("{other}"),
+    }
+}
+
+/// Answers one operation from the active modeled realization, or `None` when no frame carries one.
+/// While one is active this is the ONLY route: every refusal is terminal and nothing falls through
+/// to a real transport, the recorded fixture store, a published mock or the checkout carve-out.
+fn dispatch_modeled_operation(
+    service_name: &str,
+    op_name: &str,
+    op_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Option<Value>> {
+    let snapshot = MODELED_REALIZATION_SLOTS.with(|slots| {
+        slots.borrow().last().and_then(|slot| {
+            slot.as_ref().map(|s| {
+                (
+                    s.envelope.clone(),
+                    s.realization.clone(),
+                    s.identity.clone(),
+                    s.state.clone(),
+                    s.now.clone(),
+                    s.route.len() as i64,
+                )
+            })
+        })
+    });
+    let Some((envelope, realization, identity, state, now, ordinal)) = snapshot else {
+        return Ok(None);
+    };
+    let key = format!("{service_name}.{op_name}");
+    let invocation =
+        bound_operation_invocation_value(service_name, op_name, op_node, param_env, ctx)?;
+    let log =
+        |outcome: Value, completed: Value, state: Option<Value>, interrupted: bool| -> Value {
+            let record = record_value(
+                ctx,
+                "DispatchRecord",
+                vec![
+                    ("ordinal", Value::Int(ordinal)),
+                    ("invocation", invocation.clone()),
+                    ("realization", str_value(identity.clone())),
+                    ("dispatched_at", now.clone()),
+                    ("completed_at", completed.clone()),
+                    ("outcome", outcome),
+                ],
+            );
+            MODELED_REALIZATION_SLOTS.with(|slots| {
+                if let Some(Some(slot)) = slots.borrow_mut().last_mut() {
+                    slot.route.push(record.clone());
+                    slot.now = completed;
+                    if let Some(s) = state {
+                        slot.state = s;
+                    }
+                    if interrupted {
+                        slot.interrupted = Some(record.clone());
+                    }
+                }
+            });
+            record
+        };
+    let selection = run_in_context_with_args(
+        ctx,
+        "operation_handler_selection",
+        &[
+            (Some("env".to_string()), envelope),
+            (Some("realization".to_string()), realization.clone()),
+            (Some("invocation".to_string()), invocation.clone()),
+            (
+                Some("readonly".to_string()),
+                Value::Bool(op_declared_readonly(op_node, ctx)),
+            ),
+        ],
+        false,
+    )?;
+    let (arm, fields) = variant_parts(ctx, &selection)
+        .ok_or_else(|| modeled_refused(&key, "handler selection returned a malformed value"))?;
+    let binding = match arm.as_str() {
+        "OperationHandlerSelected" => ctx
+            .field(&fields, "binding")
+            .cloned()
+            .ok_or_else(|| modeled_refused(&key, "selection omitted its binding"))?,
+        "OperationHandlerRefused" => {
+            let cause = ctx.field(&fields, "cause").cloned().unwrap_or(Value::Unit);
+            let rendered = format!("{cause}");
+            log(
+                variant_value(
+                    ctx,
+                    "DispatchOutcome",
+                    "DispatchUnbound",
+                    vec![("cause", cause)],
+                ),
+                now.clone(),
+                None,
+                false,
+            );
+            return Err(modeled_refused(&key, rendered));
+        }
+        other => {
+            return Err(modeled_refused(
+                &key,
+                format!("unrecognized handler selection {other}"),
+            ))
+        }
+    };
+    let harness_fault = |reason: String| -> InterpError {
+        log(
+            variant_value(
+                ctx,
+                "DispatchOutcome",
+                "DispatchHarnessFault",
+                vec![("reason", str_value(reason.clone()))],
+            ),
+            now.clone(),
+            None,
+            false,
+        );
+        modeled_refused(&key, format!("harness fault: {reason}"))
+    };
+    if !is_shell_transport(transport.clone()) {
+        return Err(harness_fault(
+            "a modeled realization supplies shell transport observations only; this operation's transport is not shell".to_string(),
+        ));
+    }
+    let handler = record_field(ctx, &binding, "handler")
+        .ok_or_else(|| harness_fault("the binding carries no handler".to_string()))?;
+    let call = record_value(
+        ctx,
+        "OperationCall",
+        vec![("invocation", invocation.clone()), ("now", now.clone())],
+    );
+    // A HANDLER OR advance THAT FAILS STILL LEAVES A RECORD. The dispatch happened -- this operation,
+    // at this ordinal -- so its record is finalized with the original cause, the last established
+    // state and the unadvanced clock, and the cause then propagates unchanged. No completion is
+    // manufactured: the outcome is a callback failure, never an observation.
+    let callback_failed = |stage: &str, error: &InterpError, state: Option<Value>| {
+        log(
+            variant_value(
+                ctx,
+                "DispatchOutcome",
+                "DispatchCallbackFailed",
+                vec![
+                    ("stage", variant_value(ctx, "CallbackStage", stage, vec![])),
+                    ("cause", str_value(error.to_string())),
+                ],
+            ),
+            now.clone(),
+            state,
+            false,
+        );
+    };
+    let step = match apply_modeled_handler(&handler, &[state, call], env, ctx) {
+        Ok(step) => step,
+        Err(error) => {
+            callback_failed("HandlerFailed", &error, None);
+            return Err(error);
+        }
+    };
+    let (step_arm, step_fields) = variant_parts(ctx, &step)
+        .ok_or_else(|| harness_fault("the handler returned a malformed step".to_string()))?;
+    match step_arm.as_str() {
+        "OperationObserved" => {
+            let observation = ctx
+                .field(&step_fields, "observation")
+                .cloned()
+                .ok_or_else(|| {
+                    harness_fault("an observed step carries no observation".to_string())
+                })?;
+            let stepped = ctx
+                .field(&step_fields, "state")
+                .cloned()
+                .ok_or_else(|| harness_fault("an observed step carries no state".to_string()))?;
+            let elapsed = ctx.field(&step_fields, "elapsed").cloned().ok_or_else(|| {
+                harness_fault("an observed step carries no elapsed time".to_string())
+            })?;
+            let completed = run_in_context_with_args(
+                ctx,
+                "virtual_clock_after",
+                &[
+                    (Some("now".to_string()), now.clone()),
+                    (Some("elapsed".to_string()), elapsed),
+                ],
+                false,
+            )?;
+            let advance = record_field(ctx, &realization, "advance").ok_or_else(|| {
+                harness_fault("the realization carries no advance function".to_string())
+            })?;
+            let advanced = match apply_modeled_handler(
+                &advance,
+                &[stepped.clone(), completed.clone()],
+                env,
+                ctx,
+            ) {
+                Ok(advanced) => advanced,
+                Err(error) => {
+                    callback_failed("AdvanceFailed", &error, Some(stepped));
+                    return Err(error);
+                }
+            };
+            let shell = shell_result_of_observation(&observation, ctx).map_err(&harness_fault)?;
+            log(
+                variant_value(
+                    ctx,
+                    "DispatchOutcome",
+                    "DispatchObserved",
+                    vec![("observation", observation)],
+                ),
+                completed,
+                Some(advanced),
+                false,
+            );
+            shell_result_projection(shell, op_node, ctx).map(Some)
+        }
+        "OperationWorkerKilled" => {
+            let committed = ctx
+                .field(&step_fields, "committed")
+                .cloned()
+                .unwrap_or(Value::Bool(false));
+            let stepped = ctx
+                .field(&step_fields, "state")
+                .cloned()
+                .ok_or_else(|| harness_fault("a killed step carries no state".to_string()))?;
+            log(
+                variant_value(
+                    ctx,
+                    "DispatchOutcome",
+                    "DispatchWorkerKilled",
+                    vec![("committed", committed)],
+                ),
+                now.clone(),
+                Some(stepped),
+                true,
+            );
+            Err(InterpError::ModeledWorkerKilled { operation: key })
+        }
+        "OperationHarnessFault" => {
+            let reason = match ctx.field(&step_fields, "reason") {
+                Some(Value::Str(s)) => s.to_string(),
+                _ => "unstated".to_string(),
+            };
+            Err(harness_fault(reason))
+        }
+        other => Err(harness_fault(format!("unrecognized step {other}"))),
+    }
+}
+
+/// A modeled ShellExchangeObservation as the shell transport result the real dispatcher produces.
+fn shell_result_of_observation(
+    observation: &Value,
+    ctx: &InterpContext,
+) -> Result<InterpResult<ShellResult>, String> {
+    let (arm, fields) = variant_parts(ctx, observation).ok_or("the observation is malformed")?;
+    if arm != "ShellObserved" {
+        return Err(format!("unsupported transport observation {arm}"));
+    }
+    let shell = ctx
+        .field(&fields, "observation")
+        .ok_or("ShellObserved carries no observation")?;
+    let (shell_arm, shell_fields) =
+        variant_parts(ctx, shell).ok_or("the shell observation is malformed")?;
+    let text = |name: &str| match ctx.field(&shell_fields, name) {
+        Some(Value::Str(s)) => Ok(s.to_string()),
+        _ => Err(format!("the shell observation carries no {name}")),
+    };
+    match shell_arm.as_str() {
+        "ShellProcessExited" => {
+            let exit_code = match ctx.field(&shell_fields, "exit_code") {
+                Some(Value::Int(n)) => {
+                    i32::try_from(*n).map_err(|_| "exit_code out of range".to_string())?
+                }
+                _ => return Err("the shell observation carries no exit_code".to_string()),
+            };
+            let stream = |t: String| bounded_shell_host_drain::CapturedStreamEvidence {
+                total_bytes: t.len() as u64,
+                retained_bytes: t.len() as u64,
+                truncated: false,
+                digest_hex: None,
+                retained_text: t.trim_end().to_string(),
+            };
+            Ok(Ok(ShellResult {
+                exit_code,
+                stdout: stream(text("stdout")?),
+                stderr: stream(text("stderr")?),
+            }))
+        }
+        "ShellProcessSpawnRefused" => Ok(Err(InterpError::ShellSpawnRefused {
+            argv0: text("program")?,
+            cause: text("cause")?,
+        })),
+        other => Err(format!("unrecognized shell observation {other}")),
+    }
 }
 
 fn try_witness_evaluation_dispatch(
@@ -7875,18 +8496,79 @@ fn try_witness_evaluation_dispatch(
                     msg: "evaluate_in_witness_frame requires a subject".to_string(),
                 }));
             };
-            WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow_mut().push(frame));
-            let evaluated = {
-                let _pop = WitnessFramePop;
-                apply_closure(&subject, &[Value::Bool(true)], env, ctx)
+            let empty_route = || list_value(Vec::<Value>::new());
+            let absent_state = || variant_value(ctx, "Optional", "Absent", vec![]);
+            let admitted = match admit_modeled_realization(&frame, env, ctx) {
+                Ok(slot) => slot,
+                Err(error) => {
+                    return Some(Ok(variant_value(
+                        ctx,
+                        "WitnessEvaluation",
+                        "WitnessRefused",
+                        vec![
+                            (
+                                "diagnostic",
+                                witness_evaluation_diagnostic_value(ctx, call_node, &error),
+                            ),
+                            ("route", empty_route()),
+                            ("state", absent_state()),
+                        ],
+                    )))
+                }
             };
-            Some(Ok(match evaluated {
-                Ok(value) => witness_evaluation_variant(ctx, "WitnessReturned", "value", value),
-                Err(error) => witness_evaluation_variant(
+            WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow_mut().push(frame));
+            MODELED_REALIZATION_SLOTS.with(|slots| slots.borrow_mut().push(admitted));
+            let (evaluated, slot) = {
+                let _pop = WitnessFramePop;
+                let evaluated = apply_closure(&subject, &[Value::Bool(true)], env, ctx);
+                let slot = MODELED_REALIZATION_SLOTS
+                    .with(|slots| slots.borrow_mut().last_mut().and_then(|s| s.take()));
+                (evaluated, slot)
+            };
+            let (route, state, interrupted, clock) = match slot {
+                Some(slot) => (
+                    list_value(slot.route),
+                    Some(slot.state),
+                    slot.interrupted,
+                    Some(slot.now),
+                ),
+                None => (empty_route(), None, None, None),
+            };
+            let present = |v: Value| variant_value(ctx, "Optional", "Present", vec![("value", v)]);
+            Some(Ok(match (evaluated, interrupted, state, clock) {
+                (
+                    Err(InterpError::ModeledWorkerKilled { .. }),
+                    Some(at),
+                    Some(state),
+                    Some(now),
+                ) => variant_value(
                     ctx,
+                    "WitnessEvaluation",
+                    "WitnessInterrupted",
+                    vec![("at", at), ("route", route), ("state", state), ("now", now)],
+                ),
+                (Ok(value), _, state, _) => variant_value(
+                    ctx,
+                    "WitnessEvaluation",
+                    "WitnessReturned",
+                    vec![
+                        ("value", value),
+                        ("route", route),
+                        ("state", state.map(present).unwrap_or_else(absent_state)),
+                    ],
+                ),
+                (Err(error), _, state, _) => variant_value(
+                    ctx,
+                    "WitnessEvaluation",
                     "WitnessRefused",
-                    "diagnostic",
-                    witness_evaluation_diagnostic_value(ctx, call_node, &error),
+                    vec![
+                        (
+                            "diagnostic",
+                            witness_evaluation_diagnostic_value(ctx, call_node, &error),
+                        ),
+                        ("route", route),
+                        ("state", state.map(present).unwrap_or_else(absent_state)),
+                    ],
                 ),
             }))
         }
@@ -8256,8 +8938,8 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.coproduct_nullary_inhabitants" { "coproduct_nullary_inhabitants" } =>
                     crate::coproduct_reflection::eval_coproduct_nullary_inhabitants($ctx, $node, &$args),
             }
-            family STD_LEXING_BRIDGE_FNS "v2.std.compilers.lexing"
-                lookup_eval_call_bridge_std_compilers_lexing eval_call_bridge__v2_std_compilers_lexing_arm {
+            family STD_NODE_BRIDGE_FNS "v2.std.node"
+                lookup_eval_call_bridge_std_node eval_call_bridge__v2_std_node_arm {
                 arm "v4_bridge.symbol_intern_lexeme" { "symbol_intern_lexeme" } =>
                     crate::coproduct_reflection::eval_symbol_intern_lexeme($ctx, &$args),
                 arm "v4_bridge.symbol_lexeme" { "symbol_lexeme" } =>
@@ -12077,9 +12759,18 @@ fn eval_service_call(
     declared: ExpectationDeclaration,
 ) -> InterpResult<Value> {
     let expected = declared.resolve(service_name, op_name);
+    let key = format!("{}.{}", service_name, op_name);
+    // A modeled handler is a pure transition over its scenario state: it receives no effect
+    // context, so an operation issued from inside one refuses before anything is counted or
+    // dispatched -- including an operation reached indirectly through a helper it calls.
+    if MODELED_HANDLER_DEPTH.with(|d| d.get()) > 0 {
+        return Err(InterpError::ModeledOperationRefused {
+            operation: key,
+            cause: "a modeled realization handler issued an operation; handlers receive no effect context".to_string(),
+        });
+    }
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
-    let key = format!("{}.{}", service_name, op_name);
     let (service_node, op_node) =
         ctx.indexes
             .service_ops
@@ -12097,6 +12788,20 @@ fn eval_service_call(
         })?;
 
     let param_env = build_service_param_env(op_node, args, env, ctx)?;
+    // A modeled operation realization, when one is active, answers EXCLUSIVELY: it is consulted
+    // before the checkout-input carve-out, the recorded fixture store, the published mocks and wet
+    // dispatch, and none of those is reached while it is active (v2.std.operation_realization).
+    if let Some(answered) = dispatch_modeled_operation(
+        service_name,
+        op_name,
+        op_node,
+        transport,
+        &param_env,
+        env,
+        ctx,
+    )? {
+        return Ok(answered);
+    }
     let inputs_hash =
         crate::recorded_fixture::content_hash_service_inputs(op_node, &param_env, ctx);
     let inputs_json =
@@ -12283,40 +12988,11 @@ fn dispatch_service_wet(
         // An operation declaring an `extdeps.transports.shell` `ShellOutcome` field receives the
         // spawn failure as a value, with every other declared field absent; one declaring none
         // keeps refusing the evaluation, now with the typed `ShellSpawnRefused` diagnostic.
-        let outcome_field = transport_outcome_output_field(op_node, ctx, "ShellOutcome");
-        return match (
+        return shell_result_projection(
             dispatch_shell(transport, param_env, ctx, intent, expected),
-            outcome_field,
-        ) {
-            (Ok(result), None) => map_shell_outputs(&result, op_node, ctx),
-            (Ok(result), Some(field)) => {
-                let mapped = map_shell_outputs(&result, op_node, ctx)?;
-                Ok(attach_transport_outcome(
-                    Some(mapped),
-                    op_node,
-                    &field,
-                    shell_outcome_variant(ctx, "ShellExited", vec![]),
-                    ctx,
-                ))
-            }
-            (Err(InterpError::ShellSpawnRefused { argv0, cause }), Some(field)) => {
-                Ok(attach_transport_outcome(
-                    None,
-                    op_node,
-                    &field,
-                    shell_outcome_variant(
-                        ctx,
-                        "ShellSpawnRefused",
-                        vec![
-                            (ctx.sym("program"), str_value(argv0)),
-                            (ctx.sym("cause"), str_value(cause)),
-                        ],
-                    ),
-                    ctx,
-                ))
-            }
-            (Err(err), _) => Err(err),
-        };
+            op_node,
+            ctx,
+        );
     }
 
     if is_file_transport(transport.clone(), ctx.si()) {
@@ -12325,6 +13001,47 @@ fn dispatch_service_wet(
     }
 
     dispatch_rest(service_node, op_node, transport, param_env, ctx)
+}
+
+/// The ONE projection from a shell transport result to an operation's declared output: the real
+/// process result and a modeled realization's observation both reach it, so a modeled observation
+/// is decoded by exactly the declared-output mapping a spawned process's result is.
+fn shell_result_projection(
+    dispatched: InterpResult<ShellResult>,
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let outcome_field = transport_outcome_output_field(op_node, ctx, "ShellOutcome");
+    match (dispatched, outcome_field) {
+        (Ok(result), None) => map_shell_outputs(&result, op_node, ctx),
+        (Ok(result), Some(field)) => {
+            let mapped = map_shell_outputs(&result, op_node, ctx)?;
+            Ok(attach_transport_outcome(
+                Some(mapped),
+                op_node,
+                &field,
+                shell_outcome_variant(ctx, "ShellExited", vec![]),
+                ctx,
+            ))
+        }
+        (Err(InterpError::ShellSpawnRefused { argv0, cause }), Some(field)) => {
+            Ok(attach_transport_outcome(
+                None,
+                op_node,
+                &field,
+                shell_outcome_variant(
+                    ctx,
+                    "ShellSpawnRefused",
+                    vec![
+                        (ctx.sym("program"), str_value(argv0)),
+                        (ctx.sym("cause"), str_value(cause)),
+                    ],
+                ),
+                ctx,
+            ))
+        }
+        (Err(err), _) => Err(err),
+    }
 }
 
 /// Native realization of `shell.Env.Get` for OnTarget locality — same Absent/Present
@@ -17199,6 +17916,12 @@ fn rest_exchange_selection(
             msg: "REST invocation is not covered by the witness frame; real transport refused"
                 .to_string(),
         }),
+        "RestExchangeModeledRealizationUnsupported" => Err(InterpError::TypeError {
+            msg:
+                "REST invocation is covered by a modeled operation realization, which has no REST \
+                  observation arm yet; real transport refused"
+                    .to_string(),
+        }),
         other => Err(InterpError::TypeError {
             msg: format!("unrecognized REST exchange resolution: {}", other),
         }),
@@ -20886,6 +21609,10 @@ macro_rules! v1_builtin_arms {
                     expect_str_list($positional.get(1).copied(), "dependency_resolution_facts")?;
                 let exclude_substrings =
                     expect_str_list($positional.get(2).copied(), "dependency_resolution_facts")?;
+                refuse_roots_that_are_not_walkable_directories(
+                    "dependency_resolution_facts",
+                    &pool_roots.iter().chain(importer_roots.iter()).cloned().collect::<Vec<_>>(),
+                )?;
                 // Reference-first exact union through the ONE dedup authority, then the
                 // import_module -> target_module rename. Both halves are the host twin of what
                 // `v2.lens.module_graph` composed in the interpreter; moved because it measured
@@ -20893,6 +21620,41 @@ macro_rules! v1_builtin_arms {
                 let facts = crate::cli_run::dependency_resolution_facts(
                     &pool_roots,
                     &importer_roots,
+                    &exclude_substrings,
+                );
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ModuleDependencyEdge"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("path"), str_value(f.path)),
+                            ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                            ($ctx.sym("target_module"), str_value(f.import_module)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            arm "free_call.dependency_resolution_facts_at" { "dependency_resolution_facts_at" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "dependency_resolution_facts_at")?;
+                let importer_path =
+                    expect_value_str($positional.get(1).copied(), "dependency_resolution_facts_at")?;
+                let exclude_substrings =
+                    expect_str_list($positional.get(2).copied(), "dependency_resolution_facts_at")?;
+                // The pool roots are anchored as directories, so they refuse typed here like the
+                // population read's. The importer is a FILE path by contract and is never anchored:
+                // it is a key into the population's importer grouping, not a root to walk.
+                refuse_roots_that_are_not_walkable_directories(
+                    "dependency_resolution_facts_at",
+                    &pool_roots,
+                )?;
+                // Same row shape as the population read, so a `.dag` consumer switching to the keyed
+                // form changes its source of rows and not its fold.
+                let facts = crate::cli_run::dependency_resolution_facts_at(
+                    &pool_roots,
+                    importer_path.as_str(),
                     &exclude_substrings,
                 );
                 let mut items: Vec<Value> = Vec::new();
@@ -23225,6 +23987,74 @@ fn expect_byte_vec(val: Option<&Value>, context: &str) -> InterpResult<Vec<u8>> 
         None => Err(InterpError::TypeError {
             msg: format!("{} requires a Bytes argument", context),
         }),
+    }
+}
+
+/// A ROOT THAT IS NOT A WALKABLE DIRECTORY REFUSES HERE, TYPED AND LOCATED, before the host anchors
+/// it. `cli_run` `anchor_source_root` panics on a file, which crossed the builtin boundary as a
+/// process abort rather than an answer the caller can read (DESIGN section 5). The classification is
+/// `coproduct_reflection` `pool_root_defects`, the one the parse-only pool walks already refuse with,
+/// so a file root reads `NamesFile` here exactly as it does there.
+fn refuse_roots_that_are_not_walkable_directories(
+    caller: &'static str,
+    roots: &[String],
+) -> InterpResult<()> {
+    let defects = crate::coproduct_reflection::pool_root_defects(roots);
+    if defects.is_empty() {
+        return Ok(());
+    }
+    Err(InterpError::PoolRootContributesNothing {
+        caller,
+        declared: roots.len(),
+        defects,
+    })
+}
+
+#[cfg(test)]
+mod walkable_root_refusal_tests {
+    use super::{refuse_roots_that_are_not_walkable_directories, InterpError};
+    use crate::coproduct_reflection::PoolRootDefect;
+
+    fn repo_path(rel: &str) -> String {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join(rel)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    // THE RED: a module FILE handed where a root directory is owed refuses NamesFile, naming it.
+    #[test]
+    fn a_file_path_root_refuses_names_file() {
+        let file = repo_path("dag/gunbc/auth/approval_broker_serve.dag");
+        match refuse_roots_that_are_not_walkable_directories(
+            "dependency_resolution_facts",
+            &[file.clone()],
+        ) {
+            Err(InterpError::PoolRootContributesNothing {
+                caller,
+                declared,
+                defects,
+            }) => {
+                assert_eq!(caller, "dependency_resolution_facts");
+                assert_eq!(declared, 1);
+                assert_eq!(defects.len(), 1);
+                assert_eq!(defects[0].0, file);
+                assert!(matches!(defects[0].1, PoolRootDefect::NamesFile));
+            }
+            other => panic!("expected PoolRootContributesNothing(NamesFile), got {other:?}"),
+        }
+    }
+
+    // THE POSITIVE CONTROL: a directory holding .dag files is admitted, so the red above is the
+    // file-ness of the root and not a refusal of every root.
+    #[test]
+    fn a_directory_root_with_dag_files_is_admitted() {
+        assert!(refuse_roots_that_are_not_walkable_directories(
+            "dependency_resolution_facts",
+            &[repo_path("dag/gunbc/auth")]
+        )
+        .is_ok());
     }
 }
 
