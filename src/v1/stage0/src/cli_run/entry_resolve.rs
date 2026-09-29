@@ -719,37 +719,100 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
 /// calling test's thread with its original payload, so a failing claim reds exactly as before and
 /// the worker survives for the next one.
 #[cfg(test)]
+type LivePoolJob = Box<dyn FnOnce() + Send>;
+
+/// The live-pool thread's inbox, `None` while no thread is alive. Senders hold this lock while they
+/// send, and the thread takes it before it exits, so a claim can never be sent to a thread that is
+/// already leaving.
+#[cfg(test)]
+static LIVE_POOL_THREAD: Mutex<Option<std::sync::mpsc::Sender<LivePoolJob>>> = Mutex::new(None);
+
+/// How long the live-pool thread waits for the next claim before it releases the pool. Claims in
+/// one block of the suite arrive back to back, milliseconds apart; a test after the block that
+/// builds a pool of its own must not do it on top of this one (measured under the hosted runner's
+/// 12 GiB `memory.max`: the ~5.2 GiB pool held past the block, plus the regen-pool index of the next
+/// test, was OOM-killed at the bound). A gap this long ends the block. It decides only how often
+/// the pool is built, never what a claim answers: a claim after a release rebuilds it.
+#[cfg(test)]
+const LIVE_POOL_IDLE_RELEASE: std::time::Duration = std::time::Duration::from_secs(2);
+
+#[cfg(test)]
+fn spawn_live_pool_thread() -> std::sync::mpsc::Sender<LivePoolJob> {
+    use std::sync::mpsc::RecvTimeoutError;
+    let (tx, rx) = std::sync::mpsc::channel::<LivePoolJob>();
+    std::thread::Builder::new()
+        .name("live-pool".to_string())
+        // The largest stack any live-pool claim spawned for itself before it ran here.
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || {
+            loop {
+                match rx.recv_timeout(LIVE_POOL_IDLE_RELEASE) {
+                    Ok(job) => job(),
+                    Err(RecvTimeoutError::Timeout) => {
+                        let mut slot = LIVE_POOL_THREAD
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        if let Ok(job) = rx.try_recv() {
+                            drop(slot);
+                            job();
+                            continue;
+                        }
+                        *slot = None;
+                        break;
+                    }
+                    Err(RecvTimeoutError::Disconnected) => break,
+                }
+            }
+            // The pool leaves with the thread: drop the index slots now and hand the freed heap
+            // back, rather than leave it for the thread-local destructors after the trim could run.
+            reset_process_shared_index_for_test();
+            trim_retained_heap();
+        })
+        .expect("the live-pool thread starts");
+    tx
+}
+
+/// THE LIVE POOL'S ONE HOLDER UNDER TEST. `process_shared_index` is per-thread because the index
+/// is `Rc`-based, and libtest runs every test on a fresh thread -- so every claim that resolves an
+/// entry over the live `[dag, src/v2]` pool rebuilt the whole-pool index and re-typechecked the
+/// shared prefix, the same fact once per claim with its least common ancestor at the PROCESS
+/// (DESIGN §2 demand minimization; gunbc#12450 measured ~18 such claims at ~90s each). The
+/// entry-scoped loader cannot stand in: bare references resolve through a census of the whole pool
+/// (`admit_pool_bare_references`), so no entry resolves without it.
+///
+/// So the fact moves to its ancestor: one thread holds the index in ITS thread-local slot for as
+/// long as claims keep arriving, and a live-pool claim runs its body there. Nothing about
+/// resolution changes -- the same `process_shared_index` builds the same pool on first demand --
+/// only how many times. `RUST_TEST_THREADS=1` (`.cargo/config.toml`) already serializes the suite,
+/// so the queue costs no parallelism. The thread releases the pool when the block of claims ends
+/// (`LIVE_POOL_IDLE_RELEASE`). A panic in the body is caught on the thread and re-raised on the
+/// calling test's thread with its original payload, so a failing claim reds exactly as before and
+/// the thread survives for the next one.
+#[cfg(test)]
 pub(crate) fn on_live_pool_thread<T: Send + 'static>(
     body: impl FnOnce() -> T + Send + 'static,
 ) -> T {
-    type Job = Box<dyn FnOnce() + Send>;
-    static WORKER: OnceLock<Mutex<std::sync::mpsc::Sender<Job>>> = OnceLock::new();
-    let sender = WORKER
-        .get_or_init(|| {
-            let (tx, rx) = std::sync::mpsc::channel::<Job>();
-            std::thread::Builder::new()
-                .name("live-pool".to_string())
-                // The largest stack any live-pool claim spawned for itself before it ran here.
-                .stack_size(64 * 1024 * 1024)
-                .spawn(move || {
-                    for job in rx {
-                        job();
-                    }
-                })
-                .expect("the live-pool thread starts");
-            Mutex::new(tx)
-        })
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clone();
     let (done_tx, done_rx) = std::sync::mpsc::channel();
-    sender
-        .send(Box::new(move || {
-            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
-            release_per_entry_graphs_on_live_pool_thread();
-            let _ = done_tx.send(outcome);
-        }))
-        .expect("the live-pool thread accepts work");
+    let job: LivePoolJob = Box::new(move || {
+        // Freed-but-retained heap from the tests that ran on their own threads before this claim
+        // is returned first: those threads' glibc arenas are not the one this long-lived thread
+        // allocates from, so without the trim the pool is built ON TOP of their residue (measured
+        // under the hosted runner's 12 GiB `memory.max`: 7.6 GiB retained before the first claim,
+        // OOM-killed at the bound as the pool was built; 1.4 GiB with the trim).
+        trim_retained_heap();
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
+        release_per_entry_graphs_on_live_pool_thread();
+        trim_retained_heap();
+        let _ = done_tx.send(outcome);
+    });
+    {
+        let mut slot = LIVE_POOL_THREAD
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        slot.get_or_insert_with(spawn_live_pool_thread)
+            .send(job)
+            .expect("the live-pool thread accepts work");
+    }
     match done_rx.recv().expect("the live-pool thread answers") {
         Ok(value) => value,
         Err(payload) => std::panic::resume_unwind(payload),
@@ -3152,6 +3215,22 @@ mod live_pool_thread_tests {
         let _ = std::fs::remove_dir_all(root);
         assert_eq!(first, second, "the live-pool thread kept its index");
         assert_ne!(first, elsewhere, "a fresh thread builds its own");
+    }
+
+    /// THE POOL DOES NOT OUTLIVE ITS BLOCK. A claim after an idle gap longer than
+    /// `LIVE_POOL_IDLE_RELEASE` meets a rebuilt index: the red this discriminates is a thread that
+    /// holds the pool for the rest of the suite, under every later test's own pool.
+    #[test]
+    fn the_live_pool_is_released_when_its_block_of_claims_ends() {
+        let (root, roots) = one_module_pool("release");
+        let generation = |roots: Vec<String>| {
+            on_live_pool_thread(move || process_shared_index(&roots).generation)
+        };
+        let first = generation(roots.clone());
+        std::thread::sleep(LIVE_POOL_IDLE_RELEASE + std::time::Duration::from_secs(1));
+        let after_idle = generation(roots);
+        let _ = std::fs::remove_dir_all(root);
+        assert_ne!(first, after_idle, "the pool outlived an idle gap");
     }
 
     /// A claim that fails on the live-pool thread reds its own test with its own message, and the
