@@ -896,8 +896,8 @@ fn dag_grammar_where_refinement_clause_expr() -> GrammarExpr {
 // An anonymous record is a type expression: `type AxisScan = { prefix: List<DeclarationRef>, causes:
 // List<NonEmptyStr> }` (std.pareto), the ShLBrace arm of v1.compiler.parse parse_type_expr, which
 // admits it in any type position. It is the same field_decl_block production a named record uses,
-// so every consumer that classifies a fielded declaration (namespace_graft_type_decl_is_fielded,
-// body_lower_is_structure_preserved_emitted) sees one production for both, and its fields are
+// so every consumer that classifies a fielded declaration (body_lower_is_structure_preserved_emitted)
+// sees one production for both, and its fields are
 // unlowered exactly as a named record's are (gunbc.rung_drop
 // variant_fields_unlowered_on_the_native_route).
 fn dag_grammar_type_expr() -> GrammarExpr {
@@ -1820,10 +1820,9 @@ fn dag_grammar_type_variant_expr() -> GrammarExpr {
 // positional `Name(T)`, which v1.compiler.parse parse_positional_variant_type_fields reads as
 // exactly one field named "0". Positional arity is ONE, as in v1: `Name(T, U)` still refuses
 // (tokens remain), so this row admits nothing the seed does not. It lives only in the
-// variant slot -- `type R(T)` is not a type_decl body in v1, and it is not one here. The two
-// consumers that treat a fielded variant as structure, namespace_graft_type_decl_named_edge
-// and body_lower_is_structure_preserved_emitted, name this production beside
-// dag_surface_field_decl_block.
+// variant slot -- `type R(T)` is not a type_decl body in v1, and it is not one here. The consumer
+// that treats a fielded variant as structure, body_lower_is_structure_preserved_emitted, names this
+// production beside dag_surface_field_decl_block.
 fn dag_grammar_positional_variant_payload_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lparen),
