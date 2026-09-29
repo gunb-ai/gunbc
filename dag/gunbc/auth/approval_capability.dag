@@ -243,9 +243,18 @@ fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
 
 // The padding the std.encoding encoder emits: the total length a multiple of four, and exactly two
 // "=" after a two-sextet tail, one after a three-sextet tail, none otherwise -- never three.
+// Whether the last `from_end` characters are all "=", read with the char_at this module already uses.
+fn padded_at(s: String, from_end: Int) -> Bool {
+  let total = string_length(s)
+  total >= from_end
+    && char_at(s, total - 1) == "="
+    && (from_end < 2 || char_at(s, total - 2) == "=")
+    && (from_end < 3 || char_at(s, total - 3) == "=")
+}
+
 fn base64_padding_is_canonical(s: String) -> Bool {
   let total = string_length(s)
-  let pads = if ends_with(s: s, suffix: "===") { 3 } else if ends_with(s: s, suffix: "==") { 2 } else if ends_with(s: s, suffix: "=") { 1 } else { 0 }
+  let pads = if padded_at(s: s, from_end: 3) { 3 } else if padded_at(s: s, from_end: 2) { 2 } else if padded_at(s: s, from_end: 1) { 1 } else { 0 }
   let tail = (total - pads) % 4
   total % 4 == 0 && ((tail == 0 && pads == 0) || (tail == 2 && pads == 2) || (tail == 3 && pads == 1))
 }
