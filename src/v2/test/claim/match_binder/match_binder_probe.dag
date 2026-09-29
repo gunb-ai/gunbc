@@ -1,0 +1,58 @@
+module v2.test.claim.match_binder.match_binder_probe
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data mbp_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^match_binder_probe_artifact,
+  file_path: "src/v2/pilot/match_binder_probe_pilot.dag"
+}
+
+fn mbp_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: mbp_artifact,
+        compilation_unit: ^match_binder_probe_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn mbp_verdict(src: String) -> Symbol {
+  match mbp_assemble(src: src) {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => ^infers
+        Rejected { diagnostics: r } => r.head.reason
+      }
+  }
+}
+
+data mbp_decls: String = "module p\n\ntype Art {\n  tree: Int\n}\n\ntype Res<T>\n  = Ok { value: T, note: Int }\n  | Bad { note: Int }\n\n"
+
+fn probe_generic_binder() -> Symbol {
+  mbp_verdict(src: mbp_decls + "fn f(h: Res<Art>) -> Int {\n  match h {\n    Ok { value: artifact, note: n } => artifact.tree\n    Bad { note: n } => n\n  }\n}\n")
+}
+
+fn probe_generic_literal() -> Symbol {
+  mbp_verdict(src: mbp_decls + "fn f(h: Res<Art>) -> Int {\n  match h {\n    Ok { value: artifact, note: n } => 7\n    Bad { note: n } => 8\n  }\n}\n")
+}
