@@ -100,7 +100,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.exec.command { argv_words }
-import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name, release_locus_tree_receipt_name }
 import gunbc.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_owner, microvm_controller_firecracker_release,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
@@ -1801,7 +1801,7 @@ fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServi
 fn approval_broker_tree_digest_expr(root: String) -> String {
   join([
     "cd ", root, " && ", find_program().invocation as String, " ", join(approval_broker_tree_subdirs, " "),
-    " -type f -print0 | ", sort_program as String, " -z | ",
+    " -type f -print0 | ", sort_program().invocation as String, " -z | ",
     xargs_program as String, " -0 ", sha256sum_program().invocation as String, " | ",
     sha256sum_program().invocation as String, " | ", cut_program as String, " -d' ' -f1",
   ], "")
@@ -1874,7 +1874,7 @@ fn privileged_tree_directories_install_command(src_sub: String, root: String, ow
 
 fn privileged_tree_files_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
   join([
-    "(cd \"$PWD\" && ", find_program().invocation as String, " ", src_sub, " -type f -print0 | ", sort_program as String, " -z) | ",
+    "(cd \"$PWD\" && ", find_program().invocation as String, " ", src_sub, " -type f -print0 | ", sort_program().invocation as String, " -z) | ",
     xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
       install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String,
     ]), " "), " \"$PWD\"/{} ", root, "/{}",
@@ -1987,12 +1987,21 @@ fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: 
 // THE RECEIPT IS WRITTEN BY THE PRINCIPAL THAT OWNS THE LOCUS: `install -m 0644 /dev/stdin`
 // into a root-owned directory needs root, and the digest pipeline feeding it is the same either way.
 fn release_locus_tree_receipt_step(owner: NonEmptyStr, base_root: String, revision: ReleaseRevisionBinding) -> PipelineStep {
+  locus_tree_receipt_step_at(owner: owner, dir: approval_broker_release_dir(root: base_root, revision: revision), revision: revision)
+}
+
+// ONE RECEIPT SHAPE FOR EVERY LOCUS A gunbc BINARY IS SPAWNED FROM. The seed admits a spawn root
+// (gunbc.cli_run_workspace_root_scaffold gunbc_workspace_root_env_name) only when it holds dag/ and
+// the tree receipt, so a locus without one cannot be run from at all. The approval broker's release
+// locus and the root-owned helper snapshot both write it, with the same content: the candidate
+// revision and the digest of the installed sources.
+fn locus_tree_receipt_step_at(owner: NonEmptyStr, dir: String, revision: ReleaseRevisionBinding) -> PipelineStep {
   deploy_raw(command: join([
     printf_program().invocation as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
     "\\ninstalled_digest=%s\\n' ",
-    "\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\"",
+    "\"$(", approval_broker_tree_digest_expr(root: dir), ")\"",
     " | ", join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
-      approval_broker_tree_receipt_path_for(root: base_root, revision: revision)]), " "),
+      join([dir, "/", release_locus_tree_receipt_name], "")]), " "),
   ], ""))
 }
 
@@ -2219,13 +2228,19 @@ fn approval_broker_helper_sudoers_content(revision: ReleaseRevisionBinding) -> S
 }
 
 // THE GRANT'S WORDS MUST BE PLAIN, OR THE GRANT IS NOT EMITTED. A sudoers Cmnd_Spec treats these
-// characters specially: `,` and `:` separate list items, `=`, `!`, `(` and `)` are grammar, `\`
+// characters specially: `,` and `:` separate list items, `!`, `(` and `)` are grammar, `\`
 // escapes, whitespace splits arguments, `#` starts a comment, and `*` `?` `[` `]` are glob
 // metacharacters that would turn an exact match into a pattern. The poisoned RevisionNotInstalled
 // path contains spaces, so an unbound revision is refused here too. The rest are shell quoting and
 // expansion characters, which no path this module names verbatim contains.
+//
+// `=` IS NOT REFUSED, because it is escaped rather than forbidden. The sudoers renderer
+// (gunbc.executor_privileged_operation sudoers_argument_word) spells it `\=`, as sudoers(5) requires,
+// and the helper's argv carries one legitimately: the env(1) binding that gives the helper its
+// checkout root. `,` `:` and `\` are escaped by that same renderer but stay refused here, since
+// no helper word needs them and refusing is the narrower grant.
 data sudoers_command_word_refused_characters: List<String> = [
-  ",", ":", "=", "!", "(", ")", "\\", " ", "\t", "\n", "#", "*", "?", "[", "]", "\"", "'", "$", "`",
+  ",", ":", "!", "(", ")", "\\", " ", "\t", "\n", "#", "*", "?", "[", "]", "\"", "'", "$", "`",
 ]
 
 type HelperGrantAdmission
@@ -2411,6 +2426,7 @@ fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> Li
           group: approval_broker_helper_root_principal,
           dest: join([dir, "/", gunbc_release_bin_name], ""),
         )),
+        locus_tree_receipt_step_at(owner: approval_broker_helper_root_principal, dir: dir, revision: revision),
         deploy_raw(command: approval_broker_helper_snapshot_readback_command(dir: dir)),
       ],
     ),
