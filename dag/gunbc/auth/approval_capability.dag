@@ -1,7 +1,6 @@
 module gunbc.auth.approval_capability
 
-import std.types { NonEmptyStr, String, Int, Timestamp, List }
-import v2.std.algebra { skip }
+import std.types { NonEmptyStr, String, Int, Timestamp }
 import std.decimal { decimal_digit_char }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }
@@ -156,48 +155,6 @@ fn approval_capability_signing_input(c: ApprovalCapabilityClaims) -> NonEmptyStr
     ],
     signing_field_separator,
   ) as NonEmptyStr
-}
-
-// THE INVERSE, for a party that receives a capability as its signing input rather than as a URL
-// segment (the fabric store's receipt, gunbc.auth.approval_store_receipt). One reading, checked by
-// the round trip: the fields are split on the one separator and re-projected through
-// approval_capability_signing_input, and only bytes that re-project to themselves are claims -- so
-// the reader admits exactly what issuance writes and verification recomputes, never a second
-// rendering (the duplicate-field and alternative-decoding family this section exists to close).
-// A DECLARED FRONTIER (DESIGN §3c): its consumer is the fabric store door, which rebuilds a presented
-// receipt's claims from the wire gunbc.auth.approval_store_receipt store_receipt_wire writes
-// (d0_store_operation_wall PR 4). TRIGGER: that door change lands reading receipts through this
-// parser; if it reads them another way, this is deleted with it.
-data proposed_decisions: List<ProposedDecision> = [ProposeApprove, ProposeDeny]
-
-fn parse_approval_capability_signing_input(text: String) -> ApprovalCapabilityClaims? {
-  let fs = split(s: text, delimiter: signing_field_separator)
-  if count(fs) != 11 { none } else {
-    match (filter(proposed_decisions, d => (proposed_decision_name(d: d) as String) == signing_field(fields: fs, i: 6))).first() {
-      Absent => none
-      Present { value: decision } =>
-        if any(fs, f => f == "") { none } else {
-          let claims = ApprovalCapabilityClaims {
-            protocol: signing_field(fields: fs, i: 0) as NonEmptyStr,
-            issuer: signing_field(fields: fs, i: 1) as NonEmptyStr,
-            audience: signing_field(fields: fs, i: 2) as NonEmptyStr,
-            authority: signing_field(fields: fs, i: 3) as NonEmptyStr,
-            escalation_id: signing_field(fields: fs, i: 4) as NonEmptyStr,
-            request_revision: signing_field(fields: fs, i: 5) as NonEmptyStr,
-            decision: decision,
-            attempt: (signing_field(fields: fs, i: 7) as NonEmptyStr) as AttemptIdentity,
-            issued_at: signing_field(fields: fs, i: 8),
-            expires_at: signing_field(fields: fs, i: 9),
-            key_id: signing_field(fields: fs, i: 10) as MacKeyId,
-          }
-          if (approval_capability_signing_input(c: claims) as String) == text { Present { value: claims } } else { none }
-        }
-    }
-  }
-}
-
-fn signing_field(fields: List<String>, i: Int) -> String {
-  match (fields |> skip(n: i)).first() { Present { value: f } => f  Absent => "" }
 }
 
 // ── Issuance ─────────────────────────────────────────────────────────────────────────────────
