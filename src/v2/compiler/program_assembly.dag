@@ -167,30 +167,12 @@ fn program_assembly_phase_tokenize(
         file: read.compilation_unit,
         rules: lm.lex
       )
-    GeneratedSource =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
-    TestClaimArtifact =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
-    ProjectionArtifact =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
-    Stage0Candidate =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
-    CorePackage =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
-    WitnessBundle =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
+    GeneratedSource => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    TestClaimArtifact => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    ProjectionArtifact => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    Stage0Candidate => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    CorePackage => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
+    WitnessBundle => outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
 

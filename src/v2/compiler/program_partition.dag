@@ -88,6 +88,7 @@ import v2.std.node {
   Match,
   Value,
 }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.verification { node_in_subtree_by_identity }
 import v2.std.program_segment {
   AmbientContextAvailable,
@@ -306,15 +307,10 @@ fn partition_symbol_snoc_unique(acc: List<Symbol>, sym: Symbol) -> List<Symbol> 
 }
 
 fn partition_carrier_identity_snoc(acc: List<Symbol>, node: Node) -> List<Symbol> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } =>
       partition_symbol_snoc_unique(acc: acc, sym: id)
-    TypeNode { connective: Conj } => acc
-    TypeNode { connective: Disj } => acc
-    TypeNode { connective: Arrow } => acc
-    TypeNode { connective: Cardinality } => acc
-    TypeNode { connective: Instantiation } => acc
-    ComputationNode { behavior: _ } => acc
+    Absent => acc
   }
 }
 

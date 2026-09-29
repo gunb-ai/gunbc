@@ -191,6 +191,7 @@ import v2.std.algebra {
 import v2.std.logic {
   Bool
 }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.text {
   String
 }
@@ -1433,14 +1434,9 @@ fn translate_type_expression_project_admitted(
   }
 }
 fn type_expr_carrier_identity(node: Node) -> Outcome<Symbol> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: _ } } => node_atom_identity(node: node)
-    TypeNode { connective: Conj } => type_expr_atom_binding(node: node)
-    TypeNode { connective: Disj } => type_expr_atom_binding(node: node)
-    TypeNode { connective: Arrow } => type_expr_atom_binding(node: node)
-    TypeNode { connective: Cardinality } => type_expr_atom_binding(node: node)
-    TypeNode { connective: Instantiation } => type_expr_atom_binding(node: node)
-    ComputationNode { behavior: _ } => type_expr_atom_binding(node: node)
+  match node_atom_identity_optional(node: node) {
+    Present { value: _ } => node_atom_identity(node: node)
+    Absent => type_expr_atom_binding(node: node)
   }
 }
 fn translate_outcome_is_catalog_lookup_miss(
