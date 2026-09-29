@@ -138,6 +138,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_extract_command"),
     decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_extract_tree_command"),
     decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_replay_build_pinned_dates_command"),
+    decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_list_long_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mktemp_directory_command"),
