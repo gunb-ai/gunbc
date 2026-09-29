@@ -2767,8 +2767,14 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let key = abs_pool_roots.join("\u{1e}");
     if let Some(hit) = REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        shared_fill::record_hit("reference_pool_names", &key);
         return hit;
     }
+    // A PROCESS-WIDE POOL FILL, ACCOUNTED AS ONE. The heads index is built once per pool per
+    // process and then served to every consumer -- the same class as module_path_index and
+    // reference_edges, which already report through shared_fill. Unrecorded, it was billed as the
+    // own CPU of whichever claim first reached an import-less file.
+    shared_fill::begin_fill();
     let started = std::time::Instant::now();
     let mut heads: Vec<(String, Rc<crate::v1_std_core::Node>)> = Vec::new();
     for root in &abs_pool_roots {
@@ -2800,6 +2806,11 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
         "reference_pool_names_heads",
         super::pre_entry_phase::PhaseScale::Tree,
         started.elapsed(),
+    );
+    shared_fill::record_fill(
+        "reference_pool_names",
+        &key,
+        started.elapsed().as_nanos() as u64,
     );
     REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow_mut().insert(key, names.clone()));
     names
