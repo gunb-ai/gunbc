@@ -2756,13 +2756,7 @@ fn srv3_summarize_independent_observations(steps: List<Srv3HostPredicate>) -> Sr
     cons: fn(acc, step) {
       match acc {
         Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-        Srv3PredicateFails =>
-          match step {
-            Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-            Srv3PredicateFails => Srv3PredicateFails
-            Srv3PredicateHolds => acc
-          }
-        Srv3PredicateHolds =>
+        _ =>
           match step {
             Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
             Srv3PredicateFails => Srv3PredicateFails
