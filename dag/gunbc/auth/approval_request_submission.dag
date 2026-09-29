@@ -182,7 +182,7 @@ fn admit_parsed_submission(tag_hex: NonEmptyStr, request: StoredApprovalRequest,
     ApprovalKeyringRefused { cause: c } => SubmissionNotAdmitted { refusal: SubmissionKeyUnavailable { cause: c } }
     ApprovalKeyLoaded { key: key } => {
       let verification: MacVerification = mac_verify(key: key, message: submission_message(request: request), tag_hex: tag_hex)
-      let enrolled = match verification { MacVerified { verified: v } => v.message == submission_message(request: request)  _ => false }
+      let enrolled = match verification { MacVerified { verified: v } => v.message == submission_message(request: request)  MacTagMismatch { key_id: _ } => false  MacKeyUnknown { key_id: _ } => false  MacKeyRetired { key_id: _, retired_at: _ } => false  MacSuiteMismatch { expected: _, key_suite: _ } => false  MacTagMalformed { octets_declared: _, octets_expected: _ } => false }
       match admit_submission(requester: request.requester, authority: approval_capability_authority, requester_enrolled: enrolled, authority_permitted: approval_submission_authority_permitted) {
         SubmissionRequesterNotEnrolled { requester: _ } => SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: mac_verification_reason(v: verification) } }
         SubmissionAuthorityNotPermittedForRequester { requester: rq, authority: a } => SubmissionNotAdmitted { refusal: SubmissionAuthorityRefused { requester: rq, authority: a } }
@@ -317,7 +317,9 @@ fn notify_filed(
           NotificationPublisherTokenUnavailable { detail: d } => SubmissionFiledPublisherTokenUnavailable { escalation_id: request.escalation_id, detail: d }
           NotificationAttempted { publish: p, acceptance: a } => match a {
             NtfyAccepted { message_id: Present { value: m } } => SubmissionFiledAndNotified { escalation_id: request.escalation_id, message_id: m }
-            _ => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
+            NtfyAccepted { message_id: Absent } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
+            NtfyRefusedExplicitly { status: _, detail: _ } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
+            NtfyAcceptanceIndeterminate { detail: _ } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
           }
         }
       }

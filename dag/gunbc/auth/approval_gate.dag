@@ -86,7 +86,9 @@ fn approval_derive<Subject>(reading: ApprovalReading, request: AuthorizationRequ
       match grant_from_approved_decision(request: request, revision: r, decided_by: by, decided_at: at, execute_by: until) {
         GrantForAnotherIntent { requested_revision: a, decided_revision: b } => ApprovalNotDerived { cause: ApprovalIntentMismatch { requested_revision: a, decided_revision: b } }
         GrantDerived { authorization: auth } => ApprovalDerived { authorization: auth }
-        _ => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
+        GrantStillPending { escalation_id: _ } => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
+        GrantEscalationNotFiled { escalation_id: _ } => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
+        GrantStoreUnreadable { detail: _ } => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
       }
   }
 }

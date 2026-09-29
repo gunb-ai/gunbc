@@ -273,7 +273,11 @@ fn wire_string(obj: JsonValue, key: String) -> WireDecode<NonEmptyStr> {
     WireDecoded { value: v } =>
       match v {
         JsonString { value: s } => if s == "" { WireRefused { at: key as NonEmptyStr, cause: "empty" } } else { WireDecoded { value: s as NonEmptyStr } }
-        _ => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
+        JsonNull => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
+        JsonBool { value: _ } => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
+        JsonNumber { lexeme: _ } => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
+        JsonArray { elements: _ } => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
+        JsonObject { members: _ } => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
       }
   }
 }

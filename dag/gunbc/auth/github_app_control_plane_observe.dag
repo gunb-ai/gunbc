@@ -87,7 +87,11 @@ fn signer_custody_of_app_read(
       } else {
         SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", outcome: outcome) } }
       }
-    _ =>
+    RestExchangeCommitAmbiguous { detail: _ } =>
+      SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", outcome: outcome) } }
+    RestExchangeUnreached { cause: _ } =>
+      SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", outcome: outcome) } }
+    RestExchangeUndecodable { status: _, cause: _ } =>
       SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", outcome: outcome) } }
   }
 }
@@ -101,7 +105,10 @@ fn registration_of_app_read(outcome: RestOutcome, record: GitHubAppPublicRecord)
         ObservedPermissionAccessUnreadable { wire_name: _, access: _ } => AppRegistrationReadbackUnavailable
         ObservedPermissionKeyUnanswered { wire_name: _ } => AppRegistrationReadbackUnavailable
       }
-    _ => AppRegistrationReadbackUnavailable
+    RestExchangeStatusRefused { status: _, body: _ } => AppRegistrationReadbackUnavailable
+    RestExchangeCommitAmbiguous { detail: _ } => AppRegistrationReadbackUnavailable
+    RestExchangeUnreached { cause: _ } => AppRegistrationReadbackUnavailable
+    RestExchangeUndecodable { status: _, cause: _ } => AppRegistrationReadbackUnavailable
   }
 }
 
@@ -121,7 +128,10 @@ fn installation_of_read(outcome: RestOutcome, record: GitHubAppInstallationRecor
         InstallationSlugEmpty => installation_failed(detail: "app_slug empty")
         InstallationHtmlUrlUnreadable { raw: r } => installation_failed(detail: concat("html_url unreadable: ", r))
       }
-    _ => installation_failed(detail: rest_read_failure_detail(what: "read", outcome: outcome))
+    RestExchangeStatusRefused { status: _, body: _ } => installation_failed(detail: rest_read_failure_detail(what: "read", outcome: outcome))
+    RestExchangeCommitAmbiguous { detail: _ } => installation_failed(detail: rest_read_failure_detail(what: "read", outcome: outcome))
+    RestExchangeUnreached { cause: _ } => installation_failed(detail: rest_read_failure_detail(what: "read", outcome: outcome))
+    RestExchangeUndecodable { status: _, cause: _ } => installation_failed(detail: rest_read_failure_detail(what: "read", outcome: outcome))
   }
 }
 
@@ -173,7 +183,34 @@ fn observe_github_app_control_plane(
                 reason: reason,
               )
             }
-            _ =>
+            SignerMaterialAvailabilityUnobserved =>
+              app_control_plane_state(
+                app: app,
+                custody: custody,
+                registration: registration,
+                observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
+                required: required,
+                reason: reason,
+              )
+            SignerMaterialAvailableForImport { source: _ } =>
+              app_control_plane_state(
+                app: app,
+                custody: custody,
+                registration: registration,
+                observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
+                required: required,
+                reason: reason,
+              )
+            SignerKeyGenerationRequired =>
+              app_control_plane_state(
+                app: app,
+                custody: custody,
+                registration: registration,
+                observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
+                required: required,
+                reason: reason,
+              )
+            SignerReadbackFailed { cause: _ } =>
               app_control_plane_state(
                 app: app,
                 custody: custody,
