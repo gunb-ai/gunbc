@@ -84,3 +84,17 @@ data uninstantiated_owner_source: String = "module probe_expprop_uninstantiated_
 test fn an_uninstantiated_owner_passes_no_parameter_name_down() -> Bool {
   blocking_class_count_for(source: uninstantiated_owner_source, wanted_class: type_mismatch_class) == 0
 }
+
+// THE KNOWN POSITIONS OF A PARTIALLY DETERMINED APPLICATION STAY JUDGED (review 5338860646). The
+// outer owner is not instantiated, so its `S` is unbound, but `inner: ExpPropMixedInner<Int, S>` fixes
+// the inner literal's first parameter independently of S. Dropping the whole expectation because S
+// occurs erased that `Int`, and `known: "not an int"` compiled clean. The red must refuse on the
+// concrete Int, and the green twin -- which changes only `known` -- must acquire no refusal against S.
+data mixed_red_source: String = "module probe_expprop_mixed_red\ntype ExpPropMixedRec { v: Int }\ntype ExpPropMixedInner<X, S> { known: X, extra: S }\ntype ExpPropMixedOuter<S> { inner: ExpPropMixedInner<Int, S> }\nfn f() -> Int {\n  let o = ExpPropMixedOuter { inner: ExpPropMixedInner { known: \"not an int\", extra: ExpPropMixedRec { v: 9 } } }\n  o.inner.extra.v\n}\n"
+data mixed_green_source: String = "module probe_expprop_mixed_green\ntype ExpPropMixedRec { v: Int }\ntype ExpPropMixedInner<X, S> { known: X, extra: S }\ntype ExpPropMixedOuter<S> { inner: ExpPropMixedInner<Int, S> }\nfn f() -> Int {\n  let o = ExpPropMixedOuter { inner: ExpPropMixedInner { known: 7, extra: ExpPropMixedRec { v: 9 } } }\n  o.inner.extra.v\n}\n"
+
+test fn a_known_position_beside_an_unbound_one_is_still_judged() -> Bool {
+  blocking_class_count_for(source: mixed_red_source, wanted_class: type_mismatch_class) == 1
+    && blocking_class_count_for(source: mixed_green_source, wanted_class: type_mismatch_class) == 0
+    && total_blocking_count_for(source: mixed_red_source) - total_blocking_count_for(source: mixed_green_source) == 1
+}

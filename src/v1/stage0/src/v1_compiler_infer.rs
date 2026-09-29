@@ -15772,6 +15772,12 @@ pub fn infer_record_lit_structural(
                 }
             }
         };
+        let unbound_owner_param_variables = uninstantiated_owner_param_names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            |acc: Rc<HashMap<String, Rc<Node>>>, g: String| {
+                v1_rt::rc_map_insert(acc, g.clone(), type_variable_node(g.clone()))
+            },
+        );
         let fi_infer_results = Rc::new({
             let mut __result = Vec::new();
             for fi in field_inits.iter().cloned() {
@@ -15816,15 +15822,18 @@ let field_conformance_type = match field_declared_type.clone() {
 let field_expected = match present_value_expected_from_optional(tn_str.clone(), fi_name.clone(), crate::v1_std_core::field_init_node_value(fi.clone()), expected.clone()) {
     Some(element) => Some(element.clone()),
     std::option::Option::None => match field_declared_type.clone() {
-    Some(ft) => if ((instantiated_struct_fields.clone() == std::option::Option::None) && type_node_mentions_any_name(ft.clone(), uninstantiated_owner_param_names.clone(), scope.type_env.clone().source_indices.clone(), 16)) {
-                std::option::Option::None
-            } else {
-                if ((((ft.ident_span.clone() != std::option::Option::None) || type_node_is_callable(ft.clone())) || (ft.return_cardinality.clone() == Cardinality::CardOptional)) || field_type_is_optional_coproduct(ft.clone(), scope.type_env.clone())) {
+    Some(declared_ft) => {
+                let ft = if ((instantiated_struct_fields.clone() == std::option::Option::None) && type_node_mentions_any_name(declared_ft.clone(), uninstantiated_owner_param_names.clone(), scope.type_env.clone().source_indices.clone(), 16)) {
+                    substitute_generics(declared_ft.clone(), unbound_owner_param_variables.clone(), scope.type_env.clone().source_indices.clone())
+                } else {
+                    declared_ft.clone()
+                };
+if ((((ft.ident_span.clone() != std::option::Option::None) || type_node_is_callable(ft.clone())) || (ft.return_cardinality.clone() == Cardinality::CardOptional)) || field_type_is_optional_coproduct(ft.clone(), scope.type_env.clone())) {
                     Some(ft.clone())
                 } else {
                     std::option::Option::None
                 }
-            },
+},
     std::option::Option::None => std::option::Option::None,
 },
 };

@@ -9528,8 +9528,13 @@ fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: Stri
 // literal's owner is not instantiated, its template field `inner: Inner<S>` still names the owner's
 // own S, which is bound to nothing at this site. Handed down as the nested literal's expected type it
 // instantiates that literal at the parameter NAME -- `value: S` -- and a real value is then judged
-// against a type that does not exist (`expected 'Primitive(S)', got 'Product(Rec)'`). Such a field
-// expects nothing; a field that names none of those parameters is passed down as before.
+// against a type that does not exist (`expected 'Primitive(S)', got 'Product(Rec)'`). Each such
+// parameter is substituted with a TYPE VARIABLE, never dropped with the application around it: in
+// `inner: Inner<Int, S>` the `Int` is determined independently of S, and dropping the whole
+// expectation because S occurs erased the concrete judgment of every field Inner types with its first
+// parameter (review 5338860646). The variable is what the field check already skips as unbound, so
+// the known positions are judged and the unknown one is not judged as the name `S`. A bare `S` field
+// becomes a bare variable and expects nothing, as before.
 fn type_node_mentions_any_name(n: Node, names: List<String>, source_indices: Map<String, NewlineIndex>, fuel: Int) -> Bool {
   if fuel <= 0 || (names |> count) == 0 {
     false
@@ -9735,6 +9740,9 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Absent => []
     }
   }
+  let unbound_owner_param_variables = fold(uninstantiated_owner_param_names, init: empty_map(), f: (acc, g) =>
+    map_insert(acc, g, type_variable_node(id: g))
+  )
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
 
@@ -9770,10 +9778,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Present { value: element } => Present { value: element }
       Absent =>
         match field_declared_type {
-          Present { value: ft } =>
-            if instantiated_struct_fields == none && type_node_mentions_any_name(n: ft, names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, fuel: 16) {
-              none
-            } else if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
+          Present { value: declared_ft } =>
+            let ft = if instantiated_struct_fields == none && type_node_mentions_any_name(n: declared_ft, names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, fuel: 16) {
+              substitute_generics(n: declared_ft, subst: unbound_owner_param_variables, source_indices: scope.type_env.source_indices)
+            } else { declared_ft }
+            if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
               Present { value: ft }
             } else { none }
           Absent => none
