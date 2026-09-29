@@ -1,0 +1,175 @@
+module v2.test.claim.body_lowering.fold_operand_structure
+
+import v2.compiler.body_lowering_fold { body_lower_body_subtree_lower, body_lower_value_read }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { ComputationNode, Loop, Node, Symbol, Transform }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A FOLD IS LOWERED AT ITS OWN NODE, NEVER HOISTED TO AN ENCLOSING ONE.
+//
+// THE SUBJECT IS ONE PRODUCER BOUNDARY: v2.compiler.body_lowering_fold body_lower_value_read and the
+// body walker body_lower_body_subtree_lower, on the body expression of a parsed module (tokenize and
+// parse only). body_lower_try_fold_loop_search used to descend through every child of a node with no
+// production identity and answer the first fold it found as the lowering of that node, so the
+// enclosing operator or call was dropped and only the Loop survived; the walker then asked the same
+// question again of every child it lowered. The descent is deleted: the walker reaches the fold at its
+// own node. These claims read the shape the walker builds -- the operator or call over every operand,
+// with the Loop as one operand -- so re-adding the descent, which answers the enclosing node with the
+// Loop alone, turns them red. They are the fold twins of
+// v2.test.claim.body_lowering.enclosing_expression_structure, which pins the same law for a match.
+
+data fos_and_fold_source: String = "module m\n\nfn fos(fos_t: Bool, fos_xs: List<Bool>) -> Bool {\n  fos_t && fold(fos_xs, init: fos_t, f: fn(acc, x) { acc })\n}\n"
+
+data fos_call_fold_source: String = "module m\n\nfn fos_h(a: Bool, b: Bool) -> Bool { a }\n\nfn fos(fos_s: Bool, fos_xs: List<Bool>) -> Bool {\n  fos_h(a: fold(fos_xs, init: fos_s, f: fn(acc, x) { acc }), b: fos_s)\n}\n"
+
+fn fos_parsed(source: String) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^fos_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: artifact, diagnostics: _ } => optional_present(value: artifact.tree)
+      }
+  }
+}
+
+fn fos_emitted_first(root: Node, production: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: e } => if e == production { optional_present(value: root) } else { fos_emitted_first_kids(root: root, production: production) }
+    Absent => fos_emitted_first_kids(root: root, production: production)
+  }
+}
+
+fn fos_emitted_first_kids(root: Node, production: Symbol) -> Optional<Node> {
+  fold(root.children, init: optional_absent(), f: fn(acc, e) {
+    match acc { Present { value: _ } => acc  Absent => fos_emitted_first(root: e.target, production: production) }
+  })
+}
+
+fn fos_emitted_last(root: Node, production: Symbol) -> Optional<Node> {
+  let own = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: e } => if e == production { optional_present(value: root) } else { optional_absent() }
+    Absent => optional_absent()
+  }
+  fold(root.children, init: own, f: fn(acc, e) {
+    match fos_emitted_last(root: e.target, production: production) { Present { value: n } => optional_present(value: n)  Absent => acc }
+  })
+}
+
+type FosValue
+  = FosNotRead
+  | FosRefused { reason: Symbol }
+  | FosLowered { value: Node }
+
+type FosRoute = FosValueReader | FosBodyWalker
+
+fn fos_route_value(source: String, route: FosRoute) -> FosValue {
+  match fos_parsed(source: source) {
+    Absent => FosNotRead
+    Present { value: tree } =>
+      match fos_emitted_last(root: tree, production: ^dag_surface_fn_body) {
+        Absent => FosNotRead
+        Present { value: body } =>
+          match fos_emitted_first(root: body, production: ^dag_surface_expr) {
+            Absent => FosNotRead
+            Present { value: expr } =>
+              match route {
+                FosValueReader =>
+                  match body_lower_value_read(value: expr) {
+                    Rejected { diagnostics: ds } => FosRefused { reason: ds.head.reason }
+                    Accepted { value: v, diagnostics: _ } => FosLowered { value: v }
+                  }
+                FosBodyWalker =>
+                  match body_lower_body_subtree_lower(captured: expr) {
+                    Rejected { diagnostics: ds } => FosRefused { reason: ds.head.reason }
+                    Accepted { value: Absent, diagnostics: _ } => FosNotRead
+                    Accepted { value: Present { value: v }, diagnostics: _ } => FosLowered { value: v }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn fos_child(n: Node, i: Int) -> Optional<Node> {
+  match n.children.skip(n: i).first() {
+    Present { value: e } => optional_present(value: e.target)
+    Absent => optional_absent()
+  }
+}
+
+fn fos_is_atom(n: Optional<Node>, spelling: Symbol) -> Bool {
+  match n {
+    Present { value: x } =>
+      match node_atom_identity_optional(node: x) { Present { value: s } => s == spelling  Absent => false }
+    Absent => false
+  }
+}
+
+fn fos_is_loop(n: Optional<Node>) -> Bool {
+  match n {
+    Present { value: x } =>
+      match x.kind {
+        ComputationNode { behavior: Loop } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn fos_is_transform(n: Node, arity: Int) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } => count(n.children) == arity
+    _ => false
+  }
+}
+
+// `fos_t && fold(..)` is Transform(&&, fos_t, Loop).
+fn fos_and_over_loop(v: FosValue) -> Bool {
+  match v {
+    FosLowered { value: n } =>
+      fos_is_transform(n: n, arity: 3)
+        && fos_is_atom(n: fos_child(n: n, i: 0), spelling: ^dag_token_and_and)
+        && fos_is_atom(n: fos_child(n: n, i: 1), spelling: ^fos_t)
+        && fos_is_loop(n: fos_child(n: n, i: 2))
+    _ => false
+  }
+}
+
+// `fos_h(a: fold(..), b: fos_s)` is Transform(fos_h, Loop, fos_s).
+fn fos_call_over_loop(v: FosValue) -> Bool {
+  match v {
+    FosLowered { value: n } =>
+      fos_is_transform(n: n, arity: 3)
+        && fos_is_atom(n: fos_child(n: n, i: 0), spelling: ^fos_h)
+        && fos_is_loop(n: fos_child(n: n, i: 1))
+        && fos_is_atom(n: fos_child(n: n, i: 2), spelling: ^fos_s)
+    _ => false
+  }
+}
+
+test fn an_operand_beside_a_fold_lowers_as_the_operator_over_the_loop() -> Bool {
+  fos_and_over_loop(v: fos_route_value(source: fos_and_fold_source, route: FosValueReader))
+}
+
+test fn the_body_walker_lowers_an_operand_beside_a_fold_as_the_operator_over_the_loop() -> Bool {
+  fos_and_over_loop(v: fos_route_value(source: fos_and_fold_source, route: FosBodyWalker))
+}
+
+test fn a_call_with_a_fold_argument_lowers_as_the_call_over_the_loop() -> Bool {
+  fos_call_over_loop(v: fos_route_value(source: fos_call_fold_source, route: FosValueReader))
+}
+
+test fn the_body_walker_lowers_a_call_with_a_fold_argument_as_the_call_over_the_loop() -> Bool {
+  fos_call_over_loop(v: fos_route_value(source: fos_call_fold_source, route: FosBodyWalker))
+}

@@ -1576,26 +1576,7 @@ fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
       } else {
         outcome_accepted(value: optional_absent())
       }
-    Absent =>
-      fold(node.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
-        match acc {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: found, diagnostics: carried } =>
-            match found {
-              Present { value: _ } => acc
-              Absent =>
-                match body_lower_try_fold_loop(node: e.target) {
-                  Rejected { diagnostics: r } =>
-                    Rejected { diagnostics: rejected_with_pending(pending: carried, rejected: r) }
-                  Accepted { value: next, diagnostics: nd } =>
-                    outcome_with_diagnostics(
-                      value: next,
-                      diagnostics: diagnostics_merge(outer: carried, inner: nd)
-                    )
-                }
-            }
-        }
-      })
+    Absent => outcome_accepted(value: optional_absent())
   }
 }
 
