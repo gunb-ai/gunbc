@@ -88,7 +88,7 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
         label: Named { name: export_sym },
         target: Node {
           kind: TypeNode {
-            connective: Atom { identity: ^dag_c3_surface_sugar_service }
+            connective: Atom { identity: ^dag_token_ident }
           },
           children: [],
           occurrence_id: OccurrenceSynthetic

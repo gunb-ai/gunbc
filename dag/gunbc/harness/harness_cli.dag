@@ -267,13 +267,23 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
     TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
       ExitSuccess
     TurnCompletedByArtifact { path: _, steps_taken: _ } => ExitSuccess
-    _ =>
-      ExitFailure {
-        code: 1,
-        reason: join([
-          harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
-        ], ""),
-      }
+    TurnStepBudgetExhausted { steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnTransportRefused { detail: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnResponseUnreadable { cause: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnRequestUnwritable { path: _, detail: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnTruncatedMidToolCall { output_tokens: _, ceiling: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnThinkingFormatInvalid { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnUsageUnavailable { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+  }
+}
+
+fn harness_turn_refusal_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
+  ExitFailure {
+    code: 1,
+    reason: join([
+      harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
+    ], ""),
   }
 }
 
