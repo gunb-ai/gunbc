@@ -1,10 +1,11 @@
 module v2.std.arrow_signature
 
 import std.types { List }
-import std.algebra { Empty, list_snoc_item }
+import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.anonymous_binder { anonymous_binder_mint_parameter_list }
-import v2.std.collection { Absent, Present, list_at_optional }
+import v2.std.collection { Absent, Map, Present, empty_map, list_at_optional, map_insert, map_lookup }
 import v2.std.list_introduction { list_introduction_head_path, list_introduction_head_path_optional, lower_list_introduction }
+import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -115,4 +116,131 @@ fn arrow_signature_order_head_is_list_introduction(arrow: Node) -> Bool {
       acc
     }
   })
+}
+
+// THE ONE BINDING AUTHORITY FOR AN APPLICATION. Given the callee Arrow and the application's actual
+// edges (callee excluded) in authored order, it answers, for each declared parameter IN DECLARED
+// ORDER, which actual fills it -- by its index in authored order. A positional actual fills the next
+// declared slot; a named actual fills the slot of that name. v2.compiler.infer checks inhabitance
+// over this plan, and v2.compiler.eval evaluates the actuals in authored order and binds through it,
+// so the two stages cannot bind one call differently (ruling neat-boar-16, 2026-09-26: eval consumes
+// infer's binding plan, a section 5 hard-reject class otherwise). Every conflict refuses with a typed
+// reason and the actual it is located at; none is resolved by guessing.
+type ApplicationSlot {
+  label: Symbol
+  actual_index: Int
+}
+
+type ApplicationBindingPlan
+  = ApplicationBound { slots: List<ApplicationSlot> }
+  | ApplicationBindingRefused { reason: Symbol, at: Int }
+
+type ApplicationBindingRefusal {
+  reason: Symbol
+  at: Int
+}
+
+fn application_binding_plan(arrow: Node, actuals: List<Edge>) -> ApplicationBindingPlan {
+  match arrow_declared_parameter_order(arrow: arrow) {
+    ArrowParameterOrderAbsent => ApplicationBindingRefused { reason: ^application_parameter_order_absent, at: 0 }
+    ArrowParameterOrderMalformed => ApplicationBindingRefused { reason: ^application_parameter_order_malformed, at: 0 }
+    ArrowParameterOrderDeclared { labels: labels } => application_binding_plan_over(labels: labels, actuals: actuals)
+  }
+}
+
+// The declared parameters, keyed both ways, built in one pass.
+type DeclaredParameterIndex {
+  count: Int
+  position_of: Map<Symbol, Int>
+  label_at: Map<Int, Symbol>
+}
+
+// The walk over the actuals: which declared label each has filled, with the authored index of the
+// actual that filled it.
+type ApplicationBindingWalk {
+  index: Int
+  positional_next: Int
+  filled: Map<Symbol, Int>
+  refused: List<ApplicationBindingRefusal>
+}
+
+fn declared_parameter_index(labels: List<Symbol>) -> DeclaredParameterIndex {
+  fold(labels, init: DeclaredParameterIndex { count: 0, position_of: empty_map(), label_at: empty_map() }, f: fn(acc, l) {
+    DeclaredParameterIndex {
+      count: acc.count + 1,
+      position_of: map_insert(m: acc.position_of, key: l, value: acc.count),
+      label_at: map_insert(m: acc.label_at, key: acc.count, value: l)
+    }
+  })
+}
+
+// ONE PASS OVER THE ACTUALS, ONE OVER THE DECLARED LABELS, each step a map lookup -- no scan per
+// actual or per label. A positional actual fills the next declared slot; a named actual fills the slot
+// of its name. The first conflict refuses, located at the actual that makes it: a positional actual
+// beyond the declared count (surplus), a label that names no parameter (unknown), a slot filled twice.
+// A declared slot left unfilled refuses as a deficit.
+fn application_binding_plan_over(labels: List<Symbol>, actuals: List<Edge>) -> ApplicationBindingPlan {
+  let declared = declared_parameter_index(labels: labels)
+  let walk = fold(actuals, init: ApplicationBindingWalk { index: 0, positional_next: 0, filled: empty_map(), refused: [] }, f: fn(acc, e) {
+    if count(acc.refused) > 0 {
+      acc
+    } else {
+      match e.label {
+        Positional =>
+          match map_lookup(m: declared.label_at, key: acc.positional_next) {
+            Absent => application_walk_refuse(acc: acc, reason: ^application_positional_surplus)
+            Present { value: label } => application_walk_fill(acc: acc, label: label, positional: true)
+          }
+        Named { name: label } =>
+          match map_lookup(m: declared.position_of, key: label) {
+            Absent => application_walk_refuse(acc: acc, reason: ^application_argument_label_unknown)
+            Present { value: _ } => application_walk_fill(acc: acc, label: label, positional: false)
+          }
+      }
+    }
+  })
+  match list_at_optional(xs: walk.refused, index: 0) {
+    Present { value: r } => ApplicationBindingRefused { reason: r.reason, at: r.at }
+    Absent =>
+      fold(labels, init: ApplicationBound { slots: [] }, f: fn(acc, label) {
+        match acc {
+          ApplicationBindingRefused { reason: _, at: _ } => acc
+          ApplicationBound { slots: slots } =>
+            match map_lookup(m: walk.filled, key: label) {
+              Present { value: i } => ApplicationBound { slots: list_snoc_item(xs: slots, item: ApplicationSlot { label: label, actual_index: i }) }
+              Absent => ApplicationBindingRefused { reason: ^application_positional_deficit, at: walk.index }
+            }
+        }
+      })
+  }
+}
+
+fn application_walk_fill(acc: ApplicationBindingWalk, label: Symbol, positional: Bool) -> ApplicationBindingWalk {
+  match map_lookup(m: acc.filled, key: label) {
+    Present { value: _ } => application_walk_refuse(acc: acc, reason: ^application_argument_slot_bound_twice)
+    Absent =>
+      ApplicationBindingWalk {
+        index: acc.index + 1,
+        positional_next: if positional { acc.positional_next + 1 } else { acc.positional_next },
+        filled: map_insert(m: acc.filled, key: label, value: acc.index),
+        refused: []
+      }
+  }
+}
+
+fn application_walk_refuse(acc: ApplicationBindingWalk, reason: Symbol) -> ApplicationBindingWalk {
+  ApplicationBindingWalk {
+    index: acc.index + 1,
+    positional_next: acc.positional_next,
+    filled: acc.filled,
+    refused: [ApplicationBindingRefusal { reason: reason, at: acc.index }]
+  }
+}
+
+// The application's actual edges, callee excluded, in authored order.
+fn application_actual_edges(site: Node) -> List<Edge> {
+  match site.children {
+    Empty => []
+    Cons { head: _, tail: rest } => rest
+  }
 }

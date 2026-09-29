@@ -99,7 +99,23 @@ import v2.std.grounding {
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
   IntLiteralUnwired,
-  ProducedDeclUnwired, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
+  ProducedDeclParamSegment,
+  ProducedDeclRenderRows,
+  ProducedDeclSupport,
+  ProducedDeclWired,
+  ProducedParamFixed,
+  ProducedParamName,
+  ProducedParamType,
+  ProducedSignatureDeclName,
+  ProducedSignatureFixed,
+  ProducedSignatureParams,
+  ProducedSignatureReturnType,
+  ConcreteSyntaxToken,
+  FixedToken,
+  BoundToken,
+  concrete_syntax_token_class,
+  concrete_syntax_token_to_node
+}
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.target_model {
   NoDeclarationReferenceForm,
@@ -709,47 +725,87 @@ fn ts_block_evaluation_mode() -> BlockEvaluationMode {
   }
 }
 
-fn ts_add_signature_with_open() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^ts_token_kw_function },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_fn_add },
-    FixedToken { token_class: ^ts_token_lparen },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_param_x },
-    FixedToken { token_class: ^ts_token_colon },
-    FixedToken { token_class: ^ts_token_ty_number },
-    FixedToken { token_class: ^ts_token_comma },
-    BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_param_y },
-    FixedToken { token_class: ^ts_token_colon },
-    FixedToken { token_class: ^ts_token_ty_number },
-    FixedToken { token_class: ^ts_token_rparen },
-    FixedToken { token_class: ^ts_token_colon },
-    FixedToken { token_class: ^ts_token_ty_number },
-    FixedToken { token_class: ^ts_token_lbrace }
-  ]
-}
-
-fn ts_add_block_close() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^ts_token_rbrace }
-  ]
-}
-
 fn ts_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
   derive_bodied_arrow_scaffold(
-    signature_with_open: ts_add_signature_with_open(),
-    block_close: ts_add_block_close(),
-    mode: ts_block_evaluation_mode()
+    signature_with_open: ts_bodied_arrow_signature_with_open(),
+    block_close: ts_produced_decl_render_rows.block_close,
+    mode: ts_produced_decl_render_rows.block_evaluation_mode
+  )
+}
+
+fn ts_bodied_arrow_sample_parameter_tokens(
+  layout: List<ProducedDeclParamSegment>,
+  binding: Symbol,
+  type_ref_token_class: Symbol
+) -> List<ConcreteSyntaxToken> {
+  fold_list(
+    xs: layout,
+    empty: Empty,
+    cons: fn(acc, segment) {
+      list_append(
+        left: acc,
+        right: match segment {
+          ProducedParamFixed { token_class: token_class } =>
+            [FixedToken { token_class: token_class }]
+          ProducedParamName { token_class: token_class } =>
+            [BoundToken { token_class: token_class, binding: binding }]
+          ProducedParamType =>
+            [FixedToken { token_class: type_ref_token_class }]
+        }
+      )
+    }
+  )
+}
+
+fn ts_bodied_arrow_sample_params_tokens(rows: ProducedDeclRenderRows) -> List<ConcreteSyntaxToken> {
+  let first = ts_bodied_arrow_sample_parameter_tokens(
+    layout: rows.param_layout,
+    binding: ^ts_binding_param_x,
+    type_ref_token_class: rows.type_ref_token_class
+  )
+  let separator = fold_list(
+    xs: rows.param_separator,
+    empty: Empty,
+    cons: fn(acc, token_class) {
+      list_snoc_item(xs: acc, item: FixedToken { token_class: token_class })
+    }
+  )
+  let second = ts_bodied_arrow_sample_parameter_tokens(
+    layout: rows.param_layout,
+    binding: ^ts_binding_param_y,
+    type_ref_token_class: rows.type_ref_token_class
+  )
+  list_append(left: first, right: list_append(left: separator, right: second))
+}
+
+fn ts_bodied_arrow_signature_with_open() -> List<ConcreteSyntaxToken> {
+  fold_list(
+    xs: ts_produced_decl_render_rows.signature,
+    empty: Empty,
+    cons: fn(acc, segment) {
+      list_append(
+        left: acc,
+        right: match segment {
+          ProducedSignatureFixed { token_class: token_class } =>
+            [FixedToken { token_class: token_class }]
+          ProducedSignatureDeclName { token_class: token_class } =>
+            [BoundToken { token_class: token_class, binding: ^ts_binding_fn_add }]
+          ProducedSignatureParams =>
+            ts_bodied_arrow_sample_params_tokens(rows: ts_produced_decl_render_rows)
+          ProducedSignatureReturnType =>
+            [BoundToken { token_class: ts_produced_decl_render_rows.type_ref_token_class, binding: ^dag_binding_type_int }]
+        }
+      )
+    }
   )
 }
 
 fn ts_fn_add_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
-  let scaffold = ts_bodied_arrow_statement_scaffold()
-  scaffold.prefix
+  ts_bodied_arrow_statement_scaffold().prefix
 }
 
 fn ts_fn_add_statement_suffix_tokens() -> List<ConcreteSyntaxToken> {
-  let scaffold = ts_bodied_arrow_statement_scaffold()
-  scaffold.suffix
+  ts_bodied_arrow_statement_scaffold().suffix
 }
 
 fn ts_compose_add_fn_tokens(body_tokens: List<ConcreteSyntaxToken>) -> List<ConcreteSyntaxToken> {
@@ -1187,6 +1243,39 @@ fn ts_fn_add_scaffold_relation_row_node() -> Node {
   ts_grammar_relation_row_node(row: ts_grammar_relation_row())
 }
 
+// TypeScript owns target grammar rows; this shared produced-declaration schema feeds their
+// signature slots. It handles the canonical add body and arbitrary emitted function names.
+data ts_produced_decl_render_rows: ProducedDeclRenderRows = ProducedDeclRenderRows {
+  signature: [
+    ProducedSignatureFixed { token_class: ^ts_token_kw_function },
+    ProducedSignatureDeclName { token_class: ^ts_token_ident },
+    ProducedSignatureFixed { token_class: ^ts_token_lparen },
+    ProducedSignatureParams,
+    ProducedSignatureFixed { token_class: ^ts_token_rparen },
+    ProducedSignatureFixed { token_class: ^ts_token_colon },
+    ProducedSignatureReturnType,
+    ProducedSignatureFixed { token_class: ^ts_token_lbrace }
+  ],
+  param_layout: [
+    ProducedParamName { token_class: ^ts_token_ident },
+    ProducedParamFixed { token_class: ^ts_token_colon },
+    ProducedParamType
+  ],
+  param_separator: [^ts_token_comma],
+  type_ref_token_class: ^ts_token_ty_number,
+  block_close: [FixedToken { token_class: ^ts_token_rbrace }],
+  block_evaluation_mode: ts_block_evaluation_mode(),
+  function_type_realizations: []
+}
+
+fn ts_produced_decl_support() -> ProducedDeclSupport {
+  ProducedDeclWired {
+    render_rows: ts_produced_decl_render_rows,
+    scaffold_relation_rule_name: ^ts_relation_rule_fn_add,
+    scaffold_base_row: ts_fn_add_scaffold_relation_row_node()
+  }
+}
+
 fn ts_pr3_identity_relation_row_witness() -> Witness<Node> {
   ts_eager_grammar_relation_row_witness(lhs: ^ts_production_pr3_typed_fn_decl)
 }
@@ -1369,52 +1458,23 @@ fn ts_target_model_node() -> Node {
 }
 
 fn ts_binding_spellings() -> Map<Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(
-              map_insert(
-                map_insert(
-                  map_insert(
-                    map_insert(
-                      map_insert(empty_map(), ^ts_binding_fn_add, "add"),
-                      ^ts_binding_param_x,
-                      "x"
-                    ),
-                    ^ts_binding_param_y,
-                    "y"
-                  ),
-                  ^dag_binding_param_x,
-                  "x"
-                ),
-                ^dag_binding_param_y,
-                "y"
-              ),
-              ^ts_binding_task,
-              "Task"
-            ),
-            ^ts_binding_field_id,
-            "id"
-          ),
-          ^ts_binding_field_title,
-          "title"
-        ),
-        ^ts_binding_field_status,
-        "status"
-      ),
-      ^ts_binding_type_task_id,
-      "TaskId"
-    ),
-    ^ts_binding_type_task_status,
-    "TaskStatus"
-  )
+  let m0 = map_insert(empty_map(), ^ts_binding_fn_add, "add")
+  let m1 = map_insert(m0, ^ts_binding_param_x, "x")
+  let m2 = map_insert(m1, ^ts_binding_param_y, "y")
+  let m3 = map_insert(m2, ^dag_binding_param_x, "x")
+  let m4 = map_insert(m3, ^dag_binding_param_y, "y")
+  let m5 = map_insert(m4, ^dag_binding_type_int, "number")
+  let m6 = map_insert(m5, ^ts_binding_task, "Task")
+  let m7 = map_insert(m6, ^ts_binding_field_id, "id")
+  let m8 = map_insert(m7, ^ts_binding_field_title, "title")
+  let m9 = map_insert(m8, ^ts_binding_field_status, "status")
+  let m10 = map_insert(m9, ^ts_binding_type_task_id, "TaskId")
+  map_insert(m10, ^ts_binding_type_task_status, "TaskStatus")
 }
 
 fn ts_target_model() -> TargetModel {
   TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: ts_produced_decl_support(),
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
     binding_spellings: ts_binding_spellings(),

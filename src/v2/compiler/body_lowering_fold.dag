@@ -137,6 +137,8 @@ import v2.std.node_query {
   field_projection_optional,
   find_named_child,
   positional_payload_field_name,
+  pattern_wildcard_name,
+  wildcard_pattern_identity,
   repeated_name_edges,
   variant_declaration_node
 }
@@ -3592,15 +3594,10 @@ fn body_lower_unwrap_pass_through(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
+fn body_lower_transform_call(operator: Node, args: List<Edge>) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
-    children: list_append(
-      left: [Edge { label: Positional, target: operator }],
-      right: fold(args, init: Empty, f: fn(acc, arg) {
-        list_snoc_item(xs: acc, item: Edge { label: Positional, target: arg })
-      })
-    )
+    children: list_append(left: [Edge { label: Positional, target: operator }], right: args)
   )
 }
 
@@ -3623,9 +3620,16 @@ fn body_lower_arg_operand_optional(arg_capture: Node) -> Optional<Node> {
   }
 }
 
-// The VALUE CAPTURE of a named argument -- what follows `name :` -- unlowered. Absent when the
-// capture is not that shape.
-fn body_lower_named_arg_value_capture_optional(arg_capture: Node) -> Optional<Node> {
+// A NAMED ARGUMENT'S LABEL AND ITS VALUE CAPTURE -- `name` and what follows `name :`, the value
+// unlowered. Absent when the capture is not that shape. The label is the binding key: the callee's
+// domain is name-keyed (gunbc#12054), so it is carried onto the lowered application as the edge's
+// Named label (body_lower_call_arg_edge), never read and dropped.
+type BodyLowerNamedArg {
+  label: Symbol
+  value: Node
+}
+
+fn body_lower_named_arg_capture_optional(arg_capture: Node) -> Optional<BodyLowerNamedArg> {
   match sugar_sequence_pair_optional(node: arg_capture) {
     Absent =>
       match parse_production_emitted_identity_optional(node: arg_capture) {
@@ -3633,7 +3637,7 @@ fn body_lower_named_arg_value_capture_optional(arg_capture: Node) -> Optional<No
           if emitted == ^dag_surface_arg {
             match parse_production_captured_child_optional(node: arg_capture) {
               Present { value: captured } =>
-                body_lower_named_arg_value_capture_optional(arg_capture: captured)
+                body_lower_named_arg_capture_optional(arg_capture: captured)
               Absent => optional_absent()
             }
           } else {
@@ -3644,14 +3648,14 @@ fn body_lower_named_arg_value_capture_optional(arg_capture: Node) -> Optional<No
     Present { value: pair } =>
       match body_lower_param_binding_optional(node: pair.left) {
         Absent => optional_absent()
-        Present { value: _binding } =>
+        Present { value: label } =>
           match sugar_sequence_pair_optional(node: pair.right) {
             Absent => optional_absent()
             Present { value: after_name } =>
               match node_atom_identity_optional(node: after_name.left) {
                 Present { value: colon } =>
                   if colon == ^dag_token_colon {
-                    optional_present(value: after_name.right)
+                    optional_present(value: BodyLowerNamedArg { label: label, value: after_name.right })
                   } else {
                     optional_absent()
                   }
@@ -3798,7 +3802,7 @@ fn body_lower_lowered_behind_shells_optional(node: Node) -> Optional<Node> {
 // would in body position. Absent means this reader could not lower the value.
 //
 // CALL ARGUMENTS DO NOT GO THROUGH IT. gunbc#12108 is the authority for call-argument lowering
-// (body_lower_call_args_from_capture -> body_lower_call_arg_value), and this reader once also served
+// (body_lower_call_args_from_capture -> body_lower_call_arg_edges -> body_lower_call_arg_edge), and this reader once also served
 // arguments; that route was dropped at the merge rather than kept beside #12108's. The two differ in
 // strength: #12108's per-argument read goes through body_lower_operand_ref_optional, which narrows a
 // sequence operand to its head (gunbc.recurring_failure_mode
@@ -4274,18 +4278,29 @@ fn body_lower_arg_value_read(arg_capture: Node, value_capture: Node) -> Outcome<
   }
 }
 
-fn body_lower_call_arg_value(arg_capture: Node) -> Outcome<Node> {
+// ONE ACTUAL, AS THE EDGE THE APPLICATION CARRIES IT ON: `name: value` is a Named edge whose label is
+// the parameter name, `value` a Positional edge. Named arguments reuse the Named edge the Arrow
+// domain already keys its binders by -- no new edge kind (ruling neat-boar-16 via gentle-koi-724,
+// 2026-09-26). Before this the label was read and dropped -- a declared reference-conservation drop,
+// retired with this change -- and every actual bound by position.
+fn body_lower_call_arg_edge(arg_capture: Node) -> Outcome<Edge> {
   if body_lower_call_arg_capture_is_named(arg_capture: arg_capture) {
-    match body_lower_named_arg_value_capture_optional(arg_capture: arg_capture) {
-      Present { value: value_capture } =>
-        body_lower_arg_value_read(arg_capture: arg_capture, value_capture: value_capture)
+    match body_lower_named_arg_capture_optional(arg_capture: arg_capture) {
+      Present { value: named } =>
+        bind_outcome(
+          o: body_lower_arg_value_read(arg_capture: arg_capture, value_capture: named.value),
+          f: fn(value) { outcome_accepted(value: Edge { label: Named { name: named.label }, target: value }) }
+        )
       Absent =>
         outcome_rejected(
           d: body_lower_diagnostic(reason: ^body_lowering_reason_call_argument_unread, n: arg_capture)
         )
     }
   } else {
-    body_lower_arg_value_read(arg_capture: arg_capture, value_capture: arg_capture)
+    bind_outcome(
+      o: body_lower_arg_value_read(arg_capture: arg_capture, value_capture: arg_capture),
+      f: fn(value) { outcome_accepted(value: Edge { label: Positional, target: value }) }
+    )
   }
 }
 
@@ -4372,26 +4387,60 @@ fn body_lower_comma_list_items_optional(list_capture: Node) -> Optional<List<Nod
 // Call arguments: the shape is read first, then each argument lowers in order and the first that
 // cannot refuses. (Before the split, a shape defect after an unreadable argument reported the
 // argument first; with both present the shape refusal now reports first. Either is a refusal.)
-fn body_lower_call_arg_values(items: List<Node>) -> Outcome<List<Node>> {
-  match items {
-    Empty => outcome_accepted(value: Empty)
-    Cons { head: item, tail: rest } =>
-      bind_outcome(
-        o: body_lower_call_arg_value(arg_capture: item),
-        f: fn(operand) {
-          bind_outcome(
-            o: body_lower_call_arg_values(items: rest),
-            f: fn(operands) { outcome_accepted(value: Cons { head: operand, tail: operands }) }
-          )
-        }
-      )
-  }
+// THE ACTUALS, IN AUTHORED ORDER: a positional prefix, then named actuals (v2.std.node Transform
+// discipline PositionalPrefixThenLabeled). Two shapes have no well-formed application and refuse
+// here, each located at the actual that makes it so: a positional actual after a named one (its slot
+// would depend on which names came before it -- v1 eval_call refuses the same conflict at binding),
+// and a label written twice. An unknown label is not decidable here -- it needs the callee's domain
+// -- and refuses at infer.
+type BodyLowerCallArgsAcc {
+  edges: List<Edge>
+  labels: List<Symbol>
+  seen_named: Bool
 }
 
-fn body_lower_call_args_from_capture(args_capture: Node) -> Outcome<List<Node>> {
+fn body_lower_call_arg_edges(items: List<Node>) -> Outcome<List<Edge>> {
+  bind_outcome(
+    o: fold(items, init: outcome_accepted(value: BodyLowerCallArgsAcc { edges: Empty, labels: Empty, seen_named: false }), f: fn(acc, item) {
+      bind_outcome(o: acc, f: fn(state) {
+        bind_outcome(o: body_lower_call_arg_edge(arg_capture: item), f: fn(edge) {
+          match edge.label {
+            Positional =>
+              if state.seen_named {
+                outcome_rejected(
+                  d: body_lower_diagnostic(reason: ^body_lowering_reason_positional_argument_after_named, n: item)
+                )
+              } else {
+                outcome_accepted(value: BodyLowerCallArgsAcc {
+                  edges: list_snoc_item(xs: state.edges, item: edge),
+                  labels: state.labels,
+                  seen_named: false
+                })
+              }
+            Named { name: label } =>
+              if body_lowering_surface_identity_list_contains(xs: state.labels, target: label) {
+                outcome_rejected(
+                  d: body_lower_diagnostic(reason: ^body_lowering_reason_argument_label_repeated, n: item)
+                )
+              } else {
+                outcome_accepted(value: BodyLowerCallArgsAcc {
+                  edges: list_snoc_item(xs: state.edges, item: edge),
+                  labels: list_snoc_item(xs: state.labels, item: label),
+                  seen_named: true
+                })
+              }
+          }
+        })
+      })
+    }),
+    f: fn(state) { outcome_accepted(value: state.edges) }
+  )
+}
+
+fn body_lower_call_args_from_capture(args_capture: Node) -> Outcome<List<Edge>> {
   bind_outcome(
     o: body_lower_comma_list_items(list_capture: args_capture, shape_refusal: ^body_lowering_reason_call_argument_list_shape_unread),
-    f: fn(items) { body_lower_call_arg_values(items: items) }
+    f: fn(items) { body_lower_call_arg_edges(items: items) }
   )
 }
 
@@ -4475,7 +4524,7 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
 }
 
 // Absent: not a call suffix. Present: a call suffix, whose arguments are read or refused.
-fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<Outcome<List<Node>>> {
+fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<Outcome<List<Edge>>> {
   match sugar_sequence_pair_optional(node: call_suffix) {
     Absent => Absent
     Present { value: pair } =>
@@ -4969,7 +5018,7 @@ fn body_lower_postfix_chain_fold_step(
                     value: PostfixAccumValue {
                       node: body_lower_transform_call(
                         operator: step_segment,
-                        args: list_append(left: [receiver], right: args)
+                        args: list_append(left: [Edge { label: Positional, target: receiver }], right: args)
                       )
                     },
                     diagnostics: diagnostics_merge(outer: ad, inner: cd)
@@ -5218,7 +5267,7 @@ fn body_lower_postfix_method_suffix_optional(repeat_elem: Node) -> Optional<Node
 
 // Called only where body_lower_postfix_projection_has_call_suffix holds or the dotted-chain walk
 // has named the call element, so the two Absent arms are "no call here", not a lost argument.
-fn body_lower_postfix_projection_args(repeat_elem: Node) -> Outcome<List<Node>> {
+fn body_lower_postfix_projection_args(repeat_elem: Node) -> Outcome<List<Edge>> {
   match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
     Absent => outcome_accepted(value: Empty)
     Present { value: call_suffix } =>
@@ -5600,7 +5649,7 @@ fn body_lower_pattern_lowered(pattern_capture: Node) -> Outcome<Node> {
     Present { value: pair } =>
       if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
         match body_lower_pattern_atom_optional(pattern_capture: pair.left) {
-          Present { value: atom } => outcome_accepted(value: atom)
+          Present { value: atom } => outcome_accepted(value: body_lower_pattern_atom_form(atom: atom))
           Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
         }
       } else {
@@ -5612,9 +5661,25 @@ fn body_lower_pattern_lowered(pattern_capture: Node) -> Outcome<Node> {
       }
     Absent =>
       match body_lower_pattern_atom_optional(pattern_capture: captured) {
-        Present { value: atom } => outcome_accepted(value: atom)
+        Present { value: atom } => outcome_accepted(value: body_lower_pattern_atom_form(atom: atom))
         Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
       }
+  }
+}
+
+// A BARE PATTERN ATOM IS A NAME OR THE WILDCARD, and only the wildcard changes form here: an authored
+// `_` lowers to the minted wildcard pattern (v2.std.node_query wildcard_pattern_identity) at the `_`'s
+// own occurrence, so no reader downstream sees a name it would look up. A name stays the atom it is,
+// a constructor or a binder for the resolver to decide.
+fn body_lower_pattern_atom_form(atom: Node) -> Node {
+  match node_atom_identity_optional(node: atom) {
+    Present { value: id } =>
+      if id == pattern_wildcard_name() {
+        body_lower_param_ref_atom(source: atom, identity: wildcard_pattern_identity())
+      } else {
+        atom
+      }
+    Absent => atom
   }
 }
 
@@ -7739,7 +7804,7 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
 // node -> algebra -> node cycle, and v2 collapses onto dag/std, not the reverse. The Transform is
 // not an application: 04_infer types it by its one introduction case
 // (v2.compiler.infer infer_transform_freemonoid_introduction), every element unifying to one T. The
-// shape itself -- head path, constructor and reader -- is v2.std.compilers.body_lowering
+// shape itself -- head path, constructor and reader -- is v2.std.list_introduction
 // lower_list_introduction and list_introduction_elements_optional, one authority for both sides.
 // The grammar writes the literal as seq(`[`, seq(optional comma_list(expr), `]`))
 // (v2.extdeps.languages.dag dag_grammar_primary_expr_core); its items are read by the one

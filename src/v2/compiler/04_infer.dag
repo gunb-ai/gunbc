@@ -62,7 +62,17 @@ import v2.std.optional {
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
 import v2.std.node { arrow_signature_order_label, edge_label_of }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
-import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
+import v2.std.arrow_signature {
+  ApplicationBindingRefused,
+  ApplicationBound,
+  ApplicationSlot,
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  application_actual_edges,
+  application_binding_plan,
+  arrow_declared_parameter_order
+}
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.constraints {
   CanonicalGrounding,
@@ -2125,53 +2135,112 @@ fn infer_application_argument_inhabitance(
     FormalsOrderRefused { reason: reason } =>
       outcome_rejected(application_parameter_order_diagnostic(application: node, reason: reason))
     FormalsInDeclaredOrder { formals: formals } =>
-      let args = infer_transform_argument_targets(node: node)
-      if length(xs: formals) != length(xs: args) {
-        outcome_rejected(
-          application_positional_arity_mismatch_diagnostic(
-            application: node,
-            formal_count: length(xs: formals),
-            argument_count: length(xs: args)
-          )
-        )
-      } else {
-        let type_params = infer_application_type_params(node: node)
-        match fold(
-          zip_map(
-            a: formals,
-            b: args,
-            f: fn(formal, arg) {
-              InhabitanceFormalArg { formal: formal, arg: arg }
+      match infer_application_formal_args(node: node, formals: formals) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: pairs, diagnostics: _ } =>
+          let type_params = infer_application_type_params(node: node)
+          match fold(
+            pairs,
+            init: Accepted { value: infer_no_type_variable_instances(), diagnostics: None },
+            f: fn(acc, pair) {
+              match acc {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: instances, diagnostics: pd } =>
+                  match infer_judge_application_argument_instantiating(
+                    application: node,
+                    entries: entries,
+                    formal: pair.formal,
+                    arg: pair.arg,
+                    type_params: type_params,
+                    instances: instances
+                  ) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: next, diagnostics: jd } =>
+                      Accepted {
+                        value: next,
+                        diagnostics: diagnostics_merge(outer: pd, inner: jd)
+                      }
+                  }
+              }
             }
-          ),
-          init: Accepted { value: infer_no_type_variable_instances(), diagnostics: None },
-          f: fn(acc, pair) {
-            match acc {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              Accepted { value: instances, diagnostics: pd } =>
-                match infer_judge_application_argument_instantiating(
-                  application: node,
-                  entries: entries,
-                  formal: pair.formal,
-                  arg: pair.arg,
-                  type_params: type_params,
-                  instances: instances
-                ) {
-                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  Accepted { value: next, diagnostics: jd } =>
-                    Accepted {
-                      value: next,
-                      diagnostics: diagnostics_merge(outer: pd, inner: jd)
-                    }
-                }
-            }
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
           }
-        ) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
-        }
       }
   }
+}
+
+// EACH FORMAL WITH THE ACTUAL THAT FILLS IT, from the one binding plan
+// (v2.std.arrow_signature application_binding_plan): positional actuals fill declared slots
+// in declared order, named actuals fill the slot of their name. Formals and plan slots are both in
+// declared order, so they pair one to one. A plan refusal -- surplus, deficit, unknown label, a slot
+// bound twice -- refuses here, located at the actual it names (the application itself when the plan
+// names no actual). This replaces a zip of stored formals with positional children by index, which
+// ignored every name (gunbc#12054).
+fn infer_application_formal_args(node: Node, formals: List<InhabitanceFormal>) -> Outcome<List<InhabitanceFormalArg>> {
+  let actuals = application_actual_edges(site: node)
+  match infer_application_callee_arrow(node: node) {
+    Absent => outcome_accepted(value: Empty)
+    Present { value: arrow } =>
+      match application_binding_plan(arrow: arrow, actuals: actuals) {
+        ApplicationBindingRefused { reason: reason, at: at } =>
+          outcome_rejected(
+            application_parameter_order_diagnostic(
+              application: match list_at_optional(xs: actuals, index: at) {
+                Present { value: e } => e.target
+                Absent => node
+              },
+              reason: reason
+            )
+          )
+        ApplicationBound { slots: slots } =>
+          if (length(xs: slots) == length(xs: formals)) && (length(xs: slots) == length(xs: actuals)) {
+            outcome_accepted(value: infer_formal_args_by_plan(formals: formals, slots: slots, actuals: actuals))
+          } else {
+            outcome_rejected(
+              application_parameter_order_diagnostic(application: node, reason: application_parameter_order_malformed_reason())
+            )
+          }
+      }
+  }
+}
+
+// THE PLAN IS A BIJECTION, SO PAIRING IS TWO ZIPS AND A SORT. Formals and plan slots are both in
+// declared order, so they pair one to one; sorting those pairs by the authored index of the actual
+// each slot names puts them in authored order, which pairs one to one with the actuals (surplus and
+// deficit already refused in the plan). O(n log n), with no lookup per slot. Every fold and zip takes
+// a typed parameter, so the emitter types its elements.
+type InferSlotFormal {
+  formal: InhabitanceFormal
+  actual_index: Int
+}
+
+fn infer_slot_formal_index_key(p: InferSlotFormal) -> Int {
+  p.actual_index
+}
+
+fn infer_slot_formal_of(formal: InhabitanceFormal, slot: ApplicationSlot) -> InferSlotFormal {
+  InferSlotFormal { formal: formal, actual_index: slot.actual_index }
+}
+
+fn infer_formal_arg_of(p: InferSlotFormal, e: Edge) -> InhabitanceFormalArg {
+  InhabitanceFormalArg { formal: p.formal, arg: e.target }
+}
+
+fn infer_slot_formals(formals: List<InhabitanceFormal>, slots: List<ApplicationSlot>) -> List<InferSlotFormal> {
+  zip_map(a: formals, b: slots, f: infer_slot_formal_of)
+}
+
+fn infer_formal_args_by_authored_actuals(pairs: List<InferSlotFormal>, actuals: List<Edge>) -> List<InhabitanceFormalArg> {
+  zip_map(a: pairs, b: actuals, f: infer_formal_arg_of)
+}
+
+fn infer_formal_args_by_plan(formals: List<InhabitanceFormal>, slots: List<ApplicationSlot>, actuals: List<Edge>) -> List<InhabitanceFormalArg> {
+  infer_formal_args_by_authored_actuals(
+    pairs: sort_by(infer_slot_formals(formals: formals, slots: slots), infer_slot_formal_index_key),
+    actuals: actuals
+  )
 }
 
 fn infer_transform_binary_infix(
