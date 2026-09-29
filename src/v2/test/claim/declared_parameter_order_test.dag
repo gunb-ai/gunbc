@@ -1,5 +1,6 @@
 module v2.test.claim.declared_parameter_order
 
+import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -11,13 +12,8 @@ import std.algebra { Cons, Empty }
 import v2.std.anonymous_binder { anonymous_param_label }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.compilers.body_lowering {
-  ArrowParameterOrderAbsent,
-  ArrowParameterOrderDeclared,
-  ArrowParameterOrderMalformed,
-  arrow_declared_parameter_order,
-  lower_list_introduction
-}
+import v2.std.list_introduction { lower_list_introduction }
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -48,7 +44,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: the declared parameter order an Arrow carries on its ^arrow_signature_order_edge -- minted
 // with the domain by v2.std.anonymous_binder anonymous_binder_mint_parameter_list, built by
-// v2.std.compilers.body_lowering signature_order_edge, walled by v2.std.node
+// v2.std.arrow_signature signature_order_edge, walled by v2.std.node
 // arrow_signature_order_conforms, read by v2.std.compilers.body_lowering
 // arrow_declared_parameter_order, and consumed by positional binding in v2.compiler.infer
 // infer_application_formals and v2.compiler.eval eval_param_labels_in_declared_order.
@@ -73,7 +69,7 @@ data dpo_artifact: Artifact = Artifact {
   file_path: "src/v2/pilot/declared_parameter_order_pilot.dag"
 }
 
-fn dpo_assemble(src: String) -> Outcome<Node> {
+fn dpo_assemble(src: String) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
       head: DagSourceReadWitness {
@@ -89,30 +85,30 @@ fn dpo_assemble(src: String) -> Outcome<Node> {
   )
 }
 
-fn dpo_b_then_a() -> Outcome<Node> {
+fn dpo_b_then_a() -> Outcome<ResolvedTree> {
   dpo_assemble(src: "module p\n\nfn f(b: Int, a: Bool) -> Int { 1 }\n")
 }
 
-fn dpo_a_then_b() -> Outcome<Node> {
+fn dpo_a_then_b() -> Outcome<ResolvedTree> {
   dpo_assemble(src: "module p\n\nfn f(a: Bool, b: Int) -> Int { 1 }\n")
 }
 
-fn dpo_eleven_anonymous() -> Outcome<Node> {
+fn dpo_eleven_anonymous() -> Outcome<ResolvedTree> {
   dpo_assemble(
     src: "module p\n\nfn f(_: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int) -> Int { 1 }\n"
   )
 }
 
-fn dpo_label_shadows_a_declaration() -> Outcome<Node> {
+fn dpo_label_shadows_a_declaration() -> Outcome<ResolvedTree> {
   dpo_assemble(src: "module p\n\nfn y() -> Int { 1 }\n\nfn f(y: Int) -> Int { 2 }\n")
 }
 
 // The Arrows of an assembled program, in walk order; empty when it refused.
-fn dpo_arrows(o: Outcome<Node>) -> List<Node> {
+fn dpo_arrows(o: Outcome<ResolvedTree>) -> List<Node> {
   match o {
     Rejected { diagnostics: _ } => []
     Accepted { value: n, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+      fold(node_subtree_nodes(root: n.root), init: [], f: fn(acc, m) {
         match m.kind {
           TypeNode { connective: Arrow } => concat(acc, [m])
           _ => acc
@@ -122,7 +118,7 @@ fn dpo_arrows(o: Outcome<Node>) -> List<Node> {
 }
 
 // The one Arrow whose domain has exactly `arity` binders -- the specimen's declared fn.
-fn dpo_arrow_of_arity(o: Outcome<Node>, arity: Int) -> List<Node> {
+fn dpo_arrow_of_arity(o: Outcome<ResolvedTree>, arity: Int) -> List<Node> {
   fold(dpo_arrows(o: o), init: [], f: fn(acc, a) {
     match arrow_declared_parameter_order(arrow: a) {
       ArrowParameterOrderDeclared { labels: ls } => if count(ls) == arity { concat(acc, [a]) } else { acc }

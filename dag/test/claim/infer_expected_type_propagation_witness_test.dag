@@ -1,0 +1,100 @@
+module test.claim.infer_expected_type_propagation_witness
+
+import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+import std.types { Bool, Int, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// EXPECTED-TYPE PROPAGATION INTO GENERIC CONSTRUCTORS, ONE DISCRIMINATING RED PER ROUTE.
+//
+// v1.compiler.infer carries a declared type down into four construction sites that previously
+// received no expected type, and a variant under its owner's instantiated type now has its fields
+// instantiated through the same substitution a product uses. With no refusal of undetermined type
+// arguments in this change, what makes the propagation observable is its consumer: a nested value of
+// the WRONG type is now judged against the instantiated field type. Before, each red below compiled
+// clean -- a silent wrong acceptance -- because the field kept its template type `T` and the
+// mismatch check skips a field whose type is an unbound variable.
+//
+// Each red has a green twin that differs ONLY in the mistyped value, so the difference of blocking
+// totals cancels the live-tree baseline the census compiles against, and a green that stopped
+// compiling would red the pair rather than hide behind it. Fixture names carry an ExpProp prefix
+// because bare names resolve by global uniqueness.
+//
+// This is the next-rung groundwork for gunbc.recurring_failure_mode
+// generic_variant_without_expected_type_leaves_a_present_arm_undecided: generic constructor
+// instantiation can only refuse an undetermined type argument once every declared context that
+// DETERMINES one actually reaches the constructor.
+
+data type_mismatch_class: String = "TypeMismatch"
+
+// ROUTE 1 -- the kernel fold step function returns the accumulator. Its callable carried no return
+// type, so the lambda body, and every arm inside it, was inferred with no expected type.
+data fold_red_source: String = "module probe_expprop_fold_red\ntype ExpPropResult<T, E> = ExpPropOk { value: T } | ExpPropErr { value: E }\nfn total(xs: List<Int>) -> ExpPropResult<Int, String> {\n  let initial: ExpPropResult<Int, String> = ExpPropOk { value: 0 }\n  fold(xs, init: initial, f: (acc, x) => match acc {\n    ExpPropErr { value: e } => ExpPropErr { value: 7 }\n    ExpPropOk { value: n } => ExpPropOk { value: n + x }\n  })\n}\n"
+data fold_green_source: String = "module probe_expprop_fold_green\ntype ExpPropResult<T, E> = ExpPropOk { value: T } | ExpPropErr { value: E }\nfn total(xs: List<Int>) -> ExpPropResult<Int, String> {\n  let initial: ExpPropResult<Int, String> = ExpPropOk { value: 0 }\n  fold(xs, init: initial, f: (acc, x) => match acc {\n    ExpPropErr { value: e } => ExpPropErr { value: e }\n    ExpPropOk { value: n } => ExpPropOk { value: n + x }\n  })\n}\n"
+
+test fn a_mistyped_arm_inside_a_fold_step_is_refused() -> Bool {
+  blocking_class_count_for(source: fold_red_source, wanted_class: type_mismatch_class) == 1
+    && blocking_class_count_for(source: fold_green_source, wanted_class: type_mismatch_class) == 0
+    && total_blocking_count_for(source: fold_red_source) - total_blocking_count_for(source: fold_green_source) == 1
+}
+
+// ROUTE 2 -- a positional variant constructor `V(payload)` is rewritten to a one-field record
+// literal, and that rewrite discarded the call's expected type.
+data positional_red_source: String = "module probe_expprop_positional_red\ntype ExpPropBox<T> { v: T }\ntype ExpPropWrapped = ExpPropWrap(ExpPropBox<Int>) | ExpPropNothing\nfn wrapped() -> ExpPropWrapped {\n  ExpPropWrap(ExpPropBox { v: \"not an int\" })\n}\n"
+data positional_green_source: String = "module probe_expprop_positional_green\ntype ExpPropBox<T> { v: T }\ntype ExpPropWrapped = ExpPropWrap(ExpPropBox<Int>) | ExpPropNothing\nfn wrapped() -> ExpPropWrapped {\n  ExpPropWrap(ExpPropBox { v: 3 })\n}\n"
+
+test fn a_mistyped_positional_payload_is_refused() -> Bool {
+  blocking_class_count_for(source: positional_red_source, wanted_class: type_mismatch_class) == 1
+    && blocking_class_count_for(source: positional_green_source, wanted_class: type_mismatch_class) == 0
+    && total_blocking_count_for(source: positional_red_source) - total_blocking_count_for(source: positional_green_source) == 1
+}
+
+// ROUTE 3 -- an expected type spelled through a parameterized alias. The instantiation matched the
+// expected type by NAME, so `ExpPropNames<String>` never matched `ExpPropList`, and the nested
+// `ExpPropCons` tail -- the shape every `List<T>` row declared over FreeMonoid<T> takes -- received
+// nothing.
+data alias_red_source: String = "module probe_expprop_alias_red\ntype ExpPropList<T> = ExpPropCons { head: T, tail: ExpPropList<T> } | ExpPropEmpty\ntype ExpPropNames<X> = ExpPropList<X>\nfn rows() -> ExpPropNames<String> {\n  ExpPropCons { head: \"a\", tail: ExpPropCons { head: 5, tail: ExpPropEmpty {} } }\n}\n"
+data alias_green_source: String = "module probe_expprop_alias_green\ntype ExpPropList<T> = ExpPropCons { head: T, tail: ExpPropList<T> } | ExpPropEmpty\ntype ExpPropNames<X> = ExpPropList<X>\nfn rows() -> ExpPropNames<String> {\n  ExpPropCons { head: \"a\", tail: ExpPropCons { head: \"b\", tail: ExpPropEmpty {} } }\n}\n"
+
+test fn a_mistyped_nested_tail_under_a_generic_alias_is_refused() -> Bool {
+  blocking_class_count_for(source: alias_red_source, wanted_class: type_mismatch_class) == 1
+    && blocking_class_count_for(source: alias_green_source, wanted_class: type_mismatch_class) == 0
+    && total_blocking_count_for(source: alias_red_source) - total_blocking_count_for(source: alias_green_source) == 1
+}
+
+// ROUTE 4 -- `Present { value: v }` under an expected `T?` expects `T` for its value. The expected
+// optional reached the literal and stopped there.
+data present_red_source: String = "module probe_expprop_present_red\ntype ExpPropResult<T, E> = ExpPropOk { value: T } | ExpPropErr { value: E }\nfn maybe(b: Bool) -> ExpPropResult<String, String>? {\n  if b { Present { value: ExpPropErr { value: 1 } } } else { none }\n}\n"
+data present_green_source: String = "module probe_expprop_present_green\ntype ExpPropResult<T, E> = ExpPropOk { value: T } | ExpPropErr { value: E }\nfn maybe(b: Bool) -> ExpPropResult<String, String>? {\n  if b { Present { value: ExpPropErr { value: \"x\" } } } else { none }\n}\n"
+
+test fn a_mistyped_value_under_an_expected_optional_is_refused() -> Bool {
+  blocking_class_count_for(source: present_red_source, wanted_class: type_mismatch_class) == 1
+    && blocking_class_count_for(source: present_green_source, wanted_class: type_mismatch_class) == 0
+    && total_blocking_count_for(source: present_red_source) - total_blocking_count_for(source: present_green_source) == 1
+}
+
+// THE REFUSAL IS AGAINST THE INSTANTIATION, NEVER AGAINST A PARAMETER NAME. When a generic literal's
+// owner is NOT instantiated, a template field `inner: ExpPropInner<S>` still names the owner's own
+// S; handed down as an expectation it would instantiate the nested literal at the NAME `S` and
+// refuse a correct value as `expected 'S'`. This control has no annotation anywhere and must stay
+// free of any type mismatch.
+data uninstantiated_owner_source: String = "module probe_expprop_uninstantiated_owner\ntype ExpPropRec { v: Int }\ntype ExpPropInner<S> { value: S }\ntype ExpPropOuter<S> { inner: ExpPropInner<S> }\nfn f() -> Int {\n  let o = ExpPropOuter { inner: ExpPropInner { value: ExpPropRec { v: 9 } } }\n  o.inner.value.v\n}\n"
+
+test fn an_uninstantiated_owner_passes_no_parameter_name_down() -> Bool {
+  blocking_class_count_for(source: uninstantiated_owner_source, wanted_class: type_mismatch_class) == 0
+}
+
+// THE KNOWN POSITIONS OF A PARTIALLY DETERMINED APPLICATION STAY JUDGED (review 5338860646). The
+// outer owner is not instantiated, so its `S` is unbound, but `inner: ExpPropMixedInner<Int, S>` fixes
+// the inner literal's first parameter independently of S. Dropping the whole expectation because S
+// occurs erased that `Int`, and `known: "not an int"` compiled clean. The red must refuse on the
+// concrete Int, and the green twin -- which changes only `known` -- must acquire no refusal against S.
+data mixed_red_source: String = "module probe_expprop_mixed_red\ntype ExpPropMixedRec { v: Int }\ntype ExpPropMixedInner<X, S> { known: X, extra: S }\ntype ExpPropMixedOuter<S> { inner: ExpPropMixedInner<Int, S> }\nfn f() -> Int {\n  let o = ExpPropMixedOuter { inner: ExpPropMixedInner { known: \"not an int\", extra: ExpPropMixedRec { v: 9 } } }\n  o.inner.extra.v\n}\n"
+data mixed_green_source: String = "module probe_expprop_mixed_green\ntype ExpPropMixedRec { v: Int }\ntype ExpPropMixedInner<X, S> { known: X, extra: S }\ntype ExpPropMixedOuter<S> { inner: ExpPropMixedInner<Int, S> }\nfn f() -> Int {\n  let o = ExpPropMixedOuter { inner: ExpPropMixedInner { known: 7, extra: ExpPropMixedRec { v: 9 } } }\n  o.inner.extra.v\n}\n"
+
+test fn a_known_position_beside_an_unbound_one_is_still_judged() -> Bool {
+  blocking_class_count_for(source: mixed_red_source, wanted_class: type_mismatch_class) == 1
+    && blocking_class_count_for(source: mixed_green_source, wanted_class: type_mismatch_class) == 0
+    && total_blocking_count_for(source: mixed_red_source) - total_blocking_count_for(source: mixed_green_source) == 1
+}

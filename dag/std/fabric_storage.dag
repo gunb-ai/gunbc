@@ -184,6 +184,8 @@ type FabricStorageFault
 type FabricWriterRefusal
   = WriterLoginAbsent
   | WriterLoginUnrostered { login: NonEmptyStr }
+  | WriterPeerUnrostered { account: NonEmptyStr }
+  | WriterPeerUnattested
 
 type FabricPut
   = FabricObjectStored { object: FabricObjectRef }
@@ -261,6 +263,8 @@ fn fabric_storage_fault_wire(fault: FabricStorageFault) -> String {
     FabricWriterRefused { refusal: r } => match r {
       WriterLoginAbsent => "writer refused: no login was presented"
       WriterLoginUnrostered { login: l } => join(["writer refused: login ", l as String, " is not a rostered fabric writer"], "")
+      WriterPeerUnrostered { account: a } => join(["writer refused: local account ", a as String, " is not a rostered fabric writer"], "")
+      WriterPeerUnattested => "writer refused: no kernel-attested peer"
     }
   }
 }

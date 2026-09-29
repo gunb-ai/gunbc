@@ -826,7 +826,11 @@ fn connectivity_verdict_is_detached(v: RunnerSlotConnectivityVerdict) -> Bool {
 fn connectivity_verdict_labels_diverge(v: RunnerSlotConnectivityVerdict) -> Bool {
   match v {
     SlotConnectivityLabelsDiverge { slot: _, registration_id: _ } => true
-    _ => false
+    SlotConnectivityHealthy { slot: _, registration_id: _ } => false
+    SlotConnectivityDetached { slot: _, registration_id: _ } => false
+    SlotConnectivityOrphaned { slot: _ } => false
+    SlotConnectivityUnknown { slot: _, reason: _ } => false
+    SlotConnectivityUnexpectedRegistration { registration_id: _, registration_name: _, decoded: _ } => false
   }
 }
 

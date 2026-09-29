@@ -246,6 +246,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1804,6 +1805,35 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
         name: "String".to_string(),
     }),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "exclude_substrings".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    })]),
+        returns: list_of_type_variable("module_dependency_edge_elem".to_string()),
+    }));
+                __m.insert("dependency_resolution_facts_at".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "pool_roots".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "importer_path".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
     }),
     }), Rc::new(BuiltinParam {
         name: "exclude_substrings".to_string(),

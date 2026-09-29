@@ -20,7 +20,7 @@ import extdeps.communication.medium { Medium }
 import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_witness_for_node, infer }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
+import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_arrow_with_body_node,
@@ -34,7 +34,7 @@ import v2.extdeps.languages.rust_test {
   rust_classical_not_ingested_target_model_staging,
   rust_match_target_model_staging
 }
-import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations, claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
   List,
@@ -117,7 +117,7 @@ fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
   }
 }
 
-fn ingested_resolved_module_from_source(source: String) -> Outcome<Node> {
+fn ingested_resolved_module_from_source(source: String) -> Outcome<ResolvedTree> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: source, file: ^ingested_classical_not_file, rules: lm.lex),
@@ -141,11 +141,11 @@ fn ingested_arrow_from_source(source: String) -> Outcome<Node> {
   bind_outcome(
     o: ingested_resolved_module_from_source(source: source),
     f: fn(resolved) {
-      match ingested_find_arrow_in_module(root: resolved) {
+      match ingested_find_arrow_in_module(root: resolved.root) {
         Present { value: arrow } => outcome_accepted(value: arrow)
         Absent =>
           outcome_rejected(
-            d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arrow_miss, node: resolved)
+            d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arrow_miss, node: resolved.root)
           )
       }
     }
@@ -155,7 +155,7 @@ fn ingested_canonical_inferred_tree_from_arrow(arrow: Outcome<Node>) -> Outcome<
   bind_outcome(
     o: arrow,
     f: fn(a) {
-      infer_and_discharge(tree: a)
+      infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: a))
     }
   )
 }
@@ -177,7 +177,7 @@ fn ingested_staging_inferred_tree_from_arrow(arrow: Outcome<Node>) -> Outcome<In
     o: arrow,
     f: fn(a) {
       bind_outcome(
-        o: infer_and_discharge(tree: a),
+        o: infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: a)),
         f: fn(inferred) {
           outcome_accepted(
             value: InferredTree {
@@ -222,7 +222,7 @@ fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> Outcome<I
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
       bind_outcome(
-        o: infer_and_discharge(tree: arrow),
+        o: infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: arrow)),
         f: fn(inferred) {
           outcome_accepted(
             value: InferredTree {
@@ -639,9 +639,9 @@ test fn ingested_classical_not_emit_accepts_holds() -> Bool {
 }
 
 test fn ingested_classical_not_real_infer_holds() -> Bool {
-  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+  match ingested_classical_not_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      match infer(tree: arrow) {
+      match infer(tree: claim_resolved_tree_without_declarations(root: arrow)) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -676,7 +676,7 @@ fn ingested_classical_not_arrow_empty_domain_fixture() -> Node {
 }
 
 fn ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(tree: Node) -> Bool {
-  match infer(tree: tree) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tree)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }

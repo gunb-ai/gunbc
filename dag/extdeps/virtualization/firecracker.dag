@@ -1,5 +1,7 @@
 module extdeps.virtualization.firecracker
 
+import extdeps.exec.program { uncataloged_program }
+
 import extdeps.exec.command { ArgvCommand, argv_command }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.disposition { Disposition, Terminal }
@@ -119,7 +121,7 @@ data firecracker_release_aarch64_tarball_sha256: NonEmptyStr = "8d0e69f6d6f9a172
 // `firecracker --version` prints `Firecracker v<version>` on its first line; the readback compares
 // the modeled version against that line rather than trusting a path.
 fn firecracker_version_command(binary: String) -> ArgvCommand {
-  argv_command(program: binary as NonEmptyStr, arguments: ["--version"])
+  argv_command(program: uncataloged_program(invocation: binary as NonEmptyStr), arguments: ["--version"])
 }
 
 fn firecracker_version_line(rel: FirecrackerRelease) -> String {
@@ -319,7 +321,7 @@ fn firecracker_vm_config_document(config: FirecrackerVmConfig) -> String {
 // that port to its own stdout, and a caller capturing this command's output is reading the guest.
 fn firecracker_run_config_command(binary: String, config_path: String) -> ArgvCommand {
   argv_command(
-    program: binary as NonEmptyStr,
+    program: uncataloged_program(invocation: binary as NonEmptyStr),
     arguments: ["--no-api", "--config-file", config_path],
   )
 }
@@ -343,7 +345,7 @@ fn firecracker_jailer_run_command(
   config_path_in_jail: String,
 ) -> ArgvCommand {
   argv_command(
-    program: jailer_binary as NonEmptyStr,
+    program: uncataloged_program(invocation: jailer_binary as NonEmptyStr),
     arguments: [
       "--id", jailer_id,
       "--exec-file", exec_file,

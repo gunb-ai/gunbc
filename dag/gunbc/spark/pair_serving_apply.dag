@@ -71,7 +71,7 @@ fn script_word(w: String) -> String {
 }
 
 fn argv_line(cmd: ArgvCommand) -> String {
-  join(map(concat([cmd.program as String], cmd.arguments), w => script_word(w: w)), " ")
+  join(map(concat([cmd.program.invocation as String], cmd.arguments), w => script_word(w: w)), " ")
 }
 
 fn unit_render_text(u: SparkPairUnitRender) -> String? {

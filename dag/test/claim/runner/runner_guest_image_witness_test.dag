@@ -270,7 +270,7 @@ test fn the_filesystem_size_operand_is_denominated_rather_than_a_block_count() -
     from_directory: "/r/t",
     size: runner_guest_image_size,
   )
-  c.program as String == "mke2fs"
+  c.program.invocation as String == "mke2fs"
     && any(xs: c.arguments, predicate: fn(w) { w == "8192m" })
     && any(xs: c.arguments, predicate: fn(w) { w == "ext4" })
     && any(xs: c.arguments, predicate: fn(w) { w == "-d" })
@@ -311,9 +311,9 @@ type StagingOrder {
 
 fn staging_order(commands: List<ArgvCommand>) -> StagingOrder {
   fold(commands, init: StagingOrder { extracted: false, linked_after_extract: false }, f: fn(acc, c) {
-    if (c.program as String) == "unsquashfs" {
+    if (c.program.invocation as String) == "unsquashfs" {
       StagingOrder { extracted: true, linked_after_extract: acc.linked_after_extract }
-    } else if (c.program as String) == "ln" {
+    } else if (c.program.invocation as String) == "ln" {
       StagingOrder { extracted: acc.extracted, linked_after_extract: acc.extracted }
     } else {
       acc
@@ -344,7 +344,7 @@ test fn the_resolver_is_a_link_to_the_kernels_pnp_placed_after_extraction_with_n
         && any(xs: cmds, predicate: fn(c) { argv_words(command: c) == argv_words(command: link) })
         && order.extracted
         && order.linked_after_extract
-        && !any(xs: cmds, predicate: fn(c) { (c.program as String) == "cp" })
+        && !any(xs: cmds, predicate: fn(c) { (c.program.invocation as String) == "cp" })
         && !any(xs: cmds, predicate: fn(c) { any(xs: c.arguments, predicate: fn(w) { string_contains(s: w, pattern: resolver) }) })
     }
   }

@@ -1,0 +1,9 @@
+module gunbc.fabric_storage_state_policy
+
+import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
+
+// Pinned credential identity shared by provisioning and custody.
+// Declaring the pin does not establish cloud existence or successful host custody.
+data fabric_state_key_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "fabric-state-writer-mac-key"), version: "1",
+)
