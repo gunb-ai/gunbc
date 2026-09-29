@@ -1769,14 +1769,23 @@ fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex
 // This is why the fabricated value was worse than a refusal (DESIGN section 5): error_type is a
 // plausible-looking Node, so it substituted silently and the loss surfaced stages later as an
 // unresolvable method on a receiver nobody could point back to a declaration.
+//
+// A VARIANT IS INSTANTIATED BY ITS OWNER'S EXPECTED TYPE THROUGH THE SAME SUBSTITUTION. The expected
+// type names the coproduct (`Attempt<Int, Bad>`) while the literal names one of its variants
+// (`Refused { cause: .. }`), so the name test above answered none for every variant and its fields
+// stayed on the template -- `cause: E` -- although the owner's parameters were in hand. The owner's
+// params are substituted into the constructed variant's fields by the one substitution the product
+// path already uses; the variant is selected by its last segment, the same selection the presence
+// roster makes. ONLY AN APPLICATION IS READ AS ONE: an expected DECLARATION node (a coproduct reached
+// as a fold accumulator's type, say) also has children, but they are its variants, and reading them
+// as type arguments bound `T` to the variant `Ok` -- `expected 'Coproduct(Result)', got 'String'`.
+// An application carries no connective; a declaration carries Disj or Conj.
 fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> List<Node>? {
   match type_name {
     Present { value: tn } =>
       match expected {
         Present { value: exp } =>
-          if type_name_compatible(a: authored_name_at(source_indices: scope.type_env.source_indices, node: exp), b: tn) == false {
-            none
-          } else if exp.children |> count == 0 {
+          if exp.children |> count == 0 || exp.connective != NoConnective {
             none
           } else {
             match lookup_type_for(env: scope.type_env, node: exp) {
@@ -1784,26 +1793,40 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                 if (decl.params |> count) != (exp.children |> count) {
                   none
                 } else {
-                  let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
-                    let slot = authored_name_at(source_indices: scope.type_env.source_indices, node: pair.second)
-                    match exp.children |> skip(pair.first) |> first {
-                      Present { value: arg } => map_insert(acc, slot, child_type_node(ch: arg))
-                      Absent => acc
+                  let si = scope.type_env.source_indices
+                  let names_the_declaration = type_name_compatible(a: authored_name_at(source_indices: si, node: exp), b: tn)
+                  let constructed_variant = if (names_the_declaration || decl.connective != Disj) { none } else {
+                    decl.children |> filter(v => authored_name_at(source_indices: si, node: v) == qualified_last_segment(name: tn)) |> first
+                  }
+                  let template_fields_opt = if names_the_declaration { Present { value: decl.children } } else {
+                    match constructed_variant {
+                      Present { value: variant_node } => Present { value: variant_node.children }
+                      Absent => none
                     }
-                  )
-                  let template_fields = decl.children
-                  Present { value: template_fields |> map(sf =>
-                    Node {
-                      occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
-                      children: sf.children, connective: sf.connective, params: sf.params,
-                      inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: scope.type_env.source_indices), subst: subst, source_indices: scope.type_env.source_indices) } },
-                      return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
-                      transport: sf.transport, properties: sf.properties,
-                      type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
-                      has_non_tail_self_call: sf.has_non_tail_self_call, match_pattern: sf.match_pattern,
-                      module_item_kind: sf.module_item_kind, declaration_marker: sf.declaration_marker, expr_data: sf.expr_data
-                    }
-                  ) }
+                  }
+                  match template_fields_opt {
+                    Absent => none
+                    Present { value: template_fields } =>
+                      let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
+                        let slot = authored_name_at(source_indices: si, node: pair.second)
+                        match exp.children |> skip(pair.first) |> first {
+                          Present { value: arg } => map_insert(acc, slot, child_type_node(ch: arg))
+                          Absent => acc
+                        }
+                      )
+                      Present { value: template_fields |> map(sf =>
+                        Node {
+                          occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
+                          children: sf.children, connective: sf.connective, params: sf.params,
+                          inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: si), subst: subst, source_indices: si) } },
+                          return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
+                          transport: sf.transport, properties: sf.properties,
+                          type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
+                          has_non_tail_self_call: sf.has_non_tail_self_call, match_pattern: sf.match_pattern,
+                          module_item_kind: sf.module_item_kind, declaration_marker: sf.declaration_marker, expr_data: sf.expr_data
+                        }
+                      ) }
+                  }
                 }
               Absent => none
             }
@@ -6641,6 +6664,14 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
   }
 }
 
+// THE STEP FUNCTION RETURNS THE ACCUMULATOR, and the callable handed to the lambda says so. It
+// carried its parameter types and NO return, so infer_expr's lambda arm found no declared return
+// and inferred the body with no expected type: a generic constructor built in the body -- the
+// `Err { value: e } => Err { value: e }` re-wrap every early-exit fold carries -- was left
+// uninstantiated although the accumulator type fixes it (measured with an ANNOTATED init, so the
+// accumulator type was fully known). The lambda arm still admits the return as the body's
+// expected type only when it is established and fully resolved, so an accumulator whose own
+// type is unknown expects nothing, as before.
 fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
@@ -6659,7 +6690,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       ]
       let fold_callable = Node {
         occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [],
-        connective: NoConnective, params: fold_params, inferred: none,
+        connective: NoConnective, params: fold_params, inferred: Present { value: Resolved { node: fold_acc_type } },
         return_cardinality: Required, uses: [], body: none, transport: none,
         properties: [], type_annotation: none, is_self_recursive: false,
         has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
@@ -7997,7 +8028,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               diagnostics: arg_diags
             }
           } else {
-          match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
+          match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected) {
             Present { value: ctor_result } => ctor_result
             Absent =>
               let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
@@ -8873,7 +8904,16 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
   }
 }
 
-fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult? {
+// A POSITIONAL VARIANT CONSTRUCTION IS A RECORD LITERAL WITH ONE FIELD, AND IT KEEPS ITS CONTEXT. The
+// call is rewritten to `V { 0: payload }` and inferred as a record literal, and that rewrite passed
+// `expected: none`, discarding whatever the call site expected. The literal therefore never found its
+// variant through the expected owner, its payload field had no declared type to expect, and a generic
+// payload -- `QuotedPerSecond(MoneyRate { .. })`, where MoneyRate<P> is a phantom parameter the
+// payload's declared type fixes -- was inferred with nothing to instantiate it from, although the
+// named-field spelling of the same shape instantiated it. The call's expected type is now carried
+// through; when there is none and the owner declares no type parameters, the owner itself IS the
+// fully determined type of the construction and is supplied as the expectation.
+fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult? {
   match lookup_variant_parent_enum(scope: scope, name: func_name) {
     Absent => none
     Present { value: parent_enum } =>
@@ -8911,7 +8951,7 @@ fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, f
                             span: span,
                             name_span: name_span,
                             scope: scope,
-                            expected: none
+                            expected: if (expected == none && (parent_node.params |> count) == 0) { Present { value: parent_node } } else { expected }
                           ) }
                       }
                     Absent => none
@@ -9434,6 +9474,39 @@ fn infer_map_literal(occurrence_identity: NodeOccurrenceIdentity, map_node: Node
   }
 }
 
+// AN EXPECTED TYPE SPELLED THROUGH A PARAMETERIZED ALIAS IS THE SAME EXPECTED TYPE. Every seam that
+// reads an instantiation out of a record literal's expected type -- record_lit_instantiated_fields,
+// the variant and owner lookups -- matches the expected node's NAME against the constructed
+// declaration. `type ProbeNames<X> = ProbeList<X>` spells `ProbeList<String>` as `ProbeNames<String>`,
+// so the name never matched, the literal's fields were never instantiated, and a nested field literal
+// (the `Empty {}` closing a `Cons` chain in a row declared `-> List<String>`, where List<T> =
+// FreeMonoid<T>) was inferred with NO expected type although its declaration states it. Peeling the
+// alias here, with its type arguments substituted by the alias-chain seam that already owns that
+// relation (alias_chain_target_after_args), hands every downstream seam the application it can
+// match. Only a parameterized alias applied to arguments is peeled: a nominal type, a record or
+// coproduct declaration, and a bare name pass through unchanged. The fuel bounds a cyclic alias
+// chain; exhausting it answers the last peeled node, which is still a correct spelling.
+fn record_lit_expected_through_generic_alias(expected: Node?, scope: InferScope, fuel: Int) -> Node? {
+  match expected {
+    Absent => none
+    Present { value: exp } =>
+      if fuel <= 0 || exp.connective != NoConnective || (exp.children |> count) == 0 {
+        expected
+      } else {
+        match lookup_type_by_name(env: scope.type_env, name: authored_name_at(source_indices: scope.type_env.source_indices, node: exp)) {
+          Absent => expected
+          Present { value: decl } =>
+            let is_parameterized_alias = (decl.params |> count) > 0 && decl.inferred != none && (decl.children |> count) == 0 && decl.connective == NoConnective
+            if is_parameterized_alias {
+              let peeled = alias_chain_target_after_args(target: decl, carrier: exp, env: scope.type_env)
+              let peeled_with_cardinality = if (exp.return_cardinality == CardOptional) { with_optional_cardinality(n: peeled) } else { peeled }
+              record_lit_expected_through_generic_alias(expected: Present { value: peeled_with_cardinality }, scope: scope, fuel: fuel - 1)
+            } else { expected }
+        }
+      }
+  }
+}
+
 fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   match map_literal_expected_keyed_node(type_name: type_name, expected: expected, scope: scope) {
     Present { value: map_node } =>
@@ -9446,8 +9519,70 @@ fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: Stri
         span: span,
         name_span: name_span,
         scope: scope,
-        expected: expected
+        expected: record_lit_expected_through_generic_alias(expected: expected, scope: scope, fuel: 8)
       )
+  }
+}
+
+// A FIELD TYPE THAT MENTIONS ITS OWNER'S UNBOUND PARAMETERS IS NOT AN EXPECTATION. When a generic
+// literal's owner is not instantiated, its template field `inner: Inner<S>` still names the owner's
+// own S, which is bound to nothing at this site. Handed down as the nested literal's expected type it
+// instantiates that literal at the parameter NAME -- `value: S` -- and a real value is then judged
+// against a type that does not exist (`expected 'Primitive(S)', got 'Product(Rec)'`). Each such
+// parameter is substituted with a TYPE VARIABLE, never dropped with the application around it: in
+// `inner: Inner<Int, S>` the `Int` is determined independently of S, and dropping the whole
+// expectation because S occurs erased the concrete judgment of every field Inner types with its first
+// parameter (review 5338860646). The variable is what the field check already skips as unbound, so
+// the known positions are judged and the unknown one is not judged as the name `S`. A bare `S` field
+// becomes a bare variable and expects nothing, as before.
+fn type_node_mentions_any_name(n: Node, names: List<String>, source_indices: Map<String, NewlineIndex>, fuel: Int) -> Bool {
+  if fuel <= 0 || (names |> count) == 0 {
+    false
+  } else {
+    let own = authored_name_at(source_indices: source_indices, node: n)
+    let own_variable = match n.inferred {
+      Present { value: TypeVariable { id: id } } => names |> any(g => g == id)
+      _ => false
+    }
+    let inner = match n.inferred {
+      Present { value: Resolved { node: rt } } => type_node_mentions_any_name(n: rt, names: names, source_indices: source_indices, fuel: fuel - 1)
+      _ => false
+    }
+    own_variable
+      || (n.children |> count == 0 && n.connective == NoConnective && (names |> any(g => g == own)))
+      || inner
+      || (n.children |> any(c => type_node_mentions_any_name(n: c, names: names, source_indices: source_indices, fuel: fuel - 1)))
+      || (n.params |> any(c => type_node_mentions_any_name(n: c, names: names, source_indices: source_indices, fuel: fuel - 1)))
+  }
+}
+
+// `Present { value: v }` UNDER AN EXPECTED `T?` EXPECTS `T` FOR ITS VALUE. Optional's constructor is
+// special-cased everywhere else in this stage (is_present_ctor types the literal from its value), and
+// the one direction it was never given is the downward one: the expected optional reached the literal
+// and stopped, so a generic constructor built as the value -- `Present { value: Refused { .. } }`
+// returned from a fn declared `-> Attempt<A, B>?` -- was inferred with no expected type although
+// the declaration states its instantiation. The element is the expected node with its optional
+// cardinality removed. Only an expected that IS optional is read; anything else answers none and
+// the declared-field route below decides as before. ONLY A CONSTRUCTION RECEIVES IT, which is the
+// population this exists for and the one measured clean. A collection literal or a call carries its
+// own expected-type handling, and handing it the peeled element refused two correct sites in the v1
+// seed (`Present { value: fold(.., init: empty_map(), ..) }` under `Map<String, Node>?`, and
+// `Present { value: [] }` in an if-chain) as not a keyed collection / not a collection. That the
+// peeled node does not read as the container there is an open finding, not a settled one; it was
+// not reproduced outside the seed.
+fn present_value_expected_from_optional(type_name: String, field_name: String, value: Node, expected: Node?) -> Node? {
+  let value_is_construction = match value.expr_data {
+    ExprRecordLit { parent_enum: _ } => true
+    _ => false
+  }
+  if type_name != "Present" || field_name != "value" || value_is_construction == false {
+    none
+  } else {
+    match expected {
+      Present { value: exp } =>
+        if (exp.return_cardinality == CardOptional) { Present { value: with_required_cardinality(n: exp) } } else { none }
+      Absent => none
+    }
   }
 }
 
@@ -9595,6 +9730,19 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           module_name: scope.module_name
         ))
     }
+  let uninstantiated_owner_param_names = if instantiated_struct_fields != none { [] } else {
+    let owner_for_params = match presence_variant_owner {
+      Present { value: owner } => Present { value: owner }
+      Absent => lookup_type_by_name(env: scope.type_env, name: tn_str)
+    }
+    match owner_for_params {
+      Present { value: owner } => owner.params |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: p))
+      Absent => []
+    }
+  }
+  let unbound_owner_param_variables = fold(uninstantiated_owner_param_names, init: empty_map(), f: (acc, g) =>
+    map_insert(acc, g, type_variable_node(id: g))
+  )
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
 
@@ -9617,21 +9765,28 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Absent => none
     }
     let field_conformance_type = match field_declared_type {
-      Present { value: ft } => match presence_variant_owner {
+      Present { value: ft } => if instantiated_struct_fields != none { ft } else { match presence_variant_owner {
         Present { value: owner } => stamp_field_type_from_decl_params(field_type: ft, serving_decl: owner, source_indices: scope.type_env.source_indices)
         Absent => match lookup_type_by_name(env: scope.type_env, name: tn_str) {
           Present { value: owner } => stamp_field_type_from_decl_params(field_type: ft, serving_decl: owner, source_indices: scope.type_env.source_indices)
           Absent => ft
         }
-      }
+      } }
       Absent => error_type
     }
-    let field_expected = match field_declared_type {
-      Present { value: ft } =>
-        if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
-          Present { value: ft }
-        } else { none }
-      Absent => none
+    let field_expected = match present_value_expected_from_optional(type_name: tn_str, field_name: fi_name, value: field_init_node_value(n: fi), expected: expected) {
+      Present { value: element } => Present { value: element }
+      Absent =>
+        match field_declared_type {
+          Present { value: declared_ft } =>
+            let ft = if instantiated_struct_fields == none && type_node_mentions_any_name(n: declared_ft, names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, fuel: 16) {
+              substitute_generics(n: declared_ft, subst: unbound_owner_param_variables, source_indices: scope.type_env.source_indices)
+            } else { declared_ft }
+            if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
+              Present { value: ft }
+            } else { none }
+          Absent => none
+        }
     }
     let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: field_expected)
     let ar_typed = ar.typed

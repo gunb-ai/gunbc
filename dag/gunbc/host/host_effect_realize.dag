@@ -1,6 +1,9 @@
 module gunbc.host_effect_realize
 
+import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text }
+
 import std.algebra { trim, list_snoc_item, list_append }
+import extdeps.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_in_list }
@@ -365,6 +368,7 @@ import gunbc.seeded_install_media_publish {
   SeededImagePublished,
   SeededImageAlreadyPublished,
   SeededImagePublicationRefused,
+  SeededImagePublishedRecordNotWritten,
 }
 import gunbc.hostname_read {
   hostname_short_read,
@@ -2246,18 +2250,88 @@ fn srv3_ensure_apt_tool(
   require_version_probe: Bool,
   transport: HostEffectTransport,
 ) -> Srv3HostPredicate {
-  match srv3_apt_tool_present(tool: tool, transport: transport) {
+  srv3_ensure_apt(
+    subject: AptBinaryOnPath { tool: tool },
+    package: package,
+    require_version_probe: require_version_probe,
+    transport: transport,
+  )
+}
+
+// WHAT AN APT ENSURE ASKS IS PRESENT. A tool is asked for by its binary (the password-session
+// roster's sshpass); a shared library has no binary to probe, so it is asked for by the package
+// itself, read from the dpkg database (the browser toolchain's install-deps set). Both go through
+// the ONE fold below -- the probe-before-install, install-in-a-branch and re-probe discipline is
+// written once, and a subject kind is an arm here rather than a second ensure.
+type AptPresenceSubject
+  = AptBinaryOnPath { tool: CliTool }
+  | AptPackageInstalled { package: NonEmptyStr }
+
+fn srv3_apt_subject_present(subject: AptPresenceSubject, transport: HostEffectTransport) -> Srv3HostPredicate {
+  match subject {
+    AptBinaryOnPath { tool: t } => srv3_apt_tool_present(tool: t, transport: transport)
+    AptPackageInstalled { package: p } => srv3_dpkg_package_installed(package: p, transport: transport)
+  }
+}
+
+// A PACKAGE SUBJECT HAS NO VERSION PROBE, and asking for one is refused rather than answered: the
+// dpkg status read says installed or not, and inventing a version comparison for it would assert a
+// constraint nothing declared.
+fn srv3_apt_subject_version_ok(subject: AptPresenceSubject, transport: HostEffectTransport) -> Srv3HostPredicate {
+  match subject {
+    AptBinaryOnPath { tool: t } => srv3_apt_tool_version_ok(tool: t, transport: transport)
+    AptPackageInstalled { package: p } =>
+      Srv3PredicateUnobserved {
+        reason: concat("a version probe was requested for apt package subject ", concat(p as String, ", which declares no version to read")),
+      }
+  }
+}
+
+// THE PACKAGE READ KEEPS THE QUERY'S WHOLE OUTCOME (side-chat reviews of gunbc#12500). `dpkg -s`
+// exits zero for a package removed with its configuration kept, and a token read collapses every
+// unsuccessful query into "absent" -- either way an unanswered question could authorize an apt
+// install. So the read runs dpkg-query -s over the transport's typed exec, keeping exit code, stdout
+// and stderr, and extdeps.dpkg dpkg_query_status_verdict_of decides: installed holds; a decoded
+// not-installed state or a package unknown to dpkg fails (the ensure may install); anything
+// undecidable is Unobserved, which the ensure fold refuses rather than installing on.
+fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
+  let argv = dpkg_query_status_argv(package: package)
+  let outcome = match transport {
+    FleetSsh { target: t, context: c } => Present { value: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv) }
+    SshShell { ssh_host: h } => Present { value: typed_argv_exec_over_ssh(host: h, argv: argv) }
+    _ => none
+  }
+  match outcome {
+    Absent => Srv3PredicateUnobserved { reason: "this transport has no typed exec that keeps a query's exit code and stderr, so the package state is not read" }
+    Present { value: TypedArgvExecRefused { reason: why } } => Srv3PredicateUnobserved { reason: why }
+    Present { value: TypedArgvExecConverged { result: r } } =>
+      match dpkg_query_status_verdict_of(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
+        DpkgPackageInstalled => Srv3PredicateHolds
+        DpkgPackageNotInstalled { status: _ } => Srv3PredicateFails
+        DpkgPackageUnknown => Srv3PredicateFails
+        DpkgQueryUndecidable { reason: why } => Srv3PredicateUnobserved { reason: concat(concat(package as String, ": "), why) }
+      }
+  }
+}
+
+fn srv3_ensure_apt(
+  subject: AptPresenceSubject,
+  package: NonEmptyStr,
+  require_version_probe: Bool,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match srv3_apt_subject_present(subject: subject, transport: transport) {
     Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
     Srv3PredicateHolds =>
       if require_version_probe == false {
         Srv3PredicateHolds
       } else {
-        match srv3_apt_tool_version_ok(tool: tool, transport: transport) {
+        match srv3_apt_subject_version_ok(subject: subject, transport: transport) {
           Srv3PredicateHolds => Srv3PredicateHolds
           Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
           Srv3PredicateFails =>
             srv3_apt_install_then_reprobe(
-              tool: tool,
+              subject: subject,
               package: package,
               require_version_probe: require_version_probe,
               transport: transport,
@@ -2266,7 +2340,7 @@ fn srv3_ensure_apt_tool(
       }
     Srv3PredicateFails =>
       srv3_apt_install_then_reprobe(
-        tool: tool,
+        subject: subject,
         package: package,
         require_version_probe: require_version_probe,
         transport: transport,
@@ -2291,7 +2365,7 @@ fn srv3_probe_present_then_version(
 }
 
 fn srv3_apt_install_then_reprobe(
-  tool: CliTool,
+  subject: AptPresenceSubject,
   package: NonEmptyStr,
   require_version_probe: Bool,
   transport: HostEffectTransport,
@@ -2300,14 +2374,14 @@ fn srv3_apt_install_then_reprobe(
     Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
     Srv3PredicateFails => Srv3PredicateFails
     Srv3PredicateHolds =>
-      match srv3_apt_tool_present(tool: tool, transport: transport) {
+      match srv3_apt_subject_present(subject: subject, transport: transport) {
         Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
         Srv3PredicateFails => Srv3PredicateFails
         Srv3PredicateHolds =>
           if require_version_probe == false {
             Srv3PredicateHolds
           } else {
-            match srv3_apt_tool_version_ok(tool: tool, transport: transport) {
+            match srv3_apt_subject_version_ok(subject: subject, transport: transport) {
               Srv3PredicateHolds => Srv3PredicateHolds
               Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
               Srv3PredicateFails => Srv3PredicateFails
@@ -3400,19 +3474,39 @@ fn realize_install_media_remaster_in_process(intent: HostEffectIntent) -> Reconc
           }
         }
       )
-    SeededImagePublished { built: b, path: p } =>
-      reconcile_grounded(
-        apply_effect: intent,
-        show_read: ReadObserved { value: p as String },
-        grounding: Grounds {
-          evidence: ConvergePlanApplied {
-            exit_code: 0,
-            stdout: concat("install-media-remaster: built and published at ", p as String, " sha256 ", b.output_digest as String),
-          }
+    SeededImagePublished { built: b, path: p, work: w, staging_residue: residue } =>
+      if !scratch_removed(o: w) || match residue { Absent => false Present { value: _ } => true } {
+        NotConverged {
+          reason: concat(
+            "install-media-remaster: published at ", p as String, " sha256 ", b.output_digest as String,
+            " but residue remains: ", render_scratch_outcome(label: "work", prefix: "", o: w),
+            match residue { Absent => "" Present { value: r } => concat(" staging not removed: ", r) },
+          ),
+          applied: intent,
         }
-      )
-    SeededImagePublicationRefused { reason: why } =>
-      NotConverged { reason: concat("install-media-remaster: ", why), applied: intent }
+      } else {
+        reconcile_grounded(
+          apply_effect: intent,
+          show_read: ReadObserved { value: p as String },
+          grounding: Grounds {
+            evidence: ConvergePlanApplied {
+              exit_code: 0,
+              stdout: concat("install-media-remaster: built and published at ", p as String, " sha256 ", b.output_digest as String),
+            }
+          }
+        )
+      }
+    SeededImagePublishedRecordNotWritten { built: b, path: p, work: w, staging_residue: residue, record: rec } =>
+      NotConverged {
+        reason: concat(
+          "install-media-remaster: published at ", p as String, " sha256 ", b.output_digest as String,
+          " but its derivation record ", host_file_write_text(w: rec), "; ", render_scratch_outcome(label: "work", prefix: "", o: w),
+          match residue { Absent => "" Present { value: r } => concat(" staging not removed: ", r) },
+        ),
+        applied: intent,
+      }
+    SeededImagePublicationRefused { reason: why, work: w } =>
+      NotConverged { reason: concat("install-media-remaster: ", why, "; ", render_scratch_outcome(label: "work", prefix: "", o: w)), applied: intent }
   }
 }
 
