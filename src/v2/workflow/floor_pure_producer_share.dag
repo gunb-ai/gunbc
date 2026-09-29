@@ -613,11 +613,11 @@ import v2.std.collection { List }
 // v2.test.claim.fold_lowering flp_outcomes ingests the positional, positional-named-step,
 // non-fold and well-formed snippets once and stores four Bool verdicts; MQ-1's first floor run refused each claim
 // that paid its own ingest against the new-witness budget. Portable for the same reason.
-// THE FOLD-ENCODING ROW IS THE SAME GROUND AT NINE SPECIMENS: v2.test.claim.fold_encoding
+// THE FOLD-ENCODING ROW IS THE SAME GROUND AT ELEVEN SPECIMENS: v2.test.claim.fold_encoding
 // fe_outcomes drives the front end over its inline modules (the exact-shape fixture, three planted
-// drops measured by reference conservation, the canary, a user-declared fold, fold_x and two piped
-// folds) and stores
-// nine Bool verdicts; MQ-5's floor run 36490720680 measured each claim that paid its own front end
+// drops measured by reference conservation, the canary, a user-declared fold, fold_x, two piped
+// folds and the step-binder fixture) and stores
+// eleven Bool verdicts; MQ-5's floor run 36490720680 measured each claim that paid its own front end
 // over the new-witness budget. Portable for the same reason.
 // THE XL-2 LET-IN CAST ROW: v2.test.claim.body_cast_node bcn_let_in_value_cast_verdict assembles one
 // inline module through the production route and stores one Bool (the lowered body carries exactly
