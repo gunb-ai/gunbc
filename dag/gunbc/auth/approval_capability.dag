@@ -5,7 +5,7 @@ import std.decimal { decimal_digit_char }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
-import std.encoding { base64_encode, base64_octets, base64_decode, UrlSafe }
+import std.encoding { base64_encode, base64_octets, base64_decode_canonical, UrlSafe }
 import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
 import extdeps.crypto.mac {
   MacSuite, MacKeyId, MacKey, MacVerification, MacVerified, VerifiedMessage,
@@ -222,43 +222,24 @@ fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> Capability
 //
 // ONE SPELLING, BY CONSTRUCTION RATHER THAN A SECOND ENCODING. This used to decode and then re-encode
 // the octets to compare against what was presented -- a second encoding standing where the decoder's
-// own canonicality should have been. std.encoding base64_decode now refuses non-zero pad bits (RFC
-// 4648 §3.5), which settles every spelling but the padding; the decoder deliberately still accepts
-// missing or extra padding, so the one fact left is checked here directly: the trailing "=" count is
-// exactly the one the encoder emits for this length.
+// own canonicality should have been. std.encoding base64_decode_canonical refuses non-zero pad bits
+// (RFC 4648 §3.5) and any padding but the encoder's (base64_padding_after), so the spelling is the
+// encoder's by construction, with one authority for both in std.encoding.
 fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
   let presented = capability.tag_b64url as String
-  if !base64_padding_is_canonical(s: presented) { none } else {
-    match base64_decode(s: presented, variant: UrlSafe) {
-      Absent => none
-      Present { value: octets } =>
-        match base64_octets(values: octets) {
-          QualifiedOctetsRefused { observed: _ } => none
-          QualifiedOctetsReady { value: qualified } =>
-            if octets == [] { none } else { Present { value: base16_encode_lower(octets: qualified) as NonEmptyStr } }
-        }
-    }
+  match base64_decode_canonical(s: presented, variant: UrlSafe) {
+    Absent => none
+    Present { value: octets } =>
+      match base64_octets(values: octets) {
+        QualifiedOctetsRefused { observed: _ } => none
+        QualifiedOctetsReady { value: qualified } =>
+          if octets == [] { none } else { Present { value: base16_encode_lower(octets: qualified) as NonEmptyStr } }
+      }
   }
 }
 
 // The padding the std.encoding encoder emits: the total length a multiple of four, and exactly two
 // "=" after a two-sextet tail, one after a three-sextet tail, none otherwise -- never three.
-// Whether the last `from_end` characters are all "=", read with the char_at this module already uses.
-fn padded_at(s: String, from_end: Int) -> Bool {
-  let total = string_length(s)
-  total >= from_end
-    && char_at(s, total - 1) == "="
-    && (from_end < 2 || char_at(s, total - 2) == "=")
-    && (from_end < 3 || char_at(s, total - 3) == "=")
-}
-
-fn base64_padding_is_canonical(s: String) -> Bool {
-  let total = string_length(s)
-  let pads = if padded_at(s: s, from_end: 3) { 3 } else if padded_at(s: s, from_end: 2) { 2 } else if padded_at(s: s, from_end: 1) { 1 } else { 0 }
-  let tail = (total - pads) % 4
-  total % 4 == 0 && ((tail == 0 && pads == 0) || (tail == 2 && pads == 2) || (tail == 3 && pads == 1))
-}
-
 // ── The timestamp comparison contract ────────────────────────────────────────────────────────
 // Timestamp is an alias for String, so `a < b` is a LEXICOGRAPHIC comparison over arbitrary text.
 // That happens to be correct for one shape and silently wrong for every other: "2026-9-05T..."
