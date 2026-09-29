@@ -1014,18 +1014,19 @@ fn detach_verdict(
   if evidence.readback_read == false {
     DetachNotEstablished { reason: "the configurations read-back after stop-media failed, so the stop is unestablished whatever stop-media answered" }
   } else {
+    let still_presenting = DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
     match presented_convergence(
       presented: presented_media(body: evidence.readback, image_name: image_name, firmware: firmware),
       image_name: image_name,
       replaceable_seeded_stem: replaceable_seeded_stem,
     ) {
       ConvergeNothingPresented => DetachEstablished
-      ConvergeUnreadable { detail: _ } => DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
-      ConvergeUncatalogued { image_name: _, wire: _ } => DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
-      ConvergeDesiredPresented { row: _ } => DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
-      ConvergeStalePresented { row: _ } => DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
-      ConvergeForeignPresented { image_name: _ } => DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
-      ConvergeSeveralPresented => DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
+      ConvergeUnreadable { detail: _ } => still_presenting
+      ConvergeUncatalogued { image_name: _, wire: _ } => still_presenting
+      ConvergeDesiredPresented { row: _ } => still_presenting
+      ConvergeStalePresented { row: _ } => still_presenting
+      ConvergeForeignPresented { image_name: _ } => still_presenting
+      ConvergeSeveralPresented => still_presenting
     }
   }
 }
@@ -1862,7 +1863,9 @@ fn readiness_wait_outcome(
     ReadinessWaitClockIncoherent { opened_at: o, previous: p, look: l, looks: n } => MegaRacReadinessClockIncoherent { image_name: image_name, route: route, opened_at: o, previous: p, look: l, looks: n }
     ReadinessWaitClosed { last: l, deadline: d, looks: n } => MegaRacReadinessTimedOut { image_name: image_name, route: route, last: l, deadline: d, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
     ReadinessWaitRefused { look: l, looks: n } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-    ReadinessWaitReady { look: l, looks: n } =>
+    ReadinessWaitReady { look: l, looks: n } => {
+      let not_ready = MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
+      let state_unestablished = MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
       match l.reading {
         ReadinessStarted { row: r } =>
           match cd_at_end {
@@ -1882,18 +1885,19 @@ fn readiness_wait_outcome(
               general_at_ready: general_at_end,
             },
           }
-            CdErrorRead { code: CdErrorUncatalogued { wire: _ } } => MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
-            CdErrorUnread { detail: _ } => MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
+            CdErrorRead { code: CdErrorUncatalogued { wire: _ } } => state_unestablished
+            CdErrorUnread { detail: _ } => state_unestablished
           }
-        ReadinessConnecting { row: _ } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-        ReadinessStartedUnbound { row: _ } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-        ReadinessNotPresented { configurations: _ } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-        ReadinessUnanswered { detail: _ } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-        ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-        ReadinessMalformed { detail: _ } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-        ReadinessDuplicate { configurations: _ } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-        ReadinessWrongPresentation { image_name: _, configurations: _ } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
+        ReadinessConnecting { row: _ } => not_ready
+        ReadinessStartedUnbound { row: _ } => not_ready
+        ReadinessNotPresented { configurations: _ } => not_ready
+        ReadinessUnanswered { detail: _ } => not_ready
+        ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => not_ready
+        ReadinessMalformed { detail: _ } => not_ready
+        ReadinessDuplicate { configurations: _ } => not_ready
+        ReadinessWrongPresentation { image_name: _, configurations: _ } => not_ready
       }
+    }
   }
 }
 
@@ -1951,7 +1955,8 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
       match sh {
         ShareUnreadable { detail: _ } => PresentationUnobserved { reason: "the general settings could not be read" }
         ShareMismatch { observed: _ } => PresentationNoLongerReady { reason: "the controller's share no longer matches this unit's boot share" }
-        ShareBound =>
+        ShareBound => {
+          let no_longer_ready = PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
           match r {
             ReadinessUnanswered { detail: _ } => PresentationUnobserved { reason: "the configurations read was not answered" }
             ReadinessMalformed { detail: _ } => PresentationUnobserved { reason: "the configurations document could not be read" }
@@ -1966,12 +1971,13 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
                 CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
                 other => PresentationStateUnestablished { cd_error: other }
               }
-            ReadinessConnecting { row: _ } => PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
-            ReadinessStartedUnbound { row: _ } => PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
-            ReadinessNotPresented { configurations: _ } => PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
-            ReadinessDuplicate { configurations: _ } => PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
-            ReadinessWrongPresentation { image_name: _, configurations: _ } => PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
+            ReadinessConnecting { row: _ } => no_longer_ready
+            ReadinessStartedUnbound { row: _ } => no_longer_ready
+            ReadinessNotPresented { configurations: _ } => no_longer_ready
+            ReadinessDuplicate { configurations: _ } => no_longer_ready
+            ReadinessWrongPresentation { image_name: _, configurations: _ } => no_longer_ready
           }
+        }
       }
     MegaRacPresentationReady { route: _, evidence: _ } => presentation_unobserved_before_presentation()
     MegaRacReadinessTimedOut { image_name: _, route: _, last: _, deadline: _, looks: _, cd_before_any_write: _, cd_at_refusal: _ } => presentation_unobserved_before_presentation()
