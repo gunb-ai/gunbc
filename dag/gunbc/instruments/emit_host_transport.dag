@@ -236,7 +236,8 @@ fn c_emit_host_green_holds() -> Bool {
               stdout.bytes == emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
             Rejected { diagnostics: _ } => false
           }
-        _ => false
+        Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
+        Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
