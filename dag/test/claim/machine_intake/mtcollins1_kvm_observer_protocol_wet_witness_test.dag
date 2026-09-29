@@ -91,10 +91,6 @@ fn read_or_empty(path: String) -> String {
   if x.success { x.content } else { "" }
 }
 
-fn settle(seconds: Nat) -> Bool {
-  sleep_delay_seconds_second_carrier_projection(duration: second(count: seconds))
-}
-
 // Serve the model's table on loopback, write the credential, and launch the real observer at it.
 fn rig(w: BmcWorld) -> Rig {
   let dir = scratch_dir()
@@ -142,7 +138,7 @@ test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> B
   let r = rig(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: true))
   let admitted = match kvm_handoff_admission(start: r.start) { KvmHandoffAdmitted { session: s } => s == "7"  _ => false }
   let asked = kvm_observer_trigger(start: r.start, order: 2, reason: "sol-channel-lost")
-  let _w = settle(seconds: 3)
+  let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
   let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let log = transport_log(r: r)
   let loss_still = count(filter(rec.stills, s => match s { KvmStillHashed { at: a, seq: _, reason: why, path: _, digest: _ } => string_contains(s: why, pattern: "sol-channel-lost") && (millisecond_count(m: a.since_epoch) as Int) > 0  _ => false }))
@@ -170,7 +166,7 @@ test fn a_busy_viewer_slot_refuses_the_observer_and_the_handoff() -> Bool {
 // handoff after it is refused), and a still asked after it is not-connected.
 test fn a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it() -> Bool {
   let r = rig(w: world(other_viewers: 0, close_at: Present { value: 8 }, canvas_readable: true))
-  let _w = settle(seconds: 10)
+  let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 10))
   let reported = mtcollins1_boot_screen_boundary_report(screen: r.start, already: [])
   let lost = match kvm_observer_standing_now(start: r.start) { KvmObserverLost { at: _, established_at: _ } => true  _ => false }
   let handoff = match kvm_handoff_admission(start: r.start) { KvmHandoffRefused { cause: c } => string_contains(s: c, pattern: "LOST")  _ => false }
@@ -187,7 +183,7 @@ test fn a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it(
 test fn an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words() -> Bool {
   let r = rig(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: false))
   let asked = kvm_observer_trigger(start: r.start, order: 2, reason: "sol-channel-lost")
-  let _w = settle(seconds: 3)
+  let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
   let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let unreadable = count(filter(rec.events, e => match e {
     KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: c, gen: _ } => match c { KvmCanvasUnreadable { detail: d } => string_contains(s: d, pattern: "Tainted canvases")  _ => false }
@@ -246,7 +242,7 @@ test fn a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped() -
   let pid_path = concat(dir, "/child.pid")
   let _blocker = shell.Mkdir.Parents(path: pid_path as FilePath)
   let _l = gunbc.owned_process.launch.LaunchOwned(pid_path: pid_path as NonEmptyStr, log_path: concat(dir, "/child.log") as NonEmptyStr, command: ["sh", "-c", "trap '' TERM; exec sleep 37"])
-  let _w = settle(seconds: 6)
+  let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 6))
   let log = read_or_empty(path: concat(dir, "/child.log"))
   let _gone = shell.Remove.RecursiveForce(path: dir)
   string_contains(s: log, pattern: "child stopped (observed gone)") && string_contains(s: log, pattern: "exited status=137")
@@ -270,7 +266,7 @@ test fn an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child
   let _blocker = shell.Mkdir.Parents(path: pid_path as FilePath)
   let marker = "37.0417"
   let _l = shell.Exec.RunArgv(program: "env", arguments: [concat("PATH=", concat(bin, ":/usr/bin:/bin")), "bash", "-c", owned_process_launch_script, "owned-launch", pid_path, concat(dir, "/child.log"), "sh", "-c", concat("trap '' TERM; exec sleep ", marker)])
-  let _w = settle(seconds: 6)
+  let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 6))
   let log = read_or_empty(path: concat(dir, "/child.log"))
   let survivor = shell.Exec.RunArgv(program: "pgrep", arguments: ["-f", concat("^sleep ", concat(marker, "$"))]).exit_code == 0
   let _clean = shell.Exec.RunArgv(program: "pkill", arguments: ["-KILL", "-f", concat("^sleep ", concat(marker, "$"))])
@@ -321,7 +317,7 @@ test fn an_owned_process_is_released_and_observed_gone() -> Bool {
   let dir = scratch_dir()
   let pid_path = concat(dir, "/sleeper.pid")
   let _l = gunbc.owned_process.launch.LaunchOwned(pid_path: pid_path as NonEmptyStr, log_path: concat(dir, "/sleeper.log") as NonEmptyStr, command: ["sleep", "60"])
-  let _w = settle(seconds: 1)
+  let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
   let running = match owned_process_standing(pid_path: pid_path) { OwnedRunning { pid: _, start_time: _ } => true  _ => false }
   let first = owned_process_release(pid_path: pid_path)
   let second_try = owned_process_release(pid_path: pid_path)

@@ -72,7 +72,7 @@ import extdeps.shell
 import extdeps.bmc.ipmi { IpmitoolSolActivateRefusal, ipmitool_sol_activate_refusal, ipmitool_sol_activate_refusal_text, ipmitool_sol_operational_banner }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.machine_intake_sol_hold {
-  mtcollins1_sol_hold_shell_emit_dissolution_trigger, sol_hold_line_prefix, sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker, sol_hold_pid_not_published_line,
+  mtcollins1_sol_hold_shell_emit_dissolution_trigger, sol_hold_line_prefix, sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker, sol_hold_pid_not_published_line, sol_hold_pid_not_published_unstopped_line,
 }
 import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_probes, mtcollins1_smpro_probe_count }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
@@ -119,9 +119,10 @@ data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.t
 
 data mtcollins1_boot_poll_cadence: Second = second(count: 15)
 
-// How long the acquisition waits for the collector's operational banner (mtcollins1_sol_await_establishment);
-// the RMCP+ session setup and Activate Payload exchange take a few seconds. Paid inside the prelude
-// allowance, which covers the acquisition.
+// The acquisition's establishment allowance (mtcollins1_sol_await_establishment), counted in POLLS: that
+// many observations one second apart, each also paying its own reads and scheduling, so it is not a
+// strict wall-clock deadline. The RMCP+ session setup and Activate Payload exchange take a few seconds.
+// Paid inside the prelude allowance, which covers the acquisition.
 data mtcollins1_boot_sol_establish_allowance: Second = second(count: 15)
 
 data mtcollins1_boot_prelude_allowance: Second = second(count: 120)
@@ -515,6 +516,7 @@ fn mtcollins1_sol_acquire_under_unit_hold(
 type SolEstablishmentFailure
   = SolSpawnRefused { detail: String }
   | SolPidNotPublished
+  | SolPidNotPublishedUnstopped
   | SolActivateRefused { refusal: IpmitoolSolActivateRefusal }
   | SolSessionRefused { cause: BmcReadCause }
   | SolCollectorLeftUnexplained { collector: SolCollectorObservation, last_line: String }
@@ -530,7 +532,9 @@ fn last_nonempty_line(s: String) -> String {
 }
 
 fn sol_establishment_failure(collector: SolCollectorObservation, client_diagnostics: String, at: NonEmptyStr) -> SolEstablishmentFailure {
-  if string_contains(s: client_diagnostics, pattern: sol_hold_pid_not_published_line) {
+  if string_contains(s: client_diagnostics, pattern: sol_hold_pid_not_published_unstopped_line) {
+    SolPidNotPublishedUnstopped
+  } else if string_contains(s: client_diagnostics, pattern: sol_hold_pid_not_published_line) {
     SolPidNotPublished
   } else {
     match ipmitool_sol_activate_refusal(output: client_diagnostics) {
@@ -548,6 +552,7 @@ fn sol_establishment_failure_text(failure: SolEstablishmentFailure) -> String {
   concat("mtcollins1 boot: SOL collector not established: ", match failure {
     SolSpawnRefused { detail: d } => concat("the hold could not start it: ", d)
     SolPidNotPublished => "its pid and start time could not be published, so the hold stopped the child it had started"
+    SolPidNotPublishedUnstopped => "its pid and start time could not be published, and the child it had started survived TERM and KILL, so an unrecorded collector may still be running"
     SolActivateRefused { refusal: r } => ipmitool_sol_activate_refusal_text(refusal: r)
     SolSessionRefused { cause: c } => bmc_read_cause_text(cause: c)
     SolCollectorLeftUnexplained { collector: o, last_line: l } => concat(sol_collector_observation_text(observation: o), "; its last line: ", if l == "" { "(none)" } else { l })
@@ -646,7 +651,7 @@ fn mtcollins1_sol_await_establishment(pid_path: String, capture_path: String, re
     SolCollectorUnrecorded => {
       let client = Filesystem.Read(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path))
       let words = if client.success { client.content } else { "" }
-      if string_contains(s: words, pattern: sol_hold_pid_not_published_line) || string_contains(s: words, pattern: sol_hold_exit_record_prefix) {
+      if string_contains(s: words, pattern: sol_hold_pid_not_published_line) || string_contains(s: words, pattern: sol_hold_pid_not_published_unstopped_line) || string_contains(s: words, pattern: sol_hold_exit_record_prefix) {
         return SolNotEstablished { failure: sol_establishment_failure(collector: collector, client_diagnostics: words, at: at) }
       }
       true
