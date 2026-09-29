@@ -1160,13 +1160,10 @@ fn body_lower_operand_ref_read_of(found: Optional<Node>) -> OperandRefRead {
   }
 }
 
-// THE PROJECTION FOR CALLERS THAT ASK ONLY WHETHER A NODE IS AN OPERAND and try another reader when it
-// is not. It forgets a refusal, so a caller whose fallback could stand a proper part in for the whole
-// reads the OperandRefRead instead.
 // A THREE-VALUED READ CARRIED INTO AN OUTCOME WITHOUT LOSS: lowered is present, not-an-operand is
 // absent, and a located refusal stays a refusal. It is the carrier for a position that returns
-// Outcome<Optional<Node>>; body_lower_operand_ref_read_optional below is the projection that
-// FORGETS the refusal, which is why no caller may use it.
+// Outcome<Optional<Node>>. It replaces the Optional projections of OperandRefRead, which forgot the
+// refusal and were removed, so no reader of an operand can hear a refusal as Absent.
 fn body_lower_operand_read_outcome(read: OperandRefRead, diagnostics: Diagnostics) -> Outcome<Optional<Node>> {
   match read {
     OperandRefLowered { lowered: lowered } => outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: diagnostics)
