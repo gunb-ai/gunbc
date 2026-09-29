@@ -3088,10 +3088,13 @@ fn infer_transform_derived_optional(
 // a non-Arrow operator, or a return the language join does not denote stays on the counted
 // frontier: Absent here, never an admission.
 fn infer_transform_application_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
-  match infer_application_callee_arrow(node: node) {
+  match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
     Absent => optional_absent()
     Present { value: arrow } =>
-      match lookup_inferred_facts_in_entries(entries: entries, key: arrow) {
+      match infer_application_callee_use(node: node) {
+        Absent => optional_absent()
+        Present { value: callee_use } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: callee_use) {
         Absent => optional_absent()
         Present { value: arrow_facts } =>
           if !inferred_facts_grounding_derived(facts: arrow_facts) {
@@ -3114,7 +3117,7 @@ fn infer_transform_application_optional(node: Node, entries: List<InferredFactsE
             }
           }
       }
-
+      }
   }
 }
 
