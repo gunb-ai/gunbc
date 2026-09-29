@@ -197,7 +197,15 @@ fn bmc_read_cause_is_definitive_no_answer(cause: BmcReadCause) -> Bool {
   match cause {
     BmcUnreachable { endpoint: _, at: _, detail: _ } => true
     BmcTimeout { endpoint: _, at: _, detail: _ } => true
-    _ => false
+    BmcAuthRefused { endpoint: _, at: _, detail: _ } => false
+    BmcSessionUnestablished { endpoint: _, at: _, detail: _ } => false
+    BmcHttpRefused { endpoint: _, at: _, detail: _ } => false
+    BmcReadFailed { endpoint: _, at: _, exit_code: _, detail: _ } => false
+    BmcResponseMalformed { endpoint: _, at: _, detail: _ } => false
+    BmcCredentialUnavailable { endpoint: _, at: _, detail: _ } => false
+    BmcCollectionIncomplete { endpoint: _, at: _, detail: _ } => false
+    BmcDeadlineReached { endpoint: _, at: _, not_reached: _ } => false
+    BmcLinkUnpublished { endpoint: _, at: _, property: _ } => false
   }
 }
 
@@ -846,7 +854,8 @@ fn power_after_attempt(observation: ChassisPowerObservation, census_ended: Bool)
   match observation {
     ChassisPowerRead { power_on: on } =>
       if on { PoweredOnAfterAttempt } else if census_ended { PoweredOffAfterCensusEnd } else { PoweredOffWithoutCensusEnd }
-    _ => PowerAfterUnobserved { observation: observation }
+    ChassisStatusUndecodable { cause: _ } => PowerAfterUnobserved { observation: observation }
+    ChassisUnreadable => PowerAfterUnobserved { observation: observation }
   }
 }
 
@@ -854,14 +863,20 @@ fn override_findings(c: BootOverrideConsumption) -> List<String> {
   match c {
     OverrideStillPendingAfterAttempt => ["the one-shot boot override was still pending after the attempt: the host did not boot through it"]
     OverridePendingBeforeAttempt => ["a boot override matching this attempt's was already pending before it was set, so its consumption cannot be attributed to this attempt"]
-    _ => []
+    OverrideConsumedByCensusBoot => []
+    OverrideNoLongerPendingAfterAttempt => []
+    OverrideNotHandedOff { reason: _ } => []
+    OverrideConsumptionUnread { reason: _ } => []
   }
 }
 
 fn power_after_findings(p: PowerAfterAttempt) -> List<String> {
   match p {
     PoweredOffWithoutCensusEnd => ["the host was powered off after the attempt without the census END marker"]
-    _ => []
+    PoweredOffAfterCensusEnd => []
+    PoweredOnAfterAttempt => []
+    PowerAfterUnobserved { observation: _ } => []
+    PowerAfterNotTaken { reason: _ } => []
   }
 }
 
@@ -948,9 +963,11 @@ fn sel_delta_reading(before: SelSnapshotReading, after: SelSnapshotReading) -> S
                 ObservationEstablished { observed: delta } => SelDeltaDecoded { delta: delta }
               }
           }
-        _ => SelDeltaUnavailable { reason: "no after snapshot" }
+        SelSnapshotUnread { cause: _ } => SelDeltaUnavailable { reason: "no after snapshot" }
+        SelSnapshotNotTaken { reason: _ } => SelDeltaUnavailable { reason: "no after snapshot" }
       }
-    _ => SelDeltaUnavailable { reason: "no before snapshot" }
+    SelSnapshotUnread { cause: _ } => SelDeltaUnavailable { reason: "no before snapshot" }
+    SelSnapshotNotTaken { reason: _ } => SelDeltaUnavailable { reason: "no before snapshot" }
   }
 }
 
@@ -1022,7 +1039,10 @@ fn socket_summary_findings(o: AmpereSocketConsoleObservation) -> List<String> {
 fn console_findings(c: ConsoleReading) -> List<String> {
   match c {
     ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: d, sockets: o, against_reference: _, modules: m } => concat(ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets()), concat(socket_summary_findings(o: o), kernel_module_decompression_findings(o: m)))
-    _ => []
+    ConsoleExceedsBound { path: _, size: _, bound: _ } => []
+    ConsoleNotRetained { path: _ } => []
+    ConsoleUnread { path: _, detail: _ } => []
+    ConsoleNotConfigured => []
   }
 }
 
@@ -1040,7 +1060,8 @@ fn smpro_text(s: SmproReading) -> String {
 fn sensor_findings(s: SensorReading) -> List<String> {
   match s {
     SensorsRead { lines: ls, at: _ } => mtcollins1_sensor_findings(lines: ls, sockets: mtcollins1_census_sockets())
-    _ => []
+    SensorsUnread { cause: _ } => []
+    SensorsNotTaken { reason: _ } => []
   }
 }
 
@@ -1050,7 +1071,17 @@ fn state_is_down(state: RedfishResourceState) -> Bool {
     StateDisabled => true
     StateUnavailableOffline => true
     StateStandbyOffline => true
-    _ => false
+    StateEnabled => false
+    StateStandbySpare => false
+    StateInTest => false
+    StateStarting => false
+    StateDeferring => false
+    StateQuiesced => false
+    StateUpdating => false
+    StateQualified => false
+    StateDegraded => false
+    StateUnrecognized { rendering: _ } => false
+    StateNotReported => false
   }
 }
 
@@ -1058,7 +1089,9 @@ fn health_is_bad(health: RedfishHealth) -> Bool {
   match health {
     HealthWarning => true
     HealthCritical => true
-    _ => false
+    HealthOk => false
+    HealthUnrecognized { rendering: _ } => false
+    HealthNotReported => false
   }
 }
 
@@ -1079,7 +1112,23 @@ fn memory_socket_key(m: RedfishMemoryMember) -> Int {
 }
 
 fn state_is_absent(state: RedfishResourceState) -> Bool {
-  match state { StateAbsent => true _ => false }
+  match state {
+    StateAbsent => true
+    StateEnabled => false
+    StateDisabled => false
+    StateStandbyOffline => false
+    StateStandbySpare => false
+    StateInTest => false
+    StateStarting => false
+    StateUnavailableOffline => false
+    StateDeferring => false
+    StateQuiesced => false
+    StateUpdating => false
+    StateQualified => false
+    StateDegraded => false
+    StateUnrecognized { rendering: _ } => false
+    StateNotReported => false
+  }
 }
 
 fn socket_absent_finding(ms: List<RedfishMemoryMember>, socket: Int) -> String {
@@ -1110,7 +1159,8 @@ fn processor_findings(processors: MembersReading<RedfishProcessorMember>) -> Lis
       concat(short, map(filter(ps, p => state_is_down(state: p.status.state) || health_is_bad(health: p.status.health)),
         p => concat("BMC Processor ", p.id as String, processor_socket_suffix(p: p), ": ", status_text(status: p.status))))
     }
-    _ => []
+    MembersUnread { cause: _ } => []
+    MembersNotTaken { reason: _ } => []
   }
 }
 
@@ -1128,7 +1178,8 @@ fn memory_findings(memory: MembersReading<RedfishMemoryMember>) -> List<String> 
         m => concat("BMC Memory ", memory_label(m: m), ": ", status_text(status: m.status)))
       concat(short, concat(absent_by_socket, bad))
     }
-    _ => []
+    MembersUnread { cause: _ } => []
+    MembersNotTaken { reason: _ } => []
   }
 }
 
@@ -1136,7 +1187,8 @@ fn sel_findings(delta: SelDeltaReading) -> List<String> {
   match delta {
     SelDeltaDecoded { delta: d } =>
       map(filter(d.events, e => sel_event_is_memory_or_processor(event: e)), e => concat("SEL ", sel_event_text(event: e)))
-    _ => []
+    SelDeltaRefused { cause: _ } => []
+    SelDeltaUnavailable { reason: _ } => []
   }
 }
 
@@ -1271,7 +1323,8 @@ fn sdr_cache_text(s: SdrCacheReading) -> String {
 fn sel_raw_text(label: String, s: SelSnapshotReading) -> String {
   match s {
     SelSnapshotRead { raw: r, at: _ } => concat("-- raw ", label, " (ipmitool sel elist, verbatim) --\n", r)
-    _ => concat("-- raw ", label, ": none --")
+    SelSnapshotUnread { cause: _ } => concat("-- raw ", label, ": none --")
+    SelSnapshotNotTaken { reason: _ } => concat("-- raw ", label, ": none --")
   }
 }
 
@@ -1534,6 +1587,11 @@ fn sel_snapshot_of_read(at: NonEmptyStr, success: Bool, stdout: String, exit_cod
   }
 }
 
+fn mtcollins1_boot_sel_snapshot_uncached(at: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr) -> SelSnapshotReading {
+  let r = diagnostic.ipmi.Tool.SelListAuthenticated(bmc_host: mtcollins1_endpoint.host, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after)
+  sel_snapshot_of_read(at: at, success: r.success, stdout: r.stdout, exit_code: r.exit_code, stderr: r.transport_stderr)
+}
+
 fn mtcollins1_boot_sel_snapshot(username: NonEmptyStr, password_file: NonEmptyStr, sdr: SdrCacheReading) -> SelSnapshotReading
 {
   let at = clock_now_probed_at_or_unknown()
@@ -1544,10 +1602,8 @@ fn mtcollins1_boot_sel_snapshot(username: NonEmptyStr, password_file: NonEmptySt
       let r = diagnostic.ipmi.Tool.SelListAuthenticatedCached(bmc_host: mtcollins1_endpoint.host, username: username, password_file: password_file, sdr_cache_file: p, deadline: deadline, kill_after: kill_after)
       sel_snapshot_of_read(at: at, success: r.success, stdout: r.stdout, exit_code: r.exit_code, stderr: r.transport_stderr)
     }
-    _ => {
-      let r = diagnostic.ipmi.Tool.SelListAuthenticated(bmc_host: mtcollins1_endpoint.host, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after)
-      sel_snapshot_of_read(at: at, success: r.success, stdout: r.stdout, exit_code: r.exit_code, stderr: r.transport_stderr)
-    }
+    SdrCacheUnread { cause: _ } => mtcollins1_boot_sel_snapshot_uncached(at: at, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after)
+    SdrCacheNotTaken { reason: _ } => mtcollins1_boot_sel_snapshot_uncached(at: at, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after)
   }
 }
 
