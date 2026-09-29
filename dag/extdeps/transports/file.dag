@@ -1,6 +1,7 @@
 module extdeps.transports.file
 
 import std.types { FermiDepth, Int, String }
+import std.measure { ByteSize, byte_size_count }
 import extdeps.filesystem.filesystem_io { FilesystemFailureKind }
 import std.fidelity { TransportFidelity }
 import extdeps.external_authority { ExternalAuthority }
@@ -27,5 +28,11 @@ type FileTransportConfig {
 // derived exactly as from a real call. A listing's content follows the realization's own contract:
 // the entry names, sorted, one per line.
 type FileExchangeObservation
-  = FileOperationSucceeded { byte_count: Int, content: String }
+  = FileOperationSucceeded { byte_count: ByteSize, content: String }
   | FileOperationFailed { kind: FilesystemFailureKind, error: String }
+
+// The byte count as the host integer the file transport's `byte_count` output field carries; the
+// dispatcher reads a modeled observation's count through this rather than decoding the measure.
+fn file_observation_byte_count(bytes: ByteSize) -> Int {
+  byte_size_count(b: bytes) as Int
+}

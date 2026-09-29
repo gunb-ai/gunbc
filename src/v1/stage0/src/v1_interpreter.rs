@@ -8420,13 +8420,15 @@ fn dispatch_modeled_operation(
                     .map_err(&harness_fault)
                     .map(|shell| shell_result_projection(shell, op_node, ctx))
             } else {
-                let path = match param_env.lookup(ctx.sym("path")) {
-                    Some(Value::Str(p)) => p.to_string(),
-                    _ => String::new(),
-                };
-                file_result_of_observation(&observation, &path, ctx)
-                    .map_err(&harness_fault)
-                    .map(|file| map_file_outputs(&file, op_node, ctx))
+                // Every file-transport operation declares its path; one dispatched without a string
+                // path is a malformed dispatch and refuses, never an empty path the projection would
+                // report as if the operation had named one.
+                match param_env.lookup(ctx.sym("path")) {
+                    Some(Value::Str(p)) => file_result_of_observation(&observation, &p, ctx),
+                    _ => Err("a file operation was dispatched without a string path".to_string()),
+                }
+                .map_err(&harness_fault)
+                .map(|file| map_file_outputs(&file, op_node, ctx))
             };
             let projected = projected?;
             log(
@@ -8500,9 +8502,18 @@ fn file_result_of_observation(
     };
     match file_arm.as_str() {
         "FileOperationSucceeded" => {
-            let byte_count = match ctx.field(&file_fields, "byte_count") {
-                Some(Value::Int(n)) => *n,
-                _ => return Err("the file observation carries no byte_count".to_string()),
+            let bytes = ctx
+                .field(&file_fields, "byte_count")
+                .cloned()
+                .ok_or("the file observation carries no byte_count")?;
+            let byte_count = match run_in_context_with_args(
+                ctx,
+                "file_observation_byte_count",
+                &[(Some("bytes".to_string()), bytes)],
+                false,
+            ) {
+                Ok(Value::Int(n)) => n,
+                _ => return Err("the file observation's byte_count is not a byte size".to_string()),
             };
             Ok(FileResult {
                 success: true,
