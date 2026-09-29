@@ -37,6 +37,7 @@ type PromptInput
   | EvidenceInput { artifact: String, subject: String, standing: ContextStanding }
   | ConversationTurnInput { turn_identity: String, parent_identity: String }
   | GuidanceInput { receipt_identity: String, resolved: Bool }
+  | DerivedConclusionInput { conclusion: String, grounds: List<DeclarationRef> }
 
 // THE SNAPSHOT: one immutable binding of inputs to an attempt lineage at an epoch and a source
 // revision. The alignment probes of one checkpoint share a snapshot identity and receive different
@@ -61,6 +62,11 @@ fn prompt_input_canonical_text(input: PromptInput) -> String {
       join(["conversation-turn", turn_identity, parent_identity], "")
     GuidanceInput { receipt_identity, resolved: _ } =>
       join(["guidance", receipt_identity], "")
+    DerivedConclusionInput { conclusion, grounds } =>
+      join(concat(
+        ["derived-conclusion", conclusion],
+        map(grounds, g => join([g.module_path as String, g.decl_name as String], "")),
+      ), "")
   }
 }
 

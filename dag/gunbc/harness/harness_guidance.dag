@@ -7,6 +7,9 @@ import gunbc.roadmap.roadmap_submission {
   submission_artifact_name, submission_schema, submission_text, submission_readiness_key,
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
 }
+import gunbc.harness.harness_prompt_context {
+  PromptInput, AuthorityInput, DerivedConclusionInput, PromptSegment, prompt_segment_render,
+}
 
 // THE PROMPT IS A SYLLOGISM: GROUNDED PREMISES IN, DERIVED CONCLUSIONS OUT.
 //
@@ -297,6 +300,37 @@ fn harness_guidance_prose(rows: List<HarnessGroundedPremise>) -> String {
     ),
     " ",
   )
+}
+
+// THE MODELED SEGMENTS (harness-prompt-context-model's first consumer). Every grounded premise
+// renders as a segment whose source names the declaration it is grounded on at the caller's source
+// revision; every conclusion renders as a segment whose source names the conclusion and its
+// grounds, so a retracted premise moves the conclusion's input digest with it. The prose above is
+// the render projection of exactly this population -- the parity witness
+// (test.claim.harness_guidance_test) pins that they cannot fork -- and the digests are what let a
+// later PromptPlan say precisely which guidance a worker was told.
+fn harness_guidance_segments(rows: List<HarnessGroundedPremise>, source_revision: String) -> List<PromptSegment> {
+  concat(
+    map(rows, r => prompt_segment_render(
+      purpose: "grounded premise",
+      source: AuthorityInput { declaration: r.grounds, revision: source_revision },
+      required: true,
+      content: harness_premise_text(p: r.premise),
+    )),
+    map(harness_conclusions(rows: rows), c => prompt_segment_render(
+      purpose: "derived conclusion",
+      source: DerivedConclusionInput {
+        conclusion: harness_conclusion_text(c: c),
+        grounds: map(rows, r => r.grounds),
+      },
+      required: true,
+      content: harness_conclusion_text(c: c),
+    )),
+  )
+}
+
+fn harness_guidance_prose_from_segments(segments: List<PromptSegment>) -> String {
+  join(map(segments, s => s.content), " ")
 }
 
 fn grounded(premise: HarnessPremise, module_path: String, decl_name: String) -> HarnessGroundedPremise {

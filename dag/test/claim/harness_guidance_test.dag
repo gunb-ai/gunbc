@@ -9,8 +9,10 @@ import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, 
   RoundsRemaining,
   ChangeTheTreeWithTheTool, VerifyWithTheTool, ReadingAloneCompletesNothing,
   grounded, harness_conclusions, harness_guidance_prose,
+  harness_guidance_segments, harness_guidance_prose_from_segments,
   harness_worker_guidance, harness_probe_guidance,
 }
+import gunbc.harness.harness_prompt_context { AuthorityInput, DerivedConclusionInput }
 import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
 import gunbc.roadmap.roadmap_submission {
   submission_schema, submission_decode, SubmissionDecoded, SubmissionNotDecodable, SubmissionReady,
@@ -406,5 +408,63 @@ test fn the_production_shape_without_the_schema_member_is_not_a_declaration() ->
   match submission_decode(text: "{\"readiness\": \"ready\", \"explanation\": \"did the work\", \"known_limitations\": [\"no soak\"]}") {
     SubmissionNotDecodable { reason: _ } => true
     SubmissionDecoded { submission: _ } => false
+  }
+}
+
+// THE GUIDANCE POPULATION IS THE SEGMENT POPULATION: the prose projection and the modeled segments
+// cannot fork, every premise segment names its grounding declaration at the caller's revision, and
+// every conclusion segment names its grounds so a retracted premise moves the digest.
+test fn the_segments_and_the_prose_are_one_population() -> Bool {
+  let rows = harness_worker_guidance_at(
+    worktree: "/wt",
+    test_command: "test-cmd",
+    test_receipt_path: "/wt/.receipts/test",
+    compile_command: "compile-cmd",
+    compile_receipt_path: "/wt/.receipts/compile",
+  )
+  let segments = harness_guidance_segments(rows: rows, source_revision: "rev-fixture")
+  harness_guidance_prose_from_segments(segments: segments) == harness_guidance_prose(rows: rows)
+    && count(segments) > count(rows)
+    && (match segments.first() {
+      Present { value: s } =>
+        (match s.source {
+          AuthorityInput { declaration: _, revision } => revision == "rev-fixture"
+          _ => false
+        })
+          && s.required
+          && s.content_digest != ""
+      Absent => false
+    })
+    && (match segments.last() {
+      Present { value: s } =>
+        match s.source {
+          DerivedConclusionInput { conclusion: _, grounds } => count(grounds) == count(rows)
+          _ => false
+        }
+      Absent => false
+    })
+}
+
+test fn a_moved_revision_moves_the_segment_inputs() -> Bool {
+  let rows = harness_probe_guidance()
+  let a = harness_guidance_segments(rows: rows, source_revision: "rev-a")
+  let b = harness_guidance_segments(rows: rows, source_revision: "rev-b")
+  match a.first() {
+    Absent => false
+    Present { value: sa } =>
+      match b.first() {
+        Absent => false
+        Present { value: sb } =>
+          sa.content == sb.content
+            && sa.content_digest == sb.content_digest
+            && (match sa.source {
+              AuthorityInput { declaration: _, revision } => revision == "rev-a"
+              _ => false
+            })
+            && (match sb.source {
+              AuthorityInput { declaration: _, revision } => revision == "rev-b"
+              _ => false
+            })
+      }
   }
 }
