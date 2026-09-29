@@ -145,8 +145,8 @@ fn rm_recursive_force_one_file_system_command(path: String) -> ArgvCommand {
 // configfs_op_line WAS the last hand-spelled `ln -sf` inside a script string; that frontier has now
 // folded: the gadget's symlink op mints through ln_symbolic_force_into_directory_command (the
 // into-directory sibling below), because the -T form refuses precisely the into-directory case the
-// configfs procedure needs to succeed (configfs_op_render_dissolution_trigger records the
-// retirement).
+// configfs procedure needs to succeed. The renderer's retirement obligation is discharged -- the
+// declaration is deleted, and its trigger went with it.
 //
 // -T IS THE FAIL-CLOSED HALF AND -n IS NOT A SUBSTITUTE FOR IT (sunny-ant-606 review of #11760).
 // -n covers only a symlink-to-directory; against a REAL directory at LINK_NAME, `ln -sfn T D` exits

@@ -1,12 +1,10 @@
 module extdeps.linux.usb_gadget
 
-import std.dissolution { DissolutionCondition, dissolution_description, retires_dissolution }
-import std.decl_ref { decl_ref }
-
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.tools.gnu_coreutils { ln_symbolic_force_into_directory_command, rm_force_command, rmdir_command }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
+import gunbc.rust_item_scan { ends_with }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -98,13 +96,13 @@ fn usb_gadget_teardown_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
 // a shell line is an unchecked serialization exactly as the concats were -- shell syntax embedded
 // in decision-making code cannot be checked before it runs and cannot be reused anywhere else.
 //
-// The retirement is observable exactly as the disappearance of `configfs_op_line`, which is what
-// the trigger names. The obligation the old note described -- ConfigfsOp bound to typed effects
-// over the ssh transport rather than to shell text -- is continued, one layer further along, in
-// the host-effect lane, which now consumes these typed commands instead of shell text.
-data configfs_op_render_dissolution_trigger: DissolutionCondition = retires_dissolution(
-  ref: decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "configfs_op_line")
-)
+// THE RETIREMENT OBLIGATION IS DISCHARGED, NOT CARRIED: the renderer (`configfs_op_line`) is gone
+// from this tree as of the same change that described the transport, and a retirement obligation
+// whose declaration no longer exists is complete -- its trigger went with the declaration, because
+// a trigger citing an absent declaration is exactly the dead vocabulary this repository removes.
+// The obligation the old note described -- ConfigfsOp bound to typed effects over the ssh transport
+// rather than to shell text -- is continued, one layer further along, in the host-effect lane,
+// which now consumes these typed commands instead of shell text.
 
 // THE DESCRIBED TRANSPORT (roadmap node shell-typed-invocation). One ConfigfsOp's typed command:
 // the operation a caller names and the arguments that carry it. This is what a transport consumes
