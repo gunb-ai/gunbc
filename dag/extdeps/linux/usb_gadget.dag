@@ -1,6 +1,7 @@
 module extdeps.linux.usb_gadget
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.algebra { list_append }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.tools.gnu_coreutils { ln_symbolic_force_into_directory_command, rm_force_command, rmdir_command }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
@@ -218,7 +219,7 @@ fn configfs_staging_of(ops: List<ConfigfsOp>) -> ConfigfsStaging {
           match configfs_op_staging(op: op) {
             ConfigfsStagingRefused { reason: r } => ConfigfsStagingRefused { reason: r },
             ConfigfsStagingRan { commands: minted } =>
-              ConfigfsStagingRan { commands: append(cs, items: minted) },
+              ConfigfsStagingRan { commands: list_append(left: cs, right: minted) },
           },
       },
   )
