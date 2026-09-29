@@ -1698,6 +1698,29 @@ fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: 
   ["worktree", "add", path as String, "-b", branch as String, remote_ref as String]
 }
 
+// Dispatch worktrees run against an instance-selected git executable. Keep the selection as an
+// explicit ProgramIdentity input while this tool-owned builder owns the operation spelling.
+fn git_worktree_add_dispatch_command(
+  program: ProgramIdentity,
+  path: FilePath,
+  branch: NonEmptyStr,
+  remote_ref: GitRef,
+) -> ArgvCommand {
+  argv_command(program: program, arguments: shape_git_worktree_add_argv(path: path, branch: branch, remote_ref: remote_ref))
+}
+
+fn git_worktree_add_detached_dispatch_command(
+  program: ProgramIdentity,
+  path: FilePath,
+  commit: GitRef,
+) -> ArgvCommand {
+  argv_command(program: program, arguments: shape_git_worktree_add_detached_argv(path: path, commit: commit))
+}
+
+fn git_for_each_ref_dispatch_command(program: ProgramIdentity) -> ArgvCommand {
+  argv_command(program: program, arguments: ["for-each-ref", "--format=%(refname:short)", "refs/heads/dispatch/"])
+}
+
 // Worktree at an EXISTING branch (no -b): the branch is created elsewhere and this checks it out.
 fn shape_git_worktree_add_branch_argv(path: FilePath, branch: NonEmptyStr) -> List<String> {
   ["worktree", "add", path as String, branch as String]

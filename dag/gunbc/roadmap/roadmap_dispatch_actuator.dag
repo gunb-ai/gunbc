@@ -39,7 +39,13 @@ import gunbc.session_lease {
   Start,
   classify_process_port_upsert,
 }
-import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.git {
+  git_worktree_add_dispatch_command,
+  git_worktree_add_detached_dispatch_command,
+  git_for_each_ref_dispatch_command,
+}
 import std.measure { ByteSize, byte_size_count }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
@@ -436,6 +442,25 @@ fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
 type HostExecArgv {
   program: String
   args: List<String>
+}
+
+// Capability executables come from the per-instance dispatch environment. Preserve that identity
+// boundary when constructing typed extdeps commands; the declared mint only accepts this named
+// adapter, so all uses remain auditable at one seam.
+fn dispatch_git_program(instance: HostDashboardInstance) -> ProgramIdentity {
+  uncataloged_program(
+    invocation: dispatch_capability_program(
+      environment: instance.execution_environment,
+      cap: GitWorkspaceCapability,
+    ) as NonEmptyStr,
+  )
+}
+
+fn host_argv_from_command(command: ArgvCommand) -> HostExecArgv {
+  HostExecArgv {
+    program: command.program.invocation as String,
+    args: command.arguments,
+  }
 }
 
 data dispatch_unrealized_capability_marker: String = "gunbc-unrealized-capability:"
@@ -1639,9 +1664,9 @@ fn host_exec_argv(program: String, args: List<String>) -> HostExecArgv {
 }
 
 fn git_worktree_add_argv(worktree_path: String, branch_name: String, remote_ref: String) -> HostExecArgv {
-  host_exec_argv(
-    program: "git",
-    args: shape_git_worktree_add_argv(
+  host_argv_from_command(
+    command: git_worktree_add_dispatch_command(
+      program: uncataloged_program(invocation: "git"),
       path: worktree_path as FilePath,
       branch: branch_name as NonEmptyStr,
       remote_ref: remote_ref as GitRef,
@@ -1655,12 +1680,9 @@ fn git_worktree_add_argv_for_instance(
   branch_name: String,
   remote_ref: String,
 ) -> HostExecArgv {
-  host_exec_argv(
-    program: dispatch_capability_program(
-      environment: instance.execution_environment,
-      cap: GitWorkspaceCapability,
-    ),
-    args: shape_git_worktree_add_argv(
+  host_argv_from_command(
+    command: git_worktree_add_dispatch_command(
+      program: dispatch_git_program(instance: instance),
       path: worktree_path as FilePath,
       branch: branch_name as NonEmptyStr,
       remote_ref: remote_ref as GitRef,
@@ -1673,12 +1695,9 @@ fn git_worktree_add_detached_argv_for_instance(
   worktree_path: String,
   commit_sha: String,
 ) -> HostExecArgv {
-  host_exec_argv(
-    program: dispatch_capability_program(
-      environment: instance.execution_environment,
-      cap: GitWorkspaceCapability,
-    ),
-    args: shape_git_worktree_add_detached_argv(
+  host_argv_from_command(
+    command: git_worktree_add_detached_dispatch_command(
+      program: dispatch_git_program(instance: instance),
       path: worktree_path as FilePath,
       commit: commit_sha as GitRef,
     ),
@@ -3166,18 +3185,16 @@ fn dispatch_attempt_refs(git_output: String) -> List<DispatchAttemptRef> {
 }
 
 fn git_for_each_ref_dispatch_argv() -> HostExecArgv {
-  host_exec_argv(program: "git", args: ["for-each-ref", "--format=%(refname:short)", "refs/heads/dispatch/"])
+  host_argv_from_command(
+    command: git_for_each_ref_dispatch_command(program: uncataloged_program(invocation: "git")),
+  )
 }
 
 fn git_for_each_ref_dispatch_argv_for_instance(
   instance: HostDashboardInstance,
 ) -> HostExecArgv {
-  host_exec_argv(
-    program: dispatch_capability_program(
-      environment: instance.execution_environment,
-      cap: GitWorkspaceCapability,
-    ),
-    args: ["for-each-ref", "--format=%(refname:short)", "refs/heads/dispatch/"],
+  host_argv_from_command(
+    command: git_for_each_ref_dispatch_command(program: dispatch_git_program(instance: instance)),
   )
 }
 
