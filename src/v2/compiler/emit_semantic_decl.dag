@@ -1,10 +1,7 @@
 module v2.compiler.emit_semantic_decl
 
-import v2.compiler.translate {
-  grammar_relation_row_for_emitted,
-  grammar_relation_row_tokens_root,
-  serialize_concrete_syntax_tokens_to_source
-}
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
+import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclSerializeProfile,
   semantic_decl_emission_from_target,

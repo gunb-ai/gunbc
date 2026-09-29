@@ -16,7 +16,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { spark_serving_admissible_hosts, admit_host_held_by_subject_among }
 import gunbc.spark.v41_engram_row_store { V41PublishedSpan }
-import extdeps.tools.sha256sum { sha256sum_byte_span_program, sha256sum_byte_span_argv_of }
+import gunbc.sha256sum_byte_span { sha256sum_byte_span_program, sha256sum_byte_span_argv_of }
 import gunbc.spark.v41_index_engram_selection { V41IndexParsed, V41IndexParseRefused }
 import extdeps.safetensors.format { safetensors_index_member }
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLevelRead, CgroupMemoryLimited, CgroupMemoryUnlimited }

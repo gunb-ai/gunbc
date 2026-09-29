@@ -1,4 +1,6 @@
 module gunbc.ci_spec
+
+import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
@@ -10,6 +12,7 @@ import gunbc.spark.v41_row_store_encode_run { v41_encode_run_receipt_path }
 import gunbc.spark.v41_row_store_readback_run { v41_readback_run_receipt_path }
 import gunbc.spark.v41_engram_differential_run { v41_differential_receipt_path }
 import gunbc.spark.v41_runtime_image_converge { v41_distribution_receipt_path }
+import gunbc.spark.v41_group_a_launch { v41_group_a_launch_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
@@ -56,12 +59,13 @@ import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member 
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
+import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
-import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count }
+import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 import std.nat { Nat }
 
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
@@ -87,9 +91,14 @@ import gunbc.ci_layer_roots {
   witness_layer_roots,
   witness_discovery_scan_dirs
 }
-import gunbc.cli_invoke {
-  claim_executor_verify_artifacts_shell
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var,
 }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.std.node { Node }
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script,
   gunbc_run_step_script_with_prelude,
@@ -106,8 +115,9 @@ import gunbc.commit_workflow {
 import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy, gunbc_ci_diff_policy }
 import gunbc.auth.heal_publisher_federation {
-  heal_publisher_installation_token_request_body,
-  heal_publisher_key_unreadable_message,
+  HealPublisherFederation, public_heal_publisher_federation,
+  heal_publisher_federation_installation_token_request_body,
+  heal_publisher_federation_key_unreadable_message,
   heal_publisher_token_refused_message
 }
 import extdeps.github.app { GitHubAppInstallationId }
@@ -122,7 +132,7 @@ import extdeps.git {
   git_fetch_no_tags_shell,
 }
 import std.types { GitRef, Int, String, List, NonEmptyStr }
-import v2.std.algebra { FreeSemigroup, non_empty_to_list }
+import v2.std.algebra { FreeSemigroup, non_empty_to_list, list_map }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
@@ -141,7 +151,7 @@ import v2.std.orchestration {
   Run
 }
 import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { EmitDirective, SeverityWarning }
+import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -556,7 +566,7 @@ fn ci_fmt_gate_line() -> String {
   "\"$CARGO_BIN\" fmt --all --check"
 }
 
-data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release (RETAINED-KERNEL EXECUTION gate; the tests RUN). --no-run was removed 2026-08-11 with the suite cutover: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), 9 modules / 30 tests, down from 98 / 740 of which zero executed. There is no compile-only arm — a retained test either executes or the gate refuses. Originally RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177 / #7868): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. CI-performance status authority gunbc.ci_build_job_v1_compiler_unit_receipt (one_profile_ordering_status, one_compiler_unit_status, wall_benefit_status, fleet_build_job_log_evidence_note). A2 fix (#7910): delete broken package-relative .git rerun-if-changed lines in src/v1/stage0/build.rs (StaleItem(MissingFile) on second cargo invocation); machine unit evidence in ci_build_job_v1_compiler_unit_receipt machine_unit_identity_note. Operation shape: v2.workflow.ci_v1_compiler_tests_compile_gate_emit (extdeps.cargo_build cargo.Build.Test)."
+data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release (RETAINED-KERNEL EXECUTION gate; the tests RUN). --no-run was removed 2026-08-11 with the suite cutover: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), 9 modules / 30 tests, down from 98 / 740 of which zero executed. There is no compile-only arm — a retained test either executes or the gate refuses. Originally RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177 / #7868): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. CI-performance status authority gunbc.ci_build_job_v1_compiler_unit_receipt (one_profile_ordering_status, one_compiler_unit_status, wall_benefit_status, fleet_build_job_log_evidence_note). A2 fix (#7910): delete broken package-relative .git rerun-if-changed lines in src/v1/stage0/build.rs (StaleItem(MissingFile) on second cargo invocation); machine unit evidence in ci_build_job_v1_compiler_unit_receipt machine_unit_identity_note. The step no longer runs: the rust-unit-tests job was cut on 2026-09-04 (gunbc.rung_drop rust_unit_tests_off_the_merge_path), and its unconsumed emitter v2.workflow.ci_v1_compiler_tests_compile_gate_emit was deleted on 2026-09-28. A restored lane is authored fresh against the route that exists then."
 
 fn ci_retry_body_run(command: String) -> Run {
   Run {
@@ -605,75 +615,33 @@ fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
 // ruling 2026-07-11 still applies to the handoff shape. The intentionally-absent negative control
 // (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of
 // scope: a same-run artifact is fresh by construction.
-fn artifact_shell_path(name: String) -> String {
-  concat(concat("\"$ROOT/target/release/", name), "\"")
+fn ci_release_artifact_word(name: String) -> Node {
+  bash_build_word_concat_from_nodes(parts: [
+    bash_build_word_var(name: "ROOT"),
+    bash_build_word_lit(text: concat("/target/release/", name)),
+  ])
 }
 
+// claim_executor verifies every roster bin it was built beside, itself included.
+fn ci_floor_build_verify_stmt() -> Node {
+  bash_build_command_with_words(words: concat(
+    [ci_release_artifact_word(name: "claim_executor"), bash_build_word_lit(text: "--verify-build-artifacts")],
+    map(ci_floor_required_artifact_names(), name => ci_release_artifact_word(name: name))
+  ))
+}
+
+// A refused emission is a marker that is not valid workflow shell, so the committed-workflow drift
+// gate turns red. It is never a partial script (DESIGN 5: refuse, never widen).
+data ci_floor_build_verify_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ gunbc.ci_spec ci_floor_build_verify_script: the bash serializer refused the verify statement; this marker is not valid workflow shell\n"
+
 fn ci_floor_build_verify_script() -> String {
-  let paths = map(ci_floor_required_artifact_names(), name => artifact_shell_path(name: name))
-  claim_executor_verify_artifacts_shell(artifact_paths: paths)
+  match bash_emit_stmts(statements: [ci_floor_build_verify_stmt()], set_e: false) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => ci_floor_build_verify_refused_poison
+  }
 }
 
 data ci_release_bins_archive_name: String = "release-bins.tgz"
-
-data ci_release_bins_pack_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "ci_release_bins_pack_script",
-    field: WholeDeclaration
-  }
-}
-
-data ci_release_bins_pack_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
-
-fn ci_release_bins_pack_script() -> String {
-  let names = fold(
-    ci_floor_required_artifact_names(),
-    init: "",
-    f: (acc, name) => concat(acc, concat(" ", concat("\"", concat(name, "\""))))
-  )
-  concat(
-    concat("# ", concat(dissolution_description(condition: ci_release_bins_pack_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      concat(
-        concat(concat("tar -czf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\""),
-        concat(names, "\n")
-      )
-    )
-  )
-}
-
-data ci_release_bins_unpack_verify_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "ci_release_bins_unpack_verify_script",
-    field: WholeDeclaration
-  }
-}
-
-data ci_release_bins_unpack_verify_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
-
-fn ci_release_bins_unpack_verify_script() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: ci_release_bins_unpack_verify_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      concat(
-        "mkdir -p \"$ROOT/target/release\"\n",
-        concat(
-          concat(concat("tar -xzf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\"\n"),
-          concat(
-            concat(concat("rm -f \"$ROOT/", ci_release_bins_archive_name), "\"\n"),
-            ci_floor_build_verify_script()
-          )
-        )
-      )
-    )
-  )
-}
 
 fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
@@ -889,6 +857,11 @@ data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget =
   function: "runner_password_session_tool_converge_ci_wet",
 }
 
+data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/namecheap/observe.dag",
+  function: "namecheap_observe_ci_wet",
+}
+
 data gunbc_ci_host_credential_custody_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/host_credential_custody_converge.dag",
   function: "host_credential_custody_converge_ci_wet",
@@ -992,6 +965,11 @@ data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = Gunbc
   function: "mtcollins1_census_image_publish_wet",
 }
 
+data gunbc_ci_mtcollins1_census_member_readback_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag",
+  function: "mtcollins1_census_member_readback_wet",
+}
+
 data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/managed_grant_install.dag",
   function: "spark_grant_install_ci_wet",
@@ -1037,6 +1015,14 @@ data gunbc_ci_spark_v41_runtime_image_build_target: GunbcRunStepTarget = GunbcRu
 data gunbc_ci_spark_v41_runtime_image_distribute_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/v41_runtime_image_converge.dag",
   function: "v41_runtime_image_distribute_ci_wet",
+}
+
+// THE V4.1 FOUR-RANK LAUNCH ON GROUP A (gunbc.spark.v41_group_a_launch): the held image read back on
+// every host, the registry read inside its digest, occupancy read, and only on admission the Engram
+// staging and the arm transaction. The same prelude: the session host is the dispatch's target.
+data gunbc_ci_spark_v41_group_a_launch_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_group_a_launch.dag",
+  function: "v41_group_a_launch_ci_wet",
 }
 
 // THE PUBLISHED V4.1 CHECKPOINT ON ONE GROUP A SPARK (gunbc.spark.v41_checkpoint_materialize): the same
@@ -1252,12 +1238,14 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
+    gunbc_ci_namecheap_observe_target,
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_microvm_slot_start_target,
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
+    gunbc_ci_mtcollins1_census_member_readback_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_bootstrap_target,
     gunbc_ci_spark_serving_apply_target,
@@ -1559,7 +1547,7 @@ data gunbc_ci_fleet_key_agent_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
 
 fn gunbc_ci_fleet_key_agent_script() -> String {
   concat(
@@ -1781,7 +1769,7 @@ data gunbc_ci_mtcollins1_fan_observe_shell_emit_scaffold: Disposition = Scaffold
   }
 }
 
-data gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_fan_observe_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned BMC secret version fetched over curl through the shared gunbc_ci_mtcollins1_bmc_credential_fetch_steps, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk. The pipeline steps are modeled but each step body is a shell string built by concat, so the transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold. The SHARED fetch means this row and gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger retire together for the fetch half; each keeps its own row because each lane's file names, trap and exports are still its own hand-shell.")
+data gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_fan_observe_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned BMC secret version fetched over curl through the shared gunbc_ci_mtcollins1_bmc_credential_fetch_steps, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk. The pipeline steps are modeled but each step body is a shell string built by concat, so the transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite.")
 
 fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
   concat(
@@ -2014,19 +2002,42 @@ fn app_mint_record_steps(spec: AppInstallationTokenMint, key: String, value_expr
 // not survive; moving the shell leaves the invocation untouched.
 data heal_publisher_cgroup_name: String = "gunbc-publish"
 
-// 12 GiB against the 4 vCPU / 16 GiB ubuntu-24.04-arm image, leaving the runner agent its own room.
-data heal_publisher_cgroup_memory_max_bytes: Int = 12884901888
+// THE HOSTED ubuntu-24.04-arm MEMORY BOUND, ONCE, for every caller of the bind below: 12 GiB
+// against the image's 4 vCPU / 16 GiB, leaving the runner agent its own room.
+fn hosted_arm_runner_cgroup_memory_max() -> Gibibyte {
+  gibibyte(count: 12)
+}
+
+// THE BIND ITSELF, ONCE, for every hosted-runner caller: the heal publisher below and the v1 unit
+// tests in the clippy lane (gunbc.compiler_gate_workflow). The callers differ in the leaf's name and
+// its bound, never in the sequence; the enclosing shell is what moves, so every process it starts
+// afterwards inherits a memory.max that gunbc.host_budget_source reads as an ordinary observation.
+// MARKED ON REQUEST (review 72000): the bind is hand-shell text shared by two callers, so its end is
+// named on the carrier, as native_frontier_workflow's hand-shell steps name theirs.
+data hosted_runner_memory_cgroup_bind_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: hosted_runner_memory_cgroup_bind_commands -- the GUNBC_CG / tee subtree_control / mkdir / tee memory.max / tee cgroup.procs strings shared by the heal publisher prelude and the clippy lane's rust_unit_tests step (gunbc.compiler_gate_workflow compiler_gate_unit_test_command) remain until the cgroup v2 leaf bind is a typed host effect rendered by the bash emitter (#5828 / shell-to-intent Phase 2), taking the leaf name and a Gibibyte bound as values; both callers then consume that op and this function is deleted")
+
+fn hosted_runner_memory_cgroup_bind_commands(cgroup_name: String, memory_max: Gibibyte) -> List<String> {
+  [
+    concat("GUNBC_CG=/sys/fs/cgroup/", cgroup_name),
+    "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null",
+    "sudo mkdir -p \"$GUNBC_CG\"",
+    concat(concat("echo ", to_string(byte_size_count(b: gibibyte_to_byte_size(g: memory_max)))), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null"),
+    "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null",
+    "cat \"$GUNBC_CG/memory.max\"",
+  ]
+}
 
 fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
-  [
-    app_mint_step(command: "set -euo pipefail"),
-    app_mint_step(command: concat("GUNBC_CG=/sys/fs/cgroup/", heal_publisher_cgroup_name)),
-    app_mint_step(command: "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null"),
-    app_mint_step(command: "sudo mkdir -p \"$GUNBC_CG\""),
-    app_mint_step(command: concat(concat("echo ", to_string(heal_publisher_cgroup_memory_max_bytes)), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null")),
-    app_mint_step(command: "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null"),
-    app_mint_step(command: "cat \"$GUNBC_CG/memory.max\""),
-  ]
+  concat(
+    [app_mint_step(command: "set -euo pipefail")],
+    list_map(
+      xs: hosted_runner_memory_cgroup_bind_commands(
+        cgroup_name: heal_publisher_cgroup_name,
+        memory_max: hosted_arm_runner_cgroup_memory_max(),
+      ),
+      f: fn(c) { app_mint_step(command: c) },
+    )
+  )
 }
 
 fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
@@ -2574,6 +2585,18 @@ fn gunbc_ci_mtcollins1_census_image_publish_invoke() -> String {
   )
 }
 
+// The member readback reaches srv2 over fleet SSH (the mode consumes the fleet key, see
+// gunbc.fleet_converge_workflow) and touches no controller or credential: no prelude.
+fn gunbc_ci_mtcollins1_census_member_readback_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_census_member_readback_target.entry,
+    function: gunbc_ci_mtcollins1_census_member_readback_target.function,
+    claim_run: false,
+    receipt_rel: census_member_readback_receipt_path
+  )
+}
+
 fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -2622,6 +2645,17 @@ fn gunbc_ci_spark_v41_runtime_image_distribute_invoke() -> String {
     function: gunbc_ci_spark_v41_runtime_image_distribute_target.function,
     claim_run: false,
     receipt_rel: v41_distribution_receipt_path
+  )
+}
+
+fn gunbc_ci_spark_v41_group_a_launch_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_group_a_launch_target.entry,
+    function: gunbc_ci_spark_v41_group_a_launch_target.function,
+    claim_run: false,
+    receipt_rel: v41_group_a_launch_receipt_path
   )
 }
 
@@ -2762,7 +2796,7 @@ data gunbc_ci_approval_keyring_converge_shell_emit_scaffold: Disposition = Scaff
   }
 }
 
-data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_approval_keyring_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, two PINNED secret versions (capability and submission MAC keys) fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. The pipeline steps are modeled (gunbc_ci_approval_keyring_converge_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_approval_keyring_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, two PINNED secret versions (capability and submission MAC keys) fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. The pipeline steps are modeled (gunbc_ci_approval_keyring_converge_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
 
 // THE BOOT PRELUDE'S BMC FETCH IS THE SHARED ONE (gunbc_ci_mtcollins1_bmc_credential_fetch_steps).
 // The four steps it used to spell inline are byte-identical to what that function returns when it is
@@ -2798,7 +2832,7 @@ data gunbc_ci_mtcollins1_boot_credential_shell_emit_scaffold: Disposition = Scaf
   }
 }
 
-data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, the PINNED BMC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, the PINNED BMC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
 
 // The enrolment-code step has no prelude: no secret is fetched on the runner, the host holds
 // everything the verb reads, and the step's stdout is the remote receipt line alone.
@@ -2847,7 +2881,7 @@ fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
   gunbc_ci_submission_key_prelude(stem: "pair-serving-d0")
 }
 
-data gunbc_ci_gcp_iam_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_gcp_iam_converge_request_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner sharing gunbc_ci_submission_key_prelude with the D0 door: WIF access token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold -- the same trigger as gunbc_ci_pair_serving_d0_shell_emit_dissolution_trigger")
+data gunbc_ci_gcp_iam_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_gcp_iam_converge_request_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner sharing gunbc_ci_submission_key_prelude with the D0 door: WIF access token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
 
 fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
   concat(
@@ -2908,7 +2942,7 @@ data gunbc_ci_pair_serving_d0_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data gunbc_ci_pair_serving_d0_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_pair_serving_d0_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned submission-MAC secret version fetched over curl through the shared auth header and SM decode, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk. The pipeline steps are modeled (gunbc_ci_pair_serving_d0_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold -- the same trigger as gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger, whose fetch this shares")
+data gunbc_ci_pair_serving_d0_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_pair_serving_d0_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned submission-MAC secret version fetched over curl through the shared auth header and SM decode, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk. The pipeline steps are modeled (gunbc_ci_pair_serving_d0_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
 
 fn gunbc_ci_pair_serving_d0_invoke() -> String {
   concat(
@@ -2969,7 +3003,7 @@ data gunbc_ci_microvm_runner_group_ensure_shell_emit_scaffold: Disposition = Sca
   }
 }
 
-data gunbc_ci_microvm_runner_group_ensure_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_microvm_runner_group_ensure_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: the org-admin installation token prelude (gunbc_ci_org_admin_app_token_prelude) followed by ONE pinned submission-MAC secret version fetched over curl through the shared auth header and SM decode, a 0600 file under RUNNER_TEMP with the mint's cleanup extended in the EXIT trap. The pipeline steps are modeled (gunbc_ci_microvm_runner_group_ensure_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold -- the same trigger as gunbc_ci_pair_serving_d0_shell_emit_dissolution_trigger, whose submission-MAC fetch this shares")
+data gunbc_ci_microvm_runner_group_ensure_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_microvm_runner_group_ensure_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: the org-admin installation token prelude (gunbc_ci_org_admin_app_token_prelude) followed by ONE pinned submission-MAC secret version fetched over curl through the shared auth header and SM decode, a 0600 file under RUNNER_TEMP with the mint's cleanup extended in the EXIT trap. The pipeline steps are modeled (gunbc_ci_microvm_runner_group_ensure_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
 
 fn gunbc_ci_microvm_runner_group_ensure_invoke() -> String {
   concat(
@@ -3283,7 +3317,7 @@ fn gunbc_ci_heal_publication_admit_invoke() -> String {
   )
 }
 
-fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> AppInstallationTokenMint {
+fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInstallationId, f: HealPublisherFederation) -> AppInstallationTokenMint {
   AppInstallationTokenMint {
     file_stem: "heal-publisher",
     key_secret: gunbai_bot_app_pem_secret,
@@ -3291,7 +3325,7 @@ fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInst
     app_slug: app.slug as String,
     installation_id: installation.value,
     export_env_names: FreeSemigroup { head: "GITHUB_TOKEN", tail: [] },
-    key_unreadable_message: heal_publisher_key_unreadable_message(http_status: "$SM_CODE"),
+    key_unreadable_message: heal_publisher_federation_key_unreadable_message(f: f, http_status: "$SM_CODE"),
     token_refused_message: heal_publisher_token_refused_message(
       status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
     ),
@@ -3302,9 +3336,28 @@ fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInst
       to_string(installation.value),
       " (one hour, contents:write on this repository only; key wiped; token held in this step's environment only)"
     ], ""),
-    request_body: Present { value: heal_publisher_installation_token_request_body() },
+    request_body: Present { value: heal_publisher_federation_installation_token_request_body(f: f) },
     observation_record: none
   }
+}
+
+// THE PUBLISH PRELUDE FOR A REPOSITORY WHOSE PUBLISHER DOES NOT RUN FROM THIS CHECKOUT. gunbc-private's
+// publisher composes the public corpus with its own overlay and invokes gunbc there, so it cannot use
+// the ROOT-stamped step below; it takes the same cgroup and the same mint, down-scoped to ITS
+// repository by its own federation record, as one rendered fragment ahead of its own invocation.
+fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
+  concat(
+    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+      steps: concat(
+        heal_publisher_cgroup_prelude(),
+        github_app_installation_token_prelude(
+          spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id, f: f)
+        )
+      ),
+      on_failure: FailFast
+    }),
+    "\n"
+  )
 }
 
 // THE PUBLISHER MINTS ITS OWN TOKEN IN-RUN, down-scoped to contents:write on this repository alone.
@@ -3317,7 +3370,7 @@ fn gunbc_ci_heal_publication_publish_invoke() -> String {
     prelude: concat(
       heal_publisher_cgroup_prelude(),
       github_app_installation_token_prelude(
-        spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id)
+        spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id, f: public_heal_publisher_federation())
       )
     ),
     source_roots: witness_layer_roots,
@@ -3325,5 +3378,16 @@ fn gunbc_ci_heal_publication_publish_invoke() -> String {
     function: gunbc_ci_heal_publication_publish_target.function,
     claim_run: false,
     receipt_rel: none
+  )
+}
+
+
+fn gunbc_ci_namecheap_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_namecheap_observe_target.entry,
+    function: gunbc_ci_namecheap_observe_target.function,
+    claim_run: false,
+    receipt_rel: namecheap_observation_receipt_path
   )
 }
