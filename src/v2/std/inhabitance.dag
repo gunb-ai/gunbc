@@ -244,7 +244,7 @@ fn inhabitance_no_candidate_application_reason() -> Symbol {
 }
 
 fn inhabitance_no_candidate_return_reason() -> Symbol {
-  ^declared_return_does_not_inhabit
+  ^arrow_body_does_not_inhabit_declared_return
 }
 
 fn inhabitance_no_candidate_reason(position: DeclaredTypePosition) -> Symbol {

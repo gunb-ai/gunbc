@@ -61,8 +61,22 @@ fn dr_empty_domain() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [])
 }
 
+// ONE DECLARED PARAMETER, NOT NONE. Every node here is OccurrenceSynthetic, and a childless product
+// derives the childless synthetic node as its evidence -- itself -- so an empty domain is refused
+// grounding_evidence_is_source (v2.std.constraints canonical_grounding_from_derived_type) before any
+// return is judged. A lowered domain carries its fn's occurrence id and cannot meet that state; this
+// fixture is shaped like test.claim.compiler.infer_arrow_elimination_witness_test ae_domain instead.
+fn dr_domain() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^dr_param_x }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }
+    ]
+  )
+}
+
 fn dr_arrow(return_type: Node, body: Node) -> Node {
-  let signature = declared_signature(params: [], source: dr_empty_domain())
+  let signature = declared_signature(params: dr_domain().children, source: dr_domain())
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
@@ -130,7 +144,7 @@ fn dr_refuses_at_return(tree: Node) -> Bool {
   match infer(tree: tree) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
-      diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^declared_return_does_not_inhabit)
+      diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^arrow_body_does_not_inhabit_declared_return)
   }
 }
 
@@ -169,6 +183,31 @@ test fn declared_return_list_of_int_with_an_int_list_body_admits_holds() -> Bool
       body: lower_list_introduction(elements: [dag_int_literal_fixture_one()], source: dr_empty_domain())
     )
   )
+}
+
+// THE DECLARED SIDE IS READ AT ITS DENOTATION. `Bool` as written is not the value type `true`
+// derives (v2.std.logic bool_node); comparing the spelling would refuse every Bool-returning fn.
+test fn declared_return_bool_with_a_bool_body_admits_holds() -> Bool {
+  dr_admits(tree: dr_arrow(return_type: dr_bool(), body: dr_bool_literal()))
+}
+
+test fn declared_return_list_of_bool_with_a_bool_list_body_admits_holds() -> Bool {
+  dr_admits(
+    tree: dr_arrow(
+      return_type: dr_list_of(element: dr_bool()),
+      body: lower_list_introduction(elements: [dr_bool_literal()], source: dr_empty_domain())
+    )
+  )
+}
+
+// A RETURN THE BINDING JOIN DOES NOT DENOTE IS COUNTED, NOT REFUSED AND NOT SILENT. Before this
+// relation judged returns, such an Arrow was admitted with no diagnostic at all.
+test fn declared_return_undenoted_atom_is_counted_formal_unresolved_holds() -> Bool {
+  match infer(tree: dr_arrow(return_type: dag_type_atom_node(identity: ^dr_type_undenoted), body: dr_bool_literal())) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
+  }
 }
 
 // A RETURN SPELLED AS THE FN'S OWN TYPE VARIABLE IS COUNTED, NOT COMPARED. `fn f<T>() -> T { 1 }`

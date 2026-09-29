@@ -284,20 +284,18 @@ test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool {
 // preservation_rule_exact_structural_equality_zip_fold, which reads BOTH sides -- so the seed's
 // repair does not transfer and the cell had to be measured rather than assumed.
 //
-// WHAT IS MEASURED (captured diagnostics, not inferred from the classifier): neither direction
-// reaches that fold, and the two directions stop at DIFFERENT earlier boundaries. With the
-// product declared and the collection supplied as the argument, the argument is a type node with
-// no derived value type, so the obligation is counted as UndecidableArgumentTypeNotDerived
-// (alongside infer_grounding_not_derived) before the formal is classified. With the collection
-// declared, the formal `List<Int>` mentions no declared type variable, so the classifier decides it
+// WHAT IS MEASURED (captured diagnostics, not inferred from the classifier): the two directions
+// stop at DIFFERENT boundaries. With the product declared and the collection supplied as the
+// argument, the argument is an Instantiation with no derived value type, so the obligation is
+// counted UndecidableArgumentTypeNotDerived before the relation is asked. With the collection
+// declared, the formal `List<Int>` mentions no declared type variable, so it is decided
 // (inhabitance_node_undecidable_reason reads the declaring Arrow's type parameters since the
-// declared-return producer landed) and the obligation stops one boundary later, at the argument:
-// the product type node has no derived value type, UndecidableArgumentTypeNotDerived. Either way
-// this path does not silently answer Inhabits the way the seed did -- it counts the obligation as
-// undecidable and the route advances, which is exactly the standing of
-// gunbc.recurring_failure_mode argument_type_obligation_absent_while_the_route_advances and not a
-// second class. The remaining next-rung trigger is that row's: an argument whose value type is
-// derived as an APPLIED collection type.
+// declared-return producer landed); the product argument derives its formation evidence, and the
+// relation REFUSES it at the formal, application_argument_does_not_inhabit. Neither direction answers
+// Inhabits the way the seed did. The first direction keeps the standing of
+// gunbc.recurring_failure_mode argument_type_obligation_absent_while_the_route_advances; its
+// next-rung trigger is that row's: an argument whose value type is derived as an APPLIED collection
+// type.
 fn inhabitance_collection_type_node() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Instantiation },
@@ -352,18 +350,18 @@ test fn inhabitance_collection_produced_at_a_product_formal_is_counted_frontier_
   }
 }
 
-test fn inhabitance_product_produced_at_a_collection_formal_is_counted_frontier_holds() -> Bool {
+test fn inhabitance_product_produced_at_a_collection_formal_refuses_holds() -> Bool {
   match infer(
     tree: inhabitance_declared_formal_tree(
       declared: inhabitance_collection_type_node(),
       arg: inhabitance_nominal_product_type_node()
     )
   ) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: d } =>
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
       diagnostics_has_reason(
-        d: d,
-        reason: ^inhabitance_undecidable_argument_type_not_derived
+        d: Some { diagnostics: nds },
+        reason: ^application_argument_does_not_inhabit
       )
   }
 }
