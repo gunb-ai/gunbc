@@ -141,14 +141,31 @@ against it.
 | dag/extdeps/realization/compile_stage_memo | `data f: CacheInterfaceCatalogFacts = { key_derivation: { .. }, .. }` | yes: data initializer plus record field |
 | dag/extdeps/realization/parse_table_memo | same shape | yes |
 | src/v2/std/host_transport | `RuntimePrimitive { value: { .. } }` | yes: record field under an authored head |
-| dag/std/types | `data s: Map<String, Bool> = { "String": true, .. }` | **no.** This is a MAP literal: string keys, and the expected type is `Map`. It needs a modeled map construction, which the XL-2 row already names as an open design question. |
+| dag/std/types | `data s: Map<String, Bool> = { "String": true, .. }` | **no: MAP arm.** Reaches the check site and refuses located `map_literal_construction_not_modeled`, as a declared population (below). |
 | dag/std/algebra | not located by reading | to be located by the base census |
 
-So Form B is necessary for the seven but not sufficient: `std/types` needs the map-literal
-construction. The expected-type check site modeled here is the same one a map literal elaborates at
-(the expected type `Map<K, V>` chooses map construction; string keys are then the checked
-consequence). The map case is therefore a second arm at the same site, not a second site. It is
-raised with the parent as scope, not built silently here.
+**The map arm (ruling, gentle-koi-724).** This lane builds the ONE declared-type check site and its
+RECORD arm. At that same site, a headless brace whose expected head is `Map` takes the MAP arm, which
+refuses located `map_literal_construction_not_modeled`, with its ownership row. It is not left as
+`unsupported_form`, and there is no second check site later: map construction plugs into this arm.
+
+For lowering to reach the site, a string-keyed item needs a field-edge form. It lowers to the same
+tag-elided construct, with each item carried as a `map_literal_entry_marker` edge to a
+`(key, value)` pair. Lowering still does not pick map or record; a construct that mixes name keys
+and string keys refuses at lowering, located at the first key of the other kind.
+
+The refusing population is DECLARED, as a `gunbc.rung_drop` row. Population: `dag/std/types` plus
+every other map-literal file the base census locates, named. Restoration trigger: map construction
+is modeled, so a `Map<K, V>` expected type elaborates the literal to a value that inhabits it, linked
+to the open question on the XL-2 row
+(`unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering`).
+
+If `dag/std/types` staying refused still blocks the native seven transitively, the map arm is on the
+critical path; the parent dispatches it.
+
+**The seed.** The seed choosing by field names is not an oracle. If it chooses WRONGLY for a real
+file, meaning the chosen struct differs from the declared type, that is a silent seed defect, and PR2
+files a `gunbc.recurring_failure_mode` receipt for it.
 
 ## PR2 (the cut) and its controls
 
