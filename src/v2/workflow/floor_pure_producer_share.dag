@@ -717,9 +717,9 @@ import v2.std.collection { List }
 // none of those consumers, and it stays here only on a measured serve below recompute on its OWN
 // consumer rows (required_floor_claim_cost.tsv, present against absent, normalised on rows outside its
 // consumer modules); a regression there moves it to floor_cross_claim_refused_candidates. The emit rows
-// also re-ingest their source through ingested_emit_shape_frontier_tree_from_source instead of reading
-// the arrow this roster already serves -- that is the witness-shape lane's item, not this row's, and
-// until it lands those rows stay over the new-witness budget whatever this row saves.
+// read the arrow this roster already serves (ingested_emit_shape_frontier_tree_from_arrow) rather than
+// re-ingesting, so with this row served they fit the new-witness budget; gunbc#12639's floor runs
+// measure present against absent.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_loaded_roots",
