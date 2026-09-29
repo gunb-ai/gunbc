@@ -38,15 +38,12 @@ import v2.std.node {
   node_subtree_nodes
 }
 import v2.std.compilers.body_lowering {
-  ArrowParameterOrderAbsent,
-  ArrowParameterOrderDeclared,
-  ArrowParameterOrderMalformed,
-  arrow_declared_parameter_order,
   Application,
   ApplicationRefused,
   NotApplication,
   application_read
 }
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.type_binder { type_param_names }
 import v2.std.collection { list_at_optional }
@@ -738,7 +735,7 @@ test fn a_nested_fn_literal_resolves_without_a_type_parameter_shadow_refusal() -
 // A FUNCTION VALUE'S ARROW CARRIES ITS DECLARED PARAMETER ORDER, READ WHERE POSITIONAL BINDING READS
 // IT. The domain is a Conj sorted by label, so `(y, x) => y` stores x before y; positional binding
 // (v2.compiler.infer infer_application_formals, v2.compiler.eval eval_bind_arrow_params) reads order
-// only through v2.std.compilers.body_lowering arrow_declared_parameter_order, off the Arrow's
+// only through v2.std.arrow_signature arrow_declared_parameter_order, off the Arrow's
 // ^arrow_signature_order_edge, and refuses application_parameter_order_absent without one. The
 // lambda is lowered from production source, and the claim asks that reader for [y, x] -- the
 // authored order, not the sorted one. Dropping the order edge from body_lower_function_value_arrow

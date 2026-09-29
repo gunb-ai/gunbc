@@ -174,7 +174,8 @@ fn read_host_occupancy(run: fn(List<String>) -> ArgvRun, units: List<NonEmptyStr
 fn occupant_reported_mebibytes(o: HostOccupant) -> Nat {
   match o {
     GpuComputeProcess { pid: _, process_name: _, used: UsedMemoryReported { used: m } } => mebibyte_count(m: m)
-    _ => 0
+    GpuComputeProcess { pid: _, process_name: _, used: UsedMemoryWithheld { marker: _ } } => 0
+    ServingUnitActive { unit: _, state: _ } => 0
   }
 }
 
