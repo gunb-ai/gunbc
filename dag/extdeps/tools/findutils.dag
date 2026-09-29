@@ -5,6 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.crypto.hash { sha256sum_program }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -81,3 +82,20 @@ fn find_regular_file_sizes_argv(root: String) -> List<String> {
   [find_program as String, root, "-type", "f", "-printf", "%s %P\n"]
 }
 
+
+// THREE READS OF ONE TREE THAT TOGETHER DESCRIBE ITS CONTENT: every regular file's sha256 (batched
+// through sha256sum by `-exec ... {} +`, printed as `<hex>  <absolute path>`), every regular file
+// with its owner-execute bit set (`x <relative path>`), and every symbolic link with its target
+// (`l <relative path> -> <target>`). %P is the path with the starting point removed; the printf
+// escape \n is find's own, so the argv word carries a backslash and an n, not a newline.
+fn find_regular_files_sha256_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program, arguments: [root, "-type", "f", "-exec", sha256sum_program as String, "{}", "+"])
+}
+
+fn find_owner_executable_files_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program, arguments: [root, "-type", "f", "-perm", "-u+x", "-printf", "x %P\\n"])
+}
+
+fn find_symlink_targets_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program, arguments: [root, "-type", "l", "-printf", "l %P -> %l\\n"])
+}

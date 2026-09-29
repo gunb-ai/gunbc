@@ -1,13 +1,8 @@
 module test.claim.executor_privileged_operation_witness
 
 import gunbc.runner_microvm_network_converge { microvm_network_granted_operations }
-import gunbc.generated_artifact {
-  GeneratedArtifact,
-  RunnerHostSudoersArtifact,
-  registry_contains,
-  artifact_path,
-  artifact_is_committed,
-}
+import gunbc.generated_artifact { GeneratedArtifact, RunnerHostSudoersArtifact, artifact_path, artifact_is_committed }
+import gunbc.generated_artifact_registry { registry_contains }
 import gunbc.generated_artifact_emit {
   artifact_generate,
   ArtifactGenerated,
@@ -22,13 +17,8 @@ import gunbc.runner_host_grants {
   runner_host_wide_privileged_operations,
 }
 import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_committed_width,
-  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
-  gunbc_runner_slot_cpu_quota,
-  CpuQuotaResolved,
-  SlotCpuQuotaUnbounded,
-}
+import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner_slot_desired { gunbc_runner_slot_cpu_quota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.fabric_cell_effect { fabric_cell_slice_desired_directives }
 import extdeps.systemd.unit_file { slice_cpu_quota, slice_cpu_quota_unbounded, systemd_slice_directive_line }
 import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv4 }

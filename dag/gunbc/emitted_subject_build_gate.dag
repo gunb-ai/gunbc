@@ -22,10 +22,10 @@ import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
 // WHAT ITS RED DISCRIMINATES THAT NO EXISTING REQUIRED LANE DOES, which is the question
 // gunbc.compiler_gate_workflow's roster header requires an author to answer before proposing a
 // lane. Every required lane today reads the corpus through the INTERPRETER or through the SEED's
-// own Rust: the floor evaluates witnesses, the clippy lane lints hand-written and stage0-mirrored
-// Rust, the compiler lane builds the seed binary. NOTHING ON THE MERGE PATH EMITS A V2 CLOSURE AND
-// COMPILES THE RESULT. So a defect that is invisible under evaluation and fatal under emission
-// reaches main green. That is not a hypothesis: `gunbc.recurring_failure_mode`
+// own Rust: the floor evaluates witnesses, the generated lane lints hand-written and stage0-mirrored
+// Rust and regenerates the stage0 mirrors, and both build the seed binary. NOTHING ON THE MERGE
+// PATH EMITS A V2 CLOSURE AND COMPILES THE RESULT. So a defect that is invisible under evaluation
+// and fatal under emission reaches main green. That is not a hypothesis: `gunbc.recurring_failure_mode`
 // `bounded_natural_arithmetic_evaluated_as_unbounded_int` records it in as many words -- rows over
 // `UInt8` typecheck and their witnesses evaluate, "their emitted Rust is produced by nothing on the
 // merge path" -- and BOTH retained subjects refused on it at once, because `std.integer` is in every

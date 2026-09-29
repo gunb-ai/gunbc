@@ -7,7 +7,7 @@ import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import std.types { NonEmptyStr }
 
-// THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Eight independently declared, bounded
+// THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Nine independently declared, bounded
 // populations share one membership test (`floor_eval_step_cost_drop_members` / `_holds`), one list
 // per drop, each list's `gunbc.rung_drop` declaration named beside it:
 //   - `floor_eval_step_cost_drop_rows`: the live roadmap projection readers
@@ -23,7 +23,11 @@ import std.types { NonEmptyStr }
 //   - `floor_eval_step_cost_drop_app_attest_verifier_rows`: the App Attest verifier claims
 //     (`app_attest_verifier_new_witness_eval_step_cost`);
 //   - `floor_eval_step_cost_drop_span_program_rows`: the byte-span program inhabitance claim
-//     (`sha256_span_program_serialize_new_witness_eval_step_cost`).
+//     (`sha256_span_program_serialize_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows`: the python->typescript
+//     compile inhabitance claim (`python_to_typescript_compile_inhabitance_off_the_required_gate`);
+//   - `floor_eval_step_cost_drop_dark_install_render_rows`: the first reader of the broker dark-install
+//     script (`live_deploy_dark_install_render_new_witness_eval_step_cost`).
 // The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
@@ -219,12 +223,32 @@ data floor_eval_step_cost_drop_app_attest_verifier_rows: List<EvalStepCostDropMe
 data floor_eval_step_cost_drop_span_program_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "test.claim.spark.v41_checkpoint_materialize_witness.the_span_read_reads_exactly_its_region" as NonEmptyStr,
-    measured_by: "gunbc#12010, claim_batch over dag/test/claim/spark/v41_checkpoint_materialize_witness_test.dag; planned_as_changed_witness, verdict pass, over the new-witness budget. The billed work is the one real serialization of extdeps.tools.sha256sum sha256sum_byte_span_program through gunbc.shell_command_text, which this claim is the argv's only inhabitance route for" as NonEmptyStr,
+    measured_by: "gunbc#12010, claim_batch over dag/test/claim/spark/v41_checkpoint_materialize_witness_test.dag; planned_as_changed_witness, verdict pass, over the new-witness budget. The billed work is the one real serialization of gunbc.sha256sum_byte_span sha256sum_byte_span_program through gunbc.shell_command_text, which this claim is the argv's only inhabitance route for" as NonEmptyStr,
+  },
+]
+
+data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "v2.test.long.inhabitant_neutralization_e2e_witness.inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds" as NonEmptyStr,
+    measured_by: "gunbc#12374, the required floor's COMPLETED-OVER-COST-REQUIREMENT line for this identity (planned_as_changed_witness, verdict pass, over the new-witness budget), and claim_batch --hermetic over src/v2/test/claim/long/inhabitant_neutralization_e2e_witness_test.dag. The billed work is the one real python->typescript compile of the python add fixture (parse, bridge, neutralize, infer, translate, emit), which this claim is the only execution of; the interface claims in v2.test.manual.cross_language_add_python_to_typescript start from its supplied core" as NonEmptyStr,
+  },
+]
+
+// NINTH DROP, SAME MEMBERSHIP TEST, OPERATOR-ADMITTED (2026-09-29, relayed by proud-deer-538). One
+// identity: whichever test.claim.live_deploy.emit claim first reads witness_approval_broker_dark_script_text
+// is billed a marginal the generic bash emit path's per-step overhead causes (bundle lookup,
+// grounding, translate, fidelity decode, token fold; jolly-bee-43's #12576 findings). Inherited
+// from main and unchanged by gunbc#12482, which only re-planned the claim because
+// deployment_spec_srv1 changed.
+data floor_eval_step_cost_drop_dark_install_render_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.live_deploy.emit.the_receipt_command_substitutes_the_digest_rather_than_splicing_it" as NonEmptyStr,
+    measured_by: "gunbc#12482 required floor run 36490489535 (job 109157637341), floor-shared-fill line for this identity: planned_as_changed_witness, verdict pass, marginal eval_steps over the new-witness budget with the script render's fill netted separately; the same marginal lands on whichever claim reads the script first (gunbc#12482 floor runs at e8d4fed9bd and c81cc22ff0 billed it to two other identities)" as NonEmptyStr,
   },
 ]
 
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows)
+  concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_dark_install_render_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

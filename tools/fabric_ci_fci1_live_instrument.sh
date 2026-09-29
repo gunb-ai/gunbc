@@ -2,11 +2,12 @@
 set -euo pipefail
 
 # FCI-1 reservation instrument. It starts no Work command.
-# SCAFFOLD - dissolve-on: bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2)
-# realizes this runner through orchestration emit or typed host_effect_apply, without a
-# medium-as-string concat scaffold. That capability -- .dag-to-bash emission for a foreign
-# executor -- is what replaces a hand-shell carrier; modeled lifecycle actuation alone would
-# sequence the gate and still leave this transport hand-authored.
+# SCAFFOLD - dissolve-on: the bash target grammar (v2.extdeps.languages.bash rows, built by
+# v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) gains the constructs this
+# runner needs: [[ ]] conditional expressions with glob matching, shell function definitions with local and return, $(<file) reads, and an a && b || c list rendered without a subshell (a known serializer limit). It then becomes emitted from those nodes, or typed host_effect_apply.
+# CORRECTED 2026-09-28: #12430 classed this runner (c), "route AVAILABLE today, migration unauthored".
+# That was wrong. The grammar has no production for any construct listed above, so the class is (b),
+# a missing target-language capability. The earlier text was quoted in #12430's census.
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || { echo 'InstrumentRefused: derived repo_root is not a git checkout' >&2; exit 2; }
 cd "$repo_root" || { echo 'InstrumentRefused: cannot enter derived repo_root' >&2; exit 2; }

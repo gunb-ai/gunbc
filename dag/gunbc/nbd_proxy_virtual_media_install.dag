@@ -251,6 +251,18 @@ fn actuator_image_unresolved_reason(image: SeededImageResolution) -> String {
   }
 }
 
+fn actuator_nbd_serve_image_refused(
+  step: OsInstallActuatorStep,
+  image: SeededImageResolution,
+) -> ActuatorStepRealization {
+  ActuatorStepRefused {
+    cause: ActuatorStepImageUnresolved {
+      step: step,
+      reason: actuator_image_unresolved_reason(image: image),
+    }
+  }
+}
+
 fn actuator_step_realization_under(
   step: OsInstallActuatorStep,
   selection: OsInstallActuatorSelection,
@@ -311,13 +323,14 @@ fn actuator_step_realization_under(
                   privilege_denial: none,
                 }
               }
-            _ =>
-              ActuatorStepRefused {
-                cause: ActuatorStepImageUnresolved {
-                  step: ActuatorNbdProxyServe { endpoint: ep, slot: s, index: i, export: exp },
-                  reason: actuator_image_unresolved_reason(image: image),
-                }
-              }
+            SeededImageNotBuilt { record_path: _ } =>
+              actuator_nbd_serve_image_refused(step: ActuatorNbdProxyServe { endpoint: ep, slot: s, index: i, export: exp }, image: image)
+            SeededImageRecordedImageAbsent { path: _, recorded: _ } =>
+              actuator_nbd_serve_image_refused(step: ActuatorNbdProxyServe { endpoint: ep, slot: s, index: i, export: exp }, image: image)
+            SeededImageRecordDiverged { path: _, recorded: _, observed: _ } =>
+              actuator_nbd_serve_image_refused(step: ActuatorNbdProxyServe { endpoint: ep, slot: s, index: i, export: exp }, image: image)
+            SeededImageUnobservable { reason: _ } =>
+              actuator_nbd_serve_image_refused(step: ActuatorNbdProxyServe { endpoint: ep, slot: s, index: i, export: exp }, image: image)
           }
       }
     ActuatorRedfishInsertMedia =>
