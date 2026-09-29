@@ -1,5 +1,6 @@
 module gunbc.bmc_fan_program_decode_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decimal { exact_decimal_wire }

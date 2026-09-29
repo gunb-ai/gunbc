@@ -1,5 +1,6 @@
 module gunbc.pid_control_curve_decode_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.types { Bool, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decimal { exact_decimal_wire }
