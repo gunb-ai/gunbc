@@ -9,7 +9,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
 }
 import gunbc.auth.gcp_iam_bootstrap {
-  iam_bootstrap_probe_cell, iam_bootstrap_pool_seedable, iam_bootstrap_pool_initialized, iam_bootstrap_pool_initial_cells, iam_bootstrap_pool_policy_reading, iam_bootstrap_stage_admitted, BootstrapIdentities, BootstrapRoles, BootstrapDeny,
+  iam_bootstrap_service_enabled, iam_bootstrap_probe_cell, iam_bootstrap_pool_seedable, iam_bootstrap_pool_initialized, iam_bootstrap_pool_initial_cells, iam_bootstrap_pool_policy_reading, iam_bootstrap_stage_admitted, BootstrapServices, BootstrapIdentities, BootstrapRoles, BootstrapDeny,
   BootstrapCapabilities, BootstrapProbeAuthority, BootstrapProbeCleanup, BootstrapPrivilegeReadback, BootstrapWorkflowTrust, BootstrapAuthorityCleanup,
 }
 
@@ -56,7 +56,9 @@ test fn deny_exceptions_and_incomplete_readback_withhold_trust() -> Bool {
 
 test fn workflow_trust_requires_completed_deny_and_privilege_readback() -> Bool {
   iam_bootstrap_model_admitted()
-    && iam_bootstrap_stage_admitted(stage: BootstrapIdentities, completed: [])
+    && iam_bootstrap_stage_admitted(stage: BootstrapServices, completed: [])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapIdentities, completed: [])
+    && iam_bootstrap_stage_admitted(stage: BootstrapIdentities, completed: [BootstrapServices])
     && !iam_bootstrap_stage_admitted(stage: BootstrapCapabilities, completed: [BootstrapIdentities, BootstrapRoles])
     && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapCapabilities])
     && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapPrivilegeReadback])
@@ -193,4 +195,12 @@ test fn probe_cleanup_is_required_for_trust_but_not_successful_probes() -> Bool 
     && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust,
       completed: [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapPrivilegeReadback])
     && !iam_bootstrap_stage_admitted(stage: BootstrapPrivilegeReadback, completed: [BootstrapCapabilities])
+}
+
+
+test fn service_enablement_requires_enabled_state_on_the_exact_project() -> Bool {
+  iam_bootstrap_service_enabled(name: "projects/582015116396/services/cloudresourcemanager.googleapis.com", state: "ENABLED", service: "cloudresourcemanager.googleapis.com")
+    && !iam_bootstrap_service_enabled(name: "projects/other/services/cloudresourcemanager.googleapis.com", state: "ENABLED", service: "cloudresourcemanager.googleapis.com")
+    && !iam_bootstrap_service_enabled(name: "projects/582015116396/services/cloudresourcemanager.googleapis.com", state: "DISABLED", service: "cloudresourcemanager.googleapis.com")
+    && !iam_bootstrap_service_enabled(name: "projects/582015116396/services/cloudresourcemanager.googleapis.com", state: "ENABLING", service: "cloudresourcemanager.googleapis.com")
 }

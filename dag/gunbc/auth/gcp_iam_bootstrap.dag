@@ -8,6 +8,7 @@ import extdeps.auth.oidc { OidcStandardClaims }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.iam_deny
+import extdeps.cloud.gcp.serviceusage { gcp_service_usage_state_from_wire, ServiceUsageStateEnabled, ServiceUsageStateDisabled }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpBinding, IamCondition, GcpIamBindingCell, GcpIamOwnedCellUniverse,
@@ -48,15 +49,16 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // identity. Its credential is never a fallback in the ongoing approval-gated job.
 // Trust is last. Existing mismatched roles, providers and deny policies refuse instead of being
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
-type IamBootstrapStage = BootstrapIdentities | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
+type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
 
-data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
+data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
 
 type IamBootstrapProgress { completed: List<IamBootstrapStage>, refusal: String }
 
 fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBootstrapStage>) -> Bool {
   let required = match stage {
-    BootstrapIdentities => []
+    BootstrapServices => []
+    BootstrapIdentities => [BootstrapServices]
     BootstrapRoles => [BootstrapIdentities]
     BootstrapDeny => [BootstrapIdentities]
     BootstrapAuthorityCleanup => [BootstrapDeny]
@@ -70,7 +72,7 @@ fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBoo
 }
 
 fn iam_bootstrap_stage_wire(stage: IamBootstrapStage) -> String {
-  match stage { BootstrapIdentities => "identities" BootstrapRoles => "roles" BootstrapDeny => "deny" BootstrapAuthorityCleanup => "authority-cleanup" BootstrapCapabilities => "capabilities" BootstrapProbeAuthority => "probe-authority" BootstrapProbeCleanup => "probe-cleanup" BootstrapPrivilegeReadback => "privilege-readback" BootstrapWorkflowTrust => "workflow-trust" }
+  match stage { BootstrapServices => "services" BootstrapIdentities => "identities" BootstrapRoles => "roles" BootstrapDeny => "deny" BootstrapAuthorityCleanup => "authority-cleanup" BootstrapCapabilities => "capabilities" BootstrapProbeAuthority => "probe-authority" BootstrapProbeCleanup => "probe-cleanup" BootstrapPrivilegeReadback => "privilege-readback" BootstrapWorkflowTrust => "workflow-trust" }
 }
 
 fn iam_bootstrap_plan() -> CliWireResponse {
@@ -242,6 +244,7 @@ fn iam_bootstrap_ensure_fenced_binding(binding: IamBootstrapBinding, token: Secr
 
 fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> String {
   match stage {
+    BootstrapServices => fold(iam_bootstrap_required_services, init: "", f: (prior, api) => if prior != "" { prior } else { iam_bootstrap_ensure_service(service: api, token: token) })
     BootstrapIdentities => {
       let own = fold([gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], init: "", f: (prior, f) =>
         if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: f, own_trust: true, token: token) })
@@ -752,4 +755,45 @@ fn iam_bootstrap_probe_cleanup() -> ProcessExit {
       if result == "" { ExitSuccess } else { exit_failure(reason: result) }
     }
   }
+}
+
+
+// These API consumers are the existing bootstrap/approval operations, not every GCP API.
+data iam_bootstrap_required_services: List<String> = [
+  "iam.googleapis.com", "iamcredentials.googleapis.com", "cloudresourcemanager.googleapis.com",
+  "secretmanager.googleapis.com", "sts.googleapis.com",
+]
+
+fn iam_bootstrap_service_enabled(name: String, state: String, service: String) -> Bool {
+  name == concat("projects/", fleet_secrets_project_number, "/services/", service)
+    && (match gcp_service_usage_state_from_wire(raw: state) { Present { value: ServiceUsageStateEnabled } => true _ => false })
+}
+
+fn iam_bootstrap_ensure_service(service: String, token: Secret) -> String {
+  if !any(iam_bootstrap_required_services, declared => declared == service) { "service is outside bootstrap dependencies" }
+  else {
+    let seen = gcp.ServiceUsage.GetService(access_token: token, project_id: fleet_secrets_project_id, service_id: service)
+    if !rest_ok(o: seen.outcome) { rest_refusal_text(o: seen.outcome) }
+    else if iam_bootstrap_service_enabled(name: seen.name, state: seen.state, service: service) { "" }
+    else if seen.name != concat("projects/", fleet_secrets_project_number, "/services/", service) { "service observation belongs to another project or API" }
+    else { match gcp_service_usage_state_from_wire(raw: seen.state) {
+      Present { value: ServiceUsageStateDisabled } => {
+        let accepted = gcp.ServiceUsage.BatchEnableServices(access_token: token, project_id: fleet_secrets_project_id, service_ids: [service])
+        if !rest_ok(o: accepted.outcome) { rest_refusal_text(o: accepted.outcome) }
+        else { iam_bootstrap_service_readback(service: service, token: token, remaining: 25) }
+      }
+      _ => "API enablement observation is unknown; no mutation admitted"
+    } }
+  }
+}
+
+// An accepted long-running operation is not readiness. Poll only GetService.
+fn iam_bootstrap_service_readback(service: String, token: Secret, remaining: Int) -> String {
+  let seen = gcp.ServiceUsage.GetService(access_token: token, project_id: fleet_secrets_project_id, service_id: service)
+  if !rest_ok(o: seen.outcome) { rest_refusal_text(o: seen.outcome) }
+  else if iam_bootstrap_service_enabled(name: seen.name, state: seen.state, service: service) { "" }
+  else if remaining <= 1 { concat("API enablement accepted but readiness remains unestablished: ", service) }
+  else if sleep_delay_seconds_second_carrier_projection(duration: second(count: 5)) {
+    iam_bootstrap_service_readback(service: service, token: token, remaining: remaining - 1)
+  } else { "API enablement readback wait failed" }
 }

@@ -44,7 +44,8 @@ boundary, not a declaration that organization IAM authority must forever be manu
 
 ## What bootstrap owns
 
-1. Create or exactly read back the dedicated IAM workflow pool/provider and its
+1. Observe and enable the declared APIs with independent readiness readback, then
+   create or exactly read back the dedicated IAM workflow pool/provider and its
    observer/apply accounts. Create only bare pools and accounts for declared
    target federations, so resource-local administrative roles can be attached.
 2. Create or exactly read back the existing four apply role definitions and
@@ -121,15 +122,21 @@ and [deny policy creation](https://docs.cloud.google.com/iam/docs/reference/rest
 
 ## Current commissioning standing
 
-The latest organization-scoped convergence run at `70009ad9d` completed the
-temporary authority grant, project deny-policy installation/readback, and exact
-grant removal with absence readback. It then applied the project create-role
-binding and stopped at the pool policy boundary: Google returned HTTP 200 `{}`
-without an etag. No unconditional policy replacement was attempted. Safe initial
-pool policy publication remains an unmet dependency; privilege probes and
-workflow trust are not complete. See
-`receipts/gcp-iam-bootstrap-authority-2026-09-28/README.md` for the live receipt
-and 12 focused controls. Earlier permission-refusal receipts are historical.
+The organization authority grant, deny installation, and grant removal succeeded.
+The subsequent exclusive-window run initialized four empty pool policies, preserved
+the existing private-publisher pool policy, and completed all declared capability
+grants. The first probe lease was removed after a one-minute minting refusal; the
+next lease minted the apply token after propagation, then encountered
+`SERVICE_DISABLED` for Cloud Resource Manager in project `582015116396`.
+Both temporary probe grants were removed and absence was read back after that
+refusal. Workflow trust remains withheld. Historical receipts preserve each
+boundary rather than treating partial bootstrap as operational acceptance.
+
+API enablement is now a first-stage dependency, using the existing Service Usage
+API: observe each declared service, enable only a known disabled service, and
+require exact-project `ENABLED` readback. An accepted operation is not readiness.
+The required set is IAM, IAM Credentials, Cloud Resource Manager, Secret Manager,
+and STS. No API disable operation or arbitrary service input is exposed.
 
 ## Temporary-authority dependency and recovery
 
