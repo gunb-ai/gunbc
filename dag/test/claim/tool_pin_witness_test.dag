@@ -75,6 +75,10 @@ data tracked_pin: Pin<CliTool> = Pin {
 // CONTROLS are the two below: each fails if its variant ever reports anything other than a named
 // gap, which is exactly the 'pinned and never updated' silence the refresh axis exists to break.
 
+fn tool_invocation(tool: CliTool) -> String {
+  tool.program.invocation as String
+}
+
 test fn exact_pin_currency_is_an_unfilled_gap() -> Bool {
   match pin_currency_gap(pin: authored_pin) {
     AuthoredPinHasNoReviewDate => true
@@ -100,7 +104,7 @@ test fn tracked_pin_currency_is_an_unfilled_gap() -> Bool {
 
 test fn matching_identity_admits_integrity() -> Bool {
   match admit_pin_integrity(pin: authored_pin, observed_identity: cargo_identity) {
-    PinIntegrityAdmitted { pin: p } => (p.subject.program.invocation as String) == "cargo"
+    PinIntegrityAdmitted { pin: p } => tool_invocation(tool: p.subject) == "cargo"
     PinRefused { subject: _, cause: _ } => false
   }
 }
@@ -108,7 +112,7 @@ test fn matching_identity_admits_integrity() -> Bool {
 test fn mismatched_identity_refuses() -> Bool {
   match admit_pin_integrity(pin: authored_pin, observed_identity: other_identity) {
     PinRefused { subject: subj, cause: c } =>
-      ((subj.program.invocation as String) == "cargo") && match c {
+      (tool_invocation(tool: subj) == "cargo") && match c {
         ObservedIdentityMismatch { expected: e, observed: o } =>
           (e == cargo_identity) && (o == other_identity)
         CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
@@ -124,7 +128,7 @@ test fn mismatched_identity_refuses() -> Bool {
 test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
   match admit_pin_integrity(pin: tracked_pin, observed_identity: cargo_identity) {
     PinRefused { subject: subj, cause: c } =>
-      ((subj.program.invocation as String) == "jq") && match c {
+      (tool_invocation(tool: subj) == "jq") && match c {
         TrackedResolutionUnrecorded { channel: ch } => (ch as String) == "latest"
         ObservedIdentityMismatch { expected: _, observed: _ } => false
         CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
@@ -160,7 +164,7 @@ data legacy_unversioned_tool: CliTool = CliTool {
 test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
   match admit_legacy_cli_tool(tool: legacy_ranged_tool) {
     PinRefused { subject: subj, cause: c } =>
-      ((subj.program.invocation as String) == "curl") && match c {
+      (tool_invocation(tool: subj) == "curl") && match c {
         ConstraintIsNotIdentity { constraint: k } => (k as String) == ">= 7.68"
         PinAbsent => false
         TrackedResolutionUnrecorded { channel: _ } => false
@@ -175,7 +179,7 @@ test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
 test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
   match admit_legacy_cli_tool(tool: legacy_unversioned_tool) {
     PinRefused { subject: subj, cause: c } =>
-      ((subj.program.invocation as String) == "jq") && match c {
+      (tool_invocation(tool: subj) == "jq") && match c {
         PinAbsent => true
         ConstraintIsNotIdentity { constraint: _ } => false
         TrackedResolutionUnrecorded { channel: _ } => false
