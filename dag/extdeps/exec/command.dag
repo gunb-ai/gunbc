@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.orchestration { EnvBinding }
-import extdeps.tools.env { env_path_resolved_program, env_prefixed_args, env_binary_path, env_ignore_environment_flag }
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args, env_binary_path, env_ignore_environment_flag, env_chdir_flag }
 import gunbc.remote_shell_command {
   RemoteExecCommandInterpretation,
   RemoteExecCommandOutcome,
@@ -71,6 +71,8 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
   admit_callers: [
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command_in"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "env_cleared_command_in"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_cleared_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "command_over_transport"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
@@ -93,6 +95,16 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_rename_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_logs_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_regular_files_sha256_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owner_executable_files_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_targets_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mv_exact_destination_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "sort_in_place_command"),
+    decl_ref(module_path: "extdeps.tools.unzip", decl_name: "unzip_extract_command"),
+    decl_ref(module_path: "extdeps.tools.ldd", decl_name: "ldd_command"),
+    decl_ref(module_path: "extdeps.tools.node", decl_name: "node_eval_command"),
+    decl_ref(module_path: "extdeps.tools.node", decl_name: "node_version_command"),
+    decl_ref(module_path: "extdeps.browser.chromium", decl_name: "chromium_version_command"),
     decl_ref(module_path: "extdeps.tools.squashfs_tools", decl_name: "unsquashfs_extract_command"),
     decl_ref(module_path: "extdeps.tools.e2fsprogs", decl_name: "mke2fs_populate_command"),
     decl_ref(module_path: "extdeps.tools.e2fsprogs", decl_name: "mke2fs_format_command"),
@@ -116,9 +128,15 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.cargo_build", decl_name: "cargo_clippy_command"),
     decl_ref(module_path: "extdeps.tools.sed", decl_name: "sed_in_place_command"),
     decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_extract_command"),
+    decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_extract_tree_command"),
+    decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_replay_build_pinned_dates_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mktemp_directory_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ln_hard_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_numeric_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "od_hex_span_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_command"),
@@ -133,6 +151,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_one_per_line_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_target_glob_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
+    decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_user_name_command"),
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_read_command"),
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_short_read_command"),
@@ -344,6 +363,24 @@ data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PRO
 // that nothing ambient reaches the command -- so its program is not left to PATH either.
 fn env_cleared_command(command: ArgvCommand) -> ArgvCommand {
   argv_command(program: env_binary_path, arguments: concat([env_ignore_environment_flag as String], argv_words(command: command)))
+}
+
+// THE COMMAND UNDER ONLY THESE BINDINGS (env -i, by the absolute env), STARTED IN A NAMED DIRECTORY
+// (env -C): nothing of the caller's environment survives, so a consumer that must not inherit a
+// startup input (NODE_OPTIONS, LD_PRELOAD) names the complete set it admits.
+fn env_cleared_command_in(directory: String, bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
+  argv_command(
+    program: env_binary_path,
+    arguments: concat([env_ignore_environment_flag as String, env_chdir_flag as String, directory], env_prefixed_args(bindings: bindings, command_argv: argv_words(command: command))),
+  )
+}
+
+// THE COMMAND UNDER THESE BINDINGS, STARTED IN A NAMED DIRECTORY (env -C).
+fn env_prefixed_command_in(directory: String, bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
+  argv_command(
+    program: env_path_resolved_program,
+    arguments: concat([env_chdir_flag as String, directory], env_prefixed_args(bindings: bindings, command_argv: argv_words(command: command))),
+  )
 }
 
 fn env_prefixed_command(bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {

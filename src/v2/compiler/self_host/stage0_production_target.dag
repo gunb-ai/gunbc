@@ -82,7 +82,8 @@ fn stage0_production_render_rows() -> ProducedDeclRenderRows {
     param_separator: rust_produced_decl_render_rows.param_separator,
     type_ref_token_class: rust_produced_decl_render_rows.type_ref_token_class,
     block_close: rust_produced_decl_render_rows.block_close,
-    block_evaluation_mode: rust_produced_decl_render_rows.block_evaluation_mode
+    block_evaluation_mode: rust_produced_decl_render_rows.block_evaluation_mode,
+    function_type_realizations: rust_produced_decl_render_rows.function_type_realizations
   }
 }
 

@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.kernel_type_spelling_captured_a_module_declaration
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data kernel_type_spelling_captured_a_module_declaration: RecurringFailureMode = RecurringFailureMode {
+  identity: "kernel_type_spelling_captured_a_module_declaration" as NonEmptyStr,
+
+  receipts: [
+    "a kernel type spelling captured a module's own declaration: v2 body lowering rewrote every type atom spelled `Int` or `Bool` to the kernel binding (dag_binding_type_int, bool_node_symbol) before any scope existed. A module that declared its own `type Int = | Mine` and wrote `let y: Int = 1` therefore had its annotation replaced by the kernel Int, and infer judged the let MATCHED. Nothing refused. The value did not inhabit the type the author named, and the verdict said it did (DESIGN section 5, silent wrongness).",
+
+    "FOUND 2026-09-28 while modeling the canonical Symbol type binding (node adhoc-3b197e76-012). Neat-boar-16 ruled that a Symbol row could go into a spelling-keyed table only if that table could not be silently wrong. The shadow control showed that it could be, so the re-key landed first. Probe: source through v2.test.claim.type_param_binder_frame tpb_assemble and infer. On main 9ce039421d0 the module-declared Int and Bool lets were admitted, with the annotation atom equal to the kernel binding. A non-kernel name (`type Myint`) resolved to the module's declaration and refused, which isolated the capture to the spelling table.",
+
+    "THE EARLIEST UNJUSTIFIED BOUNDARY was lowering: it answered a name-binding question with no scope to answer it from. The repair moves the decision into v2.compiler.resolve resolve_atom, after a door has selected a declaration. v2.extdeps.languages.dag dag_kernel_type_declaration_binding_optional lists the declarations a kernel spelling denotes (v2.std.integer Int, std.integer Int, v2.std.logic Bool, std.types Bool). A kernel spelling that resolves to one of them takes the canonical binding. The referencing module's own declaration of the spelling shadows it. Any other declaration, reached through an import or another module, REFUSES with resolve_reason_kernel_type_spelling_names_a_foreign_declaration. An AMBIGUOUS kernel spelling takes the kernel binding only when every candidate is a kernel declaration of it. Otherwise it refuses with the ordinary resolve_reason_ambiguous_symbol. Only an UNBOUND name reads the spelling table (dag_kernel_type_binding_optional), and there the kernel binding is the correct answer, not a guess, because no declaration of the spelling is in scope. No guard was added in infer.",
+
+    "CURRENT RUNG: refused. The imported case is not silent: an imported user `Int` refuses at the reference, typed and located (v2.test.claim.body_let_annotation bla_imported_user_int_refuses_rather_than_binding_the_kernel_int). Neat-boar-16 ruled on #12540 that it must be loud rather than rest as a declared residual (DESIGN section 4b, section 5). It is refused, not bound to the user's type: the author named a type, and the compiler reports that it cannot read that type correctly yet, rather than judging against it. RESIDUAL at its grain: the four kernel declarations are listed BY PATH in the language authority (v2.extdeps.languages.dag dag_kernel_type_declaration_binding_optional), a second record of a fact the declarations themselves should carry. No binding case is silent: an ambiguous import of user types refuses (bla_ambiguous_imported_int_refuses_rather_than_defaulting_to_the_kernel), and one over the two kernel declarations binds the kernel type (bla_ambiguous_kernel_declarations_bind_the_kernel_type, control).",
+
+    "NEXT-RUNG TRIGGER, at capability grain: kernel type bindings are read from a MARK ON THE KERNEL DECLARATIONS THEMSELVES, at every resolution door (root, import, symbol index, ambiguity), so neither a spelling nor a path list decides them. At that point an imported user `Int` binds the user's declaration and is judged against it, where it now refuses, and the path list in the language authority is deleted in favor of a mark on the kernel declarations themselves. The RED that fires on the climb is the imported row above, flipped from refusing to judging against `Mine`.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_kernel_type_binding_optional", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "resolve_atom", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_let_annotation", decl_name: "bla_module_declared_int_shadows_the_kernel_int", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_let_annotation", decl_name: "bla_module_declared_bool_shadows_the_kernel_bool", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_let_annotation", decl_name: "bla_imported_user_int_refuses_rather_than_binding_the_kernel_int", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_kernel_type_declaration_binding_optional", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_let_annotation", decl_name: "bla_ambiguous_imported_int_refuses_rather_than_defaulting_to_the_kernel", field: WholeDeclaration },
+  ],
+}
