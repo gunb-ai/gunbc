@@ -339,8 +339,7 @@ fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
 fn validation_empty_sync_found() -> Bool {
   match parse_skip_to_sync(
     tokens: validation_one_token_list,
-    sync_tokens: grammar_empty_sync_tokens(),
-    expectations: grammar_empty_expectations()
+    sync_tokens: grammar_empty_sync_tokens()
   ) {
     ParseSyncState { found_sync: found, result: _ } => found
   }

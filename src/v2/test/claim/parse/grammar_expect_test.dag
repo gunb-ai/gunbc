@@ -1,5 +1,46 @@
 module v2.test.parse.grammar_expect
 
+import v2.compiler.parse { ParseArtifact, parse_module, prepare_grammar }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { Token, token_stream_new }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  DeclarationLocus,
+  InvariantPortLocus,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  WholeFile,
+  diagnostics_fatal,
+  diagnostics_fatal_reason
+}
+import v2.std.grammar {
+  Choice,
+  Expect,
+  GrammarExpr,
+  GrammarExprFold,
+  GrammarProduction,
+  GrammarRoot,
+  LiteralTerminal,
+  ModeledGrammar,
+  Nonterminal,
+  Optional,
+  Repeat,
+  Sequence,
+  StampClass,
+  Terminal,
+  fold_grammar_expr,
+  grammar_atom,
+  grammar_empty_sync_tokens
+}
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol, content_hash }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // `v2.std.grammar` `Expect` IS A LABEL, NEVER A CUT. These claims hold it to that over hand grammars
