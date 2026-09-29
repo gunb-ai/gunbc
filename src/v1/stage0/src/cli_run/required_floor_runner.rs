@@ -2045,15 +2045,25 @@ struct UnimportedBareProviderRosterReading {
 impl UnimportedBareProviderRosterReading {
     /// `function` is `unimported_bare_provider_head_rows` in the verdict module (the head) or
     /// `unimported_bare_provider_roster_rows` in a lone base roster.
-    fn read(roots: &[String], entry: &str, function: &str) -> Result<Self, String> {
+    ///
+    /// Only the HEAD's rows are decoded by the host: the standing judgment reads them to choose
+    /// which files to re-derive. A BASE roster is read for its `.dag` value alone, which the edit
+    /// judgment compares in `.dag`, so the host never spells a base row's fields -- a base written
+    /// before a view field existed (`not_a_reference`, gunbc#12609) is still a readable base.
+    fn read(
+        roots: &[String],
+        entry: &str,
+        function: &str,
+        decode_host_rows: bool,
+    ) -> Result<Self, String> {
         let (graph, indices) = resolve_entry_graph_shared(roots, entry)
             .map_err(|e| format!("unimported-bare-provider roster resolve ({entry}): {e}"))?;
         let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
         let rows_value = Self::call(&ctx, function, &[])?;
         let mut rows = Vec::new();
-        for item in
-            floor_decode_list(&ctx, Some(&rows_value)).map_err(|e| format!("{function}: {e}"))?
-        {
+        let items =
+            floor_decode_list(&ctx, Some(&rows_value)).map_err(|e| format!("{function}: {e}"))?;
+        for item in items.into_iter().filter(|_| decode_host_rows) {
             let v1_interpreter::Value::Record { fields, .. } = item else {
                 return Err(format!(
                     "{function}: expected UnimportedBareProviderRowView, got {}",
@@ -2104,6 +2114,7 @@ impl UnimportedBareProviderRosterReading {
             source_roots,
             &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
             "unimported_bare_provider_head_rows",
+            true,
         )
     }
 
@@ -2439,6 +2450,7 @@ fn unimported_bare_provider_base_reading(
         &[root],
         &entry.to_string_lossy(),
         "unimported_bare_provider_roster_rows",
+        false,
     );
     std::fs::remove_dir_all(&dir).ok();
     reading
