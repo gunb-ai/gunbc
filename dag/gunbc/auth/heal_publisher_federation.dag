@@ -140,7 +140,7 @@ fn private_heal_publisher_federation() -> HealPublisherFederation {
     service_account_id: "heal-publisher-private",
     service_account: "heal-publisher-private@gunbai-secrets.iam.gserviceaccount.com",
     service_account_display_name: "Private heal publisher (WIF-only, one secret, no keys)",
-    runner_environment: heal_publisher_self_hosted_runner_environment,
+    runner_environment: heal_publisher_wif_runner_environment,
     provision_remedy: "dispatch fleet-converge in mode gcp_iam_converge and approve the diff it files; gunbc.auth.gcp_iam_converge creates that identity and binds roles/secretmanager.secretAccessor on the key for that service account under that one approval.",
   }
 }
@@ -172,18 +172,18 @@ data heal_publisher_wif_event_name: String = "workflow_run"
 
 data heal_publisher_wif_runner_environment: String = "github-hosted"
 
-// THE PRIVATE PUBLISHER RUNS ON OUR microVMs, AND THE CLAIM CANNOT SAY WHICH ONES (operator
-// 2026-09-29: a larger hosted runner is not available, and a private repository's standard hosted
-// runner has too little memory for gunbc -- a `gunbc run` that imports nothing peaks at 6.4 GiB).
-// GitHub's runner_environment claim is only github-hosted or self-hosted, so pinning self-hosted
-// admits every self-hosted runner, including the srv slots that execute pull-request code. The pin
-// that still holds is the workflow_ref: only the publisher file at the default branch, triggered by
-// workflow_run, gets this identity. What keeps pull-request code off the MACHINE that runs it is not
-// this condition but gunbc.runner_group_restriction_ensure private_heal_publisher_runner_group_subject:
-// a runner group restricted to exactly this workflow and repository, into which the microVM
-// controller registers one fresh guest per job. The wall moved from the token to the group, and the
-// group's restriction is read back and refused on mismatch before any runner is minted into it.
-data heal_publisher_self_hosted_runner_environment: String = "self-hosted"
+// THE PRIVATE PUBLISHER IS HEADED FOR OUR microVMs, AND ITS PIN STAYS github-hosted UNTIL THE WALL
+// THAT WOULD JUSTIFY WIDENING IT EXISTS (operator 2026-09-29; review 72445). GitHub's
+// runner_environment claim is only github-hosted or self-hosted, so pinning self-hosted admits every
+// self-hosted runner, including the srv slots that execute pull-request code. What would keep
+// pull-request code off the machine is the runner group gunbc.runner_group_restriction_ensure
+// private_heal_publisher_runner_group_subject -- restricted to exactly this workflow and repository
+// -- together with a controller that mints one guest per job into that group only after reading the
+// restriction back. The group is modelled; the minting path is not. So the field is per record and
+// the private record still says github-hosted: a publish job placed on a microVM label today cannot
+// federate at all, which refuses rather than widens. The flip to self-hosted lands in ONE change with
+// the controller path that mints into that group, and with the live provider's condition update.
+
 
 // job_workflow_ref IS DELIBERATELY NOT PINNED, AND ITS EARLIER PRESENCE WAS A DEFECT THAT WOULD HAVE
 // REFUSED THE VERY JOB THIS ADMITS. GitHub documents that claim as "For jobs using a reusable

@@ -62,14 +62,17 @@ fn microvm_runner_group_create_subject() -> RunnerGroupCreateSubject {
   )
 }
 
-// GUNBC-PRIVATE'S HEAL PUBLISHER RUNS ON microVMs IN A GROUP ONLY ITS PUBLISHER MAY USE (operator
-// 2026-09-29). Its identity (gunbc.auth.heal_publisher_federation private_heal_publisher_federation)
-// admits a self-hosted runner, and the OIDC token cannot say WHICH self-hosted runner -- so the wall
-// that keeps pull-request code off the machine is this group: restricted to exactly the publisher's
-// workflow at the default branch, and to gunbc-private alone. The selected workflow IS the
-// federation's workflow_ref, one string for both, so the group and the identity cannot name
-// different files. The group name is also the runner label the publish job selects
-// (strategy.private_heal_publisher_workflow), which the microVM controller registers per job.
+// GUNBC-PRIVATE'S HEAL PUBLISHER IS HEADED FOR microVMs, IN A GROUP ONLY ITS PUBLISHER MAY USE
+// (operator 2026-09-29). Its identity (gunbc.auth.heal_publisher_federation
+// private_heal_publisher_federation) will admit a self-hosted runner, and the OIDC token cannot say
+// WHICH one -- so the wall that keeps pull-request code off the machine is this group: restricted to
+// exactly the publisher's workflow at the default branch, and to gunbc-private alone. The selected
+// workflow IS the federation's workflow_ref, one string for both. The group name is also the runner
+// label the publish job selects (strategy.private_heal_publisher_workflow).
+//
+// CREATING THE GROUP NARROWS AND WIDENS NOTHING, so it is ensured now. The federation's pin stays
+// github-hosted until a controller mints guests into this group after reading its restriction back
+// (review 72445): the flip and that minting path land together, in one change.
 data private_heal_publisher_runner_group_name: NonEmptyStr = "heal-publisher-private"
 
 fn private_heal_publisher_runner_group_subject() -> RunnerGroupCreateSubject {
