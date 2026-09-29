@@ -126,7 +126,8 @@ the elided case adds.
 | v2.std.inhabitance | `DeclaredTypePosition` | vocabulary | Add `PositionDataInitializer` and `PositionRecordField`. `PositionDeclaredReturn` gains its constructor. |
 | v2.compiler.infer | new `infer_elaborate_expected_construct` | elaborator | Steps 1-4 above, called from the data-initializer, declared-return and record-field check sites. It is the only writer that replaces the elision marker. |
 | v2.compiler.infer | Conj gather arms | reader | A tag-elided construct reached here refuses `infer_anonymous_record_no_expected_type` (it is never typed as a bare product). |
-| v2.workflow.compile_door_cause_ownership | three rows | ownership | One row per refusal cause. |
+| v2.workflow.compile_door_cause_ownership | three rows, plus `map_literal_construction_not_modeled` | ownership | One row per refusal cause. |
+| v2.test.claim.namespace_xl0.reference_conservation_accepted_drops | `a_map_literal_value_refuses_at_the_literal_holds` | control | Today it asserts `unsupported_form` for `Map<String, Bool> = { "k": .. }`. It moves to `map_literal_construction_not_modeled` at the check site. It must read the INFER outcome, because the literal now clears lowering and the `.normalized` read would go green-then-false. It stays enrolled as the map arm's refusal control. |
 | v2.compiler.eval, v2.std.compilers.target_model, emit | construct gates | reader | No change. They already refuse a non-reference tag after #12701. PR2 adds a control proving an elided construct cannot reach them. |
 
 ## Scope: which of the seven Form B admits
