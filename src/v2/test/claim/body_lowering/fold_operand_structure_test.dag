@@ -173,3 +173,33 @@ test fn a_call_with_a_fold_argument_lowers_as_the_call_over_the_loop() -> Bool {
 test fn the_body_walker_lowers_a_call_with_a_fold_argument_as_the_call_over_the_loop() -> Bool {
   fos_call_over_loop(v: fos_route_value(source: fos_call_fold_source, route: FosBodyWalker))
 }
+
+fn fos_probe_kind(n: Optional<Node>) -> Symbol {
+  match n {
+    Present { value: x } =>
+      match node_atom_identity_optional(node: x) {
+        Present { value: s } => s
+        Absent =>
+          match x.kind {
+            ComputationNode { behavior: Loop } => ^k_loop
+            ComputationNode { behavior: Transform } => ^k_transform
+            _ => ^k_other
+          }
+      }
+    Absent => ^k_absent
+  }
+}
+
+fn fos_probe(v: FosValue) -> List<Symbol> {
+  match v {
+    FosNotRead => [^not_read]
+    FosRefused { reason: r } => [^refused, r]
+    FosLowered { value: n } =>
+      [fos_probe_kind(n: optional_present(value: n)), fos_probe_kind(n: fos_child(n: n, i: 0)), fos_probe_kind(n: fos_child(n: n, i: 1)), fos_probe_kind(n: fos_child(n: n, i: 2)), fos_probe_kind(n: fos_child(n: n, i: 3))]
+  }
+}
+
+fn probe_and_reader() -> List<Symbol> { fos_probe(v: fos_route_value(source: fos_and_fold_source, route: FosValueReader)) }
+fn probe_and_walker() -> List<Symbol> { fos_probe(v: fos_route_value(source: fos_and_fold_source, route: FosBodyWalker)) }
+fn probe_call_reader() -> List<Symbol> { fos_probe(v: fos_route_value(source: fos_call_fold_source, route: FosValueReader)) }
+fn probe_call_walker() -> List<Symbol> { fos_probe(v: fos_route_value(source: fos_call_fold_source, route: FosBodyWalker)) }
