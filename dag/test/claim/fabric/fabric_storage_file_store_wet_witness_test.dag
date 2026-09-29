@@ -324,6 +324,13 @@ test fn a_rostered_login_puts_and_advances_through_the_served_door_by_real_execu
 // runner assignment. The effective uid is read with shell.Id.UserId: an unprivileged principal must
 // be refused as above; root must be ADMITTED by the same real file store -- which is the other half
 // of "the admission is the kernel's", not a pass by default. An unreadable uid is red.
+//
+// THE REFUSAL ROUTE ITSELF DOES NOT WAIT FOR AN UNPRIVILEGED RUNNER. Whether a mode binds is the
+// kernel's decision and cannot be supplied, so the file store's half -- a refused write becomes a
+// typed fault, creates nothing, never panics -- is exercised on EVERY runner by
+// a_put_or_advance_into_store_areas_that_refuse_every_principal_is_a_typed_fault_by_real_execution,
+// which supplies a refusal no uid bypasses. This claim is the inhabitance claim for the arm the
+// runner's own principal selects.
 test fn a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_by_the_real_file_store() -> Bool {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
@@ -340,6 +347,30 @@ test fn a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_
     put_refused && object_absent(s: s, o: b) && advance_refused && head_absent(s: s)
   }
   uid.success && control && withdrawn && arm_holds
+}
+
+// A REFUSED WRITE IS A TYPED FAULT WHATEVER THE RUNNER'S PRINCIPAL (gunbc.recurring_failure_mode
+// wet_witness_keyed_to_the_runner_not_its_subject). The store areas are replaced by plain files after
+// a control write, so every put and advance is refused by the kernel with ENOTDIR -- a refusal uid 0
+// does not bypass. The real file store must answer each with a typed refusal, and leave the planted
+// files as they were: no area recreated, no partial write.
+test fn a_put_or_advance_into_store_areas_that_refuse_every_principal_is_a_typed_fault_by_real_execution() -> Bool {
+  let s = fresh_store()
+  let a = event(body: "a", parent: none)
+  let b = event(body: "b", parent: none)
+  let control = match fabric_storage_file_put(root: s, object: a) { FabricObjectStored { object: _ } => true  FabricPutRefused { fault: _ } => false }
+  let objects = s.objects as String
+  let heads = s.heads as String
+  let planted = "not a store area"
+  let cleared = shell.Remove.RecursiveForce(path: objects).success && shell.Remove.RecursiveForce(path: heads).success
+  let placed = Filesystem.Write(path: objects, content: planted).success && Filesystem.Write(path: heads, content: planted).success
+  let put_refused = match fabric_storage_file_put(root: s, object: b) { FabricPutRefused { fault: _ } => true  FabricObjectStored { object: _ } => false }
+  let advance_refused = match fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: fabric_object_ref_of(object: a)) { FabricHeadAdvanceRefused { fault: _ } => true  _ => false }
+  let objects_after = Filesystem.Read(path: objects)
+  let heads_after = Filesystem.Read(path: heads)
+  control && cleared && placed && put_refused && advance_refused
+    && objects_after.success && objects_after.content == planted
+    && heads_after.success && heads_after.content == planted
 }
 
 // ── THE DOOR'S LOCAL PEERS, BY REAL EXECUTION ────────────────────────────────────────────────
