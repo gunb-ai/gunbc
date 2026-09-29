@@ -455,7 +455,7 @@ test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
 // GroundingNotDerived frontier. `let y: Int = ^s` must therefore either refuse or carry that frontier
 // advisory AT THE LITERAL (the `^` atom); an infer that typed the literal as Int -- a fabricated
 // grounding -- would admit the ascription with no such advisory, and this row reds.
-fn bla_symbol_literal_as_int() -> Outcome<Node> {
+fn bla_symbol_literal_as_int() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = ^bla_sym\n  x\n}\n")
 }
 
