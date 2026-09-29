@@ -1,0 +1,47 @@
+module test.claim.namecheap_publication_witness_test
+
+import std.types { String, Secret, Bool }
+import extdeps.namecheap.client { namecheap_read_hosts_for_publication }
+import extdeps.namecheap.read_hosts { NamecheapHostsRead, NamecheapHostsObserved, NamecheapHostsRefused }
+import test.claim.namecheap_hosts_witness_test { namecheap_api_response }
+
+data fixture_key: Secret = "fixture-only-not-a-key&value" as Secret
+data fixture_key_wire: String = "fixture-only-not-a-key%26value"
+
+fn publication(result: String) -> NamecheapHostsRead {
+  namecheap_read_hosts_for_publication(body: namecheap_api_response(result: result), domain: "gunb.ai", credential: fixture_key, key_wire: fixture_key_wire)
+}
+fn echo_result(address: String, extra_host: String, extra_result: String) -> String {
+  join(["<DomainDNSGetHostsResult Domain='gunb.ai' IsUsingOurDNS='true' ", extra_result,
+    "><Host HostId='1' Name='@' Type='TXT' TTL='1800' Address='", address, "' ", extra_host,
+    "/></DomainDNSGetHostsResult>"], "")
+}
+fn refused_without_echo(result: NamecheapHostsRead, decoded: Bool) -> Bool {
+  match result {
+    NamecheapHostsRefused { reason } => reason == if decoded { "Namecheap decoded response contains credential material; refusing to publish it" } else { "Namecheap response contains credential material; refusing to publish it" }
+    _ => false
+  }
+}
+test fn raw_credential_echo_refuses() -> Bool {
+  refused_without_echo(result: publication(result: echo_result(address: fixture_key as String, extra_host: "", extra_result: "")), decoded: false)
+}
+test fn uri_encoded_credential_echo_refuses() -> Bool {
+  refused_without_echo(result: publication(result: echo_result(address: fixture_key_wire, extra_host: "", extra_result: "")), decoded: false)
+}
+test fn xml_encoded_address_credential_echo_refuses() -> Bool {
+  refused_without_echo(result: publication(result: echo_result(address: "fixture-only-not-a-key&amp;value", extra_host: "", extra_result: "")), decoded: true)
+}
+test fn xml_encoded_unknown_host_credential_echo_refuses() -> Bool {
+  refused_without_echo(result: publication(result: echo_result(address: "ordinary", extra_host: "Future='fixture-only-not-a-key&amp;value'", extra_result: "")), decoded: true)
+}
+test fn xml_encoded_result_credential_echo_refuses() -> Bool {
+  refused_without_echo(result: publication(result: echo_result(address: "ordinary", extra_host: "", extra_result: "Future='fixture-only-not-a-key&amp;value'")), decoded: true)
+}
+test fn ordinary_entities_remain_complete() -> Bool {
+  match publication(result: echo_result(address: "a&amp;b", extra_host: "Future='&lt;ordinary&gt;'", extra_result: "Future='&quot;ordinary&quot;'")) {
+    NamecheapHostsObserved { domain: observed_domain, hosts, result_fields } => observed_domain == "gunb.ai" && count(hosts) == 1
+      && all(hosts, h => h.fields.any(f => f.name == "Address" && f.value == "a&b") && h.fields.any(f => f.name == "Future" && f.value == "<ordinary>"))
+      && result_fields.any(f => f.name == "Future" && f.value == "\"ordinary\"")
+    _ => false
+  }
+}

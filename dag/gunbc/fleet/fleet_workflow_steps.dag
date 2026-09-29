@@ -40,8 +40,17 @@ import v2.workflow.ci_workflow_run_emit {
   ci_native_cache_root_script,
 }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
+import gunbc.fleet_release_bins_key {
+  release_bins_key_script, release_bins_lookup_script, release_bins_outcome_script,
+  release_bins_pack_manifest_script, release_bins_consumer_key_check_script,
+  release_bins_key_expression, release_bins_consumer_key_expression,
+  release_bins_lookup_standing_expression, release_bins_lookup_entry_expression,
+  release_bins_cache_hit_expression,
+  release_bins_build_condition, release_bins_key_step_id, release_bins_lookup_step_id,
+  release_bins_cache_step_id, release_bins_outcome_step_id, release_bins_preimage_name,
+  release_bins_manifest_name, release_bins_staging_dir, release_bins_download_path_expression,
+}
 import gunbc.ci_spec {
-  ci_release_bins_pack_script, ci_release_bins_unpack_verify_script,
   ci_release_bins_archive_name,
   gunbc_ci_fleet_key_agent_script,
   gunbc_ci_fleet_key_agent_cleanup_script,
@@ -143,11 +152,6 @@ fn ci_prelude_bound_steps_with_checkout(
           role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
           step_name: "Pin rustup default",
         },
-        FleetPreludeBoundStep {
-          step: ci_cache_cargo_step(),
-          role: capability_neutral,
-          step_name: "Cache Cargo",
-        },
       ],
     ),
   )
@@ -210,7 +214,7 @@ fn ci_cache_cargo_step() -> Step {
       ]
     },
     env: none,
-    if_condition: none,
+    if_condition: Present { value: release_bins_build_condition() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -300,21 +304,112 @@ fn ci_release_build_step() -> Step {
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: none,
+    if_condition: Present { value: release_bins_build_condition() },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_release_build_step_timeout_minutes }
   }
 }
 
-fn ci_release_bins_pack_step() -> Step {
+// Step names bound once: the step and its capability annotation read the same row.
+data release_bins_key_step_name: String = "Derive release-bins key (pre-materialization axes; sha256 at cross-run scope)"
+data release_bins_lookup_step_name: String = "Look up release-bins by exact key under the admitted producer refs (cache API; a failed lookup is not absence)"
+data release_bins_cache_step_name: String = "Restore release-bins into isolated staging (transport only; publishes on a verified build)"
+data release_bins_outcome_step_name: String = "Decide release-bins outcome; verify a stored pack completely before any restored binary runs"
+
+fn ci_release_bins_key_step() -> Step {
   RunStep {
-    name: Present { value: "Pack release bins for cross-job handoff (tar keeps exec bits)" },
-    id: none,
-    run: ci_release_bins_pack_script(),
+    name: Present { value: release_bins_key_step_name },
+    id: Present { value: release_bins_key_step_id },
+    run: release_bins_key_script(),
     shell: none,
     env: none,
     working_directory: none,
     if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn release_bins_staging_paths() -> String {
+  join(
+    map([ci_release_bins_archive_name, release_bins_preimage_name, release_bins_manifest_name], f => join([release_bins_staging_dir, "/", f], "")),
+    "\n",
+  )
+}
+
+fn ci_release_bins_lookup_step() -> Step {
+  RunStep {
+    name: Present { value: release_bins_lookup_step_name },
+    id: Present { value: release_bins_lookup_step_id },
+    run: release_bins_lookup_script(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression())),
+        kv(key: "GH_TOKEN", value: yaml_string(s: join(["$", "{{ github.token }}"], ""))),
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE TRANSPORT, NOT THE LOOKUP: actions/cache can restore a prefix match even with no restore-keys,
+// so it restores into staging only, and the outcome step discards anything but an exact hit that the
+// lookup also found. Its post step publishes staging when this probe was not an exact hit and the job
+// succeeded; the cache service's reservation makes a concurrent second publisher's save refuse.
+fn ci_release_bins_cache_step() -> Step {
+  UsesStep {
+    name: Present { value: release_bins_cache_step_name },
+    id: Present { value: release_bins_cache_step_id },
+    uses: cache_action,
+    with: Present {
+      value: [
+        kv(key: "path", value: yaml_string(s: release_bins_staging_paths())),
+        kv(key: "key", value: yaml_string(s: release_bins_key_expression()))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn ci_release_bins_outcome_step() -> Step {
+  RunStep {
+    name: Present { value: release_bins_outcome_step_name },
+    id: Present { value: release_bins_outcome_step_id },
+    run: release_bins_outcome_script(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression())),
+        kv(key: "LOOKUP_STANDING", value: yaml_string(s: release_bins_lookup_standing_expression())),
+        kv(key: "LOOKUP_ENTRY", value: yaml_string(s: release_bins_lookup_entry_expression())),
+        kv(key: "CACHE_HIT", value: yaml_string(s: release_bins_cache_hit_expression())),
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_release_bins_pack_step() -> Step {
+  RunStep {
+    name: Present { value: "Pack release bins with member manifest into staging (build outcomes only; tar keeps exec bits)" },
+    id: none,
+    run: release_bins_pack_manifest_script(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression()))]
+    },
+    working_directory: none,
+    if_condition: Present { value: release_bins_build_condition() },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
@@ -328,7 +423,7 @@ fn ci_release_bins_upload_step() -> Step {
     with: Present {
       value: [
         kv(key: "name", value: yaml_string(s: ci_release_bins_artifact_name)),
-        kv(key: "path", value: yaml_string(s: ci_release_bins_archive_name)),
+        kv(key: "path", value: yaml_string(s: release_bins_staging_paths())),
         kv(key: "if-no-files-found", value: yaml_string(s: "error")),
         kv(key: "retention-days", value: yaml_int(n: 3)),
         kv(key: "compression-level", value: yaml_int(n: 0))
@@ -347,7 +442,10 @@ fn ci_release_bins_download_step() -> Step {
     id: none,
     uses: download_artifact_action,
     with: Present {
-      value: [kv(key: "name", value: yaml_string(s: ci_release_bins_artifact_name))]
+      value: [
+        kv(key: "name", value: yaml_string(s: ci_release_bins_artifact_name)),
+        kv(key: "path", value: yaml_string(s: release_bins_download_path_expression())),
+      ]
     },
     env: none,
     if_condition: none,
@@ -358,11 +456,11 @@ fn ci_release_bins_download_step() -> Step {
 
 fn ci_release_bins_unpack_verify_step() -> Step {
   RunStep {
-    name: Present { value: "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)" },
+    name: Present { value: "Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)" },
     id: Present { value: "release_bins" },
-    run: ci_release_bins_unpack_verify_script(),
+    run: release_bins_consumer_key_check_script(),
     shell: none,
-    env: none,
+    env: Present { value: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_consumer_key_expression()))] },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -519,13 +617,22 @@ STEADY STATE IS SECONDS, NOT MINUTES. A host that already holds the base artifac
 
 DISSOLVE-ON: the first successful guest_image_converge on a cold host produces the measurement this envelope stands in for -- replace the number with that receipt, dated and cited to its run id, per the rule stated one constant down that raising a budget needs a measurement rather than a round number."
 
-// Runner host file observe/converge step budget, raised from the shared aux 5m for a measured reason:
-// the step is one `gunbc run` whose closure resolve dominates, and the fleet plan step -- the nearest
-// resolve of comparable size -- took 3m55s to 4m18s on runs of 2026-09-04 against that same 5m, so the
-// aux budget would make a slow resolve read as a converge failure. The remote legs are a dozen short
-// ssh execs. Its own constant for the reason the Spark envelope records: the aux value is multiplied by
-// the step count in the fleet job backstop.
-data gunbc_ci_runner_host_file_step_timeout_minutes: Duration = 15
+// The step budget of a `gunbc run` over the witness layer roots whose closure resolve dominates,
+// raised from the shared aux 5m for a measured reason: the fleet plan step -- the nearest resolve of
+// comparable size -- took 3m55s to 4m18s on runs of 2026-09-04 against that same 5m, and the
+// pair-serving D0 admission's resolve alone took ~3.5m on srv1 (run 36339338129: started 18:13:51,
+// first typecheck 18:17:29, killed by the aux 5m at 18:19:04), so the aux budget makes a slow
+// resolve read as a step failure. Its consumers are the runner host file observe/converge steps
+// (whose remote legs are a dozen short ssh execs), the credential-free D0 admission (a pure fold),
+// and the approval device enrolment-code issue. That step pays TWO resolves: the job's own `gunbc run`
+// of the step entry, then the remote verb's `gunbc run` of the broker routes closure on srv1, whose
+// boot resolve and typecheck read 3m03s (gunbc.live_deploy.service_ready approval_broker_expected_startup).
+// Together those do not fit the aux 5m. Its first run (36415852659) refused on the workspace root before
+// paying the remote resolve, so this is the budget the verb needs once it actually runs, not a timeout
+// it has already hit.
+// Its own constant for the reason the Spark envelope records: the aux value is multiplied by the
+// step count in the fleet job backstop.
+data gunbc_ci_gunbc_run_resolve_step_timeout_minutes: Duration = 15
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
@@ -714,10 +821,12 @@ data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 // (gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout_minutes), so it does not move this
 // figure either. The runner_host_file_observe and runner_host_file_converge modes DO add steps to
 // this job -- one gated run step each plus one shared receipt upload -- and still do not move the
-// bound: a dispatch of either runs one step at gunbc_ci_runner_host_file_step_timeout_minutes and one
+// bound: a dispatch of either runs one step at gunbc_ci_gunbc_run_resolve_step_timeout_minutes and one
 // transfer-tier upload, which is below the spark_grants branch that sets the worst case. The
 // site_pxe_edge_observe and site_pxe_edge_converge modes (gunbc.site_pxe_edge_converge) have the same
 // shape -- one gated run step each at that timeout plus one shared upload -- and do not move it either.
+// The approval_device_enrolment_code_issue mode runs one gated step at that same timeout and no
+// upload, so it does not move it either.
 type JobTimeoutBudget
   = JobTimeoutWithinCeiling { minutes: Int }
   | JobTimeoutExceedsCeiling { minutes: Int, ceiling: Int }

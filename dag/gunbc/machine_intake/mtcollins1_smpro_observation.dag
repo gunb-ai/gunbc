@@ -117,7 +117,14 @@ fn smpro_probe_outcome(raw: SmproProbeRaw) -> SmproProbeOutcome {
 }
 
 fn smpro_outcome_word(o: SmproProbeOutcome) -> Int? {
-  match o { SmproWordRead { raw: _, word: w } => Present { value: w } _ => none }
+  match o {
+    SmproWordRead { raw: _, word: w } => Present { value: w }
+    SmproControllerRefused { raw: _, completion: _ } => none
+    SmproTransportFailed { raw: _, timed_out: _ } => none
+    SmproResponseMalformed { raw: _, detail: _ } => none
+    SmproNotSent { socket: _, register: _, reason: _ } => none
+    SmproRequestUnencodable { socket: _, register: _, detail: _ } => none
+  }
 }
 
 fn smpro_outcome_text(o: SmproProbeOutcome) -> String {
@@ -137,7 +144,11 @@ fn smpro_control_refusal(o: SmproProbeOutcome) -> String? {
     SmproWordRead { raw: _, word: w } => if w == smpro_manufacturer_id_expected { none } else {
       Present { value: concat("MANUFACTURER_ID read ", smpro_outcome_text(o: o), ", not the 0xcd3a an SMpro answers") }
     }
-    _ => Present { value: concat("MANUFACTURER_ID ", smpro_outcome_text(o: o)) }
+    SmproControllerRefused { raw: _, completion: _ } => Present { value: concat("MANUFACTURER_ID ", smpro_outcome_text(o: o)) }
+    SmproTransportFailed { raw: _, timed_out: _ } => Present { value: concat("MANUFACTURER_ID ", smpro_outcome_text(o: o)) }
+    SmproResponseMalformed { raw: _, detail: _ } => Present { value: concat("MANUFACTURER_ID ", smpro_outcome_text(o: o)) }
+    SmproNotSent { socket: _, register: _, reason: _ } => Present { value: concat("MANUFACTURER_ID ", smpro_outcome_text(o: o)) }
+    SmproRequestUnencodable { socket: _, register: _, detail: _ } => Present { value: concat("MANUFACTURER_ID ", smpro_outcome_text(o: o)) }
   }
 }
 
@@ -334,7 +345,8 @@ fn outcome_raw_text(o: SmproProbeOutcome) -> String {
     SmproControllerRefused { raw: r, completion: _ } => raw_text(r: r)
     SmproTransportFailed { raw: r, timed_out: _ } => raw_text(r: r)
     SmproResponseMalformed { raw: r, detail: _ } => raw_text(r: r)
-    _ => "    (no request sent)"
+    SmproNotSent { socket: _, register: _, reason: _ } => "    (no request sent)"
+    SmproRequestUnencodable { socket: _, register: _, detail: _ } => "    (no request sent)"
   }
 }
 

@@ -314,7 +314,7 @@ fn application_positional_arity_reason(formal_count: Int, argument_count: Int) -
 
 // POSITIONAL BINDING HAS NO DECLARED ORDER TO READ. The callee's domain is a Conj, sorted by label,
 // so its stored sequence is not the order the author wrote; the order lives only on the Arrow's
-// ^arrow_signature_order_edge (v2.std.compilers.body_lowering arrow_declared_parameter_order). An
+// ^arrow_signature_order_edge (v2.std.arrow_signature arrow_declared_parameter_order). An
 // Arrow without one, or with one that is not a permutation of its binders, refuses here, located at
 // the application, and is never bound by label order.
 fn application_parameter_order_absent_reason() -> Symbol {
