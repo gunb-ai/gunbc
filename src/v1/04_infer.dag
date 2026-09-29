@@ -1,7 +1,7 @@
 module v1.compiler.infer
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, kernel_type_set, is_kernel_type }
+import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_template_alias_algebra, is_container_type, kernel_type_set, is_kernel_type }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -9,7 +9,7 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
@@ -4597,6 +4597,72 @@ fn structured_application_site_type_mismatch(
 // namespace and can make both compatibility operands equal by construction. `formal` retains the
 // authored declaration spelling for optional-variant structure; `formal_peeled` is the conformance
 // established while the callee TypeEnv was available.
+// ONE TYPE, ITS CONSTRUCTORS BY DECLARATION (operator ruling 2026-09-29: std.types
+// `List<element> = FreeMonoid<element>` is one type, so `Empty {}` and `Cons {..}` are values of
+// List<T>; realization is emission's, never a checker refusal). The kernel container spellings
+// List/Set/Map name the carriers std.algebra declares, and those carriers' declarations supply the
+// container's constructors. The join is by DECLARATION IDENTITY, never by spelling: a module that
+// declares its own `FreeMonoid` owns a different declaration and its values stay refused at a List
+// formal. The declaring module is written once here because std.algebra and std.types cannot
+// import std.decl_ref without a cycle; it dissolves when the resolver records a DeclarationRef on
+// every type reference (the resolver-identity item), which also retires the spelling-keyed
+// container predicates this PR's body enumerates.
+data kernel_container_carrier_module: String = "std.algebra"
+
+// The declaration a formal type denotes: a kernel container spelling's std.algebra carrier, or the
+// declaration its transparent alias chain ends at (bounded; no identity at the ceiling).
+fn structured_formal_carrier_declaration(formal_peeled: Node, scope: InferScope) -> DeclarationRef? {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: formal_peeled)
+  if is_container_type(name: name) {
+    match container_template_alias_algebra(name: name) {
+      Present { value: carrier } => Present { value: decl_ref(module_path: kernel_container_carrier_module, decl_name: carrier) }
+      Absent => none
+    }
+  } else {
+    structured_alias_chain_declaration(name: name, scope: scope, depth: 0)
+  }
+}
+
+fn structured_alias_chain_declaration(name: String, scope: InferScope, depth: Int) -> DeclarationRef? {
+  if depth >= 16 || name == "" { return none }
+  match lookup_type_by_name(env: scope.type_env, name: name) {
+    Present { value: decl } =>
+      let peeled = peel_nominal_alias_identity(n: decl, env: scope.type_env, module_name: scope.module_name)
+      let peeled_name = authored_name_at(source_indices: scope.type_env.source_indices, node: peeled)
+      if peeled_name == name || peeled_name == "" {
+        declaration_ref_of_type_node(rt: decl, source_indices: scope.type_env.source_indices, env: scope.type_env)
+      } else {
+        structured_alias_chain_declaration(name: peeled_name, scope: scope, depth: depth + 1)
+      }
+    Absent => none
+  }
+}
+
+// The declaration a record literal's constructor belongs to: its variant owner (a coproduct arm)
+// or, for a product carrier, the record declaration it names.
+fn structured_literal_owner_declaration(lit_name: String, scope: InferScope) -> DeclarationRef? {
+  let owner = match variant_owner_node(scope: scope, name: lit_name) {
+    Present { value: o } => Present { value: o }
+    Absent => lookup_type_by_name(env: scope.type_env, name: lit_name)
+  }
+  match owner {
+    Present { value: o } => declaration_ref_of_type_node(rt: o, source_indices: scope.type_env.source_indices, env: scope.type_env)
+    Absent => none
+  }
+}
+
+fn structured_literal_constructs_formal_carrier(formal_peeled: Node, lit_name: String, scope: InferScope) -> Bool {
+  match structured_formal_carrier_declaration(formal_peeled: formal_peeled, scope: scope) {
+    Present { value: formal_decl } =>
+      match structured_literal_owner_declaration(lit_name: lit_name, scope: scope) {
+        Present { value: owner_decl } => declaration_ref_eq(a: formal_decl, b: owner_decl)
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
 fn structured_application_site_type_mismatch_with_peeled(
   formal: Node,
   formal_peeled: Node,
@@ -4680,7 +4746,9 @@ fn structured_application_site_type_mismatch_with_peeled(
                       _ => false
                     }
                   Absent =>
-                    if is_kernel_type(name: formal_name) {
+                    if structured_literal_constructs_formal_carrier(formal_peeled: formal_peeled, lit_name: lit_name, scope: scope) {
+                      false
+                    } else if is_kernel_type(name: formal_name) {
                       match lookup_type_by_name(env: scope.type_env, name: lit_name) {
                         Present { value: lit_decl } =>
                           lit_decl.connective == Conj || lit_decl.connective == Disj
