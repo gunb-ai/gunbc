@@ -1716,11 +1716,15 @@ mod process_cwd_mutation_reachability_gate {
         // Raw strings span lines and suppress every escape, so the open hash count has to
         // survive across lines exactly the way a block comment does.
         let mut in_raw: Option<usize> = None;
+        // An ordinary string literal spans lines too (a wrapped `format!` template), so it
+        // carries across lines exactly like a raw string. Reset per line, a `{` on a
+        // continuation line counted as code: the depth never returned to zero, declaration
+        // bodies ran to end of file, and the closure absorbed half the crate.
+        let mut in_string = false;
         for line in text.split('\n') {
             let chars: Vec<char> = line.chars().collect();
             let mut kept = String::with_capacity(line.len());
             let mut i = 0usize;
-            let mut in_string = false;
             let mut in_char = false;
             while i < chars.len() {
                 let c = chars[i];
@@ -2232,6 +2236,34 @@ mod process_cwd_mutation_reachability_gate {
     ///
     /// Each case below is asserted on a projection, not on the live file, so the control keeps its
     /// discriminating power when the file's own raw strings change.
+    #[test]
+    fn a_multi_line_string_does_not_shift_brace_depth() {
+        let wrapped = concat!(
+            "fn outer() {\n",
+            "    let s = format!(\"head {} \\\n",
+            "         tail }} {}\", a, b);\n",
+            "}\n",
+            "fn later() {\n",
+            "}\n"
+        );
+        let code = code_projection(wrapped);
+        let depths = depth_at_line_start(&code);
+        assert_eq!(
+            depths.last().copied().unwrap_or(-1),
+            0,
+            "a brace on a string's continuation line must not leak into the depth array: {depths:?}"
+        );
+        let decls = declarations(&wrapped.split('\n').collect::<Vec<_>>(), &code, &depths);
+        let outer = decls
+            .iter()
+            .find(|d| d.name == "outer")
+            .expect("outer declared");
+        assert_eq!(
+            outer.end, 4,
+            "outer's body must close at its own brace: {depths:?}"
+        );
+    }
+
     #[test]
     fn a_raw_string_neither_shifts_brace_depth_nor_seeds_a_call_edge() {
         let unbalanced = concat!(
@@ -13115,6 +13147,8 @@ pub use shared_typecheck_store::{
 };
 
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
+    #[cfg(test)]
+    yield_live_pool_before_building_another();
     new_multi_entry_index_shell(build_module_index(source_roots), source_roots, None)
 }
 
@@ -13125,6 +13159,8 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
 /// requires the `MultiEntryIndex` for its per-tree bare census), dissolving the §3
 /// closure-authority fork the two loaders' doc-comments each falsely claimed to be single.
 fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiEntryIndex {
+    #[cfg(test)]
+    yield_live_pool_before_building_another();
     new_multi_entry_index_shell(
         build_module_index_primary_precedence(source_roots),
         source_roots,
@@ -21159,6 +21195,7 @@ pub fn handle_serve(
     function: String,
     host: String,
     port: u16,
+    unix_socket: Option<String>,
     release_revision: String,
     serve_budget: ServeEvaluationBudget,
 ) {
@@ -21220,10 +21257,10 @@ pub fn handle_serve(
         source_indices.clone(),
         v1_interpreter::ExecutionMode::Wet,
     );
-    let listener = match std::net::TcpListener::bind((host.as_str(), port)) {
+    let listener = match serve_bind(&host, port, unix_socket.as_deref()) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("error: failed to bind {}:{}: {}", host, port, e);
+            eprintln!("error: {}", e);
             std::process::exit(1);
         }
     };
@@ -21239,7 +21276,7 @@ pub fn handle_serve(
     // take a loopback port; announcing the request there would publish `:0` and leave no way to
     // reach the server it just started. A reader of this line can now attribute a connection to
     // THIS process rather than to whoever happened to hold the requested port.
-    let bound = match listener.local_addr() {
+    let bound = match listener.bound_address() {
         Ok(addr) => addr,
         Err(e) => {
             eprintln!(
@@ -21251,8 +21288,8 @@ pub fn handle_serve(
     };
     eprintln!(
         "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
-        bound.ip(),
-        bound.port(),
+        bound.host,
+        bound.port,
         serve_budget_refusal::serve_contract_entry(&armed_contract),
         release_revision,
         serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract)
@@ -21263,17 +21300,18 @@ pub fn handle_serve(
             .unwrap_or_else(|| "unset".to_string()),
     );
     v1_interpreter::with_active_context(&ctx, || {
-        for stream in listener.incoming() {
-            let mut stream = match stream {
-                Ok(s) => s,
+        loop {
+            let (mut conn, peer_user) = match listener.accept() {
+                Ok(accepted) => accepted,
                 Err(e) => {
                     eprintln!("serve: accept error: {}", e);
                     continue;
                 }
             };
-            match serve_read_request(&mut stream) {
+            let stream: &mut dyn ServeConnection = &mut *conn;
+            match serve_read_request(&mut *stream) {
                 Err(reason) => serve_write_response(
-                    &mut stream,
+                    &mut *stream,
                     400,
                     "text/plain; charset=utf-8",
                     &format!("bad request: {}\n", reason),
@@ -21305,7 +21343,7 @@ pub fn handle_serve(
                     if method == "GET" && path == SERVE_LIVENESS_PATH =>
                 {
                     serve_write_response(
-                        &mut stream,
+                        &mut *stream,
                         200,
                         "application/json; charset=utf-8",
                         &format!(
@@ -21315,8 +21353,8 @@ pub fn handle_serve(
                             serve_json_string(serve_budget_refusal::serve_contract_entry(
                                 &armed_contract
                             )),
-                            serve_json_string(&bound.ip().to_string()),
-                            bound.port(),
+                            serve_json_string(&bound.host),
+                            bound.port,
                         ),
                     )
                 }
@@ -21332,6 +21370,11 @@ pub fn handle_serve(
                             Some("tailscale_identity".to_string()),
                             str_value(tailscale_identity),
                         ),
+                        // The kernel-attested peer of a unix-socket connection (SO_PEERCRED,
+                        // resolved to its account name); empty on TCP, where the kernel attests
+                        // nothing about the caller. A handler that does not declare it is not
+                        // handed it (the same as tailscale_identity).
+                        (Some("peer_user".to_string()), str_value(peer_user.clone())),
                         // Captured once above and cloned per request: the value
                         // is fixed for the process lifetime, so no request can
                         // observe a different release than any other request.
@@ -21385,7 +21428,7 @@ pub fn handle_serve(
                                         "serve: refusing to render a budget refusal whose entry is not the armed contract's subject"
                                     );
                                     serve_write_response(
-                                        &mut stream,
+                                        &mut *stream,
                                         500,
                                         "text/plain; charset=utf-8",
                                         "budget refusal did not name the armed contract\n",
@@ -21406,7 +21449,7 @@ pub fn handle_serve(
                                     serve_budget_refusal::serve_budget_refusal_diagnostic_line(&refusal)
                                 );
                                 serve_write_response(
-                                    &mut stream,
+                                    &mut *stream,
                                     500,
                                     "application/json; charset=utf-8",
                                     &serve_budget_refusal::serve_budget_refusal_machine_body(
@@ -21416,7 +21459,7 @@ pub fn handle_serve(
                                 }
                             }
                             None => serve_write_response(
-                                &mut stream,
+                                &mut *stream,
                                 500,
                                 "text/plain; charset=utf-8",
                                 &format!("handler error: {}\n", e),
@@ -21424,13 +21467,13 @@ pub fn handle_serve(
                         },
                         Ok(val) => match serve_wire_fields(&val, &ctx) {
                             Some((status, content_type, resp_body)) => serve_write_response(
-                                &mut stream,
+                                &mut *stream,
                                 status,
                                 &content_type,
                                 &resp_body,
                             ),
                             None => serve_write_response(
-                                &mut stream,
+                                &mut *stream,
                                 500,
                                 "text/plain; charset=utf-8",
                                 &format!(
@@ -21483,14 +21526,147 @@ pub fn handle_serve(
 /// misconfigured deployment is a closed door rather than an open one.
 const SERVE_TAILSCALE_IDENTITY_HEADER: &str = "tailscale-user-login";
 
+// ONE CONNECTION SHAPE FOR BOTH LISTENERS. The request parse and the response write are the same
+// bytes over TCP and over a unix socket; only binding, accepting and the peer differ.
+trait ServeConnection: std::io::Read + std::io::Write {
+    fn set_read_timeout_for_request(&self, d: std::time::Duration) -> std::io::Result<()>;
+}
+
+impl ServeConnection for std::net::TcpStream {
+    fn set_read_timeout_for_request(&self, d: std::time::Duration) -> std::io::Result<()> {
+        self.set_read_timeout(Some(d))
+    }
+}
+
+impl ServeConnection for std::os::unix::net::UnixStream {
+    fn set_read_timeout_for_request(&self, d: std::time::Duration) -> std::io::Result<()> {
+        self.set_read_timeout(Some(d))
+    }
+}
+
+enum ServeListener {
+    Tcp(std::net::TcpListener),
+    Unix(std::os::unix::net::UnixListener, String),
+}
+
+struct ServeBoundAddress {
+    host: String,
+    port: u16,
+}
+
+// A unix socket path that already exists is removed only when it IS a socket (a previous
+// process's); any other file at that path refuses, so a mistyped path never deletes data.
+fn serve_bind(host: &str, port: u16, unix_socket: Option<&str>) -> Result<ServeListener, String> {
+    match unix_socket {
+        None => std::net::TcpListener::bind((host, port))
+            .map(ServeListener::Tcp)
+            .map_err(|e| format!("failed to bind {}:{}: {}", host, port, e)),
+        Some(path) => {
+            use std::os::unix::fs::FileTypeExt;
+            if let Ok(meta) = std::fs::symlink_metadata(path) {
+                if !meta.file_type().is_socket() {
+                    return Err(format!(
+                        "--unix-socket {} exists and is not a socket; refusing to replace it",
+                        path
+                    ));
+                }
+                std::fs::remove_file(path)
+                    .map_err(|e| format!("could not remove the stale socket {}: {}", path, e))?;
+            }
+            let listener = std::os::unix::net::UnixListener::bind(path)
+                .map_err(|e| format!("failed to bind unix socket {}: {}", path, e))?;
+            // WHO MAY CONNECT IS THE SOCKET DIRECTORY'S DECISION, NOT THE UMASK'S. Connecting needs
+            // write on the socket file, which the process umask would otherwise grant or withhold
+            // by accident; the socket is opened to every class and its containing directory's
+            // traverse bits are the whole filesystem wall. Every peer is then attested per
+            // connection (serve_peer_user) and admitted or refused by the handler.
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666)).map_err(
+                    |e| {
+                        format!(
+                            "could not open the socket {} to its directory's traversers: {}",
+                            path, e
+                        )
+                    },
+                )?;
+            }
+            Ok(ServeListener::Unix(listener, path.to_string()))
+        }
+    }
+}
+
+impl ServeListener {
+    fn bound_address(&self) -> std::io::Result<ServeBoundAddress> {
+        match self {
+            ServeListener::Tcp(l) => l.local_addr().map(|a| ServeBoundAddress {
+                host: a.ip().to_string(),
+                port: a.port(),
+            }),
+            ServeListener::Unix(_, path) => Ok(ServeBoundAddress {
+                host: format!("unix:{}", path),
+                port: 0,
+            }),
+        }
+    }
+
+    // THE PEER IS READ FROM THE KERNEL, NEVER FROM THE REQUEST. A unix connection whose peer
+    // credentials cannot be read or resolved to an account is dropped here, before any request is
+    // parsed: an unattested peer on the socket that exists to attest peers is a refusal, not an
+    // anonymous caller.
+    fn accept(&self) -> std::io::Result<(Box<dyn ServeConnection>, String)> {
+        match self {
+            ServeListener::Tcp(l) => l
+                .accept()
+                .map(|(s, _)| (Box::new(s) as Box<dyn ServeConnection>, String::new())),
+            ServeListener::Unix(l, _) => {
+                let (s, _) = l.accept()?;
+                let user = serve_peer_user(&s)?;
+                Ok((Box::new(s) as Box<dyn ServeConnection>, user))
+            }
+        }
+    }
+}
+
+fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String> {
+    use std::os::unix::io::AsRawFd;
+    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    let rc = unsafe {
+        libc::getsockopt(
+            s.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            &mut cred as *mut libc::ucred as *mut libc::c_void,
+            &mut len,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut buf = vec![0 as libc::c_char; 4096];
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    let rc =
+        unsafe { libc::getpwuid_r(cred.uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+    if rc != 0 || result.is_null() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("peer uid {} resolves to no account", cred.uid),
+        ));
+    }
+    let name = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) };
+    Ok(name.to_string_lossy().into_owned())
+}
+
 fn serve_read_request(
-    stream: &mut std::net::TcpStream,
+    stream: &mut dyn ServeConnection,
 ) -> Result<Option<(String, String, String, String)>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
     stream
-        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .set_read_timeout_for_request(std::time::Duration::from_secs(10))
         .map_err(|e| format!("set_read_timeout: {}", e))?;
     let mut reader = std::io::BufReader::new((&mut *stream).take((MAX_HEAD + MAX_BODY) as u64));
     let mut request_line = String::new();
@@ -21596,7 +21772,7 @@ fn serve_read_request(
 }
 
 fn serve_write_response(
-    stream: &mut std::net::TcpStream,
+    stream: &mut dyn ServeConnection,
     status: u16,
     content_type: &str,
     body: &str,
@@ -27889,7 +28065,8 @@ impl ShardStyle {
 mod floor_skip_frontier_tests {
     use super::{
         build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
-        floor_diff_edits_from_diff_text_with_base_names, list_value_from_vec,
+        floor_diff_edits_from_diff_text_with_base_names,
+        floor_diff_edits_from_diff_text_with_base_names_and_sources, list_value_from_vec,
         parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
         parse_unified_diff_line_ranges, parse_unified_diff_rename_sources,
         rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange,
@@ -28237,18 +28414,20 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         (src, dest, diff.to_string())
     }
 
-    // The enrolment reads the destination's declarations from the LIVE tree, so the census a
-    // rename carries is derived from that file rather than listed: a listed set goes stale the
-    // moment the file gains a test (#12199 added two) and then reports those as enrolled.
-    fn live_test_names_at(dest: &str) -> HashSet<String> {
-        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
-            .expect("the rename destination is a live file");
-        let names: HashSet<String> = super::scan_test_decl_names(&content).into_iter().collect();
-        assert!(
-            names.contains("gate_green_synthetic_shape_from_catalog_call"),
-            "the fixture's held-out name must still be declared at {dest}"
+    // The rename destination's new-side content, SUPPLIED rather than read from the live
+    // tree (DESIGN §3 witness rule): the live file has since gained further test fns, which
+    // the fixed base census does not name, so reading it enrolled them and the fixture no
+    // longer isolated the rename. The two test fns sit at the lines the diff's hunks name.
+    fn machine_shape_rename_dest_sources(dest: &str) -> std::collections::HashMap<String, String> {
+        let mut content = String::from("module v2.test.claim.machine_shape_construction_wall\n");
+        while content.lines().count() < 80 {
+            content.push('\n');
+        }
+        content.push_str(
+            "test fn gate_red_synthetic_machine_shape_call() -> Bool {\n  true\n}\n\n\n\n\n\n\
+             test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {\n  true\n}\n",
         );
-        names
+        std::collections::HashMap::from([(dest.to_string(), content)])
     }
 
     // Path-keyed census at the NEW path is empty for a rename. Enrolment must read the
@@ -28262,10 +28441,19 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
             "fixture must carry git's rename-from so this control can fail the dest-only lookup"
         );
         let mut at_base = std::collections::HashMap::new();
-        at_base.insert(src.to_string(), live_test_names_at(dest));
+        at_base.insert(
+            src.to_string(),
+            HashSet::from([
+                "gate_green_synthetic_shape_from_catalog_call".to_string(),
+                "gate_red_synthetic_machine_shape_call".to_string(),
+            ]),
+        );
         let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
-            .expect("a rename-destination diff must attribute, not refuse");
+        let sources = machine_shape_rename_dest_sources(dest);
+        let edits = floor_diff_edits_from_diff_text_with_base_names_and_sources(
+            &index, &diff, &at_base, &sources,
+        )
+        .expect("a rename-destination diff must attribute, not refuse");
         let enrolled: HashSet<String> = edits
             .enrolled_test_fns
             .iter()
@@ -28284,12 +28472,16 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     fn rename_still_enrols_a_name_absent_from_the_source() {
         let (src, dest, diff) = machine_shape_rename_diff();
         let mut at_base = std::collections::HashMap::new();
-        let mut source_names = live_test_names_at(dest);
-        source_names.remove("gate_green_synthetic_shape_from_catalog_call");
-        at_base.insert(src.to_string(), source_names);
+        at_base.insert(
+            src.to_string(),
+            HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
+        );
         let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
-            .expect("a rename-destination diff must attribute, not refuse");
+        let sources = machine_shape_rename_dest_sources(dest);
+        let edits = floor_diff_edits_from_diff_text_with_base_names_and_sources(
+            &index, &diff, &at_base, &sources,
+        )
+        .expect("a rename-destination diff must attribute, not refuse");
         let enrolled: HashSet<String> = edits
             .enrolled_test_fns
             .iter()
@@ -34902,8 +35094,12 @@ mod nfr_tests {
             .iter()
             .map(|s| s.as_str())
             .collect();
+        // POPULATION BOUND (rung honesty, DESIGN §4b(1)): the census scans matches whose scrutinee
+        // is a closed-coproduct PARAMETER; a match on a local binding or a field is not scanned, so
+        // this receipt's green covers that population only (bound stated on the roster's
+        // registration in gunbc.roster_registry).
         eprintln!(
-            "nfr_roster_receipt: unrostered={} stale={} live={}",
+            "nfr_roster_receipt (scope: parameter-scrutinee matches only): unrostered={} stale={} live={}",
             non_fold_residue_unrostered_count(),
             non_fold_residue_stale_roster_count(),
             live.len()
@@ -46126,5 +46322,73 @@ mod reference_collector_binder_fixtures {
             "module fixture\n\nfn f() -> Bool {\n  let elsewhere_row = elsewhere_row\n  true\n}\n",
         );
         assert!(names.contains("elsewhere_row"), "{names:?}");
+    }
+}
+
+#[cfg(test)]
+mod serve_unix_socket_door_tests {
+    use super::*;
+
+    fn temp_socket_path(tag: &str) -> String {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-serve-door-{}-{}", tag, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("door.sock").to_string_lossy().into_owned()
+    }
+
+    // The kernel names the connecting account, and it is THIS process's account -- the value the
+    // handler receives as peer_user, never anything the request carried.
+    #[test]
+    fn a_unix_door_attests_the_connecting_account() {
+        let path = temp_socket_path("peer");
+        let listener = serve_bind("127.0.0.1", 0, Some(&path)).expect("bind");
+        let client = std::thread::spawn({
+            let path = path.clone();
+            move || std::os::unix::net::UnixStream::connect(&path).expect("connect")
+        });
+        let (_conn, peer) = listener.accept().expect("accept");
+        let _ = client.join();
+        let uid = unsafe { libc::geteuid() };
+        let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+        let mut buf = vec![0 as libc::c_char; 4096];
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+        unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+        assert!(!result.is_null(), "this process's own uid resolves");
+        let me = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) }
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(peer, me);
+        let bound = listener.bound_address().unwrap();
+        assert_eq!(bound.host, format!("unix:{}", path));
+    }
+
+    // A stale socket from a previous process is replaced; any other file at the path refuses and
+    // survives, so a mistyped --unix-socket never deletes data.
+    #[test]
+    fn a_unix_door_replaces_only_a_socket() {
+        let path = temp_socket_path("replace");
+        drop(serve_bind("127.0.0.1", 0, Some(&path)).expect("first bind"));
+        assert!(
+            serve_bind("127.0.0.1", 0, Some(&path)).is_ok(),
+            "a stale socket is replaced"
+        );
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, b"data").unwrap();
+        assert!(serve_bind("127.0.0.1", 0, Some(&path)).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"data");
+    }
+
+    // A TCP listener attests nothing: its peer is empty, which the fabric door refuses to admit.
+    #[test]
+    fn a_tcp_listener_attests_no_peer() {
+        let listener = serve_bind("127.0.0.1", 0, None).expect("bind");
+        let port = listener.bound_address().unwrap().port;
+        let client = std::thread::spawn(move || {
+            std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect")
+        });
+        let (_conn, peer) = listener.accept().expect("accept");
+        let _ = client.join();
+        assert_eq!(peer, "");
     }
 }

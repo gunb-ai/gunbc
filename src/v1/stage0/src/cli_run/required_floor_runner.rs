@@ -996,6 +996,27 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
     )
 }
 
+/// `floor_diff_edits_from_diff_text_with_base_names` with each changed path's new-side
+/// content SUPPLIED rather than read from the working tree.
+#[cfg(test)]
+pub(crate) fn floor_diff_edits_from_diff_text_with_base_names_and_sources(
+    index: &MultiEntryIndex,
+    diff_text: &str,
+    base_test_decl_names: &std::collections::HashMap<String, HashSet<String>>,
+    sources: &std::collections::HashMap<String, String>,
+) -> Result<FloorDiffEdits, String> {
+    floor_diff_edits_from_line_ranges_reading(
+        index,
+        &parse_unified_diff_line_ranges(diff_text),
+        &parse_unified_diff_changed_new_lines(diff_text),
+        &parse_unified_diff_departed_paths(diff_text),
+        &parse_unified_diff_added_paths(diff_text),
+        Some(base_test_decl_names),
+        &parse_unified_diff_rename_sources(diff_text),
+        &|path: &str| Ok(sources.get(path).cloned()),
+    )
+}
+
 // Host realization under a declared scaffold: the governing row is the `SCAFFOLD (DESIGN
 // §6–§7)` declaration above `FloorDiffEdits` in `cli_run`, which owns this function's
 // reason, dissolve-on trigger and census. Read it there; it is not restated here.
@@ -1007,6 +1028,44 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     added_paths: &HashSet<String>,
     base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
     rename_from: &std::collections::HashMap<String, String>,
+) -> Result<FloorDiffEdits, String> {
+    floor_diff_edits_from_line_ranges_reading(
+        index,
+        line_ranges_by_file,
+        changed_new_lines_by_file,
+        departed_paths,
+        added_paths,
+        base_test_decl_names,
+        rename_from,
+        &read_working_tree_source,
+    )
+}
+
+/// The production reader: a changed path's content at the working tree. `Ok(None)` is
+/// "absent from the tree", which the caller dispositions against the diff's departed set.
+fn read_working_tree_source(file_norm: &str) -> Result<Option<String>, String> {
+    let disk_path = process_workspace_root().join(file_norm);
+    if !disk_path.is_file() {
+        return Ok(None);
+    }
+    std::fs::read_to_string(&disk_path)
+        .map(Some)
+        .map_err(|e| format!("read failed for {file_norm}: {e}"))
+}
+
+/// Attribution over a supplied reader of each changed path's new-side content. The
+/// interface is diff + census + content -> edits, so a witness supplies the content as a
+/// value (DESIGN §3 witness rule) rather than reading whatever the live tree now holds.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn floor_diff_edits_from_line_ranges_reading(
+    index: &MultiEntryIndex,
+    line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
+    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
+    departed_paths: &HashSet<String>,
+    added_paths: &HashSet<String>,
+    base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
+    rename_from: &std::collections::HashMap<String, String>,
+    read_source: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
@@ -1036,8 +1095,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
             continue;
         }
         let file_norm = normalize_repo_path(file_path);
-        let disk_path = process_workspace_root().join(&file_norm);
-        if !disk_path.is_file() {
+        let Some(content) = read_source(&file_norm)? else {
             if departed_paths.contains(&file_norm) {
                 // Departed per the diff (deletion / rename-from): its decl set
                 // is empty by construction — the file has no declarations to
@@ -1053,15 +1111,11 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
                  content changes but the path is absent from the working tree \
                  and the diff does not mark it departed (deletion/rename)"
             ));
-        }
+        };
         let resolve_index = if file_norm.starts_with("src/v1/") {
             v1_attribution_index.as_ref().expect("v1 attribution index")
         } else {
             index
-        };
-        let content = match std::fs::read_to_string(&disk_path) {
-            Ok(c) => c,
-            Err(e) => return Err(format!("read failed for {file_path}: {e}")),
         };
         // Attribution is a PARSE-grade fact: it needs each touched file's
         // declaration line map (names + spans + data/fn kind), never its typecheck.
@@ -11416,14 +11470,15 @@ mod pure_producer_share_tests {
     /// scratch paths also pin the memoization defect this path once had.
     #[test]
     fn unimported_bare_provider_roster_edit_is_judged_across_frames() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().to_string())
-            .collect();
-        let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-        let roster = |rows: &str| {
-            std::fs::read_to_string(root.join(UNIMPORTED_BARE_PROVIDER_ROSTER))
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
+            let roster = |rows: &str| {
+                std::fs::read_to_string(root.join(UNIMPORTED_BARE_PROVIDER_ROSTER))
                 .expect("roster source")
                 .split("data unimported_bare_provider_dispositions:")
                 .next()
@@ -11432,56 +11487,58 @@ mod pure_producer_share_tests {
                 + "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n"
                 + rows
                 + "]\n"
-        };
-        let row = |file: &str, name: &str, standing: &str| {
-            format!("  UnimportedBareProviderDisposition {{ file: \"{file}\", name: \"{name}\", standing: {standing} }},\n")
-        };
-        let a_active = row("dag/a.dag", "f", "ActiveDebt");
-        let a_fixed = row("dag/a.dag", "f", "Retired { cause: ImportsFixed }");
-        let a_deleted = row("dag/a.dag", "f", "Retired { cause: FileDeleted }");
-        let b_active = row("dag/b.dag", "g", "ActiveDebt");
-        let read = |src: String| unimported_bare_provider_base_reading(&src).expect("lone roster");
-        let base = read(roster(&a_active));
-        assert_eq!(
-            judge
-                .judge_edit(&base, &read(roster(&a_active)))
-                .expect("verdict"),
-            Vec::<String>::new()
-        );
-        assert_eq!(
-            judge
-                .judge_edit(&base, &read(roster(&format!("{a_active}{b_active}"))))
-                .expect("verdict"),
-            vec!["RosterGainedIdentity dag/b.dag#g".to_string()]
-        );
-        // THE RETIREMENT PATH (never executed before gunbc#12278): ActiveDebt -> Retired { cause }
-        // under either cause is a typed disposition and admits; dropping the row instead refuses.
-        for retired in [&a_fixed, &a_deleted] {
+            };
+            let row = |file: &str, name: &str, standing: &str| {
+                format!("  UnimportedBareProviderDisposition {{ file: \"{file}\", name: \"{name}\", standing: {standing} }},\n")
+            };
+            let a_active = row("dag/a.dag", "f", "ActiveDebt");
+            let a_fixed = row("dag/a.dag", "f", "Retired { cause: ImportsFixed }");
+            let a_deleted = row("dag/a.dag", "f", "Retired { cause: FileDeleted }");
+            let b_active = row("dag/b.dag", "g", "ActiveDebt");
+            let read =
+                |src: String| unimported_bare_provider_base_reading(&src).expect("lone roster");
+            let base = read(roster(&a_active));
             assert_eq!(
                 judge
-                    .judge_edit(&base, &read(roster(retired)))
+                    .judge_edit(&base, &read(roster(&a_active)))
                     .expect("verdict"),
                 Vec::<String>::new()
             );
-        }
-        assert_eq!(
-            judge
-                .judge_edit(
-                    &read(roster(&format!("{a_active}{b_active}"))),
-                    &read(roster(&a_active))
-                )
-                .expect("verdict"),
-            vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
-        );
-        assert_eq!(
-            judge
-                .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
-                .expect("verdict"),
-            vec![
+            assert_eq!(
+                judge
+                    .judge_edit(&base, &read(roster(&format!("{a_active}{b_active}"))))
+                    .expect("verdict"),
+                vec!["RosterGainedIdentity dag/b.dag#g".to_string()]
+            );
+            // THE RETIREMENT PATH (never executed before gunbc#12278): ActiveDebt -> Retired { cause }
+            // under either cause is a typed disposition and admits; dropping the row instead refuses.
+            for retired in [&a_fixed, &a_deleted] {
+                assert_eq!(
+                    judge
+                        .judge_edit(&base, &read(roster(retired)))
+                        .expect("verdict"),
+                    Vec::<String>::new()
+                );
+            }
+            assert_eq!(
+                judge
+                    .judge_edit(
+                        &read(roster(&format!("{a_active}{b_active}"))),
+                        &read(roster(&a_active))
+                    )
+                    .expect("verdict"),
+                vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
+            );
+            assert_eq!(
+                judge
+                    .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
+                    .expect("verdict"),
+                vec![
                 "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> Retired FileDeleted)"
                     .to_string()
             ]
-        );
+            );
+        });
     }
 
     /// THE REAL BASE READ, END TO END: the roster at `HEAD` is read through the `.dag`
@@ -11491,44 +11548,46 @@ mod pure_producer_share_tests {
     /// roster-editing change; the fixture-coproduct control beside it cannot fail for that reason.
     #[test]
     fn a_retirement_against_the_real_base_read_admits_and_a_growth_refuses() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().to_string())
-            .collect();
-        let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-        let base_source = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
-            .expect("the roster exists at HEAD and decodes as BaseRosterShown");
-        let read = |src: &str| unimported_bare_provider_base_reading(src).expect("lone roster");
-        let base = read(&base_source);
-        let active = "standing: ActiveDebt }";
-        assert!(
-            base_source.contains(active),
-            "the base roster carries active debt"
-        );
-        let retired =
-            base_source.replacen(active, "standing: Retired { cause: ImportsFixed } }", 1);
-        assert_eq!(
-            judge.judge_edit(&base, &read(&retired)).expect("verdict"),
-            Vec::<String>::new()
-        );
-        let marker = "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n";
-        assert!(
-            base_source.contains(marker),
-            "the roster's data row opens as expected"
-        );
-        let grown = base_source.replacen(
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
+            let base_source = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
+                .expect("the roster exists at HEAD and decodes as BaseRosterShown");
+            let read = |src: &str| unimported_bare_provider_base_reading(src).expect("lone roster");
+            let base = read(&base_source);
+            let active = "standing: ActiveDebt }";
+            assert!(
+                base_source.contains(active),
+                "the base roster carries active debt"
+            );
+            let retired =
+                base_source.replacen(active, "standing: Retired { cause: ImportsFixed } }", 1);
+            assert_eq!(
+                judge.judge_edit(&base, &read(&retired)).expect("verdict"),
+                Vec::<String>::new()
+            );
+            let marker = "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n";
+            assert!(
+                base_source.contains(marker),
+                "the roster's data row opens as expected"
+            );
+            let grown = base_source.replacen(
             marker,
             &format!("{marker}  UnimportedBareProviderDisposition {{ file: \"dag/zz_new.dag\", name: \"g\", standing: ActiveDebt }},\n"),
             1,
         );
-        let refused = judge.judge_edit(&base, &read(&grown)).expect("verdict");
-        assert!(
-            refused
-                .iter()
-                .any(|r| r.starts_with("RosterGainedIdentity dag/zz_new.dag")),
-            "{refused:?}"
-        );
+            let refused = judge.judge_edit(&base, &read(&grown)).expect("verdict");
+            assert!(
+                refused
+                    .iter()
+                    .any(|r| r.starts_with("RosterGainedIdentity dag/zz_new.dag")),
+                "{refused:?}"
+            );
+        });
     }
 
     /// THE BASE-ROSTER READ DECODES THE COPRODUCT THE `.dag` DECLARES (gunbc#12205 read it as a
