@@ -2,10 +2,13 @@ module v2.test.claim.dnm.infer_gather_differential
 
 import v2.compiler.infer { infer }
 import v2.test.claim.dnm.infer_old_gather { infer_old }
-import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NonEmptyDiagnostics, None, Rejected, Some, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { node_subtree_nodes }
+import v2.std.node { Symbol, node_subtree_nodes }
+import std.algebra { Cons }
+import v2.std.algebra { length }
+import v2.std.integer { Int }
 import v2.std.text { String }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 
@@ -208,4 +211,155 @@ test fn dnm_ig_082_new_refuses_with_key_conflict_holds() -> Bool {
 
 test fn dnm_ig_084_new_refuses_with_key_conflict_holds() -> Bool {
   dnm_ig_084().new_key_conflict
+}
+
+// ROUND 3 (DO NOT MERGE): for 046/051/070, pin WHAT differs in the diagnostics chain.
+type DnmDiag { new_accepted: Bool, old_accepted: Bool, count_equal: Bool, new_reasons_in_old: Bool, old_reasons_in_new: Bool, frontier_count_equal: Bool, other_count_equal: Bool }
+
+fn dnm_diag_list(d: Diagnostics) -> List<Diagnostic> {
+  match d {
+    None => []
+    Some { diagnostics: nds } => Cons { head: nds.head, tail: nds.tail }
+  }
+}
+
+fn dnm_nds_list(nds: NonEmptyDiagnostics) -> List<Diagnostic> {
+  Cons { head: nds.head, tail: nds.tail }
+}
+
+fn dnm_count_reason(xs: List<Diagnostic>, reason: Symbol) -> Int {
+  fold(xs, init: 0, f: fn(acc, d) { if d.reason == reason { acc + 1 } else { acc } })
+}
+
+fn dnm_all_reasons_in(xs: List<Diagnostic>, ys: List<Diagnostic>) -> Bool {
+  fold(xs, init: true, f: fn(acc, d) { acc && (dnm_count_reason(xs: ys, reason: d.reason) > 0) })
+}
+
+fn dnm_diag_compare(new_accepted: Bool, old_accepted: Bool, n: List<Diagnostic>, o: List<Diagnostic>) -> DnmDiag {
+  let nf = dnm_count_reason(xs: n, reason: ^infer_grounding_not_derived)
+  let of = dnm_count_reason(xs: o, reason: ^infer_grounding_not_derived)
+  DnmDiag {
+    new_accepted: new_accepted,
+    old_accepted: old_accepted,
+    count_equal: length(xs: n) == length(xs: o),
+    new_reasons_in_old: dnm_all_reasons_in(xs: n, ys: o),
+    old_reasons_in_new: dnm_all_reasons_in(xs: o, ys: n),
+    frontier_count_equal: nf == of,
+    other_count_equal: (length(xs: n) - nf) == (length(xs: o) - of)
+  }
+}
+
+fn dnm_diag(src: String) -> DnmDiag {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: _ } => dnm_diag_compare(new_accepted: false, old_accepted: false, n: [], o: [])
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: rn } =>
+          match infer_old(tree: tree) {
+            Rejected { diagnostics: ro } => dnm_diag_compare(new_accepted: false, old_accepted: false, n: dnm_nds_list(nds: rn), o: dnm_nds_list(nds: ro))
+            Accepted { value: _, diagnostics: dold } => dnm_diag_compare(new_accepted: false, old_accepted: true, n: dnm_nds_list(nds: rn), o: dnm_diag_list(d: dold))
+          }
+        Accepted { value: _, diagnostics: dn } =>
+          match infer_old(tree: tree) {
+            Rejected { diagnostics: ro } => dnm_diag_compare(new_accepted: true, old_accepted: false, n: dnm_diag_list(d: dn), o: dnm_nds_list(nds: ro))
+            Accepted { value: _, diagnostics: dold } => dnm_diag_compare(new_accepted: true, old_accepted: true, n: dnm_diag_list(d: dn), o: dnm_diag_list(d: dold))
+          }
+      }
+  }
+}
+
+fn dnm_diag_046() -> DnmDiag {
+  dnm_diag(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x as Pos\n}\n")
+}
+
+test fn dnm_diag_046_new_accepted_holds() -> Bool {
+  dnm_diag_046().new_accepted
+}
+
+test fn dnm_diag_046_old_accepted_holds() -> Bool {
+  dnm_diag_046().old_accepted
+}
+
+test fn dnm_diag_046_count_equal_holds() -> Bool {
+  dnm_diag_046().count_equal
+}
+
+test fn dnm_diag_046_new_reasons_in_old_holds() -> Bool {
+  dnm_diag_046().new_reasons_in_old
+}
+
+test fn dnm_diag_046_old_reasons_in_new_holds() -> Bool {
+  dnm_diag_046().old_reasons_in_new
+}
+
+test fn dnm_diag_046_frontier_count_equal_holds() -> Bool {
+  dnm_diag_046().frontier_count_equal
+}
+
+test fn dnm_diag_046_other_count_equal_holds() -> Bool {
+  dnm_diag_046().other_count_equal
+}
+
+fn dnm_diag_051() -> DnmDiag {
+  dnm_diag(src: "module p\n\nimport v2.std.logic { Bool }\n\ntype Flag = On | Off\ntype Name = String where brand(\"Name\")\nfn f(x: Int) -> Int { x }\nfn dag_user(x: Int) -> Int { x }\nfn g(q: Flag) -> Flag { q }\nfn h() -> Flag { On }\nfn flip(q: Flag) -> Flag { match q { On => Off } }\nfn b() -> Bool { true }\n")
+}
+
+test fn dnm_diag_051_new_accepted_holds() -> Bool {
+  dnm_diag_051().new_accepted
+}
+
+test fn dnm_diag_051_old_accepted_holds() -> Bool {
+  dnm_diag_051().old_accepted
+}
+
+test fn dnm_diag_051_count_equal_holds() -> Bool {
+  dnm_diag_051().count_equal
+}
+
+test fn dnm_diag_051_new_reasons_in_old_holds() -> Bool {
+  dnm_diag_051().new_reasons_in_old
+}
+
+test fn dnm_diag_051_old_reasons_in_new_holds() -> Bool {
+  dnm_diag_051().old_reasons_in_new
+}
+
+test fn dnm_diag_051_frontier_count_equal_holds() -> Bool {
+  dnm_diag_051().frontier_count_equal
+}
+
+test fn dnm_diag_051_other_count_equal_holds() -> Bool {
+  dnm_diag_051().other_count_equal
+}
+
+fn dnm_diag_070() -> DnmDiag {
+  dnm_diag(src: "module p\n\ntype Id = Int\n\nfn keep(x: Id) -> Id { x }\n")
+}
+
+test fn dnm_diag_070_new_accepted_holds() -> Bool {
+  dnm_diag_070().new_accepted
+}
+
+test fn dnm_diag_070_old_accepted_holds() -> Bool {
+  dnm_diag_070().old_accepted
+}
+
+test fn dnm_diag_070_count_equal_holds() -> Bool {
+  dnm_diag_070().count_equal
+}
+
+test fn dnm_diag_070_new_reasons_in_old_holds() -> Bool {
+  dnm_diag_070().new_reasons_in_old
+}
+
+test fn dnm_diag_070_old_reasons_in_new_holds() -> Bool {
+  dnm_diag_070().old_reasons_in_new
+}
+
+test fn dnm_diag_070_frontier_count_equal_holds() -> Bool {
+  dnm_diag_070().frontier_count_equal
+}
+
+test fn dnm_diag_070_other_count_equal_holds() -> Bool {
+  dnm_diag_070().other_count_equal
 }
