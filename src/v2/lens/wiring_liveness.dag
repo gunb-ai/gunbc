@@ -139,17 +139,27 @@ fn wiring_decl_verdict(decl: FnArrowDecl) -> LensVerdict {
   fold(decl.params, init: Holds, f: fn(acc, p) {
     match acc {
       Violation { diagnostic: _ } => acc
-      _ =>
-        wiring_param_violation_verdict(
-          relation: WiringRelation {
-            output: decl.output,
-            declared_input: p.node,
-            dependence: dependence
-          },
-          reachable: reachable
-        )
+      Holds => wiring_decl_verdict_param(decl: decl, p: p, reachable: reachable, dependence: dependence)
+      NotApplicable { diagnostic: _ } => wiring_decl_verdict_param(decl: decl, p: p, reachable: reachable, dependence: dependence)
+      Unrealized { diagnostic: _ } => wiring_decl_verdict_param(decl: decl, p: p, reachable: reachable, dependence: dependence)
     }
   })
+}
+
+fn wiring_decl_verdict_param(
+  decl: FnArrowDecl,
+  p: FnArrowParam,
+  reachable: List<Node>,
+  dependence: List<DependencyView>
+) -> LensVerdict {
+  wiring_param_violation_verdict(
+    relation: WiringRelation {
+      output: decl.output,
+      declared_input: p.node,
+      dependence: dependence
+    },
+    reachable: reachable
+  )
 }
 
 fn wiring_liveness_corpus_verdict(pool_roots: List<String>) -> LensVerdict {

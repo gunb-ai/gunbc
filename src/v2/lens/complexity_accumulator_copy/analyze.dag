@@ -684,13 +684,25 @@ fn analyze_absent_primary_expr(
         Absent =>
           analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
       }
-    _ =>
-      match let_spine_of(node: node) {
-        Present { value: spine } =>
-          analyze_let_spine(spine: spine, carriers: carriers, bindings: bindings, iterating: iterating)
-        Absent =>
-          analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
-      }
+    TypeNode { connective: _ } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Value } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Branch } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Bind } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Match } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+  }
+}
+
+fn analyze_absent_primary_expr_let_spine(
+  node: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  iterating: Bool
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  match let_spine_of(node: node) {
+    Present { value: spine } =>
+      analyze_let_spine(spine: spine, carriers: carriers, bindings: bindings, iterating: iterating)
+    Absent =>
+      analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
   }
 }
 
@@ -842,15 +854,23 @@ fn accumulator_copy_findings(root: Node) -> List<v2.lens.complexity_accumulator_
 fn tree_contains_lowered_loop(root: Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Loop } => true
-    _ =>
-      fold(root.children, init: false, f: fn(found, e) {
-        if found {
-          true
-        } else {
-          tree_contains_lowered_loop(root: e.target)
-        }
-      })
+    TypeNode { connective: _ } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Value } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Transform } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Branch } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Bind } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Match } => tree_contains_lowered_loop_children(root: root)
   }
+}
+
+fn tree_contains_lowered_loop_children(root: Node) -> Bool {
+  fold(root.children, init: false, f: fn(found, e) {
+    if found {
+      true
+    } else {
+      tree_contains_lowered_loop(root: e.target)
+    }
+  })
 }
 
 fn primary_expr_fold_head_optional(node: Node) -> Optional<Symbol> {
