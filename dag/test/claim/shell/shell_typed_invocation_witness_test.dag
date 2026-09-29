@@ -41,19 +41,32 @@ import gunbc.bmc_virtual_media {
 
 data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
 
+// THE ORACLE MUST TELL A REFUSAL FROM A SUCCESS. A refused staging renders as `refused: …` lines
+// (configfs_staging_display), and those carry no shell control word — so an all-refused fixture
+// (say the gadget's config_root changed away from the gadget tree) would otherwise green this
+// oracle while the setup would act on nothing. The red below is the refusal-discrimination clause
+// the dashboard review against fb46893 asked for (artifact /api/reviews/72447/artifacts/stdout.log):
+// the rendered form must be the staging's command listing, never its refusal. The route itself is
+// asserted in the bmc witness, which matches ConfigfsStagingRan and fails on Refused for the same
+// fixture.
 test fn usb_gadget_setup_emits_no_shell_control_word() -> Bool {
   let rendered = srv4_vm_gadget_setup_display()
-  rendered != "" && !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
+  rendered != ""
+    && !starts_with(s: rendered, prefix: "refused: ")
+    && !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
 }
 
 // THE TEARDOWN RENDERS UNDER THE SAME DISCIPLINE (review 38602, findings 1 and 3): the teardown
 // stages as commands too, and its display -- read off the same srv4 fixture -- carries no shell
-// control word either. This is the consumer the rmdir absence frontier in
-// extdeps.tools.gnu_coreutils fronts: the described teardown exists and is gated here until the
-// host-effect lane's transport realization takes over the already-removed outcome.
+// control word either, and is the command listing rather than a refusal. This is the consumer the
+// rmdir absence frontier in extdeps.tools.gnu_coreutils fronts: the described teardown exists and
+// is gated here until the host-effect lane's transport realization takes over the already-removed
+// outcome.
 test fn usb_gadget_teardown_emits_no_shell_control_word() -> Bool {
   let rendered = srv4_vm_gadget_teardown_display()
-  rendered != "" && !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
+  rendered != ""
+    && !starts_with(s: rendered, prefix: "refused: ")
+    && !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
 }
 
 // THE DISCRIMINATING REFUSAL FIXTURE (review 38602, finding 1): the staged setup refuses AS A
