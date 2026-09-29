@@ -156,8 +156,15 @@ import gunbc.roadmap_launch_admission {
 import gunbc.roadmap_page {
   roadmap_page_for_projection_launch, roadmap_fleet_page,
   issue_detail_page_for, issue_detail_node_exists,
+  project_suite_headline, project_suite_not_found_page, project_suite_page_launch, project_suite_rows,
 }
-import gunbc.roadmap_authority { RoadmapAuthorityProjection, roadmap_authority_projection }
+import gunbc.roadmap_authority {
+  RoadmapAuthorityProjection, roadmap_authority_projection,
+  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+  declared_roadmap_edges,
+}
+import gunbc.roadmap_nesting { declared_roadmap_memberships }
+import gunbc.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
   sandbox_client_js_source, sandbox_asset_path,
@@ -345,6 +352,7 @@ type RoadmapServeHandler
   | IssueAssignHandler
   | IssueAssignmentContextHandler
   | IssueCommentHandler
+  | ProjectSuitePageHandler
   | AuthLoginHandler
   | AuthGoogleCallbackHandler
   | AuthLogoutHandler
@@ -437,6 +445,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/project/\{node_id\}", handler: ProjectSuitePageHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/issue/\{node_id\}/assignment", handler: IssueAssignmentContextHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
@@ -894,6 +903,45 @@ fn serve_issue_detail_response_over(
       }
     }
   } }
+}
+
+// THE PROJECT SUITE ROUTE (GET /project/<node_id>): ONE project's direct membership listing
+// rendered live from the same authorities the issue detail route reads -- the declared nesting
+// for the member set, the declared dependency edges for the topological layering, the plan's own
+// rows for the titles. The heading is the project row's own ticket headline; an absent row or a
+// non-ticket row renders the not-found document at 404, the issue route's grain. The page carries
+// no form and no session secret, so it renders for every viewer standing exactly alike; the
+// viewer label is still resolved here, so the render entry keeps the issue route's signature
+// shape. A refused plan is a located 503, never a silent empty page.
+fn serve_project_suite_response_over(
+  plan: RoadmapAuthorityProjection,
+  params: List<PathParamBinding>,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  let viewer = authenticated_viewer_label(evidence: request.security.authentication)
+  match plan {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      serve_text_response(status: 503, content_type: text_plain_utf8,
+        body: join(["project suite unavailable: the roadmap authority refused at ", detail], ""))
+    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } =>
+      match project_suite_headline(nodes: doc_all_nodes(doc: doc), node_id: node_id) {
+        Absent =>
+          serve_page_response_with_status(page: project_suite_not_found_page(node_id: node_id, viewer: viewer), status: 404)
+        Present { value: headline } =>
+          serve_page_response_with_status(
+            page: project_suite_page_launch(
+              headline: headline,
+              node_id: node_id,
+              rows: project_suite_rows(
+                memberships: declared_roadmap_memberships(),
+                edges: declared_roadmap_edges(),
+                nodes: doc_all_nodes(doc: doc),
+                project: node_id),
+              viewer: viewer),
+            status: 200)
+      }
+  }
 }
 
 // THE AUTH PROFILE ROSTER, read once per render under the never-blocks law: the store's refusal
@@ -1403,6 +1451,7 @@ fn roadmap_serve_invoke_over(
     ApprovalStatusHandler => approval_status_response(params: params)
     SandboxEchoHandler => sandbox_echo_response(request: request)
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan, params: params, request: request)
+    ProjectSuitePageHandler => serve_project_suite_response_over(plan: plan, params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan, request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)

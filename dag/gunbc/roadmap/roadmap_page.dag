@@ -31,10 +31,10 @@ import gunbc.roadmap_style { roadmap_css, round_fill_delay_var, round_fill_durat
 import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId,
-  RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, is_top_level,
+  RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids, is_top_level,
   SectionElement, Prose, Group, SectionGroup,
 }
-import gunbc.roadmap_status { line_ticket }
+import gunbc.roadmap_status { line_ticket, TicketLine }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.fleet_hardware_standing_panel { fleet_hardware_standing_panel }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
@@ -46,9 +46,15 @@ import gunbc.roadmap_authority {
   frontier_sets_from_live_history,
   FrontierSetsProjected, FrontierSetsProjectionRefused,
   declared_roadmap_nodes,
+  declared_roadmap_edges,
   ClosingContractTaskPair, closing_contract_task_pairs_for_accepted, closing_contract_family_claim,
 }
-import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
+import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, node_title }
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentResolution, AlignmentReady, AlignmentUnresolved,
+  AlignmentLevel, RootPrinciplesLevel, ProjectIntentLevel, TaskContractLevel,
+  alignment_levels, alignment_resolve, alignment_base_cadence_state, alignment_refusal_reason,
+}
 import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, round_strip_playback_ms }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
@@ -2290,6 +2296,84 @@ fn issue_head_chip_nodes(view: WorkRowView) -> List<Fragment> {
   status_chip_nodes(view: view)
 }
 
+// THE PROJECT PATH BREADCRUMB: one navigation answer per issue, rendered directly above the page
+// body. The ONLY derivation named is alignment_resolve -- the same resolution the dispatch gate
+// consumes -- never a second path answer folded out of the raw memberships. The ready arm renders
+// the chain's levels ROOT-TO-LEAF: each project level links to its /project/<node_id> suite, the
+// task level is the current page and renders as plain text (no self-link), and the
+// root-principles pointer is skipped (it is a pointer to gunbc.design_document, not a page). The
+// unresolved arm renders the typed refusal itself -- a partial path is never dressed as a complete
+// one.
+type IssueBreadcrumbCrumb
+  = IssueBreadcrumbProject { node_id: String, purpose: String, boundary: String }
+  | IssueBreadcrumbTask { node_id: String, purpose: String, boundary: String }
+
+type IssueBreadcrumb
+  = IssueBreadcrumbPath { crumbs: List<IssueBreadcrumbCrumb> }
+  | IssueBreadcrumbRefused { reason: String }
+
+// THE CRUMBS from the chain's levels: the root-principles level contributes no crumb (a pointer,
+// not a page); every other level contributes one crumb carrying its purpose and boundary.
+fn issue_breadcrumb_crumbs(levels: List<AlignmentLevel>) -> List<IssueBreadcrumbCrumb> {
+  fold(levels, init: [] as List<IssueBreadcrumbCrumb>, f: fn(acc, level) {
+    match level {
+      RootPrinciplesLevel => acc
+      ProjectIntentLevel { link } => concat(acc, [IssueBreadcrumbProject { node_id: link.node_id, purpose: link.purpose, boundary: link.boundary }])
+      TaskContractLevel { link } => concat(acc, [IssueBreadcrumbTask { node_id: link.node_id, purpose: link.purpose, boundary: link.boundary }])
+    }
+  })
+}
+
+fn issue_breadcrumb_of(resolution: AlignmentResolution) -> IssueBreadcrumb {
+  match resolution {
+    AlignmentReady { chain, due_levels: _, rendered_prompt: _ } =>
+      IssueBreadcrumbPath { crumbs: issue_breadcrumb_crumbs(levels: alignment_levels(chain: chain)) }
+    AlignmentUnresolved { cause } =>
+      IssueBreadcrumbRefused { reason: alignment_refusal_reason(cause: cause) }
+  }
+}
+
+fn issue_breadcrumb_crumb_node(crumb: IssueBreadcrumbCrumb) -> Fragment {
+  match crumb {
+    IssueBreadcrumbProject { node_id, purpose, boundary } =>
+      el_attrs("a", [
+        attr(name: "href", value: join(["/project/", node_id], "")),
+        attr(name: "title", value: boundary),
+      ], [ txt(purpose) ])
+    IssueBreadcrumbTask { node_id: _, purpose, boundary } =>
+      el_attrs("span", [
+        attr(name: "class", value: "issue-breadcrumb-here"),
+        attr(name: "title", value: boundary),
+      ], [ txt(purpose) ])
+  }
+}
+
+// THE CRUMB LIST'S SEPARATOR LAW: " › " BETWEEN crumbs only -- never leading, never trailing --
+// so the single-crumb path and the refusal arm emit exactly their own text and nothing else.
+fn issue_breadcrumb_nodes(breadcrumb: IssueBreadcrumb) -> List<Fragment> {
+  match breadcrumb {
+    IssueBreadcrumbPath { crumbs } => {
+      let spaced = fold(crumbs, init: { out: [] as List<Fragment>, first: true }, f: fn(acc, crumb) {
+        {
+          out: if acc.first {
+            concat(acc.out, [issue_breadcrumb_crumb_node(crumb: crumb)])
+          } else {
+            concat(acc.out, [txt(" › "), issue_breadcrumb_crumb_node(crumb: crumb)])
+          },
+          first: false,
+        }
+      })
+      spaced.out
+    }
+    IssueBreadcrumbRefused { reason } =>
+      [ el_class("span", "issue-breadcrumb-refused", [ txt(join(["project path unavailable: ", reason], "")) ]) ]
+  }
+}
+
+fn issue_alignment_breadcrumb_node(resolution: AlignmentResolution) -> Fragment {
+  el_class("nav", "issue-breadcrumb", issue_breadcrumb_nodes(breadcrumb: issue_breadcrumb_of(resolution: resolution)))
+}
+
 fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
@@ -2306,6 +2390,7 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
       issue_tab_chip(label: "work", tab: "work"),
       issue_tab_chip(label: "history", tab: "history"),
     ]),
+    issue_alignment_breadcrumb_node(resolution: alignment_resolve(node_id: view.node_id, turns_elapsed: 1, state: alignment_base_cadence_state())),
     el_class("div", "issue-body", [
       el_class("div", "issue-panels", [
         el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision, command_context: command_context)),
@@ -2573,6 +2658,146 @@ fn issue_detail_not_found_page(node_id: String, viewer: String) -> Fragment {
         roadmap_header(page: "issue"),
         el_class("main", "issue-detail", [
           el_class("p", "issue-not-found", [ txt(join(["no issue named ", node_id, " is declared in the roadmap authority"], "")) ]),
+        ]),
+      ]),
+    ],
+  }
+}
+
+// THE PROJECT SUITE PAGE (GET /project/<node_id>): ONE project's direct membership listing --
+// the members declared under it in gunbc.roadmap_nesting, in authored order as the base order,
+// then Kahn-layered by the declared dependency edges restricted to the member set: a member whose
+// in-set prerequisites include another member sorts AFTER that member, and members with no
+// in-set prerequisites keep their authored order at the front. The heading is the project row's
+// own ticket headline; an absent row or a non-ticket row renders the not-found document, the same
+// grain as the issue detail route.
+type ProjectSuiteRow { node_id: String, title: String }
+
+// THE HEADING'S TICKET PROJECTION: exactly one declared row, and that row a ticket -- anything
+// else is a not-found, because a suite whose heading cannot be read against the row's own brief
+// would be a listing no check can read against.
+fn project_suite_headline(nodes: List<RoadmapNode>, node_id: String) -> String? {
+  match (filter(nodes, n => (n.node as String) == node_id)).first() {
+    Absent => none
+    Present { value: rn } =>
+      match rn.line {
+        TicketLine { done: _, ticket } => Present { value: ticket.headline }
+        _ => none
+      }
+  }
+}
+
+// THE DIRECT MEMBERS, in authored order: the memberships whose project field names this suite --
+// nothing from another project, nothing nested one level deeper.
+fn project_suite_member_ids(memberships: List<RoadmapMembership>, project: String) -> List<String> {
+  map(filter(memberships, m => m.project == project), m => m.member)
+}
+
+// A MEMBER'S IN-SET PREREQUISITES: the parent ends of its declared dependency edges (the
+// roadmap_parent_ids read) restricted to members of this suite -- an edge whose parent stands
+// outside the member set constrains nothing here.
+fn project_suite_in_set_prereqs(edges: List<RoadmapEdge>, member: String, members: List<String>) -> List<String> {
+  filter(roadmap_parent_ids(edges: edges, node: member as NonEmptyStr as RoadmapNodeId), p => any(members, m => m == (p as String)))
+}
+
+// ONE KAHN LAYER: every not-yet-emitted member whose in-set prerequisites are all already emitted,
+// in authored order. A STABLE sort by construction: filter preserves the authored order the
+// membership relation supplies.
+fn project_suite_next_layer(members: List<String>, edges: List<RoadmapEdge>, emitted: List<String>) -> List<String> {
+  filter(members, m => !any(emitted, e => e == m)
+    && all(project_suite_in_set_prereqs(edges: edges, member: m, members: members), p => any(emitted, e => e == p)))
+}
+
+// A CYCLE STOPS PROGRESS: when no not-yet-emitted member can advance (a dependency cycle inside
+// the member set), the remainder emits in authored order -- the listing degrades to declaration
+// order rather than refusing the page over a fixture cycle. The fuel bound is count(members):
+// every advancing layer emits at least one member, so a cycle is the only way to exhaust it.
+fn project_suite_order_step(members: List<String>, edges: List<RoadmapEdge>, emitted: List<String>, fuel: Int) -> List<String> {
+  if fuel <= 0 {
+    concat(emitted, filter(members, m => !any(emitted, e => e == m)))
+  } else {
+    let layer = project_suite_next_layer(members: members, edges: edges, emitted: emitted)
+    if count(layer) == 0 {
+      concat(emitted, filter(members, m => !any(emitted, e => e == m)))
+    } else {
+      project_suite_order_step(members: members, edges: edges, emitted: concat(emitted, layer), fuel: fuel - 1)
+    }
+  }
+}
+
+fn project_suite_ordered_members(members: List<String>, edges: List<RoadmapEdge>) -> List<String> {
+  project_suite_order_step(members: members, edges: edges, emitted: [], fuel: count(members))
+}
+
+// THE ROW'S TITLE: the node row's own title when one exists, the raw id when none does -- an
+// undeclared member still lists, honestly labeled.
+fn project_suite_member_title(nodes: List<RoadmapNode>, member: String) -> String {
+  match (filter(nodes, n => (n.node as String) == member)).first() {
+    Absent => member
+    Present { value: rn } => node_title(item: rn.line)
+  }
+}
+
+// THE LISTING, one row per direct member, topologically ordered.
+fn project_suite_rows(memberships: List<RoadmapMembership>, edges: List<RoadmapEdge>, nodes: List<RoadmapNode>, project: String) -> List<ProjectSuiteRow> {
+  let ordered = project_suite_ordered_members(members: project_suite_member_ids(memberships: memberships, project: project), edges: edges)
+  map(ordered, m => ProjectSuiteRow { node_id: m, title: project_suite_member_title(nodes: nodes, member: m) })
+}
+
+fn project_suite_row_node(row: ProjectSuiteRow) -> Fragment {
+  el_class("li", "project-suite-member", [
+    el_attrs("a", [
+      attr(name: "href", value: join(["/issue/", row.node_id], "")),
+      attr(name: "title", value: row.node_id),
+    ], [ txt(row.title) ]),
+  ])
+}
+
+fn project_suite_page_launch(headline: String, node_id: String, rows: List<ProjectSuiteRow>, viewer: String) -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [ attr(name: "lang", value: "en" ) ],
+    children: [
+      el("head", [
+        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
+        el("style", [ txt(roadmap_css()) ]),
+        el("title", [ txt(join(["gunbc — project ", node_id], "")) ]),
+      ]),
+      el("body", [
+        roadmap_header(page: "project"),
+        el_class("main", "project-suite", [
+          el_class("div", "issue-detail-head", [
+            el_class("span", "issue-id", [ txt(node_id) ]),
+            el_class("h1", "issue-detail-title", [ txt(headline) ]),
+          ]),
+          if count(rows) == 0 {
+            el_class("p", "project-suite-empty", [ txt("no direct members declared") ])
+          } else {
+            el_class("ul", "project-suite-members", map(rows, r => project_suite_row_node(row: r)))
+          },
+        ]),
+      ]),
+    ],
+  }
+}
+
+// THE NOT-FOUND DOCUMENT, the issue route's grain: an absent row or a non-ticket row is a missing
+// project, said in one sentence.
+fn project_suite_not_found_page(node_id: String, viewer: String) -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [ attr(name: "lang", value: "en" ) ],
+    children: [
+      el("head", [
+        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+        el("style", [ txt(roadmap_css()) ]),
+        el("title", [ txt("gunbc — project not found") ]),
+      ]),
+      el("body", [
+        roadmap_header(page: "project"),
+        el_class("main", "project-suite", [
+          el_class("p", "issue-not-found", [ txt(join(["no project named ", node_id, " is declared as a ticket in the roadmap authority"], "")) ]),
         ]),
       ]),
     ],
