@@ -7,6 +7,7 @@ import std.measure {
   ByteSize, byte_size, byte_size_count, EvalStepCount, eval_step_count, eval_step_count_value,
   eval_steps_per_millisecond_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
   Millisecond, millisecond, second, MoneyPerSecond, money_amount_micro,
+  ObservationInstant, SharedMonotonic, WallClock, nanosecond,
 }
 import std.decl_ref { decl_ref }
 import extdeps.currency.currency { Usd }
@@ -58,7 +59,13 @@ import gunbc.runner_throughput_qualification {
   ThroughputRefusal, SubjectJoinDidNotHold, SamplingDidNotHold,
   RunnerThroughputAssessment, assess_runner_throughput, assessment_holds, assessment_wire,
   qualification_run_producer_frontier, leg_is_bound,
-  AssessedFact, InterpreterRateAgainstPin, SlotMemoryEnvelope, PhaseWallsAgainstSuppliedCeilings,
+  AssessedFact, InterpreterRateAgainstPin, SlotMemoryEnvelope, PhaseWallsAgainstSuppliedCeilings, ConcurrentCohortAtWidth,
+  RunnerCohortEvidence, NoCohortObserved, CohortObserved, run_key,
+}
+import std.nat { Nat, nat_range_inclusive }
+import std.observation { OccurrenceId }
+import product.capacity.cohort_observation {
+  CohortReading, CohortSeatReading, SeatSettlement, SeatSettledSucceeded, SeatSettledFailed, seal_cohort,
 }
 import gunbc.runner_throughput_selection {
   RunnerQualificationInputs, select_runner_qualification, slot_quota_threads, selected_host_allocation,
@@ -356,6 +363,7 @@ fn fact_is(a: AssessedFact, b: AssessedFact) -> Bool {
     InterpreterRateAgainstPin => match b { InterpreterRateAgainstPin => true _ => false }
     SlotMemoryEnvelope => match b { SlotMemoryEnvelope => true _ => false }
     PhaseWallsAgainstSuppliedCeilings => match b { PhaseWallsAgainstSuppliedCeilings => true _ => false }
+    ConcurrentCohortAtWidth => match b { ConcurrentCohortAtWidth => true _ => false }
   }
 }
 
@@ -363,13 +371,65 @@ fn has_fact_once(facts: List<AssessedFact>, want: AssessedFact) -> Bool {
   (facts |> filter(f => fact_is(a: f, b: want))).length() == 1
 }
 
-fn covers_rate_and_memory_only(facts: List<AssessedFact>) -> Bool {
-  facts.length() == 2 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin) && has_fact_once(facts: facts, want: SlotMemoryEnvelope)
+fn covers_rate_memory_and_cohort(facts: List<AssessedFact>) -> Bool {
+  facts.length() == 3 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin) && has_fact_once(facts: facts, want: SlotMemoryEnvelope)
+    && has_fact_once(facts: facts, want: ConcurrentCohortAtWidth)
 }
 
-fn covers_rate_memory_and_walls(facts: List<AssessedFact>) -> Bool {
-  facts.length() == 3 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin)
+fn covers_rate_memory_walls_and_cohort(facts: List<AssessedFact>) -> Bool {
+  facts.length() == 4 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin)
     && has_fact_once(facts: facts, want: SlotMemoryEnvelope) && has_fact_once(facts: facts, want: PhaseWallsAgainstSuppliedCeilings)
+    && has_fact_once(facts: facts, want: ConcurrentCohortAtWidth)
+}
+
+// ── the concurrent cohort ─────────────────────────────────────────────────────────────────────
+//
+// A DELIVERING ASSESSMENT NEEDS A SEALED COHORT AT THE DERIVED WIDTH, so the delivering claims below
+// run through assess_at_width: the claim's own runs PLUS one good run per seat, and a cohort of exactly
+// expected_width() seats, all active over [20, 40], each seat one of those assessed runs. The seats are
+// good runs, so the throughput and memory aggregates the claims read are the good run's either way.
+// Claims about a refusal on some other axis run through assess_unobserved, where the missing cohort is
+// one more refusal beside the one the claim reads.
+fn t(n: Nat) -> ObservationInstant { ObservationInstant { domain: SharedMonotonic { origin: "mtcollins1-boot" as NonEmptyStr }, basis: WallClock, since_origin: nanosecond(count: n) } }
+
+fn seat_ids(n: Int) -> List<WorkflowRunId> {
+  map(nat_range_inclusive(lo: 1, hi: n), i => concat("cohort-seat-", i as String) as WorkflowRunId)
+}
+
+fn seat_reading(id: WorkflowRunId, settlement: SeatSettlement) -> CohortSeatReading<WorkflowRunId> {
+  CohortSeatReading {
+    seat: id, source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: id as NonEmptyStr },
+    ready_at: t(n: 5), started_at: t(n: 20), ended_at: t(n: 40), settlement: settlement,
+  }
+}
+
+fn cohort_of(seats: List<CohortSeatReading<WorkflowRunId>>) -> RunnerCohortEvidence {
+  CohortObserved {
+    seal: seal_cohort(
+      reading: CohortReading {
+        roster: map(seats, s => s.seat), barrier_released_at: t(n: 10), host_window_from: t(n: 0), host_window_to: t(n: 100),
+        host_source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: "host" as NonEmptyStr }, seats: seats,
+      },
+      seat_key: run_key,
+    ),
+  }
+}
+
+fn cohort_runs(ids: List<WorkflowRunId>) -> List<ObservedRunnerQualificationRun> {
+  map(ids, id => good_run(id: id))
+}
+
+fn assess_at_width(selection: SelectedRunnerQualification<HostIdentity>, runs: List<ObservedRunnerQualificationRun>) -> RunnerThroughputAssessment<HostIdentity> {
+  let ids = seat_ids(n: expected_width())
+  assess_runner_throughput(selection: selection, runs: concat(runs, cohort_runs(ids: ids)), cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledSucceeded))))
+}
+
+fn assess_unobserved(selection: SelectedRunnerQualification<HostIdentity>, runs: List<ObservedRunnerQualificationRun>) -> RunnerThroughputAssessment<HostIdentity> {
+  assess_runner_throughput(selection: selection, runs: runs, cohort: NoCohortObserved)
+}
+
+fn concurrency_is(a: RunnerThroughputAssessment<HostIdentity>, want: String) -> Bool {
+  !assessment_holds(a: a) && string_contains(s: assessment_wire(a: a) as String, pattern: want)
 }
 
 fn sampling_refused(a: RunnerThroughputAssessment<HostIdentity>) -> Bool {
@@ -379,7 +439,7 @@ fn sampling_refused(a: RunnerThroughputAssessment<HostIdentity>) -> Bool {
 // ── the positive control ──────────────────────────────────────────────────────────────────────
 
 test fn a_joining_run_meeting_every_axis_makes_the_offer_deliver() -> Bool {
-  let a = assess_runner_throughput(selection: selection(), runs: [good_run(id: run_a)])
+  let a = assess_at_width(selection: selection(), runs: [good_run(id: run_a)])
   assessment_holds(a: a)
     && (match a.throughput {
       ThroughputMeetsPin { measured: m, pinned: p } =>
@@ -391,7 +451,7 @@ test fn a_joining_run_meeting_every_axis_makes_the_offer_deliver() -> Bool {
       SlotWidthDerived { by_memory: _, by_cpu: _, slots: n } => n == expected_width() && n >= 1
       SlotWidthUnderivable { cause: _ } => false
     })
-    && covers_rate_and_memory_only(facts: a.assessed_facts)
+    && covers_rate_memory_and_cohort(facts: a.assessed_facts)
 }
 
 // ── the subject join REDs (operator hold, item 2) ─────────────────────────────────────────────
@@ -402,7 +462,7 @@ test fn a_run_from_another_host_is_refused_on_the_host_axis() -> Bool {
     workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
     memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
   )
-  let a = assess_runner_throughput(selection: selection(), runs: [r])
+  let a = assess_unobserved(selection: selection(), runs: [r])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "host"
     && (match a.phase_roster { PhaseRosterNotAssessed { because: _ } => true _ => false })
     && a.assessed_facts.length() == 0
@@ -423,7 +483,7 @@ fn good_run_in(image_digest: NonEmptyStr, runtime_closure: NonEmptyStr, host_thr
 }
 
 fn refused_on(selection: SelectedRunnerQualification<HostIdentity>, run: ObservedRunnerQualificationRun, axis: String) -> Bool {
-  let a = assess_runner_throughput(selection: selection, runs: [run])
+  let a = assess_unobserved(selection: selection, runs: [run])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == axis && a.assessed_facts.length() == 0
 }
 
@@ -432,7 +492,7 @@ fn refused_on(selection: SelectedRunnerQualification<HostIdentity>, run: Observe
 // passes here is about that axis and nothing else.
 test fn a_run_in_another_image_or_toolchain_is_refused_on_its_runtime_axis() -> Bool {
   let t = hardware_thread_count(count: 160)
-  assessment_holds(a: assess_runner_throughput(selection: selection(), runs: [good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: t, host_architecture: Aarch64)]))
+  assessment_holds(a: assess_at_width(selection: selection(), runs: [good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: t, host_architecture: Aarch64)]))
     && refused_on(selection: selection(), run: good_run_in(image_digest: "sha256:another-image" as NonEmptyStr, runtime_closure: fixture_runtime.runtime_closure, host_threads: t, host_architecture: Aarch64), axis: "image digest")
     && refused_on(selection: selection(), run: good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: "gunbc.toolchain.rust-1.92.0" as NonEmptyStr, host_threads: t, host_architecture: Aarch64), axis: "runtime closure")
 }
@@ -459,7 +519,7 @@ test fn a_run_of_another_specimen_with_the_same_step_count_is_refused_on_the_spe
     workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
     memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
   )
-  let a = assess_runner_throughput(selection: selection(), runs: [r])
+  let a = assess_unobserved(selection: selection(), runs: [r])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "specimen"
 }
 
@@ -470,7 +530,7 @@ test fn a_unit_whose_effective_high_is_not_the_selected_high_is_refused() -> Boo
     workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
     memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
   )
-  let a = assess_runner_throughput(selection: selection(), runs: [r])
+  let a = assess_unobserved(selection: selection(), runs: [r])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "effective MemoryHigh"
 }
 
@@ -486,8 +546,8 @@ test fn a_cgroup_bound_that_is_unreadable_or_another_number_is_refused_on_the_bo
     memory: resolved_bound(bytes: byte_size(count: byte_size_count(b: slot_high()) - 1)),
     phases: complete_roster(wall: millisecond(count: 1000)),
   )
-  let a1 = assess_runner_throughput(selection: selection(), runs: [unreadable])
-  let a2 = assess_runner_throughput(selection: selection(), runs: [other])
+  let a1 = assess_unobserved(selection: selection(), runs: [unreadable])
+  let a2 = assess_unobserved(selection: selection(), runs: [other])
   first_join_axis(refusals: a1.refusals) == "cgroup bound" && first_join_axis(refusals: a2.refusals) == "cgroup bound"
 }
 
@@ -497,7 +557,7 @@ test fn a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis() -> B
     workspace: OnSubjectUncharged, cpu: millisecond(count: 50),
     memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
   )
-  let a = assess_runner_throughput(selection: selection(), runs: [r])
+  let a = assess_unobserved(selection: selection(), runs: [r])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "workspace locus"
     && (match workspace_bytes_locus(backing: PeerScratchExport { peer: "srv2" }) { OffSubject { peer: p } => (p as String) == "srv2" _ => false })
 }
@@ -509,7 +569,7 @@ test fn a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis() -> B
 test fn a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_run() -> Bool {
   let slow_clean = varied_run(id: run_a, cpu: millisecond(count: 70), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
   let fast_pinned = varied_run(id: run_b, cpu: millisecond(count: 40), memory: resolved_bound_with_peak(bytes: slot_high(), peak: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
-  let a = assess_runner_throughput(selection: selection(), runs: [slow_clean, fast_pinned])
+  let a = assess_unobserved(selection: selection(), runs: [slow_clean, fast_pinned])
   !assessment_holds(a: a)
     && (match a.memory { PeakExceedsSlotHigh { peak: p, high: h } => byte_size_count(b: p) == byte_size_count(b: h) _ => false })
     && (match a.throughput {
@@ -520,8 +580,8 @@ test fn a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_r
 
 test fn the_sampling_policy_refuses_a_sample_of_the_wrong_size() -> Bool {
   let one = selection_with(sampling: ExactlyOneReconciledRun, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves)
-  let two = assess_runner_throughput(selection: one, runs: [good_run(id: run_a), good_run(id: run_b)])
-  let zero = assess_runner_throughput(selection: selection(), runs: [])
+  let two = assess_unobserved(selection: one, runs: [good_run(id: run_a), good_run(id: run_b)])
+  let zero = assess_unobserved(selection: selection(), runs: [])
   sampling_refused(a: two) && sampling_refused(a: zero) && !assessment_holds(a: zero)
 }
 
@@ -537,8 +597,8 @@ test fn a_missing_or_duplicated_required_phase_refuses() -> Bool {
     id: run_b, cpu: millisecond(count: 50), memory: resolved_bound(bytes: slot_high()),
     phases: concat(complete_roster(wall: millisecond(count: 1000)), [PhaseWall { phase: ParsePhase, wall: millisecond(count: 5) }]),
   )
-  let am = assess_runner_throughput(selection: selection(), runs: [missing])
-  let ad = assess_runner_throughput(selection: selection(), runs: [duplicated])
+  let am = assess_unobserved(selection: selection(), runs: [missing])
+  let ad = assess_unobserved(selection: selection(), runs: [duplicated])
   (match am.phase_roster { PhaseMissing { phase: p } => required_ci_phase_is(a: p, b: FloorPhase) _ => false })
     && (match ad.phase_roster { PhaseDuplicated { phase: p } => required_ci_phase_is(a: p, b: ParsePhase) _ => false })
     && !assessment_holds(a: am) && !assessment_holds(a: ad)
@@ -556,20 +616,41 @@ test fn phase_walls_are_assessed_only_against_supplied_ceilings() -> Bool {
     ceilings: PhaseCeilingsDeclared { ceilings: [PhaseWall { phase: FloorPhase, wall: millisecond(count: 500) }] },
     plan: sound_plan(), allocation: HostAllocationConserves,
   )
-  let al = assess_runner_throughput(selection: loose, runs: [good_run(id: run_a)])
-  let at = assess_runner_throughput(selection: tight, runs: [good_run(id: run_a)])
-  let an = assess_runner_throughput(selection: selection(), runs: [good_run(id: run_a)])
-  assessment_holds(a: al) && covers_rate_memory_and_walls(facts: al.assessed_facts)
+  let al = assess_at_width(selection: loose, runs: [good_run(id: run_a)])
+  let at = assess_at_width(selection: tight, runs: [good_run(id: run_a)])
+  let an = assess_at_width(selection: selection(), runs: [good_run(id: run_a)])
+  assessment_holds(a: al) && covers_rate_memory_walls_and_cohort(facts: al.assessed_facts)
     && !assessment_holds(a: at)
     && (match at.phase_walls { PhaseWallExceedsCeiling { phase: _, wall: _, ceiling: _ } => true _ => false })
     && (match an.phase_walls { PhaseWallsNotAssessed => true _ => false })
+}
+
+// THE WIDTH IS OBSERVED, NOT ONLY DIVIDED. Every run below is the good run; what varies is the cohort.
+// No cohort, a cohort one seat short of the width, a seat that failed, a seat that is not one of the
+// assessed runs, and a cohort whose seats were never all active each refuse delivery by name, while
+// assess_at_width -- the same runs and a full cohort -- delivers (the positive control above).
+test fn delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() -> Bool {
+  let w = expected_width()
+  let ids = seat_ids(n: w)
+  let runs = cohort_runs(ids: ids)
+  let short = seat_ids(n: w - 1)
+  let failed = map(ids, id => if (id as String) == "cohort-seat-1" { seat_reading(id: id, settlement: SeatSettledFailed { cause: "floor phase refused" as NonEmptyStr }) } else { seat_reading(id: id, settlement: SeatSettledSucceeded) })
+  let stranger = concat(map(short, id => seat_reading(id: id, settlement: SeatSettledSucceeded)), [seat_reading(id: "not-an-assessed-run" as WorkflowRunId, settlement: SeatSettledSucceeded)])
+  let apart = map(ids, id => if (id as String) == "cohort-seat-1" { CohortSeatReading { seat: id, source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: id as NonEmptyStr }, ready_at: t(n: 5), started_at: t(n: 50), ended_at: t(n: 60), settlement: SeatSettledSucceeded } } else { seat_reading(id: id, settlement: SeatSettledSucceeded) })
+  w >= 2
+    && concurrency_is(a: assess_unobserved(selection: selection(), runs: runs), want: "no concurrent cohort was observed")
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(short, id => seat_reading(id: id, settlement: SeatSettledSucceeded)))), want: join(["the cohort ran ", (w - 1) as String, " seats but the derived width is ", w as String], ""))
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: failed)), want: "cohort seat cohort-seat-1 failed: floor phase refused")
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: stranger)), want: "a cohort seat is not one of the assessed runs: not-an-assessed-run")
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: apart)), want: "the seats were never all active at once")
+    && assessment_holds(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledSucceeded)))))
 }
 
 // ── throughput and width REDs ─────────────────────────────────────────────────────────────────
 
 test fn throughput_below_the_pinned_rate_does_not_deliver_and_carries_the_number() -> Bool {
   let slow = varied_run(id: run_a, cpu: millisecond(count: 110), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
-  let a = assess_runner_throughput(selection: selection(), runs: [slow])
+  let a = assess_unobserved(selection: selection(), runs: [slow])
   let expected = eval_step_count_value(s: specimen_steps()) / 110
   !assessment_holds(a: a)
     && expected < pinned_rate()
@@ -585,7 +666,7 @@ test fn a_refused_or_oversubscribed_selected_allocation_derives_no_width() -> Bo
   let oversubscribed = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationOversubscribed)
   let unsound = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: FleetHostPlanUnsound { reason: "oomd enforcement unverified" }, allocation: HostAllocationConserves)
   ([oversubscribed, unsound] |> all(sel => {
-    let a = assess_runner_throughput(selection: sel, runs: [good_run(id: run_a)])
+    let a = assess_unobserved(selection: sel, runs: [good_run(id: run_a)])
     !assessment_holds(a: a) && (match a.slot_width { SlotWidthUnderivable { cause: _ } => true _ => false })
   }))
     && (match selected_host_allocation(plan: sound_plan(), allocation: HostAllocationConserves) {
@@ -619,8 +700,8 @@ test fn the_selected_sanction_not_the_assessment_decides_the_class() -> Bool {
 // deliver with RunnerThroughputDidNotHold, and refuses a claim riding another offer.
 test fn the_fabric_delivery_claim_holds_refuses_and_catches_another_offer() -> Bool {
   let s = selection()
-  let good = assess_runner_throughput(selection: s, runs: [good_run(id: run_a)])
-  let slow = assess_runner_throughput(selection: s, runs: [varied_run(id: run_a, cpu: millisecond(count: 110), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))])
+  let good = assess_at_width(selection: s, runs: [good_run(id: run_a)])
+  let slow = assess_unobserved(selection: s, runs: [varied_run(id: run_a, cpu: millisecond(count: 110), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))])
   let holds = match claimed_delivery_check(claim: OfferClaimsRunnerDelivery { offer: s.offer.id, assessment: good }) {
     ClaimedDeliveryHolds => true
     _ => false

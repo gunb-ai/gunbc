@@ -280,3 +280,25 @@ fn seal_cohort<K>(reading: CohortReading<K>, seat_key: fn(K) -> String) -> Cohor
     }
   }
 }
+
+// ── wire ──────────────────────────────────────────────────────────────────────────────────────
+
+fn cohort_refusal_wire<K>(r: CohortRefusal<K>, seat_key: fn(K) -> String) -> String {
+  match r {
+    CohortRosterEmpty => "the cohort roster is empty"
+    CohortRosterSeatDuplicated { seat: k } => concat("the cohort roster names a seat twice: ", seat_key(k))
+    CohortSeatReadingDuplicated { seat: k } => concat("a cohort seat was read twice: ", seat_key(k))
+    CohortSeatOffRoster { seat: k } => concat("a seat was read that the cohort roster does not name: ", seat_key(k))
+    CohortSeatReadingMissing { seat: k } => concat("a cohort roster seat was never read: ", seat_key(k))
+    CohortHostInstantsIncomparable => "the host window and the barrier were read from different clocks"
+    CohortHostWindowReversed => "the host observation window ends before it starts"
+    CohortSeatInstantsIncomparable { seat: k } => concat("a seat's instants are on a different clock from the cohort's: ", seat_key(k))
+    CohortSeatNotReadyAtBarrier { seat: k } => concat("a seat was not ready when the barrier released: ", seat_key(k))
+    CohortSeatStartedBeforeBarrier { seat: k } => concat("a seat started before the barrier released: ", seat_key(k))
+    CohortSeatWindowReversed { seat: k } => concat("a seat's window ends before it starts: ", seat_key(k))
+    CohortSeatOutsideHostWindow { seat: k } => concat("a seat ran outside the host observation window: ", seat_key(k))
+    CohortSeatNotSettled { seat: k } => concat("a seat's outcome was never read: ", seat_key(k))
+    CohortNeverAllActive { last_to_start: a, first_to_end: b } =>
+      join(["the seats were never all active at once: ", seat_key(a), " started after ", seat_key(b), " had ended"], "")
+  }
+}
