@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_derivation_key_that_does_not_pin_bytes_across_build_hosts
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_derivation_key_that_does_not_pin_bytes_across_build_hosts: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_derivation_key_that_does_not_pin_bytes_across_build_hosts" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: extdeps.provisioning.ubuntu_seeded_install_media seeded_install_media_build_key names a derivation by its inputs, and the pinned-dates replay (extdeps.provisioning.ubuntu_seeded_install_media_remaster) is written as though one key determines one output -- but the same key built on two hosts gives two different images. The key pins the INPUTS it hashes and not an input the bytes also depend on.",
+
+    "SPECIMEN, 2026-09-28 (session zesty-newt-134): the mtcollins1 census derivation with build key 8d357a525f078cb4 was published from srv2 as output sha256 30ca88d43f8913995078f6c2c917d5049842f927f3fc886a103f460dd146a706 (gunbc.machine_intake_mtcollins1_boot_authorization mtcollins1_boot_medium). The same derivation built through UNCHANGED main code (0372e8fa23) in a session container, over the same pinned stock ISO (2ee2163c...) with xorriso 1.5.6 on both, produced fb94412100f516681e70ca931f6d1abe87f12bfcd60229128247a3fc1ce0c6bf. The divergence is therefore not a code change.",
+
+    "LEADING HYPOTHESIS, NOT AN ESTABLISHED CAUSE: xorriso's -map records the source files' Rock Ridge owner and group, and the build user differed (uid 1000 'node' in the container; the srv2 build user there). The discriminator that would establish it: two builds on ONE host differing only in the owner of the mapped seed and grub.cfg files, compared byte-wise -- or an isoinfo -R listing of both images' mapped members. Neither has been run.",
+
+    "HARM: mitigated, not silent. Publication measures the digest it builds and names the image by it, and the boot reads the served bytes back against the pinned digest, so no consumer trusts a predicted digest. What is lost is the ability to reproduce a published image anywhere but its build host -- a rebuild elsewhere cannot answer whether the fold still builds what it built -- which is why the census publish's first act is to rebuild the pinned derivation ON srv2 and require the pinned digest (gunbc.machine_intake_mtcollins1_census_image_publish census_srv2_regression) before publishing anything.",
+
+    "RUNG FOUND AT: mitigatable. ATTAINABLE CEILING: structurally impossible for the build-host input -- the builder pins every host-dependent attribute it writes into the image (for example owner and group of mapped files), so the key determines the bytes. NEXT-RUNG TRIGGER: the cause established by the discriminator above, then that attribute pinned in the replay with a builder_revision bump and a control that builds one key under two owners and requires equal bytes.",
+  ],
+
+  evidence: [],
+}

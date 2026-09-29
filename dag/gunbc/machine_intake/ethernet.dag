@@ -126,25 +126,25 @@ fn ethernet_ports_are_distinct(a: PhysicalEthernetPort, b: PhysicalEthernetPort)
   }
 }
 
+fn ethernet_function_is_unobserved(f: EthernetFunction) -> Bool {
+  match f {
+    BmcDedicated => false
+    BmcNcsi => false
+    HostData => false
+    PrebootNetwork => false
+    FunctionUnobserved { discriminator: _ } => true
+  }
+}
+
 fn ethernet_function_identity(a: EthernetFunction, b: EthernetFunction) -> FunctionIdentityStanding {
-  match a {
-    FunctionUnobserved { discriminator: _ } =>
-      FunctionIdentityUnobserved {
-        discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
-      }
-    _ =>
-      match b {
-        FunctionUnobserved { discriminator: _ } =>
-          FunctionIdentityUnobserved {
-            discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
-          }
-        _ =>
-          if a == b {
-            ObservedSameFunction
-          } else {
-            ObservedDistinctFunctions
-          }
-      }
+  if ethernet_function_is_unobserved(f: a) || ethernet_function_is_unobserved(f: b) {
+    FunctionIdentityUnobserved {
+      discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
+    }
+  } else if a == b {
+    ObservedSameFunction
+  } else {
+    ObservedDistinctFunctions
   }
 }
 

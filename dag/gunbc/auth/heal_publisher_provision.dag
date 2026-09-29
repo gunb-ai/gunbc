@@ -349,9 +349,9 @@ fn classify_dedicated_federation(f: DedicatedFederation, pool: PoolReading, prov
     FederationUnclassified { reasons: reasons }
   } else {
     FederationClassified {
-      create_pool: match pool { PoolObservedAbsent => true  _ => false },
+      create_pool: match pool { PoolObservedAbsent => true  PoolObserved { pool: _ } => false  PoolUnreadable { cause: _ } => false },
       create_provider: providers_absent(providers: providers),
-      create_account: match account { AccountObservedAbsent => true  _ => false },
+      create_account: match account { AccountObservedAbsent => true  AccountObserved { email: _ } => false  AccountUnreadable { cause: _ } => false },
     }
   }
 }

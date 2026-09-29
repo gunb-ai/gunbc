@@ -15,12 +15,12 @@ import v2.compiler.infer {
 }
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.type_binder { edge_is_cast_target }
-import v2.std.compilers.body_lowering {
+import v2.std.arrow_signature {
+  ApplicationBindingRefused,
+  ApplicationBound,
   ArrowParameterOrderAbsent,
   ArrowParameterOrderDeclared,
   ArrowParameterOrderMalformed,
-  ApplicationBindingRefused,
-  ApplicationBound,
   application_actual_edges,
   application_binding_plan,
   arrow_declared_parameter_order
@@ -111,6 +111,11 @@ import v2.std.node {
   Arrow,
   Atom,
   DirectAtomBody,
+  FunctionValueBody,
+  ComputationBody,
+  RecordConstructBody,
+  DeclarationReferenceBody,
+  UnsupportedArrowBody,
   arrow_body_admits_eval_entry,
   bag_hash_digest,
   classify_arrow_body_form,
@@ -1335,7 +1340,7 @@ fn eval_type_node_atom(
 
 
 // BINDING GOES THROUGH THE ONE PLAN. `args` are the application's actuals evaluated in authored
-// order (eval_edge_is_runtime_argument); v2.std.compilers.body_lowering application_binding_plan says,
+// order (eval_edge_is_runtime_argument); v2.std.arrow_signature application_binding_plan says,
 // for each declared parameter, which of them fills it -- the same plan v2.compiler.infer checked, so
 // the two stages cannot bind one call differently. A domain with no named binder keeps its positional
 // edges, bound in their own order.
@@ -1647,6 +1652,21 @@ fn eval_value_node(
   }
 }
 
+// A CALLEE WHOSE BODY IS ITSELF A FUNCTION VALUE REFUSES UNDER ITS OWN REASON. The body is
+// well-formed (v2.std.node FunctionValueBody), but eval carries no closure value to return, so the
+// call is refused -- never folded into the generic unsupported-callee reason, which would hide
+// which capability is missing.
+fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
+  match form {
+    FunctionValueBody => ^eval_rejected_function_value_body
+    DirectAtomBody => ^eval_rejected_unsupported_callee
+    RecordConstructBody => ^eval_rejected_unsupported_callee
+    DeclarationReferenceBody => ^eval_rejected_unsupported_callee
+    ComputationBody { behavior: _ } => ^eval_rejected_unsupported_callee
+    UnsupportedArrowBody => ^eval_rejected_unsupported_callee
+  }
+}
+
 fn eval_transform_node(
   node: Node,
   args: List<RuntimeValue>,
@@ -1709,7 +1729,10 @@ fn eval_transform_node(
                   )
                 } else {
                   outcome_rejected(
-                    d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_edge.target)
+                    d: eval_diagnostic(
+                      reason: eval_callee_body_refusal_reason(form: body_form),
+                      node: callee_edge.target
+                    )
                   )
                 }
               Rejected { diagnostics: _ } =>

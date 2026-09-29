@@ -9,7 +9,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.compilers.body_lowering {
+import v2.std.arrow_signature {
   ApplicationBindingRefused,
   ApplicationBound,
   ArrowParameterOrderAbsent,
@@ -46,7 +46,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: named actuals carried through body lowering and bound by name -- v2.compiler.body_lowering_fold
 // body_lower_call_arg_edges (the label rides the application as a Named edge), v2.std.node's Transform
-// discipline PositionalPrefixThenLabeled, and the one binding authority v2.std.compilers.body_lowering
+// discipline PositionalPrefixThenLabeled, and the one binding authority v2.std.arrow_signature
 // application_binding_plan that v2.compiler.infer judges over and v2.compiler.eval binds through.
 //
 // ROUTE: every specimen is source text assembled through assemble_program_from_ingest (lowering and

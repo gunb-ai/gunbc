@@ -1,6 +1,6 @@
 module v2.test.claim.body_cast_node
 
-import v2.std.compilers.body_lowering { ApplicationBindingRefused, ApplicationBound, application_binding_plan, declared_signature }
+import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, application_binding_plan, declared_signature }
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.coercion { NoTargetCandidate }
 import std.occurrence_identity { OccurrenceSynthetic }

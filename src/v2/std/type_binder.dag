@@ -304,7 +304,7 @@ fn bind_named_labels_conform(n: Node) -> Bool {
 // labelled by the callee's parameter names (v2.compiler.body_lowering_fold body_lower_call_arg_edge).
 // A Transform carrying the marker beside any other Named edge mixes the two and refuses here. Whether
 // an application's label names a parameter is a binding question, decided against the callee's
-// domain -- an unknown label refuses at infer (v2.std.compilers.body_lowering application_binding_plan,
+// domain -- an unknown label refuses at infer (v2.std.arrow_signature application_binding_plan,
 // application_argument_label_unknown) -- so no Accepted program holds a foreign label either way. Every
 // other behavior's Named edges -- a Loop's bound and carrier -- are owned by its own v2.std.node edge
 // discipline (loop_behavior_edges_conform), and a second, blanket rule here refusing labels that

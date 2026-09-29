@@ -58,7 +58,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
+import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -961,7 +961,7 @@ data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTa
 }
 
 data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_census_image.dag",
+  entry: "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
   function: "mtcollins1_census_image_publish_wet",
 }
 
@@ -2573,8 +2573,9 @@ fn gunbc_ci_runner_microvm_boot_probe_invoke() -> String {
   )
 }
 
-// The census image publish needs no credential prelude: it reads and writes only the runner's own
-// host (srv2's /srv/bmc export) and reaches no controller, so its step is the plain gunbc run.
+// The census image publish needs no credential prelude: it reaches srv2 over fleet SSH (the mode
+// consumes the fleet key, gunbc.fleet_converge_workflow) and no controller, so its step is the plain
+// gunbc run.
 fn gunbc_ci_mtcollins1_census_image_publish_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
