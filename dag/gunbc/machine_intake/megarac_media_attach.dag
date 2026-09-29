@@ -1331,26 +1331,35 @@ fn configuration_row_reading(
                         match status {
                           RedirectionStopped => ConfigurationRowIdle
                           RedirectionWireUncatalogued { wire: w } => ConfigurationRowUncatalogued { image_name: name, wire: w }
-                          _ =>
-                            if name == "" {
-                              ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
-                            } else {
-                              ConfigurationRowPresenting {
-                                row: PresentingRow {
-                                  image_name: name,
-                                  media_index: json_number_member(doc: row, key: "media_index"),
-                                  session_index: json_number_member(doc: row, key: "session_index"),
-                                  redirection_wire: wire,
-                                  redirection: status,
-                                },
-                              }
-                            }
+                          RedirectionStartedConnectionAccepted => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
+                          RedirectionConnecting => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
                         }
                     }
                   }
               }
           }
       }
+  }
+}
+
+fn configuration_row_presenting_reading(
+  row: JsonValue,
+  name: String,
+  wire: Int,
+  status: MegaRacRedirectionStatus,
+) -> ConfigurationRowReading {
+  if name == "" {
+    ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
+  } else {
+    ConfigurationRowPresenting {
+      row: PresentingRow {
+        image_name: name,
+        media_index: json_number_member(doc: row, key: "media_index"),
+        session_index: json_number_member(doc: row, key: "session_index"),
+        redirection_wire: wire,
+        redirection: status,
+      },
+    }
   }
 }
 
@@ -1942,6 +1951,33 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
             ReadinessWrongPresentation { image_name: _, configurations: _ } => PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
           }
       }
-    _ => PresentationUnobserved { reason: "the presentation could not be observed (the session was refused or its token unreadable)" }
+    MegaRacPresentationReady { route: _, evidence: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessTimedOut { image_name: _, route: _, last: _, deadline: _, looks: _, cd_before_any_write: _, cd_at_refusal: _ } => presentation_unobserved_before_presentation()
+    MegaRacMediaStateUnestablished { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_ready: _, general_at_ready: _ } => presentation_unobserved_before_presentation()
+    MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: _, reason: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessRefused { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_refusal: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessClockUnreadable { image_name: _, route: _, detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessClockIncoherent { image_name: _, route: _, opened_at: _, previous: _, look: _, looks: _ } => presentation_unobserved_before_presentation()
+    MegaRacConfigurationsUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacShareMismatch { expected: _, observed: _ } => presentation_unobserved_before_presentation()
+    MegaRacShareUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacSessionRefused { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacSessionTokenUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacImagesUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacImageListingEmpty => presentation_unobserved_before_presentation()
+    MegaRacImageListingUnparseable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacImageNotEnumerated { image_name: _ } => presentation_unobserved_before_presentation()
+    MegaRacForeignImagePresented { image_name: _, configurations: _ } => presentation_unobserved_before_presentation()
+    MegaRacSeveralImagesPresented { configurations: _ } => presentation_unobserved_before_presentation()
+    MegaRacStaleDetachNotAdmitted { stale_image: _, reason: _ } => presentation_unobserved_before_presentation()
+    MegaRacStaleDetachUnconfirmed { detach: _, reason: _ } => presentation_unobserved_before_presentation()
+    MegaRacRedirectionUncatalogued { image_name: _, wire: _, configurations: _ } => presentation_unobserved_before_presentation()
+    MegaRacRefreshClockUnreadable { detail: _, detach: _ } => presentation_unobserved_before_presentation()
+    MegaRacListingUnparseableAfterDetach { detail: _, detach: _ } => presentation_unobserved_before_presentation()
+    MegaRacNotEnumeratedAfterRefresh { image_name: _, detach: _, standing: _ } => presentation_unobserved_before_presentation()
   }
+}
+
+fn presentation_unobserved_before_presentation() -> PresentationStillServed {
+  PresentationUnobserved { reason: "the presentation could not be observed (the session was refused or its token unreadable)" }
 }

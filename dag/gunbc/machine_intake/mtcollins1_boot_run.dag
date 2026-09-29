@@ -639,16 +639,26 @@ fn workload_pending_footprint_judge(workload: HostCaptureWorkloadShape, out: Lis
   let mem = workload_byte_reading(out: out, token: host_capture_workload_mem_available_token)
   match observed {
     WorkloadBytesUnreported => none
-    _ =>
-      if !workload_reading_is(declared: declared, r: observed) {
-        Present { value: WorkloadFootprintMismatch { declared: declared, observed: observed } }
-      } else if host_capture_output_has_line(output: out, line: host_capture_workload_preflight_refused)
-          || workload_capacity_already_refuses(declared: declared, r: shm)
-          || workload_capacity_already_refuses(declared: declared, r: mem) {
-        Present { value: WorkloadPreflightRefused { declared: declared, shm_avail: shm, mem_available: mem } }
-      } else {
-        none
-      }
+    WorkloadBytesReported { bytes: _ } => workload_reported_footprint_judge(out: out, declared: declared, observed: observed, shm: shm, mem: mem)
+    WorkloadBytesUnparsed { spelling: _ } => workload_reported_footprint_judge(out: out, declared: declared, observed: observed, shm: shm, mem: mem)
+  }
+}
+
+fn workload_reported_footprint_judge(
+  out: List<String>,
+  declared: ByteSize,
+  observed: WorkloadByteReading,
+  shm: WorkloadByteReading,
+  mem: WorkloadByteReading,
+) -> MtCollins1BootTerminalCause? {
+  if !workload_reading_is(declared: declared, r: observed) {
+    Present { value: WorkloadFootprintMismatch { declared: declared, observed: observed } }
+  } else if host_capture_output_has_line(output: out, line: host_capture_workload_preflight_refused)
+      || workload_capacity_already_refuses(declared: declared, r: shm)
+      || workload_capacity_already_refuses(declared: declared, r: mem) {
+    Present { value: WorkloadPreflightRefused { declared: declared, shm_avail: shm, mem_available: mem } }
+  } else {
+    none
   }
 }
 
@@ -1190,13 +1200,19 @@ fn mtcollins1_boot_handoff_when_media_ready(
             },
           }
         }
-        _ =>
-          MediaGatedHandoff {
-            result: handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: media was ready at the gate but the pre-handoff recheck did not admit it; no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: before))))),
-            media: HandoffMediaWithheldAtRecheck { before: before },
-          }
+        PresentationReadyButSessionHeld { held: _ } => handoff_withheld_at_recheck(before: before)
+        PresentationNoLongerReady { reason: _ } => handoff_withheld_at_recheck(before: before)
+        PresentationStateUnestablished { cd_error: _ } => handoff_withheld_at_recheck(before: before)
+        PresentationUnobserved { reason: _ } => handoff_withheld_at_recheck(before: before)
       }
     }
+  }
+}
+
+fn handoff_withheld_at_recheck(before: MegaRacAttachResult) -> MediaGatedHandoff {
+  MediaGatedHandoff {
+    result: handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: media was ready at the gate but the pre-handoff recheck did not admit it; no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: before))))),
+    media: HandoffMediaWithheldAtRecheck { before: before },
   }
 }
 
