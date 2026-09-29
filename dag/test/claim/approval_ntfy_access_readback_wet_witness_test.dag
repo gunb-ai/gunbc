@@ -21,27 +21,42 @@ import gunbc.auth.approval_ntfy_runtime_observe {
 // passes is never installed, so the one read that can bind the process -- the per-release helper at
 // /opt/gunbc/approval-broker-helpers/<revision> -- cannot run on any host, and the verdict over
 // every reading is refusal: a failed or inactive unit, any runtime gap, or that failed helper read.
-// So the claim holds on ANY host: the verb refuses before any code is minted and the store root is
-// never created. Forcing the verdict (the verb proceeding without its
-// reading) reds it: it then goes on to the clock, the entropy and the store. Every refusal arm is
-// witnessed hermetically over supplied readings in
+// So the claim holds on ANY host: the verb refuses before any code is minted, and it leaves the
+// store root exactly as it found it. Forcing the verdict (the verb proceeding without its reading)
+// reds it on every host through the refusal text: it then goes on to the clock, the entropy and the
+// store. Every refusal arm is witnessed hermetically over supplied readings in
 // test.claim.approval_ntfy_access_readback_witness_test; this is the one claim that runs the real
 // root.
+//
+// THE STORE ROOT'S PRESENCE IS THE HOST'S FACT, NOT THIS CLAIM'S PREMISE. The claim used to require
+// the root ABSENT before the call, which holds on a runner host no operator has enrolled on and fails
+// on srv1, where the broker's real device store exists -- so the floor went red by runner assignment
+// (merge-group run 36567545454 on srv1-07; gunbc.recurring_failure_mode
+// wet_witness_keyed_to_the_runner_not_its_subject). It now asserts the RELATION: the root's presence
+// and, as far as this principal can list it, its entries are the same after the verb as before.
+// Where the root is absent that is the old assertion; where it exists and is owner-only the listing
+// reads the same refusal both times and the refusal text is the discriminating conjunct.
 data never_installed_revision: String = "0000000000000000000000000000000000000000"
 
 fn path_exists(path: String) -> Bool {
   run_shell_command_observe(command: posix_sh_program_command(script: "test -e '" + path + "'\n"), transport: LocalExec).exit_code == 0
 }
 
+fn root_listing(path: String) -> String {
+  let o = run_shell_command_observe(command: posix_sh_program_command(script: "ls -A '" + path + "' 2>&1\n"), transport: LocalExec)
+  join([to_string(o.exit_code), o.stdout], ":")
+}
+
 test fn the_root_refuses_before_minting_on_this_host_by_real_execution() -> Bool {
-  let before = path_exists(path: approval_device_store_root as String)
+  let existed = path_exists(path: approval_device_store_root as String)
+  let listed = root_listing(path: approval_device_store_root as String)
   let r = issue_device_enrolment_code(revision: never_installed_revision)
-  !before
-    && (match r {
+  (match r {
       CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "refused before any code was minted")
       _ => false
     })
-    && !path_exists(path: approval_device_store_root as String)
+    && path_exists(path: approval_device_store_root as String) == existed
+    && root_listing(path: approval_device_store_root as String) == listed
 }
 
 // THE HELPER'S REAL OUTPUT READS THROUGH THE REAL CODEC. The helper entry
