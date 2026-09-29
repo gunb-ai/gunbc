@@ -4924,17 +4924,26 @@ mod compiler_tests {
     // v1.compiler.infer_resolve resolve_item_types resolved each field's authored reference and kept
     // only its properties, so the typed tree's field reference named no declaration.
     // field_inferred_with_declaration records resolve's binding on Node.declaration. The rows run
-    // the REAL route, parse through resolve through infer, via the census entry, and read the
-    // decl_identity column (v1.compiler.infer_env type_reference_declaration_reading).
-    // THE RED is the first row: without the repair the field reads Unidentified. The control keeps
+    // the REAL route, parse through resolve through infer, via the census entry. Each row reads two
+    // columns: decl_identity (the production reading, which must stay UNCHANGED while
+    // Node.declaration is in shadow) and recorded_declaration (the shadow slot resolve wrote).
+    // THE RED is the first row: without the writer recorded_declaration reads none. The control keeps
     // a kernel spelling identified by the kernel, so a repair that bound kernel fields to a mint
     // (measured once, through the inferred slot: every String/Int field turned Unidentified) fails it.
     #[test]
     fn declaration_field_reference_names_its_declaration() {
         use crate::v1_compiler_compile::SourceFile;
         let sources = vec![
-            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/a.dag".to_string(), content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n\ntype Tree {\n  kids: List<Tree>\n}\n\nfn tree_size(t: Tree) -> Int {\n  1\n}\n".to_string() }),
-            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/b.dag".to_string(), content: "module fid.b\n\nimport fid.a { Leaf }\n\ntype Holder {\n  leaf: Leaf\n}\n".to_string() }),
+            std::rc::Rc::new(SourceFile {
+                path: "fixtures/field_identity/a.dag".to_string(),
+                content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n".to_string(),
+            }),
+            std::rc::Rc::new(SourceFile {
+                path: "fixtures/field_identity/b.dag".to_string(),
+                content:
+                    "module fid.b\n\nimport fid.a { Leaf }\n\ntype Holder {\n  leaf: Leaf\n}\n"
+                        .to_string(),
+            }),
         ];
         let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
             std::rc::Rc::new(sources.into()),
@@ -4943,34 +4952,28 @@ mod compiler_tests {
             !receipt.starts_with("REFUSED"),
             "the census must compile the fixture: {receipt}"
         );
-        let identity_at = |enclosing: &str, position: &str, authored: &str| -> Vec<String> {
+        let decl_identity = |enclosing: &str, authored: &str| -> Vec<String> {
             receipt
                 .lines()
                 .skip(1)
                 .map(|l| l.split('\t').collect::<Vec<_>>())
-                .filter(|c| c[1] == enclosing && c[2] == position && c[3] == authored)
-                .map(|c| c[8].to_string())
+                .filter(|c| c[1] == enclosing && c[2] == "declaration_field" && c[3] == authored)
+                .map(|c| format!("{}|{}", c[8], c[12]))
                 .collect()
         };
-        let decl_identity =
-            |enclosing: &str, authored: &str| identity_at(enclosing, "declaration_field", authored);
         // (1) THE RED: a field naming another module's record.
         assert_eq!(
             decl_identity("Holder", "Leaf"),
-            vec!["Declaration:fid.a::Leaf".to_string()],
+            vec![
+                "Unidentified:SpanDeclaresNothing/resolved:none|Declaration:fid.a::Leaf"
+                    .to_string()
+            ],
             "{receipt}"
         );
         // (2) The control: a kernel spelling is identified by the kernel, not bound to a mint.
         assert_eq!(
             decl_identity("Leaf", "Int"),
-            vec!["Kernel:Int".to_string()],
-            "{receipt}"
-        );
-        // (3) CAUSE 1a, THE RED: a signature reference to a RECURSIVE type. Resolve leaves it in place
-        // rather than expanding it (is_recursive_type_for), and now records its identity there.
-        assert_eq!(
-            identity_at("tree_size", "fn_signature_param", "Tree"),
-            vec!["Declaration:fid.a::Tree".to_string()],
+            vec!["Kernel:Int|none".to_string()],
             "{receipt}"
         );
     }

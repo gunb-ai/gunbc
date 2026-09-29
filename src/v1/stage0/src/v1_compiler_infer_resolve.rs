@@ -17,7 +17,7 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
     UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
 };
 pub use crate::v1_compiler_infer_env::{
-    authored_name, bare_name_miss_diagnostic, declaration_ref_of_type_node,
+    authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
     lookup_unit_variant_phantom_type, type_ref_measure_binding_authority,
@@ -2043,10 +2043,7 @@ Rc::new(NodeResolveResult {
                                             || n_target_is_coproduct_container.clone())
                                         {
                                             Rc::new(NodeResolveResult {
-                                                resolved: reference_with_declaration(
-                                                    n.clone(),
-                                                    env.clone(),
-                                                ),
+                                                resolved: n.clone(),
                                                 diagnostics: Rc::new(vec![]),
                                             })
                                         } else {
@@ -3766,34 +3763,32 @@ pub fn field_inferred_with_declaration(
 ) -> Option<Rc<InferredNode>> {
     match field.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: authored, .. }) => {
-            Some(Rc::new(InferredNode::Resolved {
-                node: reference_with_declaration(authored.clone(), env.clone()),
-            }))
+            if ((authored.declaration.clone() != std::option::Option::None)
+                || crate::std_types::is_kernel_type(crate::v1_compiler_infer_env::authored_name(
+                    env.clone(),
+                    authored.clone(),
+                )))
+            {
+                field.inferred.clone()
+            } else {
+                match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), authored.clone()) {
+                    Some(bound) => {
+                        match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
+                            bound.clone(),
+                            env.source_indices.clone(),
+                            env.clone(),
+                        ) {
+                            Some(d) => Some(Rc::new(InferredNode::Resolved {
+                                node: node_with_declaration(authored.clone(), d.clone()),
+                            })),
+                            std::option::Option::None => field.inferred.clone(),
+                        }
+                    }
+                    std::option::Option::None => field.inferred.clone(),
+                }
+            }
         }
         _ => field.inferred.clone(),
-    }
-}
-
-pub fn reference_with_declaration(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
-    if ((n.declaration.clone() != std::option::Option::None)
-        || crate::std_types::is_kernel_type(crate::v1_compiler_infer_env::authored_name(
-            env.clone(),
-            n.clone(),
-        )))
-    {
-        n.clone()
-    } else {
-        match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
-            Some(bound) => match crate::v1_compiler_infer_env::declaration_ref_of_type_node(
-                bound.clone(),
-                env.source_indices.clone(),
-                env.clone(),
-            ) {
-                Some(d) => node_with_declaration(n.clone(), d.clone()),
-                std::option::Option::None => n.clone(),
-            },
-            std::option::Option::None => n.clone(),
-        }
     }
 }
 

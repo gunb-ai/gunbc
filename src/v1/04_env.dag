@@ -1519,21 +1519,22 @@ fn operand_declaration_from_qualified_name(qualified: String, env: TypeEnv) -> O
 // only after both exact hops decline, and its answer still has to survive the same census join,
 // so a pool-precedence homonym with a non-agreeing span or prefix answers none rather than wrong.
 //
-// v1's ONE type-identity derivation. Its primary source is Node.declaration, the identity resolve
-// records (v1.compiler.infer_resolve field_inferred_with_declaration), and it is read first. It is a
-// separate slot from `inferred` because identity and resolved structure are two facts: writing
-// identity into `inferred` broke the generation-2 compiler, whose consumers read that slot as
-// structure (neat-boar-16 ruling A, 2026-09-29).
-// The Optional below is a PROJECTION of the typed reading, so the unidentified population a census
-// counts and the population a classifier sees are one set by construction, and every Absent carries
-// the cause it was declined for.
-// THE SPAN AND QUALIFIED-NAME JOINS BELOW ARE THE STAGED OLD ROUTE of a replacement migration (§3).
-// They answer only for nodes resolve has not yet written. They are deleted, not kept as a fallback,
-// when resolve writes Node.declaration at every type-reference position. The check is to delete
-// them and have v1.tests.claim.carrier_realization_census still report zero unidentified rows over
-// the self-host and dag closures. It needs
-// signature references to recursive types (cause 1a), alias and generic-instance substitution
-// copies (cause 2) and type-parameter binders (cause 3), per node adhoc-439a4122-576.
+// v1's ONE type-identity derivation FOR PRODUCTION READERS. The Optional below is a PROJECTION of the
+// typed reading, so the unidentified population a census counts and the population a classifier
+// sees are one set by construction, and every Absent carries the cause it was declined for.
+// ITS REPLACEMENT IS BUILT IN SHADOW (§3's staged form for a gap-intolerant boundary; neat-boar-16,
+// 2026-09-29). Resolve records identity on Node.declaration (v1.compiler.infer_resolve
+// field_inferred_with_declaration), a separate slot from `inferred`, because consumers read
+// `inferred` as resolved structure. NOTHING HERE OR IN ANY PRODUCTION READER CONSUMES
+// Node.declaration YET, so a live consumer never has two sources for one fact. Its one consumer is
+// the recorded_declaration column of v1.tests.claim.carrier_realization_census, so it is a declared
+// frontier, not dangling (§3c).
+// THE TRANSITION TRIGGER IS MEASURED. On that census, over the self-host and dag closures, the
+// recorded_declaration column must name a declaration at every position this reading identifies,
+// at identity grain. Type-variable binders (cause 3) are excluded by type, not by count. Then ONE
+// transition switches every reader to Node.declaration and deletes, together, the reference-side
+// joins below, the qualified-name arm and the spelling fallbacks, with the census before and after
+// as its receipt.
 type TypeNodeDeclarationReading
   = TypeNodeNamesDeclaration { declaration: DeclarationRef }
   | TypeNodeUnidentified { cause: TypeNodeUnidentifiedCause }
@@ -1549,25 +1550,11 @@ type TypeNodeUnidentifiedCause
   | TypeNodeQualifierMatchesNoDeclarer { qualified: String }
 
 fn declaration_reading_of_type_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> TypeNodeDeclarationReading {
-  if rt.declaration != none { return TypeNodeNamesDeclaration { declaration: rt.declaration.value } }
   let authored = authored_name_at(source_indices: source_indices, node: rt)
   let decl_name = qualified_last_segment(name: authored)
   if decl_name == "" { return TypeNodeUnidentified { cause: TypeNodeAuthoredNameEmpty } }
   let entry = map_get(env.symbol_index.global_bare, decl_name)
-  let by_span = match rt.ident_span {
-    Absent => none
-    Present { value: sp } =>
-      match entry {
-        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-          if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
-        Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
-            Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
-            Absent => none
-          }
-        Absent => none
-      }
-  }
+  let by_span = declaration_ref_of_declaration_node(decl: rt, source_indices: source_indices, env: env)
   match by_span {
     Present { value: d } => TypeNodeNamesDeclaration { declaration: d }
     Absent =>
@@ -1578,6 +1565,31 @@ fn declaration_reading_of_type_node(rt: Node, source_indices: Map<String, Newlin
           else if qualified_all_but_last(name: authored) != "" { TypeNodeUnidentified { cause: TypeNodeQualifierMatchesNoDeclarer { qualified: authored } } }
           else if rt.ident_span == none { TypeNodeUnidentified { cause: TypeNodeCarriesNoSpan { name: decl_name } } }
           else { TypeNodeUnidentified { cause: TypeNodeSpanDeclaresNothing { name: decl_name } } }
+      }
+  }
+}
+
+// THE MINT: the DeclarationRef of a DECLARATION node, read from the declaration index. A
+// declaration node carries its own declaring span, and the index row whose binding declares that
+// span names the module that declares it, so this is the definition of the identity, not a
+// reading of a spelling. It answers none for a node whose span declares nothing, as any reference
+// does. The one writer of Node.declaration (v1.compiler.infer_resolve field_inferred_with_declaration)
+// mints through this and through nothing else: not the qualified-name arm, not a by-name lookup.
+fn declaration_ref_of_declaration_node(decl: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: decl))
+  if decl_name == "" { return none }
+  match decl.ident_span {
+    Absent => none
+    Present { value: sp } =>
+      match map_get(env.symbol_index.global_bare, decl_name) {
+        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+          if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
+        Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
+            Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
+            Absent => none
+          }
+        Absent => none
       }
   }
 }
