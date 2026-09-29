@@ -101,7 +101,9 @@ fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {
       }
       NonFinite { tag: tb } => match tb {
         NegInfinity => Greater
-        _ => Less
+        QuietNan => Less
+        SignalingNan => Less
+        PosInfinity => Less
       }
     }
     NonFinite { tag: ta } => match b {
@@ -111,7 +113,9 @@ fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {
         trailing_significand: fb
       } => match ta {
         NegInfinity => Less
-        _ => Greater
+        QuietNan => Greater
+        SignalingNan => Greater
+        PosInfinity => Greater
       }
       NonFinite { tag: tb } => nat_compare(
         a: float_special_rank(ta),

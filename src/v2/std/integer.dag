@@ -1009,21 +1009,24 @@ fn int_sub(a: Int, b: Int) -> Int {
 fn int_eq(a: Int, b: Int) -> Bool {
   match int_compare(a: a, b: b) {
     Equal => true
-    _ => false
+    Less => false
+    Greater => false
   }
 }
 
 fn int_ne(a: Int, b: Int) -> Bool {
   match int_compare(a: a, b: b) {
     Equal => false
-    _ => true
+    Less => true
+    Greater => true
   }
 }
 
 fn int_lt(a: Int, b: Int) -> Bool {
   match int_compare(a: a, b: b) {
     Less => true
-    _ => false
+    Equal => false
+    Greater => false
   }
 }
 
@@ -1038,7 +1041,8 @@ fn int_le(a: Int, b: Int) -> Bool {
 fn int_gt(a: Int, b: Int) -> Bool {
   match int_compare(a: a, b: b) {
     Greater => true
-    _ => false
+    Less => false
+    Equal => false
   }
 }
 
@@ -1332,7 +1336,12 @@ fn integer_decimal_digit_from_node_optional(node: Node) -> Optional<DecimalDigit
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       integer_decimal_digit_from_tag_atom(id: id)
-    _ => optional_absent()
+    TypeNode { connective: Conj } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 

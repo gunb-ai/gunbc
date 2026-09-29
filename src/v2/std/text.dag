@@ -224,7 +224,8 @@ fn octet_scalar_walk_step(w: OctetScalarWalk, code_point: Int, octet: Int) -> Oc
           found: if next > octet { OctetInsideScalar } else { OctetBeyondEnd }
         }
       }
-    _ => w
+    OctetAtScalarBoundary { index: _ } => w
+    OctetInsideScalar => w
   }
 }
 
