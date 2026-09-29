@@ -1,0 +1,10 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.std.compilers.semantic_decl_emission done in 3 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.translate done in 3 seconds
+PASS every_pinned_cause_is_attributed_to_its_lane
+PASS unknown_cause_is_fail_closed_unattributed
+PASS dag_module_paths_keeps_only_dag_modules
+PASS affected_set_diff_failure_refuses_fail_closed
+PASS affected_set_non_dag_changes_ledger_empty

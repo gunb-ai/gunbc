@@ -1,0 +1,7 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+error: resolve failed for target/qualification-roster-lens/v2.test.workflow.lens_synthesis_family_eval.dag
+  cause: target/qualification-roster-lens/v2.lens.synthesis.dag:173:45: error: unresolved type 'AdvisoryLens'
+target/qualification-roster-lens/v2.lens.synthesis.dag:181:53: error: unresolved type 'AdvisoryLens'
+target/qualification-roster-lens/v2.lens.synthesis.dag:173:60: error: unresolved type 'AdvisoryLens'
+target/qualification-roster-lens/v2.lens.synthesis.dag:181:68: error: unresolved type 'AdvisoryLens'
