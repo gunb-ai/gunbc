@@ -818,29 +818,17 @@ fn module_storage_binding_from_read_prepared(
         }
       )
     GeneratedSource =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
     TestClaimArtifact =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
     ProjectionArtifact =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
     Stage0Candidate =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
     CorePackage =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
     WitnessBundle =>
-      outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
-      )
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
 

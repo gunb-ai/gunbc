@@ -42,6 +42,14 @@ fn emit_produced_decl_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
+fn emit_produced_decl_not_conj_refusal(decl: Node) -> Outcome<Node> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
+    )
+  }
+}
+
 fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
   match decl.kind {
     TypeNode { connective: Conj } =>
@@ -63,42 +71,12 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
             )
           }
       }
-    TypeNode { connective: Atom { identity: _ } } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
-        )
-      }
-    TypeNode { connective: Disj } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
-        )
-      }
-    TypeNode { connective: Arrow } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
-        )
-      }
-    TypeNode { connective: Cardinality } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
-        )
-      }
-    TypeNode { connective: Instantiation } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
-        )
-      }
-    ComputationNode { behavior: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
-        )
-      }
+    TypeNode { connective: Atom { identity: _ } } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Disj } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Arrow } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Cardinality } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Instantiation } => emit_produced_decl_not_conj_refusal(decl: decl)
+    ComputationNode { behavior: _ } => emit_produced_decl_not_conj_refusal(decl: decl)
   }
 }
 

@@ -32,9 +32,10 @@ import v2.std.diagnostic {
   Textual,
   WholeFile
 }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.language_model { LanguageModel }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode, symbol_lexeme }
+import v2.std.node { Named, Node, Positional, Symbol, symbol_lexeme }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
 import v2.std.text { String }
@@ -202,18 +203,6 @@ type PopulationFrame {
 
 fn authored_atom_population_empty() -> AuthoredAtomPopulation {
   AuthoredAtomPopulation { atoms: Empty, import_channel: 0, test_marker_channel: 0, unreadable: Empty, items: 0, item_names: empty_map() }
-}
-
-fn node_atom_identity_of(node: Node) -> Optional<Symbol> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
-    TypeNode { connective: Conj } => Absent
-    TypeNode { connective: Disj } => Absent
-    TypeNode { connective: Arrow } => Absent
-    TypeNode { connective: Cardinality } => Absent
-    TypeNode { connective: Instantiation } => Absent
-    ComputationNode { behavior: _ } => Absent
-  }
 }
 
 fn minted_occurrence_of(node: Node) -> Optional<OccurrenceId> {
@@ -410,7 +399,7 @@ fn population_walk_node(
   token_classes: Map<Symbol, Bool>,
   frame: PopulationFrame
 ) -> AuthoredAtomPopulation {
-  let observed = match node_atom_identity_of(node: node) {
+  let observed = match node_atom_identity_optional(node: node) {
     Absent => acc
     Present { value: identity } =>
       match minted_occurrence_of(node: node) {
@@ -457,7 +446,7 @@ fn authored_atom_population(artifact: ParseArtifact, token_classes: Map<Symbol, 
 // One pass over the normalized tree, keyed by occurrence, so each authored atom is answered by a
 // lookup rather than a rescan (DESIGN section 6: a per-atom rescan is the quadratic this refuses).
 fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<OccurrenceId, Symbol> {
-  let here = match node_atom_identity_of(node: node) {
+  let here = match node_atom_identity_optional(node: node) {
     Absent => acc
     Present { value: identity } =>
       match minted_occurrence_of(node: node) {
@@ -679,7 +668,7 @@ fn pool_key_of_label(label: Symbol) -> Symbol {
 }
 
 fn rebuilt_spelling_pool(acc: Map<Symbol, Int>, node: Node) -> Map<Symbol, Int> {
-  let here = match node_atom_identity_of(node: node) {
+  let here = match node_atom_identity_optional(node: node) {
     Absent => acc
     Present { value: identity } =>
       match minted_occurrence_of(node: node) {
