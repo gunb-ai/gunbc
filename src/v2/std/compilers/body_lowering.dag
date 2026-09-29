@@ -297,11 +297,19 @@ type ApplicationRead
 fn application_head_optional(n: Node) -> Optional<ApplicationHead> {
   match n.kind {
     TypeNode { connective: Arrow } => Present { value: ArrowHead }
-    _ =>
-      match view_atom_identity_optional(n: n) {
-        Present { value: id } => Present { value: AtomHead { identity: id } }
-        Absent => Absent
-      }
+    TypeNode { connective: Atom { identity: _ } } => application_head_optional_otherwise(n: n)
+    TypeNode { connective: Conj } => application_head_optional_otherwise(n: n)
+    TypeNode { connective: Disj } => application_head_optional_otherwise(n: n)
+    TypeNode { connective: Cardinality } => application_head_optional_otherwise(n: n)
+    TypeNode { connective: Instantiation } => application_head_optional_otherwise(n: n)
+    ComputationNode { behavior: _ } => application_head_optional_otherwise(n: n)
+  }
+}
+
+fn application_head_optional_otherwise(n: Node) -> Optional<ApplicationHead> {
+  match view_atom_identity_optional(n: n) {
+    Present { value: id } => Present { value: AtomHead { identity: id } }
+    Absent => Absent
   }
 }
 

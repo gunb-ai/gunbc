@@ -188,18 +188,28 @@ fn semantic_decl_string_from_bundle_node(bundle: Node) -> Outcome<String> {
                       outcome_accepted(value: concat(rest, c))
                     }
                   )
-                _ =>
-                  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
-                  )
+                TypeNode { connective: Conj } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
+                TypeNode { connective: Disj } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
+                TypeNode { connective: Arrow } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
+                TypeNode { connective: Cardinality } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
+                TypeNode { connective: Instantiation } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
+                ComputationNode { behavior: _ } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
               }
             }
           )
         }
       )
-    _ =>
-      outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
-      )
+    TypeNode { connective: Disj } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
+    TypeNode { connective: Arrow } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
+    TypeNode { connective: Cardinality } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
+    TypeNode { connective: Instantiation } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
+    ComputationNode { behavior: _ } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
   }
+}
+
+fn semantic_decl_string_from_bundle_node_otherwise_2(bundle: Node) -> Outcome<String> {
+  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
+  )
 }
 
 fn semantic_decl_ident_lex_pattern() -> LexPattern {
@@ -353,10 +363,18 @@ fn semantic_decl_lex_rule_rows_from_catalog(catalog: Node) -> Outcome<List<Node>
           )
         }
       )
-    _ =>
-      outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
-      )
+    TypeNode { connective: Atom { identity: _ } } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Disj } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Arrow } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Cardinality } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Instantiation } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
+    ComputationNode { behavior: _ } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
   }
+}
+
+fn semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: Node) -> Outcome<List<Node>> {
+  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+  )
 }
 
 fn semantic_decl_lex_rules_from_rows(rows: List<Node>) -> Outcome<LexRules> {
@@ -475,10 +493,18 @@ fn semantic_decl_binding_spelling_rows_from_catalog(catalog: Node) -> Outcome<Li
           )
         }
       )
-    _ =>
-      outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
-      )
+    TypeNode { connective: Atom { identity: _ } } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Disj } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Arrow } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Cardinality } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Instantiation } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
+    ComputationNode { behavior: _ } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
   }
+}
+
+fn semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: Node) -> Outcome<List<SemanticDeclBindingSpellingRow>> {
+  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+  )
 }
 
 fn semantic_decl_binding_spellings_from_rows(
@@ -797,10 +823,18 @@ fn semantic_decl_decoration_lines_from_catalog(catalog: Node) -> Outcome<List<Ta
           )
         }
       )
-    _ =>
-      outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
-      )
+    TypeNode { connective: Atom { identity: _ } } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Disj } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Arrow } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Cardinality } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Instantiation } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
+    ComputationNode { behavior: _ } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
   }
+}
+
+fn semantic_decl_decoration_lines_from_catalog_otherwise(catalog: Node) -> Outcome<List<TargetSemanticDeclDecorationLine>> {
+  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+  )
 }
 
 fn semantic_decl_coproduct_decoration_rule_row(rule: TargetSemanticDeclCoproductDecorationRule) -> Node {
@@ -898,10 +932,18 @@ fn semantic_decl_coproduct_decoration_rules_from_catalog(
           )
         }
       )
-    _ =>
-      outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
-      )
+    TypeNode { connective: Atom { identity: _ } } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Disj } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Arrow } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Cardinality } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
+    TypeNode { connective: Instantiation } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
+    ComputationNode { behavior: _ } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
   }
+}
+
+fn semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: Node) -> Outcome<List<TargetSemanticDeclCoproductDecorationRule>> {
+  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+  )
 }
 
 fn semantic_decl_surface_projection_bundle(
@@ -1034,12 +1076,20 @@ fn decode_semantic_decl_surface_projection_bool_flag(
               d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
             )
           }
-        _ =>
-          outcome_rejected(
-            d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
-          )
+        TypeNode { connective: Conj } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
+        TypeNode { connective: Disj } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
+        TypeNode { connective: Arrow } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
+        TypeNode { connective: Cardinality } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
+        TypeNode { connective: Instantiation } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
+        ComputationNode { behavior: _ } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
       }
     }
+  )
+}
+
+fn decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: Node) -> Outcome<Bool> {
+  outcome_rejected(
+    d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
   )
 }
 
@@ -1084,12 +1134,20 @@ fn decode_semantic_decl_surface_projection_coproduct_layout(
               d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
             )
           }
-        _ =>
-          outcome_rejected(
-            d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
-          )
+        TypeNode { connective: Conj } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
+        TypeNode { connective: Disj } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
+        TypeNode { connective: Arrow } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
+        TypeNode { connective: Cardinality } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
+        TypeNode { connective: Instantiation } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
+        ComputationNode { behavior: _ } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
       }
     }
+  )
+}
+
+fn decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: Node) -> Outcome<TargetSemanticDeclCoproductSurfaceLayout> {
+  outcome_rejected(
+    d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
   )
 }
 
@@ -1447,12 +1505,12 @@ fn target_semantic_decl_field_surface_from_edge(
               )
             )
           }
-        _ =>
-          outcome_rejected(d: Diagnostic {
-                reason: ^target_semantic_decl_field_type_not_atom,
-                at: node_locus(node: edge.target),
-                correction: Unavailable { reason: ExternalContractUnknown }
-              })
+        TypeNode { connective: Conj } => target_semantic_decl_field_surface_from_edge_otherwise(edge: edge)
+        TypeNode { connective: Disj } => target_semantic_decl_field_surface_from_edge_otherwise(edge: edge)
+        TypeNode { connective: Arrow } => target_semantic_decl_field_surface_from_edge_otherwise(edge: edge)
+        TypeNode { connective: Cardinality } => target_semantic_decl_field_surface_from_edge_otherwise(edge: edge)
+        TypeNode { connective: Instantiation } => target_semantic_decl_field_surface_from_edge_otherwise(edge: edge)
+        ComputationNode { behavior: _ } => target_semantic_decl_field_surface_from_edge_otherwise(edge: edge)
       }
     Positional =>
       outcome_rejected(d: Diagnostic {
@@ -1461,6 +1519,14 @@ fn target_semantic_decl_field_surface_from_edge(
             correction: Unavailable { reason: ExternalContractUnknown }
           })
   }
+}
+
+fn target_semantic_decl_field_surface_from_edge_otherwise(edge: Edge) -> Outcome<Node> {
+  outcome_rejected(d: Diagnostic {
+        reason: ^target_semantic_decl_field_type_not_atom,
+        at: node_locus(node: edge.target),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
 }
 
 fn target_semantic_decl_surface_field_block(fields: List<Node>) -> Node {
@@ -1793,11 +1859,19 @@ fn target_semantic_decl_coproduct_shape_key(coproduct: Node) -> Outcome<Symbol> 
       } else {
         outcome_accepted(value: ^semantic_decl_coproduct_shape_default)
       }
-    _ =>
-      outcome_rejected(
-        d: semantic_decl_coproduct_shape_key_unsupported_connective_diagnostic(coproduct: coproduct)
-      )
+    TypeNode { connective: Atom { identity: _ } } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
+    TypeNode { connective: Conj } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
+    TypeNode { connective: Arrow } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
+    TypeNode { connective: Cardinality } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
+    TypeNode { connective: Instantiation } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
+    ComputationNode { behavior: _ } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
   }
+}
+
+fn target_semantic_decl_coproduct_shape_key_otherwise(coproduct: Node) -> Outcome<Symbol> {
+  outcome_rejected(
+    d: semantic_decl_coproduct_shape_key_unsupported_connective_diagnostic(coproduct: coproduct)
+  )
 }
 
 fn target_semantic_decl_coproduct_rule_decoration_lines_if_shape(
@@ -2171,13 +2245,21 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
           )
         }
       )
-    _ =>
-      outcome_rejected(d: Diagnostic {
-            reason: ^target_semantic_decl_enum_source_not_coproduct,
-            at: node_locus(node: coproduct),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          })
+    TypeNode { connective: Atom { identity: _ } } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
+    TypeNode { connective: Conj } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
+    TypeNode { connective: Arrow } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
+    TypeNode { connective: Cardinality } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
+    TypeNode { connective: Instantiation } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
+    ComputationNode { behavior: _ } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
   }
+}
+
+fn target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: Node) -> Outcome<Node> {
+  outcome_rejected(d: Diagnostic {
+        reason: ^target_semantic_decl_enum_source_not_coproduct,
+        at: node_locus(node: coproduct),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
 }
 
 fn target_semantic_struct_surface_from_record(
@@ -2241,11 +2323,19 @@ fn target_semantic_struct_surface_from_record_admitted(
           }
         }
       )
-    _ =>
-      outcome_rejected(d: Diagnostic {
-            reason: ^target_semantic_decl_struct_source_not_record,
-            at: node_locus(node: record),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          })
+    TypeNode { connective: Atom { identity: _ } } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
+    TypeNode { connective: Disj } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
+    TypeNode { connective: Arrow } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
+    TypeNode { connective: Cardinality } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
+    TypeNode { connective: Instantiation } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
+    ComputationNode { behavior: _ } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
   }
+}
+
+fn target_semantic_struct_surface_from_record_admitted_otherwise(record: Node) -> Outcome<Node> {
+  outcome_rejected(d: Diagnostic {
+        reason: ^target_semantic_decl_struct_source_not_record,
+        at: node_locus(node: record),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
 }
