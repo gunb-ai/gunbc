@@ -1174,7 +1174,7 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
           runner_microvm_attempt_part_of_property(attempt: attempt),
           attempt_invocation_env_setting(invocation_id: invocation_id),
         ], receipt.runtime_properties)),
-        command_argv: concat([jailer.program as String], jailer.arguments),
+        command_argv: concat([jailer.program.invocation as String], jailer.arguments),
       )
       if started.success { VmmStarted { unit: unit, receipt: receipt } }
       else { VmmStartFailed { unit: unit, detail: trim(s: started.stderr) } }

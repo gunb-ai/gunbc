@@ -149,7 +149,7 @@ test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
               )
                 && arrow_body_form_eval_nullary_int_holds(callee: zero_arrow, expected: 0)
                 && arrow_body_form_eval_binary_int_holds(
-                  callee: add_arrow,
+                  callee: add_arrow.root,
                   left_lex: "2",
                   right_lex: "3",
                   expected: 5

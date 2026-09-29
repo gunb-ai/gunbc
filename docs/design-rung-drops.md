@@ -72,9 +72,9 @@ CI — **RUNG DROP, DECLARED (2026-08-15, the floor cut).** WHAT WAS HERE: one c
 
 Milestones: parse PASSES / expand PASSES / resolve PASSES / typeck PASSES / borrowck PASSES
 
-Tree: `sha1:07eee038259e268e1a543edddb9d3f105e2d11cf`
+Tree: `sha1:2916ae53f516f27bfce55b932b0636f2892ac091`
 
-Invocation: `local-8b8875a1-eac3-47b1-a041-aa04fa22b2dd`
+Invocation: `buildbuddy-97197327-2e0b-46a4-b74c-56ada803fc1c`
 
 Census identity digest (self-host-compile-phase-census-canonical-identity-set-v1): `4325dac985bbe897`
 

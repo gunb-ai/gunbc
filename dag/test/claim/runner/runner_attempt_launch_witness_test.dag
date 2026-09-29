@@ -404,16 +404,16 @@ test fn a_live_grant_stages_exactly_one_device_and_records_the_registration() ->
                 reg == registration_fixture_id
                   && (name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
                   && device.host_path == concat(jail_root, jail_jit_path as String)
-                  && (device.create.program as String) == "install"
+                  && (device.create.program.invocation as String) == "install"
                   && string_contains(s: device_create, pattern: "-m 0400 -o 1000 -g 1000 /dev/null")
                   && string_contains(s: device_create, pattern: device.host_path)
                   && staged_bytes_are_the_guest_contract(content: device.content, blob: doubled(s: "A", k: 10))
                   && jit_drive_is_read_only_at(cfg_drives: cfg.drives, path: jail_jit_path as String)
                   && (tap as String) == (runner_slot_tap_device_name(slot: a.slot) as String)
                   && jail_root == attempt_jail_chroot_root(attempt: a, firecracker_binary: "/bin/firecracker")
-                  && (stage_root.program as String) == (mkdir_binary_path as String)
-                  && (stage_k.program as String) == "cp"
-                  && (stage_r.program as String) == "cp"
+                  && (stage_root.program.invocation as String) == (mkdir_binary_path as String)
+                  && (stage_k.program.invocation as String) == "cp"
+                  && (stage_r.program.invocation as String) == "cp"
                   && string_contains(s: ws, pattern: runner_microvm_attempt_jail_base(attempt: a))
                   && string_contains(s: ws, pattern: jail_workspace_path as String)
                   && string_contains(s: create_words, pattern: concat("of=", ws))
@@ -425,8 +425,8 @@ test fn a_live_grant_stages_exactly_one_device_and_records_the_registration() ->
                   && string_contains(s: words, pattern: "--chroot-base-dir")
                   && string_contains(s: words, pattern: "--cgroup-version")
                   && string_contains(s: words, pattern: "/bin/jailer")
-                  && (fmt.program as String) == "mke2fs"
-                  && (create.program as String) == "/bin/busybox"
+                  && (fmt.program.invocation as String) == "mke2fs"
+                  && (create.program.invocation as String) == "/bin/busybox"
                   && string_contains(s: create_words, pattern: "count=0")
                   && string_contains(s: create_words, pattern: "seek=4096")
                   && count(cfg.drives) == 3

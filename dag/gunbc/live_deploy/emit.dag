@@ -112,6 +112,7 @@ import gunbc.runner_microvm_slot_unit {
   microvm_slot_unit_timeout_stop_sec,
   microvm_controller_slice_unit_name, microvm_controller_slice_unit_path, microvm_controller_slice_unit_file,
   microvm_slot_controller_receipt_dir,
+  microvm_slot_reserve_unit_name, microvm_slot_reserve_unit_path, microvm_slot_reserve_unit_file,
 }
 import extdeps.tools.findutils { find_program, xargs_program, find_owned_regular_files_exec_argv }
 import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
@@ -1783,10 +1784,10 @@ fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServi
 // see it: one "$( ... )" at the caller rather than parentheses buried in a join.
 fn approval_broker_tree_digest_expr(root: String) -> String {
   join([
-    "cd ", root, " && ", find_program as String, " ", join(approval_broker_tree_subdirs, " "),
-    " -type f -print0 | ", sort_program as String, " -z | ",
-    xargs_program as String, " -0 ", sha256sum_program as String, " | ",
-    sha256sum_program as String, " | ", cut_program as String, " -d' ' -f1",
+    "cd ", root, " && ", find_program().invocation as String, " ", join(approval_broker_tree_subdirs, " "),
+    " -type f -print0 | ", sort_program().invocation as String, " -z | ",
+    xargs_program as String, " -0 ", sha256sum_program().invocation as String, " | ",
+    sha256sum_program().invocation as String, " | ", cut_program as String, " -d' ' -f1",
   ], "")
 }
 
@@ -1848,18 +1849,18 @@ fn release_locus_tree_copy_steps(owner: NonEmptyStr, root: String) -> List<Pipel
 // medium-as-string shape approval_broker_tree_digest_expr names, and dissolve with it.
 fn privileged_tree_directories_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
   join([
-    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type d -print0) | ",
+    "(cd \"$PWD\" && ", find_program().invocation as String, " ", src_sub, " -type d -print0) | ",
     xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
-      install_program as String, "-d", "-m", "0755", "-o", owner as String, "-g", owner as String,
+      install_program().invocation as String, "-d", "-m", "0755", "-o", owner as String, "-g", owner as String,
     ]), " "), " ", root, "/{}",
   ], "")
 }
 
 fn privileged_tree_files_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
   join([
-    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type f -print0 | ", sort_program as String, " -z) | ",
+    "(cd \"$PWD\" && ", find_program().invocation as String, " ", src_sub, " -type f -print0 | ", sort_program().invocation as String, " -z) | ",
     xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
-      install_program as String, "-m", "0644", "-o", owner as String, "-g", owner as String,
+      install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String,
     ]), " "), " \"$PWD\"/{} ", root, "/{}",
   ], "")
 }
@@ -1980,10 +1981,10 @@ fn release_locus_tree_receipt_step(owner: NonEmptyStr, base_root: String, revisi
 // revision and the digest of the installed sources.
 fn locus_tree_receipt_step_at(owner: NonEmptyStr, dir: String, revision: ReleaseRevisionBinding) -> PipelineStep {
   deploy_raw(command: join([
-    printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
+    printf_program().invocation as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
     "\\ninstalled_digest=%s\\n' ",
     "\"$(", approval_broker_tree_digest_expr(root: dir), ")\"",
-    " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
+    " | ", join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
       join([dir, "/", release_locus_tree_receipt_name], "")]), " "),
   ], ""))
 }
@@ -2051,10 +2052,10 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
       dest: microvm_controller_jailer_binary(release_dir: dir),
     )),
     deploy_raw(command: join([
-      sha256sum_program as String, " ",
+      sha256sum_program().invocation as String, " ",
       microvm_controller_vmm_binary(release_dir: dir), " ",
       microvm_controller_jailer_binary(release_dir: dir),
-      " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", microvm_controller_owner as String, "-g", microvm_controller_owner as String, "/dev/stdin",
+      " | ", join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", microvm_controller_owner as String, "-g", microvm_controller_owner as String, "/dev/stdin",
         microvm_controller_vmm_receipt_path(revision: revision)]), " "),
     ], "")),
   ]
@@ -2063,8 +2064,10 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
 // THE SLOT UNIT IS RENDERED HERE WITH THE SPAWN ROOT ADDED, because the env row and the locus
 // belong to this module while the unit's shape belongs to gunbc.runner_microvm_slot_unit: the
 // service section is that module's list plus one directive, inserted rather than re-authored.
-fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
-  match microvm_slot_unit_file(release_dir: release_dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()) {
+// EVERY UNIT THAT RUNS `gunbc run` FROM THE LOCUS NEEDS THE SAME ROW, so the insertion is one function
+// over any such unit: the slot controller and the shakedown broker both exec from this locus.
+fn microvm_locus_unit_with_workspace_root(file: SystemdUnitFile, release_dir: String) -> SystemdUnitFile {
+  match file {
     ServiceUnitFile { unit: u, service: s, install: i } =>
       ServiceUnitFile {
         unit: u,
@@ -2073,6 +2076,13 @@ fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUni
       }
     other => other
   }
+}
+
+fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
+  microvm_locus_unit_with_workspace_root(
+    file: microvm_slot_unit_file(release_dir: release_dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()),
+    release_dir: release_dir,
+  )
 }
 
 fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
@@ -2096,6 +2106,18 @@ fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<Pipel
       stage_name: microvm_slot_unit_template_name as String,
       mode: install_file_shared_mode,
       dest: microvm_slot_unit_path() as String,
+    )),
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: microvm_slot_reserve_unit_name as String,
+      content: serialize_systemd_unit_file(file: microvm_locus_unit_with_workspace_root(
+        file: microvm_slot_reserve_unit_file(release_dir: microvm_controller_release_dir(revision: revision)),
+        release_dir: microvm_controller_release_dir(revision: revision),
+      )),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: microvm_slot_reserve_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: microvm_slot_reserve_unit_path() as String,
     )),
   ]
 }
@@ -2307,7 +2329,7 @@ fn path_ancestors_inclusive(path: String) -> List<String> {
 fn helper_snapshot_find_intent(roots: List<String>, top_only: Bool, owner: Node) -> Node {
   bash_build_command_with_words(words: concat(
     concat(
-      [bash_build_word_lit(text: find_program as String)],
+      [bash_build_word_lit(text: find_program().invocation as String)],
       map(roots, r => bash_build_word_lit(text: r)),
     ),
     concat(
@@ -2381,7 +2403,7 @@ fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
 fn approval_broker_helper_snapshot_retire_command(revision: ReleaseRevisionBinding) -> String {
   shell_command_text_of_argv(argv: concat(
     [
-      find_program as String, approval_broker_helper_snapshot_base,
+      find_program().invocation as String, approval_broker_helper_snapshot_base,
       "-mindepth", "1", "-maxdepth", "1", "!", "-name", release_revision_execstart_text(binding: revision),
       "-exec",
     ],
