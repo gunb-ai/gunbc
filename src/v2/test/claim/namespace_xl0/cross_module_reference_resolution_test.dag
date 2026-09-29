@@ -1,6 +1,7 @@
 module v2.test.claim.namespace_xl0.cross_module_reference_resolution
 
 import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
 import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
@@ -505,11 +506,32 @@ test fn a_cross_module_reference_to_a_data_declaration_resolves_to_its_declaring
 // `fn get(r: Rec) -> Bool { r.v }`, which needs BOTH the declaration graft (so Rec.v is in the
 // containment tree) AND the unique-on-chain projection, and is owned by those lanes, not enrolled
 // here as a today-row that could be retired by half of its trigger (DESIGN section 4b(3)).
-test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
-  match xl0r_resolved_field_access_consumer() {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
+// THE PROPERTY IS UNCHANGED AND THE STAGE MOVED. `r.v` on `r: Bool` must never be accepted, and it is
+// not; what changed is WHERE it is refused and by what reason. v2.compiler.resolve now commits the
+// field-projection SHAPE for a bound head (resolve_bound_head_projection) instead of answering
+// resolve_reason_unbound_symbol, because deciding whether `v` exists needs a TYPE and resolve has none
+// -- v2.std.node_query field_projection_node's own header assigns that check to the stage over this
+// node. v2.compiler.infer then refuses it: `Bool`'s established type is not a record declaration, so the
+// receiver declares no fields.
+//
+// THE OLD REASON WAS THE COLLAPSE, NOT THE PROPERTY. Answering "unbound symbol" here reported a bound
+// head needing projection and a genuinely unbound name identically, which v2.compiler.resolve's own
+// header records as a defect. So this claim now asserts through infer, which is what "never accepts"
+// was always about: the assertion still forbids ACCEPTANCE, and it is strictly harder to satisfy than
+// before, because a program that resolved and then inferred clean would now fail it.
+fn xl0r_infers(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
   }
+}
+
+test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
+  !xl0r_infers(o: xl0r_resolved_field_access_consumer())
 }
 
 // THE CALL FORM OF THE LOCAL-RECEIVER ROW, ENROLLED ON gunbc#11683 (review 68231 asked for it by
@@ -522,11 +544,13 @@ test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
 // `lens.gate(...)`) receive under v2 resolve; no required lane compiles those modules through v2
 // resolve (the native route over the corpus is a declared rung drop), so this row is the executed
 // evidence. Retired by the local-receiver projection, the same trigger as the value row.
-test fn a_local_receiver_method_call_refuses_unbound_today_holds() -> Bool {
-  match xl0r_resolved_method_call_consumer() {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
-  }
+// THE SAME MOVE FOR THE METHOD-CALL FORM, and the rename is the honest part: this row said "refuses
+// unbound TODAY", naming a stage and a reason it never meant to pin. `r.v(x: p)` closes its spine into
+// a callee at the first call suffix, so the callee `r.v` is now the projection resolve commits, and
+// infer refuses it for the same reason as the bare form -- `Bool` declares no fields. What the row is
+// FOR is that a method call on a local receiver is not silently admitted, and that is what it now says.
+test fn a_local_receiver_method_call_never_accepts_holds() -> Bool {
+  !xl0r_infers(o: xl0r_resolved_method_call_consumer())
 }
 
 // THE COLLISION THE ABSOLUTE ARM ADMITTED, NOW REFUSED (review 67651 on gunbc#11582). A parameter

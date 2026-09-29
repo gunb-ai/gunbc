@@ -1,0 +1,377 @@
+module v2.test.claim.field_projection.field_projection_stages
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, symbol_eq }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment, qualified_name_spine_shape_present }
+import v2.std.node_query { FieldProjection, declared_field_named, field_projection_optional }
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.compiler.infer {
+  infer_atom_binding_sym,
+  infer_parameter_type_in_scope,
+  infer_type_equal_ignoring_provenance,
+  inferred_facts_grounding_derived,
+  inferred_facts_resolved_type
+}
+import v2.compiler.inferred_tree { InferredFacts }
+import v2.compiler.eval { eval_field_projection }
+import v2.std.runtime {
+  RuntimeAggregate,
+  RuntimeAggregateValue,
+  RuntimeFieldValue,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue
+}
+import v2.std.integer { Int, integer_int_to_signed_i32_le_bytes, integer_signed_i32_le_bytes_to_int }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.witness { Holds, Violates }
+import v2.std.node { NodeFold, fold_node }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+
+// WHERE A FIELD PROJECTION STOPS TODAY, measured stage by stage rather than asserted. The normalized
+// shape exists and is documented as a declared frontier: v2.std.node_query field_projection_node
+// builds a two-edge Conj (a base edge to the receiver's lowered node, a field edge to the field-name
+// atom) and its own header states what it does NOT do -- "it does not check that `f` IS a declared
+// field of the receiver's type ... it is the typecheck stage's, over this node".
+//
+// This file establishes the first boundary before anything is repaired, so a later green is a change
+// in behaviour and not a change in what was being asked.
+data fps_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^field_projection_stages_artifact,
+  file_path: "src/v2/pilot/field_projection_stages_pilot.dag"
+}
+
+fn fps_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: fps_artifact,
+        compilation_unit: ^field_projection_stages_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// THE RECEIVER IS A PLAIN PARAMETER, deliberately: a match arm or a lambda would add a binding
+// question that is not this subject, and an earlier investigation established that the same refusal
+// appears with no match arm or lambda involved.
+fn fps_valid_field_source() -> Outcome<ResolvedTree> {
+  fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\nfn f(b: Box) -> Int {\n  b.tree\n}\n")
+}
+
+// THE SAME RECEIVER WITH A FIELD THE TYPE DOES NOT DECLARE. This is the control that makes a later
+// green meaningful: a projection stage that admits every field name would satisfy the valid case and
+// establish nothing.
+fn fps_absent_field_source() -> Outcome<ResolvedTree> {
+  fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\nfn f(b: Box) -> Int {\n  b.absent_field\n}\n")
+}
+
+// THE SAME RECEIVER WITH THE PROJECTION REMOVED, so the fixture family isolates projection from
+// binding: if this also failed, the subject would be the parameter and not the field access.
+fn fps_no_projection_source() -> Outcome<ResolvedTree> {
+  fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\nfn f(b: Box) -> Int {\n  7\n}\n")
+}
+
+fn fps_resolves(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn fps_infers(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// THE FIXTURE'S POSITIVE CONTROL: the receiver alone reaches resolve and infer, so a red below is
+// about the projection and not about the parameter, the record declaration or the assembly.
+test fn fps_the_receiver_without_a_projection_resolves_holds() -> Bool {
+  fps_resolves(o: fps_no_projection_source())
+}
+
+test fn fps_the_receiver_without_a_projection_infers_holds() -> Bool {
+  fps_infers(o: fps_no_projection_source())
+}
+
+test fn fps_a_valid_field_projection_resolves_holds() -> Bool {
+  fps_resolves(o: fps_valid_field_source())
+}
+
+test fn fps_a_valid_field_projection_infers_holds() -> Bool {
+  fps_infers(o: fps_valid_field_source())
+}
+
+// AN ABSENT FIELD MUST NOT BE ADMITTED. Asserted as a refusal at whatever stage currently refuses it,
+// so this claim stays honest before and after the repair: what it forbids is ACCEPTANCE, which is the
+// property that must never hold.
+test fn fps_an_absent_field_does_not_infer_holds() -> Bool {
+  !fps_infers(o: fps_absent_field_source())
+}
+
+fn fps_projection_node_optional(root: Node) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match field_projection_optional(n: n0) {
+          Present { value: _ } => optional_present(value: n0)
+          Absent => optional_absent()
+        }
+      },
+      step: fn(acc, _e, child) {
+        match acc { Present { value: _ } => acc  Absent => child }
+      }
+    }
+  )
+}
+
+fn fps_projection_facts(o: Outcome<ResolvedTree>) -> Optional<InferredFacts> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: inferred, diagnostics: _ } =>
+          match fps_projection_node_optional(root: inferred.root) {
+            Absent => optional_absent()
+            Present { value: proj } => inferred.facts.lookup(proj)
+          }
+      }
+  }
+}
+
+// THE PROJECTION EXISTS IN THE RESOLVED TREE AT ALL. Separate from whether it grounds, because a tree
+// with no projection node would make every grounding claim below vacuous in the other direction.
+test fn fps_the_resolved_tree_carries_a_field_projection_holds() -> Bool {
+  match fps_projection_facts(o: fps_valid_field_source()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn fps_a_valid_field_projection_grounds_holds() -> Bool {
+  match fps_projection_facts(o: fps_valid_field_source()) {
+    Absent => false
+    Present { value: facts } => inferred_facts_grounding_derived(facts: facts)
+  }
+}
+
+// AND IT GROUNDS TO THE RIGHT FIELD'S TYPE, asserted without naming a canonical spelling. Two fields
+// of DIFFERENT declared types are projected from the same receiver: if the arm read the receiver's own
+// type, its own node, or a fixed field, the two projections would ground to the SAME type. They must
+// differ, and `.tree` must further agree with how the compiler types an Int-declared PARAMETER in an
+// unrelated fixture -- an independent route to the same answer, so the claim is not the implementation
+// compared with itself.
+fn fps_two_field_source(field: String) -> Outcome<ResolvedTree> {
+  fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n  flag: Bool\n}\n\nfn f(b: Box) -> Int {\n  b." + field + "\n}\n")
+}
+
+fn fps_inferred_of(o: Outcome<ResolvedTree>) -> Optional<InferredTree> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: inferred, diagnostics: _ } => optional_present(value: inferred)
+      }
+  }
+}
+
+fn fps_int_parameter_type_optional() -> Optional<Node> {
+  match fps_inferred_of(o: fps_assemble(src: "module p\n\nfn g(i: Int) -> Int {\n  i\n}\n")) {
+    Absent => optional_absent()
+    Present { value: inferred } => fps_body_atom_type_optional(inferred: inferred)
+  }
+}
+
+fn fps_body_atom_type_optional(inferred: InferredTree) -> Optional<Node> {
+  fold_node(
+    n: inferred.root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            if symbol_eq(a: id, b: ^i) {
+              match inferred.facts.lookup(n0) {
+                Absent => optional_absent()
+                Present { value: facts } =>
+                  match inferred_facts_resolved_type(facts: facts) {
+                    Violates { diagnostic: _ } => optional_absent()
+                    Holds { value: ty } => optional_present(value: ty)
+                  }
+              }
+            } else {
+              optional_absent()
+            }
+          _ => optional_absent()
+        }
+      },
+      step: fn(acc, _e, child) {
+        match acc { Present { value: _ } => acc  Absent => child }
+      }
+    }
+  )
+}
+
+test fn fps_two_fields_of_different_types_ground_differently_holds() -> Bool {
+  match fps_grounded_type_optional(o: fps_two_field_source(field: "tree")) {
+    Absent => false
+    Present { value: int_ty } =>
+      match fps_grounded_type_optional(o: fps_two_field_source(field: "flag")) {
+        Absent => false
+        Present { value: bool_ty } =>
+          !infer_type_equal_ignoring_provenance(a: int_ty, b: bool_ty)
+      }
+  }
+}
+
+test fn fps_the_int_field_grounds_as_an_int_parameter_does_holds() -> Bool {
+  match fps_grounded_type_optional(o: fps_two_field_source(field: "tree")) {
+    Absent => false
+    Present { value: field_ty } =>
+      match fps_int_parameter_type_optional() {
+        Absent => false
+        Present { value: param_ty } =>
+          infer_type_equal_ignoring_provenance(a: field_ty, b: param_ty)
+      }
+  }
+}
+
+fn fps_grounded_type_optional(o: Outcome<ResolvedTree>) -> Optional<Node> {
+  match fps_projection_facts(o: o) {
+    Absent => optional_absent()
+    Present { value: facts } =>
+      match inferred_facts_resolved_type(facts: facts) {
+        Violates { diagnostic: _ } => optional_absent()
+        Holds { value: ty } => optional_present(value: ty)
+      }
+  }
+}
+
+// THE THIRD STAGE, AT THE EVALUATOR'S OWN BOUNDARY. The receiver's VALUE is supplied here rather than
+// computed, which is DESIGN section 3's witness rule and not a shortcut: this claim's subject is one
+// interface -- what eval returns for a projection over a given aggregate -- and deriving the aggregate by
+// executing a constructor would re-run production the claim is not about.
+//
+// THE PAIRING OBLIGATION IS DISCHARGED BY A CLAIM IN THIS FILE, not by assertion: the real producer
+// emits this shape, and fps_the_resolved_tree_carries_a_field_projection asserts exactly that over the
+// production route (assemble -> resolve -> infer on authored source). So a supplied value here is a
+// hypothesis about a boundary that another claim shows is inhabited.
+//
+// WHY THE VALUE IS SUPPLIED RATHER THAN COMPUTED, measured rather than assumed. Two surface forms that
+// should deliver a projection to eval do not: `Box { .. }.tree` and `make().tree` both resolve and infer
+// with NO field-projection node in the tree, while the parameter form `b.tree` does produce one. So the
+// only projection this corpus's surface syntax currently produces has an UNBOUND receiver at eval, whose
+// binding is blocked behind the frozen facts-key question. That is a finding, recorded in this change,
+// and it is why the executed evidence for eval is at this boundary.
+fn fps_int_primitive(n: Int) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: fps_atom(s: ^fps_int_type),
+      bytes: integer_int_to_signed_i32_le_bytes(value: n)
+    }
+  }
+}
+
+fn fps_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn fps_box_value() -> RuntimeValue {
+  RuntimeAggregate {
+    value: RuntimeAggregateValue {
+      aggregate_type: fps_atom(s: ^fps_box_type),
+      fields: Cons {
+        head: RuntimeFieldValue { field: ^tree, value: fps_int_primitive(n: 7) },
+        tail: Cons {
+          head: RuntimeFieldValue { field: ^other, value: fps_int_primitive(n: 9) },
+          tail: Empty
+        }
+      }
+    }
+  }
+}
+
+fn fps_projection_over(field: Symbol) -> FieldProjection {
+  FieldProjection { base: fps_atom(s: ^fps_base), field: field }
+}
+
+fn fps_eval_projection_of(field: Symbol, receiver: RuntimeValue) -> Outcome<RuntimeValue> {
+  eval_field_projection(
+    node: fps_atom(s: ^fps_projection_site),
+    projection: fps_projection_over(field: field),
+    args: Cons { head: receiver, tail: Empty }
+  )
+}
+
+fn fps_evaluates_to(o: Outcome<RuntimeValue>, n: Int) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: v, diagnostics: _ } =>
+      match v {
+        RuntimePrimitive { value: p } =>
+          match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
+            Accepted { value: magnitude, diagnostics: _ } => magnitude == n
+            Rejected { diagnostics: _ } => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn fps_eval_projects_the_named_field_holds() -> Bool {
+  fps_evaluates_to(o: fps_eval_projection_of(field: ^tree, receiver: fps_box_value()), n: 7)
+}
+
+// AND IT SELECTS BY NAME, NOT BY POSITION: the second field holds a different value, so an arm reading
+// the first field regardless would pass the claim above and fail this one.
+test fn fps_eval_selects_the_second_field_by_name_holds() -> Bool {
+  fps_evaluates_to(o: fps_eval_projection_of(field: ^other, receiver: fps_box_value()), n: 9)
+}
+
+// A FIELD THE VALUE DOES NOT CARRY REFUSES rather than yielding a default. Reaching this state means the
+// value and the type disagree, since infer has already established the type declares the field.
+test fn fps_eval_refuses_a_field_the_value_lacks_holds() -> Bool {
+  match fps_eval_projection_of(field: ^absent_field, receiver: fps_box_value()) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// AND A RECEIVER THAT IS NOT AN AGGREGATE REFUSES: there is nothing to select from, and answering
+// anything would be fabrication.
+test fn fps_eval_refuses_a_non_aggregate_receiver_holds() -> Bool {
+  match fps_eval_projection_of(field: ^tree, receiver: fps_int_primitive(n: 7)) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

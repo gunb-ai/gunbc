@@ -153,7 +153,13 @@ import v2.std.node {
 }
 import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names }
 import v2.std.coercion { coercion_cast_crossing }
-import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.node_query {
+  FieldProjection,
+  declared_field_named,
+  field_projection_optional,
+  find_named_child,
+  node_positional_child_targets
+}
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
 
 type AlgebraRef {
@@ -721,7 +727,18 @@ fn infer_product_facts_from_entries(
   node: Node,
   entries: List<InferredFactsEntry>,
   partials: List<Node>,
+  resolved: ResolvedTree,
 ) -> Outcome<InferredFacts> {
+  match field_projection_optional(n: node) {
+    Present { value: projection } =>
+      infer_field_projection_facts(
+        node: node,
+        projection: projection,
+        entries: entries,
+        partials: partials,
+        resolved: resolved
+      )
+    Absent =>
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: _, diagnostics: cd } =>
@@ -758,6 +775,7 @@ fn infer_product_facts_from_entries(
               )
           }
       }
+  }
   }
 }
 
@@ -842,6 +860,147 @@ fn infer_node_facts(n: Node, partials: List<Node>, resolved: ResolvedTree) -> Ou
               }
           }
       }
+  }
+}
+
+// A FIELD PROJECTION IS TYPED BY THE FIELD THE RECEIVER'S TYPE DECLARES, AND A FIELD NO TYPE DECLARES
+// REFUSES HERE. This is the check v2.std.node_query field_projection_node's own header assigned to this
+// stage -- "it does not check that `f` IS a declared field of the receiver's type ... it is the
+// typecheck stage's, over this node" -- and it is not optional, because v2.compiler.resolve now commits
+// the SHAPE for a bound head (resolve_bound_head_projection) without being able to see a type.
+// Admitting the shape is not admitting the access, so if this arm merely fell to the frontier every
+// misspelled field would be ACCEPTED by inference. Measured: with resolve's arm landed and this one
+// absent, `b.absent_field` inferred clean. That is exactly the fail-open the absent-field control in
+// v2.test.claim.field_projection.field_projection_stages exists to catch, and it caught it.
+//
+// IT SITS AT THE HEAD OF THE PRODUCT ROW BECAUSE A PROJECTION IS AN ELIMINATION, NOT A RECORD. A
+// projection is a Conj, so without this arm it reaches infer_product_facts_from_entries and is typed as
+// the PRODUCT OF ITS OWN CHILDREN's evidence -- a type combining the receiver with the field-name atom,
+// which is not the type of anything the program computes. Placing the check first is what keeps the
+// product rule from answering for a shape that is not a product.
+//
+// THE RECEIVER'S TYPE COMES FROM ITS OWN INFERRED FACTS, through this row's `entries`, rather than from
+// a second derivation over the tree: the base is an ordinary expression that this stage has already
+// typed, and re-deriving its type here would be a second authority that could disagree with the one
+// every other consumer of that node reads.
+//
+// AND THE TYPE'S FIELDS COME THROUGH THE INDEX: the receiver's type is a resolved reference to a corpus
+// declaration, so its path goes to the same GUARDED reader the callee path uses (v2.std.symbol_index
+// symbol_index_lookup), whose ambiguity refusal therefore also governs which type's fields a projection
+// may read.
+//
+// EVERY UNAVAILABLE STEP STAYS AT THE FRONTIER; ONLY A FIELD THE PAYLOAD DOES NOT DECLARE REFUSES. The
+// distinction is deliberate. A receiver whose type this stage cannot yet establish is missing EVIDENCE,
+// and turning that into a hard refusal would convict correct programs whose receivers are typed by
+// routes not yet reaching here. A payload that IS established and does not declare the field is a
+// decided fact about the program, and that is the one this arm rules on.
+fn infer_field_projection_facts(
+  node: Node,
+  projection: FieldProjection,
+  entries: List<InferredFactsEntry>,
+  partials: List<Node>,
+  resolved: ResolvedTree
+) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      match infer_descent_witness_for_node(n: node) {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: descent_proof } =>
+          match infer_projection_receiver(
+            base: projection.base,
+            entries: entries,
+            resolved: resolved
+          ) {
+            ReceiverTypeUnderived =>
+              bind_outcome_accepted(
+                od: cd,
+                inner: inferred_facts_not_derived(
+                  node: node,
+                  descent: Holds { value: descent_proof }
+                )
+              )
+            ReceiverNotARecord =>
+              outcome_rejected(infer_receiver_declares_no_fields_diagnostic(node: node))
+            ReceiverPayload { payload: payload } =>
+              match declared_field_named(payload: payload, name: projection.field) {
+                Present { value: declared } =>
+                  bind_outcome_accepted(
+                    od: cd,
+                    inner: inferred_facts_from_derived_type(
+                      node: node,
+                      derived_type: declared.type_node,
+                      descent: Holds { value: descent_proof }
+                    )
+                  )
+                Absent =>
+                  outcome_rejected(infer_field_not_declared_diagnostic(node: node))
+              }
+          }
+      }
+  }
+}
+
+fn infer_field_not_declared_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_reason_field_not_declared_on_receiver,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// TWO UNAVAILABILITIES THAT MUST NOT BE ONE ARM. "I could not establish the receiver's type" and "the
+// receiver's type is established and declares no fields" are different facts with opposite dispositions,
+// and collapsing them into a single Absent is the absorbing fallback DESIGN section 5 forbids: it
+// converts a decided negative into "no evidence" and lets the projection pass at the frontier.
+//
+// MEASURED, NOT ARGUED. Collapsed, this broke the standing negative control
+// v2.test.claim.namespace_xl0.cross_module_reference_resolution
+// a_receiver_with_no_such_child_never_accepts: `Bool.v` has no child `v`, and because resolve now
+// commits the projection shape for a bound head, `Bool`'s established type is not a record reference,
+// the payload lookup answered Absent, and the projection was ACCEPTED at the frontier. A receiver with
+// no such child accepting is exactly what that control exists to forbid.
+//
+// SO THE DECIDED CASES REFUSE AND ONLY MISSING EVIDENCE WAITS. A receiver whose type this stage has not
+// derived is ReceiverTypeUnderived and stays at the frontier, because convicting a program whose
+// receiver is typed by a route not yet reaching here would be a wrong answer in the other direction. A
+// receiver whose type IS derived and is not a corpus declaration reference, or whose declaration the
+// index does not hold, is ReceiverNotARecord: the program projects a field off something that declares
+// none, and that is a fact about the program.
+type ProjectionReceiver
+  = ReceiverPayload { payload: Node }
+  | ReceiverNotARecord
+  | ReceiverTypeUnderived
+
+fn infer_projection_receiver(
+  base: Node,
+  entries: List<InferredFactsEntry>,
+  resolved: ResolvedTree
+) -> ProjectionReceiver {
+  match lookup_inferred_facts_in_entries(entries: entries, key: base) {
+    Absent => ReceiverTypeUnderived
+    Present { value: base_facts } =>
+      match inferred_facts_resolved_type(facts: base_facts) {
+        Violates { diagnostic: _ } => ReceiverTypeUnderived
+        Holds { value: receiver_type } =>
+          match declaration_reference_path_optional(node: receiver_type) {
+            Absent => ReceiverNotARecord
+            Present { value: path } =>
+              match symbol_index_lookup(index: resolved.symbol_index, qualified_path: path) {
+                Absent => ReceiverNotARecord
+                Present { value: payload } => ReceiverPayload { payload: payload }
+              }
+          }
+      }
+  }
+}
+
+fn infer_receiver_declares_no_fields_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_reason_projection_receiver_declares_no_fields,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -3298,8 +3457,14 @@ fn infer_gather_product_row_on_entries(
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,
   partials: List<Node>,
+  resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
-  match infer_product_facts_from_entries(node: node, entries: entries, partials: partials) {
+  match infer_product_facts_from_entries(
+    node: node,
+    entries: entries,
+    partials: partials,
+    resolved: resolved
+  ) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -3516,7 +3681,8 @@ fn infer_gather_settled_row(
           node: acc.node,
           entries: merged_entries,
           pending: merged_pending,
-          partials: partials
+          partials: partials,
+          resolved: resolved
         )
       } else {
         infer_gather_fold_acc_ok(
