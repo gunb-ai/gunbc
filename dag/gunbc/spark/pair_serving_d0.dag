@@ -889,19 +889,23 @@ fn reconcile_occupancy(declared: DeclaredPairRealization, ranks: List<RankOccupa
       match r.occupancy {
         UnitOccupancyUnread { refusal: why } => OccupancyUnread { hosts: [declared.head.host], cause: serving_incarnation_refusal_text(r: why) as NonEmptyStr }
         UnitInstalled { active: true, unit_digest: _ } => OccupancyNotQuiet { live: [declared.head.host] }
-        _ => {
-          let verdicts = map(concat([declared.head], declared.workers), d => rank_verdict(declared: d, ranks: ranks))
-          let unread = flat_map(verdicts, v => verdict_unread(v: v))
-          let live = flat_map(verdicts, v => live_host(v: v))
-          if length(unread) != 0 {
-            OccupancyUnread { hosts: flat_map(unread, v => unread_host(v: v)), cause: join(flat_map(unread, v => unread_cause(v: v)), "; ") as NonEmptyStr }
-          } else if length(live) != 0 {
-            OccupancyNotQuiet { live: live }
-          } else {
-            DeclaredOccupantDrifted { drifted: flat_map(verdicts, v => verdict_drifted_host(v: v)) }
-          }
-        }
+        UnitInstalled { active: false, unit_digest: _ } => reconcile_all_ranks(declared: declared, ranks: ranks)
+        UnitNotInstalled => reconcile_all_ranks(declared: declared, ranks: ranks)
       }
+  }
+}
+
+// The head is not live: every declared rank is reconciled, head first.
+fn reconcile_all_ranks(declared: DeclaredPairRealization, ranks: List<RankOccupancyReading>) -> OccupancyReconciliation {
+  let verdicts = map(concat([declared.head], declared.workers), d => rank_verdict(declared: d, ranks: ranks))
+  let unread = flat_map(verdicts, v => verdict_unread(v: v))
+  let live = flat_map(verdicts, v => live_host(v: v))
+  if length(unread) != 0 {
+    OccupancyUnread { hosts: flat_map(unread, v => unread_host(v: v)), cause: join(flat_map(unread, v => unread_cause(v: v)), "; ") as NonEmptyStr }
+  } else if length(live) != 0 {
+    OccupancyNotQuiet { live: live }
+  } else {
+    DeclaredOccupantDrifted { drifted: flat_map(verdicts, v => verdict_drifted_host(v: v)) }
   }
 }
 
