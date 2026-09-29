@@ -10,7 +10,7 @@ import v2.std.algebra {
   list_map,
   list_snoc_item
 }
-import v2.std.collection { List }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import std.algebra { Cons, Empty }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.dependency { DependencyRelation }
@@ -181,17 +181,47 @@ fn demand_entry_new<V>(identity: DemandIdentity, nature: DemandNature) -> Demand
 // difference observable: settling a demand that has one dependent among fifty unrelated demands must
 // cost ONE readiness derivation, not fifty-one.
 //
-// It counts DERIVATIONS, not entries visited. Locating the dependents is a scan of the relation
-// list; deciding whether a demand is ready is the work this bounds.
+// IT COUNTS DERIVATIONS, AND `entries_visited` COUNTS THE OTHER HALF. A derivation count cannot see a
+// whole-population WALK, so the law's locality claim was checkable only for the part it happened to
+// measure. entries_visited counts entries the settle path actually walks, which is what makes the
+// remaining population cost observable rather than asserted absent.
+// REVERSE AND FORWARD ADJACENCY, DERIVED AT THE ONE MUTATION POINT. `relations` stays the authority
+// for what depends on what; these two maps are the same fact keyed for the direction each consumer
+// asks in, maintained only inside demand_engine_relate, which is the single site a relation enters.
+//
+// THEY ARE NOT A SECOND AUTHORITY, and the distinction matters (DESIGN section 3). Nothing writes a
+// relation into the index that does not go into the list in the same call, and no reader consults the
+// index for a question the list would answer differently -- the index cannot drift because there is
+// no second writer. What it removes is a SCAN: locating a demand's dependents was a filter over the
+// whole relation population, which is the work the engine's own law claims it does not do.
+//
+// WHY THAT WAS A REAL DEFECT AND NOT A MICRO-OPTIMISATION. The law is "a completion re-evaluates its
+// DIRECT dependents". The header below used to admit, in its own words, that the counter "counts
+// DERIVATIONS, not entries visited" and that "locating the dependents is a scan of the relation list"
+// -- so a whole-population scan was invisible to the only check that bounds this. Settling one demand
+// among N unrelated ones did O(relations) work and reported one derivation. That is a locality claim
+// the implementation did not hold, and at the seven's scale it was survivable while at all-native
+// scale it is not.
 type DemandEngine<V> {
   entries: List<DemandEntry<V>>
   relations: List<DependencyRelation<DemandIdentity>>
+  dependents_of: Map<DemandIdentity, List<DemandIdentity>>
+  prerequisites_of: Map<DemandIdentity, List<DemandIdentity>>
   completion_order: List<DemandIdentity>
   readiness_computations: Int
+  entries_visited: Int
 }
 
 fn demand_engine_empty<V>() -> DemandEngine<V> {
-  DemandEngine { entries: [], relations: [], completion_order: [], readiness_computations: 0 }
+  DemandEngine {
+    entries: [],
+    relations: [],
+    dependents_of: empty_map(),
+    prerequisites_of: empty_map(),
+    completion_order: [],
+    readiness_computations: 0,
+    entries_visited: 0
+  }
 }
 
 fn demand_engine_entry<V>(e: DemandEngine<V>, id: DemandIdentity) -> Optional<DemandEntry<V>> {
@@ -270,8 +300,11 @@ fn demand_engine_request<V>(
             }
           ),
           relations: e.relations,
+          dependents_of: e.dependents_of,
+          prerequisites_of: e.prerequisites_of,
           completion_order: e.completion_order,
-          readiness_computations: e.readiness_computations
+          readiness_computations: e.readiness_computations,
+          entries_visited: e.entries_visited
         }
       } else {
         DemandEngine {
@@ -292,17 +325,35 @@ fn demand_engine_request<V>(
             }
           ),
           relations: e.relations,
+          dependents_of: e.dependents_of,
+          prerequisites_of: e.prerequisites_of,
           completion_order: e.completion_order,
-          readiness_computations: e.readiness_computations
+          readiness_computations: e.readiness_computations,
+          entries_visited: e.entries_visited
         }
       }
     Absent =>
       DemandEngine {
         entries: list_snoc_item(xs: e.entries, item: demand_entry_new(identity: id, nature: nature)),
         relations: e.relations,
+        dependents_of: e.dependents_of,
+        prerequisites_of: e.prerequisites_of,
         completion_order: e.completion_order,
-        readiness_computations: e.readiness_computations
+        readiness_computations: e.readiness_computations,
+        entries_visited: e.entries_visited
       }
+  }
+}
+
+fn demand_engine_adjacency_push(
+  m: Map<DemandIdentity, List<DemandIdentity>>,
+  key: DemandIdentity,
+  item: DemandIdentity
+) -> Map<DemandIdentity, List<DemandIdentity>> {
+  match map_lookup(m: m, key: key) {
+    Absent => map_insert(m: m, key: key, value: Cons { head: item, tail: Empty })
+    Present { value: existing } =>
+      map_insert(m: m, key: key, value: list_snoc_item(xs: existing, item: item))
   }
 }
 
@@ -313,23 +364,34 @@ fn demand_engine_relate<V>(
   DemandEngine {
     entries: e.entries,
     relations: list_snoc_item(xs: e.relations, item: relation),
+    dependents_of: demand_engine_adjacency_push(
+      m: e.dependents_of,
+      key: relation.prerequisite,
+      item: relation.dependent
+    ),
+    prerequisites_of: demand_engine_adjacency_push(
+      m: e.prerequisites_of,
+      key: relation.dependent,
+      item: relation.prerequisite
+    ),
     completion_order: e.completion_order,
-    readiness_computations: e.readiness_computations
+    readiness_computations: e.readiness_computations,
+    entries_visited: e.entries_visited
   }
 }
 
 fn demand_engine_prerequisites<V>(e: DemandEngine<V>, id: DemandIdentity) -> List<DemandIdentity> {
-  list_map(
-    xs: filter(xs: e.relations, predicate: fn(r) { demand_identity_eq(a: r.dependent, b: id) }),
-    f: fn(r) { r.prerequisite }
-  )
+  match map_lookup(m: e.prerequisites_of, key: id) {
+    Absent => Empty
+    Present { value: ps } => ps
+  }
 }
 
 fn demand_engine_dependents<V>(e: DemandEngine<V>, id: DemandIdentity) -> List<DemandIdentity> {
-  list_map(
-    xs: filter(xs: e.relations, predicate: fn(r) { demand_identity_eq(a: r.prerequisite, b: id) }),
-    f: fn(r) { r.dependent }
-  )
+  match map_lookup(m: e.dependents_of, key: id) {
+    Absent => Empty
+    Present { value: ds } => ds
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -449,8 +511,11 @@ fn demand_engine_seal<V>(e: DemandEngine<V>) -> DemandEngine<V> {
         }
       ),
       relations: e.relations,
+      dependents_of: e.dependents_of,
+      prerequisites_of: e.prerequisites_of,
       completion_order: e.completion_order,
-      readiness_computations: e.readiness_computations
+      readiness_computations: e.readiness_computations,
+      entries_visited: e.entries_visited
     }
   )
 }
@@ -470,8 +535,11 @@ fn demand_engine_reevaluate<V>(e: DemandEngine<V>) -> DemandEngine<V> {
       }
     ),
     relations: e.relations,
+    dependents_of: e.dependents_of,
+    prerequisites_of: e.prerequisites_of,
     completion_order: e.completion_order,
-    readiness_computations: e.readiness_computations + length(xs: e.entries)
+    readiness_computations: e.readiness_computations + length(xs: e.entries),
+    entries_visited: e.entries_visited
   }
 }
 
@@ -574,8 +642,11 @@ fn demand_engine_settle<V>(
       }
     ),
     relations: e.relations,
+    dependents_of: e.dependents_of,
+    prerequisites_of: e.prerequisites_of,
     completion_order: list_snoc_item(xs: e.completion_order, item: id),
-    readiness_computations: e.readiness_computations
+    readiness_computations: e.readiness_computations,
+    entries_visited: e.entries_visited + length(xs: e.entries)
   }
   let direct = demand_engine_dependents(e: settled, id: id)
   DemandEngine {
@@ -596,8 +667,11 @@ fn demand_engine_settle<V>(
       }
     ),
     relations: settled.relations,
+    dependents_of: settled.dependents_of,
+    prerequisites_of: settled.prerequisites_of,
     completion_order: settled.completion_order,
-    readiness_computations: settled.readiness_computations + length(xs: direct)
+    readiness_computations: settled.readiness_computations + length(xs: direct),
+    entries_visited: settled.entries_visited + length(xs: settled.entries)
   }
 }
 

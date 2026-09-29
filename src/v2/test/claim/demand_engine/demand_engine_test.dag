@@ -393,8 +393,11 @@ test fn completion_order_records_what_settled_holds() -> Bool {
 // The fixture is deliberately lopsided: A has ONE dependent, and there are three further demands
 // that depend on nothing and that nothing depends on. Settling A must cost 1. A rescan costs 5.
 fn g_lopsided() -> DemandEngine<Int> {
-  demand_engine_seal(
-    e: demand_engine_relate(
+  demand_engine_seal(e: g_lopsided_unsealed())
+}
+
+fn g_lopsided_unsealed() -> DemandEngine<Int> {
+  demand_engine_relate(
       e: demand_engine_request(
         e: demand_engine_request(
           e: demand_engine_request(
@@ -410,7 +413,6 @@ fn g_lopsided() -> DemandEngine<Int> {
       ),
       relation: g_edge(prerequisite: g_a(), dependent: g_b())
     )
-  )
 }
 
 test fn a_completion_costs_its_out_degree_not_the_graph_holds() -> Bool {
@@ -437,4 +439,69 @@ test fn a_sealed_cycle_verdict_survives_unrelated_completions_holds() -> Bool {
   )
   let after = demand_engine_settle(e: sealed, id: g_e(), state: DemandAvailable { value: 9 })
   g_state_is(e: after, id: g_a(), want: DemandBlocked { cause: BlockedByCycle { members: [g_a()] } })
+}
+
+// ── the locality claim, at the grain the law states it ───────────────────────────────────────
+//
+// THE DERIVATION COUNT ABOVE CANNOT SEE A WHOLE-POPULATION WALK, which is why the claim beside it
+// ("a completion costs its out-degree not the graph") passed while settling one demand among five
+// walked all five entries twice. Review of gunbc#12401 named this: the counter counts derivations,
+// not entities visited, so a rescan and a targeted update reach identical states and identical
+// counts.
+//
+// THESE TWO ROWS CLOSE THAT. The same one-dependent settle is performed in a small graph and in a
+// wider one whose extra demands are unrelated to it, and the work attributed to the settle must be
+// IDENTICAL. Relations are now indexed by direction (demand_engine_relate maintains dependents_of
+// and prerequisites_of), so locating the dependents no longer scans the relation population -- and
+// the entries half is measured by entries_visited rather than left to inference.
+// EACH EXTRA DEMAND IS DISTINCT, built by growing the subject tag rather than numbering it: a
+// repeated id would be one demand requested many times and the population would not widen at all,
+// which is the way this control could silently stop widening anything.
+fn g_wide_extra(e: DemandEngine<Int>, n: Int, tag: String) -> DemandEngine<Int> {
+  if n <= 0 {
+    e
+  } else {
+    g_wide_extra(
+      e: demand_engine_request(e: e, id: g_id(subject_hex: tag), nature: PureComputation),
+      n: n - 1,
+      tag: tag + "w"
+    )
+  }
+}
+
+type GSettleCost {
+  derivations: Int
+  entries_walked: Int
+}
+
+fn g_settle_deltas(e: DemandEngine<Int>) -> GSettleCost {
+  let sealed = demand_engine_seal(e: e)
+  let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
+  GSettleCost {
+    derivations: after.readiness_computations - sealed.readiness_computations,
+    entries_walked: after.entries_visited - sealed.entries_visited
+  }
+}
+
+// MEASURED: HALF THE LOCALITY CLAIM HOLDS AND HALF DOES NOT, and this row is the number rather than
+// the note. Settling a demand with ONE dependent, in a small graph and in a wider one whose extra
+// demands are unrelated to it:
+//
+//   derivations     identical         -- the relation scan is gone (dependents_of is indexed)
+//   entries_walked  grows with N      -- settle still walks the whole entry population, twice
+//
+// SO THIS IS ENROLLED AS THE DEFECT IT IS. The claim asserts what the engine does TODAY, so it is
+// green by execution and inverts the moment the entry store becomes keyed; writing it as the desired
+// property would land a red and specify the same thing. What remains is mechanical and named: with a
+// persistent LIST, updating one entry is inherently a walk, so locality needs the entries keyed by
+// identity with a separate order list for the deliberate whole-population passes (seal, reevaluate,
+// ready-queue build) that the law does not claim are local.
+//
+// UNTIL IT INVERTS, THE PRODUCTION CUT IS NOT LANDABLE: its central claim is that a completion costs
+// its out-degree and not the graph, and at the entries grain the implementation does not hold that.
+test fn a_settle_scans_no_relations_but_still_walks_every_entry_holds() -> Bool {
+  let small = g_settle_deltas(e: g_lopsided_unsealed())
+  let wide = g_settle_deltas(e: g_wide_extra(e: g_lopsided_unsealed(), n: 40, tag: "w"))
+  (small.derivations == wide.derivations)
+    && (wide.entries_walked > small.entries_walked)
 }
