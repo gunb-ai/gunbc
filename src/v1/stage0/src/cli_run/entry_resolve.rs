@@ -347,24 +347,30 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     //
     // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
     // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
-    let observation = import_resolution_facts_with_observation(&roots, &roots, EXCLUDE);
+    let observation = super::pre_entry_phase::timed(
+        "graph_facts_import_edges",
+        super::pre_entry_phase::PhaseScale::Tree,
+        || import_resolution_facts_with_observation(&roots, &roots, EXCLUDE),
+    );
     let edges = observation.facts;
-    let nodes = module_declaration_facts(&roots);
+    let nodes = super::pre_entry_phase::timed(
+        "graph_facts_module_declarations",
+        super::pre_entry_phase::PhaseScale::Tree,
+        || module_declaration_facts(&roots),
+    );
     // Loader tier: import edges only, unchanged. Every consumer that goes on to RESOLVE what it
     // reaches reads this one.
     let adjacency = build_import_adjacency(&edges, &nodes);
-    // Selection tier: import edges + strict reference edges.
-    let mut selection_edges = edges.clone();
-    selection_edges.extend(reference_edges_as_import_facts(
-        &reference_resolution_facts(&roots, &roots, EXCLUDE),
-        /* strict */ true,
+    // Selection tier: import edges + strict reference edges. PRODUCED ON DEMAND, not here: the
+    // resolve path asks it per closure file (`reference_only_direct_import_paths`), and only the
+    // affected-set consumers ask it for the whole pool (`selection_adjacency`), so building it
+    // eagerly made every `gunbc run` full-parse the pool for the edges of a few modules. See
+    // `ReferenceSelectionTier`.
+    let selection = Rc::new(ReferenceSelectionTier::new(
+        roots.clone(),
+        edges.clone(),
+        &nodes,
     ));
-    let selection_adjacency = build_import_adjacency(&selection_edges, &nodes);
-    let reference_unaccounted: HashSet<String> =
-        reference_accounting_refusals(&roots, &roots, EXCLUDE)
-            .into_iter()
-            .map(|r| workspace_relative_repo_path(&r.path))
-            .collect();
     let declared_paths = nodes
         .iter()
         .map(|n| workspace_relative_repo_path(&n.path))
@@ -376,9 +382,8 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     ModuleGraphFactsLive {
         nodes,
         adjacency,
-        selection_adjacency,
+        selection,
         declared_paths,
-        reference_unaccounted,
         path_to_module,
         read_refusals: observation.read_refusals,
     }
@@ -698,6 +703,182 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     try_process_shared_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
 }
 
+#[cfg(test)]
+type LivePoolJob = Box<dyn FnOnce() + Send>;
+
+/// The live-pool thread's inbox and handle, `None` while no thread is alive. Senders hold this lock
+/// while they send, and every path that ends the thread takes it first, so a claim is never sent to
+/// a thread that is already leaving.
+#[cfg(test)]
+static LIVE_POOL_THREAD: Mutex<
+    Option<(
+        std::sync::mpsc::Sender<LivePoolJob>,
+        std::thread::JoinHandle<()>,
+    )>,
+> = Mutex::new(None);
+
+/// Set while the live-pool thread runs a claim. A pool built by a thread the claim itself spawned
+/// is that claim's business and must not wait on the thread that is running it.
+#[cfg(test)]
+static LIVE_POOL_BUSY: AtomicBool = AtomicBool::new(false);
+
+/// A LEAK BACKSTOP, not the release. The pool is released by the demand that conflicts with it
+/// (`yield_live_pool_before_building_another`). This timer only bounds how long it can outlive its
+/// block when no later test builds a pool of its own, so it never decides what a claim answers and
+/// the bound does not depend on it for any test that builds one.
+#[cfg(test)]
+const LIVE_POOL_IDLE_BACKSTOP: std::time::Duration = std::time::Duration::from_secs(10);
+
+#[cfg(test)]
+fn spawn_live_pool_thread() -> (
+    std::sync::mpsc::Sender<LivePoolJob>,
+    std::thread::JoinHandle<()>,
+) {
+    use std::sync::mpsc::RecvTimeoutError;
+    let (tx, rx) = std::sync::mpsc::channel::<LivePoolJob>();
+    let handle = std::thread::Builder::new()
+        .name("live-pool".to_string())
+        // The largest stack any live-pool claim spawned for itself before it ran here.
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || {
+            loop {
+                match rx.recv_timeout(LIVE_POOL_IDLE_BACKSTOP) {
+                    Ok(job) => {
+                        LIVE_POOL_BUSY.store(true, Ordering::SeqCst);
+                        job();
+                        LIVE_POOL_BUSY.store(false, Ordering::SeqCst);
+                    }
+                    Err(RecvTimeoutError::Timeout) => {
+                        let mut slot = LIVE_POOL_THREAD
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        if let Ok(job) = rx.try_recv() {
+                            drop(slot);
+                            LIVE_POOL_BUSY.store(true, Ordering::SeqCst);
+                            job();
+                            LIVE_POOL_BUSY.store(false, Ordering::SeqCst);
+                            continue;
+                        }
+                        // Detach: nobody joins a thread that leaves on its own.
+                        *slot = None;
+                        break;
+                    }
+                    // The inbox was taken by `yield_live_pool_before_building_another`, which joins.
+                    Err(RecvTimeoutError::Disconnected) => break,
+                }
+            }
+            // Drop the pool now and hand the freed heap back, rather than leave it for the
+            // thread-local destructors after the trim could run.
+            reset_process_shared_index_for_test();
+            trim_retained_heap();
+        })
+        .expect("the live-pool thread starts");
+    (tx, handle)
+}
+
+/// THE PROCESS HOLDS ONE LIVE WHOLE-POOL INDEX AT A TIME. Called by every whole-pool index build
+/// (`try_process_shared_index_for_pool`, `build_multi_entry_index`): before any other thread builds
+/// one, the live-pool thread's pool is released -- the thread exits, which drops its index and
+/// every thread-local cache built over it, and the freed heap is handed back. This is the release,
+/// tied to the demand that conflicts with the pool rather than to a clock (measured under the
+/// hosted runner's 12 GiB `memory.max`: the ~5.2 GiB pool held past its block, plus the next test's
+/// own index, was OOM-killed at the bound). A claim's own nested builds are exempt: the live-pool
+/// thread itself, and any thread a running claim spawned (`LIVE_POOL_BUSY`).
+#[cfg(test)]
+pub(crate) fn yield_live_pool_before_building_another() {
+    if std::thread::current().name() == Some("live-pool") || LIVE_POOL_BUSY.load(Ordering::SeqCst) {
+        return;
+    }
+    let taken = LIVE_POOL_THREAD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take();
+    let Some((sender, handle)) = taken else {
+        return;
+    };
+    drop(sender);
+    handle.join().expect("the live-pool thread leaves cleanly");
+    trim_retained_heap();
+}
+
+/// THE LIVE POOL'S ONE HOLDER UNDER TEST. `process_shared_index` is per-thread because the index
+/// is `Rc`-based, and libtest runs every test on a fresh thread -- so every claim that resolves an
+/// entry over the live `[dag, src/v2]` pool rebuilt the whole-pool index and re-typechecked the
+/// shared prefix, the same fact once per claim with its least common ancestor at the PROCESS
+/// (DESIGN §2 demand minimization; gunbc#12450 measured ~18 such claims at ~90s each). The
+/// entry-scoped loader cannot stand in: bare references resolve through a census of the whole pool
+/// (`admit_pool_bare_references`), so no entry resolves without it.
+///
+/// So the fact moves to its ancestor: one thread holds the index in ITS thread-local slot for as
+/// long as claims keep arriving, and a live-pool claim runs its body there. Nothing about
+/// resolution changes -- the same `process_shared_index` builds the same pool on first demand --
+/// only how many times. `RUST_TEST_THREADS=1` (`.cargo/config.toml`) already serializes the suite,
+/// so the queue costs no parallelism. The pool is released when another thread builds one
+/// (`yield_live_pool_before_building_another`). A panic in the body is caught on the thread and re-raised on the
+/// calling test's thread with its original payload, so a failing claim reds exactly as before and
+/// the thread survives for the next one.
+#[cfg(test)]
+pub(crate) fn on_live_pool_thread<T: Send + 'static>(
+    body: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let job: LivePoolJob = Box::new(move || {
+        // Freed-but-retained heap from the tests that ran on their own threads before this claim
+        // is returned first: those threads' glibc arenas are not the one this long-lived thread
+        // allocates from, so without the trim the pool is built ON TOP of their residue (measured
+        // under the hosted runner's 12 GiB `memory.max`: 7.6 GiB retained before the first claim,
+        // OOM-killed at the bound as the pool was built; 1.4 GiB with the trim).
+        trim_retained_heap();
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
+        release_per_entry_graphs_on_live_pool_thread();
+        trim_retained_heap();
+        let _ = done_tx.send(outcome);
+    });
+    {
+        let mut slot = LIVE_POOL_THREAD
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        slot.get_or_insert_with(spawn_live_pool_thread)
+            .0
+            .send(job)
+            .expect("the live-pool thread accepts work");
+    }
+    match done_rx.recv().expect("the live-pool thread answers") {
+        Ok(value) => value,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
+/// What the live-pool thread keeps between claims, and what it drops. The shared FACT is the
+/// pool: its module index, graph facts, heads parse, censuses and the capped typed-module cache,
+/// which every claim's entry reuses. A claim's own resolved entry graphs are not shared -- no
+/// later claim asks for the same entry -- so holding them would only grow the thread's resident
+/// set claim by claim (measured: 39 live-pool claims peaked at 10.6 GiB with them held, against a
+/// 12 GiB `memory.max` on the hosted runner). They are dropped after every claim.
+#[cfg(test)]
+fn release_per_entry_graphs_on_live_pool_thread() {
+    PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
+    PROCESS_RESOLVE_INDEX.with(|slots| {
+        for (_, index) in slots.borrow().iter().flatten() {
+            clear_resolved_graph_memo_for_test(index);
+        }
+    });
+}
+
+/// The strict-pool shared index for `source_roots` IF this thread already built it; never builds
+/// one. For readers that report on a resolve after the fact (`pre_entry_phase`), where building
+/// would repeat the discovery a refused resolve just failed.
+pub(crate) fn memoized_process_shared_index(
+    source_roots: &[String],
+) -> Option<Rc<MultiEntryIndex>> {
+    let roots_key = canonical_shared_index_roots(source_roots).join("\u{1f}");
+    PROCESS_RESOLVE_INDEX.with(|s| {
+        s.borrow()[0]
+            .as_ref()
+            .and_then(|(k, idx)| (*k == roots_key).then(|| idx.clone()))
+    })
+}
+
 /// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
 /// discovery must not install a partial index that every later caller in the process would
 /// then read as complete.
@@ -748,12 +929,20 @@ pub fn try_process_shared_index_for_pool(
     if let Some(idx) = existing {
         return Ok(idx);
     }
+    #[cfg(test)]
+    yield_live_pool_before_building_another();
     let build_started = std::time::Instant::now();
+    let walk_started = std::time::Instant::now();
     let module_index = if primary_precedence {
         try_build_module_index_primary_precedence(&roots)?
     } else {
         try_build_module_index(&roots)?
     };
+    super::pre_entry_phase::record(
+        "source_root_walk_and_read",
+        super::pre_entry_phase::PhaseScale::Tree,
+        walk_started.elapsed(),
+    );
     let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots, None));
     discovery_phase_totals::add(
         &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
@@ -887,7 +1076,7 @@ pub(crate) fn new_multi_entry_index_shell(
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
         closure_name_censuses: RefCell::new(HashMap::new()),
-        bare_reference_admission: RefCell::new(None),
+        bare_reference_admission: RefCell::new(HashMap::new()),
         live_read_manifest: RefCell::new(None),
     }
 }
@@ -1473,6 +1662,10 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     String,
 > {
     let entry_file = phase_label;
+    index
+        .module_graph_facts
+        .selection
+        .admit_pool_names(|| reference_pool_names_for_index(index))?;
     let subject = subject_digest_for_closure(&sources);
     // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in front of the
     // opt-in cross-process store. `install_cross_process_materialization_hit` can populate this
@@ -2363,14 +2556,7 @@ pub(crate) fn import_resolution_facts_with_observation(
                     continue;
                 }
             };
-            for import_module in extract_import_paths(&content) {
-                let target_declared = declared.contains(&import_module);
-                out.push(ImportResolutionFactRaw {
-                    path: rel.clone(),
-                    import_module,
-                    target_declared,
-                });
-            }
+            out.extend(import_facts_for_file(&rel, &content, &declared));
         }
     }
     ImportResolutionObservation {
@@ -2378,6 +2564,25 @@ pub(crate) fn import_resolution_facts_with_observation(
         observed_paths,
         read_refusals,
     }
+}
+
+/// THE PER-FILE HALF of `import_resolution_facts`: one importer's `import` lines, each marked
+/// declared or not against the pool's module index. One authority for both demands on it -- the
+/// population walk above maps it over every importer file, and
+/// `cli_run` `dependency_resolution_facts_at` asks it for one.
+pub(crate) fn import_facts_for_file(
+    rel: &str,
+    content: &str,
+    declared: &HashSet<String>,
+) -> Vec<ImportResolutionFactRaw> {
+    extract_import_paths(content)
+        .into_iter()
+        .map(|import_module| ImportResolutionFactRaw {
+            path: rel.to_string(),
+            target_declared: declared.contains(&import_module),
+            import_module,
+        })
+        .collect()
 }
 
 pub fn import_resolution_facts(
@@ -2472,9 +2677,499 @@ pub(crate) fn parse_module_node_tolerant(
     result.module.clone()
 }
 
+/// THE POOL-WIDE HALF OF THE REFERENCE-EDGE PRODUCER: which pool module declares each exported
+/// name, and the set of declared module names. It is the only input to a file's reference edges
+/// that is a fact about the whole pool, and it is a fact about declaration HEADS, so it is read
+/// with the heads reading of the grammar (`v1.compiler.parse.parse_heads_with_table`) -- the same
+/// reading `module_path_index::parse_module_binding` and the pool census already take, over the
+/// same shared token acquisition (`pool_acquire`). Bodies are not built here: a body's
+/// grammaticality is owned by the required parse sweep and by the front end of whatever closure
+/// is compiled, so building every pool body to read its declaration names was work no consumer of
+/// this half demanded (DESIGN §2, and the precedent stated at `parse_module_binding`).
+///
+/// What that narrows, stated exactly: a pool file whose heads parse but whose BODY does not now
+/// contributes its declared names, where the full reading skipped it. Such a file refuses at the
+/// required parse sweep and in any closure that compiles it.
+pub(crate) struct ReferencePoolNames {
+    pub(crate) decl_index: HashMap<String, BTreeSet<String>>,
+    pub(crate) module_names: HashSet<String>,
+}
+
+thread_local! {
+    static REFERENCE_POOL_NAMES_CACHE: RefCell<HashMap<String, Rc<ReferencePoolNames>>> =
+        RefCell::new(HashMap::new());
+}
+
+impl ReferencePoolNames {
+    /// THE ONE NAME DERIVATION, over declaration heads in pool-precedence order: a module name
+    /// already claimed does not re-contribute (first-root-wins, as `build_module_path_index`).
+    /// Both acquisitions below feed it, so the index is one function of the heads reading and not
+    /// two walks that agree by care.
+    fn from_heads_modules<'a>(
+        modules: impl IntoIterator<Item = (String, &'a Rc<crate::v1_std_core::Node>)>,
+    ) -> Self {
+        let mut decl_index: HashMap<String, BTreeSet<String>> = HashMap::new();
+        let mut module_names: HashSet<String> = HashSet::new();
+        for (module_name, tree) in modules {
+            if !module_names.insert(module_name.clone()) {
+                continue;
+            }
+            for name in collect_module_decl_names(tree) {
+                decl_index
+                    .entry(name)
+                    .or_default()
+                    .insert(module_name.clone());
+            }
+        }
+        ReferencePoolNames {
+            decl_index,
+            module_names,
+        }
+    }
+}
+
+/// The name index from the POOL CENSUS'S OWN heads reading (`pool_parse`), which every resolve
+/// through this index already forces for its qualified fill and bare census. A resolve therefore
+/// reads the pool's heads once, not once for the census and again for reference edges.
+pub(crate) fn reference_pool_names_for_index(
+    index: &MultiEntryIndex,
+) -> Result<Rc<ReferencePoolNames>, String> {
+    let pool = pool_parse(index)?;
+    let started = std::time::Instant::now();
+    let names = Rc::new(ReferencePoolNames::from_heads_modules(
+        pool.nodes_by_file
+            .iter()
+            .map(|(_, node)| (node.name.clone(), node)),
+    ));
+    super::pre_entry_phase::record(
+        "reference_pool_names_from_census",
+        super::pre_entry_phase::PhaseScale::Tree,
+        started.elapsed(),
+    );
+    Ok(names)
+}
+
+/// The name index for a consumer that holds no resolve index (the whole-pool selection tier's
+/// affected-set demand): its own heads walk over the roots, into the same derivation.
+pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNames> {
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let key = abs_pool_roots.join("\u{1e}");
+    if let Some(hit) = REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        return hit;
+    }
+    let started = std::time::Instant::now();
+    let mut heads: Vec<(String, Rc<crate::v1_std_core::Node>)> = Vec::new();
+    for root in &abs_pool_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            let Some(module_name) = extract_module_path(&content) else {
+                continue;
+            };
+            let Some(tree) = parse_module_heads_tolerant(&rel, &content) else {
+                continue;
+            };
+            heads.push((module_name, tree));
+        }
+    }
+    let names = Rc::new(ReferencePoolNames::from_heads_modules(
+        heads.iter().map(|(m, t)| (m.clone(), t)),
+    ));
+    super::pre_entry_phase::record(
+        "reference_pool_names_heads",
+        super::pre_entry_phase::PhaseScale::Tree,
+        started.elapsed(),
+    );
+    REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow_mut().insert(key, names.clone()));
+    names
+}
+
+/// The heads reading of one pool file, `None` on a heads-grammar refusal.
+fn parse_module_heads_tolerant(rel: &str, content: &str) -> Option<Rc<crate::v1_std_core::Node>> {
+    let filename = rel.to_string();
+    let tokens = super::pool_acquire::tokens_for(&filename, content);
+    let source_index = super::pool_acquire::newline_index_for(&filename, content);
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename, source_index);
+    let result = crate::v1_compiler_parse::parse_heads_with_table(
+        tokens,
+        Rc::new(source_indices),
+        crate::v1_std_core::empty_intern_table(),
+    )
+    .result
+    .clone();
+    if result.error.is_some() {
+        return None;
+    }
+    result.module.clone()
+}
+
+const REFERENCE_SELECTION_EXCLUDE: &[String] = &[];
+
+/// THE SELECTION TIER OF THE MODULE GRAPH, produced on demand at the grain it is demanded.
+///
+/// Two demands, one producer (`reference_edges_for_file`): the whole-pool adjacency and its
+/// unaccounted set are built once, the first time an affected-set consumer asks
+/// (`selection_adjacency`, `reference_unaccounted`); a single file's strict reference targets are
+/// produced when the resolve path asks for that file, and memoized per file. Both are the same
+/// function of (file bytes, pool name index), so a per-file answer equals the whole-pool row for
+/// that file by construction rather than by a second producer agreeing with the first.
+pub struct ReferenceSelectionTier {
+    roots: Vec<String>,
+    import_edges: Vec<ImportResolutionFactRaw>,
+    nodes: Vec<ModuleDeclarationFactRaw>,
+    module_to_path: HashMap<String, String>,
+    whole: std::cell::OnceCell<(HashMap<String, Vec<String>>, HashSet<String>)>,
+    per_file: RefCell<HashMap<String, Vec<String>>>,
+    names: std::cell::OnceCell<Rc<ReferencePoolNames>>,
+}
+
+impl ReferenceSelectionTier {
+    pub(crate) fn new(
+        roots: Vec<String>,
+        import_edges: Vec<ImportResolutionFactRaw>,
+        nodes: &[ModuleDeclarationFactRaw],
+    ) -> Self {
+        let module_to_path = nodes
+            .iter()
+            .map(|n| (n.module.clone(), workspace_relative_repo_path(&n.path)))
+            .collect();
+        ReferenceSelectionTier {
+            roots,
+            import_edges,
+            nodes: nodes.to_vec(),
+            module_to_path,
+            whole: std::cell::OnceCell::new(),
+            per_file: RefCell::new(HashMap::new()),
+            names: std::cell::OnceCell::new(),
+        }
+    }
+
+    /// A tier whose whole-pool answer is supplied rather than produced (synthetic fixtures).
+    #[cfg(test)]
+    pub(crate) fn supplied(adjacency: HashMap<String, Vec<String>>) -> Self {
+        let tier = ReferenceSelectionTier::new(Vec::new(), Vec::new(), &[]);
+        let _ = tier.whole.set((adjacency, HashSet::new()));
+        tier
+    }
+
+    fn whole(&self) -> &(HashMap<String, Vec<String>>, HashSet<String>) {
+        self.whole.get_or_init(|| {
+            let started = std::time::Instant::now();
+            let mut selection_edges = self.import_edges.clone();
+            selection_edges.extend(reference_edges_as_import_facts(
+                &reference_resolution_facts(&self.roots, &self.roots, REFERENCE_SELECTION_EXCLUDE),
+                /* strict */ true,
+            ));
+            let adjacency = build_import_adjacency(&selection_edges, &self.nodes);
+            let unaccounted = reference_accounting_refusals(
+                &self.roots,
+                &self.roots,
+                REFERENCE_SELECTION_EXCLUDE,
+            )
+            .into_iter()
+            .map(|r| workspace_relative_repo_path(&r.path))
+            .collect();
+            super::pre_entry_phase::record(
+                "selection_tier_whole_pool",
+                super::pre_entry_phase::PhaseScale::Tree,
+                started.elapsed(),
+            );
+            (adjacency, unaccounted)
+        })
+    }
+
+    /// Whole-pool selection adjacency: import edges plus strict-tier reference edges.
+    pub(crate) fn selection_adjacency(&self) -> &HashMap<String, Vec<String>> {
+        &self.whole().0
+    }
+
+    /// Import-less files the reference-edge producer could not answer for.
+    pub(crate) fn reference_unaccounted(&self) -> &HashSet<String> {
+        &self.whole().1
+    }
+
+    /// Admit the pool name index a resolve index already derives from its census reading
+    /// (`reference_pool_names_for_index`), before any per-file demand. Called at the head of
+    /// every resolve through an index, where a census refusal can still refuse the resolve.
+    pub(crate) fn admit_pool_names(
+        &self,
+        produce: impl FnOnce() -> Result<Rc<ReferencePoolNames>, String>,
+    ) -> Result<(), String> {
+        if self.whole.get().is_some() || self.names.get().is_some() {
+            return Ok(());
+        }
+        let _ = self.names.set(produce()?);
+        Ok(())
+    }
+
+    /// Strict-tier reference targets of ONE file, as workspace-relative paths. When the whole
+    /// tier has already been produced it is read; otherwise only this file is.
+    pub(crate) fn strict_reference_targets(&self, file_rel: &str) -> Vec<String> {
+        if let Some((adjacency, _)) = self.whole.get() {
+            return adjacency.get(file_rel).cloned().unwrap_or_default();
+        }
+        if let Some(hit) = self.per_file.borrow().get(file_rel) {
+            return hit.clone();
+        }
+        let started = std::time::Instant::now();
+        let targets = self.produce_one(file_rel);
+        super::pre_entry_phase::record(
+            "selection_tier_closure_files",
+            super::pre_entry_phase::PhaseScale::Closure,
+            started.elapsed(),
+        );
+        self.per_file
+            .borrow_mut()
+            .insert(file_rel.to_string(), targets.clone());
+        targets
+    }
+
+    fn produce_one(&self, file_rel: &str) -> Vec<String> {
+        // The whole-pool producer walks the pool roots; a file outside them has no row there,
+        // so it has none here.
+        let abs = workspace_root().join(file_rel);
+        let under_roots = pool_roots_abs(&self.roots)
+            .iter()
+            .any(|r| abs.starts_with(Path::new(r)));
+        if !under_roots || !abs.is_file() {
+            return Vec::new();
+        }
+        let content = std::fs::read_to_string(&abs).ok();
+        // The resolve path admitted the census-derived index; a consumer that reached here without
+        // one walks the roots itself, into the same derivation.
+        let names = match self.names.get() {
+            Some(n) => n.clone(),
+            None => reference_pool_names(&self.roots),
+        };
+        let FileReferenceEdges::Edges(edges) =
+            reference_edges_for_file(file_rel, content.as_deref(), &names)
+        else {
+            return Vec::new();
+        };
+        let mut out: Vec<String> = Vec::new();
+        for fact in reference_edges_as_import_facts(&edges, /* strict */ true) {
+            if let Some(path) = self.module_to_path.get(&fact.import_module) {
+                if !out.contains(path) {
+                    out.push(path.clone());
+                }
+            }
+        }
+        out
+    }
+}
+
+/// One file's answer from the reference-edge producer.
+pub(crate) enum FileReferenceEdges {
+    /// The file carries `import` lines: its edges are owned EXACTLY by `import_resolution_facts`,
+    /// and emitting reference edges for it would only over-connect.
+    ImportBearing,
+    /// The file's reference edges, every tier (`reference_edges_as_import_facts` filters).
+    Edges(Vec<ReferenceEdgeRaw>),
+    /// An import-less file the producer could not answer for, with the located cause.
+    Unaccounted(&'static str),
+}
+
+/// THE PER-FILE HALF: one file's reference edges, from that file's own full parse and the pool
+/// name index. ONE authority for both demands on it -- the whole-pool producer below maps it over
+/// every importer file for the affected-set consumers, and the resolve path asks it only for the
+/// files of the closure it compiles (`ModuleGraphFactsLive::reference_only_direct_import_paths`),
+/// so a `gunbc run` no longer full-parses the pool to read the edges of a few modules.
+pub(crate) fn reference_edges_for_file(
+    rel: &str,
+    content: Option<&str>,
+    names: &ReferencePoolNames,
+) -> FileReferenceEdges {
+    reference_edges_for_file_on_demand(rel, content, || names)
+}
+
+/// The same per-file answer with the pool name index DEMANDED rather than supplied. An unreadable
+/// or import-bearing file is decided from its own bytes, so a caller asking about one such file
+/// never builds the whole-pool heads index; only an import-less file, whose references must be
+/// resolved against pool names, forces it.
+pub(crate) fn reference_edges_for_file_on_demand<
+    R: std::ops::Deref<Target = ReferencePoolNames>,
+>(
+    rel: &str,
+    content: Option<&str>,
+    names: impl FnOnce() -> R,
+) -> FileReferenceEdges {
+    let Some(content) = content else {
+        return FileReferenceEdges::Unaccounted("unreadable");
+    };
+    if !extract_import_paths(content).is_empty() {
+        return FileReferenceEdges::ImportBearing;
+    }
+    let names = names();
+    let names: &ReferencePoolNames = &names;
+    let Some(self_module) = extract_module_path(content) else {
+        return FileReferenceEdges::Unaccounted("no-module-line");
+    };
+    let Some(tree) = parse_module_node_tolerant(rel, content) else {
+        return FileReferenceEdges::Unaccounted("parse-failed");
+    };
+    let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut chains: Vec<Vec<String>> = Vec::new();
+    // THE INDEX IS BUILT FROM THE BYTES THIS PRODUCER ALREADY READ, not fetched from a
+    // prepared subject that does not exist at this point: `collect_node_refs` recovers a
+    // lambda parameter's name from its authored span, and a missing index would leave
+    // those names unbound and let them resolve as references.
+    let mut file_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    file_indices.insert(
+        rel.to_string(),
+        crate::v1_std_core::build_newline_index(rel.to_string(), content.to_string()),
+    );
+    let file_indices = Rc::new(file_indices);
+    // THIS PRODUCER ANSWERS A CORPUS-WIDE QUESTION BEFORE ANY SUBJECT IS PREPARED, so it
+    // has no declaration index to classify against and cannot decide
+    // DeclaredElsewhere / NamesNothingKnown. It supplies an EMPTY index, under which
+    // every unbound name classifies as a reference — the behaviour this producer already
+    // had, preserved deliberately rather than by omission. The totality guarantee is
+    // therefore scoped to the floor's index build, which is the consumer that has the
+    // declarations; this one keeps its own looser contract and its own counters.
+    let mut scratch_tally: BTreeMap<ExprVarClass, usize> = BTreeMap::new();
+    let mut scratch_unclassified: Vec<String> = Vec::new();
+    let mut classify = ExprVarClassification {
+        decl_index: None,
+        module_names: Some(&names.module_names),
+        module_path_heads: std::collections::HashSet::new(),
+        tally: &mut scratch_tally,
+        unclassified: &mut scratch_unclassified,
+        module: self_module.clone(),
+        value_refs: std::collections::BTreeSet::new(),
+        occurrences: 0,
+        free_reference_edges: 0,
+        bound_occurrences_suppressed: 0,
+        chain_head_occurrences: 0,
+        refusals: Vec::new(),
+    };
+    for item in tree.children.iter() {
+        collect_node_refs(item, &mut bare, &mut chains, &file_indices, &mut classify);
+    }
+    // THE SECOND CONSUMER ENFORCES THE SAME REFUSAL THE FIRST ONE DOES. `classify` reports
+    // two failure states and neither is survivable for a graph that is about to be
+    // published: an unsupported binder form means the binder set is incomplete, so a name
+    // that IS bound can be recorded as a free reference (or the reverse); a reconciliation
+    // miss means the occurrences do not add up, which is the same statement arrived at by
+    // counting. Reading them and proceeding anyway would publish an under-bound, possibly
+    // widened graph while the refusal sat unread in a field — the fail-open this
+    // classification exists to remove, one consumer away from the floor path that checks
+    // it correctly (review 55667).
+    //
+    // TWO CAUSES, NOT ONE, because they have different remedies: a binder refusal names a
+    // syntax the collector must learn, and a reconciliation miss names an accounting
+    // defect in the collector itself. Collapsing them would send both to whichever
+    // remedy the shared symbol happened to suggest.
+    //
+    // The file is SKIPPED rather than published, matching this producer's three existing
+    // refusal arms above (`unreadable`, `no-module-line`, `parse-failed`), which also skip
+    // and record. The narrowing is therefore typed, located and countable through
+    // `reference_accounting_refusals`, not silent — a skipped file is visible in that
+    // channel, which is what separates it from the empty-observation narrow.
+    if !classify.refusals.is_empty() {
+        return FileReferenceEdges::Unaccounted("binder-refusal");
+    }
+    if !classify.reconciles() {
+        return FileReferenceEdges::Unaccounted("occurrence-accounting-mismatch");
+    }
+    // Resolve to per-file (target_module → strongest confidence).
+    let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
+        std::collections::BTreeMap::new();
+    let mut upgrade = |m: String, res: RefEdgeResolution| {
+        let entry = file_edges.entry(m).or_insert(res);
+        if res.rank() > entry.rank() {
+            *entry = res;
+        }
+    };
+    for chain in &chains {
+        if let Some(m) = longest_declared_module_prefix(chain, &names.module_names) {
+            if m != self_module {
+                upgrade(m, RefEdgeResolution::Qualified);
+            }
+        }
+    }
+    for name in &bare {
+        // A kernel or container spelling binds no module (`is_substrate_vocabulary`), so
+        // it is never an edge: `String` in `std.primitives` once resolved UniqueBare to
+        // std.string_type, a module the resolver never loads for that spelling.
+        if super::is_substrate_vocabulary(name) {
+            continue;
+        }
+        if let Some(mods) = names.decl_index.get(name) {
+            // Same-module declaration wins by lexical scope (namespace-only): a bare name the
+            // referencing file itself declares resolves LOCALLY — no cross-module edge. This
+            // is what keeps a ubiquitous fixture `data` (e.g. `live_tree_disposition`,
+            // declared top-level in ~670 test files) from fanning every referrer out to every
+            // declarer.
+            if mods.contains(&self_module) {
+                continue;
+            }
+            // Proximity disambiguation (namespace-only "nearest in the containment tree"):
+            // among declarers, prefer the one sharing the longest module-path prefix with the
+            // referencing module. A single nearest → UniqueBare; a tie at the nearest depth →
+            // AmbiguousBare (a genuine homonym the source must qualify — the bright-cat lane).
+            let mut best_len = 0usize;
+            let mut winners: Vec<&String> = Vec::new();
+            for m in mods.iter() {
+                let shared = module_prefix_shared_len(&self_module, m);
+                if winners.is_empty() || shared > best_len {
+                    best_len = shared;
+                    winners.clear();
+                    winners.push(m);
+                } else if shared == best_len {
+                    winners.push(m);
+                }
+            }
+            match winners.len() {
+                0 => {}
+                1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
+                _ => {
+                    // Homonym-qualification worklist dump (bright-cat lane (c) seed): each
+                    // AmbiguousBare is a bare ref, in a file that does not declare it, whose
+                    // nearest declarers tie — the definitive "needs qualification" site.
+                    if std::env::var("REFAMBIG_DUMP").is_ok() {
+                        let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
+                        let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();
+                        eprintln!(
+                            "REFAMBIG\t{}\t{}\t{}\t{}",
+                            if is_witness { "witness" } else { "compile" },
+                            rel,
+                            name,
+                            cands.join(",")
+                        );
+                    }
+                    for t in winners {
+                        upgrade(t.clone(), RefEdgeResolution::AmbiguousBare);
+                    }
+                }
+            }
+        }
+    }
+    FileReferenceEdges::Edges(
+        file_edges
+            .into_iter()
+            .map(|(m, res)| ReferenceEdgeRaw {
+                path: rel.to_string(),
+                target_module: m,
+                resolution: res,
+            })
+            .collect(),
+    )
+}
+
 /// Reference-derived analogue of `import_resolution_facts`: emit one edge per (file, referenced
 /// module). Same row shape channel as import facts, plus a `resolution` confidence tag. Cached by
-/// (pool_roots, importer_roots, excludes).
+/// (pool_roots, importer_roots, excludes). The whole-pool map of `reference_edges_for_file`; its
+/// demand is the affected-set consumers', which ask about every file.
 pub fn reference_resolution_facts(
     pool_roots: &[String],
     importer_roots: &[String],
@@ -2492,66 +3187,10 @@ pub fn reference_resolution_facts(
         shared_fill::record_hit("reference_edges", &cache_key);
         return cached;
     }
-    // THE WHOLE-POOL PARSE PASS BELOW IS THE FLOOR'S LARGEST SHARED FILL. Timed and attributed
-    // from here so the claim that happens to reach it first is not read as the claim that costs
-    // it; see `shared_fill` for why the per-row number alone cannot answer that.
     shared_fill::begin_fill();
     let reference_edges_fill_start = std::time::Instant::now();
+    let names = reference_pool_names(pool_roots);
     let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
-
-    // ── Pass 1: parse the pool once. Build the exported-name→module index (precedence: first root
-    // wins, mirroring `build_module_path_index`) and the declared-module-name set. Keep each file's
-    // parsed tree so edge emission does not re-parse.
-    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
-    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
-    // `has_imports` decides per-file whether reference edges are emitted at all: a file that still
-    // carries `import` lines is covered EXACTLY by `import_resolution_facts` (no regression, no
-    // over-connection). Only an import-less (stripped) file falls back to reference edges. So on the
-    // un-stripped tree this producer emits nothing and the module graph is byte-identical to before.
-    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
-        HashMap::new();
-    for root in &abs_pool_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
-        files.sort();
-        for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            let content = match std::fs::read_to_string(&file) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            let module_name = match extract_module_path(&content) {
-                Some(m) => m,
-                None => continue,
-            };
-            let tree = match parse_module_node_tolerant(&rel, &content) {
-                Some(t) => t,
-                None => continue,
-            };
-            let has_imports = !extract_import_paths(&content).is_empty();
-            // Precedence: a module name already claimed by an earlier root does not re-contribute
-            // exported names (first-root-wins, as `build_module_path_index`).
-            if seen_modules.insert(module_name.clone()) {
-                module_names.insert(module_name.clone());
-                for name in collect_module_decl_names(&tree) {
-                    decl_index
-                        .entry(name)
-                        .or_default()
-                        .insert(module_name.clone());
-                }
-            }
-            pool_trees
-                .entry(rel)
-                .or_insert((module_name, tree, has_imports));
-        }
-    }
-
-    // ── Pass 2: for each importer file, collect its reference use sites and resolve them to modules.
     let mut edges: Vec<ReferenceEdgeRaw> = Vec::new();
     for root in &abs_importer_roots {
         let root_path = Path::new(root);
@@ -2566,210 +3205,16 @@ pub fn reference_resolution_facts(
             if is_excluded_import_path(&rel, exclude_substrings) {
                 continue;
             }
-            let (self_module, tree) = match pool_trees.get(&rel) {
-                // A file that still carries imports is covered exactly by `import_resolution_facts`;
-                // emitting reference edges for it would only over-connect. Skip — reference edges are
-                // for import-less (stripped) files.
-                Some((_, _, true)) => continue,
-                Some((m, t, false)) => (m.clone(), t.clone()),
-                // Absent from pass 1 means pass 1 skipped it: unreadable, no module line, or a
-                // parse failure. Each is the producer being UNABLE TO ASK what this file depends
-                // on — ignorance, not an answer — so each is recorded as a located refusal rather
-                // than silently yielding an edgeless file that downstream reads as "no
-                // dependencies" (DESIGN §5: a failure arm must refuse, never widen).
-                None => {
-                    let content = match std::fs::read_to_string(&file) {
-                        Ok(c) => c,
-                        Err(_) => {
-                            unaccounted.push(ReferenceAccountingRefusal {
-                                path: rel.clone(),
-                                cause: "unreadable",
-                            });
-                            continue;
-                        }
-                    };
-                    // Import-bearing: accounted EXACTLY by `import_resolution_facts`, so this is
-                    // not a refusal — the other producer owns this file's edges.
-                    if !extract_import_paths(&content).is_empty() {
-                        continue;
-                    }
-                    let module_name = match extract_module_path(&content) {
-                        Some(m) => m,
-                        None => {
-                            unaccounted.push(ReferenceAccountingRefusal {
-                                path: rel.clone(),
-                                cause: "no-module-line",
-                            });
-                            continue;
-                        }
-                    };
-                    match parse_module_node_tolerant(&rel, &content) {
-                        Some(t) => (module_name, t),
-                        None => {
-                            unaccounted.push(ReferenceAccountingRefusal {
-                                path: rel.clone(),
-                                cause: "parse-failed",
-                            });
-                            continue;
-                        }
-                    }
+            let content = std::fs::read_to_string(&file).ok();
+            match reference_edges_for_file(&rel, content.as_deref(), &names) {
+                FileReferenceEdges::ImportBearing => {}
+                FileReferenceEdges::Edges(file_edges) => edges.extend(file_edges),
+                FileReferenceEdges::Unaccounted(cause) => {
+                    unaccounted.push(ReferenceAccountingRefusal {
+                        path: rel.clone(),
+                        cause,
+                    })
                 }
-            };
-            let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let mut chains: Vec<Vec<String>> = Vec::new();
-            // THE INDEX IS BUILT FROM THE BYTES THIS PRODUCER ALREADY READ, not fetched from a
-            // prepared subject that does not exist at this point: `collect_node_refs` recovers a
-            // lambda parameter's name from its authored span, and a missing index would leave
-            // those names unbound and let them resolve as references.
-            let mut file_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
-            if let Ok(content) = std::fs::read_to_string(&file) {
-                file_indices.insert(
-                    rel.clone(),
-                    crate::v1_std_core::build_newline_index(rel.clone(), content),
-                );
-            }
-            let file_indices = Rc::new(file_indices);
-            // THIS PRODUCER ANSWERS A CORPUS-WIDE QUESTION BEFORE ANY SUBJECT IS PREPARED, so it
-            // has no declaration index to classify against and cannot decide
-            // DeclaredElsewhere / NamesNothingKnown. It supplies an EMPTY index, under which
-            // every unbound name classifies as a reference — the behaviour this producer already
-            // had, preserved deliberately rather than by omission. The totality guarantee is
-            // therefore scoped to the floor's index build, which is the consumer that has the
-            // declarations; this one keeps its own looser contract and its own counters.
-            let mut scratch_tally: BTreeMap<ExprVarClass, usize> = BTreeMap::new();
-            let mut scratch_unclassified: Vec<String> = Vec::new();
-            let mut classify = ExprVarClassification {
-                decl_index: None,
-                module_names: Some(&module_names),
-                module_path_heads: std::collections::HashSet::new(),
-                tally: &mut scratch_tally,
-                unclassified: &mut scratch_unclassified,
-                module: self_module.clone(),
-                value_refs: std::collections::BTreeSet::new(),
-                occurrences: 0,
-                free_reference_edges: 0,
-                bound_occurrences_suppressed: 0,
-                chain_head_occurrences: 0,
-                refusals: Vec::new(),
-            };
-            for item in tree.children.iter() {
-                collect_node_refs(item, &mut bare, &mut chains, &file_indices, &mut classify);
-            }
-            // THE SECOND CONSUMER ENFORCES THE SAME REFUSAL THE FIRST ONE DOES. `classify` reports
-            // two failure states and neither is survivable for a graph that is about to be
-            // published: an unsupported binder form means the binder set is incomplete, so a name
-            // that IS bound can be recorded as a free reference (or the reverse); a reconciliation
-            // miss means the occurrences do not add up, which is the same statement arrived at by
-            // counting. Reading them and proceeding anyway would publish an under-bound, possibly
-            // widened graph while the refusal sat unread in a field — the fail-open this
-            // classification exists to remove, one consumer away from the floor path that checks
-            // it correctly (review 55667).
-            //
-            // TWO CAUSES, NOT ONE, because they have different remedies: a binder refusal names a
-            // syntax the collector must learn, and a reconciliation miss names an accounting
-            // defect in the collector itself. Collapsing them would send both to whichever
-            // remedy the shared symbol happened to suggest.
-            //
-            // The file is SKIPPED rather than published, matching this producer's three existing
-            // refusal arms above (`unreadable`, `no-module-line`, `parse-failed`), which also skip
-            // and record. The narrowing is therefore typed, located and countable through
-            // `reference_accounting_refusals`, not silent — a skipped file is visible in that
-            // channel, which is what separates it from the empty-observation narrow.
-            if !classify.refusals.is_empty() {
-                unaccounted.push(ReferenceAccountingRefusal {
-                    path: rel.clone(),
-                    cause: "binder-refusal",
-                });
-                continue;
-            }
-            if !classify.reconciles() {
-                unaccounted.push(ReferenceAccountingRefusal {
-                    path: rel.clone(),
-                    cause: "occurrence-accounting-mismatch",
-                });
-                continue;
-            }
-            // Resolve to per-file (target_module → strongest confidence).
-            let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
-                std::collections::BTreeMap::new();
-            let mut upgrade = |m: String, res: RefEdgeResolution| {
-                let entry = file_edges.entry(m).or_insert(res);
-                if res.rank() > entry.rank() {
-                    *entry = res;
-                }
-            };
-            for chain in &chains {
-                if let Some(m) = longest_declared_module_prefix(chain, &module_names) {
-                    if m != self_module {
-                        upgrade(m, RefEdgeResolution::Qualified);
-                    }
-                }
-            }
-            for name in &bare {
-                // A kernel or container spelling binds no module (`is_substrate_vocabulary`), so
-                // it is never an edge: `String` in `std.primitives` once resolved UniqueBare to
-                // std.string_type, a module the resolver never loads for that spelling.
-                if super::is_substrate_vocabulary(name) {
-                    continue;
-                }
-                if let Some(mods) = decl_index.get(name) {
-                    // Same-module declaration wins by lexical scope (namespace-only): a bare name the
-                    // referencing file itself declares resolves LOCALLY — no cross-module edge. This
-                    // is what keeps a ubiquitous fixture `data` (e.g. `live_tree_disposition`,
-                    // declared top-level in ~670 test files) from fanning every referrer out to every
-                    // declarer.
-                    if mods.contains(&self_module) {
-                        continue;
-                    }
-                    // Proximity disambiguation (namespace-only "nearest in the containment tree"):
-                    // among declarers, prefer the one sharing the longest module-path prefix with the
-                    // referencing module. A single nearest → UniqueBare; a tie at the nearest depth →
-                    // AmbiguousBare (a genuine homonym the source must qualify — the bright-cat lane).
-                    let mut best_len = 0usize;
-                    let mut winners: Vec<&String> = Vec::new();
-                    for m in mods.iter() {
-                        let shared = module_prefix_shared_len(&self_module, m);
-                        if winners.is_empty() || shared > best_len {
-                            best_len = shared;
-                            winners.clear();
-                            winners.push(m);
-                        } else if shared == best_len {
-                            winners.push(m);
-                        }
-                    }
-                    match winners.len() {
-                        0 => {}
-                        1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
-                        _ => {
-                            // Homonym-qualification worklist dump (bright-cat lane (c) seed): each
-                            // AmbiguousBare is a bare ref, in a file that does not declare it, whose
-                            // nearest declarers tie — the definitive "needs qualification" site.
-                            if std::env::var("REFAMBIG_DUMP").is_ok() {
-                                let is_witness =
-                                    rel.contains("/test/") || rel.ends_with("_test.dag");
-                                let cands: Vec<String> =
-                                    winners.iter().map(|s| (*s).clone()).collect();
-                                eprintln!(
-                                    "REFAMBIG\t{}\t{}\t{}\t{}",
-                                    if is_witness { "witness" } else { "compile" },
-                                    rel,
-                                    name,
-                                    cands.join(",")
-                                );
-                            }
-                            for t in winners {
-                                upgrade(t.clone(), RefEdgeResolution::AmbiguousBare);
-                            }
-                        }
-                    }
-                }
-            }
-            for (m, res) in file_edges {
-                edges.push(ReferenceEdgeRaw {
-                    path: rel.clone(),
-                    target_module: m,
-                    resolution: res,
-                });
             }
         }
     }
@@ -2783,4 +3228,94 @@ pub fn reference_resolution_facts(
     REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
     REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
     edges
+}
+
+#[cfg(test)]
+mod live_pool_thread_tests {
+    use super::*;
+
+    fn one_module_pool(tag: &str) -> (PathBuf, Vec<String>) {
+        // Under the workspace `target/` (gitignored): the module-graph facts normalize every pool
+        // path repo-relative and refuse one outside the workspace.
+        let root = process_workspace_root().join("target").join(format!(
+            "gunbc-live-pool-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("fx")).unwrap();
+        std::fs::write(
+            root.join("fx/one.dag"),
+            "module fx.one\nfn one() -> Int { 1 }\n",
+        )
+        .unwrap();
+        let roots = vec![root.to_string_lossy().into_owned()];
+        (root, roots)
+    }
+
+    /// THE ROUTE, not only the answer: two separate claims reach ONE index. The discriminating red
+    /// is the per-test-thread shape this replaces -- the second call below, run on a fresh thread,
+    /// builds a new index with a new generation.
+    #[test]
+    fn two_claims_on_the_live_pool_thread_share_one_index() {
+        let (root, roots) = one_module_pool("route");
+        let first = {
+            let roots = roots.clone();
+            on_live_pool_thread(move || process_shared_index(&roots).generation)
+        };
+        let second = {
+            let roots = roots.clone();
+            on_live_pool_thread(move || process_shared_index(&roots).generation)
+        };
+        let elsewhere = std::thread::spawn(move || process_shared_index(&roots).generation)
+            .join()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(root);
+        assert_eq!(first, second, "the live-pool thread kept its index");
+        assert_ne!(first, elsewhere, "a fresh thread builds its own");
+    }
+
+    /// THE POOL DOES NOT OUTLIVE ITS BLOCK. When another thread builds a pool of its own, the
+    /// live-pool thread's pool is released first, so the next claim meets a rebuilt index. The red
+    /// this discriminates is a thread that holds its pool under every later test's own pool.
+    #[test]
+    fn another_threads_pool_build_releases_the_live_pool() {
+        let (root, roots) = one_module_pool("release");
+        let (other_root, other_roots) = one_module_pool("release-other");
+        let generation = |roots: Vec<String>| {
+            on_live_pool_thread(move || process_shared_index(&roots).generation)
+        };
+        let first = generation(roots.clone());
+        let held = generation(roots.clone());
+        std::thread::spawn(move || {
+            process_shared_index(&other_roots);
+        })
+        .join()
+        .unwrap();
+        let after_release = generation(roots);
+        let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_dir_all(other_root);
+        assert_eq!(first, held, "back-to-back claims share the pool");
+        assert_ne!(
+            first, after_release,
+            "the pool outlived another thread's build"
+        );
+    }
+
+    /// A claim that fails on the live-pool thread reds its own test with its own message, and the
+    /// thread survives to serve the next claim.
+    #[test]
+    fn a_panic_on_the_live_pool_thread_reds_the_caller_and_the_thread_survives() {
+        let payload = std::panic::catch_unwind(|| {
+            on_live_pool_thread::<()>(|| panic!("planted live-pool failure"))
+        })
+        .expect_err("the planted panic reaches the caller");
+        assert_eq!(
+            payload.downcast_ref::<&str>().copied(),
+            Some("planted live-pool failure")
+        );
+        assert_eq!(on_live_pool_thread(|| 7), 7);
+    }
 }

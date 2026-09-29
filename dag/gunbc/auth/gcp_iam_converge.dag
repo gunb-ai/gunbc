@@ -513,14 +513,16 @@ type GcpIamEstatePlan
 fn plan_refusals(p: GcpIamPlan) -> List<String> {
   match p {
     GcpIamRefused { target: t, reasons: rs } => map(rs, r => join([t, ": ", r], ""))
-    _ => []
+    GcpIamNoop { target: _ } => []
+    GcpIamApply { diff: _ } => []
   }
 }
 
 fn plan_diffs(p: GcpIamPlan) -> List<GcpIamDiff> {
   match p {
     GcpIamApply { diff: d } => [d]
-    _ => []
+    GcpIamNoop { target: _ } => []
+    GcpIamRefused { target: _, reasons: _ } => []
   }
 }
 
@@ -822,7 +824,7 @@ fn execute_policy_add(s: PolicySubject, approved_etag: String, cells: List<GcpIa
 
 fn create_refusal(subject: String, o: RestOutcome) -> String {
   if rest_ok(o: o) { "" }
-  else if match o { RestStatusRefused { status: st, body: _ } => (st as Int) == 409  _ => false } { join([subject, " appeared after consent; nothing further applied"], "") }
+  else if match o { RestOk => false  RestStatusRefused { status: st, body: _ } => (st as Int) == 409  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { join([subject, " appeared after consent; nothing further applied"], "") }
   else { join([subject, ": ", rest_refusal_text(o: o)], "") }
 }
 
@@ -840,7 +842,7 @@ fn execute_create(e: GcpIamEffect, token: Secret) -> String
 }
 
 fn is_create(e: GcpIamEffect) -> Bool {
-  match e { AddPolicyCells { subject: _, observed_etag: _, cells: _ } => false  _ => true }
+  match e { AddPolicyCells { subject: _, observed_etag: _, cells: _ } => false  CreatePool { pool_id: _, display_name: _ } => true  CreateProvider { pool_id: _, provider_id: _, issuer_uri: _, attribute_mapping: _, attribute_condition: _ } => true  CreateServiceAccount { account_id: _, display_name: _ } => true }
 }
 
 fn first_refusal(xs: List<GcpIamEffect>, run: fn(GcpIamEffect) -> String) -> String {

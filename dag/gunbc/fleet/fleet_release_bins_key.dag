@@ -124,6 +124,23 @@ data release_bins_key_prefix: String = "release-bins-"
 data release_bins_preimage_name: String = "release-bins.preimage"
 data release_bins_manifest_name: String = "release-bins.manifest"
 data release_bins_staging_dir: String = ".release-bins-staging"
+
+// WHERE A CONSUMER JOB RECEIVES THE PACK: a directory under the runner's temp root, never the checkout.
+// The consumer's checkout IS a deploy source. The approval broker's dark install ships its working tree,
+// and candidate admission refuses an untracked path that would ship. #12422 made the consumer keep all
+// three entry files (preimage, manifest, archive) for verification, and the download step, naming no
+// path, dropped them in the checkout root. So the dark install refused CandidateCheckoutNotClean on the
+// job's own pack (fleet-converge run 36473122990). Before #12422 the only download was the archive,
+// deleted after unpack, so the same misplacement was cleaned up rather than prevented. Placing the pack
+// outside the tree makes it unshippable by construction. Excluding the three names from the deployed
+// scope would be the widened scope. The download step's `path:` and every consumer read below derive
+// from this one row, as ${{ runner.temp }}/<dir> and $RUNNER_TEMP/<dir>: one location, two spellings of
+// the same runner variable.
+data release_bins_download_dir: String = "release-bins-download"
+
+fn release_bins_download_path_expression() -> String {
+  join(["${{ runner.temp }}/", release_bins_download_dir], "")
+}
 data release_bins_key_kind: String = "gunbc.fleet_release_bins"
 data release_bins_admitted_producer_ref: String = "refs/heads/main"
 
@@ -193,6 +210,7 @@ fn test_words(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws) }
 fn staged(file: String) -> Node { words(ws: [var(n: "STAGE"), lit(t: join(["/", file], ""))]) }
 fn rooted(file: String) -> Node { words(ws: [var(n: "ROOT"), lit(t: join(["/", file], ""))]) }
 fn temp(file: String) -> Node { words(ws: [var(n: "RUNNER_TEMP"), lit(t: join(["/", file], ""))]) }
+fn downloaded(file: String) -> Node { temp(file: join([release_bins_download_dir, "/", file], "")) }
 
 fn append_line(file_var: String, line: Node) -> Node {
   bash_build_with_redir_to_file(
@@ -1021,25 +1039,25 @@ fn release_bins_consumer_statements() -> List<Node> {
         root_statement(),
         or_refuse(check: test_words(ws: [lit(t: "-n"), var(n: "RELEASE_BINS_KEY")]), r: ConsumerKeyMissing),
       ],
-      map(entry_files(), f => or_refuse(check: test_words(ws: [lit(t: "-f"), rooted(file: f)]), r: ConsumerFileMissing { file: f })),
+      map(entry_files(), f => or_refuse(check: test_words(ws: [lit(t: "-f"), downloaded(file: f)]), r: ConsumerFileMissing { file: f })),
     ),
     concat(
       concat(
         concat(
-          digest_of(name: "DOWNLOADED_DIGEST", path: rooted(file: release_bins_preimage_name)),
+          digest_of(name: "DOWNLOADED_DIGEST", path: downloaded(file: release_bins_preimage_name)),
           [or_refuse(check: key_matches(digest_var: "DOWNLOADED_DIGEST"), r: ConsumerPreimageKeyMismatch)],
         ),
         source_closure_statements(),
       ),
       seq(parts: [[
         or_refuse(
-          check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), words(ws: [lit(t: "source_closure="), var(n: "SOURCE_CLOSURE")]), rooted(file: release_bins_preimage_name)]),
+          check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), words(ws: [lit(t: "source_closure="), var(n: "SOURCE_CLOSURE")]), downloaded(file: release_bins_preimage_name)]),
           r: ConsumerSourceTreeMismatch,
         ),
       ], release_bins_verify_pack(
         site: ConsumerSite,
-        archive: rooted(file: ci_release_bins_archive_name),
-        manifest: rooted(file: release_bins_manifest_name),
+        archive: downloaded(file: ci_release_bins_archive_name),
+        manifest: downloaded(file: release_bins_manifest_name),
         dir: temp(file: "release-bins-check"),
       ), [
         cmd(ws: concat(

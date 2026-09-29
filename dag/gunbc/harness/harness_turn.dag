@@ -720,7 +720,8 @@ fn harness_tool_use_blocks(blocks: List<HarnessWireBlock>) -> List<HarnessWireBl
 fn harness_tool_use_id(block: HarnessWireBlock) -> String {
   match block {
     WireToolUseBlock { id, name: _, input: _ } => id
-    _ => ""
+    WireTextBlock { text: _ } => ""
+    WireThinkingBlock { thinking: _ } => ""
   }
 }
 
