@@ -375,6 +375,45 @@ fn change_universe(
     universe
 }
 
+/// THE READERS OF A LEAF, INDEXED ONCE. `read_binding` answers `None` for every read whose leaf is
+/// outside the change's universe, so a record none of whose reads spells a universe leaf contributes
+/// nothing to either loop below: no propagation, no consumer. Visiting only the records that DO
+/// spell one, in the index's own order, therefore selects exactly the set a scan of every record
+/// selects, in the same order -- the cost changes and nothing else. It was a scan per changed
+/// declaration, which made a change to a hub declaration (every alias over it propagates, and each
+/// propagated change scanned the whole corpus again) quadratic in the corpus: a floor sat in
+/// interface-consumer-planning for 77 minutes on gunbc#12381 against 2m47s on main.
+fn records_by_read_leaf<'a>(
+    records: &[&'a ModuleDeclarationRecord],
+    reads: impl Fn(&'a ModuleDeclarationRecord) -> Box<dyn Iterator<Item = &'a String> + 'a>,
+) -> std::collections::HashMap<String, BTreeSet<usize>> {
+    let mut by_leaf: std::collections::HashMap<String, BTreeSet<usize>> =
+        std::collections::HashMap::new();
+    for (at, record) in records.iter().enumerate() {
+        for spelling in reads(record) {
+            by_leaf
+                .entry(qualified_last_segment(spelling.clone()))
+                .or_default()
+                .insert(at);
+        }
+    }
+    by_leaf
+}
+
+fn records_reading<'a>(
+    records: &[&'a ModuleDeclarationRecord],
+    by_leaf: &std::collections::HashMap<String, BTreeSet<usize>>,
+    universe: &BTreeSet<String>,
+) -> Vec<&'a ModuleDeclarationRecord> {
+    let mut at: BTreeSet<usize> = BTreeSet::new();
+    for leaf in universe {
+        if let Some(readers) = by_leaf.get(leaf) {
+            at.extend(readers.iter().copied());
+        }
+    }
+    at.into_iter().map(|i| records[i]).collect()
+}
+
 /// THE SELECTOR THE REQUIRED FLOOR'S PLANNING ROW CONSUMES, derived from declarations and
 /// never from paths or names (DESIGN §3c: a declaration's consumers are a fact the namespace
 /// tree carries; the planned set is producer-derived, never a path filter).
@@ -406,6 +445,182 @@ fn change_universe(
 /// or -- for a propagated change -- it was planned as a consumer of the change it propagates);
 /// a declaration that is NEW at head; and a read whose candidate set names a DIFFERENT declarer.
 pub(crate) fn interface_changed_consumers(
+    base: &DeclarationIndex,
+    head: &DeclarationIndex,
+) -> InterfaceConsumerSelection {
+    let head_records = index_records(head);
+    let interface_readers = records_by_read_leaf(&head_records, |r| {
+        Box::new(r.interface_references.iter().map(|(_, spelling)| spelling))
+    });
+    let any_readers = records_by_read_leaf(&head_records, |r| {
+        Box::new(
+            r.referenced
+                .iter()
+                .chain(r.authored_type_references.iter())
+                .chain(r.called_occurrences.iter())
+                .chain(r.value_occurrences.iter())
+                .chain(r.matched_arms.iter())
+                .map(|(_, spelling)| spelling),
+        )
+    });
+    let mut changes: Vec<DeclarationInterfaceChange> = Vec::new();
+    for base_record in index_records(base) {
+        changes.extend(direct_interface_changes(
+            base_record,
+            index_get(head, &base_record.module_path),
+        ));
+    }
+    // PROPAGATION, a fixpoint over head interfaces. Bounded: each round adds at least one
+    // (module, declaration) pair not yet in `seen`, and the pairs are finite.
+    let mut seen: BTreeSet<(String, String)> = changes
+        .iter()
+        .map(|c| (c.module_path.clone(), c.declaration.clone()))
+        .collect();
+    let mut frontier: Vec<DeclarationInterfaceChange> = changes.clone();
+    while !frontier.is_empty() {
+        let mut next: Vec<DeclarationInterfaceChange> = Vec::new();
+        for change in &frontier {
+            // A narrowed admission changes who may call, not what the declaration's type is:
+            // nothing whose interface spells it has changed.
+            // Pure growth reaches only matches, and a match names the grown coproduct's arms
+            // directly wherever it sits, so nothing propagates through a carrier of it either.
+            if matches!(
+                change.ground,
+                InterfaceChangeGround::AdmittedCallersNarrowed { .. }
+                    | InterfaceChangeGround::AdmissionIntroduced { .. }
+                    | InterfaceChangeGround::ArmSetGrown { .. }
+            ) {
+                continue;
+            }
+            let universe = change_universe(base, head, change);
+            for record in records_reading(&head_records, &interface_readers, &universe) {
+                for (in_declaration, spelling) in &record.interface_references {
+                    if seen.contains(&(record.module_path.clone(), in_declaration.clone())) {
+                        continue;
+                    }
+                    // A FLAT-CHANNEL interface read propagates too. `interface_references` are the
+                    // parser's own type occurrences, so an empty candidate set there is a genuine
+                    // read the compiler resolves last-writer-wins -- the same read that plans its
+                    // module. Refusing to propagate it would plan B and leave B's readers C
+                    // unplanned while the population read as closed.
+                    if read_binding(base, head, record, spelling, &change.module_path, &universe)
+                        .is_none()
+                    {
+                        continue;
+                    }
+                    seen.insert((record.module_path.clone(), in_declaration.clone()));
+                    next.push(DeclarationInterfaceChange {
+                        module_path: record.module_path.clone(),
+                        declaration: in_declaration.clone(),
+                        ground: InterfaceChangeGround::PropagatedThrough {
+                            module_path: change.module_path.clone(),
+                            declaration: change.declaration.clone(),
+                        },
+                    });
+                }
+            }
+        }
+        changes.extend(next.iter().cloned());
+        frontier = next;
+    }
+
+    let mut consumers: Vec<InterfaceChangedConsumer> = Vec::new();
+    for change in &changes {
+        let universe = change_universe(base, head, change);
+        let admitted_only: Option<BTreeSet<&str>> = match &change.ground {
+            InterfaceChangeGround::AdmittedCallersNarrowed { removed_callers } => Some(
+                removed_callers
+                    .iter()
+                    .map(|(module, _)| module.as_str())
+                    .collect(),
+            ),
+            _ => None,
+        };
+        for consumer in records_reading(&head_records, &any_readers, &universe) {
+            if consumer.module_path == change.module_path {
+                continue;
+            }
+            if admitted_only
+                .as_ref()
+                .is_some_and(|modules| !modules.contains(consumer.module_path.as_str()))
+            {
+                continue;
+            }
+            let mut in_declarations: BTreeSet<String> = BTreeSet::new();
+            let mut binding: Option<InterfaceConsumerBinding> = None;
+            // `referenced` over-collects binders and labels (see its field note), so a read
+            // there binds only when it RESOLVES to the declarer; the flat bare channel is
+            // admitted only from the parser's own type occurrences and match-arm heads, where a
+            // spelling is a genuine read. Otherwise every module with a local named like a
+            // changed function would be planned -- the widening this selector must not do.
+            let matches_only = matches!(change.ground, InterfaceChangeGround::ArmSetGrown { .. });
+            let reads = consumer
+                .referenced
+                .iter()
+                .map(|r| (r, false))
+                .chain(consumer.authored_type_references.iter().map(|r| (r, true)))
+                .chain(consumer.called_occurrences.iter().map(|r| (r, true)))
+                .chain(consumer.value_occurrences.iter().map(|r| (r, true)))
+                .filter(|_| !matches_only)
+                .chain(consumer.matched_arms.iter().map(|r| (r, true)));
+            for ((in_declaration, spelling), flat_admitted) in reads {
+                let Some(bound) = read_binding(
+                    base,
+                    head,
+                    consumer,
+                    spelling,
+                    &change.module_path,
+                    &universe,
+                ) else {
+                    continue;
+                };
+                if bound == InterfaceConsumerBinding::BoundThroughFlatBareChannel && !flat_admitted
+                {
+                    continue;
+                }
+                in_declarations.insert(in_declaration.clone());
+                // A declarer-bound read wins over a flat one for the module's disposition: the
+                // module IS a resolved consumer if any read resolves, and the flat count is for
+                // modules that reach the declaration by no other route.
+                binding = Some(match (binding, bound) {
+                    (Some(InterfaceConsumerBinding::BoundToDeclaringModule), _)
+                    | (_, InterfaceConsumerBinding::BoundToDeclaringModule) => {
+                        InterfaceConsumerBinding::BoundToDeclaringModule
+                    }
+                    _ => InterfaceConsumerBinding::BoundThroughFlatBareChannel,
+                });
+            }
+            // An introduced roster strands only readers it does not name: a module whose every
+            // reading declaration is admitted stays valid.
+            if let InterfaceChangeGround::AdmissionIntroduced { admitted_callers } = &change.ground
+            {
+                let all_admitted = in_declarations.iter().all(|in_declaration| {
+                    admitted_callers.iter().any(|(module, decl)| {
+                        module == &consumer.module_path && decl == in_declaration
+                    })
+                });
+                if all_admitted {
+                    continue;
+                }
+            }
+            if let Some(binding) = binding {
+                consumers.push(InterfaceChangedConsumer {
+                    changed_module_path: change.module_path.clone(),
+                    changed_declaration: change.declaration.clone(),
+                    consumer_module_path: consumer.module_path.clone(),
+                    consumer_rel_path: consumer.rel_path.clone(),
+                    in_declarations: in_declarations.into_iter().collect(),
+                    binding,
+                });
+            }
+        }
+    }
+    InterfaceConsumerSelection { changes, consumers }
+}
+
+/// The scan this replaced, kept as the oracle the indexed selector must equal.
+#[cfg(test)]
+pub(crate) fn interface_changed_consumers_by_scan(
     base: &DeclarationIndex,
     head: &DeclarationIndex,
 ) -> InterfaceConsumerSelection {
@@ -564,6 +779,239 @@ pub(crate) fn interface_changed_consumers(
     InterfaceConsumerSelection { changes, consumers }
 }
 
+// ---------------------------------------------------------------------------
+// THE BEHAVIOURAL DIRECTION — declarations whose EVALUATION reaches a changed declaration
+// ---------------------------------------------------------------------------
+
+/// One declaration reached from the diff's changed declarations, with the edge that reached it.
+/// `through` is the reached-from declaration, so a receipt can print the route a selected claim
+/// was planned by rather than only the fact that it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReachedDeclaration {
+    pub module_path: String,
+    pub declaration: String,
+    pub through: (String, String),
+    pub binding: InterfaceConsumerBinding,
+    /// The reader module's `is_fixture_carrier` -- whether the reached declaration can be a
+    /// claim at all, read from the index rather than guessed from a module-name spelling.
+    pub witness_carrier: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct BodyReachSelection {
+    /// The seeds, as `(module_path, declaration)`: the declarations the diff changed.
+    pub changed: Vec<(String, String)>,
+    /// Every declaration, in any module (the declaring module included), whose body or
+    /// interface transitively reads a changed declaration. Seeds are not repeated here.
+    pub reached: Vec<ReachedDeclaration>,
+}
+
+/// The declarations whose reads an IMPORT edit rebinds: in every module present on both sides
+/// whose import claims differ, a declaration is seeded when one of its reads spells a member
+/// that entered or left a member list, or resolves (on either side) through a whole-surface
+/// import that was added or removed. An import edit that rebinds nothing seeds nothing.
+///
+/// MEASURED (gunbc#12353 as the unrelated-diff control): seeding every declaration of a file
+/// whose import region was edited turned ~10 edited declarations into 684 seeds, because two of
+/// its files carry 244 and 213 declarations. The edit changed which names resolve where; that is
+/// a per-read fact the two indexes carry, so it is read there rather than widened to the file.
+pub(crate) fn import_rebound_declarations(
+    base: &DeclarationIndex,
+    head: &DeclarationIndex,
+) -> BTreeSet<(String, String)> {
+    let claims = |record: &ModuleDeclarationRecord| -> BTreeSet<(String, Option<String>)> {
+        let mut out = BTreeSet::new();
+        for claim in &record.imports {
+            if claim.members.is_empty() {
+                out.insert((claim.target.clone(), None));
+            }
+            for (member, _) in &claim.members {
+                out.insert((claim.target.clone(), Some(member.clone())));
+            }
+        }
+        out
+    };
+    let mut seeds = BTreeSet::new();
+    for head_record in index_records(head) {
+        let Some(base_record) = index_get(base, &head_record.module_path) else {
+            continue;
+        };
+        let (b, h) = (claims(base_record), claims(head_record));
+        if b == h {
+            continue;
+        }
+        let mut members: BTreeSet<String> = BTreeSet::new();
+        let mut whole_targets: BTreeSet<String> = BTreeSet::new();
+        for (target, member) in b.symmetric_difference(&h) {
+            match member {
+                Some(m) => {
+                    members.insert(m.clone());
+                }
+                None => {
+                    whole_targets.insert(target.clone());
+                }
+            }
+        }
+        let reads = head_record
+            .referenced
+            .iter()
+            .chain(head_record.authored_type_references.iter())
+            .chain(head_record.called_occurrences.iter())
+            .chain(head_record.value_occurrences.iter())
+            .chain(head_record.matched_arms.iter());
+        for (in_declaration, spelling) in reads {
+            let rebound = members.contains(&qualified_last_segment(spelling.clone()))
+                || (!whole_targets.is_empty() && {
+                    let mut candidates = declaring_candidates(head, head_record, spelling);
+                    candidates.extend(declaring_candidates(base, base_record, spelling));
+                    whole_targets.iter().any(|t| {
+                        candidates.contains(t)
+                            || candidates.contains(&declarer_of(
+                                head,
+                                t,
+                                &qualified_last_segment(spelling.clone()),
+                            ))
+                    })
+                });
+            if rebound {
+                seeds.insert((head_record.module_path.clone(), in_declaration.clone()));
+            }
+        }
+    }
+    seeds
+}
+
+/// THE RELATION `interface_changed_consumers` DELIBERATELY STOPS SHORT OF, asked for a
+/// different consumer.
+///
+/// That selector plans MODULES for Strict preparation, so it propagates only through
+/// interfaces: a body-only change cannot make a caller fail to typecheck, so planning callers
+/// would widen the compile subject for nothing. EXECUTION is the opposite case. A claim's
+/// verdict depends on every body its evaluation runs, so a body edit to
+/// `v2.std.node` `arrow_signature_edges_conform` changes the verdict of a claim three calls away
+/// in an untouched file while no signature anywhere moved (gunbc#12361: nine claims true on
+/// main, false on the PR, none planned). The relation that answers "whose evaluation can this
+/// edit change" is reverse reach over EVERY read channel -- calls, value reads, type
+/// occurrences, match arms -- closed transitively through bodies as well as interfaces.
+///
+/// NO SECOND CONSUMER RELATION IS MINTED. A read is admitted exactly when
+/// `interface_changed_consumers` would admit it (`read_binding`, both sides' candidates, the
+/// flat bare channel admitted only from genuine-read channels), so the two selectors cannot
+/// disagree about who reads a declaration; they disagree only about whether the reader's
+/// readers are affected, which is the fact that differs between compile and execution.
+/// Unlike that selector the declaring module is NOT excluded: a sibling declaration in the
+/// changed file reads the changed one by its bare name and is reached like any other.
+///
+/// COST SHAPE. Readers are inverted once into a leaf-name map, so each reached declaration
+/// costs the reads that spell its name -- linear in the reads the closure touches, never
+/// (reached x modules). The closure is finite (`seen` grows every round) and every step is
+/// bounded by the index the parse phase already built.
+///
+/// WHAT THIS DOES NOT DECIDE: which reached declarations are claims (the caller intersects with
+/// the population it discovered), and whether a reached claim's verdict changed (that is the
+/// base-versus-head differential the floor runs).
+pub(crate) fn body_reach_from_changed_declarations(
+    base: &DeclarationIndex,
+    head: &DeclarationIndex,
+    changed: &BTreeSet<(String, String)>,
+) -> BodyReachSelection {
+    use std::collections::BTreeMap;
+    // leaf -> (reader module, in_declaration, spelling, flat admitted)
+    let mut readers_by_leaf: BTreeMap<String, Vec<(&ModuleDeclarationRecord, &str, &str, bool)>> =
+        BTreeMap::new();
+    for record in index_records(head) {
+        let reads = record
+            .referenced
+            .iter()
+            .map(|r| (r, false))
+            .chain(record.authored_type_references.iter().map(|r| (r, true)))
+            .chain(record.called_occurrences.iter().map(|r| (r, true)))
+            .chain(record.value_occurrences.iter().map(|r| (r, true)))
+            .chain(record.matched_arms.iter().map(|r| (r, true)));
+        for ((in_declaration, spelling), flat_admitted) in reads {
+            readers_by_leaf
+                .entry(qualified_last_segment(spelling.clone()))
+                .or_default()
+                .push((
+                    record,
+                    in_declaration.as_str(),
+                    spelling.as_str(),
+                    flat_admitted,
+                ));
+        }
+    }
+    // THE FLAT CHANNEL, AT THE COMPILER'S OWN GRAIN. The global-bare lookup resolves a BARE name
+    // to a UNIQUE top-level declaration after local and import lookup miss. Two spellings the
+    // shared `read_binding` also calls flat are therefore not reads of the changed declaration
+    // here: a DOTTED spelling with no module prefix (`cfg.root` is a field or method access on a
+    // value, and its empty candidate set says nothing about top-level `root`), and a bare
+    // spelling whose leaf more than one module declares (the lookup is ambiguous, so it cannot
+    // name this declarer). MEASURED: admitting both made an unrelated diff (gunbc#12353) reach
+    // 13147 witnesses, fanned out through test-local helpers named `root`, `subject`,
+    // `observed`, `standing` -- the same order as #12361's replay, so the control discriminated
+    // nothing. The compile walk propagates rarely enough to hide this; this walk cannot.
+    let mut declarers_by_leaf: BTreeMap<&str, usize> = BTreeMap::new();
+    for record in index_records(head) {
+        for name in record.declared.iter().chain(record.variants.iter()) {
+            *declarers_by_leaf.entry(name.as_str()).or_default() += 1;
+        }
+    }
+    let flat_admissible = |spelling: &str, declaration: &str| {
+        !spelling.contains('.') && declarers_by_leaf.get(declaration).copied().unwrap_or(0) <= 1
+    };
+    let mut seen: BTreeSet<(String, String)> = changed.clone();
+    let mut frontier: Vec<(String, String)> = changed.iter().cloned().collect();
+    let mut reached: Vec<ReachedDeclaration> = Vec::new();
+    while !frontier.is_empty() {
+        let mut next: Vec<(String, String)> = Vec::new();
+        for (module_path, declaration) in &frontier {
+            let universe = change_universe(
+                base,
+                head,
+                &DeclarationInterfaceChange {
+                    module_path: module_path.clone(),
+                    declaration: declaration.clone(),
+                    ground: InterfaceChangeGround::SignatureChanged,
+                },
+            );
+            for leaf in &universe {
+                let Some(readers) = readers_by_leaf.get(leaf) else {
+                    continue;
+                };
+                for (record, in_declaration, spelling, flat_admitted) in readers {
+                    let key = (record.module_path.clone(), in_declaration.to_string());
+                    if seen.contains(&key) {
+                        continue;
+                    }
+                    let Some(bound) =
+                        read_binding(base, head, record, spelling, module_path, &universe)
+                    else {
+                        continue;
+                    };
+                    if bound == InterfaceConsumerBinding::BoundThroughFlatBareChannel
+                        && !(*flat_admitted && flat_admissible(spelling, leaf))
+                    {
+                        continue;
+                    }
+                    seen.insert(key.clone());
+                    reached.push(ReachedDeclaration {
+                        module_path: key.0.clone(),
+                        declaration: key.1.clone(),
+                        through: (module_path.clone(), declaration.clone()),
+                        binding: bound,
+                        witness_carrier: record.is_fixture_carrier,
+                    });
+                    next.push(key);
+                }
+            }
+        }
+        frontier = next;
+    }
+    BodyReachSelection {
+        changed: changed.iter().cloned().collect(),
+        reached,
+    }
+}
 // ---------------------------------------------------------------------------
 // ACQUISITION — git over the workspace, and the two sides of one diff
 // ---------------------------------------------------------------------------

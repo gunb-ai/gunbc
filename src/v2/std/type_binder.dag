@@ -1,6 +1,5 @@
 module v2.std.type_binder
 
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import std.algebra { Empty, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -20,7 +19,8 @@ import v2.std.node {
   TypeNode,
   node_subtree_nodes,
   node_synthetic,
-  type_binder_conj_conforms
+  type_binder_conj_conforms,
+  symbol_intern_lexeme,
 }
 
 // THE EDGE THAT CARRIES A DECLARATION'S TYPE PARAMETERS. One label for one concept: `fn f<T>` carries
