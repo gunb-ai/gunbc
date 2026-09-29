@@ -234,6 +234,7 @@ fn harness_macbook_config(backend_url: String, model: NonEmptyStr, unit: Harness
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_default_system_prompt,
+    alignment_chain_fingerprint: "",
     request_scratch_path: harness_request_scratch_path,
     events_path: harness_probe_events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -508,6 +509,7 @@ fn harness_worker_config(
   model: NonEmptyStr,
   unit: HarnessServingUnit,
   system_prompt: String,
+  alignment_chain_fingerprint: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend_url,
@@ -517,6 +519,7 @@ fn harness_worker_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
+    alignment_chain_fingerprint: alignment_chain_fingerprint,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -566,6 +569,7 @@ fn harness_worker_cli(
   repo_root: String,
   gunbc_program: String,
   attempt_identity: String,
+  alignment_chain_fingerprint: String,
 ) -> ProcessExit {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
   let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, policy: harness_seat_policy)
@@ -583,6 +587,7 @@ fn harness_worker_cli(
           model: bound_model,
           unit: bound_unit,
           system_prompt: system_prompt,
+          alignment_chain_fingerprint: alignment_chain_fingerprint,
         ),
         prompt: brief,
         step_budget: harness_worker_step_budget,
@@ -631,6 +636,9 @@ fn harness_reviewer_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
+    // Reviewers, auditors and supervisors carry no alignment chain: their budgets stay hard
+    // terminals, which an empty fingerprint selects (gunbc.harness.harness_turn HarnessTurnConfig).
+    alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -712,6 +720,9 @@ fn harness_auditor_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
+    // Reviewers, auditors and supervisors carry no alignment chain: their budgets stay hard
+    // terminals, which an empty fingerprint selects (gunbc.harness.harness_turn HarnessTurnConfig).
+    alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -802,6 +813,9 @@ fn harness_supervisor_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
+    // Reviewers, auditors and supervisors carry no alignment chain: their budgets stay hard
+    // terminals, which an empty fingerprint selects (gunbc.harness.harness_turn HarnessTurnConfig).
+    alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),

@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.harness.harness_guidance {
   HarnessPremise, RoundsRemaining, EarlierRoundsDropped, harness_premise_text,
-  HarnessConclusion, ActBeforeTheRoundsRun, ReRunForDroppedOutput, harness_conclusion_text,
+  HarnessConclusion, ActBeforeTheRoundsRun, RoundsEndInAlignmentCheck, ReRunForDroppedOutput, harness_conclusion_text,
 }
 import gunbc.harness.harness_wire {
   HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape, harness_decode_for_shape,
@@ -228,6 +228,14 @@ type HarnessTurnConfig {
   reasoning_mode: HarnessReasoningLevel
   wire_shape: HarnessWireShape
   system_prompt: String
+  // THE CHAIN FINGERPRINT THE ATTEMPT SPAWNED WITH, composed at dispatch from the node's resolved
+  // alignment chain (gunbc.roadmap.roadmap_alignment alignment_resolve). Empty means this turn has
+  // no chain -- reviewers, probes and ad-hoc runs -- and the step budget stays a hard terminal, the
+  // pre-chain behavior. Non-empty turns the budget boundary into a durable checkpoint-due
+  // announcement: the harness does NOT adjudicate (no provider call, no worker self-report); it
+  // records the due event bound to this fingerprint and returns control to the workflow, whose
+  // adjudication lane decides resume, steer, re-plan, route or stop (review 5354823380).
+  alignment_chain_fingerprint: String
   request_scratch_path: FilePath
   events_path: FilePath
   context_budget: TokenCount
@@ -261,7 +269,8 @@ fn harness_context_exhausted(input_tokens: TokenCount, budget: TokenCount) -> Bo
 
 // THE HARNESS EMITS THE PROVIDER EVENT SCHEMA ITSELF, rather than having its liveness reconstructed
 // from outside. gunbc.roadmap_provider_events already declares what an attempt's event stream is --
-// turn.started, item.started, item.completed, turn.completed, turn.budget_exhausted, turn.failed, error, read line by line
+// turn.started, item.started, item.completed, turn.completed, turn.budget_exhausted, turn.failed,
+// error, round.usage, and the checkpoint announcement turn.alignment_checkpoint_due, read line by line
 // through jq -- and every consumer of agent evidence is written against it. A second stream shape
 // for this one provider would be the section 3 fork; emitting the existing one makes the harness a
 // first-class provider on a contract that already has readers.
@@ -401,6 +410,14 @@ fn harness_event_turn_budget_exhausted(steps_taken: Int) -> String {
   ]))
 }
 
+fn harness_event_alignment_checkpoint_due(steps_taken: Int, chain_fingerprint: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.alignment_checkpoint_due")),
+    json_kv(key: "steps_taken", value: json_int(n: steps_taken)),
+    json_kv(key: "chain_fingerprint", value: json_string(s: chain_fingerprint)),
+  ]))
+}
+
 fn harness_event_turn_failed(message: String) -> String {
   serialize_json(v: json_object([
     json_kv(key: "type", value: json_string(s: "turn.failed")),
@@ -473,6 +490,7 @@ type HarnessTurnOutcome
   | TurnThinkingFormatInvalid { cause: String, steps_taken: Int }
   | TurnUsageUnavailable { cause: String, steps_taken: Int }
   | TurnSubmissionUndecodable { reason: String, steps_taken: Int }
+  | TurnAlignmentCheckpointDue { steps_taken: Int }
 
 fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
   match outcome {
@@ -490,6 +508,7 @@ fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
     TurnThinkingFormatInvalid { cause: _, steps_taken: _ } => "thinking-format-invalid"
     TurnUsageUnavailable { cause: _, steps_taken: _ } => "usage-unavailable"
     TurnSubmissionUndecodable { reason: _, steps_taken: _ } => "submission-undecodable"
+    TurnAlignmentCheckpointDue { steps_taken: _ } => "alignment-checkpoint-due"
   }
 }
 
@@ -538,6 +557,13 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
     TurnSubmissionUndecodable { reason, steps_taken: n } =>
       join([
         "after ", to_string(value: n), " tool rounds: ", harness_submission_terminal_cause(reason: reason),
+      ], "")
+    TurnAlignmentCheckpointDue { steps_taken: n } =>
+      join([
+        "after ", to_string(value: n),
+        " tool rounds the epoch boundary announced an alignment checkpoint; the turn returned",
+        " control to the workflow, whose adjudication lane decides whether the same lineage",
+        " resumes, steers, re-plans, routes or stops. This is not a failure and not a completion.",
       ], "")
     TurnTransportRefused { detail: d } => d
     TurnResponseUnreadable { cause: c } => c
@@ -761,17 +787,27 @@ fn harness_wire_block_json(block: HarnessWireBlock) -> JsonValue {
 // It rides on the tool-result message rather than a new message because the pairing after the
 // opening brief must stay assistant/user: an extra turn between them would break the alternation
 // the compaction logic depends on.
-fn harness_budget_notice_text(steps_remaining: Int) -> String {
+//
+// THE CONCLUSION DEPENDS ON WHAT ZERO MEANS. A chainless turn ends at zero, so the notice presses
+// to act before the rounds run; a chain-carrying turn meets an alignment checkpoint at zero that
+// refreshes the count on a pass, so the notice says THAT -- telling such a worker the turn is
+// ending would be a fabricated deadline, and the pressure it bought would be pressure toward a
+// finish line that does not exist.
+fn harness_budget_notice_text(steps_remaining: Int, checkpointed: Bool) -> String {
   join([
     harness_premise_text(p: RoundsRemaining { rounds: steps_remaining }), " ",
-    harness_conclusion_text(c: ActBeforeTheRoundsRun { rounds: steps_remaining }),
+    if checkpointed {
+      harness_conclusion_text(c: RoundsEndInAlignmentCheck)
+    } else {
+      harness_conclusion_text(c: ActBeforeTheRoundsRun { rounds: steps_remaining })
+    },
   ], "")
 }
 
-fn harness_budget_notice_block(steps_remaining: Int) -> JsonValue {
+fn harness_budget_notice_block(steps_remaining: Int, checkpointed: Bool) -> JsonValue {
   json_object([
     json_kv(key: "type", value: json_string(s: "text")),
-    json_kv(key: "text", value: json_string(s: harness_budget_notice_text(steps_remaining: steps_remaining))),
+    json_kv(key: "text", value: json_string(s: harness_budget_notice_text(steps_remaining: steps_remaining, checkpointed: checkpointed))),
   ])
 }
 
@@ -779,6 +815,7 @@ fn harness_tool_result_messages_json(
   shape: HarnessWireShape,
   results: List<HarnessToolResult>,
   steps_remaining: Int,
+  checkpointed: Bool,
 ) -> List<JsonValue> {
   match shape {
     AnthropicMessagesShape =>
@@ -787,7 +824,7 @@ fn harness_tool_result_messages_json(
         json_kv(key: "content", value: json_array(
           elements: concat(
             map(results, r => harness_tool_result_block(tool_use_id: r.tool_use_id, text: r.text, is_error: r.is_error)),
-            [harness_budget_notice_block(steps_remaining: steps_remaining)],
+            [harness_budget_notice_block(steps_remaining: steps_remaining, checkpointed: checkpointed)],
           ),
         )),
       ])]
@@ -800,7 +837,7 @@ fn harness_tool_result_messages_json(
         ])),
         [json_object([
           json_kv(key: "role", value: json_string(s: "user")),
-          json_kv(key: "content", value: json_string(s: harness_budget_notice_text(steps_remaining: steps_remaining))),
+          json_kv(key: "content", value: json_string(s: harness_budget_notice_text(steps_remaining: steps_remaining, checkpointed: checkpointed))),
         ])],
       )
   }
@@ -1087,6 +1124,31 @@ fn harness_event_write_refusal(config: HarnessTurnConfig, detail: String) -> Har
   }
 }
 
+// THE ALIGNMENT CHECKPOINT, ANNOUNCED, NOT ADJUDICATED. At the epoch boundary a chain-carrying
+// turn does not call the provider again and does not ask the worker to grade itself: it records
+// that adjudication is due, bound to the chain fingerprint the attempt spawned with, and returns
+// control to the workflow durably (review 5354823380). The belt's adjudication lane -- independent
+// of this process -- reads the due event, examines the evidence, publishes the verdict and the next
+// cadence state, and only then resumes the same lineage. The harness's whole obligation here is
+// that the announcement is durable and the outcome is typed: a checkpoint is never a failure, a
+// completion, or a submission.
+fn harness_turn_checkpoint_due(
+  config: HarnessTurnConfig,
+  steps_taken: Int,
+  events: List<String>,
+) -> HarnessTurnOutcome {
+  let announced = concat(events, [
+    harness_event_alignment_checkpoint_due(
+      steps_taken: steps_taken,
+      chain_fingerprint: config.alignment_chain_fingerprint,
+    ),
+  ])
+  match harness_write_events(config: config, events: announced) {
+    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+    HarnessEventsWritten => TurnAlignmentCheckpointDue { steps_taken: steps_taken }
+  }
+}
+
 fn harness_turn_loop(
   config: HarnessTurnConfig,
   messages: List<JsonValue>,
@@ -1096,10 +1158,14 @@ fn harness_turn_loop(
   repairs_used: Int,
 ) -> HarnessTurnOutcome {
   if steps_remaining <= 0 {
-    let exhausted = concat(events, [harness_event_turn_budget_exhausted(steps_taken: steps_taken)])
-    match harness_write_events(config: config, events: exhausted) {
-      HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-      HarnessEventsWritten => TurnStepBudgetExhausted { steps_taken: steps_taken }
+    if config.alignment_chain_fingerprint == "" {
+      let exhausted = concat(events, [harness_event_turn_budget_exhausted(steps_taken: steps_taken)])
+      match harness_write_events(config: config, events: exhausted) {
+        HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+        HarnessEventsWritten => TurnStepBudgetExhausted { steps_taken: steps_taken }
+      }
+    } else {
+      harness_turn_checkpoint_due(config: config, steps_taken: steps_taken, events: events)
     }
   } else {
     match harness_post_round(config: config, messages: messages) {
@@ -1387,6 +1453,7 @@ fn harness_turn_continue(
                         shape: config.wire_shape,
                         results: results,
                         steps_remaining: steps_remaining - 1,
+                        checkpointed: config.alignment_chain_fingerprint != "",
                       ),
                     ),
                   ),
