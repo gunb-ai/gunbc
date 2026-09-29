@@ -518,7 +518,43 @@ pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
                         next: v1_rt::int_add(acc.next.clone(), 1),
                         found: Some(acc.next.clone()),
                     },
-                    _ => StepPositionScan {
+                    AlgebraTypeTemplate::ReceiverSelf => StepPositionScan {
+                        next: v1_rt::int_add(acc.next.clone(), 1),
+                        found: std::option::Option::None,
+                    },
+                    AlgebraTypeTemplate::ReceiverElement => StepPositionScan {
+                        next: v1_rt::int_add(acc.next.clone(), 1),
+                        found: std::option::Option::None,
+                    },
+                    AlgebraTypeTemplate::ReceiverKey => StepPositionScan {
+                        next: v1_rt::int_add(acc.next.clone(), 1),
+                        found: std::option::Option::None,
+                    },
+                    AlgebraTypeTemplate::ReceiverValue => StepPositionScan {
+                        next: v1_rt::int_add(acc.next.clone(), 1),
+                        found: std::option::Option::None,
+                    },
+                    AlgebraTypeTemplate::NamedTemplate { name: _, .. } => StepPositionScan {
+                        next: v1_rt::int_add(acc.next.clone(), 1),
+                        found: std::option::Option::None,
+                    },
+                    AlgebraTypeTemplate::ContainerOf { .. } => StepPositionScan {
+                        next: v1_rt::int_add(acc.next.clone(), 1),
+                        found: std::option::Option::None,
+                    },
+                    AlgebraTypeTemplate::OptionalOf { inner: _, .. } => StepPositionScan {
+                        next: v1_rt::int_add(acc.next.clone(), 1),
+                        found: std::option::Option::None,
+                    },
+                    AlgebraTypeTemplate::WitnessOf { inner: _, .. } => StepPositionScan {
+                        next: v1_rt::int_add(acc.next.clone(), 1),
+                        found: std::option::Option::None,
+                    },
+                    AlgebraTypeTemplate::TupleOf { .. } => StepPositionScan {
+                        next: v1_rt::int_add(acc.next.clone(), 1),
+                        found: std::option::Option::None,
+                    },
+                    AlgebraTypeTemplate::AlgebraTypeVariable { id: _, .. } => StepPositionScan {
                         next: v1_rt::int_add(acc.next.clone(), 1),
                         found: std::option::Option::None,
                     },
