@@ -276,7 +276,9 @@ fn part_implication(
           ) {
             PartImplicatedByFailingStep { step: s2, standing: st2 } =>
               PartImplicatedByFailingStep { step: s2, standing: st2 }
-            _ => PartSampleQualificationRequired { step: s, standing: st }
+            PartNotImplicated => PartSampleQualificationRequired { step: s, standing: st }
+            PartEvidenceUnresolved { step: _ } => PartSampleQualificationRequired { step: s, standing: st }
+            PartSampleQualificationRequired { step: _, standing: _ } => PartSampleQualificationRequired { step: s, standing: st }
           }
         PartEvidenceUnresolved { step: s } =>
           match implication_for_step(
