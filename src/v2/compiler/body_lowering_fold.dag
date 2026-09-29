@@ -4633,8 +4633,8 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Node> {
 // gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering read off the same walk).
 // A call on a NON-final segment (`a.f().b`) is named by the walk and DECLINED: it is live corpus
 // idiom the existing arms still erase (the receipt is on the class row; see DottedChainTailRead).
-// A brace suffix (`a.b.C { f: v }`) and an `as` suffix answer Absent and the existing arms run
-// unchanged for them.
+// A brace record suffix (`a.b.C { f: v }`) is a construction, lowered by the chain fold's
+// PostfixRecord step, and an `as` suffix is a cast step; neither is read by this head reader.
 fn body_lower_dotted_head_atom_optional(node: Node) -> Optional<Node> {
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
@@ -4670,7 +4670,7 @@ fn body_lower_dotted_head_atom_optional(node: Node) -> Optional<Node> {
 
 // ONE WALK OVER THE CHAIN'S TAIL, READ BY EVERY DOTTED READER. Every repeat element must be a
 // dot-projection step; its suffix slot is either EMPTY (a bare segment) or a PAREN CALL (an
-// argument row). Any other suffix kind -- a brace suffix `a.b.C { f: v }`, an `as` suffix -- is
+// argument row). A brace record suffix is the PostfixRecord step, and any other suffix kind is
 // not this shape and the walk declines so the existing arms run unchanged.
 //
 // WHAT CHANGED HERE AND WHY (gunbc#12033's PR2, DESIGN 6b). The walk used to admit a call ONLY on
@@ -4698,16 +4698,14 @@ fn body_lower_dotted_head_atom_optional(node: Node) -> Optional<Node> {
 type PostfixStep
   = PostfixProjection { segment: Node, call_elem: Optional<Node> }
   | PostfixCast { target: Node }
+  | PostfixRecord { segment: Node, items: List<Node> }
 
 // THE THIRD ARM CARRIES THE SUFFIX KINDS THIS LOWERING CANNOT READ. A dot-projection step whose
-// suffix slot is neither empty nor a paren call -- today the BRACE suffix, the module-qualified
-// record construction `a.b.C { f: v }`, and an `as` suffix -- reaches PostfixChainSuffixCarried.
-// That shape is NOT lowered by this change: a construct's tag is a Symbol (v2.std.node_query
-// construct_node) and a module-qualified tag has no representation in it, so lowering it would
-// mean changing the construct shape, which is a wider package than this one. What the door DOES
-// with this arm -- decline to the pre-existing arms and emit a counted head-grain advisory rather
-// than refuse -- is stated once, on body_lower_postfix_chain_steps_grow below, and is not
-// restated here.
+// suffix slot is neither empty, a paren call, nor a brace record body reaches PostfixChainSuffixCarried.
+// The brace record body is NOT in that arm any more: `a.b.C { f: v }` is a PostfixRecord step, and
+// the chain fold builds the construct whose tag is the whole path (v2.std.node_query construct_node),
+// the same builder `C { f: v }` reaches from primary_expr -- one production for both heads. What the
+// door does with a carried suffix is stated once, on body_lower_postfix_chain_steps_grow below.
 //
 // WHETHER EVERY STEP IS BARE IS DECIDED ONCE, BY THE READ (review 70331). The read already knows
 // each step's suffix kind as it meets it, so it carries that fact in its accumulator
@@ -4721,26 +4719,14 @@ type PostfixChainRead
   | PostfixChainSuffixCarried { at: Node }
 
 // AN UNLOWERED SUFFIX KIND DECLINES, IT DOES NOT REFUSE, AND THE PRECEDENT IS #11683's.
-// Refusing a step suffix this lowering cannot read is the DESIGN section 5 reading, and it was
-// MEASURED against the workload: it turned 32 modules that ACCEPT at base into refusals -- 28
-// directly under the refusal, and 4 more as match_arm_navigation_refused, where the rejection
-// propagated out of a match scrutinee and surfaced under a reason this change never touched.
-// #11683 faced exactly this choice for the call-before-end class and declined for the same
-// reason. So the brace suffix (`a.b.C { f: v }`, the module-qualified record construction) and
-// the `as` suffix decline to the pre-existing arms and behave exactly as they do on base. Their
-// erasure REMAINS and this package does not claim otherwise: the receipt is on
-// gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering, and lowering them
-// needs a construct tag able to carry a qualified name, which is a wider package than this one.
-//
-// BUT THE DECLINE IS COUNTED, NOT SILENT, AND THAT IS WHAT KEEPS IT ON THE LADDER. Review 70078
-// on gunbc#12057 found the gap this closes: on base these shapes reached a LOUD located refusal
-// (postfix_field_access_refused, deleted here), so declining them silently would have moved the
-// class from mitigatable to BELOW the ladder -- DESIGN section 4b's silent wrongness, which is
-// forbidden outright rather than droppable. 8 of the 42 base-refusing files carry a brace suffix,
-// so the population is real and not hypothetical. The door therefore declines to the existing
-// arms AND emits body_lowering_reason_postfix_suffix_carried at HEAD grain, the same shape
-// #12033 used for value_carried_unlowered: the file still Accepts, so no module that accepts on
-// base regresses, and the residue is located and countable instead of vanishing.
+// Refusing a step suffix this lowering cannot read was MEASURED to turn 32 modules that ACCEPT on base
+// into refusals, so a carried suffix declines to the pre-existing arms and is COUNTED, not silent:
+// the door emits body_lowering_reason_postfix_suffix_carried at HEAD grain (review 70078 on
+// gunbc#12057), and the drop from the base refusal is declared as gunbc.rung_drop
+// postfix_suffix_step_declined_to_the_pre_existing_arms. The brace record body left this population
+// when the construct tag became a reference that can carry a qualified path
+// (docs/plans/construct-tag-reference-design.md); what remains is re-derived by the workload
+// adjudicate, which is that drop's trigger.
 fn body_lower_postfix_chain_steps_grow(
   repeat_capture: Node,
   grown: PostfixChainAcc
@@ -4792,7 +4778,12 @@ fn body_lower_postfix_chain_acc_call_step(
 
 // A cast closes a bare spine the way a call does: what follows it is a value, never a path segment.
 fn body_lower_postfix_chain_acc_cast_step(acc: PostfixChainAcc, target: Node) -> PostfixChainAcc {
-  let step = PostfixCast { target: target }
+  body_lower_postfix_chain_acc_closing_step(acc: acc, step: PostfixCast { target: target })
+}
+
+// A record body closes the spine too: `a.b.C { f: v }` is a construct VALUE whose tag is the whole
+// path, and any step after it eliminates that value.
+fn body_lower_postfix_chain_acc_closing_step(acc: PostfixChainAcc, step: PostfixStep) -> PostfixChainAcc {
   match acc {
     PostfixChainAccBare { segments: segments } =>
       PostfixChainAccCalled {
@@ -4845,6 +4836,14 @@ fn body_lower_postfix_chain_steps_read(
                     acc: acc,
                     segment: segment,
                     call_elem: repeat_elem
+                  )
+                )
+              PostfixSuffixRecord { items: items } =>
+                body_lower_postfix_chain_steps_grow(
+                  repeat_capture: repeat_capture,
+                  grown: body_lower_postfix_chain_acc_closing_step(
+                    acc: acc,
+                    step: PostfixRecord { segment: segment, items: items }
                   )
                 )
             }
@@ -4976,6 +4975,27 @@ fn body_lower_postfix_chain_fold_step(
                 },
                 diagnostics: ad
               )
+          }
+        PostfixRecord { segment: step_segment, items: items } =>
+          match state {
+            PostfixAccumSpine { segments: segments } =>
+              match body_lower_record_construct(
+                reference: body_lower_qualified_name_spine_node(
+                  segments: list_snoc_item(xs: segments, item: step_segment),
+                  source: source
+                ),
+                items: items,
+                source: source
+              ) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: construct, diagnostics: cd } =>
+                  outcome_with_diagnostics(
+                    value: PostfixAccumValue { node: construct },
+                    diagnostics: diagnostics_merge(outer: ad, inner: cd)
+                  )
+              }
+            PostfixAccumValue { node: _ } =>
+              outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: step_segment))
           }
         PostfixProjection { segment: step_segment, call_elem: step_call_elem } =>
       match step_call_elem {
@@ -5152,6 +5172,7 @@ fn body_lower_postfix_chain_head_atom_for_steps(head_node: Node, steps: List<Pos
       match first {
         PostfixCast { target: _ } => optional_absent()
         PostfixProjection { segment: _, call_elem: _ } => body_lower_dotted_head_atom_optional(node: head_node)
+        PostfixRecord { segment: _, items: _ } => body_lower_dotted_head_atom_optional(node: head_node)
       }
     Empty => body_lower_dotted_head_atom_optional(node: head_node)
   }
@@ -5183,6 +5204,7 @@ fn body_lower_postfix_steps_carry_cast(steps: List<PostfixStep>) -> Bool {
     acc || match step {
       PostfixCast { target: _ } => true
       PostfixProjection { segment: _, call_elem: _ } => false
+      PostfixRecord { segment: _, items: _ } => false
     }
   })
 }
@@ -5314,6 +5336,7 @@ type PostfixSuffixRead
   = PostfixSuffixNone
   | PostfixSuffixEmpty
   | PostfixSuffixCall
+  | PostfixSuffixRecord { items: List<Node> }
   | PostfixSuffixUnlowered
 
 // A PAREN CALL IS DECIDED BY THE ONE READER OF A CALL SUFFIX (#12108's comma-list route):
@@ -5329,7 +5352,11 @@ fn body_lower_postfix_suffix_read(repeat_elem: Node) -> PostfixSuffixRead {
       } else {
         match body_lower_postfix_call_suffix_args(call_suffix: suffix) {
           Present { value: _ } => PostfixSuffixCall
-          Absent => PostfixSuffixUnlowered
+          Absent =>
+            match body_lower_record_brace_items_optional(brace: suffix) {
+              Present { value: items } => PostfixSuffixRecord { items: items }
+              Absent => PostfixSuffixUnlowered
+            }
         }
       }
   }
@@ -5589,6 +5616,51 @@ fn body_lower_pattern_field_edges(items: List<Node>, braced: Bool, witness: Node
   }
 }
 
+// A CONSTRUCTOR PATTERN'S HEAD IS ITS WHOLE qualified_name, the same reference a construction carries:
+// every authored segment, lowered from its own token, as the spine. The first-atom reader that stood
+// here answered `v2` for `v2.std.diagnostic.Rejected { .. }`, so a qualified pattern silently took
+// its first segment as its constructor. A head with no qualified_name is not a constructor pattern
+// and refuses located rather than falling back to an atom search.
+fn body_lower_pattern_head_segments_optional(head: Node) -> Optional<List<Node>> {
+  match body_lower_find_captured(root: head, emitted: ^dag_surface_qualified_name) {
+    ParseSubtreeAbsent => optional_absent()
+    ParseSubtreeFound { captured: qn } =>
+      match parse_qualified_name_segment_atoms_from_capture(qn_capture: qn, root: head) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: segments, diagnostics: _ } =>
+          match segments {
+            Empty => optional_absent()
+            Cons { head: _, tail: _ } => optional_present(value: segments)
+          }
+      }
+  }
+}
+
+fn body_lower_pattern_head_reference_optional(head: Node) -> Optional<Node> {
+  match body_lower_pattern_head_segments_optional(head: head) {
+    Absent => optional_absent()
+    Present { value: segments } =>
+      optional_present(value: body_lower_qualified_name_spine_node(segments: segments, source: head))
+  }
+}
+
+// A NULLARY PATTERN WITH A QUALIFIED HEAD IS A REFERENCE, NOT A BINDER. `v2.std.diagnostic.None =>`
+// names a declaration by its path; only a one-segment head can be a binder, and whether it is one is
+// the resolver's to decide, so a one-segment head answers Absent here and stays the atom it always
+// was. The first-atom reader answered `v2` for the qualified form -- a binder named `v2` that matched
+// everything.
+fn body_lower_pattern_qualified_reference_optional(head: Node) -> Optional<Node> {
+  match body_lower_pattern_head_segments_optional(head: head) {
+    Absent => optional_absent()
+    Present { value: segments } =>
+      if length(xs: segments) > 1 {
+        optional_present(value: body_lower_qualified_name_spine_node(segments: segments, source: head))
+      } else {
+        optional_absent()
+      }
+  }
+}
+
 fn body_lower_pattern_suffix_lowered(head: Node, suffix: Node, pattern_capture: Node) -> Outcome<Node> {
   match sugar_sequence_pair_optional(node: suffix) {
     Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
@@ -5603,12 +5675,9 @@ fn body_lower_pattern_suffix_lowered(head: Node, suffix: Node, pattern_capture: 
                 match body_lower_comma_list_items_optional(list_capture: inner.left) {
                   Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
                   Present { value: items } =>
-                    match body_lower_pattern_leaf_atom_optional(node: head) {
+                    match body_lower_pattern_head_reference_optional(head: head) {
                       Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
-                      Present { value: tag_atom } =>
-                        match node_atom_identity_optional(node: tag_atom) {
-                          Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
-                          Present { value: tag } =>
+                      Present { value: reference } =>
                         bind_outcome(
                           o: body_lower_pattern_field_edges(
                             items: items,
@@ -5617,11 +5686,10 @@ fn body_lower_pattern_suffix_lowered(head: Node, suffix: Node, pattern_capture: 
                           ),
                           f: fn(edges) {
                             outcome_accepted(
-                              value: construct_node(tag: tag, tag_source: tag_atom, field_edges: edges, source: pattern_capture)
+                              value: construct_node(reference: reference, field_edges: edges, source: pattern_capture)
                             )
                           }
                         )
-                        }
                     }
                 }
             }
@@ -5649,9 +5717,13 @@ fn body_lower_pattern_lowered(pattern_capture: Node) -> Outcome<Node> {
   match sugar_sequence_pair_optional(node: captured) {
     Present { value: pair } =>
       if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
-        match body_lower_pattern_atom_optional(pattern_capture: pair.left) {
-          Present { value: atom } => outcome_accepted(value: body_lower_pattern_atom_form(atom: atom))
-          Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
+        match body_lower_pattern_qualified_reference_optional(head: pair.left) {
+          Present { value: reference } => outcome_accepted(value: reference)
+          Absent =>
+            match body_lower_pattern_atom_optional(pattern_capture: pair.left) {
+              Present { value: atom } => outcome_accepted(value: body_lower_pattern_atom_form(atom: atom))
+              Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
+            }
         }
       } else {
         body_lower_pattern_suffix_lowered(
@@ -7627,8 +7699,8 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
 // around its already-lowered value, is seq(name, seq(`:`, value)). The result is
 // v2.std.node_query construct_node -- Conj { R: Atom(R), f: e, .. } -- the RecordConstructBody
 // shape v2.std.node admits and the shape a fielded pattern lowers to, so `Rec { n: 1 }` and
-// `Rec { n: x } =>` are one shape read in two directions. A dotted head (`m.R { .. }`) is not a
-// bare name and falls through to the arms below unchanged.
+// `Rec { n: x } =>` are one shape read in two directions. A dotted head (`m.R { .. }`) is a postfix
+// chain and reaches the same builder, body_lower_record_construct, through its PostfixRecord step.
 fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   let stripped = body_lower_deep_unwrap_optional(node: item)
   let captured = match parse_production_captured_child_optional(node: stripped) {
@@ -7660,36 +7732,74 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   }
 }
 
-fn body_lower_record_literal_field_items_optional(captured: Node) -> Optional<List<Node>> {
-  match sugar_sequence_pair_optional(node: captured) {
+// The field items of a brace record body, `{ field_init, .. }`. One reader for both heads: a bare
+// name's brace suffix (primary_expr) and a dotted chain's final brace suffix
+// (dag_grammar_postfix_dot_suffix_expr takes the same ident suffix), so the qualified and the
+// unqualified construct read their fields through one production.
+fn body_lower_record_brace_items_optional(brace: Node) -> Optional<List<Node>> {
+  match sugar_sequence_pair_optional(node: brace) {
     Absent => Absent
-    Present { value: pair } =>
-      match sugar_sequence_pair_optional(node: pair.right) {
+    Present { value: brace_seq } =>
+      match node_atom_identity_optional(node: brace_seq.left) {
         Absent => Absent
-        Present { value: brace_seq } =>
-          match node_atom_identity_optional(node: brace_seq.left) {
-            Absent => Absent
-            Present { value: open } =>
-              if open == ^dag_token_lbrace {
-                match sugar_sequence_pair_optional(node: brace_seq.right) {
+        Present { value: open } =>
+          if open == ^dag_token_lbrace {
+            match sugar_sequence_pair_optional(node: brace_seq.right) {
+              Absent => Absent
+              Present { value: inner } =>
+                match node_atom_identity_optional(node: inner.right) {
                   Absent => Absent
-                  Present { value: inner } =>
-                    match node_atom_identity_optional(node: inner.right) {
-                      Absent => Absent
-                      Present { value: close } =>
-                        if close == ^dag_token_rbrace {
-                          body_lower_comma_list_items_optional(list_capture: inner.left)
-                        } else {
-                          Absent
-                        }
+                  Present { value: close } =>
+                    if close == ^dag_token_rbrace {
+                      body_lower_comma_list_items_optional(list_capture: inner.left)
+                    } else {
+                      Absent
                     }
                 }
-              } else {
-                Absent
-              }
+            }
+          } else {
+            Absent
           }
       }
   }
+}
+
+fn body_lower_record_literal_field_items_optional(captured: Node) -> Optional<List<Node>> {
+  match sugar_sequence_pair_optional(node: captured) {
+    Absent => Absent
+    Present { value: pair } => body_lower_record_brace_items_optional(brace: pair.right)
+  }
+}
+
+// THE ONE CONSTRUCT BUILDER. Every record construction reaches it with its constructor REFERENCE
+// already built from the authored segments -- a one-segment spine for `R { .. }`, the whole path for
+// `a.b.R { .. }` -- so the tag is never trimmed to its last segment and never resolved here;
+// v2.compiler.resolve binds it by identity.
+fn body_lower_record_construct(reference: Node, items: List<Node>, source: Node) -> Outcome<Node> {
+  match fold(items, init: outcome_accepted(value: Empty), f: fn(acc, item) {
+    bind_outcome(o: acc, f: fn(edges) {
+      bind_outcome(o: body_lower_field_init_edge(item: item), f: fn(e) {
+        outcome_accepted(value: list_snoc_item(xs: edges, item: e))
+      })
+    })
+  }) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: edges, diagnostics: d } =>
+      Accepted {
+        value: construct_node(reference: reference, field_edges: edges, source: source),
+        diagnostics: d
+      }
+  }
+}
+
+// A bare constructor name is the one-segment case of the reference: the segment atom is lowered from
+// the tag token, and the spine root carries that token's occurrence, which is the locus a resolved
+// reference keeps.
+fn body_lower_bare_tag_reference(tag: Symbol, at: Node) -> Node {
+  body_lower_qualified_name_spine_node(
+    segments: [node_lowered_from(kind: TypeNode { connective: Atom { identity: tag } }, children: [], source: at)],
+    source: at
+  )
 }
 
 // The tag is read with the atom it was read from, so the construct's tag atom can be lowered from
@@ -7721,19 +7831,14 @@ fn body_lower_try_record_literal(captured: Node) -> Outcome<Optional<Node>> {
       match body_lower_record_literal_field_items_optional(captured: captured) {
         Absent => outcome_accepted(value: optional_absent())
         Present { value: items } =>
-          match fold(items, init: outcome_accepted(value: Empty), f: fn(acc, item) {
-            bind_outcome(o: acc, f: fn(edges) {
-              bind_outcome(o: body_lower_field_init_edge(item: item), f: fn(e) {
-                outcome_accepted(value: list_snoc_item(xs: edges, item: e))
-              })
-            })
-          }) {
+          match body_lower_record_construct(
+            reference: body_lower_bare_tag_reference(tag: read.tag, at: read.at),
+            items: items,
+            source: captured
+          ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: edges, diagnostics: d } =>
-              Accepted {
-                value: optional_present(value: construct_node(tag: read.tag, tag_source: read.at, field_edges: edges, source: captured)),
-                diagnostics: d
-              }
+            Accepted { value: construct, diagnostics: d } =>
+              Accepted { value: optional_present(value: construct), diagnostics: d }
           }
       }
   }

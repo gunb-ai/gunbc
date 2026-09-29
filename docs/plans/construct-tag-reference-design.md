@@ -110,6 +110,19 @@ Not readers of this shape: `v2.std.data_initializer_identity`, `v2.std.decl_fact
 v1 `record_construction_census` fixtures all read the v1 reflection edge. The orchestration
 `construct_tag:` fields are an unrelated name clash.
 
+## One decision for a dotted path (ruled by gentle-koi-724, 2026-09-29)
+
+Whether a dotted path is a qualified name or a field projection on a local is decided in ONE place:
+`v2.compiler.resolve` `try_resolve_qualified_name_node`, by `qualified_head_bound_on_chain`, which is
+the scope of the first segment. eager-newt-412's lane owns the projection arm there. This lane only
+consumes that door. A construct tag whose resolved answer is not a constructor declaration (or a
+kernel canonical atom) refuses `resolve_reason_construct_tag_not_a_constructor`. The door's projection arm is gunbc#12506's
+`resolve_bound_head_projection`. The LOCAL wins: a bound first segment shadows a whole-path
+declaration, so the bound-head check precedes any declaration lookup, and that change is made inside
+#12506. Whichever of #12506 and this lane's PR2 lands second adds the control. It is one module with
+`artifact.tree` (a match binder), `v2.std.diagnostic.Rejected { .. }` (qualified), and a local
+shadowing a module segment.
+
 ## The live defect on main
 
 Filed as `gunbc.recurring_failure_mode`

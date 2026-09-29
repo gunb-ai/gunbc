@@ -95,6 +95,7 @@ import v2.std.compilers.lexing {
 }
 import v2.std.node {
   symbol_lexeme,
+  construct_tag_marker,
   Arrow,
   Atom,
   Bind,
@@ -4304,7 +4305,7 @@ fn dag_rec_construct_body_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
-        name: ^dag_binding_type_rec,
+        name: construct_tag_marker(),
         target: dag_type_atom_node(identity: ^dag_binding_type_rec)
       ),
       dag_named_edge(
@@ -4333,7 +4334,7 @@ fn dag_variant_holds_construct_node(value_lit: Symbol) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
-        name: ^dag_binding_type_variant_holds,
+        name: construct_tag_marker(),
         target: dag_type_atom_node(identity: ^dag_binding_type_variant_holds)
       ),
       dag_named_edge(

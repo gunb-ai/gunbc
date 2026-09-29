@@ -19,5 +19,7 @@ data construct_tag_read_by_label_equality_after_resolve_rewrote_the_target: Recu
     DeclarationRef { module_path: "v2.std.node_query", decl_name: "construct_tag_optional", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.std.node", decl_name: "arrow_body_record_construct_conforms", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_record_construct_gate", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering.qualified_construct", decl_name: "qc_a_resolved_user_construct_reads_its_tag_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering.qualified_construct", decl_name: "qc_the_emission_gate_admits_a_resolved_construct_and_refuses_an_unresolved_one_holds", field: WholeDeclaration },
   ],
 }
