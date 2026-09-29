@@ -86,6 +86,7 @@ fn authored_occurrence_id(n: Node) -> Optional<OccurrenceId> {
 }
 
 type AuthoredOccurrenceCollision {
+  occurrence: OccurrenceId
   first: Node
   second: Node
 }
@@ -107,7 +108,7 @@ fn authored_occurrence_census_step(acc: AuthoredOccurrenceCensus, n: Node) -> Au
           } else {
             AuthoredOccurrenceCensus {
               seen: acc.seen,
-              collisions: list_snoc_item(xs: acc.collisions, item: AuthoredOccurrenceCollision { first: held, second: n })
+              collisions: list_snoc_item(xs: acc.collisions, item: AuthoredOccurrenceCollision { occurrence: id, first: held, second: n })
             }
           }
       }
