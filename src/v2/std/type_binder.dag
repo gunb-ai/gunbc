@@ -399,13 +399,24 @@ fn type_binder_node_conforms(n: Node) -> Bool {
     TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n)
     ComputationNode { behavior: Transform } => (params == 0) && (bodies == 0) && transform_named_labels_conform(n: n)
     ComputationNode { behavior: Bind } => (params == 0) && (bodies == 0) && bind_named_labels_conform(n: n)
-    _ =>
-      match type_decl_view(target: n) {
-        PlainTypeDecl { member: _ } => (params == 0) && (bodies == 0)
-        GenericTypeDecl { binders: _, member: _ } => params_ok
-        TypeAlias { binders: _, aliased: _ } => params_ok
-        OpaqueTypeDecl { binders: _ } => params_ok
-      }
+    TypeNode { connective: Atom { identity: _ } } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
+    TypeNode { connective: Conj } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
+    TypeNode { connective: Disj } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
+    TypeNode { connective: Cardinality } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
+    TypeNode { connective: Instantiation } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
+    ComputationNode { behavior: Value } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
+    ComputationNode { behavior: Branch } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
+    ComputationNode { behavior: Loop } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
+    ComputationNode { behavior: Match } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
+  }
+}
+
+fn type_binder_node_conforms_otherwise(n: Node, params: Int, bodies: Int, params_ok: Bool) -> Bool {
+  match type_decl_view(target: n) {
+    PlainTypeDecl { member: _ } => (params == 0) && (bodies == 0)
+    GenericTypeDecl { binders: _, member: _ } => params_ok
+    TypeAlias { binders: _, aliased: _ } => params_ok
+    OpaqueTypeDecl { binders: _ } => params_ok
   }
 }
 

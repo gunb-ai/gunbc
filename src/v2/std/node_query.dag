@@ -783,13 +783,21 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
             correction: Unavailable { reason: ExternalContractUnknown }
           })
       }
-    _ =>
-      outcome_rejected(d: Diagnostic {
-        reason: ^arrow_body_child_not_arrow,
-        at: node_locus(node: root),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      })
+    TypeNode { connective: Atom { identity: _ } } => find_arrow_body_child_otherwise(root: root)
+    TypeNode { connective: Conj } => find_arrow_body_child_otherwise(root: root)
+    TypeNode { connective: Disj } => find_arrow_body_child_otherwise(root: root)
+    TypeNode { connective: Cardinality } => find_arrow_body_child_otherwise(root: root)
+    TypeNode { connective: Instantiation } => find_arrow_body_child_otherwise(root: root)
+    ComputationNode { behavior: _ } => find_arrow_body_child_otherwise(root: root)
   }
+}
+
+fn find_arrow_body_child_otherwise(root: Node) -> Outcome<Node> {
+  outcome_rejected(d: Diagnostic {
+    reason: ^arrow_body_child_not_arrow,
+    at: node_locus(node: root),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
 }
 
 fn node_query_domain_malformed_diagnostic(domain: Node) -> Diagnostic {
@@ -830,11 +838,19 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
           }
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
-    _ =>
-      outcome_rejected(
-        d: node_query_domain_malformed_diagnostic(domain: domain)
-      )
+    TypeNode { connective: Atom { identity: _ } } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
+    TypeNode { connective: Disj } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
+    TypeNode { connective: Arrow } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
+    TypeNode { connective: Cardinality } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
+    TypeNode { connective: Instantiation } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
+    ComputationNode { behavior: _ } => conj_ordered_named_param_binding_ids_otherwise(domain: domain)
   }
+}
+
+fn conj_ordered_named_param_binding_ids_otherwise(domain: Node) -> Outcome<List<Symbol>> {
+  outcome_rejected(
+    d: node_query_domain_malformed_diagnostic(domain: domain)
+  )
 }
 
 fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<Symbol>> {
@@ -850,13 +866,21 @@ fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<Symbol>> {
             correction: Unavailable { reason: ExternalContractUnknown }
           })
       }
-    _ =>
-      outcome_rejected(d: Diagnostic {
-        reason: ^arrow_domain_named_param_bindings_not_arrow,
-        at: node_locus(node: arrow),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      })
+    TypeNode { connective: Atom { identity: _ } } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
+    TypeNode { connective: Conj } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
+    TypeNode { connective: Disj } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
+    TypeNode { connective: Cardinality } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
+    TypeNode { connective: Instantiation } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
+    ComputationNode { behavior: _ } => arrow_domain_named_param_bindings_otherwise(arrow: arrow)
   }
+}
+
+fn arrow_domain_named_param_bindings_otherwise(arrow: Node) -> Outcome<List<Symbol>> {
+  outcome_rejected(d: Diagnostic {
+    reason: ^arrow_domain_named_param_bindings_not_arrow,
+    at: node_locus(node: arrow),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
 }
 
 // THE EDGES v2.std.node all_names_distinct REFUSES, IN ORDER: each Named edge whose name an earlier

@@ -864,11 +864,19 @@ fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
         LoopCarrierBinder => false
         LoopEdgeUnrecognized => false
       }
-    _ =>
-      match e.label {
-        Positional => true
-        Named { name: _ } => true
-      }
+    TypeNode { connective: _ } => loop_edge_contributes_to_iteration_fold_otherwise(e: e)
+    ComputationNode { behavior: Value } => loop_edge_contributes_to_iteration_fold_otherwise(e: e)
+    ComputationNode { behavior: Transform } => loop_edge_contributes_to_iteration_fold_otherwise(e: e)
+    ComputationNode { behavior: Branch } => loop_edge_contributes_to_iteration_fold_otherwise(e: e)
+    ComputationNode { behavior: Bind } => loop_edge_contributes_to_iteration_fold_otherwise(e: e)
+    ComputationNode { behavior: Match } => loop_edge_contributes_to_iteration_fold_otherwise(e: e)
+  }
+}
+
+fn loop_edge_contributes_to_iteration_fold_otherwise(e: Edge) -> Bool {
+  match e.label {
+    Positional => true
+    Named { name: _ } => true
   }
 }
 
