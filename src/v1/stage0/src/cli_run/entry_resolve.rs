@@ -3374,6 +3374,7 @@ mod live_pool_entry_resolve_attribution {
             let r = resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy());
             assert!(r.is_ok(), "{e} resolves");
             eprintln!("PROBE resolve {e} {:?}", t.elapsed());
+            eprintln!("PROBE   stages {:?}", resolve_stage_totals());
             for line in super::pre_entry_phase::take_lines() {
                 eprintln!("PROBE   phase {line}");
             }
@@ -3463,9 +3464,11 @@ mod heads_projection_live_differential {
 
 /// THE IDENTITY DIFFERENTIAL for the tree census upgrading the memoized raw census instead of
 /// rebuilding it: for every source root of the live `[dag, src/v2]` index, the census
-/// `tree_bare_census_for_root` now serves equals the direct
-/// `build_symbol_index_census_nodes(tree_census_nodes(root))` it replaced -- the whole
-/// `SymbolIndex` (entries, bare lookup states and candidates, services, alias reps, exposures).
+/// `tree_bare_census_for_root` now serves agrees with the direct
+/// `build_symbol_index_census_nodes(tree_census_nodes(root))` on every field its one production
+/// reader, `symbol_index_with_bare_fill`, consumes (bare lookup states and candidates, services,
+/// alias reps, exposures), its `entries` are the raw census, and the composed underlay the
+/// reconcile builds from it is equal whichever census it is composed from.
 #[cfg(test)]
 mod tree_census_from_raw_differential {
     use super::*;
@@ -3485,13 +3488,29 @@ mod tree_census_from_raw_differential {
             let nodes = super::super::tree_census_nodes(&index, r).expect("tree nodes");
             let direct =
                 v1_compiler_infer::build_symbol_index_census_nodes(nodes, pool.combined_si.clone());
+            // Every field the bare fill reads must equal the direct build; `entries` is the raw
+            // census, which no production reader of this census consumes.
+            let raw = super::super::closure_name_census(&index, Some(r)).expect("raw census");
+            let fill_equal = served.global_bare == direct.global_bare
+                && served.services == direct.services
+                && served.transparent_alias_rep == direct.transparent_alias_rep
+                && served.type_head_exposures == direct.type_head_exposures;
+            let entries_raw = served.entries == raw.entries;
+            let composed_equal =
+                *v1_compiler_infer::symbol_index_with_bare_fill(raw.clone(), served.clone())
+                    == *v1_compiler_infer::symbol_index_with_bare_fill(raw.clone(), direct.clone());
             eprintln!(
-                "DIFF root={r} entries={} bare={} equal={}",
+                "DIFF root={r} entries={} bare={} fill_equal={fill_equal} entries_raw={entries_raw} \
+                 composed_equal={composed_equal}",
                 direct.entries.len(),
                 direct.global_bare.len(),
-                *served == *direct
             );
-            assert!(*served == *direct, "tree census for {r} diverges");
+            assert!(fill_equal, "tree census bare fill for {r} diverges");
+            assert!(
+                entries_raw,
+                "tree census entries for {r} are not the raw census"
+            );
+            assert!(composed_equal, "bare-fill composition for {r} diverges");
             compared += 1;
         }
         assert!(compared >= 2, "both live roots compared ({compared})");
