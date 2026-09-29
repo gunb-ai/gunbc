@@ -21,3 +21,8 @@ Workflow acceptance was separately dispatched on main as run `36505895733`,
 source `15b977d417c1a7de52eae96f48bcd3955fb1f94c`, mode `gcp_iam_converge`, host
 `srv1`. That run uses its own GitHub OIDC credentials, not the supplied operator
 token. Its success and approval delivery must be established independently.
+
+The acceptance run subsequently completed its release build and its observer
+GitHub OIDC authentication step successfully. The plan/file/wait step remains
+in progress; approval delivery, apply authentication, and apply/readback have
+not yet been established.
