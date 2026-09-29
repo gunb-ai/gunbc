@@ -40,6 +40,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_count }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.compiler.resolve { ResolvedTree }
 
 // STAGES MINT EVIDENCE, A CONTRACT MINTS ACCEPTANCE. Given a candidate .dag SOURCE STRING this
 // authority answers how far it got and why it stopped, as typed per-stage evidence adjudicated by a
@@ -455,7 +456,7 @@ type TranslationOutputRow {
 
 type AcceptanceRunState {
   rows: List<StageExecution>,
-  resolved: Optional<Node>,
+  resolved: Optional<ResolvedTree>,
   inferred: Optional<InferredTree>,
   translations: List<TranslationOutputRow>,
   spent: Millisecond,
@@ -584,7 +585,7 @@ fn front_end_declared_cost(
 // individually would be a second story about how the work is performed: they run inside one staged
 // fold, so a per-stage refusal after the fold ran would report a saving never made.
 
-fn front_end_run_resolved(run: FrontEndRun) -> Optional<Node> {
+fn front_end_run_resolved(run: FrontEndRun) -> Optional<ResolvedTree> {
   match run.completion {
     FrontEndResolvedModule { resolved: n } => optional_present(value: n)
     FrontEndBoundReached { last: _ } => optional_absent()

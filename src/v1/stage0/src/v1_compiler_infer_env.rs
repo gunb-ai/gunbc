@@ -2,6 +2,9 @@
 // Source module: v1.compiler.infer_env
 
 use self::GlobalBareLookupState::*;
+use self::TypeNodeDeclarationReading::*;
+use self::TypeNodeUnidentifiedCause::*;
+use self::TypeReferenceDeclarationReading::*;
 use self::UnitVariantPhantomLookup::*;
 pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_coercion::TypeDeclarationProvenance;
@@ -2505,26 +2508,47 @@ pub fn operand_declaration_from_qualified_name(
     }
 }
 
-pub fn declaration_ref_of_type_node(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum TypeNodeDeclarationReading {
+    TypeNodeNamesDeclaration {
+        declaration: Rc<DeclarationRef>,
+    },
+    TypeNodeUnidentified {
+        cause: Rc<TypeNodeUnidentifiedCause>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum TypeNodeUnidentifiedCause {
+    TypeNodeAuthoredNameEmpty,
+    TypeNodeNameDeclaredNowhere { name: String },
+    TypeNodeSpanDeclaresNothing { name: String },
+    TypeNodeCarriesNoSpan { name: String },
+    TypeNodeQualifierMatchesNoDeclarer { qualified: String },
+}
+
+pub fn declaration_reading_of_type_node(
     rt: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
-) -> Option<Rc<DeclarationRef>> {
+) -> Rc<TypeNodeDeclarationReading> {
     {
         let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone());
         let decl_name = crate::v1_std_core::qualified_last_segment(authored.clone());
         if (decl_name.clone() == "".to_string()) {
-            return std::option::Option::None;
+            return Rc::new(TypeNodeDeclarationReading::TypeNodeUnidentified {
+                cause: Rc::new(TypeNodeUnidentifiedCause::TypeNodeAuthoredNameEmpty),
+            });
         }
+        let entry = v1_rt::map_get(
+            &env.symbol_index.clone().global_bare.clone(),
+            decl_name.clone(),
+        );
         let by_span = match rt.ident_span.clone() {
             std::option::Option::None => std::option::Option::None,
-            Some(sp) => match v1_rt::map_get(
-                &env.symbol_index.clone().global_bare.clone(),
-                decl_name.clone(),
-            )
-            .as_deref()
-            .cloned()
-            {
+            Some(sp) => match entry.clone().as_deref().cloned() {
                 Some(GlobalBareLookupState::GlobalBareUniqueBinding {
                     module_path: mp,
                     binding: b,
@@ -2561,11 +2585,168 @@ pub fn declaration_ref_of_type_node(
             },
         };
         match by_span.clone() {
-            Some(d) => Some(d.clone()),
+            Some(d) => Rc::new(TypeNodeDeclarationReading::TypeNodeNamesDeclaration {
+                declaration: d.clone(),
+            }),
             std::option::Option::None => {
                 match operand_declaration_from_qualified_name(authored.clone(), env.clone()) {
-                    Some(od) => Some(od.declaration.clone()),
-                    std::option::Option::None => std::option::Option::None,
+                    Some(od) => Rc::new(TypeNodeDeclarationReading::TypeNodeNamesDeclaration {
+                        declaration: od.declaration.clone(),
+                    }),
+                    std::option::Option::None => {
+                        if (entry.clone() == std::option::Option::None) {
+                            Rc::new(TypeNodeDeclarationReading::TypeNodeUnidentified {
+                                cause: Rc::new(
+                                    TypeNodeUnidentifiedCause::TypeNodeNameDeclaredNowhere {
+                                        name: decl_name.clone(),
+                                    },
+                                ),
+                            })
+                        } else {
+                            if (qualified_all_but_last(authored.clone()) != "".to_string()) {
+                                Rc::new(TypeNodeDeclarationReading::TypeNodeUnidentified {
+    cause: Rc::new(TypeNodeUnidentifiedCause::TypeNodeQualifierMatchesNoDeclarer {
+    qualified: authored.clone(),
+}),
+})
+                            } else {
+                                if (rt.ident_span.clone() == std::option::Option::None) {
+                                    Rc::new(TypeNodeDeclarationReading::TypeNodeUnidentified {
+                                        cause: Rc::new(
+                                            TypeNodeUnidentifiedCause::TypeNodeCarriesNoSpan {
+                                                name: decl_name.clone(),
+                                            },
+                                        ),
+                                    })
+                                } else {
+                                    Rc::new(TypeNodeDeclarationReading::TypeNodeUnidentified {
+    cause: Rc::new(TypeNodeUnidentifiedCause::TypeNodeSpanDeclaresNothing {
+    name: decl_name.clone(),
+}),
+})
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn declaration_ref_of_type_node(
+    rt: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    match (*declaration_reading_of_type_node(rt.clone(), source_indices.clone(), env.clone()))
+        .clone()
+    {
+        TypeNodeDeclarationReading::TypeNodeNamesDeclaration { declaration: d, .. } => {
+            Some(d.clone())
+        }
+        TypeNodeDeclarationReading::TypeNodeUnidentified { cause: _, .. } => {
+            std::option::Option::None
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum TypeReferenceDeclarationReading {
+    TypeReferenceNamesDeclaration {
+        declaration: Rc<DeclarationRef>,
+    },
+    TypeReferenceIsKernelType {
+        name: String,
+    },
+    TypeReferenceIsTypeVariable {
+        id: String,
+    },
+    TypeReferenceUnidentified {
+        authored: Rc<TypeNodeUnidentifiedCause>,
+        resolved: Option<Rc<TypeNodeUnidentifiedCause>>,
+    },
+}
+
+pub fn type_reference_declaration_reading(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Rc<TypeReferenceDeclarationReading> {
+    match (*declaration_reading_of_type_node(n.clone(), source_indices.clone(), env.clone()))
+        .clone()
+    {
+        TypeNodeDeclarationReading::TypeNodeNamesDeclaration { declaration: d, .. } => Rc::new(
+            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                declaration: d.clone(),
+            },
+        ),
+        TypeNodeDeclarationReading::TypeNodeUnidentified {
+            cause: authored_cause,
+            ..
+        } => match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: v, .. }) => Rc::new(
+                TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: v.clone() },
+            ),
+            Some(InferredNode::Resolved { node: r, .. }) => {
+                match (*declaration_reading_of_type_node(
+                    r.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                ))
+                .clone()
+                {
+                    TypeNodeDeclarationReading::TypeNodeNamesDeclaration {
+                        declaration: d, ..
+                    } => Rc::new(
+                        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                            declaration: d.clone(),
+                        },
+                    ),
+                    TypeNodeDeclarationReading::TypeNodeUnidentified {
+                        cause: resolved_cause,
+                        ..
+                    } => kernel_or_unidentified(
+                        r.clone(),
+                        source_indices.clone(),
+                        authored_cause.clone(),
+                        Some(resolved_cause.clone()),
+                    ),
+                }
+            }
+            _ => kernel_or_unidentified(
+                n.clone(),
+                source_indices.clone(),
+                authored_cause.clone(),
+                std::option::Option::None,
+            ),
+        },
+    }
+}
+
+pub fn kernel_or_unidentified(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    authored: Rc<TypeNodeUnidentifiedCause>,
+    resolved: Option<Rc<TypeNodeUnidentifiedCause>>,
+) -> Rc<TypeReferenceDeclarationReading> {
+    {
+        let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: v, .. }) => Rc::new(
+                TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: v.clone() },
+            ),
+            _ => {
+                if crate::std_types::is_kernel_type(nm.clone()) {
+                    Rc::new(TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
+                        name: nm.clone(),
+                    })
+                } else {
+                    Rc::new(TypeReferenceDeclarationReading::TypeReferenceUnidentified {
+                        authored: authored.clone(),
+                        resolved: resolved.clone(),
+                    })
                 }
             }
         }

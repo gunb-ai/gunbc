@@ -1,6 +1,7 @@
 module v2.compiler.self_host.candidate_generation_stage_verdicts
 
 import std.types { List }
+import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer }
 import v2.compiler.self_host.candidate_generation { generate_translate_self_emit_candidate }
 import v2.std.algebra { Cons, Empty, fold_list }
@@ -77,7 +78,7 @@ fn diagnostics_carried_reasons(d: Diagnostics) -> List<Symbol> {
 }
 
 fn candidate_generation_composition_verdicts(
-  resolved_module: Node,
+  resolved_module: ResolvedTree,
   dag_target: TargetModel,
   infer_verdict: Symbol,
   infer_carried_reasons: List<Symbol>
@@ -104,7 +105,7 @@ fn candidate_generation_composition_verdicts(
 }
 
 fn candidate_generation_stage_verdicts(
-  resolved_module: Node,
+  resolved_module: ResolvedTree,
   dag_target: TargetModel
 ) -> CandidateGenerationStageVerdicts {
   match infer(tree: resolved_module) {

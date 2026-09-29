@@ -554,46 +554,6 @@ fn swift_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn swift_serialize_source_prefix_edges() -> List<Edge> {
-  Cons {
-    head: swift_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: swift_atom(id: ^swift_source_literal)
-    ),
-    tail: Cons {
-      head: swift_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: swift_atom(id: ^swift_production_fn_add)
-      ),
-      tail: Empty
-    }
-  }
-}
-
-fn swift_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: swift_serialize_source_prefix_edges(),
-    right: [
-      swift_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: swift_concrete_tokens(),
-          token_to_node: swift_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn swift_serialize_source_node() -> Node {
-  let _authority = swift_source_text_authority()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: swift_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
 fn swift_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
@@ -677,10 +637,6 @@ fn swift_target_model_node() -> Node {
       swift_named_edge(
         name: ^target_model_edge_translation_rules,
         target: swift_translation_rules_node()
-      ),
-      swift_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: swift_serialize_source_node()
       ),
       swift_named_edge(
         name: ^target_model_edge_semantic_decl_emission,
