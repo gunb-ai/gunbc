@@ -271,7 +271,18 @@ fn plant_unreadable_binder(n: Node) -> Node {
   )
 }
 
-fn mixed_param_list_outcome(plant: Bool) -> OccurrenceRoleOutcome {
+// The two walks are nullary so the floor computes each ONCE (both are enrolled WARM in
+// v2.workflow.floor_pure_producer_share beside roles_fixture_outcome) and each claim below is a
+// read of its value, not a re-parse.
+fn mixed_param_list_parsed() -> OccurrenceRoleOutcome {
+  mixed_param_list_walk(plant: false)
+}
+
+fn mixed_param_list_planted() -> OccurrenceRoleOutcome {
+  mixed_param_list_walk(plant: true)
+}
+
+fn mixed_param_list_walk(plant: Bool) -> OccurrenceRoleOutcome {
   let subject = conservation_subject(id_tail: "occurrence_role_mixed_params", source: mixed_param_list_source)
   match subject.parsed {
     Rejected { diagnostics: _ } => OccurrenceRoleTableRefused { unlisted: [^occurrence_role_mixed_fixture_unparsed], unknown: [], unkeyed: [] }
@@ -286,7 +297,7 @@ fn mixed_param_list_outcome(plant: Bool) -> OccurrenceRoleOutcome {
 
 // The positive control ON THE SAME PARSE, unplanted: both parameters are read, nothing is refused.
 test fn the_unplanted_mixed_fixture_reads_both_parameters_holds() -> Bool {
-  match mixed_param_list_outcome(plant: false) {
+  match mixed_param_list_parsed() {
     OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
     OccurrenceRolesRead { roles: r } =>
       roles_count(outcome: OccurrenceRolesRead { roles: r }, role: DeclarationRole, category: LexicalValueOccurrence) == 2
@@ -295,7 +306,7 @@ test fn the_unplanted_mixed_fixture_reads_both_parameters_holds() -> Bool {
 }
 
 test fn a_param_list_with_one_unreadable_binder_refuses_whole_holds() -> Bool {
-  match mixed_param_list_outcome(plant: true) {
+  match mixed_param_list_planted() {
     OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
     OccurrenceRolesRead { roles: r } =>
       roles_count(outcome: OccurrenceRolesRead { roles: r }, role: DeclarationRole, category: LexicalValueOccurrence) == 0
