@@ -1602,7 +1602,9 @@ fn body_lower_tail_pipes_into_fold(tail: Node) -> Bool {
 // A TOWER THAT PIPES INTO A FOLD IS READ WHOLE, BEFORE ITS OPERANDS ARE FOLDED. The bottom-up fold
 // lowers an operator expression's children first, so the fold call on the right of `|>` would be
 // lowered on its own -- with no collection, since the pipe supplies it -- before the tower could hand
-// it the pipe's input. So such a tower is read by the raw tower reader, whose binary step
+// it the pipe's input. So such a tower -- recognised by its structure, whatever production identity
+// the node it reaches carries, since the value reader unwraps shells before folding -- is read by the
+// raw tower reader, whose binary step
 // (body_lower_binary_apply) builds the fold encoding with the accumulated left operand as the
 // collection. Every other tower takes the ordinary bottom-up path unchanged.
 fn body_lower_tower_pipes_into_fold(node: Node) -> Bool {
@@ -2791,28 +2793,30 @@ fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
 fn body_lower_fold(node: Node) -> Outcome<Node> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: node)
+  } else if body_lower_tower_pipes_into_fold(node: node) {
+    match body_lower_read_operator_expression(node: node) {
+      OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: lowered)
+      OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
+      OperatorExpressionAbsent => body_lower_fold_by_identity(node: node)
+    }
   } else {
+    body_lower_fold_by_identity(node: node)
+  }
+}
+
+fn body_lower_fold_by_identity(node: Node) -> Outcome<Node> {
     match parse_production_emitted_identity_optional(node: node) {
       Present { value: emitted } =>
         if (emitted == ^dag_surface_arrow_lambda) || (emitted == ^dag_surface_fn_literal) {
           body_lower_function_value_in_fold(node: node)
         } else {
-          if (emitted == ^dag_surface_binary_expr) && body_lower_tower_pipes_into_fold(node: node) {
-            match body_lower_read_operator_expression(node: node) {
-              OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: lowered)
-              OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
-              OperatorExpressionAbsent => body_lower_fold_dispatch(node: node, emitted: emitted)
-            }
-          } else {
-            match body_lower_fold_family_call_first(node: node) {
-              Present { value: lowered } => lowered
-              Absent => body_lower_fold_dispatch(node: node, emitted: emitted)
-            }
+          match body_lower_fold_family_call_first(node: node) {
+            Present { value: lowered } => lowered
+            Absent => body_lower_fold_dispatch(node: node, emitted: emitted)
           }
         }
       Absent => body_lower_fold_identity_absent(node: node)
     }
-  }
 }
 
 fn body_lower_function_value_in_fold(node: Node) -> Outcome<Node> {
