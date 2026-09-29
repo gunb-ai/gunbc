@@ -1,0 +1,5 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+PASS witness_allocation_browser_cannot_supply_owner
+PASS witness_allocation_duplicate_fields_refuse
+PASS witness_allocation_browser_json_decodes
+PASS witness_release_negative_generation_refuses
