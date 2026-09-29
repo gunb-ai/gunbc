@@ -207,7 +207,7 @@ import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run
 import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
 import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, LiveDeploy }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
-import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
+import extdeps.languages.json.emit { json_kv, json_object, json_string, json_array, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import std.types { NonEmptyStr, List, String, Int, Bool, list_length }
 
@@ -978,6 +978,21 @@ fn fleet_converge_build_job() -> Job {
 
 fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
   RunsOnExpression { expression: fleet_converge_host_runner_expression }
+}
+
+// Credential custody uses the fleet SSH transport: the target need not host a live runner.
+// All other shared-job modes retain their host-local execution boundary.
+fn fleet_converge_shared_runner_spec() -> RunnerSpec {
+  match gunbc_ci_runner_spec() {
+    SelfHosted { labels: labels } => RunsOnExpression { expression: join([
+      "${{ fromJSON(",
+      fleet_converge_mode_step_if(mode: HostCredentialCustodyConverge),
+      " && '",
+      serialize_json(v: json_array(elements: map(labels, label => json_string(s: label)))),
+      "' || format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}",
+    ], "") }
+    _ => fleet_converge_host_pinned_runner_spec()
+  }
 }
 
 data fleet_converge_plan_step_if: String = fleet_converge_mode_step_if(mode: FullHostPlan)
@@ -3397,7 +3412,7 @@ fn fleet_converge_job() -> Job {
   Job {
     id: fleet_converge_shared_job_id as String,
     name: none,
-    runner: fleet_converge_host_pinned_runner_spec(),
+    runner: fleet_converge_shared_runner_spec(),
     environment: none,
     steps: concat(
       concat(
