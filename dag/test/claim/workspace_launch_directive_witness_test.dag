@@ -171,3 +171,17 @@ test fn malformed_selection_policy_cannot_become_legacy_admission() -> Bool {
     _ => false
   }
 }
+
+test fn legacy_plan_serialization_preserves_acquisition_identity() -> Bool {
+  match launch_fixture_allocation() {
+    Present { value: allocation } => match allocation.plan {
+      Present { value: plan } => serialize_json(v: workspace_reservation_plan_json(plan: plan))
+        == serialize_json(v: json_object(members: [
+          json_kv(key: "root", value: json_string(s: plan.root as String)),
+          json_kv(key: "reservation", value: workspace_reservation_json(reservation: plan.reservation)),
+        ]))
+      _ => false
+    }
+    _ => false
+  }
+}

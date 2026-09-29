@@ -18,8 +18,12 @@ fn workspace_reservation_plan_seal(root: NonEmptyStr, selection_policy: NonEmpty
 
 fn workspace_reservation_plan_request(plan: WorkspaceReservationPlan) -> WorkspaceRequest { plan.reservation.request }
 fn workspace_reservation_plan_reservation(plan: WorkspaceReservationPlan) -> WorkspaceReservation { plan.reservation }
+// Legacy serialization stays byte-stable because acquisition actor identities hash this document.
 fn workspace_reservation_plan_json(plan: WorkspaceReservationPlan) -> JsonValue {
-  json_object(members: [json_kv(key: "selection_policy", value: json_string(s: plan.selection_policy as String)), json_kv(key: "root", value: json_string(s: plan.root as String)), json_kv(key: "reservation", value: workspace_reservation_json(reservation: plan.reservation))])
+  let original = [json_kv(key: "root", value: json_string(s: plan.root as String)),
+    json_kv(key: "reservation", value: workspace_reservation_json(reservation: plan.reservation))]
+  json_object(members: if plan.selection_policy == "legacy-price-ranked" { original }
+    else { original + [json_kv(key: "selection_policy", value: json_string(s: plan.selection_policy as String))] })
 }
 
 // The administrator-owned durable plan is re-admitted through the same request/grant codec.
