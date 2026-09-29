@@ -200,21 +200,9 @@ fn call_port_readings(call_capture: Node) -> List<v2.lens.complexity_accumulator
   )
 }
 
-// The carrier read is a named-edge lookup on the LOWERED seam Loop (FLAG F): the located fold call desugars via v2.compiler.fold_lowering.fold_call_to_encoding and the accumulator binder is the ^loop_carrier_edge target's atom identity on the encoding's Loop (fold_recurrence_loop) - the lens never re-navigates the surface fn_literal capture (that read has exactly one authority, the lowering). A call the seam refuses (named step fn, no fn literal) yields Absent and the ^fold_accumulator_unread refusal stands: the binder is a callee-resolution fact (Stage B), not a within-body fact, and the lens never fabricates a carrier.
+// The carrier read is a named-edge lookup on the LOWERED seam Loop (FLAG F): the located fold call is read by v2.compiler.fold_lowering.fold_call_step_carrier -- the step's first binder, the same symbol the encoding's ^loop_carrier_edge carries -- so a piped fold, whose collection is not in the call, keeps its carrier - the lens never re-navigates the surface fn_literal capture (that read has exactly one authority, the lowering). A call the seam refuses (named step fn, no fn literal) yields Absent and the ^fold_accumulator_unread refusal stands: the binder is a callee-resolution fact (Stage B), not a within-body fact, and the lens never fabricates a carrier.
 fn fold_family_carrier(call_capture: Node) -> Optional<Symbol> {
-  match v2.compiler.fold_lowering.fold_call_to_encoding(fold_call: call_capture) {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: encoding, diagnostics: _ } =>
-      match v2.compiler.fold_lowering.fold_recurrence_loop(encoding: encoding) {
-        Absent => Absent
-        Present { value: seam_loop } =>
-          match loop_carrier_binder_target(children: seam_loop.children) {
-            Found { target: binder } => v2.std.grammar.node_atom_identity_optional(node: binder)
-            Ambiguous => Absent
-            Absent => Absent
-          }
-      }
-  }
+  v2.compiler.fold_lowering.fold_call_step_carrier(fold_call: call_capture)
 }
 
 fn append_findings(fresh: List<v2.lens.complexity_accumulator_copy.Finding>, acc: List<v2.lens.complexity_accumulator_copy.Finding>) -> List<v2.lens.complexity_accumulator_copy.Finding> {

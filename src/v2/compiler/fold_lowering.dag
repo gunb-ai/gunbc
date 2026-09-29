@@ -858,6 +858,35 @@ fn fold_call_lowering_of(fold_call: Node, slots: FoldSlots) -> FoldCallLowering 
   }
 }
 
+// THE ACCUMULATOR BINDER IS A FACT OF THE STEP ALONE: the step's first binder, wherever the
+// collection comes from. The accumulator-copy lens reads it here, so a piped fold (`xs |> fold(..)`),
+// whose collection is not in the call and which therefore does not lower (see
+// fold_lowering_operand_absent), keeps its carrier. It is Absent exactly where fold_call_lowering yields no
+// step (not a fold, a step by name, a malformed step).
+fn fold_call_step_carrier(fold_call: Node) -> Optional<Symbol> {
+  match fold_call_head_symbol(fold_call: fold_call) {
+    Absent => optional_absent()
+    Present { value: head } =>
+      match fold_family_realization(head: head) {
+        Absent => optional_absent()
+        Present { value: realization } =>
+          match fold_call_step_form(fold_call: fold_call, slots: fold_realization_slots(r: realization)) {
+            StepByName => optional_absent()
+            StepFnLiteral { literal: fn_literal } =>
+              match step_fn_iteration_body(fn_literal: fn_literal) {
+                Absent => optional_absent()
+                Present { value: _ } => step_fn_carrier_binder_symbol(fn_literal: fn_literal)
+              }
+            StepArrowLambda { lambda: lambda } =>
+              match arrow_lambda_iteration_body(lambda: lambda) {
+                Absent => optional_absent()
+                Present { value: _ } => arrow_lambda_carrier_binder_symbol(lambda: lambda)
+              }
+          }
+      }
+  }
+}
+
 // The two-state projection of the authority above: the encoding over the RAW call's operands, and
 // every non-lowered arm a refusal. Its consumer is the accumulator-copy lens, which reads the carrier
 // off the encoding's Loop.
