@@ -1,5 +1,7 @@
 module extdeps.browser.chromium
 
+import extdeps.exec.program { uncataloged_program }
+
 import std.types { NonEmptyStr, brand }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -69,7 +71,7 @@ data chromium_identity_boundary_note: NonEmptyStr = "ChromiumBuild names the Chr
 // `<chromium> --version` prints "Chromium <version>" for a Chromium project build; the readback
 // asks whether the modeled ChromiumVersion appears on that line rather than trusting a path.
 fn chromium_version_command(binary: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: binary, arguments: ["--version"])
+  argv_command(program: uncataloged_program(invocation: binary), arguments: ["--version"])
 }
 
 // The whole --version line of a Chromium project build, exactly: "Chromium <version>" (observed

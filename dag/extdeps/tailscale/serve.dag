@@ -1,5 +1,7 @@
 module extdeps.tailscale.serve
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { NonEmptyStr, Port, List, Bool, Unit }
 import std.string_type { String }
 import std.key_relation {
@@ -85,10 +87,10 @@ fn tailscale_serve_status_json_argv() -> List<String> {
 }
 
 // The status read as a command. The program is PATH-resolved, as the operations below spell it.
-data tailscale_program: NonEmptyStr = "tailscale"
+fn tailscale_program() -> ProgramIdentity = uncataloged_program(invocation: "tailscale")
 
 fn tailscale_serve_status_json_command() -> ArgvCommand {
-  argv_command(program: tailscale_program, arguments: tailscale_serve_status_json_argv())
+  argv_command(program: tailscale_program(), arguments: tailscale_serve_status_json_argv())
 }
 
 // FUNNEL IS PUBLIC EXPOSURE. The serve config's AllowFunnel member (tailscale ipn.ServeConfig
@@ -113,8 +115,20 @@ fn tailscale_serve_status_funnel_listeners(status_json: String) -> TailscaleFunn
   }
 }
 
+// THE BACKEND IS TAILSCALE'S OWN TARGET WORD: a loopback port, or a unix socket spelled
+// "unix:<path>" (tailscale ipn/serve.go ExpandProxyTargetValue: `unix:` is handled before URL
+// parsing and kept verbatim as the handler's Proxy; since v1.98.9 a unix target may be configured
+// only by root, TS-2026-005). So the status projection of a unix target is the target itself, and
+// of a port it is the http://127.0.0.1 URL the docs state is the only proxy form for ports.
+data tailscale_serve_unix_target_prefix: String = "unix:"
+
+fn tailscale_serve_unix_target(path: NonEmptyStr) -> NonEmptyStr {
+  concat(tailscale_serve_unix_target_prefix, path as String) as NonEmptyStr
+}
+
 fn tailscale_serve_proxy_url(endpoint: TailscaleServeEndpoint) -> String {
-  concat("http://127.0.0.1:", endpoint.backend as String)
+  if starts_with(s: endpoint.backend as String, prefix: tailscale_serve_unix_target_prefix) { endpoint.backend as String }
+  else { concat("http://127.0.0.1:", endpoint.backend as String) }
 }
 
 fn tailscale_serve_mount_status_key(mount: TailscaleServeMount) -> String {

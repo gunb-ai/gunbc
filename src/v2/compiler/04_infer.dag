@@ -146,7 +146,7 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
 }
-import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names }
+import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, cast_target_optional, declaration_binder_edge, edge_is_type_params, type_annotation_optional, type_decl_view, type_param_names }
 import v2.std.coercion { coercion_cast_crossing }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
@@ -646,6 +646,22 @@ fn infer_product_child_evidence_edges(
   children: List<Edge>,
   entries: List<InferredFactsEntry>,
 ) -> Optional<List<Edge>> {
+  infer_formation_child_evidence_edges(
+    children: children,
+    entries: entries,
+    is_metadata: fn(edge) { edge_label_of(e: edge) == arrow_signature_order_label }
+  )
+}
+
+// A FORMED NODE'S EVIDENCE: each child's resolved type under the child's own label, except a
+// METADATA edge -- one the parent's model says carries labels or binders, not a value -- which rides
+// unchanged. Absent when any value child has no derived grounding, so a partially grounded child spine
+// never forms.
+fn infer_formation_child_evidence_edges(
+  children: List<Edge>,
+  entries: List<InferredFactsEntry>,
+  is_metadata: fn(Edge) -> Bool,
+) -> Optional<List<Edge>> {
   fold(
     children,
     init: optional_present(value: Empty),
@@ -653,7 +669,7 @@ fn infer_product_child_evidence_edges(
       match acc {
         Absent => acc
         Present { value: evidence_edges } =>
-          if (edge_label_of(e: edge) == arrow_signature_order_label) {
+          if is_metadata(edge) {
             optional_present(value: list_snoc_item(xs: evidence_edges, item: edge))
           } else {
           match lookup_inferred_facts_in_entries(entries: entries, key: edge.target) {
@@ -718,6 +734,97 @@ fn infer_arrow_body_inhabits_declared_return(node: Node, entries: List<InferredF
         _ => outcome_accepted(value: true)
       }
     _ => outcome_accepted(value: true)
+  }
+}
+
+// WHICH FORMATION A SETTLED TYPE NODE TAKES, decided once. A type-declaration wrapper is NOT a
+// product even though its carrier is a Conj (v2.std.type_binder type_decl_view says which it is), so it
+// never reaches product introduction: an alias or generic member forms its own evidence with the binder
+// edge carried as metadata, and a bodyless declaration derives the type-denotation kind. Every other
+// Conj or Arrow is product introduction, and a Disj of Named alternatives is SUM FORMATION -- the same
+// kind-preserving construction over its alternatives' evidence. Forming a sum type grants no
+// introduction or elimination: it says nothing about a value inhabiting one arm.
+fn infer_formation_facts_from_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  partials: List<Node>,
+) -> Outcome<InferredFacts> {
+  match type_decl_view(target: node) {
+    TypeAlias { binders: _, aliased: _ } => infer_declaration_wrapper_facts_from_entries(node: node, entries: entries, partials: partials)
+    GenericTypeDecl { binders: _, member: _ } => infer_declaration_wrapper_facts_from_entries(node: node, entries: entries, partials: partials)
+    OpaqueTypeDecl { binders: _ } => infer_opaque_declaration_facts(node: node, partials: partials)
+    PlainTypeDecl { member: _ } => infer_product_facts_from_entries(node: node, entries: entries, partials: partials)
+  }
+}
+
+// AN ALIAS DENOTES ITS RIGHT-HAND SIDE UNDER ITS BINDERS; A GENERIC MEMBER IS ITS MEMBER UNDER ITS
+// BINDERS. The evidence is the wrapper re-formed with the binder edge carried unchanged
+// (infer_declaration_binder_edge) and the aliased expression or member replaced by its derived type --
+// so a generic alias keeps its abstraction rather than collapsing to a closed right-hand side. It forms
+// only when that right-hand side or member derives: a generic alias whose right-hand side names its own
+// binder (`type Id<T> = T`) has no symbolic grounding route for `T` yet and stays on the frontier,
+// never substituted or instantiated here.
+fn infer_declaration_wrapper_facts_from_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  partials: List<Node>,
+) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      match infer_descent_witness_for_node(n: node) {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: descent_proof } =>
+          match infer_formation_child_evidence_edges(
+            children: node.children,
+            entries: entries,
+            is_metadata: fn(edge) { edge_is_type_params(e: edge) }
+          ) {
+            Absent =>
+              bind_outcome_accepted(od: cd, inner: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof }))
+            Present { value: evidence_edges } =>
+              bind_outcome_accepted(
+                od: cd,
+                inner: inferred_facts_from_derived_type(
+                  node: node,
+                  derived_type: Node {
+                    kind: node.kind,
+                    children: evidence_edges,
+                    occurrence_id: OccurrenceSynthetic
+                  },
+                  descent: Holds { value: descent_proof }
+                )
+              )
+          }
+      }
+  }
+}
+
+// A BODYLESS DECLARATION DENOTES A TYPE, AND THAT IS ALL IT STATES. `type PointerWidth` asserts no
+// representation, inhabitant, field, variant or alias target, so it derives exactly the fact infer
+// already gives a type-denoting binding (the dag_binding_denotation arm of infer_node_facts):
+// TypeDenotationKind. That grants no member, construction or representation-sensitive coercion, and
+// for a generic declaration (`type MachineWidth<bits>`) it says only that the declaration names a type
+// constructor -- a use's arity stays the binder authority's to check. It is not the empty product: an
+// authored empty record is a member, and forms through product introduction.
+fn infer_opaque_declaration_facts(node: Node, partials: List<Node>) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      match infer_descent_witness_for_node(n: node) {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: descent_proof } =>
+          bind_outcome_accepted(
+            od: cd,
+            inner: inferred_facts_from_derived_type(
+              node: node,
+              derived_type: kind_node(kind: TypeDenotationKind),
+              descent: Holds { value: descent_proof }
+            )
+          )
+      }
   }
 }
 
@@ -2953,7 +3060,21 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
       }
       }
-    TypeNode { connective: Disj } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+    TypeNode { connective: Disj } =>
+      if infer_disj_is_named_sum(n: n) && !infer_node_declared_in_language_inhabitants_bool(kinds: kinds, n: n) {
+        infer_gather_fold_acc_ok(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: false,
+          children_remaining: length(xs: n.children)
+        )
+      } else {
+        infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+      }
     TypeNode { connective: Arrow } =>
       if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
         infer_gather_fold_acc_ok(
@@ -3030,7 +3151,7 @@ fn infer_arrow_empty_domain_edge(parent: Node, edge: Edge, children_remaining: I
   }
 }
 
-fn infer_arrow_empty_domain_entry(domain: Node) -> Outcome<InferredFactsEntry> {
+fn infer_empty_product_entry(domain: Node) -> Outcome<InferredFactsEntry> {
   bind_outcome(
     o: inferred_facts_from_derived_type(
       node: domain,
@@ -3119,6 +3240,11 @@ fn infer_gather_acc_awaits_product_row(node: Node, entries: List<InferredFactsEn
         Absent => true
         Present { value: _ } => false
       }
+    TypeNode { connective: Disj } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: node) {
+        Absent => true
+        Present { value: _ } => false
+      }
     _ => false
   }
 }
@@ -3129,7 +3255,7 @@ fn infer_gather_product_row_on_entries(
   pending: Diagnostics,
   partials: List<Node>,
 ) -> InferGatherFoldAcc {
-  match infer_product_facts_from_entries(node: node, entries: entries, partials: partials) {
+  match infer_formation_facts_from_entries(node: node, entries: entries, partials: partials) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -3170,6 +3296,52 @@ fn infer_gather_product_row_on_entries(
   }
 }
 
+// A PAYLOADLESS ALTERNATIVE IS THE EMPTY PRODUCT, AND IT IS GROUNDED BY ITS SUM, NOT BY ITS OWN
+// SHAPE. A coproduct lowers to a Disj whose Named arms carry each alternative's payload, and a
+// nullary alternative (`Allowed`) carries a childless Conj: the product of zero fields. The Disj fixes
+// that meaning for its Named children the way an Arrow fixes its domain's
+// (infer_arrow_empty_domain_edge), and the evidence is the same fresh synthetic empty product
+// (infer_empty_product_entry). A childless Conj anywhere else still refuses: parse residue has that
+// shape too, and a positional child of a Disj is not an alternative.
+fn infer_sum_nullary_payload_edge(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Disj } =>
+      (match edge.label {
+        Named { name: _ } => true
+        Positional => false
+      })
+        && (length(xs: edge.target.children) == 0)
+        && (match edge.target.kind {
+          TypeNode { connective: Conj } => true
+          _ => false
+        })
+    _ => false
+  }
+}
+
+// A DECLARATION'S BINDERS ARE NOT INFERRED. The <type-parameters> edge of a type-declaration wrapper
+// (v2.std.type_binder type_decl_view: a generic member, an alias or an opaque declaration) carries the
+// declaration's binder Conj -- names the binder authority checks and resolve scopes, not values -- so
+// there is no type for its subtree to derive, and an EMPTY binder list is never a unit value. The
+// wrapper carries the edge unchanged as its own evidence, the same shape as the Arrow's declared order
+// (infer_arrow_signature_order_edge). Asked through the view, never by the label alone, so the marker
+// on an Arrow (a fn's type parameters) is not swept in.
+fn infer_declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
+  declaration_binder_edge(parent: parent, edge: edge)
+}
+
+// A SUM IS FORMED ONLY OVER NAMED ALTERNATIVES: a Disj with no children, or with a positional child,
+// is not a coproduct this rule knows how to read, and stays on the frontier.
+fn infer_disj_is_named_sum(n: Node) -> Bool {
+  (length(xs: n.children) > 0)
+    && fold(n.children, init: true, f: fn(acc, e) {
+      acc && match e.label {
+        Named { name: _ } => true
+        Positional => false
+      }
+    })
+}
+
 // AN ARROW'S DECLARED ORDER IS NOT INFERRED. The ^arrow_signature_order_edge's subtree is a list of
 // the domain's binder LABELS (v2.std.arrow_signature signature_order_edge), not values: there
 // is no type for a label atom to derive, so walking it left every declared Arrow's order atoms on the
@@ -3194,7 +3366,7 @@ fn infer_gather_fold_step(
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
-  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge) {
+  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge) || infer_declaration_binder_edge(parent: acc.node, edge: edge) {
     infer_gather_fold_step_merged(
       acc: acc,
       merged_entries: acc.entries,
@@ -3216,8 +3388,9 @@ fn infer_gather_fold_step(
       await_transform_row: acc.await_transform_row,
       children_remaining: acc.children_remaining
     )
-  } else if infer_arrow_empty_domain_edge(parent: acc.node, edge: edge, children_remaining: acc.children_remaining) {
-    match infer_arrow_empty_domain_entry(domain: edge.target) {
+  } else if infer_arrow_empty_domain_edge(parent: acc.node, edge: edge, children_remaining: acc.children_remaining)
+    || infer_sum_nullary_payload_edge(parent: acc.node, edge: edge) {
+    match infer_empty_product_entry(domain: edge.target) {
       Rejected { diagnostics: r } =>
         infer_gather_fold_acc_failed(
           node: acc.node,
