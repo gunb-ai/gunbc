@@ -65,7 +65,7 @@ import gunbc.runner_throughput_qualification {
 import std.nat { Nat, nat_range_inclusive }
 import std.observation { OccurrenceId }
 import product.capacity.cohort_observation {
-  CohortReading, CohortSeatReading, SeatSettlement, SeatSettledSucceeded, SeatSettledFailed, seal_cohort,
+  CohortReading, CohortSeatReading, SeatSettlement, SeatSettledAs, SeatSucceeded, SeatFailed, seal_cohort,
 }
 import gunbc.runner_throughput_selection {
   RunnerQualificationInputs, select_runner_qualification, slot_quota_threads, selected_host_allocation,
@@ -79,7 +79,7 @@ import gunbc.runner_throughput_qualification_route {
   route_effectful_stage_count, route_is_executable,
   route_registers_one_slot, route_deregisters_what_it_registered, route_dispatch_selector_names_the_attempt,
   mtcollins1_qualification_workspace_backing, mtcollins1_route_legs,
-  CalibrationSpecimenWitnessLine, FloorCgroupRows, qualification_instrument_wire, qualification_instrument_producer,
+  CalibrationSpecimenWitnessLine, FloorCgroupRows, ConcurrentCohortSeatWindows, qualification_instrument_wire, qualification_instrument_producer,
 }
 import gunbc.runner_microvm_network { HostChainDefaultDrop, TapScopedFinalDrop }
 
@@ -421,7 +421,7 @@ fn cohort_runs(ids: List<WorkflowRunId>) -> List<ObservedRunnerQualificationRun>
 
 fn assess_at_width(selection: SelectedRunnerQualification<HostIdentity>, runs: List<ObservedRunnerQualificationRun>) -> RunnerThroughputAssessment<HostIdentity> {
   let ids = seat_ids(n: expected_width())
-  assess_runner_throughput(selection: selection, runs: concat(runs, cohort_runs(ids: ids)), cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledSucceeded))))
+  assess_runner_throughput(selection: selection, runs: concat(runs, cohort_runs(ids: ids)), cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }))))
 }
 
 fn assess_unobserved(selection: SelectedRunnerQualification<HostIdentity>, runs: List<ObservedRunnerQualificationRun>) -> RunnerThroughputAssessment<HostIdentity> {
@@ -634,16 +634,16 @@ test fn delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() -> Bool
   let ids = seat_ids(n: w)
   let runs = cohort_runs(ids: ids)
   let short = seat_ids(n: w - 1)
-  let failed = map(ids, id => if (id as String) == "cohort-seat-1" { seat_reading(id: id, settlement: SeatSettledFailed { cause: "floor phase refused" as NonEmptyStr }) } else { seat_reading(id: id, settlement: SeatSettledSucceeded) })
-  let stranger = concat(map(short, id => seat_reading(id: id, settlement: SeatSettledSucceeded)), [seat_reading(id: "not-an-assessed-run" as WorkflowRunId, settlement: SeatSettledSucceeded)])
-  let apart = map(ids, id => if (id as String) == "cohort-seat-1" { CohortSeatReading { seat: id, source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: id as NonEmptyStr }, ready_at: t(n: 5), started_at: t(n: 50), ended_at: t(n: 60), settlement: SeatSettledSucceeded } } else { seat_reading(id: id, settlement: SeatSettledSucceeded) })
+  let failed = map(ids, id => if (id as String) == "cohort-seat-1" { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatFailed { cause: "floor phase refused" as NonEmptyStr } }) } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
+  let stranger = concat(map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })), [seat_reading(id: "not-an-assessed-run" as WorkflowRunId, settlement: SeatSettledAs { settled: SeatSucceeded })])
+  let apart = map(ids, id => if (id as String) == "cohort-seat-1" { CohortSeatReading { seat: id, source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: id as NonEmptyStr }, ready_at: t(n: 5), started_at: t(n: 50), ended_at: t(n: 60), settlement: SeatSettledAs { settled: SeatSucceeded } } } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
   w >= 2
     && concurrency_is(a: assess_unobserved(selection: selection(), runs: runs), want: "no concurrent cohort was observed")
-    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(short, id => seat_reading(id: id, settlement: SeatSettledSucceeded)))), want: join(["the cohort ran ", (w - 1) as String, " seats but the derived width is ", w as String], ""))
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))), want: join(["the cohort ran ", (w - 1) as String, " seats but the derived width is ", w as String], ""))
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: failed)), want: "cohort seat cohort-seat-1 failed: floor phase refused")
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: stranger)), want: "a cohort seat is not one of the assessed runs: not-an-assessed-run")
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: apart)), want: "the seats were never all active at once")
-    && assessment_holds(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledSucceeded)))))
+    && assessment_holds(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))))
 }
 
 // ── throughput and width REDs ─────────────────────────────────────────────────────────────────
@@ -784,6 +784,28 @@ test fn only_the_runner_stages_open_the_network_and_only_default_drop() -> Bool 
           })
     }
   )
+}
+
+// THE COHORT IS OWED BY THE ROUTE, NOT ONLY ASSESSED: the collect stage lists the concurrent-cohort seat
+// windows and cites product.capacity.cohort_observation seal_cohort as their producer, and the one
+// collect-stage frontier stays unbound until the stage that seals a real cohort lands.
+test fn the_collect_stage_owes_a_sealed_concurrent_cohort() -> Bool {
+  !leg_is_bound(leg: qualification_run_producer_frontier)
+    && (route() |> any(s =>
+      match s {
+        CollectInstruments { instruments: is } =>
+          is |> any(i =>
+            match i {
+              ConcurrentCohortSeatWindows => {
+                let p = qualification_instrument_producer(i: i)
+                (p.module_path as String) == "product.capacity.cohort_observation" && (p.decl_name as String) == "seal_cohort"
+              }
+              _ => false
+            }
+          )
+        _ => false
+      }
+    ))
 }
 
 test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {

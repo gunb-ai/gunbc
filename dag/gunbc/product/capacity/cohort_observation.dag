@@ -41,9 +41,14 @@ import v2.std.collection { empty_map, map_insert, map_lookup }
 // The seat identity is the caller's (K, keyed by seat_key), so a build-seat cohort and a
 // serving-client cohort share this module and nothing domain-specific lives in it.
 
+// A READING MAY BE UNSETTLED; A SEALED WINDOW MAY NOT. The settled outcome is its own type, so a sealed
+// cohort cannot carry an unsettled seat and no consumer re-checks for one.
+type SeatSettled
+  = SeatSucceeded
+  | SeatFailed { cause: NonEmptyStr }
+
 type SeatSettlement
-  = SeatSettledSucceeded
-  | SeatSettledFailed { cause: NonEmptyStr }
+  = SeatSettledAs { settled: SeatSettled }
   | SeatUnsettled
 
 type CohortSeatReading<K> {
@@ -68,7 +73,7 @@ type CohortSeatWindow<K> {
   seat: K
   source: OccurrenceId
   active: OrderedClosedInterval<ObservationInstant>
-  settlement: SeatSettlement
+  settled: SeatSettled
 }
 
 type SealedCohortObservation<K> sole_constructor {
@@ -149,7 +154,7 @@ fn check_seat<K>(
         } else {
           match reading.settlement {
             SeatUnsettled => SeatRefused { refusal: CohortSeatNotSettled { seat: s } }
-            _ => SeatHolds { window: CohortSeatWindow { seat: s, source: reading.source, active: w, settlement: reading.settlement } }
+            SeatSettledAs { settled: done } => SeatHolds { window: CohortSeatWindow { seat: s, source: reading.source, active: w, settled: done } }
           }
         }
     }

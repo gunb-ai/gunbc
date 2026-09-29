@@ -16,7 +16,7 @@ import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.supply { SupplierOffer }
 import v2.std.collection { empty_map, map_insert, map_lookup }
 import product.capacity.cohort_observation {
-  CohortSeal, CohortSealed, CohortRefused, SeatSettledSucceeded, SeatSettledFailed, SeatUnsettled, cohort_refusal_wire,
+  CohortSeal, CohortSealed, CohortRefused, SeatSucceeded, SeatFailed, cohort_refusal_wire,
 }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.required_ci_phase_roster {
@@ -726,10 +726,9 @@ fn qualify_concurrency(cohort: RunnerCohortEvidence, runs: List<ObservedRunnerQu
                     match map_lookup(m: assessed, key: w.seat as String) {
                       Absent => SeatStandingRefused { standing: ConcurrencySeatNotAnAssessedRun { seat: w.seat } }
                       Present { value: _ } =>
-                        match w.settlement {
-                          SeatSettledSucceeded => SeatsHold
-                          SeatSettledFailed { cause: why } => SeatStandingRefused { standing: ConcurrencySeatFailed { seat: w.seat, cause: why } }
-                          SeatUnsettled => SeatStandingRefused { standing: ConcurrencyCohortRefused { cause: "a sealed cohort carried an unsettled seat" as NonEmptyStr } }
+                        match w.settled {
+                          SeatSucceeded => SeatsHold
+                          SeatFailed { cause: why } => SeatStandingRefused { standing: ConcurrencySeatFailed { seat: w.seat, cause: why } }
                         }
                     }
                 })
@@ -936,8 +935,8 @@ fn leg_is_bound(leg: RouteLegStanding) -> Bool {
 }
 
 data qualification_run_producer_frontier: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "a collect stage on the qualification route that parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, with admit_callers on observed_run naming it; it needs a runner to have run, so it follows gunbc.runner_throughput_qualification_route mtcollins1_boot_leg" as NonEmptyStr,
-  sufficient_for: "minting an ObservedRunnerQualificationRun from a real run of the floor on mtcollins1, so assess_runner_throughput is fed by execution rather than by a fixture" as NonEmptyStr,
+  lands_with: "a collect stage on the qualification route that parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, with admit_callers on observed_run naming it, AND reads every seat's ready/start/end instants and settlement plus the barrier and host window into a product.capacity.cohort_observation CohortReading, seals it with seal_cohort and passes it to assess_runner_throughput as CohortObserved (gunbc.runner_throughput_qualification_route ConcurrentCohortSeatWindows); until then assess_runner_throughput has no production caller and a delivery claim refuses ConcurrencyUnobserved; it needs a runner to have run, so it follows gunbc.runner_throughput_qualification_route mtcollins1_boot_leg" as NonEmptyStr,
+  sufficient_for: "minting ObservedRunnerQualificationRuns and a sealed concurrent cohort of them from a real run of the floor on mtcollins1, so assess_runner_throughput is fed by execution rather than by a fixture" as NonEmptyStr,
 }
 
 // ── WIRE ──────────────────────────────────────────────────────────────────────────────────────
