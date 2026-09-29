@@ -405,13 +405,17 @@ fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<Sy
   }
 }
 
-// The binder atoms of one param_list production, read by the collector its domain lowers through
-// (body_lower_collect_typed_params). Absent where the list's comma spine cannot be read.
+// The binder atoms of one param_list production, read by the slot walk its domain lowers through
+// (body_lower_collect_typed_param_slots). Absent where the list's comma spine cannot be read, OR where
+// any one slot is unreadable: all or nothing, so an unread binder is a refusal, never a shorter list.
 fn body_lower_param_list_binder_atoms(param_list: Node) -> Optional<List<Node>> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
     Absent => Absent
     Present { value: comma_spine } =>
-      Present { value: list_map(xs: body_lower_collect_typed_params(sequence_capture: comma_spine), f: fn(p) { p.binder }) }
+      match body_lower_collect_typed_params_all_optional(sequence_capture: comma_spine) {
+        Absent => Absent
+        Present { value: params } => Present { value: list_map(xs: params, f: fn(p) { p.binder }) }
+      }
   }
 }
 
@@ -1773,87 +1777,81 @@ fn body_lower_typed_param_from_comma_seq(sequence_capture: Node) -> Optional<Bod
   }
 }
 
-fn body_lower_collect_typed_params_from_repeat_tail(repeat_capture: Node) -> List<BodyLowerTypedParam> {
+// ONE ENTRY PER PARAMETER SLOT THE LIST WRITES: Present for a slot read as a typed parameter,
+// Absent for a slot the reader could not read. The walk never drops a slot, so the two views below
+// differ only in what they do with an Absent one: lowering's view keeps the readable parameters
+// (body_lower_collect_typed_params, its behaviour unchanged), and the binder view
+// v2.compiler.occurrence_role reads (body_lower_param_list_binder_atoms) refuses the whole list,
+// because a list with an unread binder is not a complete read of its binders (review 5355095582).
+fn body_lower_collect_typed_param_slots_from_repeat_tail(repeat_capture: Node) -> List<Optional<BodyLowerTypedParam>> {
   if is_empty_conj_root(n: repeat_capture) {
     Empty
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
       Accepted { value: head_sequence, diagnostics: _ } =>
-        match body_lower_typed_param_from_comma_seq(sequence_capture: head_sequence) {
-          Present { value: param } =>
-            match find_named_child(
-              root: repeat_capture,
-              name: ^grammar_sequence_right_node_projection
-            ) {
-              Accepted { value: tail, diagnostics: _ } =>
-                list_append(
-                  left: [param],
-                  right: body_lower_collect_typed_params_from_repeat_tail(repeat_capture: tail)
-                )
-              Rejected { diagnostics: _ } => [param]
-            }
-          Absent =>
-            match find_named_child(
-              root: repeat_capture,
-              name: ^grammar_sequence_right_node_projection
-            ) {
-              Accepted { value: tail, diagnostics: _ } =>
-                body_lower_collect_typed_params_from_repeat_tail(repeat_capture: tail)
-              Rejected { diagnostics: _ } => Empty
-            }
+        let slot = body_lower_typed_param_from_comma_seq(sequence_capture: head_sequence)
+        match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
+          Accepted { value: tail, diagnostics: _ } =>
+            list_append(left: [slot], right: body_lower_collect_typed_param_slots_from_repeat_tail(repeat_capture: tail))
+          Rejected { diagnostics: _ } => [slot]
         }
       Rejected { diagnostics: _ } => Empty
     }
   }
 }
 
-fn body_lower_collect_typed_params(sequence_capture: Node) -> List<BodyLowerTypedParam> {
+fn body_lower_collect_typed_param_slots(sequence_capture: Node) -> List<Optional<BodyLowerTypedParam>> {
   match find_named_child(root: sequence_capture, name: ^grammar_sequence_left_node_projection) {
     Accepted { value: first, diagnostics: _ } =>
-      let first_params = match body_lower_typed_param_optional(param_capture: first) {
-        Present { value: param } => [param]
-        Absent => Empty
-      }
+      let first_slots = [body_lower_typed_param_optional(param_capture: first)]
       match find_named_child(root: sequence_capture, name: ^grammar_sequence_right_node_projection) {
         Accepted { value: outer_right, diagnostics: _ } =>
           match find_named_child(root: outer_right, name: ^grammar_sequence_left_node_projection) {
             Accepted { value: repeat_capture, diagnostics: _ } =>
-              list_append(
-                left: first_params,
-                right: body_lower_collect_typed_params_from_repeat_tail(
-                  repeat_capture: repeat_capture
-                )
-              )
-            Rejected { diagnostics: _ } => first_params
+              list_append(left: first_slots, right: body_lower_collect_typed_param_slots_from_repeat_tail(repeat_capture: repeat_capture))
+            Rejected { diagnostics: _ } => first_slots
           }
-        Rejected { diagnostics: _ } => first_params
+        Rejected { diagnostics: _ } => first_slots
       }
     Rejected { diagnostics: _ } =>
       match body_lower_typed_param_optional(param_capture: sequence_capture) {
-        Present { value: param } => [param]
+        Present { value: param } => [Present { value: param }]
         Absent =>
           match sugar_sequence_pair_optional(node: sequence_capture) {
             Absent => Empty
             Present { value: pair } =>
-              match body_lower_typed_param_optional(param_capture: pair.left) {
-                Present { value: param } =>
-                  match body_lower_after_comma_tail_optional(node: pair.right) {
-                    Present { value: tail } =>
-                      list_append(
-                        left: [param],
-                        right: body_lower_collect_typed_params(sequence_capture: tail)
-                      )
-                    Absent => [param]
-                  }
-                Absent =>
-                  match body_lower_after_comma_tail_optional(node: pair.right) {
-                    Present { value: tail } => body_lower_collect_typed_params(sequence_capture: tail)
-                    Absent => Empty
-                  }
+              let slot = body_lower_typed_param_optional(param_capture: pair.left)
+              match body_lower_after_comma_tail_optional(node: pair.right) {
+                Present { value: tail } => list_append(left: [slot], right: body_lower_collect_typed_param_slots(sequence_capture: tail))
+                Absent => [slot]
               }
           }
       }
   }
+}
+
+// Lowering's view: the readable parameters, in order.
+fn body_lower_collect_typed_params(sequence_capture: Node) -> List<BodyLowerTypedParam> {
+  fold(body_lower_collect_typed_param_slots(sequence_capture: sequence_capture), init: Empty, f: fn(acc, slot) {
+    match slot {
+      Present { value: param } => list_snoc_item(xs: acc, item: param)
+      Absent => acc
+    }
+  })
+}
+
+// The strict view: every slot's parameter, or Absent if any slot is unreadable.
+fn body_lower_collect_typed_params_all_optional(sequence_capture: Node) -> Optional<List<BodyLowerTypedParam>> {
+  fold(body_lower_collect_typed_param_slots(sequence_capture: sequence_capture), init: Present { value: Empty }, f: fn(acc, slot) {
+    match acc {
+      Absent => Absent
+      Present { value: params } =>
+        match slot {
+          Present { value: param } => Present { value: list_snoc_item(xs: params, item: param) }
+          Absent => Absent
+        }
+    }
+  })
 }
 
 // A PARAMETER LIST'S EDGES, WITH EVERY ANONYMOUS SLOT MINTED. The raw collector below recurses over
