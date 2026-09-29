@@ -132,13 +132,13 @@ type HostCliDependencyObservation
   | HostCliDependencyAbsent { absence: HostCliDependencyAbsence }
 
 fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
-  let check = shell.PosixCommandV.Check(command: tool.name)
+  let check = shell.PosixCommandV.Check(command: tool.program.invocation)
   if check.exists {
     HostCliDependencyPresent
   } else {
     HostCliDependencyAbsent {
       absence: HostCliDependencyAbsence {
-        tool: tool.name,
+        tool: tool.program.invocation,
         hint: install_hint(sources: tool.installable_via),
       },
     }
