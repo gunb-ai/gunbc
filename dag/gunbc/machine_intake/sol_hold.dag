@@ -246,8 +246,11 @@ fn sh_wait_gone(seconds: String) -> Node {
 
 // RELEASE KILLS THE OWNED COLLECTOR AND NOTHING ELSE: TERM, a two-second bounded wait, KILL only if it
 // is still that instance, a one-second wait. Exits 0 when the recorded instance is gone (or the record
-// names no live instance, which is left alone), 1 only when our process survived KILL.
-data mtcollins1_sol_hold_release_script: String = sol_hold_rendered(stmts: sol_hold_record_read(absent_code: "0", unreadable_code: "0").concat([
+// names no live instance, which is left alone), 1 only when our process survived KILL, and 2 when the
+// identity is UNOBSERVABLE -- the record exists but cannot be read or parsed, or /proc/<pid> exists
+// but its stat cannot be read -- so an unobservable identity never reads as a clean release.
+data mtcollins1_sol_hold_release_script: String = sol_hold_rendered(stmts: sol_hold_record_read(absent_code: "0", unreadable_code: "2").concat([
+  bash_build_if_from_stmts(cond: bash_build_and_then(left: sol_hold_proc_present(), right: bash_build_and_then(left: bash_build_assign(name: "ost", value: sh_stat_word(n: "20")), right: bash_build_test_bracket(words: [shl(text: "-z"), shv(name: "ost")]))), then_stmts: [bash_build_exit(code: "2")]),
   bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [sol_hold_owned_condition()])), then_stmts: [bash_build_exit(code: "0")]),
   bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_with_words(words: [shl(text: "kill"), shv(name: "p")]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["true"])),
   sh_wait_gone(seconds: "2"),
