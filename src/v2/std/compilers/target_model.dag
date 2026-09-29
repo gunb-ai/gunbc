@@ -93,6 +93,12 @@ import v2.std.passing_candidate_fold {
 }
 import v2.std.type_binder { cast_target_optional, type_annotation_optional }
 import v2.std.node {
+  LoopBoundMeasure,
+  LoopCarrierBinder,
+  LoopDomainValue,
+  LoopEdgeUnrecognized,
+  LoopIteratedBody,
+  loop_edge_role,
   Arrow,
   ComputationBody,
   DirectAtomBody,
@@ -14908,10 +14914,24 @@ fn target_value_expr_bind_let_gate(node: Node) -> Bool {
   }
 }
 
+// target_project_loop realizes ONLY the unary `loop e` encoding (gunbc.plans.for_while_loop_sugar
+// §2.3): one evaluation of its first positional child. It admits a Loop only when every edge's role
+// (v2.std.node loop_edge_role) is the body or the bound; a Loop carrying a domain or a carrier is a
+// different encoding with a different result, so reading its first child as a unary body would emit a
+// plausible wrong program; the gate refuses it instead, until those encodings have a realization.
 fn target_value_expr_loop_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Loop } =>
-      length(xs: node_positional_child_targets(node: node)) >= 1
+      (length(xs: node_positional_child_targets(node: node)) >= 1)
+      && fold(node.children, init: true, f: fn(acc, e) {
+        match loop_edge_role(e: e) {
+          LoopIteratedBody => acc
+          LoopBoundMeasure => acc
+          LoopDomainValue => false
+          LoopCarrierBinder => false
+          LoopEdgeUnrecognized => false
+        }
+      })
     _ => false
   }
 }
