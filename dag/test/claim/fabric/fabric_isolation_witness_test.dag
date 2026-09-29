@@ -89,7 +89,7 @@ test fn the_seven_guarantees_do_not_share_a_wire_word() -> Bool {
   let labels = map(all, g => isolation_guarantee_label(g: g))
   (all |> count) == 7
     && (labels |> count) == 7
-    && !any(labels, a => (filter(labels, b => b == a) |> count) > 1)
+    && !labels.any(a => (labels.filter(b => b == a) |> count) > 1)
 }
 
 // AN EMPTY REQUIREMENT IS SATISFIED BY AN EMPTY OFFER, WHICH IS NOT VACUOUS BUT LOAD-BEARING.

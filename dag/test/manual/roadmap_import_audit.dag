@@ -18,7 +18,7 @@ fn roadmap_import_audit(repository: String, revision: String, expected_count: St
       RoadmapImportReadRefused { reason: detail } => ExitFailure { code: 1, reason: detail }
       RoadmapImportReadComplete { files } => match roadmap_import_decode(files: files) {
         RoadmapImportEventsRefused { reason: detail } => ExitFailure { code: 1, reason: detail }
-        RoadmapImportEventsDecoded { events } => if to_string(events.count()) == expected_count { ExitSuccess }
+        RoadmapImportEventsDecoded { events: decoded_events } => if to_string(decoded_events.count()) == expected_count { ExitSuccess }
           else { ExitFailure { code: 1, reason: "pinned event population differs from the reviewed count" } }
       }
     }

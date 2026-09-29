@@ -139,7 +139,7 @@ data workflow_segment_detail_passthrough_char_budget: Int = 480
 data workflow_segment_detail_receipt_pointer: String = "full list in the attempt receipt artifact"
 
 fn workflow_segment_detail_entries(detail: String) -> List<String> {
-  let lines = split(s: detail, delimiter: "\n") |> filter(l => !(trim(s: l) == ""))
+  let lines = split(s: detail, delimiter: "\n").filter(l => !(trim(s: l) == ""))
   if count(lines) > 1 {
     lines
   } else {

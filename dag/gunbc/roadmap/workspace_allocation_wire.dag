@@ -11,10 +11,10 @@ type WorkspaceCreateSubmission { csrf_token: String, idempotency_key: NonEmptySt
 fn workspace_create_submission(body: String) -> WorkspaceCreateSubmission? {
   match parse_json_document(s: body) {
     JsonDocumentParsed { value: document } => match document {
-      JsonObject { members } => if count(members) == 3 {
+      JsonObject { members: object_members } => if count(object_members) == 3 {
         match json_object_unique_member(v: document, key: "csrf_token") {
           JsonMemberFound { value: JsonString { value: csrf } } => match json_object_unique_member(v: document, key: "idempotency_key") {
-            JsonMemberFound { value: JsonString { value: key } } => if key != "" && length(key) <= 128 {
+            JsonMemberFound { value: JsonString { value: key } } => if key != "" && string_length(s: key) <= 128 {
               match json_object_unique_member(v: document, key: "profile") {
                 JsonMemberFound { value: JsonString { value: selected } } => Present { value: WorkspaceCreateSubmission { csrf_token: csrf, idempotency_key: key as NonEmptyStr, profile: selected } }
                 _ => none
@@ -37,7 +37,7 @@ type WorkspaceReleaseSubmission { csrf_token: String, generation: Int }
 fn workspace_release_submission(body: String) -> WorkspaceReleaseSubmission? {
   match parse_json_document(s: body) {
     JsonDocumentParsed { value: document } => match document {
-      JsonObject { members } => if count(members) == 2 {
+      JsonObject { members: object_members } => if count(object_members) == 2 {
         match json_object_unique_member(v: document, key: "csrf_token") {
           JsonMemberFound { value: JsonString { value: csrf } } => match json_object_unique_member(v: document, key: "generation") {
             JsonMemberFound { value: JsonString { value: generation_wire } } => match parse_int(s: generation_wire) {

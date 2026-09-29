@@ -45,7 +45,7 @@ fn roadmap_import_source_read(source: RoadmapEventImportSource) -> RoadmapImport
     fold(names, init: RoadmapImportReadComplete { files: [] }, f: (acc, name) => match acc {
       RoadmapImportReadRefused { reason } => RoadmapImportReadRefused { reason: reason }
       RoadmapImportReadComplete { files } => {
-        if !starts_with(s: name, prefix: "events/") || !ends_with(s: name, suffix: ".json") { RoadmapImportReadRefused { reason: join(["unrecognized event-source path: ", name], "") } }
+        if !starts_with(s: name, prefix: "events/") || !name.ends_with(suffix: ".json") { RoadmapImportReadRefused { reason: join(["unrecognized event-source path: ", name], "") } }
         else {
           let read = gunbc.WitnessBin.Run(workdir: source.repository, bin_path: source.git_program,
             args: ["show", join([revision as String, ":", name], "")], expect: OutcomeIsData)

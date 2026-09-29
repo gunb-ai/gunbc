@@ -292,8 +292,7 @@ fn user_is_subscribed(
 // subscription order. The witness pins this against the issue resource's cc field so the two
 // readings of one fact can never silently drift apart.
 fn cc_subscribers(subs: List<IssueSubscription>, issue_id: Int) -> List<User> {
-  subs
-    |> filter(s => s.kind == IssueSubscriptionCc && s.issue.id == issue_id)
+  subs.filter(s => s.kind == IssueSubscriptionCc && s.issue.id == issue_id)
     |> map(s => s.user)
 }
 
@@ -304,8 +303,7 @@ fn cc_subscribers(subs: List<IssueSubscription>, issue_id: Int) -> List<User> {
 // "Assigned to me": issues whose assignee is the viewing user. Unassigned issues (Absent) are
 // not in anyone's Assigned-to-me view.
 fn view_assigned_to_me(issues: List<Issue>, user: User) -> List<Issue> {
-  issues
-    |> filter(i => match i.assignee {
+  issues.filter(i => match i.assignee {
       Present { value: a } => a.email == user.email
       Absent => false
     })
@@ -313,40 +311,34 @@ fn view_assigned_to_me(issues: List<Issue>, user: User) -> List<Issue> {
 
 // "Starred by me": issues the viewing user holds a Star subscription on.
 fn view_starred_by_me(issues: List<Issue>, user: User, subs: List<IssueSubscription>) -> List<Issue> {
-  issues
-    |> filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionStar))
+  issues.filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionStar))
 }
 
 // "Upvoted by me": issues the viewing user holds an Upvote subscription on.
 fn view_upvoted_by_me(issues: List<Issue>, user: User, subs: List<IssueSubscription>) -> List<Issue> {
-  issues
-    |> filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionUpvote))
+  issues.filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionUpvote))
 }
 
 // "CC'd to me": issues the viewing user holds a Cc subscription on.
 fn view_ccd_to_me(issues: List<Issue>, user: User, subs: List<IssueSubscription>) -> List<Issue> {
-  issues
-    |> filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionCc))
+  issues.filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionCc))
 }
 
 // "Collaborating": issues the viewing user has commented on. Membership comes from the comment
 // authorship the issue resource already carries — no separate subscription kind is minted for it.
 fn view_collaborating(issues: List<Issue>, user: User) -> List<Issue> {
-  issues
-    |> filter(i => any(i.comments, c => c.author.email == user.email))
+  issues.filter(i => any(i.comments, c => c.author.email == user.email))
 }
 
 // "Reported by me": issues the viewing user reported.
 fn view_reported_by_me(issues: List<Issue>, user: User) -> List<Issue> {
-  issues
-    |> filter(i => i.reporter.email == user.email)
+  issues.filter(i => i.reporter.email == user.email)
 }
 
 // "To be verified": issues whose status is Fixed — the open-but-awaiting-verification standing.
 // (Verified issues have left this view; that is the Fixed/Verified distinction doing work.)
 fn view_to_be_verified(issues: List<Issue>) -> List<Issue> {
-  issues
-    |> filter(i => i.status == IssueStatusFixed)
+  issues.filter(i => i.status == IssueStatusFixed)
 }
 
 // SEARCH, at the grain the owner actually used. THE SCOPE NOTE, stated honestly: this models the
@@ -394,8 +386,7 @@ fn query_matches(issue: Issue, query: Query) -> Bool {
 }
 
 fn query_run(issues: List<Issue>, query: Query) -> List<Issue> {
-  issues
-    |> filter(i => query_matches(issue: i, query: query))
+  issues.filter(i => query_matches(issue: i, query: query))
 }
 
 // BLOCKING-EDGE MEMBERSHIP, the one predicate the interface needs over the reference lists.
@@ -605,9 +596,9 @@ fn browse_component_tree(components: List<Component>) -> List<ComponentTreeEntry
 }
 
 fn browse_component_tree_from(components: List<Component>, depth: Int) -> List<ComponentTreeEntry> {
-  let at = map(filter(components, c => component_is_at_depth(path: c.path, depth: depth)), c =>
+  let at = map(components.filter(c => component_is_at_depth(path: c.path, depth: depth)), c =>
     ComponentTreeEntry { component: c, depth: depth })
-  let deeper = filter(components, c => count(c.path) > depth)
+  let deeper = components.filter(c => count(c.path) > depth)
   if count(deeper) == 0 {
     at
   } else {

@@ -43,7 +43,7 @@ fn workspace_console_value(console: String, marker: String) -> String? {
   if length(lines) != 1 { none } else {
     match lines.first() {
       Absent => none
-      Present { value: line } => match get(xs: split(s: line, delimiter: marker), index: 1) {
+      Present { value: line } => match split(s: line, delimiter: marker).get(index: 1) {
         Absent => none
         Present { value: value } => Present { value: trim(s: value) }
       }
@@ -53,9 +53,9 @@ fn workspace_console_value(console: String, marker: String) -> String? {
 
 fn workspace_ed25519_key(line: String, offset: Int) -> String? {
   let words = filter(split(s: trim(s: line), delimiter: " "), word => word != "")
-  match get(xs: words, index: offset) {
+  match words.get(index: offset) {
     Present { value: kind } => if kind != "ssh-ed25519" { none } else {
-      match get(xs: words, index: offset + 1) {
+      match words.get(index: offset + 1) {
         Present { value: material } => if material == "" { none } else { Present { value: join([kind, material], " ") } }
         Absent => none
       }

@@ -21,7 +21,7 @@ type RoadmapTaskRevisionSubmission {
 fn roadmap_task_revision_submission(body: String) -> RoadmapTaskRevisionSubmission? {
   match parse_json_document(s: body) {
     JsonDocumentParsed { value: document } => match document {
-      JsonObject { members } => if count(members) != 6 { none } else {
+      JsonObject { members: object_members } => if count(object_members) != 6 { none } else {
         match roadmap_task_string(doc: document, key: "csrf_token") {
           Present { value: csrf } => match roadmap_task_string(doc: document, key: "expected_revision") {
             Present { value: revision_wire } => if revision_wire == "" { none } else {

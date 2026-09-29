@@ -1249,7 +1249,7 @@ fn group_markup(g: SectionGroup, merged: List<Int>, launch: LaunchRowContext) ->
 fn element_markup(e: SectionElement, merged: List<Int>, launch: LaunchRowContext) -> List<Fragment> {
   match e {
     Prose { prose } => [ el_class("p", "prose", markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: prose.content))) ]
-    Group { group } => group_markup(g: group, merged: merged, launch: launch)
+    Group { group: row_group } => group_markup(g: row_group, merged: merged, launch: launch)
   }
 }
 
@@ -1278,7 +1278,7 @@ fn group_statuses(g: SectionGroup, merged: List<Int>) -> List<String> {
 fn section_statuses(s: RoadmapSection, merged: List<Int>) -> List<String> {
   fold(s.elements, init: [], f: (acc, e) => match e {
     Prose { prose: _ } => acc
-    Group { group } => concat(acc, group_statuses(g: group, merged: merged))
+    Group { group: row_group } => concat(acc, group_statuses(g: row_group, merged: merged))
   })
 }
 
@@ -1809,11 +1809,11 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
     TaskCreated { task: _ } => "created the issue"
     TaskRevised { task: _ } => "updated the issue"
     Released => "released the issue"
-    Progress { note } => join(["progress: ", note as String], "")
+    Progress { note: progress_note } => join(["progress: ", progress_note as String], "")
     Blocked { reason } => join(["blocked: ", reason as String], "")
     HandedBack { reason } => join(["handed back: ", reason as String], "")
-    ReceiptReferenced { obligation, address, verdict } =>
-      join(["receipt ", obligation as String, " at ", address as String, ": ", verdict as String], "")
+    ReceiptReferenced { obligation: referenced_obligation, address, verdict } =>
+      join(["receipt ", referenced_obligation as String, " at ", address as String, ": ", verdict as String], "")
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => "comment created"
     CommentEdited { comment: _, body: _ } => "comment edited"
     CommentDeleted { comment: _ } => "comment deleted"

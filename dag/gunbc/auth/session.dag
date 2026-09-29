@@ -218,8 +218,7 @@ type SessionCookieIdParse
 
 fn session_cookie_id_of_header(cookie_header: String, cookie_name: NonEmptyStr = session_cookie_name) -> SessionCookieIdParse {
   let pairs = split(s: cookie_header, delimiter: ";")
-  let matches = filter(
-    pairs,
+  let matches = pairs.filter(
     pair => starts_with(s: trim(pair), prefix: concat(cookie_name as String, "=")),
   )
   if count(matches) == 0 {

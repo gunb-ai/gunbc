@@ -179,7 +179,7 @@ fn auth_client_id_wire_admitted_from(id: String, i: Int, len: Int) -> Bool {
 
 fn auth_form_component(raw: NonEmptyStr) -> String? {
   match uri_percent_encode_component(value: raw) {
-    UriPercentComponentEncoded(wire) => Present { value: wire as String }
+    UriPercentComponentEncoded(encoded_component) => Present { value: encoded_component as String }
     UriPercentComponentRefused { cause: _ } => none
   }
 }

@@ -435,7 +435,7 @@ fn session_store_purge_targets(
         Absent => SessionStorePurgePlan { targets: targets }
         Present { value: entry } =>
           let rest = entries.skip(n: 1)
-          if entry == "" || !ends_with(s: entry, suffix: session_store_file_suffix) {
+          if entry == "" || !entry.ends_with(suffix: session_store_file_suffix) {
             session_store_purge_targets(
               layout: layout,
               principal: principal,

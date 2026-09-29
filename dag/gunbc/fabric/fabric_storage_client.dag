@@ -102,7 +102,7 @@ fn served_post_raw(endpoint: NonEmptyStr, operation: String, request: String) ->
 // The socket carries the same protocol at the same route; the authority in the URL is only what
 // HTTP requires to be present, and the door routes on the path alone.
 fn door_post(socket: NonEmptyStr, route_prefix: NonEmptyStr, operation: String, request: String) -> ServedReply {
-  if ends_with(s: route_prefix as String, suffix: fabric_storage_state_suffix) {
+  if (route_prefix as String).ends_with(suffix: fabric_storage_state_suffix) {
     match fabric_state_signed_request(operation: operation, request: request) {
       Absent => ServedFault { fault: FabricStoreUnreachable { detail: "fabric state credential or clock unavailable" } }
       Present { value: envelope } => door_post_raw(socket: socket, route_prefix: route_prefix, operation: "authenticated", request: envelope)
@@ -230,7 +230,7 @@ fn fabric_storage_presented_identity(binding: FabricStorageBinding) -> FabricIde
 
 
 fn served_post(endpoint: NonEmptyStr, operation: String, request: String) -> ServedReply {
-  if ends_with(s: endpoint as String, suffix: fabric_storage_state_suffix) {
+  if (endpoint as String).ends_with(suffix: fabric_storage_state_suffix) {
     match fabric_state_signed_request(operation: operation, request: request) {
       Absent => ServedFault { fault: FabricStoreUnreachable { detail: "fabric state credential or clock unavailable" } }
       Present { value: envelope } => served_post_raw(endpoint: endpoint, operation: "authenticated", request: envelope)
