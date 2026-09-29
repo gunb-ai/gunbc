@@ -15464,6 +15464,12 @@ fn target_project_arrow_body_to_value_expression(
 
 // The per-kind projection of a body classify_arrow_body_form did not classify as a function
 // value; a function-value body is dispatched above by its ArrowBodyForm, never by a raw kind here.
+// A TAIL ATOM IS THE SAME VALUE FORM AS A NESTED ONE. A body that is a bare parameter (`{ x }`) or a
+// bare literal (`{ true }`) is an Atom, and it projects through the one atom projection nested operands
+// already use (target_value_expr_project_atom_in_arrow_scope): a parameter binding first, then the
+// target's literal realizations, and an unresolved name refuses body_scope_binding_invalid. The Atom arm
+// used to accept only an integer literal and refuse every other atom as transform_shape_invalid, so a
+// bare-parameter or boolean body could not be emitted although the same atom emitted as an operand.
 fn target_project_arrow_body_by_kind(
   arrow: Node,
   body: Node,
@@ -15534,16 +15540,12 @@ fn target_project_arrow_body_by_kind(
           )
         }
       TypeNode { connective: Atom { identity: _ } } =>
-        if target_value_expr_is_int_literal_atom(node: body) {
-          target_value_expr_project_int_literal_atom(node: body)
-        } else {
-          outcome_rejected(
-            target_value_expr_diagnostic(
-              reason: ^target_value_expr_reason_transform_shape_invalid,
-              node: body
-            )
-          )
-        }
+        target_value_expr_project_atom_in_arrow_scope(
+          arrow: arrow,
+          node: body,
+          target: target,
+          source_bool_form: source_bool_form
+        )
       _ =>
         outcome_rejected(
           target_value_expr_diagnostic(
