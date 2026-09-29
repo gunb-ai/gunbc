@@ -52,7 +52,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import v2.std.type_binder { GenericOpaqueTypeDecl, GenericTypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view }
+import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -92,8 +92,8 @@ type SymbolIndexDeclared {
 fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
   match type_decl_view(target: target) {
     GenericTypeDecl { binders: _, member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m) }
-    GenericTypeAlias { binders: _, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
-    GenericOpaqueTypeDecl { binders: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
+    TypeAlias { binders: _, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
+    OpaqueTypeDecl { binders: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
     PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m) }
   }
 }

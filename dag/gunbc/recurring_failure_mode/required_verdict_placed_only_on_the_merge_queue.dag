@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.required_verdict_placed_only_on_the_merge_queue
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data required_verdict_placed_only_on_the_merge_queue: RecurringFailureMode = RecurringFailureMode {
+  identity: "required_verdict_placed_only_on_the_merge_queue" as NonEmptyStr,
+
+  receipts: [
+    "a merge-blocking verdict is computed on merge_group and on no pull-request run, so a pull request that fails it is green on its own run, is enqueued, and meets the verdict for the first time inside the queue (INVALID STATE: an enqueued head whose required verdict was never computed before enqueue; HARM: the queue pays for the red instead of the author -- under the ALLGREEN merge queue a failing entry fails every group built on top of it, and each of those is rebuilt and re-run in full once the entry is ejected, so one bad entry costs the queue its throughput for as long as the red takes to reach the required context, multiplied by the depth stacked behind it)",
+
+    "THE PLACEMENT WAS DELIBERATE, AND ITS REASONING HELD AS FAR AS IT WENT. Operator decision msg_6e36a6a2 (2026-09-23) put the stage0 build lane on merge_group only because a pull request does not land: the queue's run judges the sha that becomes main. It priced the cost as 'an author learns of drift at queue time'. Every other entry in the queue paid that price instead, which is the distinguishing fact: the verdict was never wrong, it was computed where its red costs the most.",
+
+    "RECEIPT, 2026-09-28. #12412 and #12539 each edited src/v1/stage0/src/compiler_tests.rs (#12412 also its v1_compiler_compiler_tests_rust.rs sibling) and passed their pull-request runs; each then failed the build lane's GeneratedArtifact phase in the queue with 'required-regen: FAIL generated surface drift' (merge-queue runs 36478072318 and 36492169928). Every group stacked on #12412 failed the same phase until it was ejected (merge-queue runs 36478076245, 36478077139, 36478081111, 36485522625, 36486456810 and 36487256260). The red reached the queue only when the aggregate concluded, which waited on every other lane and on the hosted runner pool, so #12412 was ejected more than an hour and a half after its failing phase had finished.",
+
+    "DISCRIMINATOR: for each lane or step the required context reads, is it computed on every event that produces a head the queue can admit? A merge-blocking verdict that runs only on merge_group is red under this row unless its pull-request cost is stated and weighed against the queue throughput it forfeits. A merge_group step whose population a pull-request step already adjudicates is not this row: the queue's run is then a re-check of the composed revision, not the first computation.",
+
+    "RUNG FOUND AT: mitigatable -- the queue ejects the entry, so no drift lands, but only after the stacked groups have paid for it. REPAIRED 2026-09-28 by operator ruling: the stage0 build lane runs on every event of witnesses.yml (gunbc.compiler_gate_workflow compiler_gate_stage0_regen_condition), so a drifting pull request is refused on its own run and the queue's run is again a re-check of the composed revision. RUNG NOW: mechanically preventable before enqueue, for this lane only, held by the every-event stage0 claim in test.claim.compiler_gate_workflow_witness_test rather than by construction. CEILING: mechanically preventable across every blocking step, reached when a queue-only blocking step is unwritable rather than merely claimed against. NEXT-RUNG TRIGGER: the lane roster carries each blocking step's events as a typed field, and emission refuses a blocking step that is absent from pull_request without a stated price."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.compiler_gate_workflow", decl_name: "compiler_gate_stage0_regen_condition", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.compiler_gate_workflow", decl_name: "compiler_gate_stage0_regen_step", field: WholeDeclaration },
+  ],
+}
