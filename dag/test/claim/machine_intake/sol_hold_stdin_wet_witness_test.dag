@@ -8,7 +8,7 @@ import std.measure { second }
 import std.types { Bool, Int, String, NonEmptyStr }
 import std.algebra { trim }
 import std.process { ExitSuccess, ExitFailure }
-import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line, sol_hold_pid_not_published_unstopped_line, mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_owned_check_script }
+import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line, sol_hold_pid_not_published_unstopped_line, mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_owned_check_script, mtcollins1_sol_hold_supervisor_script }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_await_capture_terminal, mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_incident_path, TerminalWatch,
   mtcollins1_sol_teardown_record, mtcollins1_sol_workflow_events_path, mtcollins1_sol_pre_teardown_suffix,
@@ -268,13 +268,16 @@ fn establishment(script: String) -> SolEstablishment {
   e
 }
 
-test fn a_session_is_established_only_by_its_banner_not_by_a_live_pid() -> Bool {
-  let banner = establishment(script: banner_then_quiet_probe())
-  let silent = establishment(script: silent_probe())
-  let refused = establishment(script: refused_probe())
-  (match banner { SolEstablished { at: _ } => true  _ => false })
-    && (match silent { SolNotEstablished { failure: SolActivationUnconfirmed { collector: SolCollectorHeld, allowance: _ } } => true  _ => false })
-    && (match refused { SolNotEstablished { failure: SolActivateRefused { refusal: _ } } => true  _ => false })
+test fn a_session_is_established_by_its_banner() -> Bool {
+  match establishment(script: banner_then_quiet_probe()) { SolEstablished { at: _ } => true  _ => false }
+}
+
+test fn a_live_silent_collector_is_not_established() -> Bool {
+  match establishment(script: silent_probe()) { SolNotEstablished { failure: SolActivationUnconfirmed { collector: SolCollectorHeld, allowance: _ } } => true  _ => false }
+}
+
+test fn a_refused_activation_carries_its_cause() -> Bool {
+  match establishment(script: refused_probe()) { SolNotEstablished { failure: SolActivateRefused { refusal: _ } } => true  _ => false }
 }
 
 // THE NOTICE WATCHER'S DELIVERY, EXECUTED THROUGH THE REAL FOLD (gunbc.machine_intake_mtcollins1_sol_notice).
@@ -663,4 +666,23 @@ test fn an_unreadable_record_is_unobservable_not_ended() -> Bool {
   let _unlock = shell.Exec.RunArgv(program: "chmod", arguments: ["600", record]).exit_code
   let _removed = shell.Remove.RecursiveForce(path: dir)
   locked && unreadable == 2 && absent == 1
+}
+
+// A CHILD STILL PRESENT AFTER THE CLEANUP BOUNDS IS RESIDUE, AND THE SUPERVISOR RETURNS. The supervisor
+// body the launch runs (mtcollins1_sol_hold_supervisor_script, spliced unchanged into ActivateHeld) is
+// executed with p=1: a live process this user can neither signal nor reap, standing in for a child whose
+// termination stays unconfirmed (a launched child cannot be made to survive SIGKILL without privilege).
+// pf is a directory, so publication fails. The body must finish within its bounds, record the residue
+// line with the pid, and record NO "collector exited" line, because no exit was observed.
+test fn an_unconfirmed_termination_is_residue_and_the_supervisor_returns() -> Bool {
+  let dir = scratch_dir()
+  let diag = concat(dir, "/client")
+  let _d = Filesystem.Write(path: diag, content: "").success
+  let script = concat("p=1; pf=\"$1\"; diag=\"$2\"\n", mtcollins1_sol_hold_supervisor_script)
+  let run = shell.Exec.RunArgv(program: "timeout", arguments: ["30", "bash", "-c", script, "sol-supervisor", dir, diag])
+  let client = read_or_empty(path: diag)
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.exit_code == 0
+    && string_contains(s: client, pattern: concat(sol_hold_pid_not_published_unstopped_line, " pid=1"))
+    && !string_contains(s: client, pattern: sol_hold_exit_record_prefix)
 }

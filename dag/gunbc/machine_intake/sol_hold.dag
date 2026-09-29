@@ -113,6 +113,11 @@ fn sol_hold_record_line(parts: List<Node>) -> Node {
   )
 }
 
+// A PUBLICATION FAILURE ENDS ON WHAT WAS OBSERVED. After TERM, a bounded wait, KILL and a second bounded
+// wait, a child still present is recorded as cleanup residue WITH ITS PID (the only record of it, since
+// its identity was never published) and the supervisor returns at once: no unbounded wait, and no
+// "collector exited" record, because no exit was observed. A child observed ended is reaped by the
+// ordinary wait below, which then records its exit.
 // The supervisor's own child, still running: /proc/<p> present and not a zombie. The child is unreaped
 // until the supervisor waits, so its pid cannot have been reused and the bare pid is its identity here.
 fn sol_hold_child_running() -> Node {
@@ -149,7 +154,10 @@ fn sol_hold_supervisor_body() -> List<Node> {
         ]),
         bash_build_if_else(
           cond: sol_hold_child_running(),
-          then_body: bash_build_stmt_list_from_nodes(stmts: [sol_hold_record_line(parts: [shl(text: sol_hold_pid_not_published_unstopped_line)])]),
+          then_body: bash_build_stmt_list_from_nodes(stmts: [
+            sol_hold_record_line(parts: [shl(text: sol_hold_pid_not_published_unstopped_line), shl(text: " pid="), shv(name: "p")]),
+            bash_build_exit(code: "0"),
+          ]),
           else_body: bash_build_stmt_list_from_nodes(stmts: [sol_hold_record_line(parts: [shl(text: sol_hold_pid_not_published_line)])]),
         ),
       ],
@@ -163,7 +171,10 @@ fn sol_hold_supervisor_body() -> List<Node> {
   ]
 }
 
-data mtcollins1_sol_hold_activate_script: String = join(["h=\"$1\"; u=\"$2\"; pw=\"$3\"; cap=\"$4\"; pf=\"$5\"; bin=\"$6\"; diag=\"$7\"; in=$(mktemp -u \"$pf.stdin.XXXXXX\") && mkfifo -m 600 \"$in\" && exec 3<>\"$in\" && rm -f \"$in\" || exit 1; ( stdbuf -oL \"$bin\" -H \"$h\" -I lanplus -U \"$u\" -f \"$pw\" sol activate >> \"$cap\" 2>> \"$diag\" <&3 3<&- & p=$!; exec 3<&-\n", sol_hold_rendered(stmts: sol_hold_supervisor_body()), "\n) < /dev/null > /dev/null 2>&1 & exec 3<&-"], "")
+// The rendered supervisor body, exposed so its bounded publication-failure path can be executed on its own.
+data mtcollins1_sol_hold_supervisor_script: String = sol_hold_rendered(stmts: sol_hold_supervisor_body())
+
+data mtcollins1_sol_hold_activate_script: String = join(["h=\"$1\"; u=\"$2\"; pw=\"$3\"; cap=\"$4\"; pf=\"$5\"; bin=\"$6\"; diag=\"$7\"; in=$(mktemp -u \"$pf.stdin.XXXXXX\") && mkfifo -m 600 \"$in\" && exec 3<>\"$in\" && rm -f \"$in\" || exit 1; ( stdbuf -oL \"$bin\" -H \"$h\" -I lanplus -U \"$u\" -f \"$pw\" sol activate >> \"$cap\" 2>> \"$diag\" <&3 3<&- & p=$!; exec 3<&-\n", mtcollins1_sol_hold_supervisor_script, "\n) < /dev/null > /dev/null 2>&1 & exec 3<&-"], "")
 
 // RELEASE IS THE ONE SPELLING OF "stop the collector this hold started": the workflow's teardown calls
 // ReleaseHeld after the BMC deactivate, and the boot step's EXIT trap runs the same script on cancel or

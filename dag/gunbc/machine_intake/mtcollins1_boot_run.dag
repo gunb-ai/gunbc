@@ -110,9 +110,10 @@ data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.t
 
 data mtcollins1_boot_poll_cadence: Second = second(count: 15)
 
-// How long the acquisition waits for the collector's operational banner (mtcollins1_sol_await_establishment);
-// the RMCP+ session setup and Activate Payload exchange take a few seconds. Paid inside the prelude
-// allowance, which covers the acquisition.
+// The acquisition's establishment allowance (mtcollins1_sol_await_establishment), counted in POLLS: that
+// many observations one second apart, each also paying its own reads and scheduling, so it is not a
+// strict wall-clock deadline. The RMCP+ session setup and Activate Payload exchange take a few seconds.
+// Paid inside the prelude allowance, which covers the acquisition.
 data mtcollins1_boot_sol_establish_allowance: Second = second(count: 15)
 
 data mtcollins1_boot_prelude_allowance: Second = second(count: 120)

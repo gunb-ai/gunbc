@@ -2031,9 +2031,21 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_session_is_established_only_by_its_banner_not_by_a_live_pid" },
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_session_is_established_by_its_banner" },
       entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
-      function: "a_session_is_established_only_by_its_banner_not_by_a_live_pid",
+      function: "a_session_is_established_by_its_banner",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_live_silent_collector_is_not_established" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_live_silent_collector_is_not_established",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_refused_activation_carries_its_cause" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_refused_activation_carries_its_cause",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -2154,6 +2166,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "an_unreadable_record_is_unobservable_not_ended" },
       entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
       function: "an_unreadable_record_is_unobservable_not_ended",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "an_unconfirmed_termination_is_residue_and_the_supervisor_returns" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "an_unconfirmed_termination_is_residue_and_the_supervisor_returns",
       expectation: ExpectedToHold {}
     }
   ]
