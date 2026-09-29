@@ -93,6 +93,12 @@ import v2.std.passing_candidate_fold {
 }
 import v2.std.type_binder { cast_target_optional, type_annotation_optional }
 import v2.std.node {
+  LoopBoundMeasure,
+  LoopCarrierBinder,
+  LoopDomainValue,
+  LoopEdgeUnrecognized,
+  LoopIteratedBody,
+  loop_edge_role,
   Arrow,
   ComputationBody,
   DirectAtomBody,
@@ -1282,7 +1288,7 @@ fn apply_emit_spelling_escapes(spelling: v2.std.text.String, escapes: List<EmitS
 }
 
 // A layout token class spelled as a flat String would lose its line breaks and nesting silently, so
-// the flat spelling refuses it; the carrier path (token_text_from_model) is where it belongs.
+// the flat spelling refuses it; the carrier path (token_text_from_decoded) is where it belongs.
 fn target_layout_token_spelled_flat_diagnostic(token_class: Symbol) -> Diagnostic {
   Diagnostic {
     reason: ^target_layout_token_spelled_flat,
@@ -1388,25 +1394,22 @@ fn layout_or_atom(target: TargetModel, token_class: Symbol, spelling: String) ->
 
 // THE CARRIER-NATIVE TOKEN SPELLING: the lexeme (fixed: the lex literal; bound: the binding's
 // spelling) under the token class's emit transform, as TargetText, so an EmitLineBreaks class keeps
-// its line breaks.
-fn token_text_from_model(target: TargetModel, lex: LexLiteralIndex, token: Node) -> Outcome<TargetText> {
-  bind_outcome(
-    o: concrete_syntax_token_from_node(token: token),
-    f: fn(decoded) {
-      match decoded {
-        FixedToken { token_class: token_class } =>
-          bind_outcome(
-            o: lex_literal_indexed(index: lex, token_class: token_class),
-            f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
-          )
-        BoundToken { token_class: token_class, binding: binding } =>
-          bind_outcome(
-            o: target_binding_spelling_lookup(target: target, binding: binding),
-            f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
-          )
-      }
-    }
-  )
+// its line breaks. It takes the token already decoded: the serializer decodes each token node once to
+// classify it (v2.compiler.target_serialize token_sequence_item_kind) and hands that value here, so a
+// token is not decoded a second time to be spelled.
+fn token_text_from_decoded(target: TargetModel, lex: LexLiteralIndex, decoded: ConcreteSyntaxToken) -> Outcome<TargetText> {
+  match decoded {
+    FixedToken { token_class: token_class } =>
+      bind_outcome(
+        o: lex_literal_indexed(index: lex, token_class: token_class),
+        f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
+      )
+    BoundToken { token_class: token_class, binding: binding } =>
+      bind_outcome(
+        o: target_binding_spelling_lookup(target: target, binding: binding),
+        f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
+      )
+  }
 }
 
 fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
@@ -14947,10 +14950,24 @@ fn target_value_expr_bind_let_gate(node: Node) -> Bool {
   }
 }
 
+// target_project_loop realizes ONLY the unary `loop e` encoding (gunbc.plans.for_while_loop_sugar
+// §2.3): one evaluation of its first positional child. It admits a Loop only when every edge's role
+// (v2.std.node loop_edge_role) is the body or the bound; a Loop carrying a domain or a carrier is a
+// different encoding with a different result, so reading its first child as a unary body would emit a
+// plausible wrong program; the gate refuses it instead, until those encodings have a realization.
 fn target_value_expr_loop_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Loop } =>
-      length(xs: node_positional_child_targets(node: node)) >= 1
+      (length(xs: node_positional_child_targets(node: node)) >= 1)
+      && fold(node.children, init: true, f: fn(acc, e) {
+        match loop_edge_role(e: e) {
+          LoopIteratedBody => acc
+          LoopBoundMeasure => acc
+          LoopDomainValue => false
+          LoopCarrierBinder => false
+          LoopEdgeUnrecognized => false
+        }
+      })
     _ => false
   }
 }
