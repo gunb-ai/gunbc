@@ -43,8 +43,7 @@ import v2.std.diagnostic {
   textual_whole_file_diagnostic
 }
 import v2.std.grammar { ParseTree }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
-import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance, symbol_intern_lexeme }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
@@ -75,7 +74,7 @@ import std.content_hash {
   content_hash_of_value,
   serialize_content_hash
 }
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.std.text { String, string_is_empty }
 import v2.std.witness { Holds, Violates, Witness }
 

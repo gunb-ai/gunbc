@@ -827,7 +827,7 @@ fn cas_name_is_digits(s: String) -> Bool {
 
 // "<key>.<n>" -> key, or none for a name that is not a slot file.
 fn cas_key_of_slot_name(name: String) -> NonEmptyStr? {
-  let parts = name.split(delimiter: ".")
+  let parts: List<String> = name.split(delimiter: ".")
   if count(parts) < 2 { none } else {
     let last = match first(skip(parts, count(parts) - 1)) {
       Absent => ""

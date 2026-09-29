@@ -7,7 +7,7 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.github.actions { Workflow, Job }
 import gunbc.compiler_gate_workflow {
-  compiler_gate_workflow, compiler_gate_job_id, compiler_gate_clippy_job_id,
+  compiler_gate_workflow, compiler_gate_merge_path_job_ids,
   compiler_gate_floor_job_id, compiler_gate_generated_job_id, compiler_gate_aggregate_job_id,
 }
 import gunbc.ci_spec { gunbc_ci_heal_verify_target }
@@ -22,8 +22,8 @@ import gunbc.required_lane_resolution_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE LANE ROSTER IS READ FROM THE WORKFLOW THAT EMITS witnesses.yml, AND EVERY JOB THERE MUST
-// CARRY A ROW HERE. The classification is authored -- which producer each job's steps hand
+// THE LANE ROSTER IS READ FROM THE WORKFLOW THAT EMITS witnesses.yml, AND EVERY REQUIRED JOB THERE
+// MUST CARRY A ROW HERE (required_job_ids). The classification is authored -- which producer each job's steps hand
 // sources to is a fact about the step scripts, and reading it out of a rendered `run:` line
 // would be a second parser of a string this repository already generates from typed rows -- but
 // its COVERAGE is checked against the emitted job list: a job the workflow carries and this
@@ -32,14 +32,6 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // for the drift gate's entry; the floor's nominal seeds through the compiler query).
 fn lane_resolution_roster() -> List<LaneResolutionRow> {
   [
-    LaneResolutionRow {
-      job_id: compiler_gate_job_id,
-      subjects: [ResolvesNoDagModule { reason: "cargo build of the seed's Rust mirrors; no .dag source is handed to the compiler" }]
-    },
-    LaneResolutionRow {
-      job_id: compiler_gate_clippy_job_id,
-      subjects: [ResolvesNoDagModule { reason: "cargo clippy over every Rust target; no .dag source is handed to the compiler" }]
-    },
     LaneResolutionRow {
       job_id: compiler_gate_floor_job_id,
       subjects: [FloorNominalPreparedSubject {}]
@@ -74,8 +66,21 @@ fn count_of(xs: List<String>, x: String) -> Int {
   xs |> filter(y => y == x) |> count
 }
 
+// COVERAGE IS OVER THE REQUIRED JOBS, WHICH IS WHAT THIS ROSTER'S ROWS ARE (gunbc.required_lane_resolution_census
+// LaneResolutionRow: one required job and the subjects its steps resolve). The required jobs are the
+// workflow's merge path -- the lanes the aggregate reads, and the aggregate -- read from
+// gunbc.compiler_gate_workflow compiler_gate_merge_path_job_ids rather than restated. A lane announced
+// as not blocking is read by no required context, so a module only it resolves is resolved by no
+// required lane, and a row for it would be the inflation this census exists to refuse. Checking
+// coverage against every emitted job instead refused this census outright from the day `emit-build`
+// landed announced, since that lane has no row and should not have one.
+fn required_job_ids(w: Workflow) -> List<String> {
+  let merge_path = compiler_gate_merge_path_job_ids()
+  workflow_job_ids(w: w) |> filter(j => count_of(xs: merge_path, x: j) > 0)
+}
+
 fn roster_coverage(w: Workflow) -> RosterCoverage {
-  let emitted = workflow_job_ids(w: w)
+  let emitted = required_job_ids(w: w)
   let rostered = roster_job_ids()
   let missing = emitted |> filter(j => count_of(xs: rostered, x: j) == 0)
   let absent = rostered |> filter(j => count_of(xs: emitted, x: j) == 0)
@@ -95,8 +100,8 @@ fn roster_coverage(w: Workflow) -> RosterCoverage {
 fn roster_coverage_rendered(c: RosterCoverage) -> String {
   match c {
     RosterCovers => "covers"
-    RosterMissesJob { job_id: j } => concat("the workflow emits job `", concat(j, "` and the lane resolution roster has no row for it"))
-    RosterNamesAbsentJob { job_id: j } => concat("the lane resolution roster names job `", concat(j, "`, which the workflow does not emit"))
+    RosterMissesJob { job_id: j } => concat("the workflow emits required job `", concat(j, "` and the lane resolution roster has no row for it"))
+    RosterNamesAbsentJob { job_id: j } => concat("the lane resolution roster names job `", concat(j, "`, which the workflow does not emit as a required job"))
     RosterDuplicatesJob { job_id: j } => concat("the lane resolution roster names job `", concat(j, "` twice"))
   }
 }

@@ -1,20 +1,20 @@
 module test.claim.spark.spark_pair_serving_apply_witness
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, EpochSecs }
 import product.placement_supply { host_identity_eq }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.pair_serving_realization { spark_pair_realizations }
 import gunbc.spark.pair_serving_apply {
   SparkPairApplyPlan, SparkPairApplyPlanned, SparkPairApplyRefused, SparkPairHostApplyPlan,
-  spark_pair_apply_plan_current, spark_pair_apply_plans_current, spark_pair_apply_plan_refusals,
+  spark_pair_apply_plan_current, spark_pair_apply_plans_current, spark_pair_apply_plan_refusals, spark_pair_apply_plans,
 }
 import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities, pair_serving_authority_group }
 import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, AuthorityTransitionRecord }
 import product.capacity.event_chain { HeadAbsent }
 
 // THE CURRENT AUTHORITY IS SUPPLIED: the resting row of every claimed group at generation 0, which
-// is exactly what the log folds to when no transition has been recorded. The live read of the log
-// is executed by test.claim.spark.spark_pair_serving_apply_wet_witness on the local-repo wet lane.
+// is exactly what the log folds to when no transition has been recorded. The log READ is
+// exercised by the supplied-host claim at the end of this file.
 fn w_current() -> List<CurrentAuthority> {
   map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> })
 }
@@ -89,4 +89,24 @@ test fn an_unread_authority_refuses_the_plan_with_the_reads_cause() -> Bool {
   length(plans) == length(spark_pair_serving_authorities) && length(plans) >= 1
     && length(refusals) == length(plans)
     && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read") && string_contains(s: r, pattern: "witness: the partition could not be fetched"))
+}
+
+// THE OFF-FLEET PREMISE IS SUPPLIED, NOT READ FROM THE RUNNER. spark_pair_apply_plans resolves the
+// executor's event log layout and reads every claimed group's authority from the log before
+// planning anything. The executor and instant are supplied, so the verdict does not depend on which
+// runner executes it (gunbc.recurring_failure_mode wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
+// The store resolution and the refusal that NAMES THE READ run for real, and nothing is planned
+// from the resting row. Deleting the log read, or letting an unreadable log fall back to the row,
+// turns these refusals into plans and this claim red.
+data witness_host_declaring_no_dashboard_instance: String = "gunbc-witness-host-without-dashboard-instance"
+data witness_instant: EpochSecs = 1000
+
+test fn the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet() -> Bool {
+  let plans = spark_pair_apply_plans(executor: witness_host_declaring_no_dashboard_instance, at: witness_instant)
+  let refusals = spark_pair_apply_plan_refusals(plans: plans)
+  length(plans) > 0
+    && length(plans) == length(spark_pair_serving_authorities)
+    && length(refusals) == length(plans)
+    && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read")
+      && string_contains(s: r, pattern: witness_host_declaring_no_dashboard_instance))
 }

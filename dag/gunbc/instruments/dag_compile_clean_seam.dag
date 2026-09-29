@@ -12,6 +12,7 @@ import tools.dag_compile_clean_seam_transport {
   cross_shard_seam_importee_entry_path
 }
 import std.types { String, Bool }
+import v2.std.subject_evidence { subject_evidence_establishes }
 
 type CrossShardSeamReceipt {
   probe_ran: Bool
@@ -77,8 +78,11 @@ fn witness_cross_shard_seam_preservation_holds_from(receipt: CrossShardSeamRecei
 }
 
 fn witness_cross_shard_seam_preservation_holds() -> Bool {
-  witness_cross_shard_seam_preservation_holds_from(
-    receipt: cross_shard_seam_receipt_from(probe: run_cross_shard_seam_probe())
+  subject_evidence_establishes(
+    evidence: run_cross_shard_seam_probe(),
+    licenses: fn(probe) {
+      witness_cross_shard_seam_preservation_holds_from(receipt: cross_shard_seam_receipt_from(probe: probe))
+    }
   )
 }
 

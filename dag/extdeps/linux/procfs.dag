@@ -31,6 +31,7 @@ type ProcfsPath
   | ProcSysKernelHostname
   | ProcNetPnp
   | ProcSelfMountinfo
+  | ProcUptime
 
 // A FILE UNDER ONE PROCESS'S DIRECTORY, /proc/<pid>/<file> (proc(5)): stat and cmdline are
 // world-readable; exe, fd and environ need ptrace-read access to the process, so only a reader running
@@ -54,6 +55,7 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
     ProcSysKernelHostname => "/proc/sys/kernel/hostname"
     ProcNetPnp => "/proc/net/pnp"
     ProcSelfMountinfo => "/proc/self/mountinfo"
+    ProcUptime => "/proc/uptime"
   }
 }
 
@@ -91,6 +93,7 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcSysKernelHostname,
   ProcSelfMountinfo,
   ProcNetPnp,
+  ProcUptime,
 ]
 
 // THE TRANSPORT FOR READING procfs ON A HOST THAT MAY NOT BE THIS ONE. Every earlier procfs read in
@@ -119,6 +122,23 @@ service linux.Procfs {
     }
     mock_response {
       0 => { value: "cpu  1 0 1 1 0 0 0 0 0 0\nbtime 1789000000\nprocesses 1\n", success: true } "hermetic linux.Procfs.ReadStat"
+    }
+  }
+
+  operation ReadUptime {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/uptime"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/uptime read failed"
+    }
+    mock_response {
+      0 => { value: "350735.47 234388.90\n", success: true } "hermetic linux.Procfs.ReadUptime"
     }
   }
 
@@ -255,6 +275,7 @@ fn procfs_path_provision(p: ProcfsPath) -> ProcfsPathProvision {
     ProcSysKernelHostname => ProvisionNotYetQualified
     ProcNetPnp => ProvidedWhenConfigured { option: "CONFIG_IP_PNP" as NonEmptyStr }
     ProcSelfMountinfo => ProvisionNotYetQualified
+    ProcUptime => ProvisionNotYetQualified
     ProcNetTcp => ProvisionNotYetQualified
     ProcNetTcp6 => ProvisionNotYetQualified
   }

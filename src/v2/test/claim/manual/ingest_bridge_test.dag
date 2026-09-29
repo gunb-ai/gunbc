@@ -12,7 +12,8 @@ import v2.compiler.ingest {
   parse_tree_to_target_model_bridge
 }
 import v2.compiler.infer { canonical_grounding_for_node }
-import v2.compiler.translate { coerce_grounded_node, target_serialize_source_from_model }
+import v2.compiler.translate { coerce_grounded_node }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production,

@@ -14,12 +14,7 @@ import v2.compiler.infer {
   inferred_facts_resolved_type
 }
 import std.algebra { Cons, Empty }
-import v2.std.compilers.body_lowering {
-  ArrowParameterOrderAbsent,
-  ArrowParameterOrderDeclared,
-  ArrowParameterOrderMalformed,
-  arrow_declared_parameter_order
-}
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
@@ -109,6 +104,11 @@ import v2.std.node {
   Arrow,
   Atom,
   DirectAtomBody,
+  FunctionValueBody,
+  ComputationBody,
+  RecordConstructBody,
+  DeclarationReferenceBody,
+  UnsupportedArrowBody,
   arrow_body_admits_eval_entry,
   bag_hash_digest,
   classify_arrow_body_form,
@@ -120,6 +120,7 @@ import v2.std.node {
   byte_offset_cache_key,
   fold_node,
   is_positional,
+  locally_well_formed,
   node_for_structural_equality,
   well_formed,
 }
@@ -1384,7 +1385,7 @@ fn eval_bind_arrow_params(
 // THE PARAMETERS' BINDING LABELS, IN DECLARED ORDER. A domain of named binders is a Conj sorted by
 // label for identity, so its stored sequence is not a declared order; the order is read from the
 // Arrow's ^arrow_signature_order_edge through the one reader infer also uses
-// (v2.std.compilers.body_lowering arrow_declared_parameter_order), so the two stages cannot bind one
+// (v2.std.arrow_signature arrow_declared_parameter_order), so the two stages cannot bind one
 // call differently. The answer is the LABELS, not edges: a binder's type is not what binding reads,
 // and an edge built here would have to point somewhere it does not. A named domain with no readable
 // order refuses. A domain with no named binder binds no name, exactly as its positional edges bound
@@ -1699,6 +1700,21 @@ fn eval_value_node(
   }
 }
 
+// A CALLEE WHOSE BODY IS ITSELF A FUNCTION VALUE REFUSES UNDER ITS OWN REASON. The body is
+// well-formed (v2.std.node FunctionValueBody), but eval carries no closure value to return, so the
+// call is refused -- never folded into the generic unsupported-callee reason, which would hide
+// which capability is missing.
+fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
+  match form {
+    FunctionValueBody => ^eval_rejected_function_value_body
+    DirectAtomBody => ^eval_rejected_unsupported_callee
+    RecordConstructBody => ^eval_rejected_unsupported_callee
+    DeclarationReferenceBody => ^eval_rejected_unsupported_callee
+    ComputationBody { behavior: _ } => ^eval_rejected_unsupported_callee
+    UnsupportedArrowBody => ^eval_rejected_unsupported_callee
+  }
+}
+
 // THE CALL DISPATCHES THROUGH THE DENOTED DECLARATION WHEN ITS CALLEE IS A REFERENCE, and through the
 // callee itself otherwise. `callee_target` below is that one node, read by both the body lookup and
 // the parameter binding, so a reference binds the CALLEE's own formals against the CALLEE's own body
@@ -1772,7 +1788,10 @@ fn eval_transform_node(
                   )
                 } else {
                   outcome_rejected(
-                    d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_target)
+                    d: eval_diagnostic(
+                      reason: eval_callee_body_refusal_reason(form: body_form),
+                      node: callee_target
+                    )
                   )
                 }
               Rejected { diagnostics: _ } =>
@@ -2785,13 +2804,49 @@ fn eval_runtime_node(
   }
 }
 
+// THE EVAL GATE NAMES THE NODE THAT FAILED, NOT THE ROOT IT SAT UNDER. v2.std.node well_formed is a
+// conjunction of locally_well_formed over the subtree, so its refusal has a first witness, and
+// that witness is the only fact that tells a reader what to repair: anchoring the refusal at the
+// prepared module's root made one ill-formed declaration refuse every test in the module under an
+// occurrence that located nothing (the native lane canary, 2026-09-26). The walk is the same
+// preorder fold_node well_formed takes over the same local predicate, so the gate admits exactly
+// what well_formed admits.
+fn eval_first_ill_formed_node(n: Node) -> Optional<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        if locally_well_formed(n: n0) { optional_absent() } else { optional_present(value: n0) }
+      },
+      step: fn(acc, _, child) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child
+        }
+      }
+    }
+  )
+}
+
+fn eval_ill_formed_input(tree: InferredTree, inputs: Inputs) -> Optional<Node> {
+  match eval_first_ill_formed_node(n: tree.root) {
+    Present { value: bad } => optional_present(value: bad)
+    Absent => eval_first_ill_formed_node(n: inputs.root)
+  }
+}
+
+fn eval_ill_formed_refusal(at: Node) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)) }
+}
+
 fn eval_with_context(
   tree: InferredTree,
   context: EvalContext,
   inputs: Inputs
 ) -> Outcome<RuntimeValue> {
-  if well_formed(n: tree.root) {
-    if well_formed(n: inputs.root) {
+  match eval_ill_formed_input(tree: tree, inputs: inputs) {
+    Present { value: bad } => eval_ill_formed_refusal(at: bad)
+    Absent =>
       eval_runtime_node(
         node: inputs.root,
         tree: tree,
@@ -2800,17 +2855,13 @@ fn eval_with_context(
         runtime: eval_runtime(),
         effect_io: eval_context_effect_io(context: context)
       )
-    } else {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
-    }
-  } else {
-    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
 fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Inputs) -> Outcome<RuntimeValue> {
-  if well_formed(n: tree.root) {
-    if well_formed(n: inputs.root) {
+  match eval_ill_formed_input(tree: tree, inputs: inputs) {
+    Present { value: bad } => eval_ill_formed_refusal(at: bad)
+    Absent =>
       eval_runtime_node(
         node: inputs.root,
         tree: tree,
@@ -2819,11 +2870,6 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
         runtime: eval_runtime(),
         effect_io: EffectIoEvalAbsent
       )
-    } else {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
-    }
-  } else {
-    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 

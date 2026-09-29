@@ -20,6 +20,6 @@ data generated_artifact_registry_membership_stall: GuaranteeStall = GuaranteeSta
   current: MechanicallyPreventable,
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "gunbc.generated_artifact generated_artifact_registry", tail: Cons { head: "gunbc.generated_artifact_merge_driver", tail: Empty {} } } },
+  population: BoundedPopulation { members: Cons { head: "gunbc.generated_artifact_registry generated_artifact_registry", tail: Cons { head: "gunbc.generated_artifact_merge_driver", tail: Empty {} } } },
   next_rung_trigger: climbs_when(capability: "a census that enumerates committed files at every artifact_location and refuses one with no generated_artifact_registry member, so registry departure is refused by its own subject rather than by .gitattributes drift")
 }

@@ -54,7 +54,6 @@ import v2.std.diagnostic {
   rejected_with_pending,
   textual_whole_file_diagnostic
 }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.node {
@@ -65,7 +64,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   fold_node_topdown,
-  well_formed
+  well_formed,
+  symbol_intern_lexeme,
 }
 import v2.std.passing_candidate_fold {
   ManyPassingCandidates,
