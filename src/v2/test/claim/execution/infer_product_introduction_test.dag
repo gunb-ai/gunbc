@@ -6,6 +6,7 @@ import v2.compiler.infer { DerivedGrounding, GroundingNotDerived, InferredTree }
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_specimen_inferred
 }
+import std.kind { TypeDenotationKind, kind_node }
 import v2.extdeps.languages.dag {
   dag_int_inhabitant_node
 }
@@ -16,6 +17,7 @@ import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node {
+  node_inferred_subtree_nodes,
   Arrow,
   Atom,
   Conj,
@@ -36,8 +38,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // real-ingest dag module. The census pins that the witness actually saw the population: four
 // Conj nodes, all derived (the grammar-projection root included -- it cascaded once the atom
 // rules grounded its children), and one bodied Arrow, derived. The evidence control pins the
-// composed evidence's SHAPE on the parameter conj: a Conj whose named children target the dag
-// authority's Int inhabitant, never the source node (the self-evidence wall). The two boundary
+// composed evidence's SHAPE on the parameter conj: a Conj whose named children target each `Int`
+// type atom's derived grounding -- its KIND, std.kind TypeDenotationKind -- never the source node
+// (the self-evidence wall). Until 2026-09-26 that child grounding was the dag roster's Int
+// inhabitant record; the arrow-elimination ruling made the type atom derive its kind and moved
+// what `Int` DENOTES to v2.std.integer (docs/plans/arrow-elimination-model.md). The two boundary
 // controls pin the refusal edge on hand-built trees: a conj with a frontier child stays frontier,
 // and a childless conj -- no evidence to compose -- stays frontier. Deleting the rule reddens the
 // census and evidence controls; widening it to partially-evidenced or childless products reddens
@@ -85,9 +90,11 @@ fn product_introduction_census_step(
   }
 }
 
+// THE CENSUS COUNTS THE PRODUCTS INFER IS ASKED TO DERIVE (v2.std.node node_inferred_subtree_nodes):
+// the declared-order edge's label list is not one.
 fn product_introduction_census(inferred: InferredTree) -> ProductIntroductionCensus {
   fold_list(
-    xs: node_subtree_nodes(root: inferred.root),
+    xs: node_inferred_subtree_nodes(root: inferred.root),
     empty: ProductIntroductionCensus {
       conjs: 0,
       conjs_derived: 0,
@@ -128,7 +135,7 @@ fn is_params_conj(n: Node) -> Bool {
   }
 }
 
-fn evidence_children_target_int_inhabitant(children: List<Edge>) -> Bool {
+fn evidence_children_target_type_kind(children: List<Edge>) -> Bool {
   match list_at_optional(xs: children, index: 0) {
     Absent => false
     Present { value: first } =>
@@ -137,15 +144,15 @@ fn evidence_children_target_int_inhabitant(children: List<Edge>) -> Bool {
         Present { value: second } =>
           match list_at_optional(xs: children, index: 2) {
             Absent =>
-              (first.target == dag_int_inhabitant_node())
-                && (second.target == dag_int_inhabitant_node())
+              (first.target == kind_node(kind: TypeDenotationKind))
+                && (second.target == kind_node(kind: TypeDenotationKind))
             Present { value: _ } => false
           }
       }
   }
 }
 
-fn params_conj_evidence_is_composed_over_int_inhabitant(inferred: InferredTree, n: Node) -> Bool {
+fn params_conj_evidence_is_composed_over_type_kind(inferred: InferredTree, n: Node) -> Bool {
   match inferred.facts.lookup(n) {
     Absent => false
     Present { value: facts } =>
@@ -155,7 +162,7 @@ fn params_conj_evidence_is_composed_over_int_inhabitant(inferred: InferredTree, 
           let evidence = g.witness.structural.evidence
           match evidence.kind {
             TypeNode { connective: Conj } =>
-              evidence_children_target_int_inhabitant(children: evidence.children)
+              evidence_children_target_type_kind(children: evidence.children)
             _ => false
           }
       }
@@ -168,7 +175,7 @@ fn params_conj_evidence_seen(inferred: InferredTree) -> Bool {
     empty: false,
     cons: fn(acc, n) {
       if is_params_conj(n: n) {
-        params_conj_evidence_is_composed_over_int_inhabitant(inferred: inferred, n: n)
+        params_conj_evidence_is_composed_over_type_kind(inferred: inferred, n: n)
       } else {
         acc
       }

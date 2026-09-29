@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.emit_bridge_without_runtime_body
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data emit_bridge_without_runtime_body: RecurringFailureMode = RecurringFailureMode {
+  identity: "emit_bridge_without_runtime_body" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: an extdeps.languages.rust.emit.rt_function_registry row names a bridge for which the emitted runtime contains no function body. Builtin registration, interpreter dispatch and an emission bridge are separate capabilities; none establishes a native body.",
+    "HARM: the five-surface std.primitive_identity census can accept a bridge row while the native artifact cannot realize its call. A compiler or runtime failure becomes the first observation of a fact the registry check could have refused.",
+    "DISCRIMINATOR: std.primitive_identity.primitive_runtime_body_check_in joins bridge_name, not the operation spelling, against RuntimeBody rows derived from the shared Rust item scanner. A refused scan remains a located refusal, and a semicolon-only declaration supplies no body.",
+    "EXECUTED CONTROL: change the real map_insert registry row's bridge_name from rc_map_insert to runtime_body_missing_control. v1.compiler.primitive_runtime_body.check exits 1 and names map_insert -> v1_rt::runtime_body_missing_control; restoring the row exits 0. The fixture controls live in test.claim.primitive_runtime_body_witness_test and the producer controls execute in v1.compiler.primitive_runtime_body.check on the required phase.",
+    "REAL INCIDENT: clock commit 8c5ebc76c58 on lane/demand-integration records observed_monotonic_nanos typechecking and passing interpreted execution but panicking in the native binary. Its repair adds the bridge and runtime body; d691e985604 carries their regenerated mirrors. The census auto-enrolls that head's 63rd row without a roster edit.",
+    "RUNG: mechanically preventable on the required merge-admission path. RequiredCiPhase PrimitiveRuntimeBody / modeled PrimitiveRuntimeBodyPhase executes v1.compiler.primitive_runtime_body.check on the witnesses lane, including a permanent live-map_insert missing-body control. The existing workflow runs it on pull_request opened/synchronize/reopened, merge_group and workflow_dispatch. The ordinary floor source universe is not widened; the phase prepares the runtime producer separately.",
+    "CEILING: runtime-body presence is decidable within the scanner's supported syntax. Behavioral equivalence, signatures, visibility and cfg-specific availability are different obligations and are not established by finding a body.",
+    "NEXT TRIGGER: consume the same check before each native artifact publication, so direct compilation outside the required merge path also refuses. Behavioral qualification remains the emitted specimen's obligation; finding a body cannot establish that it computes the modeled operation.",
+  ],
+  evidence: [],
+}

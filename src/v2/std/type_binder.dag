@@ -1,6 +1,5 @@
 module v2.std.type_binder
 
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import std.algebra { Empty, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -20,7 +19,8 @@ import v2.std.node {
   TypeNode,
   node_subtree_nodes,
   node_synthetic,
-  type_binder_conj_conforms
+  type_binder_conj_conforms,
+  symbol_intern_lexeme,
 }
 
 // THE EDGE THAT CARRIES A DECLARATION'S TYPE PARAMETERS. One label for one concept: `fn f<T>` carries
@@ -92,23 +92,25 @@ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
   )
 }
 
-// THE ONE UNWRAP, TYPED. Only a generic declaration is wrapped -- a non-generic one keeps its member
-// as its target, unchanged -- so a reader of a declaration target has two cases, and this function is
-// the only place they are told apart: no reader pattern-matches the raw wrapper. Consumed by
-// v2.compiler.symbol_index_fill (which indexes the member, never the wrapper) and
-// v2.std.compilers.semantic_decl_emission (which refuses a generic declaration).
+// THE ONE UNWRAP, TYPED. A reader of a declaration target has four cases, and this function is the
+// only place they are told apart: no reader pattern-matches the raw wrapper. Consumed by
+// v2.compiler.symbol_index_fill (which indexes a member, never a wrapper) and
+// v2.std.compilers.semantic_decl_emission (which renders a plain member and refuses the rest).
 //
-// THREE GENERIC SHAPES, TOLD APART BY EDGE LABEL AND NEVER BY A TARGET'S KIND: a member
-// (<type-body>), an aliased type expression (<type-alias>, type_alias_wrapper), and a bodyless
-// declaration carrying its binders alone (type_opaque_wrapper). THIS VIEW IS THE ONLY PLACE A READER
-// MAY TELL A LOWERED GENERIC ALIAS FROM A PLAIN ONE: a plain alias or plain bodyless declaration is
-// still its parse shell (PlainTypeDecl), so 'alias' has two representations until
-// gunbc.recurring_failure_mode plain_type_alias_left_as_a_parse_shell_in_v2 is discharged, and no other
-// reader pattern-matches either.
+// FOUR SHAPES, TOLD APART BY EDGE LABEL AND NEVER BY A TARGET'S KIND: a generic member
+// (<type-body>, type_decl_wrapper), an aliased type expression (<type-alias>, type_alias_wrapper), a
+// bodyless declaration carrying its binders alone (type_opaque_wrapper), and a non-generic member --
+// a record or coproduct -- which is its own target. THE ALIAS AND OPAQUE ARMS ARE CARDINALITY-NEUTRAL:
+// every alias and every bodyless declaration is wrapped, and its binder Conj may be empty
+// (v2.compiler.body_lowering_fold body_lower_decl_binders), so `TypeAlias` means "this name aliases
+// that type expression", never "this declaration is generic". A reader that needs to know whether a
+// declaration binds parameters asks the binders, not the arm. Before this, a plain alias or plain
+// bodyless declaration was left as its parse shell and fell into PlainTypeDecl
+// (gunbc.recurring_failure_mode plain_type_alias_left_as_a_parse_shell_in_v2); that producer is gone.
 type TypeDeclView
   = GenericTypeDecl { binders: Node, member: Node }
-  | GenericTypeAlias { binders: Node, aliased: Node }
-  | GenericOpaqueTypeDecl { binders: Node }
+  | TypeAlias { binders: Node, aliased: Node }
+  | OpaqueTypeDecl { binders: Node }
   | PlainTypeDecl { member: Node }
 
 // `type List<T> = std.algebra.FreeMonoid<T>` lowers its declaration edge to
@@ -169,12 +171,12 @@ fn type_decl_view(target: Node) -> TypeDeclView {
       member: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_body(e: e) })
     }
   } else if type_alias_wrapper_is(n: target) {
-    GenericTypeAlias {
+    TypeAlias {
       binders: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_params(e: e) }),
       aliased: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_alias(e: e) })
     }
   } else if type_opaque_wrapper_is(n: target) {
-    GenericOpaqueTypeDecl {
+    OpaqueTypeDecl {
       binders: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_params(e: e) })
     }
   } else {
@@ -335,8 +337,8 @@ fn type_binder_node_conforms(n: Node) -> Bool {
       match type_decl_view(target: n) {
         PlainTypeDecl { member: _ } => (params == 0) && (bodies == 0)
         GenericTypeDecl { binders: _, member: _ } => params_ok
-        GenericTypeAlias { binders: _, aliased: _ } => params_ok
-        GenericOpaqueTypeDecl { binders: _ } => params_ok
+        TypeAlias { binders: _, aliased: _ } => params_ok
+        OpaqueTypeDecl { binders: _ } => params_ok
       }
   }
 }
@@ -351,7 +353,7 @@ fn arrow_named_labels_conform(n: Node) -> Bool {
   fold(n.children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && ((sym == ^arrow_body_edge) || (sym == type_params_marker()))
+      Named { name: sym } => acc && ((sym == ^arrow_body_edge) || (sym == ^arrow_signature_order_edge) || (sym == type_params_marker()))
     }
   })
 }

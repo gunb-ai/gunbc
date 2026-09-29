@@ -1,0 +1,31 @@
+module gunbc.auth.approval_store_receipt
+
+import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
+
+// ── THE STORE RECEIPT KEY ─────────────────────────────────────────────────────────────────────
+//
+// WHAT A STORE RECEIPT IS FOR. The fabric DB's door admits an advance of a protected head
+// (gunbc.spark.pair_serving_d0 d0_store_operation_wall) only under a credential the STORE verifies
+// for that operation. For an operator-approved operation that credential is a receipt the approval
+// broker mints over its own recorded decision -- the gunbc.auth.approval_capability envelope, with
+// the fabric store as its audience -- bound to the escalation, the approved revision (the sha256 of
+// the operation's intent text, whose scope the store reads through std.scoped_authorization
+// parse_intent_scopes), the attempt, and the decision's execute-by instant.
+//
+// WHY A THIRD KEY AND NOT THE CAPABILITY KEY. An HMAC verifier holds the signing key, so whatever
+// process verifies receipts can also mint them. The fabric store's serve user must verify; if it
+// read the capability key it could mint operator approval LINKS -- bearer authority to approve
+// anything the broker brokers. A key of its own bounds what that user can forge to store receipts,
+// which the store accepts only for writes that an approved intent already states.
+//
+// NOT YET MINTED. The container is created and its version 1 added by
+// gunbc.auth.approval_mac_key_provision provision_approval_mac_keys under the operator's token; the
+// payload digest prefix that run prints is pinned with the keyring (gunbc.auth.approval_keyring_pins)
+// in the change that installs the key on srv1 and mints the first receipt, which also declares its
+// key id. Pinned to version 1 for
+// the reason the other two keys are: a keyring following `latest` would let a rotation invalidate
+// receipts in flight, and the provisioning run refuses to add a version beside a pin.
+data approval_store_receipt_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "approval-store-receipt-mac-key"),
+  version: "1",
+)

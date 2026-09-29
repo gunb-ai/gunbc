@@ -15,6 +15,8 @@ module v2.lens.languages_consumer_census
 // reason this import is a correctness fix rather than tidying: the scan reads this module, so
 // this module declares it.
 import std.languages { NamingCase }
+import std.disposition { SingleAuthority }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 // Class-5 carve-out: these baselines are point-in-time RATCHET CEILINGS over live host scans (languages_consumer_census_*_count builtins), not counts beside a committed roster. Deriving baseline from the same live scan would tautologize live_count <= baseline. Authority split: baseline = ceiling snapshot; live scan = independent representation checked by ratchet_holds.
 data languages_consumer_census_data_decl_baseline: Int = 73

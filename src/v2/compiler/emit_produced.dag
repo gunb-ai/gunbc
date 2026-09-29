@@ -1,6 +1,6 @@
 module v2.compiler.emit_produced
 
-import v2.compiler.translate { target_serialize_bodied_arrow_from_model }
+import v2.compiler.target_serialize { target_serialize_bodied_arrow_from_model }
 import v2.compiler.target_carriers { emit_module_decl_separator, target_source_medium }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,

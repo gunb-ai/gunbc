@@ -27,8 +27,7 @@ import v2.std.grammar {
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
   derive_grammar_relation_row,
-  derive_grammar_relation_row_node,
-  formal_production_for_lhs_exact,
+  derive_grammar_relation_row_for_lhs,
   grammar_production_to_node,
   grammar_relation_row_to_node,
   grammar_relation_tokens_node
@@ -455,7 +454,7 @@ fn ts_inhabitant_boolean_node() -> Node {
 }
 
 // The field of an inhabitant record whose target is the type the record declares; every other
-// field states a fact about that type (std.kind roster_member_kind).
+// field states a fact about that type (std.kind roster_kind_index).
 fn ts_declared_inhabitants_subject_field() -> Symbol {
   ^ts_inhabitant_field_atom
 }
@@ -1268,19 +1267,7 @@ fn ts_eager_grammar_relation_row_witness(lhs: Symbol) -> Witness<Node> {
   match ts_exemplar_emitted_for_lhs(lhs: lhs) {
     Holds { value: emitted } =>
       let productions = ts_exemplared_formal_productions_for_lhs(lhs: lhs)
-      match formal_production_for_lhs_exact(
-        productions: productions,
-        lhs: lhs,
-        child: emitted
-      ) {
-        Holds { value: production } =>
-          derive_grammar_relation_row_node(
-            production: production,
-            productions: productions,
-            emitted: emitted
-          )
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
+      derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
