@@ -350,7 +350,12 @@ fn device_signature_joins(signature: SignatureVerification, enrollment: Verified
   match signature {
     SignatureVerified { verified: v } =>
       v.message == signed_bytes && v.key.point_b64url == enrollment.decision_key.point_b64url && v.key.suite == enrollment.decision_key.suite
-    _ => false
+    SignatureInvalid { suite: _ } => false
+    SignatureMalformed { declared: _, expected: _ } => false
+    VerifyingKeyMalformed { declared: _, expected: _ } => false
+    SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => false
+    VerifyingKeyUndecodable { point_b64url: _ } => false
+    SignatureUndecodable { b64url: _ } => false
   }
 }
 
@@ -744,7 +749,10 @@ fn revoke_enrolment(root: NonEmptyStr, standing: EnrolmentSlotStanding, revoked_
         Absent => DeviceStoreRefused { detail: "enrolment id names no code slot" }
         Present { value: code } => device_store_write(root: root, key: code, expected: enrolment_record_kind_expectation(k: RevokedRecord), payload: revocation_json(e: e, revoked_at: revoked_at, reason: reason) as NonEmptyStr)
       }
-    _ => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
+    EnrolmentCodeUnspent { challenge: _ } => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
+    EnrolmentRevoked { enrollment: _, revoked_at: _, reason: _ } => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
+    EnrolmentCodeUnknown => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
+    EnrolmentSlotUnreadable { detail: _ } => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
   }
 }
 

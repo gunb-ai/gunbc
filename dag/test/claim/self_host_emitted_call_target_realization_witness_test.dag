@@ -110,12 +110,17 @@ test fn w_finite_power_set_record_shape_still_refuses_while_its_row_stands() -> 
 // "invalid type: map, expected unit struct BoolEncodingFact", measured 2026-09-08 on the native
 // run of the emitted 00_compile closure (v2.std.logic bool_primitive_facts). The value side now
 // spells the zero-field record `null`; this row reds if the map spelling returns.
+//
+// THE ROUTE, NOT ONLY THE DOCUMENT. This row and the three below match the JSON document as it
+// reaches rustc: since #12219 the document is realized as an escaped Rust string literal handed to
+// `serde_json::from_str` (emit_data_def_body), so its quotes arrive as `\"`. Matching the bare JSON
+// text went permanently red at that change, and its excludes went permanently vacuous.
 test fn w_fieldless_record_data_value_spells_null_for_the_unit_struct() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.fieldless_record_json_probe\ntype Marker {}\ntype Holder {\n  marker: Marker\n}\ndata probe: Holder = Holder { marker: Marker {} }\n",
     "src/test_claim_fieldless_record_json_probe.rs",
-    ["pub struct Marker;", "\"marker\": null"],
-    ["\"marker\": {}"]
+    ["pub struct Marker;", "serde_json::from_str(\"{\\\"marker\\\": null}\")"],
+    ["\\\"marker\\\": {}"]
   )
 }
 
@@ -126,8 +131,8 @@ test fn w_nonempty_record_data_value_keeps_the_map_spelling() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.nonempty_record_json_probe\nimport std.types { String }\ntype Holder {\n  name: String\n}\ndata probe: Holder = Holder { name: \"kept\" }\n",
     "src/test_claim_nonempty_record_json_probe.rs",
-    ["\"name\": \"kept\""],
-    ["\"name\": null"]
+    ["serde_json::from_str(\"{\\\"name\\\": \\\"kept\\\"}\")"],
+    ["\\\"name\\\": null"]
   )
 }
 
@@ -149,8 +154,8 @@ test fn w_variant_record_lit_on_the_json_data_path_spells_the_internal_tag() -> 
   compile_dag_rust_emit_check(
     "module test.claim.variant_json_spelling_probe\ntype E = A | B { x: Int }\ntype Marker {}\ntype Holder {\n  e: E\n  m: Marker\n}\ndata probe: Holder = Holder { e: A {}, m: Marker {} }\n",
     "src/test_claim_variant_json_spelling_probe.rs",
-    ["{\"e\": {\"_variant\": \"A\"}, \"m\": null}"],
-    ["compile_error!", "\"e\": null"]
+    ["serde_json::from_str(\"{\\\"e\\\": {\\\"_variant\\\": \\\"A\\\"}, \\\"m\\\": null}\")"],
+    ["compile_error!", "\\\"e\\\": null"]
   )
 }
 
@@ -166,8 +171,8 @@ test fn w_fielded_variant_record_lit_on_the_json_data_path_spells_tag_and_fields
   compile_dag_rust_emit_check(
     "module test.claim.variant_json_fielded_probe\ntype E = A | B { x: Int }\ntype Marker {}\ntype Holder {\n  e: E\n  m: Marker\n}\ndata probe: Holder = Holder { e: B { x: 3 }, m: Marker {} }\n",
     "src/test_claim_variant_json_fielded_probe.rs",
-    ["{\"e\": {\"_variant\": \"B\", \"x\": 3}, \"m\": null}"],
-    ["compile_error!", "\"e\": {\"x\": 3}"]
+    ["serde_json::from_str(\"{\\\"e\\\": {\\\"_variant\\\": \\\"B\\\", \\\"x\\\": 3}, \\\"m\\\": null}\")"],
+    ["compile_error!", "\\\"e\\\": {\\\"x\\\": 3}"]
   )
 }
 
@@ -337,10 +342,10 @@ test fn w_registered_bridge_method_still_reaches_the_bridge() -> Bool {
 // been green throughout the defect; this asserts the call reaches the realization.
 test fn w_symbol_lexeme_reaches_its_host_realization_not_its_self_call() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.symbol_lexeme_probe\nimport std.types { String }\nimport v2.std.node { Symbol }\nimport v2.std.compilers.lexing { symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
+    "module test.claim.symbol_lexeme_probe\nimport std.types { String }\nimport v2.std.node { Symbol, symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
     "src/test_claim_symbol_lexeme_probe.rs",
     ["v1_rt::symbol_lexeme("],
-    ["crate::v2_std_compilers_lexing::symbol_lexeme("]
+    ["crate::v2_std_node::symbol_lexeme("]
   )
 }
 
@@ -418,7 +423,7 @@ test fn w_rostered_seam_resolves_realization_through_its_primitive_not_its_decl_
 // bridge, and ordinary emission writes the delegation by itself.
 test fn w_realized_seam_keeps_its_declaration_and_delegates_to_the_bridge() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.realized_seam_probe\nimport std.types { String }\nimport v2.std.node { Symbol }\nimport v2.std.compilers.lexing { symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
+    "module test.claim.realized_seam_probe\nimport std.types { String }\nimport v2.std.node { Symbol, symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
     "src/test_claim_realized_seam_probe.rs",
     ["v1_rt::symbol_lexeme("],
     ["has no realization for this target"]

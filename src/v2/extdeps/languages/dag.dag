@@ -63,7 +63,7 @@ import v2.std.grammar {
   node_atom_identity_optional
 }
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.compilers.body_lowering { declared_signature }
+import v2.std.arrow_signature { declared_signature }
 import v2.std.compilers.lexing {
   AnnotationRule,
   CharClassPattern,
@@ -92,7 +92,6 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_map,
   lex_rule_set_keyword_class_member,
   lex_rule_set_token_class_member,
-  symbol_intern_lexeme
 }
 import v2.std.node {
   Arrow,
@@ -112,6 +111,7 @@ import v2.std.node {
   TypeNode,
   is_empty_conj_root,
   node_lowered_from,
+  symbol_intern_lexeme,
 }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
@@ -159,7 +159,7 @@ import v2.std.compilers.target_model {
   BlockEvaluationMode,
   ValueProducing,
   derive_bodied_arrow_scaffold}
-import v2.std.logic { Bool }
+import v2.std.logic { Bool, bool_node }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_map }
 import v2.std.diagnostic {
@@ -183,6 +183,7 @@ import v2.std.integer {
   decimal_digits_to_magnitude,
   integer_decimal_magnitude_node,
   integer_decimal_magnitude_node_to_int,
+  integer_int_type_node,
   integer_string_to_decimal_digits_optional,
   DecimalMagnitude,
   DecimalNonZero,
@@ -2934,20 +2935,8 @@ fn dag_pointwise_from_symbol_map(m: Map<Symbol, Bool>) -> PointwisePower<Symbol>
   }
 }
 
-fn dag_surface_sugar_symbol_map(m: Map<Symbol, Bool>) -> Map<Symbol, Bool> {
-  grammar_symbol_list_put(
-    m: m,
-    xs: [
-      ^dag_c3_surface_sugar_service,
-      ^dag_c3_surface_sugar_fn,
-      ^dag_c3_surface_sugar_type,
-      ^dag_c3_surface_sugar_operation
-    ]
-  )
-}
-
 fn dag_language_model_surface_prelude_map() -> Map<Symbol, Bool> {
-  dag_surface_sugar_symbol_map(m: lex_rule_set_token_class_map(rules: dag_lex_rules()))
+  lex_rule_set_token_class_map(rules: dag_lex_rules())
 }
 
 fn dag_language_model_surface_prelude_atoms() -> PointwisePower<Symbol> {
@@ -2987,11 +2976,9 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
 // PointwisePower closure at the consumer; that closure is not the stored value.
 fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
   dag_language_model_binding_canonical_map(
-    m: dag_surface_sugar_symbol_map(
-      m: lex_rule_set_insert_token_classes(
-        m: grammar_carried_symbol_map(grammar: dag_grammar()),
-        rules: dag_lex_rules()
-      )
+    m: lex_rule_set_insert_token_classes(
+      m: grammar_carried_symbol_map(grammar: dag_grammar()),
+      rules: dag_lex_rules()
     )
   )
 }
@@ -3684,7 +3671,11 @@ fn dag_int_type_binding() -> Symbol {
 
 // THE BINDING→DENOTATION JOIN, declared once at the language authority. The resolver binds the
 // surface spelling "Int" to the canonical binding symbol (dag_binding_spellings); what that
-// binding DENOTES is the Int inhabitant declared at dag_declared_inhabitants_core. Every
+// binding DENOTES is the value type its std authority owns: v2.std.integer integer_int_type_node
+// for Int, v2.std.logic bool_node for Bool. A row points at the authority and never mints a node
+// of its own. Until 2026-09-26 the Int row returned dag_int_inhabitant_node -- the roster's
+// RECORD about Int, not the Int type -- while every value-type consumer used the atom; that fork
+// is what this join now closes (docs/plans/arrow-elimination-model.md). Every
 // hand-rolled fixture facts lookup re-authors this join (dag_add_canonical_grounding_for,
 // record_construct_canonical_grounding_for); the authority declares it once and infer consumes it
 // (v2.compiler.infer infer_node_facts). Specimen-scope interim in the same frame as
@@ -3693,7 +3684,9 @@ fn dag_int_type_binding() -> Symbol {
 // completed state).
 fn dag_binding_denotation(sym: Symbol) -> Optional<Node> {
   if sym == dag_int_type_binding() {
-    optional_present(value: dag_int_inhabitant_node())
+    optional_present(value: integer_int_type_node())
+  } else if sym == ^dag_binding_type_bool {
+    optional_present(value: bool_node())
   } else {
     optional_absent()
   }
@@ -5612,6 +5605,67 @@ fn dag_call_named_arg_value_under_children(node: Node, name: Symbol) -> Optional
       Present { value: _ } => acc
       Absent => dag_call_named_arg_value_optional(node: e.target, name: name)
     }
+  })
+}
+
+// The DIRECT argument at one declared POSITION of one call, under the same stopping rule as the
+// named lookup above: the walk counts each ^dag_surface_arg it reaches, in source order, and never
+// descends into one. A NAMED argument sitting at that position answers Absent -- its slot is
+// decided by its name, never by where it was written -- so a call reaches its step by exactly one
+// of the two readings.
+type DagPositionalArgScan {
+  seen: Int
+  decided: Bool
+  found: Optional<Node>
+}
+
+fn dag_call_positional_arg_value_optional(node: Node, position: Int) -> Optional<Node> {
+  let scan = dag_call_positional_arg_scan(
+    node: node,
+    position: position,
+    acc: DagPositionalArgScan { seen: 0, decided: false, found: dag_named_arg_value_absent() }
+  )
+  scan.found
+}
+
+fn dag_call_positional_arg_scan(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
+  if acc.decided {
+    acc
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Present { value: id } =>
+        if id == ^dag_surface_arg {
+          dag_call_positional_arg_visit(node: node, position: position, acc: acc)
+        } else {
+          dag_call_positional_arg_scan_children(node: node, position: position, acc: acc)
+        }
+      Absent => dag_call_positional_arg_scan_children(node: node, position: position, acc: acc)
+    }
+  }
+}
+
+fn dag_call_positional_arg_visit(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
+  if acc.seen == position {
+    DagPositionalArgScan { seen: acc.seen + 1, decided: true, found: dag_positional_arg_value(arg: node) }
+  } else {
+    DagPositionalArgScan { seen: acc.seen + 1, decided: false, found: acc.found }
+  }
+}
+
+fn dag_positional_arg_value(arg: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: arg) {
+    Absent => dag_named_arg_value_absent()
+    Present { value: arg_capture } =>
+      match dag_named_arg_value_optional(arg_capture: arg_capture) {
+        Present { value: _ } => dag_named_arg_value_absent()
+        Absent => dag_named_arg_value_present(node: arg_capture)
+      }
+  }
+}
+
+fn dag_call_positional_arg_scan_children(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
+  fold(node.children, init: acc, f: fn(inner, e) {
+    dag_call_positional_arg_scan(node: e.target, position: position, acc: inner)
   })
 }
 

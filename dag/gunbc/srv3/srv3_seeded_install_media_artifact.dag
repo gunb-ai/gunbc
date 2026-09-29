@@ -1,5 +1,7 @@
 module gunbc.srv3_seeded_install_media_artifact
 
+import gunbc.host_command_binding { LocalCommandHost, CreationNotRequested }
+
 import extdeps.provisioning.ubuntu_install_media {
   noble_numbat_2404_3_live_server_arm64,
   ubuntu_install_media_artifacts_dir,
@@ -89,9 +91,10 @@ data srv3_seeded_install_media_boundary: SeededImageWriteBoundary = HostArtifact
 fn srv3_seeded_install_media_publish() -> SeededImagePublication {
   match srv3_seeded_install_media {
     Srv3SeededInstallMediaRefused { reason: r } =>
-      SeededImagePublicationRefused { reason: srv3_seeded_install_media_refusal_text(reason: r) }
+      SeededImagePublicationRefused { reason: srv3_seeded_install_media_refusal_text(reason: r), work: CreationNotRequested }
     Srv3SeededInstallMediaDerived { input: i } =>
       publish_seeded_image(
+        host: LocalCommandHost,
         input: i,
         stock_path: ubuntu_install_media_install_path(artifact: noble_numbat_2404_3_live_server_arm64),
         boundary: srv3_seeded_install_media_boundary,
@@ -104,6 +107,6 @@ fn srv3_seeded_install_media_resolve() -> SeededImageResolution {
     Srv3SeededInstallMediaRefused { reason: r } =>
       SeededImageUnobservable { reason: srv3_seeded_install_media_refusal_text(reason: r) }
     Srv3SeededInstallMediaDerived { input: i } =>
-      resolve_seeded_image(input: i, dir: ubuntu_install_media_artifacts_dir())
+      resolve_seeded_image(host: LocalCommandHost, input: i, dir: ubuntu_install_media_artifacts_dir())
   }
 }
