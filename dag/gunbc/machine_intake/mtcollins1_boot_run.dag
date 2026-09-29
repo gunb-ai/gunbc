@@ -781,9 +781,12 @@ fn open_unresolved_causes(envelope: BoundHostCaptureEnvelope, qualifications: Li
       QualificationPending =>
         match host_capture_section_reading(envelope: envelope, name: q.name) {
           SectionAbsent => append(acc, items: [TerminalSectionUnobservedAtRefusal { name: q.name }])
-          _ => append(acc, items: [TerminalSectionUnterminatedAtRefusal { name: q.name }])
+          SectionPending { output: _ } => append(acc, items: [TerminalSectionUnterminatedAtRefusal { name: q.name }])
+          SectionComplete { exit_code: _, output: _ } => append(acc, items: [TerminalSectionUnterminatedAtRefusal { name: q.name }])
+          SectionMalformed { reason: _ } => append(acc, items: [TerminalSectionUnterminatedAtRefusal { name: q.name }])
         }
-      _ => acc
+      QualificationRefused { cause: _ } => acc
+      QualificationHeld => acc
     })
 }
 
@@ -895,11 +898,14 @@ fn mtcollins1_boot_await_capture_terminal(
   let census_pass = match smpro_census {
     SmproNotTaken { reason: _ } => match phase {
       CensusRunning => mtcollins1_boot_smpro_pass(password_file: password_file)
-      _ => smpro_census
+      CensusNotBegun => smpro_census
+      CensusEnded => smpro_census
+      CensusUnbound => smpro_census
+      CensusPhaseUnread => smpro_census
     }
     taken => taken
   }
-  let ended = match phase { CensusEnded => true _ => false }
+  let ended = match phase { CensusEnded => true CensusNotBegun => false CensusRunning => false CensusUnbound => false CensusPhaseUnread => false }
   let verdict = if capture.success { mtcollins1_boot_terminal_verdict(capture: capture.content, subject: subject, medium: mtcollins1_boot_medium) } else { TerminalPending { reason: "capture unreadable" } }
   match verdict {
     TerminalAccepted { run: _, threads: _ } => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: census_pass }
@@ -1113,7 +1119,10 @@ fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, r
           } else {
             observed
           }
-        _ => observed
+        PoweredOffAfterCensusEnd => observed
+        PoweredOffWithoutCensusEnd => observed
+        PowerAfterUnobserved { observation: _ } => observed
+        PowerAfterNotTaken { reason: _ } => observed
       }
     }
   }
@@ -1255,7 +1264,8 @@ fn mtcollins1_boot_actuate(
       let handoff = match gated.media {
         HandoffMediaAttempted { before: _, handoff: _, after: _ } =>
           HandoffRun { result: gated.result, step: PhaseStepRan { result: exit_phase_result(outcome: gated.result.outcome), end: proc_uptime_read() } }
-        _ => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the media gate or its pre-handoff recheck withheld the handoff" } }
+        HandoffMediaNotReached { reason: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the media gate or its pre-handoff recheck withheld the handoff" } }
+        HandoffMediaWithheldAtRecheck { before: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the media gate or its pre-handoff recheck withheld the handoff" } }
       }
       let observed = match handoff.result.outcome {
         ExitSuccess => {
@@ -1296,7 +1306,7 @@ fn mtcollins1_boot_actuate(
       let p5_after_read = proc_uptime_read()
       let power_after = mtcollins1_boot_power_after_poll(
         password_file: password_file,
-        census_ended: match observed.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => true _ => false },
+        census_ended: match observed.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => true ActuationNotPoweredOn { reason: _ } => false ActuationPoweredOn { selection: _, smpro_power_on: _, smpro_census: _ } => false },
         remaining: mtcollins1_boot_power_after_samples,
       )
       let power_after_read = proc_uptime_read()
@@ -1316,7 +1326,9 @@ fn mtcollins1_boot_actuate(
                 exit_failure(reason: "mtcollins1 boot: SOL collector still held after deactivate")
               LeaseRunningStale =>
                 exit_failure(reason: "mtcollins1 boot: SOL pid file stale after deactivate")
-              _ => ExitSuccess
+              LeaseAbsent => ExitSuccess
+              LeasePortForeign => ExitSuccess
+              LeaseInaccessible => ExitSuccess
             }
           other => other
         },
@@ -1450,7 +1462,10 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         sensors: mtcollins1_boot_sensors(username: user, password_file: pf, sdr: sdr),
         smpro: match power_after {
           PoweredOffAfterCensusEnd => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
-          _ => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+          PoweredOffWithoutCensusEnd => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+          PoweredOnAfterAttempt => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+          PowerAfterUnobserved { observation: _ } => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+          PowerAfterNotTaken { reason: _ } => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
         },
         inventory: mtcollins1_boot_inventory(username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
@@ -1531,7 +1546,7 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
   let write = mtcollins1_boot_write_bundle(bundle: bundle)
   let concluded = mtcollins1_boot_outcome_after_bundle(outcome: attempt.outcome, bundle: bundle, write: write)
   let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
-  let exit_word = match concluded { ExitSuccess => "ok"  _ => "refused" }
+  let exit_word = match concluded { ExitSuccess => "ok"  ExitFailure { code: _, reason: _ } => "refused" }
   let receipt_body = join([
     "authorization=workload identity of the fleet-converge run on main (operator ruling 2026-09-25); no per-run or standing approval; the unit hold is the interlock",
     concat("attempt=", attempt_identity_text(a: run)),
