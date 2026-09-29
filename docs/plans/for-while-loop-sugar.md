@@ -66,7 +66,7 @@ Nothing else is added, and no existing edge changes meaning:
 | `fold(xs, init, step)` | domain; bound; carrier | `Bind { acc := init, body: Loop { domain: xs, carrier: acc, bound, body: (acc, x) => step } }` | the final carrier value |
 | stateful `while` | bound; carrier; no domain | `Bind { s := init, body: Loop { carrier: s, bound: measure, body: s => WhileStep } }` (§5) | the value carried by the `WhileComplete` arm |
 
-S0 is the substrate work those encodings need, done once in the one `Loop` path: admit the domain edge in `loop_behavior_edges_conform` and in every consumer of the loop's edges (the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `edge_contributes_to_cost_fold`), and give the `Loop` interpreter step the three executing rules above in place of its rejection. S0 changes no surface syntax, and the unary `loop` keeps its meaning.
+S0 is the substrate work those encodings need, done once in the one `Loop` path: admit the domain edge in `loop_behavior_edges_conform` and in every consumer of the loop's edges (the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `cost_edge_role`), and give the `Loop` interpreter step the three executing rules above in place of its rejection. S0 changes no surface syntax, and the unary `loop` keeps its meaning.
 
 **The fold seam migrates later, at its root.** Today's seam is the fold encoding with its domain and initial `Bind` missing. Bringing it to the full encoding is a replacement migration (DESIGN §3): slice S3 moves `fold_call_seam_loop` to the full encoding in one change, together with its consumers. The carrier edge keeps its binder meaning, so `v2.lens.complexity_accumulator_copy` is unaffected. Until S3 lands, the seam stays what it is: an analysis seam whose missing edges are this row's stated gap, not a second meaning.
 
@@ -181,7 +181,7 @@ Everything is v2. v1 is under `gunbc.v1_maintenance_standing` `v1_seed_standing`
 
 | piece | where |
 | --- | --- |
-| the domain edge, and every consumer of loop edges (S0) | `v2.std.node` `loop_behavior_edges_conform` and the loop-edge helpers beside it, the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `edge_contributes_to_cost_fold` |
+| the domain edge, and every consumer of loop edges (S0) | `v2.std.node` `loop_behavior_edges_conform` and the loop-edge helpers beside it, the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `cost_edge_role` |
 | executing a `Loop` (S0) | the `Loop` interpreter step: `v2.extdeps.runtimes.v2_evaluator` `v2_eval_step_loop` and `v2.program` `program_step_loop`, both of which reject today; and the Rust emission of the three rules |
 | keywords `for`, `in`, `while`, `decreases` | `v2.extdeps.languages.dag`, beside `dag_keyword_lex_rule(^dag_token_kw_loop, ...)`. Grep first: a keyword removes an identifier from every module |
 | one production per form | `v2.compiler.body_producer_forward`, one `BodyProducerForwardRow` per surface identity (see `body_producer_forward_row_loop_expr`). If its cutover from `body_lowering_fold` has not landed, coordinate with its owner rather than adding arms to the table being deleted |

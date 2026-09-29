@@ -127,15 +127,27 @@ fn git_authorization_matches_role(role: GitUseRole, authorization: GitUseAuthori
     DeclaredLegacyGitUse { retirement_capability: _ } => true
     NamedBootstrapImportAdapter => match role {
       GitBootstrapImport => true
-      _ => false
+      GitWorkspaceSourceAuthority => false
+      GitProposalReviewPublication => false
+      GitHistoryDiffGateObservation => false
+      GitDeploymentRevisionIdentity => false
+      GitCompatibilityProjection => false
     }
     NamedCompatibilityProjector => match role {
+      GitBootstrapImport => false
+      GitWorkspaceSourceAuthority => false
+      GitProposalReviewPublication => false
+      GitHistoryDiffGateObservation => false
+      GitDeploymentRevisionIdentity => false
       GitCompatibilityProjection => true
-      _ => false
     }
     DeclaredLegacyDeploymentAdapter { retirement_capability: _ } => match role {
+      GitBootstrapImport => false
+      GitWorkspaceSourceAuthority => false
+      GitProposalReviewPublication => false
+      GitHistoryDiffGateObservation => false
       GitDeploymentRevisionIdentity => true
-      _ => false
+      GitCompatibilityProjection => false
     }
   }
 }

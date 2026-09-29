@@ -184,25 +184,92 @@ fn harness_conclusion_text(c: HarnessConclusion) -> String {
 }
 
 fn premise_asserts_write_form(p: HarnessPremise) -> Bool {
-  match p { ToolCanWriteBy { form: _ } => true  _ => false }
+  match p {
+    ActingAs { role: _ } => false
+    ToolIs { tool: _ } => false
+    ToolRunsIn { locus: _ } => false
+    ToolReturns { channel: _ } => false
+    ToolCanWriteBy { form: _ } => true
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    CompletionRequires { term: _ } => false
+    RoundsRemaining { rounds: _ } => false
+    EarlierRoundsDropped { rounds: _ } => false
+    WorktreeAt { path: _ } => false
+    TestProcessIs { command: _, receipt_path: _ } => false
+    CompileProcessIs { command: _, receipt_path: _ } => false
+  }
 }
 
 fn premise_requires_difference(p: HarnessPremise) -> Bool {
-  match p { CompletionRequires { term: FilesOnDiskDiffer } => true  _ => false }
+  match p {
+    ActingAs { role: _ } => false
+    ToolIs { tool: _ } => false
+    ToolRunsIn { locus: _ } => false
+    ToolReturns { channel: _ } => false
+    ToolCanWriteBy { form: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    CompletionRequires { term: t } => match t { FilesOnDiskDiffer => true  AcceptanceCheckPasses => false }
+    RoundsRemaining { rounds: _ } => false
+    EarlierRoundsDropped { rounds: _ } => false
+    WorktreeAt { path: _ } => false
+    TestProcessIs { command: _, receipt_path: _ } => false
+    CompileProcessIs { command: _, receipt_path: _ } => false
+  }
 }
 
 fn premise_requires_acceptance(p: HarnessPremise) -> Bool {
-  match p { CompletionRequires { term: AcceptanceCheckPasses } => true  _ => false }
+  match p {
+    ActingAs { role: _ } => false
+    ToolIs { tool: _ } => false
+    ToolRunsIn { locus: _ } => false
+    ToolReturns { channel: _ } => false
+    ToolCanWriteBy { form: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    CompletionRequires { term: t } => match t { FilesOnDiskDiffer => false  AcceptanceCheckPasses => true }
+    RoundsRemaining { rounds: _ } => false
+    EarlierRoundsDropped { rounds: _ } => false
+    WorktreeAt { path: _ } => false
+    TestProcessIs { command: _, receipt_path: _ } => false
+    CompileProcessIs { command: _, receipt_path: _ } => false
+  }
 }
 
 fn premise_rounds_remaining(p: HarnessPremise) -> Int? {
-  match p { RoundsRemaining { rounds: n } => Present { value: n }  _ => none }
+  match p {
+    ActingAs { role: _ } => none
+    ToolIs { tool: _ } => none
+    ToolRunsIn { locus: _ } => none
+    ToolReturns { channel: _ } => none
+    ToolCanWriteBy { form: _ } => none
+    CapabilityHeld { capability: _ } => none
+    CapabilityWithheld { capability: _ } => none
+    CompletionRequires { term: _ } => none
+    RoundsRemaining { rounds: n } => Present { value: n }
+    EarlierRoundsDropped { rounds: _ } => none
+    WorktreeAt { path: _ } => none
+    TestProcessIs { command: _, receipt_path: _ } => none
+    CompileProcessIs { command: _, receipt_path: _ } => none
+  }
 }
 
 fn premise_test_process_command(p: HarnessPremise) -> String? {
   match p {
+    ActingAs { role: _ } => none
+    ToolIs { tool: _ } => none
+    ToolRunsIn { locus: _ } => none
+    ToolReturns { channel: _ } => none
+    ToolCanWriteBy { form: _ } => none
+    CapabilityHeld { capability: _ } => none
+    CapabilityWithheld { capability: _ } => none
+    CompletionRequires { term: _ } => none
+    RoundsRemaining { rounds: _ } => none
+    EarlierRoundsDropped { rounds: _ } => none
+    WorktreeAt { path: _ } => none
     TestProcessIs { command, receipt_path: _ } => Present { value: command }
-    _ => none
+    CompileProcessIs { command: _, receipt_path: _ } => none
   }
 }
 
@@ -211,7 +278,21 @@ fn first_test_process(rows: List<HarnessGroundedPremise>) -> String? {
 }
 
 fn premise_rounds_dropped(p: HarnessPremise) -> Int? {
-  match p { EarlierRoundsDropped { rounds: n } => Present { value: n }  _ => none }
+  match p {
+    ActingAs { role: _ } => none
+    ToolIs { tool: _ } => none
+    ToolRunsIn { locus: _ } => none
+    ToolReturns { channel: _ } => none
+    ToolCanWriteBy { form: _ } => none
+    CapabilityHeld { capability: _ } => none
+    CapabilityWithheld { capability: _ } => none
+    CompletionRequires { term: _ } => none
+    RoundsRemaining { rounds: _ } => none
+    EarlierRoundsDropped { rounds: n } => Present { value: n }
+    WorktreeAt { path: _ } => none
+    TestProcessIs { command: _, receipt_path: _ } => none
+    CompileProcessIs { command: _, receipt_path: _ } => none
+  }
 }
 
 fn any_premise(rows: List<HarnessGroundedPremise>, f: fn(HarnessPremise) -> Bool) -> Bool {
