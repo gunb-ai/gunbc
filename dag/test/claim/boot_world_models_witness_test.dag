@@ -9,7 +9,8 @@ import extdeps.transports.shell { ShellProcessExited }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.crypto.hash { sha256sum_file_command }
-import gunbc.wall_clock_model { ModeledWallClock, iso8601_utc, wall_clock_unix }
+import gunbc.wall_clock_model { ModeledWallClock, wall_clock_unix }
+import extdeps.units.iso8601 { iso8601_utc_text }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile, remote_request, remote_answer }
 import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_parent, fs_write, fs_list, fs_read }
 
@@ -19,11 +20,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // against a model that is wrong in the same direction as the code under test. Reference values for the
 // calendar are independent: Python's datetime.fromtimestamp(t, timezone.utc) for each instant.
 test fn the_wall_clock_renders_utc_like_date() -> Bool {
-  iso8601_utc(unix: 0) == "1970-01-01T00:00:00Z"
-    && iso8601_utc(unix: 951782400) == "2000-02-29T00:00:00Z"
-    && iso8601_utc(unix: 1790000000) == "2026-09-21T14:13:20Z"
-    && iso8601_utc(unix: 4102444799) == "2099-12-31T23:59:59Z"
-    && iso8601_utc(unix: 0 - 1) == "1969-12-31T23:59:59Z"
+  iso8601_utc_text(unix: 0) == "1970-01-01T00:00:00Z"
+    && iso8601_utc_text(unix: 951782400) == "2000-02-29T00:00:00Z"
+    && iso8601_utc_text(unix: 1790000000) == "2026-09-21T14:13:20Z"
+    && iso8601_utc_text(unix: 4102444799) == "2099-12-31T23:59:59Z"
+    && iso8601_utc_text(unix: 0 - 1) == "1969-12-31T23:59:59Z"
 }
 
 // A NEGATIVE STEP IS A WALL CLOCK THAT WENT BACKWARDS while virtual time moved forward.

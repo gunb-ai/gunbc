@@ -7,6 +7,7 @@ import v2.std.operation_realization {
   OperationBinding, OperationCall, OperationStep, OperationObserved, ShellObserved,
 }
 import extdeps.transports.shell { ShellProcessExited }
+import extdeps.units.iso8601 { iso8601_utc_text }
 
 // A MODELED WALL CLOCK: what the worker's `date` prints, as a function of the realization's virtual
 // clock. The virtual clock (v2.std.operation_realization, a Nat-counted Second) is monotonic by
@@ -17,7 +18,7 @@ import extdeps.transports.shell { ShellProcessExited }
 // scheduled events keep moving forward.
 //
 // It answers extdeps.clock Clock.Now in `date -u +%Y-%m-%dT%H:%M:%SZ` form, and Clock.UnixSecs and
-// Clock.UnixMillis in `date +%s` and `date +%s%3N` form, over the proleptic Gregorian calendar.
+// Clock.UnixMillis in `date +%s` and `date +%s%3N` form; the calendar is extdeps.units.iso8601's.
 type ModeledWallClock {
   unix_at_origin: EpochSecs
   step: SecondDisplacement
@@ -25,45 +26,6 @@ type ModeledWallClock {
 
 fn wall_clock_unix(clock: ModeledWallClock, now: Second) -> Int {
   (clock.unix_at_origin as Int) + (second_count(s: now) as Int) + second_displacement_count(d: clock.step)
-}
-
-fn two_digits(n: Int) -> String {
-  if n < 10 { concat("0", to_string(n)) } else { to_string(n) }
-}
-
-// Days since 1970-01-01 to a civil date: H. Hinnant, "chrono-Compatible Low-Level Date Algorithms",
-// civil_from_days -- exact for the whole proleptic Gregorian range, no table.
-type CivilDate {
-  year: Int
-  month: Int
-  day: Int
-}
-
-fn floor_div(a: Int, b: Int) -> Int {
-  if a >= 0 { a / b } else { 0 - ((0 - a + b - 1) / b) }
-}
-
-fn civil_from_days(days: Int) -> CivilDate {
-  let z = days + 719468
-  let era = floor_div(a: z, b: 146097)
-  let doe = z - era * 146097
-  let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
-  let y = yoe + era * 400
-  let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
-  let mp = (5 * doy + 2) / 153
-  let d = doy - (153 * mp + 2) / 5 + 1
-  let m = if mp < 10 { mp + 3 } else { mp - 9 }
-  CivilDate { year: if m <= 2 { y + 1 } else { y }, month: m, day: d }
-}
-
-fn iso8601_utc(unix: Int) -> String {
-  let days = floor_div(a: unix, b: 86400)
-  let rem = unix - days * 86400
-  let date = civil_from_days(days: days)
-  join([
-    to_string(date.year), "-", two_digits(n: date.month), "-", two_digits(n: date.day),
-    "T", two_digits(n: rem / 3600), ":", two_digits(n: (rem - (rem / 3600) * 3600) / 60), ":", two_digits(n: rem - (rem / 60) * 60), "Z",
-  ], "")
 }
 
 data clock_operation_path: String = "dag/extdeps/clock/clock.dag"
@@ -82,7 +44,7 @@ fn printed<S>(state: S, text: String) -> OperationStep<S> {
 
 fn wall_clock_bindings<S>(get: fn(S) -> ModeledWallClock) -> List<OperationBinding<S>> {
   [
-    OperationBinding { at: clock_operation(operation: "Now"), handler: fn(state, call) { printed(state: state, text: iso8601_utc(unix: wall_clock_unix(clock: get(state), now: call.now))) } },
+    OperationBinding { at: clock_operation(operation: "Now"), handler: fn(state, call) { printed(state: state, text: iso8601_utc_text(unix: wall_clock_unix(clock: get(state), now: call.now))) } },
     OperationBinding { at: clock_operation(operation: "UnixSecs"), handler: fn(state, call) { printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now))) } },
     OperationBinding { at: clock_operation(operation: "UnixMillis"), handler: fn(state, call) { printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now) * 1000)) } },
   ]
