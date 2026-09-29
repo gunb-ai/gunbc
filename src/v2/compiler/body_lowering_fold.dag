@@ -616,7 +616,6 @@ fn body_lower_operand_fold_children_read(node: Node) -> OperandRefRead {
 fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_pattern)
     || (emitted == ^dag_surface_match_arm)
-    || (emitted == ^dag_surface_match_arm_stmt_body)
     || (emitted == ^dag_surface_arrow_lambda)
     || (emitted == ^dag_surface_fn_literal)
 }
@@ -5755,7 +5754,6 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
 fn body_lower_is_match_arm_navigate_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_pattern)
     || (emitted == ^dag_surface_primary_expr)
-    || (emitted == ^dag_surface_match_arm_stmt_body)
     || body_lower_is_pass_through_emitted(emitted: emitted)
 }
 
