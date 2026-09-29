@@ -2028,7 +2028,9 @@ fn unimported_bare_provider_authority(rel: &str) -> String {
 /// decision about the rows is the `.dag`'s; the host passes the rows back to it as values.
 struct RosterRow {
     file: String,
-    imports_fixed: bool,
+    /// A retirement the host re-derives on every run to hold it true: `ImportsFixed` or
+    /// `NotAReference`, read from the row view's own fields.
+    rechecked: bool,
 }
 
 /// The roster as one evaluation reads it: the rows as a `.dag` value (passed back unchanged to the
@@ -2043,15 +2045,25 @@ struct UnimportedBareProviderRosterReading {
 impl UnimportedBareProviderRosterReading {
     /// `function` is `unimported_bare_provider_head_rows` in the verdict module (the head) or
     /// `unimported_bare_provider_roster_rows` in a lone base roster.
-    fn read(roots: &[String], entry: &str, function: &str) -> Result<Self, String> {
+    ///
+    /// Only the HEAD's rows are decoded by the host: the standing judgment reads them to choose
+    /// which files to re-derive. A BASE roster is read for its `.dag` value alone, which the edit
+    /// judgment compares in `.dag`, so the host never spells a base row's fields -- a base written
+    /// before a view field existed (`not_a_reference`, gunbc#12609) is still a readable base.
+    fn read(
+        roots: &[String],
+        entry: &str,
+        function: &str,
+        decode_host_rows: bool,
+    ) -> Result<Self, String> {
         let (graph, indices) = resolve_entry_graph_shared(roots, entry)
             .map_err(|e| format!("unimported-bare-provider roster resolve ({entry}): {e}"))?;
         let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
         let rows_value = Self::call(&ctx, function, &[])?;
         let mut rows = Vec::new();
-        for item in
-            floor_decode_list(&ctx, Some(&rows_value)).map_err(|e| format!("{function}: {e}"))?
-        {
+        let items =
+            floor_decode_list(&ctx, Some(&rows_value)).map_err(|e| format!("{function}: {e}"))?;
+        for item in items.into_iter().filter(|_| decode_host_rows) {
             let v1_interpreter::Value::Record { fields, .. } = item else {
                 return Err(format!(
                     "{function}: expected UnimportedBareProviderRowView, got {}",
@@ -2076,9 +2088,18 @@ impl UnimportedBareProviderRosterReading {
                     ))
                 }
             };
+            let not_a_reference = match ctx.field(fields, "not_a_reference") {
+                Some(v1_interpreter::Value::Bool(b)) => *b,
+                other => {
+                    return Err(format!(
+                        "{function}: row `not_a_reference` is not a Bool ({})",
+                        floor_value_shape(other)
+                    ))
+                }
+            };
             rows.push(RosterRow {
                 file,
-                imports_fixed,
+                rechecked: imports_fixed || not_a_reference,
             });
         }
         Ok(Self {
@@ -2093,6 +2114,7 @@ impl UnimportedBareProviderRosterReading {
             source_roots,
             &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
             "unimported_bare_provider_head_rows",
+            true,
         )
     }
 
@@ -2183,7 +2205,7 @@ fn unimported_bare_provider_standing_refusals(
     for row in &head.rows {
         if lookup.contains_key(row.file.as_str()) {
             present.insert(row.file.clone());
-            if row.imports_fixed {
+            if row.rechecked {
                 checked.insert(row.file.clone());
             }
         }
@@ -2428,6 +2450,7 @@ fn unimported_bare_provider_base_reading(
         &[root],
         &entry.to_string_lossy(),
         "unimported_bare_provider_roster_rows",
+        false,
     );
     std::fs::remove_dir_all(&dir).ok();
     reading
