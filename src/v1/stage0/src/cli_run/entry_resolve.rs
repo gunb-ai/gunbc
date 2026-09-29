@@ -2827,18 +2827,15 @@ fn raw_parse_authored_type_names(
     node: &Rc<crate::v1_std_core::Node>,
     out: &mut std::collections::HashSet<String>,
 ) {
-    use crate::v1_std_core::InferredNode;
-    if let Some(inferred) = &node.inferred {
-        if let InferredNode::Resolved { node: ty } = &**inferred {
-            super::collect_type_ref_names(ty, out);
-        }
+    if let Some(ty) = raw_declared_type(node) {
+        raw_type_names(&ty, out);
     }
     if let Some(ty) = &node.type_annotation {
-        super::collect_type_ref_names(ty, out);
+        raw_type_names(ty, out);
     }
     for param in node.params.iter() {
         for ty in param.children.iter() {
-            super::collect_type_ref_names(ty, out);
+            raw_type_names(ty, out);
         }
     }
     let slots = node
@@ -2851,6 +2848,37 @@ fn raw_parse_authored_type_names(
         .chain(node.transport.iter());
     for child in slots {
         raw_parse_authored_type_names(child, out);
+    }
+}
+
+/// The type the parser recorded as `inferred: Resolved` on a declaration, field or operation.
+fn raw_declared_type(node: &Rc<crate::v1_std_core::Node>) -> Option<Rc<crate::v1_std_core::Node>> {
+    match node.inferred.as_deref() {
+        Some(crate::v1_std_core::InferredNode::Resolved { node: ty }) => Some(ty.clone()),
+        _ => None,
+    }
+}
+
+/// The type names of one raw type node. Only expression-free nodes are types: a parameter's
+/// children also carry its default VALUE, which is an expression, not a type. A child carrying its
+/// own declared type is a FIELD of a record type (an operation's `output { context: T }`, a
+/// variant's payload): its name is a label and only its type is read.
+fn raw_type_names(ty: &Rc<crate::v1_std_core::Node>, out: &mut std::collections::HashSet<String>) {
+    use crate::v1_std_core::ExprData;
+    if !matches!(&*ty.expr_data, ExprData::NoExprData) {
+        return;
+    }
+    if !ty.name.is_empty() {
+        out.insert(ty.name.clone());
+    }
+    for child in ty.children.iter().chain(ty.params.iter()) {
+        match raw_declared_type(child) {
+            Some(field_type) => raw_type_names(&field_type, out),
+            None => raw_type_names(child, out),
+        }
+    }
+    if let Some(annotation) = &ty.type_annotation {
+        raw_type_names(annotation, out);
     }
 }
 

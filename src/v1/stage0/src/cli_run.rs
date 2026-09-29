@@ -974,6 +974,21 @@ pub(crate) mod bare_reference_scanner_tests {
             !typed.names.contains("fld"),
             "a record field label is not a reference"
         );
+        let op = parsed(
+            "module t\nservice ext.B {\n  operation Launch {\n    input { headless: String = \"false\" }\n    output { context: BrowserContext from \"stdout\" }\n    transport shell { argv: [\"run\", \"{headless}\"] }\n  }\n}\ntype S = Unknown { raw: String } | Known\n",
+        );
+        for label in ["context", "headless", "raw"] {
+            assert!(
+                !op.names.contains(label),
+                "{label} is a field label: {:?}",
+                op.names
+            );
+        }
+        assert!(
+            op.names.contains("BrowserContext"),
+            "an output field's TYPE is a reference: {:?}",
+            op.names
+        );
     }
 
     /// A record literal's KEY names a field of the literal's type, never a declaration.
@@ -1026,12 +1041,14 @@ pub(crate) mod bare_reference_scanner_tests {
             c.call_position
         );
         let piped = parsed(
-            "module t\nfn f(xs: List<Int>) -> Int { xs |> filter(e => e > 0) |> length() }\n",
+            "module t\nfn f(xs: List<Int>) -> Int { xs |> filter(e => e > 0) |> length() }\nfn g(xs: List<Int>) -> Int { xs.length() }\n",
         );
-        for callee in ["filter", "length"] {
+        for method in ["filter", "length"] {
             assert!(
-                piped.call_position.contains(callee),
-                "a piped or method callee is a call position: {:?}",
+                !piped.names.contains(method) && !piped.call_position.contains(method),
+                "a method name resolves through its receiver's type, never as a bare reference: \
+                 {method} in {:?} / {:?}",
+                piped.names,
                 piped.call_position
             );
         }
@@ -33579,13 +33596,11 @@ fn collect_node_refs_inner(
         }
     }
     if let ExprData::ExprMethodCall { .. } = &*node.expr_data {
-        // A PIPE IS A METHOD CALL: `xs |> filter(f)` parses to the same node as `xs.filter(f)`,
-        // and both resolve `filter` as a function, so the method name is a callee position.
-        if !node.name.is_empty() {
-            let positions = &mut classify.bare_positions;
-            positions.undotted.insert(node.name.clone());
-            positions.callees.insert(node.name.clone());
-        }
+        // A METHOD NAME IS NOT A BARE REFERENCE. `xs.length()` and `xs |> filter(f)` parse to
+        // the same node, and infer resolves its name through the RECEIVER's type -- a structural
+        // (algebra) method, else a service operation (`resolve_known_method_node`) -- never through
+        // a bare free-function lookup, so no import could ever be owed for it. Only the chain is
+        // kept, for the services-prefix lookup.
         if let Some(chain) = ref_field_chain(node) {
             classify.bare_positions.method_chains.push(chain);
         }
