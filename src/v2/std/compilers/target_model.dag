@@ -4348,28 +4348,40 @@ fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List
   concrete_syntax_token_node_targets_into(node: node, acc: Empty)
 }
 
+type ConcreteSyntaxTokenTargetsStep
+  = TargetsDone { outcome: Outcome<List<Node>> }
+  | TargetsNext { node: Node, acc: List<Node> }
+
 fn concrete_syntax_token_node_targets_into(node: Node, acc: List<Node>) -> Outcome<List<Node>> {
+  match concrete_syntax_token_node_targets_step(node: node, acc: acc) {
+    TargetsDone { outcome: o } => o
+    TargetsNext { node: next, acc: next_acc } =>
+      concrete_syntax_token_node_targets_into(node: next, acc: next_acc)
+  }
+}
+
+fn concrete_syntax_token_node_targets_step(node: Node, acc: List<Node>) -> ConcreteSyntaxTokenTargetsStep {
   match node.kind {
     TypeNode { connective: Conj } =>
       if is_empty(xs: node.children) {
-        outcome_accepted(acc)
+        TargetsDone { outcome: outcome_accepted(acc) }
       } else {
         match find_named_child(root: node, name: ^fold_list_node_head) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Rejected { diagnostics: r } => TargetsDone { outcome: Rejected { diagnostics: r } }
           Accepted { value: head, diagnostics: _ } =>
             match find_named_child(root: node, name: ^fold_list_node_tail) {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Rejected { diagnostics: r } => TargetsDone { outcome: Rejected { diagnostics: r } }
               Accepted { value: tail, diagnostics: _ } =>
-                concrete_syntax_token_node_targets_into(node: tail, acc: list_snoc_item(xs: acc, item: head))
+                TargetsNext { node: tail, acc: list_snoc_item(xs: acc, item: head) }
             }
         }
       }
-    TypeNode { connective: Atom { identity: _ } } => concrete_syntax_token_node_targets_into_otherwise(node: node)
-    TypeNode { connective: Disj } => concrete_syntax_token_node_targets_into_otherwise(node: node)
-    TypeNode { connective: Arrow } => concrete_syntax_token_node_targets_into_otherwise(node: node)
-    TypeNode { connective: Cardinality } => concrete_syntax_token_node_targets_into_otherwise(node: node)
-    TypeNode { connective: Instantiation } => concrete_syntax_token_node_targets_into_otherwise(node: node)
-    ComputationNode { behavior: _ } => concrete_syntax_token_node_targets_into_otherwise(node: node)
+    TypeNode { connective: Atom { identity: _ } } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
+    TypeNode { connective: Disj } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
+    TypeNode { connective: Arrow } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
+    TypeNode { connective: Cardinality } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
+    TypeNode { connective: Instantiation } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
+    ComputationNode { behavior: _ } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
   }
 }
 
