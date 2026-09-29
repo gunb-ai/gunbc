@@ -122,21 +122,19 @@ and [deny policy creation](https://docs.cloud.google.com/iam/docs/reference/rest
 
 ## Current commissioning standing
 
-The organization authority grant, deny installation, and grant removal succeeded.
-The subsequent exclusive-window run initialized four empty pool policies, preserved
-the existing private-publisher pool policy, and completed all declared capability
-grants. The first probe lease was removed after a one-minute minting refusal; the
-next lease minted the apply token after propagation, then encountered
-`SERVICE_DISABLED` for Cloud Resource Manager in project `582015116396`.
-Both temporary probe grants were removed and absence was read back after that
-refusal. Workflow trust remains withheld. Historical receipts preserve each
-boundary rather than treating partial bootstrap as operational acceptance.
+Bootstrap completed successfully at source `85bdb4e19` on 2026-09-29. All ten
+stages passed: required API readiness, identities, roles, deny protection,
+temporary deny-authority cleanup, capabilities, temporary probe authority,
+effective access checks, probe-authority cleanup, and workflow trust. The observer
+read the pinned approval credential and the writer received exact HTTP 403 for it.
+Both temporary probe grants and the earlier Deny Admin grant were verified absent.
+The operator token file was removed. See
+`receipts/gcp-iam-services-2026-09-29/README.md` for evidence and limitations.
 
-API enablement is now a first-stage dependency, using the existing Service Usage
-API: observe each declared service, enable only a known disabled service, and
-require exact-project `ENABLED` readback. An accepted operation is not readiness.
-The required set is IAM, IAM Credentials, Cloud Resource Manager, Secret Manager,
-and STS. No API disable operation or arbitrary service input is exposed.
+The existing approval-gated workflow was then dispatched on main as run
+`36505895733`. Bootstrap completion does not establish that workflow's approval
+or apply acceptance, nor VM commissioning. Earlier refusal receipts remain as
+historical evidence of the dependencies repaired along the way.
 
 ## Temporary-authority dependency and recovery
 
