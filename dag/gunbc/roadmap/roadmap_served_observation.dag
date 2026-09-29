@@ -287,13 +287,22 @@ fn served_observation_entry_of_json(doc: JsonValue) -> ServedObservationEntryDec
                   match json_object_unique_member(v: doc, key: "digest") {
                     JsonMemberFound { value: JsonString { value: digest } } =>
                       ServedObservationEntryDecoded { entry: ServedObservationEntry { kind: kind, status: status, digest: digest } }
-                    _ => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberFound { value: _ } => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberAbsent => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberDuplicated { count: _ } => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
+                    JsonMemberNotAnObject => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
                   }
               }
-            _ => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberFound { value: _ } => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberAbsent => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberDuplicated { count: _ } => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
+            JsonMemberNotAnObject => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
           }
       }
-    _ => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberFound { value: _ } => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberAbsent => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberDuplicated { count: _ } => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
+    JsonMemberNotAnObject => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
   }
 }
 
@@ -342,14 +351,23 @@ fn served_observation_decode(raw: String) -> ServedObservationRead {
                         } else {
                           ServedObservationPresent { index: index }
                         }
-                      _ => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberFound { value: _ } => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberAbsent => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberDuplicated { count: _ } => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
+                      JsonMemberNotAnObject => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
                     }
                   }
                 }
-              _ => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberFound { value: _ } => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberAbsent => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberDuplicated { count: _ } => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
+              JsonMemberNotAnObject => ServedObservationUnreadable { reason: "served observation observed_at is missing" }
             }
           }
-        _ => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberFound { value: _ } => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberAbsent => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberDuplicated { count: _ } => ServedObservationUnreadable { reason: "served observation schema is missing" }
+        JsonMemberNotAnObject => ServedObservationUnreadable { reason: "served observation schema is missing" }
       }
   }
 }
@@ -384,7 +402,9 @@ fn served_observation_write_bodies_for_instance(instance: HostDashboardInstance,
         BeltPassFailed { reason: join(["the served observation ", served_observation_kind_key(kind: s.kind), " body could not be written: ", write.error], "") }
       }
     }
-    _ => acc
+    BeltPassDeferred { reason: _ } => acc
+    BeltPassRefused { reason: _ } => acc
+    BeltPassFailed { reason: _ } => acc
   })
 }
 

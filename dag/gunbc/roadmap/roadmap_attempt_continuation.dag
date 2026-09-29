@@ -78,7 +78,12 @@ fn verification_segment_of(segments: List<WorkflowSegment>) -> WorkflowSegment? 
     Absent =>
       match s.kind {
         VerificationWorkflowSegment => Present { value: s }
-        _ => none
+        EnvironmentWorkflowSegment => none
+        WorkspaceWorkflowSegment => none
+        AgentWorkflowSegment => none
+        PublicationWorkflowSegment => none
+        ReviewWorkflowSegment => none
+        GoalAuditWorkflowSegment => none
       }
   })
 }

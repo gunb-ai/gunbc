@@ -1786,7 +1786,14 @@ fn dashboard_bootstrap_only_ops(
       DashboardEnsureDirectory { path: _ } => true
       DashboardEnsureProviderStateRoot { path: _ } => true
       DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path: _ } => true
-      _ => false
+      DashboardHydrateControllerHistory { controller_repo: _, history_remote: _ } => false
+      DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => false
+      DashboardStageGitBundle { controller_repo: _, staged_bundle: _ } => false
+      DashboardEnsureOwnershipMarker { path: _, instance_id: _ } => false
+      DashboardEnsureLocalOrigin { bundle: _, origin: _, source_ref: _, publish_ref: _ } => false
+      DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => false
+      DashboardVerifyProviderRuntime { executable: _, state_root: _ } => false
+      DashboardVerifyProviderAuth { executable: _, state_root: _ } => false
     })
 }
 

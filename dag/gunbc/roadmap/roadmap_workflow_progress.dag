@@ -827,7 +827,15 @@ fn review_segment(
   match verification.state {
     WorkflowSegmentComplete =>
       WorkflowSegment { kind: ReviewWorkflowSegment, state: review.reconciliation.state, detail: review.reconciliation.detail }
-    _ =>
+    WorkflowSegmentPending =>
+      WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
+    WorkflowSegmentActive =>
+      WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
+    WorkflowSegmentFailed =>
+      WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
+    WorkflowSegmentRefused =>
+      WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
+    WorkflowSegmentStopped =>
       WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
   }
 }
@@ -843,7 +851,15 @@ fn goal_audit_segment(
       let r = goal_audit_reconcile(evidence: goal_audit)
       WorkflowSegment { kind: GoalAuditWorkflowSegment, state: r.state, detail: r.detail }
     }
-    _ =>
+    WorkflowSegmentPending =>
+      WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
+    WorkflowSegmentActive =>
+      WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
+    WorkflowSegmentFailed =>
+      WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
+    WorkflowSegmentRefused =>
+      WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
+    WorkflowSegmentStopped =>
       WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
   }
 }
@@ -920,7 +936,39 @@ fn workflow_observed_fact_forest(
     segments,
     segment => match segment.state {
       WorkflowSegmentPending => []
-      _ => [
+      WorkflowSegmentActive => [
+        WorkflowFactLeaf {
+          fact: workflow_observed_fact(
+            workflow_id: workflow_id,
+            segment: segment,
+          ),
+        },
+      ]
+      WorkflowSegmentComplete => [
+        WorkflowFactLeaf {
+          fact: workflow_observed_fact(
+            workflow_id: workflow_id,
+            segment: segment,
+          ),
+        },
+      ]
+      WorkflowSegmentFailed => [
+        WorkflowFactLeaf {
+          fact: workflow_observed_fact(
+            workflow_id: workflow_id,
+            segment: segment,
+          ),
+        },
+      ]
+      WorkflowSegmentRefused => [
+        WorkflowFactLeaf {
+          fact: workflow_observed_fact(
+            workflow_id: workflow_id,
+            segment: segment,
+          ),
+        },
+      ]
+      WorkflowSegmentStopped => [
         WorkflowFactLeaf {
           fact: workflow_observed_fact(
             workflow_id: workflow_id,

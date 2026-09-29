@@ -281,7 +281,11 @@ fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
   if count(plans) > 0 {
     fold(plans, init: json_null(), f: (acc, p) => match acc {
       JsonNull => json_string(s: p.path)
-      _ => acc
+      JsonBool { value: _ } => acc
+      JsonNumber { lexeme: _ } => acc
+      JsonString { value: _ } => acc
+      JsonArray { elements: _ } => acc
+      JsonObject { members: _ } => acc
     })
   } else {
     json_null()
