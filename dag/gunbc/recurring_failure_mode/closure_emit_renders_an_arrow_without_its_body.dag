@@ -28,7 +28,7 @@ data closure_emit_renders_an_arrow_without_its_body: RecurringFailureMode = Recu
   evidence: [
     DeclarationRef { module_path: "v2.compiler.translate", decl_name: "translate_type_expression_arrow_project", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.translate", decl_name: "translate_type_expression_tree", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.compiler.emit_produced", decl_name: "produced_module_declares_bodied_members", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.emit_produced", decl_name: "emit_module_body_members", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.program_partition", decl_name: "emit_partition_with_target", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.emit.closure_emit_arrow_body_refusal", decl_name: "a_function_body_is_rendered_with_its_declaration_holds", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.emit.closure_emit_arrow_body_refusal", decl_name: "the_rendered_function_is_a_rust_item_not_a_record_field_holds", field: WholeDeclaration },

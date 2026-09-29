@@ -27,7 +27,9 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.node { Arrow, Conj, Edge, Named, Node, node_synthetic, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, Conj, Disj, Edge, Named, Node, node_synthetic, Positional, Symbol, TypeNode }
+import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.std.logic { Bool }
 import v2.std.node_query { find_arrow_body_child }
 import v2.extdeps.languages.dag { namespace_graft_node_is_module_body }
@@ -138,6 +140,74 @@ fn produced_decl_conjs_in_tree(root: Node) -> FreeMonoid<Node> {
   produced_decl_conjs_in_children(children: root.children, acc: Empty)
 }
 
+
+
+// EVERY DIRECT MEMBER OF A MODULE BODY HAS EXACTLY ONE TARGET REALIZATION OR ONE TYPED REFUSAL.
+// The class is decided once, here, from the member's own declaration edge -- never from target
+// syntax, and never by filtering: a member no class renders refuses the whole module, located at that
+// member, so `fn add` beside an unrenderable declaration is never published alone. A bodied Arrow
+// renders through the target's produced-declaration rows (emit_produced_decl); a coproduct -- a plain
+// Disj, which only a coproduct lowers to -- renders through the existing semantic-declaration emitter
+// (v2.compiler.emit_semantic_decl emit_semantic_type_decl). A plain Conj member is NOT classified: after
+// lowering a record and a where-refinement share that shape (v2.compiler.body_lowering_fold
+// body_lower_record_type_decl), and the record/refinement fact rides on NormalizedTree
+// record_declarations, which does not reach this stage; reading it back from shape would be the
+// heuristic that note forbids, so both refuse until that fact is carried here. An alias, a bodyless
+// declaration and a generic declaration refuse under their own reasons: no target realization exists
+// for them yet, and each refusal names that capability rather than a whole-module failure.
+type ModuleMemberClass
+  = ModuleMemberBodiedArrow
+  | ModuleMemberBodylessArrow
+  | ModuleMemberCoproduct { name: Symbol, coproduct: Node }
+  | ModuleMemberRecordOrRefinement
+  | ModuleMemberAlias
+  | ModuleMemberOpaque
+  | ModuleMemberGeneric
+  | ModuleMemberUnsupported
+
+fn module_member_class(edge: Edge) -> ModuleMemberClass {
+  match edge.label {
+    Positional => ModuleMemberUnsupported
+    Named { name: n } =>
+      match edge.target.kind {
+        TypeNode { connective: Arrow } =>
+          match find_arrow_body_child(root: edge.target) {
+            Accepted { value: _, diagnostics: _ } => ModuleMemberBodiedArrow
+            Rejected { diagnostics: _ } => ModuleMemberBodylessArrow
+          }
+        _ =>
+          match type_decl_view(target: edge.target) {
+            TypeAlias { binders: _, aliased: _ } => ModuleMemberAlias
+            OpaqueTypeDecl { binders: _ } => ModuleMemberOpaque
+            GenericTypeDecl { binders: _, member: _ } => ModuleMemberGeneric
+            PlainTypeDecl { member: m } =>
+              match m.kind {
+                TypeNode { connective: Disj } => ModuleMemberCoproduct { name: n, coproduct: m }
+                TypeNode { connective: Conj } => ModuleMemberRecordOrRefinement
+                _ => ModuleMemberUnsupported
+              }
+          }
+      }
+  }
+}
+
+fn emit_module_member_refused(reason: Symbol, at: Node) -> Outcome<Medium<String>> {
+  outcome_rejected(d: emit_produced_decl_diagnostic(reason: reason, node: at))
+}
+
+fn emit_module_member(edge: Edge, target: TargetModel) -> Outcome<Medium<String>> {
+  match module_member_class(edge: edge) {
+    ModuleMemberBodiedArrow => emit_produced_decl(decl: produced_decl_node_for_edge(edge: edge), target: target)
+    ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl(name: n, params: [], node: c, target: target)
+    ModuleMemberBodylessArrow => emit_module_member_refused(reason: ^emit_module_member_arrow_has_no_body, at: edge.target)
+    ModuleMemberRecordOrRefinement => emit_module_member_refused(reason: ^emit_module_member_record_or_refinement_undecided, at: edge.target)
+    ModuleMemberAlias => emit_module_member_refused(reason: ^emit_module_member_alias_not_realized, at: edge.target)
+    ModuleMemberOpaque => emit_module_member_refused(reason: ^emit_module_member_opaque_not_realized, at: edge.target)
+    ModuleMemberGeneric => emit_module_member_refused(reason: ^emit_module_member_generic_not_realized, at: edge.target)
+    ModuleMemberUnsupported => emit_module_member_refused(reason: ^emit_module_member_unsupported, at: edge.target)
+  }
+}
+
 fn produced_module_edge_is_production_marker(edge: Edge) -> Bool {
   match edge.label {
     Named { name: n } => n == ^grammar_production_identity_node_projection
@@ -145,79 +215,62 @@ fn produced_module_edge_is_production_marker(edge: Edge) -> Bool {
   }
 }
 
-fn produced_module_member_is_bodied_decl(edge: Edge) -> Bool {
-  match edge.label {
-    Named { name: _ } =>
-      match edge.target.kind {
-        TypeNode { connective: Arrow } =>
-          match find_arrow_body_child(root: edge.target) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-        _ => false
-      }
-    Positional => false
-  }
-}
-
-// One module body's standing: how many real members it declares (the production marker the graft
-// stamps on every body is not a member) and whether each of them is a bodied declaration.
-type ProducedModuleBodyStanding { members: Int, all_bodied: Bool }
-
-fn produced_module_body_standing(body: Node) -> ProducedModuleBodyStanding {
-  fold(body.children, init: ProducedModuleBodyStanding { members: 0, all_bodied: true }, f: fn(acc, e) {
-    if produced_module_edge_is_production_marker(edge: e) {
-      acc
-    } else {
-      ProducedModuleBodyStanding {
-        members: acc.members + 1,
-        all_bodied: acc.all_bodied && produced_module_member_is_bodied_decl(edge: e)
-      }
-    }
+// A module body's members in source order: its direct children, less the production marker the graft
+// stamps on every body. Never a recursive walk -- a record's fields, a coproduct's alternatives and an
+// arrow body's inner arrows are not module members.
+fn module_body_member_edges(body: Node) -> List<Edge> {
+  fold(body.children, init: [], f: fn(acc, e) {
+    if produced_module_edge_is_production_marker(edge: e) { acc } else { list_snoc_item(xs: acc, item: e) }
   })
 }
 
-// A body is RENDERABLE when it declares at least one member and every member is a bodied
-// declaration. The per-body count is load-bearing: every grafted body carries the production
-// marker, so a body-level "all members pass" over the raw children holds for `module empty` too,
-// and the fold then publishes a zero-byte emission as though it were the program.
-fn produced_module_body_is_renderable(body: Node) -> Bool {
-  let standing = produced_module_body_standing(body: body)
-  (standing.members > 0) && standing.all_bodied
-}
-
-// Counts module bodies found and module bodies the fold cannot render whole.
-type ProducedModuleCensus { bodies: Int, unrenderable: Int }
-
-fn produced_module_census(node: Node, acc: ProducedModuleCensus) -> ProducedModuleCensus {
+fn module_bodies_in_tree(node: Node, acc: List<Node>) -> List<Node> {
   if namespace_graft_node_is_module_body(node: node) {
-    ProducedModuleCensus {
-      bodies: acc.bodies + 1,
-      unrenderable: if produced_module_body_is_renderable(body: node) {
-        acc.unrenderable
-      } else {
-        acc.unrenderable + 1
-      }
-    }
+    list_snoc_item(xs: acc, item: node)
   } else {
-    fold(node.children, init: acc, f: fn(a, e) { produced_module_census(node: e.target, acc: a) })
+    fold(node.children, init: acc, f: fn(a, e) { module_bodies_in_tree(node: e.target, acc: a) })
   }
 }
 
-// A TREE IS RENDERED AS A MODULE ONLY WHEN EVERY MODULE BODY IN IT DECLARES AT LEAST ONE MEMBER AND
-// EVERY MEMBER IS A BODIED DECLARATION. The module body is the node the dag language authority marks
-// (`v2.extdeps.languages.dag` `namespace_graft_node_is_module_body`), and a member is a bodied
-// declaration exactly when `emit_produced_module` renders it through the target's declared rows
-// (DESIGN section 4: the rows read backward, never a second emitter). Both halves are walls. The
-// declaration collector skips a member that is not an arrow, so a module declaring `type Pair { .. }`
-// beside `fn add` would otherwise emit `fn add` alone and drop the type with nothing refusing; and a
-// module declaring nothing would emit zero bytes as an Accepted program -- the absence
-// `v2.compiler.self_host.candidate_generation` refuses as `rust_module_emission_decl_absent`. Neither
-// is admitted here; each reaches the type-expression translate, which refuses it typed and located
-// (`translate_module_not_a_type_expression`).
-fn produced_module_declares_bodied_members(root: Node) -> Bool {
-  let census = produced_module_census(node: root, acc: ProducedModuleCensus { bodies: 0, unrenderable: 0 })
-  (census.bodies > 0) && (census.unrenderable == 0)
+// A TREE IS RENDERED AS A MODULE WHEN IT HOLDS AT LEAST ONE MODULE BODY AND EVERY BODY DECLARES AT
+// LEAST ONE MEMBER. Whether each member RENDERS is not asked here: the member fold below is the one
+// authority for that, and it refuses on the first member it cannot realize, so there is no preflight
+// classifier beside the renderer to disagree with it. A module declaring nothing keeps the other
+// route, where the type-expression translate refuses it typed and located
+// (`translate_module_not_a_type_expression`) rather than publishing zero bytes as a program -- the
+// absence v2.compiler.self_host.candidate_generation refuses as `rust_module_emission_decl_absent`.
+fn produced_module_bodies_declare_members(root: Node) -> Bool {
+  let bodies = module_bodies_in_tree(node: root, acc: [])
+  (count(bodies) > 0)
+    && fold(bodies, init: true, f: fn(acc, b) { acc && (count(module_body_member_edges(body: b)) > 0) })
+}
+
+// Every module body's members, in order, each through its one realization; the first refusal refuses
+// the module with nothing partial published.
+fn emit_module_body_members(root: Node, target: TargetModel) -> Outcome<Medium<String>> {
+  let members = fold(module_bodies_in_tree(node: root, acc: []), init: [], f: fn(acc, b) {
+    concat(acc, module_body_member_edges(body: b))
+  })
+  bind_outcome(
+    o: fold_list(
+      xs: members,
+      empty: Accepted { value: "", diagnostics: None },
+      cons: fn(acc, edge) {
+        bind_outcome(
+          o: acc,
+          f: fn(partial) {
+            bind_outcome(
+              o: emit_module_member(edge: edge, target: target),
+              f: fn(medium) {
+                Accepted { value: concat(partial, medium.carried, emit_module_decl_separator), diagnostics: None }
+              }
+            )
+          }
+        )
+      }
+    ),
+    f: fn(joined) { target_source_medium(text: joined, target: target) }
+  )
 }
 
 fn emit_produced_decl_with_target(
