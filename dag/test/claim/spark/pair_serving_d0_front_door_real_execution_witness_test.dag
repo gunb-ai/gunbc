@@ -47,12 +47,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data d0fd_listener_fixture: String = "import http.server, os, socketserver, sys, threading, time\nstatus = int(sys.argv[1]) if sys.argv[1] != 'hang' else 0\nlifetime = float(sys.argv[2])\nclass H(http.server.BaseHTTPRequestHandler):\n    def do_GET(self):\n        if status == 0:\n            time.sleep(lifetime)\n            return\n        self.send_response(status)\n        self.send_header('Content-Length', '0')\n        self.end_headers()\n    def log_message(self, *a):\n        pass\nsocketserver.TCPServer.allow_reuse_address = True\nsrv = socketserver.TCPServer(('127.0.0.1', 0), H)\nport = srv.server_address[1]\npid = os.fork()\nif pid:\n    sys.stdout.write('%d %d\\n' % (port, pid))\n    sys.stdout.flush()\n    os._exit(0)\nos.setsid()\nnull = os.open(os.devnull, os.O_RDWR)\nos.dup2(null, 0)\nos.dup2(null, 1)\nos.dup2(null, 2)\nthreading.Thread(target=srv.serve_forever, daemon=True).start()\ntime.sleep(lifetime)\nos._exit(0)\n"
 
-// A SIGNAL SENT IS NOT A PORT VACATED. SIGTERM is delivered asynchronously, so returning after
-// os.kill left the listener able to answer the very next connect on a loaded runner (srv4-15,
-// merge-group run 36575660396). The fixture now OBSERVES the premise the vacated-port claim needs:
-// the pid is gone and the port refuses a connect, each bounded; it exits nonzero otherwise, and
-// d0fd_vacated_port then yields no port rather than an assumed one.
-data d0fd_kill_fixture: String = "import errno, os, signal, socket, sys, time\npid = int(sys.argv[1])\nport = int(sys.argv[2])\nos.kill(pid, signal.SIGTERM)\ndeadline = time.time() + 10\nwhile True:\n    try:\n        os.kill(pid, 0)\n    except ProcessLookupError:\n        break\n    if time.time() > deadline:\n        sys.exit('listener pid %d still alive after SIGTERM' % pid)\n    time.sleep(0.05)\nwhile True:\n    s = socket.socket()\n    rc = s.connect_ex(('127.0.0.1', port))\n    s.close()\n    if rc == errno.ECONNREFUSED:\n        break\n    if time.time() > deadline:\n        sys.exit('port %d not refusing after listener exit (connect_ex=%d)' % (port, rc))\n    time.sleep(0.05)\n"
+data d0fd_kill_fixture: String = "import os, signal, sys\nos.kill(int(sys.argv[1]), signal.SIGTERM)\n"
 
 type D0fdListener {
   port: Int
@@ -99,7 +94,7 @@ fn d0fd_with_listener(dir: FilePath, status: String, scenario: fn(D0fdListener) 
         Absent => false
         Present { value: l } => {
           let observed = scenario(l)
-          let killed = python.Interpreter.RunFile(workdir: dir, script_path: kill as FilePath, args: [to_string(l.pid), to_string(l.port)])
+          let killed = python.Interpreter.RunFile(workdir: dir, script_path: kill as FilePath, args: [to_string(l.pid)])
           observed && killed.success
         }
       }
@@ -158,18 +153,18 @@ test fn an_error_status_is_an_answer_and_no_listener_is_silence_by_real_executio
   })
 }
 
-// The port a killed listener vacated fails to connect (curl 7): the same transport, the same bound,
-// and the one failure arm under which absence can still be established -- on the head, below.
-test fn a_vacated_port_reads_as_no_response_by_real_execution() -> Bool {
-  d0fd_with_temp_dir(scenario: fn(dir) {
-    match d0fd_vacated_port(dir: dir) {
-      Absent => false
-      Present { value: port } =>
-        (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: port))) { HarnessConnectFailed { url: _, curl_exit: code } => code == 7  _ => false })
-          && (match observe_front_door(endpoint: d0fd_endpoint(port: port)) { FrontDoorNoStatus { receipt: _ } => true  _ => false })
-          && (match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: port)), head: fn() { HeadEndpointQuiet }) { Present { value: IncumbentDidNotAnswer { receipt: _, head: HeadEndpointQuiet } } => true  _ => false })
-    }
-  })
+// NO STATUS IS SILENCE, AND SILENCE DEFERS TO THE HEAD. A front door that could not be connected
+// reads as an incumbent that did not answer, carrying the head reading for the transaction to
+// corroborate. The reading is SUPPLIED: a claim that manufactured it by killing a listener and
+// asserting the port vacant depended on a host premise it never observed (signal delivery is
+// asynchronous) and went red on srv4-15, merge-group run 36575660396. The real failed-connect route
+// is executed, keyed to its own subject rather than to a vacated port, by
+// a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_real_execution below,
+// which asserts observe_front_door reads FrontDoorNoStatus at an address where nothing accepts.
+test fn a_front_door_with_no_status_reads_as_an_incumbent_that_did_not_answer() -> Bool {
+  let receipt = "witness: the front door could not be connected" as NonEmptyStr
+  (match front_door_as_incumbent(r: FrontDoorNoStatus { receipt: receipt }, head: fn() { HeadEndpointQuiet }) { Present { value: IncumbentDidNotAnswer { receipt: _, head: HeadEndpointQuiet } } => true  _ => false })
+    && (match front_door_as_incumbent(r: FrontDoorNoStatus { receipt: receipt }, head: fn() { HeadEndpointUnread { cause: "witness: head unread" as NonEmptyStr } }) { Present { value: IncumbentDidNotAnswer { receipt: _, head: HeadEndpointUnread { cause: _ } } } => true  _ => false })
 }
 
 // A LISTENER THAT ACCEPTS AND NEVER ANSWERS IS NOT ABSENCE. The fixture in `hang` mode accepts the
@@ -207,24 +202,19 @@ test fn a_listener_that_accepts_and_never_answers_fences_rather_than_reading_as_
   })
 }
 
-// Start a listener, kill it, and hand back its port -- vacated, since the kill's success is
-// checked before the port is returned.
+// A PORT VACATED BY CONSTRUCTION. The fixture listens on 127.0.0.1:0 and closes the socket in its
+// own process before printing the port: close() on a listening socket removes it from the socket
+// tables synchronously, so the port is vacated when it is handed back. The earlier fixture sent
+// SIGTERM to a forked listener and returned the port without observing the exit; signal delivery
+// is asynchronous, and on srv4-15 (merge-group run 36575660396) the "vacated" port still answered.
+data d0fd_vacated_fixture: String = "import socket, sys\ns = socket.socket()\ns.bind(('127.0.0.1', 0))\ns.listen()\nport = s.getsockname()[1]\ns.close()\nsys.stdout.write('%d\\n' % port)\n"
+
 fn d0fd_vacated_port(dir: FilePath) -> Int? {
-  let script = join([dir as String, "/listener.py"], "")
-  let kill = join([dir as String, "/kill.py"], "")
-  let w1 = Filesystem.Write(path: script, content: d0fd_listener_fixture)
-  let w2 = Filesystem.Write(path: kill, content: d0fd_kill_fixture)
-  if !w1.success || !w2.success { none } else {
-    let run = python.Interpreter.RunFile(workdir: dir, script_path: script as FilePath, args: ["204", "60"])
-    if !run.success { none } else {
-      match d0fd_parse_listener(out: run.stdout) {
-        Absent => none
-        Present { value: l } => {
-          let killed = python.Interpreter.RunFile(workdir: dir, script_path: kill as FilePath, args: [to_string(l.pid), to_string(l.port)])
-          if killed.success { Present { value: l.port } } else { none }
-        }
-      }
-    }
+  let script = join([dir as String, "/vacated.py"], "")
+  let w = Filesystem.Write(path: script, content: d0fd_vacated_fixture)
+  if !w.success { none } else {
+    let run = python.Interpreter.RunFile(workdir: dir, script_path: script as FilePath, args: [] as List<String>)
+    if !run.success { none } else { parse_int(s: trim(s: run.stdout)) }
   }
 }
 
@@ -334,13 +324,14 @@ fn d0fd_ranks(head_active: Bool) -> List<RankOccupancyReading> {
   }
 }
 
-fn d0fd_observe_vacated(port: Int, head_active: Bool, g: FabricGroup) -> D0Observation {
+// The failed connect is SUPPLIED as the reading observe_front_door returns for it -- asserted on the
+// real route by a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_real_execution
+// -- because the subject here is the transaction's decision over that reading, not the host's port
+// state. It used to be read off a port a SIGTERM had been sent to, a premise nothing observed.
+fn d0fd_observe_failed_connect(head_active: Bool, g: FabricGroup) -> D0Observation {
   D0Observation {
     group: g,
-    incumbent: match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: port)), head: fn() { d0fd_head_endpoint(port: port) }) {
-      Present { value: r } => r
-      Absent => IncumbentAnsweredUnread { cause: "witness: a vacated port answered" as NonEmptyStr }
-    },
+    incumbent: IncumbentDidNotAnswer { receipt: "witness: the front door could not be connected" as NonEmptyStr, head: HeadEndpointQuiet },
     ranks: d0fd_ranks(head_active: head_active),
   }
 }
@@ -350,13 +341,10 @@ test fn a_failed_connect_fences_under_an_active_head_unit_and_suspends_only_unde
     d0fd_with_temp_dir(scenario: fn(dir) {
       let store = d0fd_witness_layout(dir: dir)
       d0fd_witness_remote_ready(dir: dir)
-        && (match d0fd_vacated_port(dir: dir) {
-              Absent => false
-              Present { value: port } =>
-                match d0fd_w_admitted(store: store, successor: h) {
+        && (match d0fd_w_admitted(store: store, successor: h) {
                   Absent => false
                   Present { value: admitted } =>
-                    (match d0_transaction(store: store, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: admitted, transaction: "tx-front-door" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z", observe: fn(g) { d0fd_observe_vacated(port: port, head_active: true, g: g) }) {
+                    (match d0_transaction(store: store, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: admitted, transaction: "tx-front-door" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z", observe: fn(g) { d0fd_observe_failed_connect(head_active: true, g: g) }) {
                        D0Settled { decision: D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: _ } }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2
                        _ => false
                      })
@@ -375,12 +363,11 @@ test fn a_failed_connect_fences_under_an_active_head_unit_and_suspends_only_unde
                       && (match d0fd_w_admitted_as(store: store, successor: h, tx: "tx-front-door-2" as NonEmptyStr, esc: "esc-front-door-2" as NonEmptyStr) {
                             Absent => false
                             Present { value: second } =>
-                              match d0_transaction(store: store, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: second, transaction: "tx-front-door-2" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1002, now: "2026-09-18T00:00:02Z", observe: fn(g) { d0fd_observe_vacated(port: port, head_active: false, g: g) }) {
+                              match d0_transaction(store: store, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: second, transaction: "tx-front-door-2" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1002, now: "2026-09-18T00:00:02Z", observe: fn(g) { d0fd_observe_failed_connect(head_active: false, g: g) }) {
                                 D0Settled { decision: D0DecidedSuspend { next: _, reconciliation: DeclaredOccupantDrifted { drifted: ds } }, generation: g5, receipt_path: _, entry_state: _ } => g5 == 5 && length(ds) == 4
                                 _ => false
                               }
                           })
-                }
             })
     })
   })
@@ -400,6 +387,7 @@ test fn a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_rea
         && d0fd_with_listener(dir: dir, status: "200", scenario: fn(l) {
           (match read_endpoint_listener(transport: LocalShell, port: d0fd_port(n: l.port)) { EndpointListening { port: p, rows: rs } => (p as Int) == l.port && length(rs) >= 1  _ => false })
             && (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint_at(address: "127.0.0.2", port: l.port))) { HarnessConnectFailed { url: _, curl_exit: code } => code == 7  _ => false })
+            && (match observe_front_door(endpoint: d0fd_endpoint_at(address: "127.0.0.2", port: l.port)) { FrontDoorNoStatus { receipt: _ } => true  _ => false })
             && (match d0fd_w_admitted(store: store, successor: h) {
                   Absent => false
                   Present { value: admitted } =>
