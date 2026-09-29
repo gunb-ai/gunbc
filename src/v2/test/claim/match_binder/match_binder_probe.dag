@@ -1,7 +1,9 @@
 module v2.test.claim.match_binder.match_binder_probe
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.infer { infer }
+import v2.compiler.infer { infer, inferred_facts_resolved_type }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment }
+import v2.std.witness { Holds, Violates }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
@@ -10,8 +12,11 @@ import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Symbol }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
+import v2.std.algebra { list_map }
+import v2.std.node { ComputationNode, Conj, Disj, Arrow, Atom, Instantiation, Cardinality, Match, Named, Positional, Node, Symbol, TypeNode, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.integer { Int }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data mbp_artifact: Artifact = Artifact {
@@ -36,13 +41,21 @@ fn mbp_assemble(src: String) -> Outcome<ResolvedTree> {
   )
 }
 
-fn mbp_verdict(src: String) -> Symbol {
+fn mbp_reasons(r: NonEmptyDiagnostics) -> List<Symbol> {
+  Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(d) { d.reason }) }
+}
+
+fn mbp_last(xs: List<Symbol>) -> Symbol {
+  fold(xs, init: ^mbp_no_reason, f: fn(acc, x) { x })
+}
+
+fn mbp_verdict(src: String) -> List<Symbol> {
   match mbp_assemble(src: src) {
-    Rejected { diagnostics: r } => r.head.reason
+    Rejected { diagnostics: r } => mbp_reasons(r: r)
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
-        Accepted { value: _, diagnostics: _ } => ^infers
-        Rejected { diagnostics: r } => r.head.reason
+        Accepted { value: _, diagnostics: _ } => [^infers]
+        Rejected { diagnostics: r } => mbp_reasons(r: r)
       }
   }
 }
@@ -50,9 +63,140 @@ fn mbp_verdict(src: String) -> Symbol {
 data mbp_decls: String = "module p\n\ntype Art {\n  tree: Int\n}\n\ntype Res<T>\n  = Ok { value: T, note: Int }\n  | Bad { note: Int }\n\n"
 
 fn probe_generic_binder() -> Symbol {
-  mbp_verdict(src: mbp_decls + "fn f(h: Res<Art>) -> Int {\n  match h {\n    Ok { value: artifact, note: n } => artifact.tree\n    Bad { note: n } => n\n  }\n}\n")
+  mbp_last(xs: mbp_verdict(src: mbp_decls + "fn f(h: Res<Art>) -> Int {\n  match h {\n    Ok { value: artifact, note: n } => artifact.tree\n    Bad { note: n } => n\n  }\n}\n")
+  )
 }
 
 fn probe_generic_literal() -> Symbol {
-  mbp_verdict(src: mbp_decls + "fn f(h: Res<Art>) -> Int {\n  match h {\n    Ok { value: artifact, note: n } => 7\n    Bad { note: n } => 8\n  }\n}\n")
+  mbp_last(xs: mbp_verdict(src: mbp_decls + "fn f(h: Res<Art>) -> Int {\n  match h {\n    Ok { value: artifact, note: n } => 7\n    Bad { note: n } => 8\n  }\n}\n")
+  )
+}
+
+fn mbp_shape(n: Node, depth: Int) -> String {
+  let head = match n.kind {
+    TypeNode { connective: Atom { identity: s } } => "A:" + symbol_lexeme(sym: s)
+    TypeNode { connective: Conj } => "Conj"
+    TypeNode { connective: Disj } => "Disj"
+    TypeNode { connective: Arrow } => "Arrow"
+    TypeNode { connective: Instantiation } => "Inst"
+    TypeNode { connective: Cardinality } => "Card"
+    ComputationNode { behavior: Match } => "MATCH"
+    ComputationNode { behavior: _ } => "Comp"
+  }
+  if depth == 0 {
+    head
+  } else {
+    head + "(" + fold(n.children, init: "", f: fn(acc, e) {
+      acc + (match e.label {
+        Named { name: s } => symbol_lexeme(sym: s) + "="
+        Positional => ""
+      }) + mbp_shape(n: e.target, depth: depth - 1) + " "
+    }) + ")"
+  }
+}
+
+fn mbp_find_match(n: Node) -> Optional<Node> {
+  match n.kind {
+    ComputationNode { behavior: Match } => Present { value: n }
+    _ => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => mbp_find_match(n: e.target)
+      }
+    })
+  }
+}
+
+fn probe_shape() -> Symbol {
+  match mbp_assemble(src: mbp_decls + "fn f(h: Res<Art>) -> Int {\n  match h {\n    Ok { value: artifact, note: n } => artifact.tree\n    Bad { note: n } => n\n  }\n}\n") {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: resolved, diagnostics: _ } =>
+      match mbp_find_match(n: resolved.root) {
+        Absent => ^mbp_no_match
+        Present { value: m } => symbol_intern_lexeme(lexeme: mbp_shape(n: m, depth: 6))
+      }
+  }
+}
+
+fn mbp_find_arrow(n: Node) -> Optional<Node> {
+  match n.kind {
+    TypeNode { connective: Arrow } => Present { value: n }
+    _ => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => mbp_find_arrow(n: e.target)
+      }
+    })
+  }
+}
+
+fn probe_domain_shape() -> Symbol {
+  match mbp_assemble(src: mbp_decls + "fn f(h: Res<Art>) -> Int {\n  7\n}\n") {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: resolved, diagnostics: _ } =>
+      match mbp_find_arrow(n: resolved.root) {
+        Absent => ^mbp_no_arrow
+        Present { value: a } => symbol_intern_lexeme(lexeme: mbp_shape(n: a, depth: 3))
+      }
+  }
+}
+
+fn mbp_find_atom(n: Node, id: Symbol) -> Optional<Node> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: s } } => if s == id { optional_present(value: n) } else { optional_absent() }
+    _ => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => mbp_find_atom(n: e.target, id: id)
+      }
+    })
+  }
+}
+
+fn mbp_type_name(t: Node) -> Symbol {
+  match declaration_reference_path_optional(node: t) {
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Present { value: s } => s
+        Absent => ^mbp_empty_path
+      }
+    Absent =>
+      match t.kind {
+        TypeNode { connective: Atom { identity: s } } => s
+        _ => ^mbp_type_not_named
+      }
+  }
+}
+
+fn mbp_fact_of(src: String, pick: fn(Node) -> Optional<Node>) -> Symbol {
+  match mbp_assemble(src: src) {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => mbp_last(xs: mbp_reasons(r: r))
+        Accepted { value: inferred, diagnostics: _ } =>
+          match pick(resolved.root) {
+            Absent => ^mbp_subject_absent
+            Present { value: subject } =>
+              match inferred.facts.lookup(subject) {
+                Absent => ^mbp_no_facts
+                Present { value: facts } =>
+                  match inferred_facts_resolved_type(facts: facts) {
+                    Violates { diagnostic: _ } => ^mbp_underived
+                    Holds { value: t } => mbp_type_name(t: t)
+                  }
+              }
+          }
+      }
+  }
+}
+
+data mbp_binder_src: String = mbp_decls + "fn f(h: Res<Art>) -> Int {\n  match h {\n    Ok { value: artifact, note: n } => artifact.tree\n    Bad { note: n } => n\n  }\n}\n"
+
+fn probe_binder_type() -> Symbol {
+  mbp_fact_of(src: mbp_binder_src, pick: fn(root) { mbp_find_atom(n: root, id: ^artifact) })
+}
+
+fn probe_match_type() -> Symbol {
+  mbp_fact_of(src: mbp_binder_src, pick: fn(root) { mbp_find_match(n: root) })
 }
