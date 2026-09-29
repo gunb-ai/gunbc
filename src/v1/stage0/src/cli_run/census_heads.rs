@@ -296,6 +296,7 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         match_pattern,
         module_item_kind,
         declaration_marker,
+        declaration,
         expr_data,
     } = &**n;
     let refuse = |what: &str| {
@@ -357,6 +358,10 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
     };
     if !payload_free {
         return refuse("semantic expression data");
+    }
+    // Declaration identity is written by resolve, never by the parser.
+    if declaration.is_some() {
+        return refuse("a resolved declaration identity");
     }
     let ident = match ident {
         Some(k) => Some(*relabel.get(*k as usize).ok_or_else(|| {
@@ -430,6 +435,7 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         match_pattern,
         module_item_kind: module_item_kind.clone(),
         declaration_marker: declaration_marker.clone(),
+        declaration: None,
         expr_data: expr_data.clone(),
     }))
 }

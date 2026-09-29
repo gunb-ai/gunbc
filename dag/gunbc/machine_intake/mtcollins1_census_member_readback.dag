@@ -6,7 +6,7 @@ import std.algebra { trim }
 import v2.std.algebra { filter }
 import std.content_hash { sha256_hex_digest }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.xorriso { xorriso_extract_command }
+import extdeps.tools.xorriso { xorriso_extract_command, xorriso_list_long_command }
 import extdeps.tools.gnu_coreutils { mktemp_directory_command, rm_recursive_force_one_file_system_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
@@ -17,13 +17,14 @@ import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
 import gunbc.host_command_binding {
-  CommandHost, FleetSshCommandHost, HostLeg, HostTransportKind, FleetSshTransport, host_run,
+  CommandHost, FleetSshCommandHost, HostLeg, LegNotDispatched, LegAnswered, HostTransportKind, FleetSshTransport, host_run,
   ScratchOutcome, ScratchAcquired, ScratchNotAcquired, scratch_acquisition_of, scratch_removal_of, scratch_removed, render_scratch_outcome,
   CreationNotRequested,
 }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stock_path }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_on_iso }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_host_target }
 import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_medium_served_path, RemoteAnswer, remote_answer_of }
 
@@ -367,27 +368,57 @@ fn census_member_readback_target() -> SshTarget {
   mtcollins1_boot_export_host_target()
 }
 
-fn remote(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> RemoteAnswer {
-  remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command)))
-}
-
-fn read_member_remote(target: SshTarget, context: FleetSshExecutionContext, dir: NonEmptyStr, iso_path: NonEmptyStr, side: IsoSide, member: CensusIsoMember) -> MemberReading {
-  let scratch = member_scratch_path(dir: dir, side: side, member: member)
-  let extract = remote(target: target, context: context, command: xorriso_extract_command(iso_path: iso_path, iso_internal_path: census_iso_member_path(member: member), destination: scratch))
-  match member_reading_after_extract(extract: extract) {
-    Present { value: refused } => refused
-    Absent => member_reading_of_measure(measure: remote(target: target, context: context, command: sha256sum_file_command(path: scratch as String)))
+// ONE LEG ON ANY HOST, AS THE ANSWER THE READINGS JOIN OVER. A leg that was never dispatched carries no
+// exit code of its own; it is reported with -1 and its reason, so it reads as unread and never as a
+// remote status.
+fn answer_on(host: CommandHost, command: ArgvCommand) -> RemoteAnswer {
+  match host_run(host: host, command: command) {
+    LegNotDispatched { reason: r } => RemoteAnswer { exit_code: -1, stdout: "", stderr: concat("not dispatched: ", r) }
+    LegAnswered { exit_code: c, stdout: o, stderr: e } => RemoteAnswer { exit_code: c, stdout: o, stderr: e }
   }
 }
 
-fn census_member_readings_in(target: SshTarget, context: FleetSshExecutionContext, dir: NonEmptyStr, stock_path: NonEmptyStr, census_path: NonEmptyStr) -> CensusMemberReadings {
+fn remote(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> RemoteAnswer {
+  answer_on(host: FleetSshCommandHost { target: target, context: context }, command: command)
+}
+
+fn read_member_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr, side: IsoSide, member: CensusIsoMember) -> MemberReading {
+  let scratch = member_scratch_path(dir: dir, side: side, member: member)
+  let extract = answer_on(host: host, command: xorriso_extract_command(iso_path: iso_path, iso_internal_path: census_iso_member_path(member: member), destination: scratch))
+  match member_reading_after_extract(extract: extract) {
+    Present { value: refused } => refused
+    Absent => member_reading_of_measure(measure: answer_on(host: host, command: sha256sum_file_command(path: scratch as String)))
+  }
+}
+
+// THE SIX READINGS OF ONE COMPARISON, on any host, into a directory the caller owns. The member readback
+// runs it on srv2 against the served images; the census publish's regression runs it against the image
+// it just rebuilt in its own scratch directory.
+fn census_member_readings_on(host: CommandHost, dir: NonEmptyStr, stock_path: NonEmptyStr, census_path: NonEmptyStr) -> CensusMemberReadings {
   CensusMemberReadings {
-    stock_grub: read_member_remote(target: target, context: context, dir: dir, iso_path: stock_path, side: StockSide, member: GrubConfig),
-    census_grub: read_member_remote(target: target, context: context, dir: dir, iso_path: census_path, side: CensusSide, member: GrubConfig),
-    stock_kernel: read_member_remote(target: target, context: context, dir: dir, iso_path: stock_path, side: StockSide, member: CasperKernel),
-    census_kernel: read_member_remote(target: target, context: context, dir: dir, iso_path: census_path, side: CensusSide, member: CasperKernel),
-    stock_initrd: read_member_remote(target: target, context: context, dir: dir, iso_path: stock_path, side: StockSide, member: CasperInitrd),
-    census_initrd: read_member_remote(target: target, context: context, dir: dir, iso_path: census_path, side: CensusSide, member: CasperInitrd),
+    stock_grub: read_member_on(host: host, dir: dir, iso_path: stock_path, side: StockSide, member: GrubConfig),
+    census_grub: read_member_on(host: host, dir: dir, iso_path: census_path, side: CensusSide, member: GrubConfig),
+    stock_kernel: read_member_on(host: host, dir: dir, iso_path: stock_path, side: StockSide, member: CasperKernel),
+    census_kernel: read_member_on(host: host, dir: dir, iso_path: census_path, side: CensusSide, member: CasperKernel),
+    stock_initrd: read_member_on(host: host, dir: dir, iso_path: stock_path, side: StockSide, member: CasperInitrd),
+    census_initrd: read_member_on(host: host, dir: dir, iso_path: census_path, side: CensusSide, member: CasperInitrd),
+  }
+}
+
+// THE CENSUS IMAGE'S MAPPED MEMBERS WITH THEIR ROCK RIDGE OWNER, GROUP AND MODE, read-only, as xorriso
+// lists them. Retained verbatim in the receipt: it is the reading that establishes which build user an
+// image's derivation baked in (gunbc.recurring_failure_mode
+// a_derivation_key_that_does_not_pin_bytes_across_build_hosts).
+data census_mapped_member_paths: List<NonEmptyStr> = [install_media_remaster_grub_cfg_on_iso]
+
+data census_mapped_seed_path: NonEmptyStr = concat("/", mtcollins1_census_nocloud_dir as String) as NonEmptyStr
+
+fn census_mapped_attributes_on(host: CommandHost, iso_path: NonEmptyStr) -> String {
+  let listed = answer_on(host: host, command: xorriso_list_long_command(iso_path: iso_path, first_path: census_mapped_seed_path, more_paths: census_mapped_member_paths))
+  if listed.exit_code != 0 {
+    concat("UNREAD: xorriso -lsl exit=", to_string(listed.exit_code), " ", trim(s: listed.stderr))
+  } else {
+    trim(s: listed.stdout)
   }
 }
 
@@ -415,7 +446,7 @@ fn census_member_readback(medium: MtCollins1BootMedium) -> CensusMemberReadbackA
             kind: FleetSshTransport,
             gate: gate,
             creation: remote_leg(target: target, context: context, command: mktemp_directory_command(template: census_member_workspace_template)),
-            readings: dir => census_member_readings_in(target: target, context: context, dir: dir, stock_path: stock_path, census_path: census_path),
+            readings: dir => census_member_readings_on(host: FleetSshCommandHost { target: target, context: context }, dir: dir, stock_path: stock_path, census_path: census_path),
             cleanup: dir => remote_leg(target: target, context: context, command: rm_recursive_force_one_file_system_command(path: dir as String)),
           )
       }
@@ -428,7 +459,8 @@ fn census_member_readback(medium: MtCollins1BootMedium) -> CensusMemberReadbackA
 // verdict. The run exits nonzero unless the chain is identical AND the workspace was removed.
 fn mtcollins1_census_member_readback_wet() -> ProcessExit {
   let attempt = census_member_readback(medium: mtcollins1_boot_medium)
-  let rendered = render_census_member_attempt(attempt: attempt)
+  let attributes = census_member_mapped_attributes(medium: mtcollins1_boot_medium)
+  let rendered = concat(render_census_member_attempt(attempt: attempt), "census_mapped_attributes=\n", attributes, "\n")
   let written = Filesystem.Write(path: census_member_readback_receipt_path, content: rendered)
   if written.success == false {
     exit_failure(reason: concat("mtcollins1 census member readback: the receipt could not be written: ", written.error, "\n", rendered))
@@ -436,5 +468,16 @@ fn mtcollins1_census_member_readback_wet() -> ProcessExit {
     ExitSuccess
   } else {
     exit_failure(reason: concat("mtcollins1 census member readback did not hold:\n", rendered))
+  }
+}
+
+// The pinned census ISO's mapped members as the served image records them. A REPORT beside the
+// verdict, not a gate: which user a build baked in is evidence about the build, not about whether the
+// boot chain matches stock.
+fn census_member_mapped_attributes(medium: MtCollins1BootMedium) -> String {
+  match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
+    FleetSshContextRefused { cause: c } => concat("UNREAD: no fleet SSH context: ", c)
+    FleetSshContextReady { context: context, receipt: _ } =>
+      census_mapped_attributes_on(host: FleetSshCommandHost { target: census_member_readback_target(), context: context }, iso_path: mtcollins1_census_medium_served_path(medium: medium))
   }
 }

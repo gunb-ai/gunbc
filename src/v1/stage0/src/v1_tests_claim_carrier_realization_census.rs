@@ -18,6 +18,7 @@ pub use crate::std_coercion::{
     TypeReferenceIdentity,
 };
 pub use crate::std_decl_ref::declaration_ref_display_key;
+pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, Map};
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -106,6 +107,7 @@ pub struct TypedCarrierRow {
     pub legacy_base: String,
     pub authority_base: String,
     pub outcome: CensusOutcome,
+    pub recorded_declaration: Option<Rc<DeclarationRef>>,
 }
 
 pub fn identity_observation(
@@ -277,6 +279,7 @@ pub fn typed_decision_row(
             decl_identity: decl_identity.clone(),
             legacy_base: legacy_base_label(n.clone(), si.clone()),
             authority_base: authority_base_of(name.clone(), query_provenance.clone()),
+            recorded_declaration: n.declaration.clone(),
             outcome: outcome_of(
                 claims_text.clone(),
                 authority_realizes(name.clone(), query_provenance.clone()),
@@ -658,6 +661,16 @@ pub fn decl_identity_label(r: Rc<TypeReferenceDeclarationReading>) -> String {
     }
 }
 
+pub fn recorded_declaration_label(d: Option<Rc<DeclarationRef>>) -> String {
+    match d.clone() {
+        Some(r) => v1_rt::concat(
+            "Declaration:".to_string(),
+            crate::std_decl_ref::declaration_ref_display_key(r.clone()),
+        ),
+        std::option::Option::None => "none".to_string(),
+    }
+}
+
 pub fn outcome_label(o: CensusOutcome) -> String {
     match o.clone() {
         CensusOutcome::Agrees => "Agrees".to_string(),
@@ -675,7 +688,7 @@ pub fn tsv_escape(v: String) -> String {
 }
 
 pub fn typed_census_header() -> String {
-    "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tdecl_identity\tlegacy_base\tauthority_base\toutcome".to_string()
+    "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tdecl_identity\tlegacy_base\tauthority_base\toutcome\trecorded_declaration".to_string()
 }
 
 pub fn typed_row_tsv(r: Rc<TypedCarrierRow>) -> String {
@@ -692,6 +705,7 @@ pub fn typed_row_tsv(r: Rc<TypedCarrierRow>) -> String {
         tsv_escape(r.legacy_base.clone()),
         tsv_escape(r.authority_base.clone()),
         outcome_label(r.outcome.clone()),
+        recorded_declaration_label(r.recorded_declaration.clone()),
     ])
     .join(&"\t".to_string())
 }
