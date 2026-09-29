@@ -96,7 +96,10 @@ fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: Symbol, loc
 fn first_located_file(ds: NonEmptyDiagnostics) -> String {
   let head_file = match ds.head.at {
     Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
-    _ => ""
+    NodeLocus { anchor: _ } => ""
+    SourcePortLocus { anchor: _, file: _, extent: _ } => ""
+    InvariantPortLocus { anchor: _, invariant: _ } => ""
+    DeclarationLocus { declaration: _ } => ""
   }
   if head_file != "" {
     head_file
@@ -107,7 +110,10 @@ fn first_located_file(ds: NonEmptyDiagnostics) -> String {
       } else {
         match d.at {
           Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
-          _ => ""
+          NodeLocus { anchor: _ } => ""
+          SourcePortLocus { anchor: _, file: _, extent: _ } => ""
+          InvariantPortLocus { anchor: _, invariant: _ } => ""
+          DeclarationLocus { declaration: _ } => ""
         }
       }
     })
@@ -117,7 +123,14 @@ fn first_located_file(ds: NonEmptyDiagnostics) -> String {
 fn first_arrow_in(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
-    _ =>
+    TypeNode { connective: _ } =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => first_arrow_in(root: e.target)
+        }
+      })
+    ComputationNode { behavior: _ } =>
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
@@ -139,7 +152,7 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
             )])
           Absent => inner
         }
-      _ => inner
+      Positional => inner
     }
   })
 }
@@ -244,7 +257,7 @@ fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> 
             Absent => inner
           }
         } else { inner }
-      _ => inner
+      Positional => inner
     }
   })
   fold(root.children, init: here, f: fn(inner, e) {

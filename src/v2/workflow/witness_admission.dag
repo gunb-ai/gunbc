@@ -202,7 +202,15 @@ fn witness_consumer_cadence_for_row(
       } else {
         NoConsumer
       }
-    _ => explicit
+    DiscoverySelection => explicit
+    FalsifierSelfHostWet => explicit
+    FalsifierRehomedBinWet => explicit
+    FalsifierSubstrateLongLane => explicit
+    BinWitnessWet => explicit
+    LocalRepoWetLane => explicit
+    QuarantineProbeExpectRed => explicit
+    OfflineLocalRecipe => explicit
+    FixtureExplicitRoster => explicit
   }
 }
 
