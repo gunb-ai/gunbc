@@ -16,6 +16,7 @@ import v2.workflow.floor_unimported_bare_provider_debt_roster {
   ImportsFixed,
   FileDeleted,
   RelocatedOutOfSourceRoots,
+  NotAReference,
   unimported_bare_provider_identity,
   unimported_bare_provider_row_view,
 }
@@ -33,6 +34,9 @@ data a_file_deleted: UnimportedBareProviderRowView = unimported_bare_provider_ro
 )
 data a_relocated: UnimportedBareProviderRowView = unimported_bare_provider_row_view(
   row: UnimportedBareProviderDisposition { file: "dag/a.dag", name: "f", standing: Retired { cause: RelocatedOutOfSourceRoots { to: "fixtures/a.dag" } } },
+)
+data a_not_a_reference: UnimportedBareProviderRowView = unimported_bare_provider_row_view(
+  row: UnimportedBareProviderDisposition { file: "dag/a.dag", name: "f", standing: Retired { cause: NotAReference } },
 )
 data b_active: UnimportedBareProviderRowView = unimported_bare_provider_row_view(
   row: UnimportedBareProviderDisposition { file: "dag/b.dag", name: "g", standing: ActiveDebt },
@@ -232,4 +236,41 @@ test fn standing_admits_a_relocation_whose_source_path_is_gone() -> Bool {
     route_carried: [],
   )) == 0
     && a_relocated.label == "Retired RelocatedOutOfSourceRoots fixtures/a.dag"
+}
+
+// NotAReference is a retirement like the others: active debt may move to it, and it is held to its
+// claim on every run -- the file exists and still does not carry the pair. Control, then the two reds.
+test fn not_a_reference_retires_active_debt_and_is_held_to_its_claim() -> Bool {
+  length(unimported_bare_provider_roster_edit(base: [a_active], head: [a_not_a_reference])) == 0
+    && length(unimported_bare_provider_roster_standing(
+      head: [a_not_a_reference],
+      present_files: ["dag/a.dag"],
+      checked_files: ["dag/a.dag"],
+      carried: [],
+      route_carried: [],
+    )) == 0
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_standing(
+        head: [a_not_a_reference],
+        present_files: ["dag/a.dag"],
+        checked_files: ["dag/a.dag"],
+        carried: ["dag/a.dag#f"],
+        route_carried: [],
+      ),
+      expected: "RetiredNotAReferenceButCarried dag/a.dag#f",
+    )
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_standing(
+        head: [a_not_a_reference],
+        present_files: [],
+        checked_files: [],
+        carried: [],
+        route_carried: [],
+      ),
+      expected: "RetiredNotAReferenceButFileAbsent dag/a.dag#f -- the cause is FileDeleted",
+    )
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_edit(base: [a_not_a_reference], head: [a_imports_fixed]),
+      expected: "RosterRetirementChanged dag/a.dag#f (Retired NotAReference -> Retired ImportsFixed)",
+    )
 }

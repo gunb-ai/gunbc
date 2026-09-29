@@ -15,7 +15,10 @@ import gunbc.host_command_binding {
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir, mtcollins1_boot_export_host_target }
-import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import gunbc.machine_intake_mtcollins1_census_member_readback {
+  CensusMemberReadback, census_member_readings_on, census_member_verdict, census_member_readback_holds, render_census_member_readback,
+}
 import gunbc.machine_intake_mtcollins1_census_image {
   mtcollins1_census_image, mtcollins1_census_pinned_image, Mtcollins1CensusImage,
   Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused, mtcollins1_census_image_stock_path,
@@ -32,37 +35,57 @@ import gunbc.seeded_install_media_publish {
 // (gunbc.seeded_install_media_publish), realized on srv2 through gunbc.host_command_binding
 // FleetSshCommandHost; the srv2-runner realization this replaces had no other consumer and was retired.
 //
-// ONE PRECONDITION BEFORE ANY PUBLISH: THE SRV2-SIDE REGRESSION. The derivation the boot medium row
-// pins (mtcollins1_census_pinned_image, build key 8d357a525f078cb4) is rebuilt on srv2 into a scratch
-// directory -- nothing is published -- and must reproduce the pinned digest. Built elsewhere the same
-// key gives other bytes (gunbc.recurring_failure_mode
-// a_derivation_key_that_does_not_pin_bytes_across_build_hosts), so this is the only place the new
-// fold can be shown to build what the old one built. A divergence stops the run.
+// ONE PRECONDITION BEFORE ANY PUBLISH: THE srv2-SIDE REGRESSION. The pinned-input derivation
+// (mtcollins1_census_pinned_image) is rebuilt on srv2 into a scratch directory -- nothing is published --
+// and must (a) equal the hermetic receipt built elsewhere as another user, and (b) carry the stock
+// medium's kernel and initrd. The first dispatch of this route (run 36519408507) compared against the
+// pre-hermetic pinned image instead and diverged, because that image baked in its build user; the
+// builder now pins every mapped member's owner, group and mode (gunbc.recurring_failure_mode
+// a_derivation_key_that_does_not_pin_bytes_across_build_hosts). A divergence stops the run.
 
 data census_regression_prefix: String = "/var/tmp/gunbc-mtcollins1-census-regress."
 
 data census_regression_template: NonEmptyStr = "/var/tmp/gunbc-mtcollins1-census-regress.XXXXXXXX"
 
+// THE HERMETIC RECEIPT THE srv2 REBUILD MUST REPRODUCE. The pinned-input derivation
+// (mtcollins1_census_pinned_image, build key bf916c060d072e72 under builder revision
+// xorriso-replay-pinned-dates-and-attributes/2) built through this fold on LocalCommandHost in a session
+// container as uid 1000, 2026-09-29 (session zesty-newt-134): output sha256
+// eb23f1746e33cab008317a604d6f27527579d44db95923cbcf351290ecb90a0d, every mapped member recorded
+// 0:0. The same inputs replayed by hand with the same pins as uid 1000 AND under fakeroot as uid 0 gave
+// that same digest, so the build user no longer reaches the bytes. The srv2 rebuild runs as another
+// user on another host; equality with this receipt is the cross-host hermeticity the key now claims.
+// The earlier pinned image 30ca88d4... is no target: it baked in its build user (gunbc-fleet) and no
+// hermetic recipe reproduces that.
+data mtcollins1_census_hermetic_pinned_rebuild_digest: NonEmptyStr = "eb23f1746e33cab008317a604d6f27527579d44db95923cbcf351290ecb90a0d"
+
+// TWO CHECKS, both on srv2, both before any publish: (a) the pinned-input rebuild equals the hermetic
+// receipt; (b) the rebuilt image's kernel and initrd equal the stock medium's, read out of the rebuilt
+// image in the same scratch directory by the member readback's own comparison
+// (gunbc.machine_intake_mtcollins1_census_member_readback census_member_readings_on / census_member_verdict),
+// with grub.cfg as that comparison's in-run control.
 type CensusRegression
-  = RegressionReproduced { build_key: NonEmptyStr, digest: NonEmptyStr, build_work: ScratchOutcome, scratch: ScratchOutcome }
+  = RegressionReproduced { build_key: NonEmptyStr, digest: NonEmptyStr, chain: CensusMemberReadback, build_work: ScratchOutcome, scratch: ScratchOutcome }
   | RegressionDiverged { build_key: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr, build_work: ScratchOutcome, scratch: ScratchOutcome }
   | RegressionUnbuilt { reason: String, build_work: ScratchOutcome, scratch: ScratchOutcome }
   | RegressionNotApplicable { reason: String }
 
 fn census_regression_holds(r: CensusRegression) -> Bool {
   match r {
-    RegressionReproduced { build_key: _, digest: _, build_work: w, scratch: s } => scratch_removed(o: w) && scratch_removed(o: s)
+    RegressionReproduced { build_key: _, digest: _, chain: c, build_work: w, scratch: s } =>
+      census_member_readback_holds(readback: c) && scratch_removed(o: w) && scratch_removed(o: s)
     _ => false
   }
 }
 
-// The judgment over one staged rebuild of the pinned derivation, and the two directories' ends.
-fn census_regression_of(build_key: NonEmptyStr, expected: NonEmptyStr, staged: SeededInstallMediaStageOutcome, scratch: ScratchOutcome) -> CensusRegression {
+// The judgment over one staged rebuild, the boot-chain comparison read from it (consulted only when the
+// digest matched), and the two directories' ends.
+fn census_regression_of(build_key: NonEmptyStr, expected: NonEmptyStr, staged: SeededInstallMediaStageOutcome, chain: fn(NonEmptyStr) -> CensusMemberReadback, scratch: ScratchOutcome) -> CensusRegression {
   match staged {
     SeededInstallMediaStageRefused { reason: r, work: w } => RegressionUnbuilt { reason: r as String, build_work: w, scratch: scratch }
-    SeededInstallMediaStaged { staging_path: _, output_digest: d, work: w } =>
+    SeededInstallMediaStaged { staging_path: path, output_digest: d, work: w } =>
       if (d as String) == (expected as String) {
-        RegressionReproduced { build_key: build_key, digest: d, build_work: w, scratch: scratch }
+        RegressionReproduced { build_key: build_key, digest: d, chain: chain(path), build_work: w, scratch: scratch }
       } else {
         RegressionDiverged { build_key: build_key, expected: expected, observed: d, build_work: w, scratch: scratch }
       }
@@ -72,47 +95,55 @@ fn census_regression_of(build_key: NonEmptyStr, expected: NonEmptyStr, staged: S
 fn census_srv2_regression(host: CommandHost, pinned: UbuntuSeededInstallMediaBuildInput, expected: NonEmptyStr) -> CensusRegression {
   let kind = host_transport_kind(host: host)
   let key = seeded_install_media_build_key(input: pinned)
+  let stock_path = mtcollins1_census_image_stock_path()
   match scratch_acquisition_of(kind: kind, prefix: census_regression_prefix, leg: host_run(host: host, command: mktemp_directory_command(template: census_regression_template))) {
     ScratchNotAcquired { outcome: o } => RegressionUnbuilt { reason: "no scratch directory for the rebuild", build_work: CreationNotRequested, scratch: o }
     ScratchAcquired { dir: dir } => {
       let staged = seeded_install_media_stage(
         host: host,
         input: pinned,
-        stock_path: mtcollins1_census_image_stock_path(),
+        stock_path: stock_path,
         staging_path: concat(dir as String, "/pinned-rebuild.iso") as NonEmptyStr,
       )
-      census_regression_of(
+      let judged = census_regression_of(
         build_key: key,
         expected: expected,
         staged: staged,
-        scratch: scratch_removal_of(kind: kind, dir: dir, leg: host_run(host: host, command: rm_recursive_force_one_file_system_command(path: dir as String))),
+        chain: rebuilt => census_member_verdict(
+          stock_iso: noble_numbat_2404_3_live_server_arm64.content_sha256,
+          census_iso: expected,
+          readings: census_member_readings_on(host: host, dir: dir, stock_path: stock_path, census_path: rebuilt),
+        ),
+        scratch: CreationNotRequested,
       )
+      census_regression_with_scratch(r: judged, scratch: scratch_removal_of(kind: kind, dir: dir, leg: host_run(host: host, command: rm_recursive_force_one_file_system_command(path: dir as String))))
     }
   }
 }
 
-fn census_pinned_expectation(medium: MtCollins1BootMedium) -> NonEmptyStr? {
-  match medium {
-    MtCollins1StockInstallerMedium => none
-    MtCollins1CensusMedium { output_digest: d } => Present { value: d }
+// The scratch directory is removed after the comparison has read out of it; its end replaces the
+// placeholder the judgment carried.
+fn census_regression_with_scratch(r: CensusRegression, scratch: ScratchOutcome) -> CensusRegression {
+  match r {
+    RegressionReproduced { build_key: k, digest: d, chain: c, build_work: w, scratch: _ } => RegressionReproduced { build_key: k, digest: d, chain: c, build_work: w, scratch: scratch }
+    RegressionDiverged { build_key: k, expected: e, observed: o, build_work: w, scratch: _ } => RegressionDiverged { build_key: k, expected: e, observed: o, build_work: w, scratch: scratch }
+    RegressionUnbuilt { reason: why, build_work: w, scratch: _ } => RegressionUnbuilt { reason: why, build_work: w, scratch: scratch }
+    RegressionNotApplicable { reason: why } => RegressionNotApplicable { reason: why }
   }
 }
 
-fn census_regression_on(host: CommandHost, medium: MtCollins1BootMedium) -> CensusRegression {
-  match census_pinned_expectation(medium: medium) {
-    Absent => RegressionNotApplicable { reason: "the boot medium row is not the census image, so there is no pinned census digest to reproduce" }
-    Present { value: expected } =>
-      match mtcollins1_census_pinned_image {
-        Mtcollins1CensusImageRefused { reason: r } => RegressionNotApplicable { reason: concat("the pinned census derivation does not render: ", r) }
-        Mtcollins1CensusImageDerived { input: pinned } => census_srv2_regression(host: host, pinned: pinned, expected: expected)
-      }
+fn census_regression_on(host: CommandHost) -> CensusRegression {
+  match mtcollins1_census_pinned_image {
+    Mtcollins1CensusImageRefused { reason: r } => RegressionNotApplicable { reason: concat("the pinned census derivation does not render: ", r) }
+    Mtcollins1CensusImageDerived { input: pinned } => census_srv2_regression(host: host, pinned: pinned, expected: mtcollins1_census_hermetic_pinned_rebuild_digest)
   }
 }
 
 fn render_census_regression(r: CensusRegression) -> String {
   match r {
-    RegressionReproduced { build_key: k, digest: d, build_work: w, scratch: s } =>
+    RegressionReproduced { build_key: k, digest: d, chain: c, build_work: w, scratch: s } =>
       concat("regression=reproduced\nregression_build_key=", k as String, "\nregression_digest=", d as String, "\n",
+        "regression_boot_chain:\n", render_census_member_readback(readback: c),
         render_scratch_outcome(label: "regression_build_work", prefix: "", o: w), render_scratch_outcome(label: "regression_scratch", prefix: census_regression_prefix, o: s))
     RegressionDiverged { build_key: k, expected: e, observed: o, build_work: w, scratch: s } =>
       concat("regression=DIVERGED\nregression_build_key=", k as String, "\nregression_expected=", e as String, "\nregression_observed=", o as String, "\n",
@@ -219,7 +250,7 @@ fn mtcollins1_census_image_publish_wet() -> ProcessExit {
       CensusPublishStoppedAtRegression { regression: RegressionNotApplicable { reason: concat("no fleet SSH context: ", c) } }
     FleetSshContextReady { context: context, receipt: _ } => {
       let host = FleetSshCommandHost { target: mtcollins1_boot_export_host_target(), context: context }
-      census_publish_attempt_of(regression: census_regression_on(host: host, medium: mtcollins1_boot_medium), publish: _ => census_image_publication_on(host: host))
+      census_publish_attempt_of(regression: census_regression_on(host: host), publish: _ => census_image_publication_on(host: host))
     }
   }
   let rendered = render_census_publish_attempt(a: attempt)
