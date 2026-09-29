@@ -934,32 +934,6 @@ fn python_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn python_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: [
-      python_named_edge(name: ^serialize_source_field_source_text, target: python_inhabitant_atom(id: ^python_source_literal)),
-      python_named_edge(name: ^serialize_source_field_source_grammar, target: python_inhabitant_atom(id: ^python_production_fn_add))
-    ],
-    right: [
-      python_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: python_concrete_tokens(),
-          token_to_node: python_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn python_serialize_source_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: python_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
 fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   fold_list(
     xs: python_concrete_tokens(),
@@ -1189,8 +1163,7 @@ fn python_target_model_node() -> Node {
     children: [
       python_named_edge(name: ^target_model_edge_selection_policy, target: python_selection_policy_node()),
       python_named_edge(name: ^target_model_edge_declared_inhabitants, target: python_add_declared_inhabitants_root()),
-      python_named_edge(name: ^target_model_edge_translation_rules, target: python_translation_rules_node()),
-      python_named_edge(name: ^target_model_edge_serialize_source, target: python_serialize_source_node())
+      python_named_edge(name: ^target_model_edge_translation_rules, target: python_translation_rules_node())
     ],
     occurrence_id: OccurrenceSynthetic
 }
