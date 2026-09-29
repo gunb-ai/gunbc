@@ -156,10 +156,3 @@ test fn group_completion_neg_swaps_components() -> Bool {
   supplemental.contains("pos: self.neg,")
     && supplemental.contains("neg: self.pos,")
 }
-
-// bool_supplemental_impl_present is RETIRED, as dissolution: it asserted the From<Bool> for bool
-// bridge emitted beside std.types' enum Bool. The Bool de-fork realizes std.types Bool only as the
-// host `bool` (v1.compiler.emit_rust rust_declaration_realizes_as_native_alias), so no enum is
-// emitted and the bridge has nothing to convert from; the bridge, its target predicate and its
-// scaffold row are deleted with it.
-
