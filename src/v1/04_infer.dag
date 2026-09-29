@@ -3315,6 +3315,28 @@ fn application_type_name_identity(
   }
 }
 
+// THE SAME PEEL, ANSWERED AS A DECLARATION. application_type_name_identity answers a leaf
+// SPELLING, and two declarations that share a spelling then read as one type: a module declaring its
+// own `type FreeMonoid<T> { .. }` had its record admitted at a List<Int> formal, because List peels
+// to std.algebra's FreeMonoid and both leaves read "FreeMonoid". When both sides name a declaration,
+// the declarations decide; the spelling stays the answer only where no declaration is recoverable.
+fn application_type_name_declaration(
+  type_name: String,
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> DeclarationRef? {
+  match lookup_type_by_name(env: type_env, name: type_name) {
+    Present { value: decl } =>
+      let peeled = match decl.inferred {
+        Present { value: Resolved { node: target } } => peel_nominal_alias_identity(n: target, env: type_env, module_name: module_name)
+        _ => peel_nominal_alias_identity(n: decl, env: type_env, module_name: module_name)
+      }
+      type_reference_declaration_ref(n: peeled, source_indices: source_indices, env: type_env)
+    Absent => none
+  }
+}
+
 fn structured_application_structural_type_name(
   type_name: String,
   scope: InferScope
@@ -3366,7 +3388,17 @@ fn application_type_names_compatible(
       type_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
     let lit_identity = application_type_name_identity(
       type_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
-    if formal_identity == lit_identity {
+    let same_identity = match application_type_name_declaration(
+      type_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+      Present { value: formal_decl } =>
+        match application_type_name_declaration(
+          type_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+          Present { value: lit_decl } => declaration_ref_eq(a: formal_decl, b: lit_decl)
+          Absent => formal_identity == lit_identity
+        }
+      Absent => formal_identity == lit_identity
+    }
+    if same_identity {
       true
     } else if dag_can_cast(source_type: lit_name, target_type: formal_name) {
       true
