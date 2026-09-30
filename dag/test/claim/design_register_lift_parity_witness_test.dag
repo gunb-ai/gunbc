@@ -458,7 +458,13 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // Dependencies tab as a text-styled button. Derived by execution (roadmap_css_derived_digest).
 // 2026-09-30 (robot mark): the .issue-avatar-mark rule sizes the Fabric chip's robot mark
 // (gunbc.site.robot_mark) inside the 24px circle. Derived by execution (roadmap_css_derived_digest).
-data roadmap_css_lift_parity_digest: String = "8735422222f6a261"
+// 2026-09-30 (rail containment): issue-field-label no longer shrinks under a long value, and
+// issue-field-value takes the remaining width and wraps unbroken tokens instead of running past
+// the rail. Derived by execution (roadmap_css_derived_digest).
+// 2026-09-30 (badge colour): the Fabric chip paints the owner's badge stone (#f4f1ec) under the
+// frontend's ink robot mark, routed through the --fabric-badge-bg/--fabric-badge-ink theme
+// properties (both schemes) from gunbc.site.robot_mark's swatches. Derived by execution.
+data roadmap_css_lift_parity_digest: String = "ad63ab5622cf35df"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

@@ -8,7 +8,7 @@ import gunbc.roadmap_issue_command { IssueFormContext }
 
 import gunbc.roadmap_allocation_location { allocation_page_path }
 
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing_key, roadmap_node_standing_text, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
 import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label,
   IssueComment, IssueAssignmentProjection, roadmap_issue_comments, roadmap_issue_assignment, issue_comment_anchor,
@@ -1322,8 +1322,8 @@ fn standing_chip_nodes(view: WorkRowView) -> List<Fragment> {
     Present { value: s } =>
       [ el_attrs("span", [
           attr(name: "class", value: join([standing_chip_class, " ", standing_chip_class, "-", roadmap_node_standing_key(s: s)], "")),
-          attr(name: "title", value: roadmap_node_standing_text(s: s)),
-        ], [ txt(roadmap_node_standing_text(s: s)) ]) ]
+          attr(name: "title", value: issue_standing_text(s: s, profiles: view.profiles)),
+        ], [ txt(issue_standing_text(s: s, profiles: view.profiles)) ]) ]
   }
 }
 
@@ -2489,8 +2489,15 @@ fn issue_rail_status_text(view: WorkRowView, events: List<RoadmapEventEnvelope>)
   match roadmap_node_standing(envs: events) {
     NodeOpen => issue_explanation(view: view)
     s =>
-      join([issue_explanation(view: view), " · ", roadmap_node_standing_text(s: s)], "")
+      join([issue_explanation(view: view), " · ", issue_standing_text(s: s, profiles: view.profiles)], "")
   }
+}
+
+// THE STANDING SENTENCE AS A PAGE SHOWS IT: the ledger's one sentence, with each principal named
+// by the same profile-bound display the avatar chips use ("Fabric", "Brian Searls") rather than
+// its canonical label.
+fn issue_standing_text(s: RoadmapNodeStanding, profiles: List<PrincipalProfile>) -> String {
+  roadmap_node_standing_text_naming(s: s, name: fn(p) { event_principal_display_with_profile(p: p, profiles: profiles).name })
 }
 
 // THE ASSIGNEE ROW: the current holder's chip (or the unassigned placeholder) beside the durable
@@ -2662,7 +2669,7 @@ fn issue_detail_page_for(
               launch: ctx,
               attempt_stale: any(stale_nodes, s => s == node_id),
               profiles: profiles),
-            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges),
+            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges, member_titles: declared_roadmap_nodes()),
             observation: observation,
             attempts: attempts,
             events: events,

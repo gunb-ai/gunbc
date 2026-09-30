@@ -573,13 +573,21 @@ fn roadmap_node_standing_key(s: RoadmapNodeStanding) -> String {
 }
 
 fn roadmap_node_standing_text(s: RoadmapNodeStanding) -> String {
+  roadmap_node_standing_text_naming(s: s, name: fn(p) { event_principal_label(p: p) })
+}
+
+// THE ONE STANDING SENTENCE, with the principal's spelling supplied by the caller: the ledger
+// renders the canonical label (no profile roster exists at this layer), a presentation surface
+// renders the display name its profile projection resolved -- so the sentence is written once and
+// no surface prints principal:gunbc/workflows/fabric where the reader expects "Fabric".
+fn roadmap_node_standing_text_naming(s: RoadmapNodeStanding, name: fn(EventPrincipal) -> String) -> String {
   match s {
     NodeOpen => "open"
-    NodeClaimed { by, since } => join(["claimed by ", event_principal_label(p: by), if since == "" { "" } else { join([" since ", since], "") }], "")
-    NodeInProgress { by, last_note } => join(["in progress (", event_principal_label(p: by), "): ", last_note as String], "")
-    NodeBlocked { by, reason } => join(["blocked (", event_principal_label(p: by), "): ", reason as String], "")
-    NodeHandedBack { by, reason } => join(["handed back (", event_principal_label(p: by), "): ", reason as String], "")
-    NodeReadyForReview { by, pr, head } => join(["ready for review — published ", pr as String, " at ", head as String, "; reassigned for merge to ", event_principal_label(p: by)], "")
+    NodeClaimed { by, since } => join(["claimed by ", name(by), if since == "" { "" } else { join([" since ", since], "") }], "")
+    NodeInProgress { by, last_note } => join(["in progress (", name(by), "): ", last_note as String], "")
+    NodeBlocked { by, reason } => join(["blocked (", name(by), "): ", reason as String], "")
+    NodeHandedBack { by, reason } => join(["handed back (", name(by), "): ", reason as String], "")
+    NodeReadyForReview { by, pr, head } => join(["ready for review — published ", pr as String, " at ", head as String, "; reassigned for merge to ", name(by)], "")
     NodeForked { heads } => join(["forked history: ", to_string(value: count(heads)), " heads; two writers recorded without seeing each other"], "")
     NodeHistoryIncomplete { missing_parents } => join(["history incomplete: ", to_string(value: count(missing_parents)), " parent event(s) not present"], "")
   }

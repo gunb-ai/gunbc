@@ -17,6 +17,7 @@ import gunbc.roadmap_launch_admission { LaunchHostStanding, LaunchAdmitted, Laun
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear, launch_fixture_with_contract, launch_fixture_doc, launch_fixture_identity }
 import gunbc.roadmap_issue_command { IssueFormContext }
 import gunbc.roadmap_page {
+  issue_standing_text,
   roadmap_page_launch, roadmap_daily_workspace_page_launch,
   roadmap_page_for_authority,
   roadmap_page_for_doc,
@@ -2599,5 +2600,19 @@ test fn renamed_field_label_keeps_its_typed_section_and_brief_renders_once() -> 
       && marker_before(s: html, first: "Acceptance criteria", second: "Independent display label")
       && string_contains(s: html, pattern: "<span class=\"ticket-field-label\">Independent display label</span>")
   }
+}
+
+// THE RAIL'S STANDING SENTENCE NAMES PRINCIPALS THE WAY THE CHIPS DO. The live rail printed
+// "claimed by principal:gunbc/workflows/fabric", an unbreakable token that ran past the 34ch rail;
+// the one ledger sentence now takes the page's display naming, so Fabric reads "Fabric" and a
+// human with a stored profile reads their name, while a principal nobody knows keeps its label.
+test fn witness_issue_standing_text_names_principals_by_their_display() -> Bool {
+  let fabric = issue_standing_text(s: NodeClaimed { by: fixture_fabric_principal(), since: "2026-09-30T15:15:48Z" }, profiles: [])
+  let known = issue_standing_text(s: NodeClaimed { by: fixture_human_principal(), since: "" }, profiles: [fixture_human_profile()])
+  let unknown = issue_standing_text(s: NodeClaimed { by: fixture_human_principal(), since: "" }, profiles: [])
+  fabric == "claimed by Fabric since 2026-09-30T15:15:48Z"
+    && !string_contains(s: fabric, pattern: "principal:")
+    && known == "claimed by Fixture Viewer"
+    && unknown == "claimed by principal:google-oidc/accounts/sub-viewer"
 }
 

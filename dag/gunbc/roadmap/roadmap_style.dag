@@ -1,5 +1,6 @@
 module gunbc.roadmap_style
 
+import gunbc.site.robot_mark { robot_mark_badge_background, robot_mark_ink }
 import std.types { List, String, Int, Bool }
 import gunbc.design.material {
   BuildRule, StaticRule, CssDecl, decl, css_block,
@@ -585,6 +586,8 @@ fn issue_token_decls(t: IssueTrackerVisualTokens) -> List<CssDecl> {
     decl(prop: CustomProperty { name: "issue-action" }, value: swatch_paint(sw: Swatch { name: "issue-action", color: t.action })),
     decl(prop: CustomProperty { name: "issue-action-hover" }, value: swatch_paint(sw: Swatch { name: "issue-action-hover", color: t.action_hover })),
     decl(prop: CustomProperty { name: "issue-error" }, value: swatch_paint(sw: Swatch { name: "issue-error", color: t.error })),
+    decl(prop: CustomProperty { name: "fabric-badge-bg" }, value: swatch_paint(sw: robot_mark_badge_background)),
+    decl(prop: CustomProperty { name: "fabric-badge-ink" }, value: swatch_paint(sw: robot_mark_ink)),
     decl(prop: CustomProperty { name: "issue-font" }, value: t.font_body),
     decl(prop: CustomProperty { name: "issue-font-heading" }, value: t.font_heading),
   ]
@@ -1210,9 +1213,15 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: "issue-field-label" }, decls: [
       decl(prop: MinWidth, value: scale_var(t: width_status)),
+      decl(prop: Flex, value: "none"),
       decl(prop: Color, value: "var(--issue-text-dim)"),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-field-value" }, decls: [
+      decl(prop: Flex, value: "1"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-link" }, decls: [
       decl(prop: Color, value: "var(--issue-action)"),
@@ -1346,7 +1355,8 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Height, value: scale_var(t: space_16)),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-avatar-workflow" }, decls: [
-      decl(prop: Background, value: "var(--issue-action)"),
+      decl(prop: Background, value: "var(--fabric-badge-bg)"),
+      decl(prop: Color, value: "var(--fabric-badge-ink)"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-rail-link" }, decls: [
       decl(prop: FontFamily, value: "inherit"),

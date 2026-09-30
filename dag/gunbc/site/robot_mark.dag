@@ -2,6 +2,8 @@ module gunbc.site.robot_mark
 
 import std.types { String }
 import std.markup { Fragment, Element, Attribute, attr }
+import extdeps.color.srgb { Srgb8 }
+import gunbc.design.palette { Swatch }
 
 // THE FABRIC WORKFLOW'S MARK: the gunb "robot variant" -- squircle body, square eyes, flat mouth,
 // one antenna. SOURCE: gunb-ai/frontend legacy/moodboard.html, <symbol id="stoic-robot">; the
@@ -9,6 +11,14 @@ import std.markup { Fragment, Element, Attribute, attr }
 // mouth cut out by evenodd, the antenna a separate solid path). Filled with currentColor so the
 // chip that hosts it decides its color. The authoring surface is the frontend repo: a change to
 // the mark lands there first and is copied here, never redrawn.
+
+// THE BADGE'S TWO PAINTS. The background is the owner's badge ruling (2026-09-30: "Badge background
+// color #f4f1ec"), a warm stone; the mark itself is the frontend's ink (#0F0F0F, the moodboard's
+// ink export of #stoic-robot). Named swatches so the stylesheet paints from them rather than
+// restating hex.
+data robot_mark_badge_background: Swatch = Swatch { name: "robot-badge-stone", color: Srgb8 { r: 244, g: 241, b: 236 } }
+
+data robot_mark_ink: Swatch = Swatch { name: "robot-mark-ink", color: Srgb8 { r: 15, g: 15, b: 15 } }
 
 data robot_mark_view_box: String = "0 0 120 120"
 
