@@ -64,7 +64,7 @@ import v2.std.grammar {
   node_atom_identity_optional
 }
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.arrow_signature { declared_signature }
+import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature }
 import v2.std.compilers.lexing {
   AnnotationRule,
   CharClassPattern,
@@ -3255,15 +3255,7 @@ fn dag_declared_inhabitants_core() -> Node {
 
 data dag_fixture_int_inhabitant: Node = dag_int_inhabitant_node()
 
-data dag_fixture_emitted_add_fn: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: dag_fixture_int_inhabitant },
-    Edge { label: Positional, target: dag_fixture_int_inhabitant },
-    Edge { label: Positional, target: dag_fixture_int_inhabitant }
-  ],
-  occurrence_id: OccurrenceSynthetic
-}
+data dag_fixture_emitted_add_fn: Node = anonymous_signature_arrow(domain_types: [dag_fixture_int_inhabitant, dag_fixture_int_inhabitant], codomain: dag_fixture_int_inhabitant, source: dag_fixture_int_inhabitant)
 
 fn dag_pick_zip_fold_closure_edges() -> List<Edge> {
   dag_bodied_fn_zip_fold_closure_edges(spec: dag_pick_family_spec())
