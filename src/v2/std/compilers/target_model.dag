@@ -1158,7 +1158,15 @@ fn lex_pattern_fixed_spelling(pattern: LexPattern) -> Optional<String> {
   match pattern {
     LiteralPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
     KeywordPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
-    _ => optional_absent()
+    EmptyPattern => optional_absent()
+    CharPattern { char: _ } => optional_absent()
+    CharClassPattern { class: _ } => optional_absent()
+    SequencePattern { left: _, right: _ } => optional_absent()
+    ChoicePattern { left: _, right: _ } => optional_absent()
+    OptionalPattern { element: _ } => optional_absent()
+    RepeatPattern { element: _ } => optional_absent()
+    OneOrMorePattern { element: _ } => optional_absent()
+    DelimitedPattern { open: _, body: _, close: _ } => optional_absent()
   }
 }
 
