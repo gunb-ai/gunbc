@@ -18,6 +18,7 @@ data tail_call_match_lowering_skips_rc_arm_grouping: RecurringFailureMode = Recu
 
     "RUNG FOUND AT: 1 at best (the target compiler refuses; gunbc accepts). CEILING: 3 -- the emitter can decide exhaustiveness on the same facts for both renderers. NEXT-RUNG TRIGGER: the tail-call match renderer consumes rc_grouped_arm_plan (one grouping authority for both match lowerings), proven by an enumerated nested arm set in a tail-recursive fixture that emits and builds.",
     "CLIMB (gunbc#12742): the trigger's lowering is built -- the grouping fold is one function, v1.compiler.emit_rust rc_grouped_match_arm_strs, parameterized by the arm-body emitter, and emit_rust_tco_match and the ordinary match renderer both call it. Its discriminating control is the stage0 integration target tco_rc_grouped_match_emitted_rust (E0004 on the prior seed, compiles and runs after), which required CI does not execute (gunbc.rung_drop rust_unit_tests_off_the_merge_path), so the rung stays 1 by rule-1 honesty until that control executes on the merge path or an enumerated nested arm set in a required emit-build closure (the grammar_tokens_fold_list_targets_into enumeration) builds.",
+    "RUNG 2 (gunbc#12764, executed): the trigger's second arm has run on the merge path. Two enumerated nested arm sets inside tail-recursive walks -- v2.compiler.target_serialize grammar_tokens_fold_list_targets_into and v2.std.compilers.target_model concrete_syntax_token_node_targets_into, both previously reverted to their wildcards on E0004 -- emit and build in the required emit-build lane (run 36696087113, job 109824277149, head e065e2039bd). A regression of the shared grouping now reds a required lane on those sites: mechanically preventable, rung 2. CEILING stays 3 (the emitter deciding exhaustiveness on the same facts for both renderers, with the stage0 control tco_rc_grouped_match_emitted_rust executing on the merge path).",
   ],
 
   evidence: [
@@ -25,5 +26,6 @@ data tail_call_match_lowering_skips_rc_arm_grouping: RecurringFailureMode = Recu
     decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rc_grouped_arm_plan"),
     decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rc_grouped_match_arm_strs"),
     decl_ref(module_path: "v2.compiler.target_serialize", decl_name: "grammar_tokens_fold_list_targets_into"),
+    decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "concrete_syntax_token_node_targets_into"),
   ],
 }
