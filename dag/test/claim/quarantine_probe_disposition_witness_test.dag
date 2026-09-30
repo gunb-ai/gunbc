@@ -32,7 +32,8 @@ import v2.workflow.required_floor { long_home_prefixes, required_gate_admits }
 import gunbc.quarantine_outside_gate_decline { QuarantineOutsideGateDecline, quarantine_outside_gate_declines }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { Cons, Empty, fold_list }
-import v2.std.collection { List }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.types { NonEmptyStr }
@@ -56,10 +57,6 @@ import std.types { NonEmptyStr }
 // alarm, and held-by-two is shown to refuse. The controls therefore prove the fold DISCRIMINATES
 // rather than merely agreeing with today's tree.
 
-fn witness_pool_roots() -> List<String> {
-  ["dag", "src/v2"]
-}
-
 // THE ENTRY-PATH -> AUTHORED-MODULE JOIN, from the same declaration the floor reads.
 //
 // A path-shaped guess is NOT available here and the corpus proves it: the admission entry
@@ -67,44 +64,68 @@ fn witness_pool_roots() -> List<String> {
 // dropping a segment and a suffix, and dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag
 // declares test.claim.self_host_03_normalize_behavioral_witness. Deriving the identity from the
 // path would silently miss the roster this fold joins against, and a miss reads as an alarm.
-fn module_for_entry(facts: List<ModuleDeclarationFact>, entry: String) -> String {
+// ONE PASS OVER THE CORPUS CENSUS. The admission entries are keyed first, then the census is
+// read once and only the entries' own rows are kept, so each subject reads its module by key.
+// The earlier shape folded the whole census once per admission row -- rows x corpus, 677,277
+// eval steps of the live claim's ~788k measured with claim_batch -- to name a few dozen modules
+// (DESIGN section 6, bare minimum cost).
+fn entry_modules(facts: List<ModuleDeclarationFact>, rows: List<ExplicitWitnessAdmission>) -> Map<String, String> {
+  let wanted = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) { map_insert(m: acc, key: row.witness.entry, value: true) })
   fold_list(
     xs: facts,
-    empty: "",
-    cons: fn(acc, fact) { if fact.path == entry { fact.module } else { acc } }
+    empty: empty_map(),
+    cons: fn(acc, fact) {
+      match map_lookup(m: wanted, key: fact.path) {
+        Present { value: _ } => map_insert(m: acc, key: fact.path, value: fact.module)
+        Absent => acc
+      }
+    }
   )
 }
 
-// `LiveTreeDisposition` still owns affected-set selection eligibility after the required-floor
-// decline is deleted. This scan exercises that surviving declaration question only; it does not
-// predict whether the interpreter can execute the witness hermetically.
 fn entry_declares_reads_live_tree_for_selection(entry: String) -> Bool {
   let source = filesystem_read(path: entry).content
   source.contains("LiveTreeDisposition") && source.contains("ReadsLiveTree")
 }
 
 fn subject_for_admission(
-  facts: List<ModuleDeclarationFact>,
+  modules: Map<String, String>,
   row: ExplicitWitnessAdmission
 ) -> QuarantineProbeSubject {
   QuarantineProbeSubject {
-    module: module_for_entry(facts: facts, entry: row.witness.entry),
+    module: match map_lookup(m: modules, key: row.witness.entry) {
+      Present { value: m } => m
+      Absent => ""
+    },
     entry: row.witness.entry,
     function: row.witness.function
   }
 }
 
+// THE CENSUS IS READ OVER THE ENTRIES' OWN DIRECTORIES, not the whole pool: the only rows the
+// join keeps are the admission entries', so scanning the rest of dag and src/v2 was work no
+// consumer read. The roots are derived from the entries (each entry's parent directory, once),
+// never authored, so an admission added anywhere is covered by construction; an entry whose
+// declaration is not found still derives an empty module and reds the live claim as NowPassing.
+fn entry_parent_dir(entry: String) -> String {
+  let parts = split(s: entry, delimiter: "/")
+  join(parts |> take(n: count(parts) - 1), "/")
+}
+
+fn entry_census_roots(rows: List<ExplicitWitnessAdmission>) -> List<String> {
+  sorted_map_keys(fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) { map_insert(m: acc, key: entry_parent_dir(entry: row.witness.entry), value: true) }))
+}
+
 fn live_quarantine_probe_subjects() -> List<QuarantineProbeSubject> {
-  let facts = module_declaration_facts_live(pool_roots: witness_pool_roots())
+  let rows = quarantine_probe_admissions(rows: explicit_witness_admissions)
+  let modules = entry_modules(facts: module_declaration_facts_live(pool_roots: entry_census_roots(rows: rows)), rows: rows)
   fold_list(
-    xs: quarantine_probe_admissions(rows: explicit_witness_admissions),
+    xs: rows,
     empty: Empty {},
-    cons: fn(acc, row) { Cons { head: subject_for_admission(facts: facts, row: row), tail: acc } }
+    cons: fn(acc, row) { Cons { head: subject_for_admission(modules: modules, row: row), tail: acc } }
   )
 }
 
-// Declaring ReadsLiveTree still controls affected-set eligibility, but no longer declines
-// execution at the required-floor root. This holder population therefore has no live rows.
 fn live_quarantine_probe_facts() -> QuarantineProbeHoldingFacts {
   QuarantineProbeHoldingFacts {
     expected_red_roster: floor_expected_red_roster(),
