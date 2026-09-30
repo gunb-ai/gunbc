@@ -208,29 +208,18 @@ test fn occurrence_wall_admits_a_closed_allocated_image_holds() -> Bool {
   }
 }
 
-// THE REAL PATH. One module exercising several multi-node lowerings -- a function declaration with
-// parameters, a data declaration, a type with a where clause, an optional instantiated type, a list
-// literal and a postfix chain -- through tokenize, parse and normalize. It must be admitted (so the
+// THE REAL PATH. One function declaration with three parameters -- whose image is the Arrow with a
+// domain, an order transform, a head spine and one label per parameter -- through tokenize, parse
+// and normalize. The per-construct builders are exercised by the floor's own normalize population;
+// this claim asserts the ROUTE on the smallest input that has a multi-member image. It must be admitted (so the
 // wall found no duplicated minted id), and the ROUTE is asserted: it must hold projected occurrences,
 // each caused by an occurrence still minted in the same tree. A normalize that reached admission
 // without closing any image would be refused; one whose builders stamped nothing derived would hold
 // no projected occurrence and fail the count.
 data iop_real_module: String = "module iop.real
 
-type Port = Int where range(min: 1, max: 46)
-
-type Holder {
-  items: List<Int>?
-}
-
-data seeds: List<Int> = [1, 2, 3]
-
 fn pick(a: Int, b: Int, c: Int) -> Int {
   a
-}
-
-fn reach(h: Holder) -> List<Int>? {
-  h.items
 }
 "
 

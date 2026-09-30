@@ -19,7 +19,7 @@ import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert
 import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra { fold_list }
-import v2.std.node { Edge, Hash, LabeledChildHash, Node, Symbol, content_hash_of_children }
+import v2.std.node { Edge, Node, Symbol, content_hash }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 
@@ -118,64 +118,44 @@ fn no_record_declarations() -> FreeMonoid<Symbol> {
 //     stays visible here.
 // A structurally identical node reached at two positions is one node shared, not two nodes: a
 // function type's Arrow carries its codomain value twice, and both positions are the same authored
-// type. So the comparison is the structural hash (v2.std.node content_hash_of_children, which ignores
-// occurrences), computed bottom-up once, and the walk is post-order: the refusal names the first
-// offending node in that order.
+// type. So a repeated id is compared structurally (v2.std.node content_hash, which ignores
+// occurrences) -- and ONLY a repeated id: the walk records the first node per id and hashes the two
+// nodes when a second one arrives, so an admission with no repeats pays one pre-order walk and no
+// hashing. The refusal names the first offending node in pre-order.
 fn occurrence_wall_refusal(root: Node) -> Optional<Diagnostic> {
-  occurrence_wall_walk(node: root, state: OccurrenceWallState { seen: empty_map(), refusal: Absent }).state.refusal
+  occurrence_wall_walk(node: root, state: OccurrenceWallState { first: empty_map(), refusal: Absent }).refusal
 }
 
 type OccurrenceWallState {
-  seen: Map<Int, Hash>
+  first: Map<Int, Node>
   refusal: Optional<Diagnostic>
 }
 
-type OccurrenceWallStep {
-  hash: Hash
-  state: OccurrenceWallState
-}
-
-type OccurrenceWallChildren {
-  hashes: List<LabeledChildHash>
-  state: OccurrenceWallState
-}
-
-fn occurrence_wall_walk(node: Node, state: OccurrenceWallState) -> OccurrenceWallStep {
-  let children = fold(
-    node.children,
-    init: OccurrenceWallChildren { hashes: [], state: state },
-    f: (acc, e) => {
-      let child = occurrence_wall_walk(node: e.target, state: acc.state)
-      OccurrenceWallChildren {
-        hashes: list_snoc_item(xs: acc.hashes, item: LabeledChildHash { label: e.label, hash: child.hash }),
-        state: child.state,
-      }
-    },
-  )
-  let hash = content_hash_of_children(kind: node.kind, children: children.hashes)
-  OccurrenceWallStep { hash: hash, state: occurrence_wall_check(node: node, hash: hash, state: children.state) }
-}
-
-fn occurrence_wall_check(node: Node, hash: Hash, state: OccurrenceWallState) -> OccurrenceWallState {
+fn occurrence_wall_walk(node: Node, state: OccurrenceWallState) -> OccurrenceWallState {
   match state.refusal {
     Present { value: _ } => state
     Absent =>
-      match node.occurrence_id {
-        OccurrencePending { caused_by: _ } =>
-          OccurrenceWallState { seen: state.seen, refusal: Present { value: occurrence_wall_diagnostic(reason: ^normalize_reason_pending_occurrence_survived, n: node) } }
-        OccurrenceMinted { id: id } =>
-          match map_lookup(m: state.seen, key: id.value) {
-            Present { value: first } =>
-              if first.digest == hash.digest {
-                state
-              } else {
-                OccurrenceWallState { seen: state.seen, refusal: Present { value: occurrence_wall_diagnostic(reason: ^normalize_reason_minted_occurrence_duplicated, n: node) } }
-              }
-            Absent => OccurrenceWallState { seen: map_insert(m: state.seen, key: id.value, value: hash), refusal: Absent }
+      let here = occurrence_wall_check(node: node, state: state)
+      fold(node.children, init: here, f: (acc, e) => occurrence_wall_walk(node: e.target, state: acc))
+  }
+}
+
+fn occurrence_wall_check(node: Node, state: OccurrenceWallState) -> OccurrenceWallState {
+  match node.occurrence_id {
+    OccurrencePending { caused_by: _ } =>
+      OccurrenceWallState { first: state.first, refusal: Present { value: occurrence_wall_diagnostic(reason: ^normalize_reason_pending_occurrence_survived, n: node) } }
+    OccurrenceMinted { id: id } =>
+      match map_lookup(m: state.first, key: id.value) {
+        Present { value: first } =>
+          if content_hash(n: first).digest == content_hash(n: node).digest {
+            state
+          } else {
+            OccurrenceWallState { first: state.first, refusal: Present { value: occurrence_wall_diagnostic(reason: ^normalize_reason_minted_occurrence_duplicated, n: node) } }
           }
-        OccurrenceProjected { id: _, caused_by: _ } => state
-        OccurrenceSynthetic => state
+        Absent => OccurrenceWallState { first: map_insert(m: state.first, key: id.value, value: node), refusal: Absent }
       }
+    OccurrenceProjected { id: _, caused_by: _ } => state
+    OccurrenceSynthetic => state
   }
 }
 
