@@ -152,7 +152,8 @@ fn bmc_web_session_of_token(world: BmcWorld, csrf_token: String) -> List<BmcWebS
 fn bmc_kvm_viewer_count(world: BmcWorld) -> Int {
   world.web.other_kvm_viewers + match world.web.kvm {
     BmcKvmStreaming { session: _ } => 1
-    _ => 0
+    BmcKvmIdle {} => 0
+    BmcKvmClosedByController { session: _ } => 0
   }
 }
 
@@ -225,7 +226,8 @@ fn bmc_apply_event(world: BmcWorld, event: BmcEvent) -> BmcWorld {
     BmcAcPowerLost {} => bmc_with_power(world: world, power: BmcPowerOff)
     BmcKvmStreamClosed {} => match world.web.kvm {
       BmcKvmStreaming { session: k } => bmc_with_web(world: world, web: bmc_web_with(web: world.web, sessions: world.web.sessions, next_session_id: world.web.next_session_id, kvm: BmcKvmClosedByController { session: k }))
-      _ => world
+      BmcKvmIdle {} => world
+      BmcKvmClosedByController { session: _ } => world
     }
   }
 }

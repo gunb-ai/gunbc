@@ -15,6 +15,7 @@ import product.fabric.demand {
   apply_demand_command, work_requirement, satisfaction_directive,
 }
 import product.fabric.execution { ExecutionGrant, ReservationRef, LeaseIdentity }
+import std.algebra { Cons, Empty }
 
 // This module is the second half of a command's core effect: it joins the demand-population
 // transition, which product.fabric.demand owns, to the execution state that transition bears on. It

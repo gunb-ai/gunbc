@@ -642,7 +642,7 @@ fn resolved_call_edges_from_graph(
     for callees in build_module_callees(graph.modules.clone()).iter() {
         for item in callees.items.iter() {
             for edge in item.called.iter() {
-                if let CalleeEdge::ResolvedCallee { identity } = &**edge {
+                if let CalleeEdge::ResolvedCallee { identity, .. } = &**edge {
                     edges.push(ResolvedCallEdgeRow {
                         caller_module: item.item_identity.owner_module_path.clone(),
                         caller_decl: item.item_identity.decl_name.clone(),
