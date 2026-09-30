@@ -2,6 +2,7 @@ module test.claim.action_use_admission_witness
 
 import extdeps.filesystem.filesystem_io
 import std.types { Bool, Int, List, String }
+import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions { Workflow, Job, Step, UsesStep, WorkflowDispatch, RunnerSpec, HostedRunner, UbuntuLatest }
 import extdeps.github.action_release {
@@ -25,7 +26,10 @@ import gunbc.action_use_admission {
   admit_workflow_action_uses, realized_workflow_reading, realized_distinct_uses,
   upload_artifact_action, checkout_action, github_script_action, setup_rust_action,
   realized_use_is_a_repository_selection,
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
 }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_checkout_ref_expr }
+import extdeps.languages.yaml.types { kv, yaml_string }
 import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -532,4 +536,51 @@ test fn forced_substitution_reason_cites_the_producer_manifest_at_the_commit() -
     s: action_use_admission_reason(a: admit_action_release(action_release: upload_artifact_v4_6_2)),
     pattern: "github.com/actions/upload-artifact/blob/ea165f8d65b6e75b540449e92b4886f43607fa02/action.yml",
   )
+}
+
+// CHECKOUT REFS NAME A COMMIT. The fixture supplies one checkout step with a given `ref`; the real
+// emission is covered by the last claim and by expected_fleet_converge_yml, which refuses on it.
+fn one_checkout_workflow(ref_text: String) -> Workflow {
+  Workflow {
+    name: "fixture", run_name: none, on: [WorkflowDispatch { inputs: [] }], concurrency: none,
+    jobs: [Job {
+      id: "j", name: none, runner: HostedRunner { label: UbuntuLatest }, environment: none,
+      steps: [UsesStep { name: none, id: none, uses: checkout_action, with: Present { value: [kv(key: "ref", value: yaml_string(s: ref_text))] }, env: none, if_condition: none, continue_on_error: none, timeout_minutes: none }],
+      needs: [], env: none, outputs: none, if_condition: none, timeout_minutes: none, continue_on_error: none, concurrency: none, permissions: none,
+    }],
+    env: none, permissions: none,
+  }
+}
+
+fn checkout_refs_refused(w: Workflow) -> Bool {
+  match admit_workflow_checkout_refs(workflow: w) {
+    WorkflowCheckoutRefsAdmitted => false
+    WorkflowCheckoutRefsRefused { refusals: rs } => (rs |> count) == 1
+  }
+}
+
+// RED: the expression fleet-converge emitted before this change -- its readback arm fell back to the
+// moving branch, and two jobs of one run built two trees (ConsumerSourceTreeMismatch).
+test fn red_checkout_falling_back_to_github_ref_is_refused() -> Bool {
+  checkout_refs_refused(w: one_checkout_workflow(ref_text: "${{ (github.event.inputs.mode == 'mtcollins1_boot') && github.sha || github.event.inputs.expected_revision || github.ref }}"))
+}
+
+test fn red_checkout_of_a_branch_literal_is_refused() -> Bool {
+  checkout_refs_refused(w: one_checkout_workflow(ref_text: "main"))
+    && checkout_refs_refused(w: one_checkout_workflow(ref_text: "${{ github.event.pull_request.head.ref }}"))
+}
+
+test fn checkout_of_the_event_or_a_named_commit_is_admitted() -> Bool {
+  !checkout_refs_refused(w: one_checkout_workflow(ref_text: "${{ github.sha }}"))
+    && !checkout_refs_refused(w: one_checkout_workflow(ref_text: "${{ github.event.pull_request.head.sha }}"))
+    && !checkout_refs_refused(w: one_checkout_workflow(ref_text: "0123456789abcdef0123456789abcdef01234567"))
+}
+
+// The real subject: every checkout fleet-converge emits names the event sha or the named revision.
+test fn fleet_converge_checkouts_name_a_commit() -> Bool {
+  !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "github.ref")
+    && match admit_workflow_checkout_refs(workflow: fleet_converge_workflow) {
+      WorkflowCheckoutRefsAdmitted => true
+      WorkflowCheckoutRefsRefused { refusals: _ } => false
+    }
 }

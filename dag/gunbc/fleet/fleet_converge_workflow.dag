@@ -19,6 +19,7 @@ import extdeps.github.actions {
 import gunbc.action_use_admission {
   checkout_action, download_artifact_action, upload_artifact_action, google_auth_action,
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
 }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_inspection { org_actions_validation_receipt_path }
@@ -3225,8 +3226,11 @@ fn fleet_converge_spark_v41_row_store_readback_step() -> Step {
 // it failed three dispatches in a row (2026-09-04, RunRevisionRefused on srv2/srv3/srv4) for a
 // reason that had nothing to do with the fleet. Binding the checkout to the same input the guard
 // reads makes the guard a check on the workflow's own consistency rather than a race with the
-// merge queue. When no expected_revision is given the dispatched ref is checked out, exactly as
-// before. There is no expected_healed_sha preflight here (unlike ci.yml heal revalidation), so the
+// merge queue. When no expected_revision is given the EVENT's sha is checked out -- never github.ref,
+// which names the moving branch: with it every job re-resolved main when its runner picked it up, so
+// the build job and a release-bins consumer built different trees and the consumer refused with
+// ConsumerSourceTreeMismatch (runs 36764203649, 36766990321). gunbc.action_use_admission
+// admit_workflow_checkout_refs refuses emission if a moving ref returns. There is no expected_healed_sha preflight here (unlike ci.yml heal revalidation), so the
 // ci_artifact_consumer_prelude_steps paste-through is still not used.
 //
 // THE MT. COLLINS BOOT IS THE EXCEPTION, AND ITS ARM COMES FIRST (side-chat review 5286225278 on
@@ -3243,7 +3247,7 @@ data fleet_converge_checkout_ref_expr: String = join([
   "${{ (github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot),
   "' || github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: GcpIamConverge),
   "' || github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: NamecheapObserve),
-  "') && github.sha || github.event.inputs.expected_revision || github.ref }}",
+  "') && github.sha || github.event.inputs.expected_revision || github.sha }}",
 ], "")
 
 // THE BOOT JOB'S OWN CHECKOUT NAMES ONLY THE EVENT SHA, with no input in the expression at all.
@@ -4014,10 +4018,15 @@ fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
     WorkflowActionUsesRefused { refusals: rs } =>
       FleetConvergeYamlGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.fleet_converge_workflow", refusals: rs) }
     WorkflowActionUsesAdmitted =>
-      match admit_workflow_toolchain_homes(workflow: fleet_converge_workflow) {
-        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
-          FleetConvergeYamlGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
-        WorkflowToolchainHomesAdmitted => fleet_converge_yml_after_toolchain_admission()
+      match admit_workflow_checkout_refs(workflow: fleet_converge_workflow) {
+        WorkflowCheckoutRefsRefused { refusals: crs } =>
+          FleetConvergeYamlGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.fleet_converge_workflow", refusals: crs) }
+        WorkflowCheckoutRefsAdmitted =>
+          match admit_workflow_toolchain_homes(workflow: fleet_converge_workflow) {
+            WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+              FleetConvergeYamlGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+            WorkflowToolchainHomesAdmitted => fleet_converge_yml_after_toolchain_admission()
+          }
       }
   }
 }
