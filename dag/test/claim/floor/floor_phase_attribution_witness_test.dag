@@ -4,7 +4,7 @@ import std.types { Bool, String, Int, list_length }
 import std.measure { byte_size_count }
 import gunbc.floor_demand {
   FloorBeatReading, FloorPhaseHeldSet, floor_phase_attribution, FloorPhasesAttributed, FloorPhaseSeamUnknown,
-  HeldSetPeakAt, SeamParse, SeamPrepareClosureResolve,
+  HeldSetPeakAt, SeamParse, SeamPrepareClosureResolve, StallUnread, SwapUnread,
 }
 
 // A reading with every held-set term zero except anon, so the held set IS anon and each claim's
@@ -42,11 +42,20 @@ test fn a_seam_beat_opens_a_phase_and_its_watchdog_beats_set_its_peak() -> Bool 
   ]) {
     FloorPhasesAttributed { phases: ps } =>
       list_length(items: ps) == 2
-        && held_bytes_are(p: ps[0], entry: 10, peak: 30)
-        && held_bytes_are(p: ps[1], entry: 20, peak: 20)
-        && ps[0].opened_at == 0 && ps[1].opened_at == 2
-        && match ps[0].seam { SeamParse => true, _ => false }
-        && match ps[1].seam { SeamPrepareClosureResolve => true, _ => false }
+        && match ps[0] {
+          Present { value: first } =>
+            held_bytes_are(p: first, entry: 10, peak: 30)
+              && first.opened_at == 0
+              && match first.seam { SeamParse => true, _ => false }
+          Absent => false
+        }
+        && match ps[1] {
+          Present { value: second } =>
+            held_bytes_are(p: second, entry: 20, peak: 20)
+              && second.opened_at == 2
+              && match second.seam { SeamPrepareClosureResolve => true, _ => false }
+          Absent => false
+        }
     _ => false
   }
 }
@@ -59,6 +68,26 @@ test fn an_unknown_seam_token_refuses_the_attribution() -> Bool {
     reading(beat: 1, opens: true, seam: "not-a-seam", anon: 99),
   ]) {
     FloorPhaseSeamUnknown { beat: b, token: t } => b == 1 && t == "not-a-seam"
+    _ => false
+  }
+}
+
+// AN UNREAD STALL OR SWAP IS CARRIED AS UNREAD, NOT AS A ZERO: the transcription passes `na` as a
+// false read flag, and the phase's peak beat must still carry StallUnread / SwapUnread, because a
+// zero is the reading that would uncensor a peak (receipt_peak_reading_standing).
+test fn an_unread_stall_and_swap_reach_the_phase_as_unread() -> Bool {
+  match floor_phase_attribution(readings: [reading(beat: 0, opens: true, seam: "parse", anon: 10)]) {
+    FloorPhasesAttributed { phases: ps } =>
+      match ps[0] {
+        Present { value: p } =>
+          match p.peak {
+            HeldSetPeakAt { beat: b, bytes: _ } =>
+              match b.stall { StallUnread => true, _ => false }
+                && match b.swap { SwapUnread => true, _ => false }
+            _ => false
+          }
+        Absent => false
+      }
     _ => false
   }
 }
