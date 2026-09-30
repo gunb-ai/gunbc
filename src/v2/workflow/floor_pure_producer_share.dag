@@ -546,6 +546,10 @@ import v2.std.collection { List }
 // admitted at 0-2ms against the 302ms margin, zero over-cost. An earlier revision of this note
 // said eight for the combined producer -- a count from before the two collided-alias sources
 // were given their own rows -- and the ledger is what corrected it.
+// THE explicit_fn_import_binds ROW IS THE native_decl_selection GROUND AGAIN: four claims read four
+// verdicts of one eight-read synthetic ingest through the native prepare route (supplied fixtures for
+// import binding and for naming an import target's file refusal), so the context and verdicts are
+// one nullary producer, WARM for the same reason. A cold fill would exceed one claim's budget.
 // THE WHOLE-TREE CENSUS PROBE ROW IS THE native_decl_selection GROUND A THIRD TIME, ON THE SAME
 // PRODUCER. v2.test.claim.native_census.whole_tree_census_resolve drives
 // v2.compiler.compile native_test_context_from_ingest over one three-specimen supplied ingest, and
@@ -613,6 +617,10 @@ import v2.std.collection { List }
 // v2.test.claim.fold_lowering flp_outcomes ingests the positional, positional-named-step,
 // non-fold and well-formed snippets once and stores four Bool verdicts; MQ-1's first floor run refused each claim
 // that paid its own ingest against the new-witness budget. Portable for the same reason.
+// THE FOLD-OPERAND ROW IS THE SAME GROUND AT TWO SPECIMENS: v2.test.claim.body_lowering
+// .fold_operand_structure fos_outcomes parses the `&&` and call-argument snippets once each and stores
+// six Bool verdicts; the first floor run of its PR judged each claim that paid its own parse and lowering
+// against the new-witness budget. Portable for the same reason.
 // THE XL-2 LET-IN CAST ROW: v2.test.claim.body_cast_node bcn_let_in_value_cast_verdict assembles one
 // inline module through the production route and stores one Bool (the lowered body carries exactly
 // one cast node with its target), portable because it holds no Node and no closure.
@@ -631,6 +639,9 @@ import v2.std.collection { List }
 // module and calls body_lower_match_arms_optional on its match capture; the stored value is the
 // lowered arm patterns (Nodes, no resolution context and no closure). Its first floor run refused all
 // five claims over the enrolment margin at ~590ms each, every one of them paying the same ingest.
+// THE XL-2 REIFY-OPERAND ROW: v2.test.claim.body_lowering.reify_operand_refusal ror_verdicts tokenizes
+// and parses two inline modules and reifies two supplied bodies over each; the stored value is four
+// verdicts (no Node, no closure), portable for the same reason cav_outcomes is.
 // THE XL-2 MATCH-POSITION ROW: v2.test.claim.body_lowering.match_position_structure mps_normalized
 // runs the production route (module_roots_from_source_root_ingest) over three inline modules; the
 // stored value is the normalized trees (Nodes, no resolution context and no closure), portable for
@@ -760,10 +771,12 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_cast_node.bcn_let_in_value_cast_verdict",
   "v2.test.claim.namespace_xl0.value_read_refusal.vrr_outcomes",
   "v2.test.claim.fold_lowering.flp_outcomes",
+  "v2.test.claim.body_lowering.fold_operand_structure.fos_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_lowered",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_third_arm_malformed",
+  "v2.test.claim.body_lowering.reify_operand_refusal.ror_verdicts",
   "v2.test.claim.namespace_xl0.return_tail_position.rtp_outcomes",
   "v2.test.claim.body_lowering.wildcard_pattern_form.wpf_patterns",
   "v2.test.claim.body_lowering.match_position_structure.mps_normalized",
@@ -795,6 +808,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
   "v2.test.native_decl_selection.collision_resolved",
+  "v2.test.name_resolve.explicit_fn_import_binds.efib_verdicts",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
   "v2.compiler.program_assembly.dag_prepared_grammar",

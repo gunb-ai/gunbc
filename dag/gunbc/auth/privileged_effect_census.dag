@@ -495,12 +495,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.auth.patterns", decl_name: "credential_chain"),
-    effect: recurring_credential_read(subject: "GitHub OIDC -> STS exchange -> Secret Manager AccessVersion for a workflow credential" as NonEmptyStr),
-    realized: RealizedFederatedGrant,
-    divergence_reason: none,
-  },
-  PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.heal_publisher_federation", decl_name: "heal_publisher_wif_pool"),
     effect: recurring_credential_read(subject: "heal publisher reads the gunbai-bot App key under its own pool and provider" as NonEmptyStr),
     realized: RealizedFederatedGrant,
