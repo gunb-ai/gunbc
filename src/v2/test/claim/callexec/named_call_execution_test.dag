@@ -18,24 +18,31 @@ fn falsity(only_arg: Int) -> Bool {
   false
 }
 
-// MEASURED: NOT YET EXECUTING, AND NOT FOR A TYPING REASON. Both rows refuse at EVAL with
-// eval_rejected_grounding_not_derived at a SYNTHETIC node -- no authored locus. Under infer the same
-// call grounds (v2.test.claim.reference_evidence.declaration_reference_evidence's named-call rows pass
-// on this tree), so reference typing, application typing and the return derivation are all doing their
-// jobs and something eval consumes is still ungrounded.
+// EXECUTING, AND THE PAIR DISCRIMINATES. The refusal this file recorded is gone: both calls run and
+// answer their own bodies. The boundary was two disagreeing readers of a callee's arrow --
+// v2.compiler.infer infer_application_formal_args read it FACTS-BLIND while its caller's formals came
+// from infer_application_callee_arrow_with_facts, so a named call (whose callee is a resolved
+// declaration reference, a Conj and never an Arrow) produced no formal/actual pairs at all -- together
+// with infer_declaration_reference_facts reading the declaration from the AUTHORED symbol_index, whose
+// return atom is the source spelling that dag_binding_denotation does not denote.
 //
-// THE FALSE CONTROL DID NOT DISCRIMINATE, WHICH IS THE POINT OF HAVING IT: both rows refused
-// identically, so neither body ran and nothing distinguishes a refusal from a false answer here. A
-// single positive row would have looked like the same failure.
+// THESE ROWS WERE NOT ENROLLED BY ANYTHING BEFORE, and that is worth recording rather than quietly
+// fixing. They were declared plain `fn`, so the claim route never ran them and the native pattern
+// selected nothing either: a `*_test.dag` that enrols nothing is the decoration DESIGN section 4b
+// names, and the floor's own discovery gate is what refused it. It surfaced only once the type errors
+// ahead of it were repaired -- a refusal earlier in the phase had been masking it. The seven's own file
+// (v2.test.parse.expression_bodied_fn_decl_parse) declares `test fn` at a `*_test.dag` path, which is
+// the convention these rows now follow.
 //
-// THE SAME SIGNATURE APPEARS ELSEWHERE, unrepaired by this lane: a plain-binder match over a
-// coproduct and a trivial `fn f(b: Box) -> Int { 7 }` both refuse at eval on this cause at a synthetic
-// node. So the boundary is not named-call typing; it is whatever synthetic node eval's facts gate is
-// asked about. Enrolled executed rather than deleted so the next session inherits the measurement.
-fn nc_a_named_bool_call_executes_expected_red() -> Bool {
+// THE FALSE CONTROL IS A NEGATION, NOT AN EQUALITY. Asserting `falsity(...) == false` would couple this
+// execution proof to the equality operation, which has its own typing rule and its own standing -- the
+// coupling the header above already refuses. `!falsity(...)` holds only if the call RETURNED false: a
+// refusal fails the row, and a `true` answer fails it too, so the pair separates a refusal from a false
+// answer, which is what a single positive row cannot do.
+test fn nc_a_named_bool_call_executes_holds() -> Bool {
   truth(only_arg: 1)
 }
 
-fn nc_the_false_returning_call_is_the_deliberate_false_control_expected_red() -> Bool {
-  falsity(only_arg: 1)
+test fn nc_the_false_returning_call_returns_false_holds() -> Bool {
+  !falsity(only_arg: 1)
 }
