@@ -19,6 +19,11 @@ data behavior_named_edge_label_validated_not_constructed: RecurringFailureMode =
   ],
 
   evidence: [
+    DeclarationRef { module_path: "v2.test.claim.edge_label.structural_label_readers", decl_name: "the_header_edges_are_metadata_and_their_spellings_are_not", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.edge_label.structural_label_readers", decl_name: "a_member_spelled_like_the_header_does_not_make_a_module_root", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.edge_label.structural_label_readers", decl_name: "a_field_spelled_like_the_where_clause_is_not_one", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.edge_label.structural_label_readers", decl_name: "a_scope_spelled_like_import_syntax_is_not_import_syntax", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.edge_label.structural_label_readers", decl_name: "an_authored_name_spelled_like_a_core_marker_is_not_the_marker", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_a_foreign_label_on_a_transform_refuses", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_cast_node", decl_name: "bcn_a_loop_passes_the_resolver_gate", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_let_annotation", decl_name: "bla_bind_admits_only_its_annotation_label", field: WholeDeclaration },
