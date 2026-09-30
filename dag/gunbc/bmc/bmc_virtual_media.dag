@@ -1,7 +1,7 @@
 module gunbc.bmc_virtual_media
 
 import std.types { NonEmptyStr, String, Int, Bool, List, Port }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.exec.command { ArgvCommand }
 import extdeps.storage.nbd {
   NbdExport,
   NbdClientAttach,
@@ -123,12 +123,16 @@ fn srv4_nbd_server_config_text() -> String {
   nbd_server_config_text(export: plan_nbd_export(plan: srv4_bmc_virtual_media_plan))
 }
 
-fn srv4_nbd_server_command_text() -> String {
-  shell_command_render(command: nbd_server_command(config_path: srv4_bmc_virtual_media_plan.nbd_config_path))
+fn srv4_nbd_server_command() -> ArgvCommand {
+  nbd_server_command(config_path: srv4_bmc_virtual_media_plan.nbd_config_path)
 }
 
-fn srv4_nbd_client_attach_command_text() -> String {
-  shell_command_render(command: nbd_client_attach_command(attach: plan_nbd_client_attach(plan: srv4_bmc_virtual_media_plan)))
+fn srv4_nbd_client_attach_command() -> ArgvCommand {
+  nbd_client_attach_command(attach: plan_nbd_client_attach(plan: srv4_bmc_virtual_media_plan))
+}
+
+fn srv4_nbd_client_disconnect_command() -> ArgvCommand {
+  nbd_client_disconnect_command(device: srv4_bmc_virtual_media_plan.nbd_device)
 }
 
 fn srv4_vm_gadget_setup_ops() -> List<ConfigfsOp> {

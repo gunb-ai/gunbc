@@ -5,10 +5,14 @@ import std.types { list_length }
 import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsWriteAttr, ConfigfsMkdir, ConfigfsSymlink, ConfigfsRemoveLink, ConfigfsRmdir }
 import gunbc.bmc_virtual_media {
   srv4_nbd_server_config_text,
-  srv4_nbd_client_attach_command_text,
+  srv4_nbd_server_command,
+  srv4_nbd_client_attach_command,
+  srv4_nbd_client_disconnect_command,
   srv4_vm_gadget_setup_script,
   srv4_vm_gadget_setup_ops,
 }
+import extdeps.storage.nbd { nbd_server_program, nbd_client_program }
+import extdeps.exec.command { argv_words }
 import gunbc.fleet_intent_network { srv1_host_lan_endpoint }
 import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 
@@ -32,16 +36,36 @@ test fn srv4_nbd_export_read_only_seeded_iso() -> Bool {
 }
 
 test fn srv4_nbd_client_attaches_named_export() -> Bool {
-  string_contains(
-    s: srv4_nbd_client_attach_command_text(),
-    pattern: concat(
-      "'nbd-client' '-N' 'srv4iso' '",
-      concat(
-        srv1_host_lan_endpoint.address as String,
-        concat("' '", concat(to_string(srv3_nbd_proxy_local_port), "' '/dev/nbd0'")),
-      ),
-    ),
-  )
+  let cmd = srv4_nbd_client_attach_command()
+  let words = argv_words(command: cmd)
+  cmd.program == nbd_client_program()
+    && list_length(items: words) == 6
+    && list_length(items: cmd.arguments) == 5
+    && at(items: cmd.arguments, index: 0) == "-N"
+    && at(items: cmd.arguments, index: 1) == "srv4iso"
+    && at(items: cmd.arguments, index: 2) == srv1_host_lan_endpoint.address as String
+    && at(items: cmd.arguments, index: 3) == to_string(srv3_nbd_proxy_local_port)
+    && at(items: cmd.arguments, index: 4) == "/dev/nbd0"
+}
+
+test fn srv4_nbd_client_disconnects_target_device() -> Bool {
+  let cmd = srv4_nbd_client_disconnect_command()
+  let words = argv_words(command: cmd)
+  cmd.program == nbd_client_program()
+    && list_length(items: words) == 3
+    && list_length(items: cmd.arguments) == 2
+    && at(items: cmd.arguments, index: 0) == "-d"
+    && at(items: cmd.arguments, index: 1) == "/dev/nbd0"
+}
+
+test fn srv4_nbd_server_runs_with_config() -> Bool {
+  let cmd = srv4_nbd_server_command()
+  let words = argv_words(command: cmd)
+  cmd.program == nbd_server_program()
+    && list_length(items: words) == 3
+    && list_length(items: cmd.arguments) == 2
+    && at(items: cmd.arguments, index: 0) == "-C"
+    && at(items: cmd.arguments, index: 1) == "/tmp/gunbc-nbd-srv4.conf"
 }
 
 test fn srv4_gadget_is_readonly_cdrom_on_nbd0() -> Bool {
