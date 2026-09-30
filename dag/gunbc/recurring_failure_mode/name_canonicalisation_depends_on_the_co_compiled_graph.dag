@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.name_canonicalisation_depends_on_the_co_compiled_graph
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data name_canonicalisation_depends_on_the_co_compiled_graph: RecurringFailureMode = RecurringFailureMode {
+  identity: "name_canonicalisation_depends_on_the_co_compiled_graph" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a module's resolution depends on which OTHER modules are compiled in the same graph. v1.compiler.infer rewire_type_env_import_str_binding_identity builds build_export_indexes over the whole graph's module list, and rewire_canonical_rewrites withholds a module's canonical rewrite of an inherited name when facts.exporter_count > 1 -- the number of modules IN THAT GRAPH exporting the name, not the number the module can see. The same module source is therefore wired one way in a small closure (e.g. a planning entry such as src/v2/workflow/floor_diff_observe.dag, 83 modules) and another way in a larger one that happens to contain a second exporter of one of its inherited names (the floor's prepared subject, thousands of modules). HARM: non-hermetic resolution -- one source means different things in different closures, so an answer established over one entry's graph is not an answer about the module, and sharing or reusing a wired module across graphs (the per-module wiring this blocked, gunbc#12774 thread) is unsound until it is scoped.",
+    "RUNG FOUND AT: outside the ladder -- latent, found by reading the fold while deriving whether wiring could be shared per module, not by an incident. NO LIVE SPECIMEN YET, stated rather than implied: the three planning-store graphs on main's floor wire all 40 shared modules identically (gunbc#12774 floor_retention_census duplicated_paths=40 identical_wiring=40), which shows those closures agree, not that the rule is hermetic. A specimen is a module and an inherited name N such that exactly one module exports N in a small closure containing it and two or more do in a larger one; resolving the module under both entries and comparing its ancestry_str_bindings[N] resolved node reds it. Constructing that as a fixture is this row's first control.",
+    "CEILING: structurally guaranteed. Ambiguity of an inherited name is decidable from the module's OWN import closure, which is fixed by its source; scoping build_export_indexes to that closure makes the canonicalisation a function of the module and the pool alone, and per-module wiring then follows by construction. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: rewire_canonical_rewrites counts exporters over the importing module's import closure rather than over the co-compiled graph, with a real-pool differential of diagnostics and claim outcomes before/after. This is a semantic change to the frozen v1 seed and waits on the scope decision escalated by jolly-boar-500 (module import closure recommended) under gunbc.v1_maintenance_standing v1_seed_standing."
+  ],
+
+  evidence: [],
+}
