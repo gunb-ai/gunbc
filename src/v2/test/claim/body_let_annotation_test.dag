@@ -381,7 +381,7 @@ fn bla_undecided_count(o: Outcome<Bool>) -> Int {
     Rejected { diagnostics: _ } => 0 - 1
     Accepted { value: _, diagnostics: None } => 0
     Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
-      fold(Cons { head: d.head, tail: d.tail }, init: 0, f: fn(acc, x) {
+      fold_list(xs: Cons { head: d.head, tail: d.tail }, empty: 0, cons: fn(acc, x) {
         if (x.reason == ^inhabitance_undecidable_argument_type_not_derived)
           || (x.reason == ^inhabitance_undecidable_formal_unresolved)
           || (x.reason == ^inhabitance_undecidable_optional_carrier)
