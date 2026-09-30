@@ -3984,6 +3984,34 @@ fn refinement_inhabitance(declared: Node, produced: Node, scope: InferScope) -> 
 // them: coproduct_payload_where_parent_required already peels transparent aliases through
 // transparent_alias_identity_agrees, so alias identity is decided in exactly one place in the
 // tree and this relation inherits it instead of re-deriving a second answer.
+// A KERNEL-GROUNDED CARRIER IS INHABITED BY ITSELF AND BY ITS TRANSPARENT ALIASES. The carrier is
+// declared as a coproduct (std.nat Nat = Zero | Succ) and realized as the kernel integer, so the
+// structural judgments below -- which exist to tell a payload from its parent, a kernel value from a
+// structure, one nominal from another -- have no distinction to find between it and an alias that
+// names it: `type NonNegativeInt = Nat` IS Nat on every route. Measured on the Nat de-fork: without
+// this arm std.integer NonNegativeInt refused at every std.nat call (dag/extdeps/version/semver.dag,
+// dag/std/citation.dag); the same admission guards the call-argument check (direct_call_arg_type_mismatch),
+// whose nominal-brand arm refused the same pair. Both sides are read by declaration, not spelling: the declared name must
+// resolve to the grounded declaration, and the produced name must too, directly or through the one
+// alias hop an alias binding records in its `name` (see kernel_value_declared_type_mismatch). A
+// REFINEMENT of the carrier (PositiveInt = Nat where gt_zero) is not this arm's: it stays with
+// refinement_inhabitance, which decides the widen and the narrow.
+fn produced_is_kernel_grounded_carrier_or_its_alias(declared_name: String, produced_name: String, env: TypeEnv) -> Bool {
+  if !env_name_is_kernel_grounded_carrier(name: declared_name, env: env) {
+    false
+  } else if env_name_is_kernel_grounded_carrier(name: produced_name, env: env) {
+    true
+  } else {
+    match lookup_type_by_name(env: env, name: produced_name) {
+      Present { value: bound } =>
+        bound.connective == NoConnective && (bound.children |> count) == 0 && bound.type_annotation == none
+          && bound.name != "" && qualified_last_segment(name: bound.name) != qualified_last_segment(name: produced_name)
+          && env_name_is_kernel_grounded_carrier(name: bound.name, env: env)
+      Absent => false
+    }
+  }
+}
+
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferScope) -> InhabitanceVerdict {
   let declared = obligation.declared
   let produced = obligation.produced
@@ -4014,6 +4042,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
   } else if carrier_verdict == Present { value: true } {
+    Inhabits
+  } else if produced_is_kernel_grounded_carrier_or_its_alias(declared_name: declared_name, produced_name: produced_name, env: scope.type_env) {
     Inhabits
   } else if carrier_verdict == Present { value: false } {
     InhabitanceRefused { reason: RefusedDistinctProductConstructor }
@@ -4201,8 +4231,8 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
 // diagnostic function would be the N-representation problem moved one layer down.
 // WHY A KERNEL LITERAL AT AN ALGEBRAICALLY-DECLARED NUMERIC IS ADMITTED, AND WHY THIS IS
 // CONSULTING AN AUTHORITY RATHER THAN WIDENING AN ARM. std.nat declares
-// `type Nat = CommutativeSemiring<Magnitude>` and std.integer declares
-// `type Int = AbelianGroup<GroupCompletion<Nat>>`: the canonical form of both is an algebraic
+// `type Nat = Zero | Succ { prev: Nat }` and std.integer declares
+// `type Int = AbelianGroup<GroupCompletion<Nat>>`: the canonical form of both is a declared
 // STRUCTURE while their values are authored as kernel integer literals. Read structurally that
 // is kernel-at-structured and the relation refused it -- measured, 33 of 50 sites at the
 // direct-call seam, every one correct code.
@@ -4216,7 +4246,7 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
 // THREE PROPERTIES THIS RELIES ON, none of them incidental:
 //   IDENTITY, NOT SPELLING. The authority is keyed on the resolved declaring module.
 //   numeric_realization_identity_note names the exact hazard: std.nat.Nat realizes natively
-//   while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT, so a bare-name rule
+//   while a user-declared type of the same spelling or shape must NOT, so a bare-name rule
 //   admits the wrong one. The enrolled RED for that pair is the regression control.
 //   FAIL-CLOSED ON UNKNOWN IDENTITY. provenance_realizes_natively answers false for
 //   DeclarationIdentityAbsent, which is what an unestablished identity yields -- an arm of the
@@ -4702,8 +4732,8 @@ fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: Inf
 // KernelGrounding), so it has no payload-versus-parent distinction to refuse: its successor's
 // payload and the carrier itself are one integer type. Without the exemption the carrier's own
 // transparent aliases (std.integer NonNegativeInt = Nat) read as "the payload type of Succ where
-// the parent Nat is required" and refused correct code (measured on the Nat de-fork, where
-// std.integer NonNegativeInt = Nat refused at dag/extdeps/version/semver.dag and dag/std/citation.dag).
+// the parent Nat is required" and refused correct code (measured on the Nat de-fork at
+// dag/extdeps/version/semver.dag and dag/std/citation.dag).
 fn coproduct_payload_where_parent_required(
   formal: Node,
   actual: Node,
@@ -5773,6 +5803,10 @@ fn direct_call_arg_type_mismatch(
   }
   else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
+  else if produced_is_kernel_grounded_carrier_or_its_alias(
+      declared_name: authored_name_at(source_indices: source_indices, node: formal),
+      produced_name: authored_name_at(source_indices: source_indices, node: actual),
+      env: type_env) { false }
   else {
     nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
@@ -16172,22 +16206,36 @@ fn item_declares_kernel_grounded_carrier(item: Node, module_name: String, source
 // to the grounded declaration, so a user-declared recursive type of the same spelling is still
 // recorded by the module that declares it.
 fn env_name_is_kernel_grounded_carrier(name: String, env: TypeEnv) -> Bool {
-  if !(kernel_grounding_rows |> any(r => (r.carrier.decl_name as String) == name)) {
+  let leaf = qualified_last_segment(name: name)
+  let rows = kernel_grounding_rows |> filter(r => (r.carrier.decl_name as String) == leaf)
+  if (rows |> count) == 0 {
     false
   } else {
     match lookup_type_by_name(env: env, name: name) {
       Present { value: bound } =>
-        match declaration_ref_of_type_node(rt: bound, source_indices: env.source_indices, env: env) {
-          Present { value: d } =>
-            match kernel_grounding_for(rows: kernel_grounding_rows, source_kind: KernelIntLiteral, carrier: d) {
-              KernelGroundingFound { row: _ } => true
-              KernelGroundingAbsent => false
-              KernelGroundingAmbiguous { row_count: _ } => false
-            }
-          Absent => false
-        }
+        rows |> any(r =>
+          match declaration_node_of_ref(d: r.carrier, env: env) {
+            Present { value: carrier_decl } => same_declaration_site(a: bound, b: carrier_decl)
+            Absent => false
+          })
       Absent => false
     }
+  }
+}
+
+// TWO NODES ARE ONE DECLARATION WHEN THEY WERE READ FROM ONE DECLARATION SITE. The name lookup
+// answers the declaration node the environment binds, and the symbol index answers the node the
+// grounding row's DeclarationRef names; comparing their declaration spans (file and extent)
+// identifies them without asking a type-reference reader to re-derive an identity from a node that
+// is itself the declaration, which it does not do.
+fn same_declaration_site(a: Node, b: Node) -> Bool {
+  match a.ident_span {
+    Present { value: sa } =>
+      match b.ident_span {
+        Present { value: sb } => sa.file == sb.file && sa.start == sb.start && sa.end == sb.end && sa.file != ""
+        Absent => false
+      }
+    Absent => false
   }
 }
 

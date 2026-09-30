@@ -103,14 +103,11 @@ pub fn arcseconds_per_arcminute() -> Nat {
 }
 
 pub fn arcseconds_per_degree_derived() -> Nat {
-    v1_rt::int_mul(arcminutes_per_degree(), arcseconds_per_arcminute())
+    (arcminutes_per_degree() * arcseconds_per_arcminute())
 }
 
 pub fn arcseconds_per_turn() -> Nat {
-    v1_rt::int_mul(
-        v1_rt::int_mul(degrees_per_turn(), arcminutes_per_degree()),
-        arcseconds_per_arcminute(),
-    )
+    ((degrees_per_turn() * arcminutes_per_degree()) * arcseconds_per_arcminute())
 }
 
 pub fn square_millimetres_per_square_metre() -> Nat {

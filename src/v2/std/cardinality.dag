@@ -23,7 +23,7 @@ import v2.std.diagnostic {
   node_locus,
   Unavailable
 }
-import v2.std.nat { Nat, Succ, Zero }
+import std.nat { Nat, Succ, Zero }
 import v2.std.node {
   Arrow,
   Atom,

@@ -31,7 +31,7 @@ import v2.std.machine {
   Word64,
   Word128
 }
-import v2.std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
+import std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 type Int = GroupCompletion<Nat>
 type UInt = Nat

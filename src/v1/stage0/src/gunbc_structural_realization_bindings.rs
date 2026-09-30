@@ -64,7 +64,7 @@ pub fn boolean_literal_homomorphism(
 pub fn literal_homomorphism_rows() -> Rc<Vec<Rc<LiteralHomomorphism>>> {
     thread_local! {
             static CACHED: Rc<Vec<Rc<LiteralHomomorphism>>> = {
-                Rc::new(vec![peano_literal_homomorphism("v2.std.nat".to_string(), "Nat".to_string(), "Zero".to_string(), "Succ".to_string(), "prev".to_string()), boolean_literal_homomorphism("v2.std.logic".to_string(), "Bool".to_string(), "True".to_string(), "False".to_string()), Rc::new(LiteralHomomorphism {
+                Rc::new(vec![peano_literal_homomorphism("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "StructuralZero".to_string(), "StructuralSucc".to_string(), "prev".to_string()), boolean_literal_homomorphism("v2.std.logic".to_string(), "Bool".to_string(), "True".to_string(), "False".to_string()), Rc::new(LiteralHomomorphism {
         source_kind: LiteralSourceKind::KernelStringLiteral,
         destination: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeMonoid".to_string()),
         element: Some(crate::std_decl_ref::decl_ref("std.types".to_string(), "Char".to_string())),
@@ -93,7 +93,7 @@ pub fn structural_ordering_binding(
 pub fn structural_ordering_rows() -> Rc<Vec<Rc<StructuralOrderingBinding>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<StructuralOrderingBinding>>> = {
-            Rc::new(vec![structural_ordering_binding("v2.std.nat".to_string(), "Nat".to_string(), "v2.std.nat".to_string(), "nat_compare".to_string(), "std.algebra".to_string(), "Ordering".to_string())])
+            Rc::new(vec![structural_ordering_binding("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "test.fixture.structural_peano_nat".to_string(), "structural_nat_compare".to_string(), "std.algebra".to_string(), "Ordering".to_string())])
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<StructuralOrderingBinding>>>| c.clone())
