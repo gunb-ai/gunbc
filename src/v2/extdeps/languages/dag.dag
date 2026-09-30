@@ -194,6 +194,8 @@ import v2.std.integer {
   NonZeroD2
 }
 import v2.std.text { String }
+import extdeps.numeric.base16 { base16_digit_rows }
+import std.unicode.types { unicode_scalar }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.extdeps.languages.fidelity {
@@ -484,15 +486,20 @@ fn dag_float_literal_lex_rule() -> LexRule {
   }
 }
 
-// THE STRING ESCAPE VOCABULARY, ONE ROW PER ESCAPE: the character spelled after the backslash and
-// the scalar it denotes. Both readers derive from these rows -- the lex pattern below admits exactly
-// the spelled characters, and dag_string_literal_value_decode maps each to its value -- so an escape
-// the lexer admits and the decoder does not know (or the reverse) is unwritable. The six rows:
-//   \"  -> U+0022 quote        \\  -> U+005C backslash
-//   \n  -> U+000A line feed    \t  -> U+0009 tab
-//   \{  -> U+007B left brace   \}  -> U+007D right brace
-// A brace escape is a literal brace and never interpolation (dag/test/claim
-// string_brace_escape_witness_test). Any other character after a backslash is malformed.
+// THE STRING ESCAPE VOCABULARY. The dag language's escapes are the ones the v1 tokenizer decodes
+// (src/v1/01_tokenize.dag process_escapes), which is what every authored .dag string already means:
+// eight single-character escapes, one row each below, and two numeric forms decoded by
+// dag_string_decode_step --
+//   \"  -> U+0022     \\  -> U+005C     \0  -> U+0000     \n  -> U+000A
+//   \r  -> U+000D     \t  -> U+0009     \{  -> U+007B     \}  -> U+007D
+//   \xHH      -> the code point HH names (exactly two hex digits)
+//   \u{H..H}  -> the code point named by one to six hex digits, which must be a Unicode scalar
+//                (std.unicode.types unicode_scalar)
+// Hex digits are extdeps.numeric.base16 base16_digit_rows, either case. A brace escape is a literal
+// brace and never interpolation (dag/test/claim string_brace_escape_witness_test). Any other
+// character after a backslash, a backslash with nothing after it, and a numeric form that is short,
+// non-hex, over-long or names a non-scalar are malformed. The v2 lexer admits a backslash as string
+// text (StringTextChar), so it is this decode, not the lexer, that refuses a malformed escape.
 type DagStringEscape {
   spelled: Int
   value: Int
@@ -506,7 +513,9 @@ fn dag_string_escape_leading() -> List<DagStringEscape> {
   [
     DagStringEscape { spelled: 34, value: 34 },
     DagStringEscape { spelled: 92, value: 92 },
+    DagStringEscape { spelled: 48, value: 0 },
     DagStringEscape { spelled: 110, value: 10 },
+    DagStringEscape { spelled: 114, value: 13 },
     DagStringEscape { spelled: 116, value: 9 },
     DagStringEscape { spelled: 123, value: 123 }
   ]
@@ -3911,6 +3920,9 @@ fn dag_float_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurre
 type DagStringDecode
   = DagStringDecodeText { text: String }
   | DagStringDecodeEscape { text: String }
+  | DagStringDecodeHex { text: String, digits: Int, value: Int }
+  | DagStringDecodeUnicodeOpen { text: String }
+  | DagStringDecodeUnicode { text: String, digits: Int, value: Int }
   | DagStringDecodeMalformed { spelled: Int }
 
 fn dag_string_escape_value_optional(spelled: Int) -> Optional<Int> {
@@ -3921,19 +3933,81 @@ fn dag_string_escape_value_optional(spelled: Int) -> Optional<Int> {
   )
 }
 
+fn dag_string_hex_digit_optional(c: Int) -> Optional<Int> {
+  let spelled = from_code_point(cp: c)
+  fold_list(
+    xs: base16_digit_rows,
+    empty: optional_absent(),
+    cons: fn(found, row) { if (row.lower == spelled) || (row.upper == spelled) { optional_present(value: row.value) } else { found } }
+  )
+}
+
+fn dag_string_decode_append(text: String, code_point: Int) -> DagStringDecode {
+  DagStringDecodeText { text: concat(text, from_code_point(cp: code_point)) }
+}
+
+fn dag_string_decode_escape_step(t: String, c: Int) -> DagStringDecode {
+  if c == 120 {
+    DagStringDecodeHex { text: t, digits: 0, value: 0 }
+  } else if c == 117 {
+    DagStringDecodeUnicodeOpen { text: t }
+  } else {
+    match dag_string_escape_value_optional(spelled: c) {
+      Present { value: v } => dag_string_decode_append(text: t, code_point: v)
+      Absent => DagStringDecodeMalformed { spelled: c }
+    }
+  }
+}
+
+fn dag_string_decode_hex_step(t: String, digits: Int, value: Int, c: Int) -> DagStringDecode {
+  match dag_string_hex_digit_optional(c: c) {
+    Present { value: d } =>
+      if digits == 1 {
+        dag_string_decode_append(text: t, code_point: (value * 16) + d)
+      } else {
+        DagStringDecodeHex { text: t, digits: 1, value: d }
+      }
+    Absent => DagStringDecodeMalformed { spelled: c }
+  }
+}
+
+fn dag_string_decode_unicode_step(t: String, digits: Int, value: Int, c: Int) -> DagStringDecode {
+  if c == 125 {
+    if (digits > 0) && unicode_scalar(code_point: value) {
+      dag_string_decode_append(text: t, code_point: value)
+    } else {
+      DagStringDecodeMalformed { spelled: c }
+    }
+  } else {
+    match dag_string_hex_digit_optional(c: c) {
+      Present { value: d } =>
+        if digits >= 6 {
+          DagStringDecodeMalformed { spelled: c }
+        } else {
+          DagStringDecodeUnicode { text: t, digits: digits + 1, value: (value * 16) + d }
+        }
+      Absent => DagStringDecodeMalformed { spelled: c }
+    }
+  }
+}
+
 fn dag_string_decode_step(state: DagStringDecode, c: Int) -> DagStringDecode {
   match state {
     DagStringDecodeText { text: t } =>
       if c == 92 {
         DagStringDecodeEscape { text: t }
       } else {
-        DagStringDecodeText { text: concat(t, from_code_point(cp: c)) }
+        dag_string_decode_append(text: t, code_point: c)
       }
-    DagStringDecodeEscape { text: t } =>
-      match dag_string_escape_value_optional(spelled: c) {
-        Present { value: v } => DagStringDecodeText { text: concat(t, from_code_point(cp: v)) }
-        Absent => DagStringDecodeMalformed { spelled: c }
+    DagStringDecodeEscape { text: t } => dag_string_decode_escape_step(t: t, c: c)
+    DagStringDecodeHex { text: t, digits: n, value: v } => dag_string_decode_hex_step(t: t, digits: n, value: v, c: c)
+    DagStringDecodeUnicodeOpen { text: t } =>
+      if c == 123 {
+        DagStringDecodeUnicode { text: t, digits: 0, value: 0 }
+      } else {
+        DagStringDecodeMalformed { spelled: c }
       }
+    DagStringDecodeUnicode { text: t, digits: n, value: v } => dag_string_decode_unicode_step(t: t, digits: n, value: v, c: c)
     DagStringDecodeMalformed { spelled: m } => DagStringDecodeMalformed { spelled: m }
   }
 }
@@ -3978,22 +4052,28 @@ fn dag_string_literal_refusal(reason: Symbol, occurrence_id: NodeOccurrenceIdent
   )
 }
 
+// An escape left open at the closing quote, or one the decode could not complete, is malformed.
+fn dag_string_literal_escape_refusal(occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
+  dag_string_literal_refusal(reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
+}
+
 // THE VALUE A STRING LITERAL'S LEXEME SPELLS: the framing quotes removed and each escape replaced
-// by its dag_string_escapes row's scalar. Refuses, located at `occurrence_id`, when the lexeme is
-// not quote-framed (^dag_string_literal_lexeme_unframed) or carries a backslash followed by a
-// character with no dag_string_escapes row, or by nothing (^dag_string_literal_escape_malformed).
-// The raw spelling is never answered as the value. Every reader of string-literal text decodes
-// here, so the escape vocabulary has one reader as it has one table.
+// by the code point the escape vocabulary above names. Refuses, located at `occurrence_id`, when the
+// lexeme is not quote-framed (^dag_string_literal_lexeme_unframed) or carries an escape that
+// vocabulary calls malformed (^dag_string_literal_escape_malformed). The raw spelling is never
+// answered as the value. Every reader of string-literal text decodes here, so the escape
+// vocabulary has one reader.
 fn dag_string_literal_decoded_text(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
   match dag_string_literal_body_optional(lexeme: lexeme) {
     Absent => dag_string_literal_refusal(reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
     Present { value: body } =>
       match fold(body, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
         DagStringDecodeText { text: value } => outcome_accepted(value: value)
-        DagStringDecodeEscape { text: _ } =>
-          dag_string_literal_refusal(reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
-        DagStringDecodeMalformed { spelled: _ } =>
-          dag_string_literal_refusal(reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
+        DagStringDecodeEscape { text: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
+        DagStringDecodeHex { text: _, digits: _, value: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
+        DagStringDecodeUnicodeOpen { text: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
+        DagStringDecodeUnicode { text: _, digits: _, value: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
+        DagStringDecodeMalformed { spelled: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
       }
   }
 }
