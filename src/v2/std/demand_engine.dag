@@ -228,6 +228,8 @@ type DemandEngine<V> {
   relations: List<DependencyRelation<DemandIdentity>>
   dependents_of: Map<DemandIdentity, List<DemandIdentity>>
   prerequisites_of: Map<DemandIdentity, List<DemandIdentity>>
+  ready: List<DemandIdentity>
+  in_flight: Int
   completion_order: List<DemandIdentity>
   readiness_computations: Int
   entries_visited: Int
@@ -238,6 +240,10 @@ type DemandEngine<V> {
 // through a FIELD READ -- the same erasure that makes an inline `aggregate.fields` a runtime type error
 // elsewhere in this corpus. Naming the parameter restores it, so every entry rewrite below goes through
 // one of these two.
+fn demand_entry_state<V>(entry: DemandEntry<V>) -> DemandState<V> {
+  entry.state
+}
+
 fn demand_entry_with_state<V>(entry: DemandEntry<V>, state: DemandState<V>) -> DemandEntry<V> {
   DemandEntry {
     identity: entry.identity,
@@ -275,6 +281,8 @@ fn demand_engine_empty<V>() -> DemandEngine<V> {
     relations: [],
     dependents_of: empty_map(),
     prerequisites_of: empty_map(),
+    ready: [],
+    in_flight: 0,
     completion_order: [],
     readiness_computations: 0,
     entries_visited: 0
@@ -371,6 +379,8 @@ fn demand_engine_request<V>(
           relations: e.relations,
           dependents_of: e.dependents_of,
           prerequisites_of: e.prerequisites_of,
+          ready: e.ready,
+          in_flight: e.in_flight,
           completion_order: e.completion_order,
           readiness_computations: e.readiness_computations,
           entries_visited: e.entries_visited
@@ -386,6 +396,8 @@ fn demand_engine_request<V>(
           relations: e.relations,
           dependents_of: e.dependents_of,
           prerequisites_of: e.prerequisites_of,
+          ready: e.ready,
+          in_flight: e.in_flight,
           completion_order: e.completion_order,
           readiness_computations: e.readiness_computations,
           entries_visited: e.entries_visited
@@ -402,6 +414,8 @@ fn demand_engine_request<V>(
         relations: e.relations,
         dependents_of: e.dependents_of,
         prerequisites_of: e.prerequisites_of,
+        ready: e.ready,
+        in_flight: e.in_flight,
         completion_order: e.completion_order,
         readiness_computations: e.readiness_computations,
         entries_visited: e.entries_visited
@@ -439,6 +453,8 @@ fn demand_engine_relate<V>(
       key: relation.dependent,
       item: relation.prerequisite
     ),
+    ready: e.ready,
+    in_flight: e.in_flight,
     completion_order: e.completion_order,
     readiness_computations: e.readiness_computations,
     entries_visited: e.entries_visited
@@ -579,6 +595,8 @@ fn demand_engine_seal<V>(e: DemandEngine<V>) -> DemandEngine<V> {
       relations: e.relations,
       dependents_of: e.dependents_of,
       prerequisites_of: e.prerequisites_of,
+      ready: e.ready,
+      in_flight: e.in_flight,
       completion_order: e.completion_order,
       readiness_computations: e.readiness_computations,
       entries_visited: e.entries_visited
@@ -587,6 +605,28 @@ fn demand_engine_seal<V>(e: DemandEngine<V>) -> DemandEngine<V> {
 }
 
 fn demand_engine_reevaluate<V>(e: DemandEngine<V>) -> DemandEngine<V> {
+  demand_engine_republish_ready(e: demand_engine_reevaluated_states(e: e))
+}
+
+// THE ORDER AND THE COUNT REPUBLISHED FROM STATES JUST DECIDED. Only the two whole-population passes
+// reach this; it is the one place a full rebuild is admitted, and it is named so a local function
+// cannot reach for it by accident.
+fn demand_engine_republish_ready<V>(e: DemandEngine<V>) -> DemandEngine<V> {
+  DemandEngine {
+    entries: e.entries,
+    entry_order: e.entry_order,
+    relations: e.relations,
+    dependents_of: e.dependents_of,
+    prerequisites_of: e.prerequisites_of,
+    ready: demand_ready_rebuild(e: e),
+    in_flight: demand_in_flight_rebuild(e: e),
+    completion_order: e.completion_order,
+    readiness_computations: e.readiness_computations,
+    entries_visited: e.entries_visited
+  }
+}
+
+fn demand_engine_reevaluated_states<V>(e: DemandEngine<V>) -> DemandEngine<V> {
   DemandEngine {
     entries: demand_engine_entries_mapped(
       e: e,
@@ -604,6 +644,8 @@ fn demand_engine_reevaluate<V>(e: DemandEngine<V>) -> DemandEngine<V> {
     relations: e.relations,
     dependents_of: e.dependents_of,
     prerequisites_of: e.prerequisites_of,
+    ready: e.ready,
+    in_flight: e.in_flight,
     completion_order: e.completion_order,
     readiness_computations: e.readiness_computations + length(xs: e.entry_order),
     entries_visited: e.entries_visited
@@ -623,15 +665,79 @@ fn demand_engine_reevaluate<V>(e: DemandEngine<V>) -> DemandEngine<V> {
 // infer from, so the emitted crate refuses to compile. Naming it gives the callee a declared
 // signature at the point the realization needs one, which is what v2.std.compilers.compilation_unit
 // already does with node_sort_key.
+// THE READY ORDER IS MAINTAINED, NOT REDERIVED. demand_engine_next needs one thing -- the canonical
+// FIRST ready identity -- and it used to get it by filtering every entry and sorting the survivors, on
+// every admission. That is the same defect settlement had: a whole-population pass behind a question
+// about one demand. The order here is canonical (v2.std.demand_engine demand_queue_sort_key), so the
+// head is the answer and reading it is one inspection.
+//
+// CANONICAL AND NOT ARRIVAL-ORDERED, deliberately: two runs of one closure must admit in one order, and
+// an order that depended on which prerequisite happened to settle last would make the completion receipt
+// unreproducible.
+fn demand_ready_insert(ready: List<DemandIdentity>, id: DemandIdentity) -> List<DemandIdentity> {
+  if contains(xs: ready, item: id, eq: fn(a, b) { demand_identity_eq(a: a, b: b) }) {
+    ready
+  } else {
+    sort_by(list_snoc_item(xs: ready, item: id), demand_queue_sort_key)
+  }
+}
+
+fn demand_ready_remove(ready: List<DemandIdentity>, id: DemandIdentity) -> List<DemandIdentity> {
+  filter(xs: ready, predicate: fn(candidate) { !demand_identity_eq(a: candidate, b: id) })
+}
+
+// ONE IDENTITY'S MEMBERSHIP, DECIDED BY ITS STATE. A demand is in the ready order exactly while its
+// state says ready -- so a settled, refused or blocked demand leaves, and a dependent that just became
+// ready enters. Both directions matter: a stale member would be admitted after it had already settled.
+fn demand_ready_sync<V>(
+  ready: List<DemandIdentity>,
+  id: DemandIdentity,
+  state: DemandState<V>
+) -> List<DemandIdentity> {
+  if demand_state_is_ready(s: state) {
+    demand_ready_insert(ready: ready, id: id)
+  } else {
+    demand_ready_remove(ready: ready, id: id)
+  }
+}
+
+// IN FLIGHT IS A DELTA, NOT A SCAN -- and the scan it replaces could not have answered anything else.
+// demand_engine_in_flight filtered every entry for DemandRunning, and NOTHING IN THIS CORPUS SETS THAT
+// STATE: no producer transitions a demand to running, so the filter walked the population to compute a
+// constant zero on every admission.
+//
+// IT IS STILL READ FROM THE STATE RATHER THAN HARDCODED. Returning 0 with a comment would be correct
+// today and a fail-open the moment a producer appears -- admitting past the seat count because the
+// count was a literal. So the delta is taken at the one site state changes, which costs nothing and
+// tracks a producer that does not exist yet.
+fn demand_in_flight_delta<V>(before: DemandState<V>, after: DemandState<V>) -> Int {
+  if demand_state_is_running(s: after) {
+    if demand_state_is_running(s: before) { 0 } else { 1 }
+  } else {
+    if demand_state_is_running(s: before) { 0 - 1 } else { 0 }
+  }
+}
+
 fn demand_queue_sort_key(id: DemandIdentity) -> String {
   demand_identity_key(id: id)
 }
 
 fn demand_engine_ready_queue<V>(e: DemandEngine<V>) -> List<DemandIdentity> {
+  e.ready
+}
+
+// THE WHOLE-POPULATION DERIVATION, KEPT FOR THE PASSES THAT ARE ALLOWED ONE. Seal and reevaluate decide
+// every demand's readiness, so they rebuild the order from the states they just computed; nothing else
+// calls this.
+fn demand_ready_rebuild<V>(e: DemandEngine<V>) -> List<DemandIdentity> {
   list_map(
     xs: filter(xs: demand_engine_all_entries(e: e), predicate: fn(entry) { demand_state_is_ready(s: entry.state) }),
     f: fn(entry) { entry.identity }
   ) |> sort_by(demand_queue_sort_key)
+}
+
+fn demand_in_flight_rebuild<V>(e: DemandEngine<V>) -> Int {
+  length(xs: filter(xs: demand_engine_all_entries(e: e), predicate: fn(entry) { demand_state_is_running(s: entry.state) }))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -652,7 +758,7 @@ fn demand_lease_admits(offer: DemandLeaseOffer, in_flight: Int) -> Bool {
 }
 
 fn demand_engine_in_flight<V>(e: DemandEngine<V>) -> Int {
-  length(xs: filter(xs: demand_engine_all_entries(e: e), predicate: fn(entry) { demand_state_is_running(s: entry.state) }))
+  e.in_flight
 }
 
 // The next demand to admit: the head of the stable queue, but only if a seat is available. The
@@ -663,7 +769,7 @@ type DemandAdmission
   | DemandNotAdmitted { cause: DemandBlockedCause }
 
 fn demand_engine_next<V>(e: DemandEngine<V>, offer: DemandLeaseOffer) -> DemandAdmission {
-  match demand_engine_ready_queue(e: e) {
+  match e.ready {
     Empty => DemandNotAdmitted { cause: BlockedNoDemand }
     Cons { head: first, tail: _ } =>
       if demand_lease_admits(offer: offer, in_flight: demand_engine_in_flight(e: e)) {
@@ -691,23 +797,32 @@ fn demand_engine_settle<V>(
   id: DemandIdentity,
   state: DemandState<V>
 ) -> DemandEngine<V> {
+  let before = match map_lookup(m: e.entries, key: id) {
+    Absent => DemandWaiting
+    Present { value: prior } => demand_entry_state(entry: prior)
+  }
   let settled = DemandEngine {
     entries: demand_engine_settle_entry(e: e, id: id, state: state),
     entry_order: e.entry_order,
     relations: e.relations,
     dependents_of: e.dependents_of,
     prerequisites_of: e.prerequisites_of,
+    ready: demand_ready_sync(ready: e.ready, id: id, state: state),
+    in_flight: e.in_flight + demand_in_flight_delta(before: before, after: state),
     completion_order: list_snoc_item(xs: e.completion_order, item: id),
     readiness_computations: e.readiness_computations,
     entries_visited: e.entries_visited + 1
   }
   let direct = demand_engine_dependents(e: settled, id: id)
+  let reevaluated = demand_engine_reevaluate_only(e: settled, ids: direct)
   DemandEngine {
-    entries: demand_engine_reevaluate_only(e: settled, ids: direct),
+    entries: reevaluated,
     entry_order: settled.entry_order,
     relations: settled.relations,
     dependents_of: settled.dependents_of,
     prerequisites_of: settled.prerequisites_of,
+    ready: demand_ready_sync_many(e: settled, ready: settled.ready, ids: direct),
+    in_flight: settled.in_flight,
     completion_order: settled.completion_order,
     readiness_computations: settled.readiness_computations + length(xs: direct),
     entries_visited: settled.entries_visited + length(xs: direct)
@@ -734,6 +849,22 @@ fn demand_engine_settle_entry<V>(
 // unrelated population is never read. Replacing the previous population rewrite with this is what makes
 // that claim true rather than merely stated -- the fold is over `ids`, which came from the keyed
 // reverse-adjacency index, so nothing here is proportional to the number of demands in flight elsewhere.
+// EACH DIRECT DEPENDENT'S MEMBERSHIP FOLLOWS ITS NEW STATE, and the fold is over `ids` -- the
+// out-degree -- so the unrelated population is never consulted here either.
+fn demand_ready_sync_many<V>(
+  e: DemandEngine<V>,
+  ready: List<DemandIdentity>,
+  ids: List<DemandIdentity>
+) -> List<DemandIdentity> {
+  fold_list(
+    xs: ids,
+    empty: ready,
+    cons: fn(acc, dependent) {
+      demand_ready_sync(ready: acc, id: dependent, state: demand_readiness(e: e, id: dependent))
+    }
+  )
+}
+
 fn demand_engine_reevaluate_only<V>(
   e: DemandEngine<V>,
   ids: List<DemandIdentity>

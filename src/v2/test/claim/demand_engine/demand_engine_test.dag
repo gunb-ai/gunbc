@@ -1,6 +1,6 @@
 module v2.test.demand_engine.demand_engine
 
-import v2.std.algebra { length, list_map, fold_list }
+import v2.std.algebra { length, list_map, fold_list, contains, filter }
 import v2.std.collection { List }
 import std.algebra { Cons, Empty }
 import v2.std.dependency { DataDependsOn, DependencyRelation }
@@ -564,4 +564,125 @@ test fn settlement_leaves_the_entry_order_unchanged_holds() -> Bool {
   (length(xs: after.entry_order) == length(xs: sealed.entry_order))
     && g_order_resolves_in_store(e: after)
     && g_order_counts_each_once(e: after)
+}
+
+// ── admission locality, and the reds that keep the ready order honest ─────────────────────────
+//
+// COUNTING READINESS DERIVATIONS COULD NOT SEE THIS EITHER. demand_engine_next used to filter every
+// entry and SORT the survivors to answer one question -- which identity is canonically first -- and
+// demand_engine_in_flight filtered the population again. Neither cost a derivation, so both were
+// invisible to the only counter the engine had. ready_inspected counts inspections of the ready order,
+// which is what makes the admission claim checkable at the grain it is made.
+// THE MAINTAINED ORDER MUST EQUAL WHAT A REBUILD WOULD PRODUCE, which is the failure this replacement
+// actually risks. demand_engine_next now reads the head of a maintained list instead of filtering and
+// sorting the population, so the cost claim is structural -- one inspection, by construction. What is
+// NOT structural is that the maintained list still says the right thing after a sequence of
+// settlements, and drift there would admit a stale identity or skip a ready one while every count
+// looked fine.
+//
+// A COUNTER WAS THE FIRST ATTEMPT AND WAS WRONG. demand_engine_next returns an admission, not an
+// engine, so an inspection counter on the engine could not be observed by any caller -- it would have
+// been a field nothing writes, which is the dangling declaration DESIGN section 3c forbids. This
+// asserts the property the counter was a proxy for.
+fn g_maintained_matches_rebuild(e: DemandEngine<Int>) -> Bool {
+  g_list_eq_ids(a: demand_engine_ready_queue(e: e), b: demand_ready_rebuild(e: e))
+}
+
+test fn the_maintained_ready_order_matches_a_full_rebuild_holds() -> Bool {
+  let sealed = demand_engine_seal(e: g_wide_extra(e: g_lopsided_unsealed(), n: 40, tag: "w"))
+  let after_a = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
+  let after_b = demand_engine_settle(e: after_a, id: g_b(), state: DemandAvailable { value: 2 })
+  let after_refusal = demand_engine_settle(e: after_b, id: g_c(), state: DemandRefused)
+  g_maintained_matches_rebuild(e: sealed)
+    && g_maintained_matches_rebuild(e: after_a)
+    && g_maintained_matches_rebuild(e: after_b)
+    && g_maintained_matches_rebuild(e: after_refusal)
+}
+
+// AND READING THE IN-FLIGHT STANDING IS A READ. It was a filter over every entry for a state NO
+// PRODUCER IN THIS CORPUS SETS -- a whole-population walk computing a constant zero on every admission.
+// It is still derived from state rather than hardcoded, so a producer that appears later is tracked
+// instead of silently over-admitting past the seat count.
+test fn the_in_flight_standing_does_not_depend_on_population_holds() -> Bool {
+  let small = demand_engine_seal(e: g_lopsided_unsealed())
+  let wide = demand_engine_seal(e: g_wide_extra(e: g_lopsided_unsealed(), n: 40, tag: "w"))
+  (demand_engine_in_flight(e: small) == demand_engine_in_flight(e: wide))
+    && (demand_engine_in_flight(e: small) == 0)
+}
+
+// THE CANONICAL HEAD DOES NOT DEPEND ON WHAT SETTLED LAST. Two runs of one closure must admit in one
+// order, so the order is keyed on the demand identity and never on arrival: settling an unrelated demand
+// first must leave the same identity at the head.
+test fn the_canonical_head_survives_an_unrelated_completion_holds() -> Bool {
+  let sealed = demand_engine_seal(e: g_lopsided_unsealed())
+  let head_before = demand_engine_ready_queue(e: sealed)
+  let after_unrelated = demand_engine_settle(e: sealed, id: g_e(), state: DemandAvailable { value: 9 })
+  let head_after = demand_engine_ready_queue(e: after_unrelated)
+  g_first_is_same_except_removed(before: head_before, after: head_after, removed: g_e())
+}
+
+fn g_first_is_same_except_removed(
+  before: List<DemandIdentity>,
+  after: List<DemandIdentity>,
+  removed: DemandIdentity
+) -> Bool {
+  g_list_eq_ids(
+    a: filter(xs: before, predicate: fn(id) { !demand_identity_eq(a: id, b: removed) }),
+    b: after
+  )
+}
+
+fn g_list_eq_ids(a: List<DemandIdentity>, b: List<DemandIdentity>) -> Bool {
+  (length(xs: a) == length(xs: b))
+    && fold_list(
+         xs: a,
+         empty: true,
+         cons: fn(acc, id) {
+           acc && contains(xs: b, item: id, eq: fn(x, y) { demand_identity_eq(a: x, b: y) })
+         }
+       )
+}
+
+// A SETTLED DEMAND LEAVES THE READY ORDER. A stale member is the sharp failure here: it would be
+// admitted a second time after it had already produced.
+test fn a_settled_demand_is_no_longer_ready_holds() -> Bool {
+  let sealed = demand_engine_seal(e: g_lopsided_unsealed())
+  let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
+  !contains(
+    xs: demand_engine_ready_queue(e: after),
+    item: g_a(),
+    eq: fn(x, y) { demand_identity_eq(a: x, b: y) }
+  )
+}
+
+// A REFUSED PREREQUISITE NEVER ADMITS ITS DEPENDENT. B depends on A; refusing A must leave B out of the
+// ready order rather than ready-on-a-refusal.
+test fn a_refused_prerequisite_does_not_admit_its_dependent_holds() -> Bool {
+  let sealed = demand_engine_seal(e: g_lopsided_unsealed())
+  let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandRefused)
+  !contains(
+    xs: demand_engine_ready_queue(e: after),
+    item: g_b(),
+    eq: fn(x, y) { demand_identity_eq(a: x, b: y) }
+  )
+}
+
+// AND A DUPLICATED DEPENDENCY CANNOT DUPLICATE A READY IDENTITY. Declaring the same edge twice is
+// admissible; listing B twice in the ready order would admit it twice.
+test fn a_duplicated_dependency_does_not_duplicate_a_ready_identity_holds() -> Bool {
+  let twice = demand_engine_relate(
+    e: g_lopsided_unsealed(),
+    relation: g_edge(prerequisite: g_a(), dependent: g_b())
+  )
+  let after = demand_engine_settle(
+    e: demand_engine_seal(e: twice),
+    id: g_a(),
+    state: DemandAvailable { value: 1 }
+  )
+  length(
+    xs: filter(
+      xs: demand_engine_ready_queue(e: after),
+      predicate: fn(id) { demand_identity_eq(a: id, b: g_b()) }
+    )
+  ) == 1
 }
