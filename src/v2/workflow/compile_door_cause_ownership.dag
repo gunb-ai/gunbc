@@ -307,6 +307,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "a map literal whose declared key type K is not the type a string literal denotes (the unbound kernel String, v2.extdeps.languages.dag dag_kernel_string_type_spelling), so a literal key would cross into K with no declared route (DESIGN section 4). Refused at the first key; flips when K is the kernel String or a declared unfold route is written"
   },
   CauseOwnership {
+    cause: ^resolve_anonymous_map_key_text_unavailable,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a map literal key that carries no string-literal lexeme, so the key law has no text to compare: in v2 today every string literal lowers to one class-stamped atom with no payload (gunbc.recurring_failure_mode string_literal_lowers_to_one_class_stamped_atom). Refused at the key rather than compared, since comparing payload-less keys would call every pair a duplicate. A frontier: flips to zero when string literals lower to lexeme-stamped terminals (sleek-owl-120, gunbc#12759)"
+  },
+  CauseOwnership {
     cause: ^resolve_anonymous_map_duplicate_key,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,

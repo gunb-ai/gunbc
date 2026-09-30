@@ -198,40 +198,40 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     f: "ml_headless_literal_equals_the_headed_introduction_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
-    reason: "map arm control under Map<String, V> (the headless map literal elaborates to exactly the headed introduction), RED because an unimported String does not bind on the v2 route: resolve refuses it resolve_reason_unbound_symbol before the map arm runs. Per the neat-boar-16 ruling String is the kernel text binding. Owner: the deep-bee-18 lane (neat-ibex-696), after #12549. The arm itself is exercised today by the K = Int controls in the same module.",
-    dissolution: unbound_dissolution(description: "String bound by v2.extdeps.languages.dag dag_kernel_type_binding_optional, with an infer text-literal arm (deep-bee-18 lane): this witness greens and the row deletes in that change, promoting it to ordinary DiscoverySelection")
+    reason: "map arm control under Map<String, V> (the headless map literal elaborates to exactly the headed introduction), RED because an unimported String does not bind on the v2 route (resolve_reason_unbound_symbol before the map arm runs; owner neat-ibex-696, gunbc#12760), and once it does, a string key still carries no text to compare (resolve_anonymous_map_key_text_unavailable; owner sleek-owl-120, gunbc#12759). The arm itself is exercised today by the K = Int controls in the same module.",
+    dissolution: unbound_dissolution(description: "BOTH hold: String bound by v2.extdeps.languages.dag dag_kernel_type_binding_optional with an infer text-literal arm (gunbc#12760), AND a string literal lowers to a lexeme-stamped terminal carrying its text rather than the one payload-less dag_token_string_literal atom (gunbc#12759). Measured against #12760 alone, the duplicate and escaped-key rows went green only through that collapse. The row deletes in the change that makes both true, promoting the witness to ordinary DiscoverySelection")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/body_lowering/map_literal_test.dag",
     f: "ml_a_duplicate_key_refuses_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
-    reason: "map arm control under Map<String, V> (a repeated key refuses resolve_anonymous_map_duplicate_key at its second occurrence), RED because an unimported String does not bind on the v2 route: resolve refuses it resolve_reason_unbound_symbol before the map arm runs. Per the neat-boar-16 ruling String is the kernel text binding. Owner: the deep-bee-18 lane (neat-ibex-696), after #12549. The arm itself is exercised today by the K = Int controls in the same module.",
-    dissolution: unbound_dissolution(description: "String bound by v2.extdeps.languages.dag dag_kernel_type_binding_optional, with an infer text-literal arm (deep-bee-18 lane): this witness greens and the row deletes in that change, promoting it to ordinary DiscoverySelection")
+    reason: "map arm control under Map<String, V> (a repeated key refuses resolve_anonymous_map_duplicate_key at its second occurrence), RED because an unimported String does not bind on the v2 route (resolve_reason_unbound_symbol before the map arm runs; owner neat-ibex-696, gunbc#12760), and once it does, a string key still carries no text to compare (resolve_anonymous_map_key_text_unavailable; owner sleek-owl-120, gunbc#12759). The arm itself is exercised today by the K = Int controls in the same module.",
+    dissolution: unbound_dissolution(description: "BOTH hold: String bound by v2.extdeps.languages.dag dag_kernel_type_binding_optional with an infer text-literal arm (gunbc#12760), AND a string literal lowers to a lexeme-stamped terminal carrying its text rather than the one payload-less dag_token_string_literal atom (gunbc#12759). Measured against #12760 alone, the duplicate and escaped-key rows went green only through that collapse. The row deletes in the change that makes both true, promoting the witness to ordinary DiscoverySelection")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/body_lowering/map_literal_test.dag",
     f: "ml_an_escaped_and_a_raw_key_are_one_key_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
-    reason: "map arm control under Map<String, V> (an escaped key and its raw scalar collide under the decoded-text key law), RED because an unimported String does not bind on the v2 route: resolve refuses it resolve_reason_unbound_symbol before the map arm runs. Per the neat-boar-16 ruling String is the kernel text binding. Owner: the deep-bee-18 lane (neat-ibex-696), after #12549. The arm itself is exercised today by the K = Int controls in the same module.",
-    dissolution: unbound_dissolution(description: "String bound by v2.extdeps.languages.dag dag_kernel_type_binding_optional, with an infer text-literal arm (deep-bee-18 lane): this witness greens and the row deletes in that change, promoting it to ordinary DiscoverySelection")
+    reason: "map arm control under Map<String, V> (an escaped key and its raw scalar collide under the decoded-text key law), RED because an unimported String does not bind on the v2 route (resolve_reason_unbound_symbol before the map arm runs; owner neat-ibex-696, gunbc#12760), and once it does, a string key still carries no text to compare (resolve_anonymous_map_key_text_unavailable; owner sleek-owl-120, gunbc#12759). The arm itself is exercised today by the K = Int controls in the same module.",
+    dissolution: unbound_dissolution(description: "BOTH hold: String bound by v2.extdeps.languages.dag dag_kernel_type_binding_optional with an infer text-literal arm (gunbc#12760), AND a string literal lowers to a lexeme-stamped terminal carrying its text rather than the one payload-less dag_token_string_literal atom (gunbc#12759). Measured against #12760 alone, the duplicate and escaped-key rows went green only through that collapse. The row deletes in the change that makes both true, promoting the witness to ordinary DiscoverySelection")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/body_lowering/map_literal_test.dag",
     f: "ml_distinct_keys_are_accepted_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
-    reason: "map arm control under Map<String, V> (distinct keys elaborate), RED because an unimported String does not bind on the v2 route: resolve refuses it resolve_reason_unbound_symbol before the map arm runs. Per the neat-boar-16 ruling String is the kernel text binding. Owner: the deep-bee-18 lane (neat-ibex-696), after #12549. The arm itself is exercised today by the K = Int controls in the same module.",
-    dissolution: unbound_dissolution(description: "String bound by v2.extdeps.languages.dag dag_kernel_type_binding_optional, with an infer text-literal arm (deep-bee-18 lane): this witness greens and the row deletes in that change, promoting it to ordinary DiscoverySelection")
+    reason: "map arm control under Map<String, V> (distinct keys elaborate), RED because an unimported String does not bind on the v2 route (resolve_reason_unbound_symbol before the map arm runs; owner neat-ibex-696, gunbc#12760), and once it does, a string key still carries no text to compare (resolve_anonymous_map_key_text_unavailable; owner sleek-owl-120, gunbc#12759). The arm itself is exercised today by the K = Int controls in the same module.",
+    dissolution: unbound_dissolution(description: "BOTH hold: String bound by v2.extdeps.languages.dag dag_kernel_type_binding_optional with an infer text-literal arm (gunbc#12760), AND a string literal lowers to a lexeme-stamped terminal carrying its text rather than the one payload-less dag_token_string_literal atom (gunbc#12759). Measured against #12760 alone, the duplicate and escaped-key rows went green only through that collapse. The row deletes in the change that makes both true, promoting the witness to ordinary DiscoverySelection")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/body_lowering/map_literal_test.dag",
     f: "ml_infer_still_checks_an_elaborated_map_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
-    reason: "map arm control under Map<String, V> (infer checks an elaborated map's values against V), RED because an unimported String does not bind on the v2 route: resolve refuses it resolve_reason_unbound_symbol before the map arm runs. Per the neat-boar-16 ruling String is the kernel text binding. Owner: the deep-bee-18 lane (neat-ibex-696), after #12549. The arm itself is exercised today by the K = Int controls in the same module.",
-    dissolution: unbound_dissolution(description: "String bound by v2.extdeps.languages.dag dag_kernel_type_binding_optional, with an infer text-literal arm (deep-bee-18 lane): this witness greens and the row deletes in that change, promoting it to ordinary DiscoverySelection")
+    reason: "map arm control under Map<String, V> (infer checks an elaborated map's values against V), RED because an unimported String does not bind on the v2 route (resolve_reason_unbound_symbol before the map arm runs; owner neat-ibex-696, gunbc#12760), and once it does, a string key still carries no text to compare (resolve_anonymous_map_key_text_unavailable; owner sleek-owl-120, gunbc#12759). The arm itself is exercised today by the K = Int controls in the same module.",
+    dissolution: unbound_dissolution(description: "BOTH hold: String bound by v2.extdeps.languages.dag dag_kernel_type_binding_optional with an infer text-literal arm (gunbc#12760), AND a string literal lowers to a lexeme-stamped terminal carrying its text rather than the one payload-less dag_token_string_literal atom (gunbc#12759). Measured against #12760 alone, the duplicate and escaped-key rows went green only through that collapse. The row deletes in the change that makes both true, promoting the witness to ordinary DiscoverySelection")
   ),
   known_red_probe(
     entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",

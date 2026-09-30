@@ -15,6 +15,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
   dag_kernel_string_type_spelling,
+  dag_lexeme_is_string_literal,
   dag_kernel_type_binding_optional,
   dag_string_literal_decoded_text,
   dag_kernel_type_declaration_binding_optional,
@@ -1878,18 +1879,50 @@ fn resolve_map_entry_key(entry: Node) -> Node {
   }
 }
 
-fn resolve_map_key_text(key: Node) -> String {
+// A KEY'S TEXT, OR NONE. Only a key that carries its own string-literal lexeme has text to compare;
+// a key lowered to a class-stamped atom with no payload (gunbc.recurring_failure_mode
+// string_literal_lowers_to_one_class_stamped_atom) has none, and reading one would make every pair of
+// keys equal -- a fabricated duplicate. So such a key is Absent, and the arm refuses at it.
+fn resolve_map_key_text_optional(key: Node) -> Optional<String> {
   match key.kind {
-    TypeNode { connective: Atom { identity: id } } => dag_string_literal_decoded_text(lexeme: symbol_lexeme(sym: id))
-    _ => ""
+    TypeNode { connective: Atom { identity: id } } =>
+      if dag_lexeme_is_string_literal(sym: id) {
+        optional_present(value: dag_string_literal_decoded_text(lexeme: symbol_lexeme(sym: id)))
+      } else {
+        optional_absent()
+      }
+    _ => optional_absent()
   }
+}
+
+fn resolve_map_first_textless_key(items: List<Edge>) -> Optional<Node> {
+  fold(items, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match resolve_map_key_text_optional(key: resolve_map_entry_key(entry: e.target)) {
+          Present { value: _ } => optional_absent()
+          Absent => optional_present(value: resolve_map_entry_key(entry: e.target))
+        }
+    }
+  })
 }
 
 // The pairs are walked under a Transform carrier (positional edges only) that never leaves this
 // arm; only its resolved children are read.
 fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, items: List<Edge>, value_x: ResolveExpectation) -> ResolveNodeWalk {
+  match resolve_map_first_textless_key(items: items) {
+    Present { value: key } => resolve_anonymous_record_refused(n: key, reason: ^resolve_anonymous_map_key_text_unavailable)
+    Absent => resolve_map_literal_distinct_entries(ctx: ctx, n: n, items: items, value_x: value_x)
+  }
+}
+
+fn resolve_map_literal_distinct_entries(ctx: ResolveContext, n: Node, items: List<Edge>, value_x: ResolveExpectation) -> ResolveNodeWalk {
   let keys = fold(items, init: [], f: fn(acc, e) {
-    list_snoc_item(xs: acc, item: resolve_map_key_text(key: resolve_map_entry_key(entry: e.target)))
+    match resolve_map_key_text_optional(key: resolve_map_entry_key(entry: e.target)) {
+      Present { value: t } => list_snoc_item(xs: acc, item: t)
+      Absent => acc
+    }
   })
   match map_introduction_duplicate_key(keys: keys) {
     MapIntroductionKeyRepeated { first_index: _, second_index: second } =>
