@@ -49,8 +49,7 @@ fn policy_pilot_namespace_with_index(
     module_qn: module_qn,
     test_code: test_code_index_empty(),
     declared_in: module_qn,
-    imported_origins: empty_map(),
-    declaring_index: symbol_index
+    imported_origins: empty_map()
   }
 }
 

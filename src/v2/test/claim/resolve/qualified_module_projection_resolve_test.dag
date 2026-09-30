@@ -103,8 +103,7 @@ fn qmpr_namespace(index: SymbolIndex) -> Namespace {
     module_qn: qmpr_consumer_qn,
     test_code: test_code_index_empty(),
     declared_in: qmpr_consumer_qn,
-    imported_origins: empty_map(),
-    declaring_index: index
+    imported_origins: empty_map()
   }
 }
 

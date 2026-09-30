@@ -189,16 +189,7 @@ type Namespace {
   test_code: TestCodeIndex
   declared_in: QualifiedName
   imported_origins: Map<Symbol, QualifiedName>
-  declaring_index: SymbolIndex
 }
-
-// declaring_index IS WHAT A PARAMETER REFERENCE IS VERIFIED AGAINST, AND NOTHING ELSE READS IT.
-// resolve_frame_bound_reference mints <fn path>.<label> only when this index holds that path. A
-// program namespace verifies against the index it resolves through (declaring_index is its
-// symbol_index, the same value); a single-tree namespace resolves through its bindings and holds no
-// index, so its declaring_index is its own tree folded by the same fill
-// (v2.compiler.symbol_index_fill symbol_index_fill_module_declarations) -- never consulted as a
-// lookup table, so no other name resolves differently for its presence.
 
 type Scope
   = ScopeRoot { module: Namespace }
@@ -268,8 +259,7 @@ fn empty_namespace() -> Namespace {
     module_qn: Empty,
     test_code: test_code_index_empty(),
     declared_in: Empty,
-    imported_origins: empty_map(),
-    declaring_index: empty_symbol_index()
+    imported_origins: empty_map()
   }
 }
 
@@ -377,6 +367,11 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 // (review 5342739525 on #12540). The body is selected by the graft's own mark
 // (v2.compiler.namespace_graft namespace_graft_module_body_optional), never by walking names, so
 // a missing or ambiguous step stops and a record that shares a segment's name is not a body.
+// A SINGLE TREE'S INDEX IS ITS OWN DECLARATIONS, BY THE ONE FILL. The program route's symbol_index is
+// the corpus fill; a single tree's is the same fold (v2.compiler.symbol_index_fill
+// symbol_index_fill_module_declarations) over its one root, keyed at its module's paths. Parameter
+// references are verified against it (resolve_frame_bound_reference), so both routes verify against
+// the index each resolves through -- one authority, not a second table beside it.
 fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace {
   let declared_in = namespace_tree_module_qn(tree: tree)
   let root_bindings = namespace_bindings_augment_from_module_atoms(
@@ -390,7 +385,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
-    symbol_index: empty_symbol_index(),
+    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty),
     module_qn: Empty,
     test_code: test_code_index_add_module(
       index: test_code_index_empty(),
@@ -398,8 +393,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
       channel: tree.test_markers
     ),
     declared_in: declared_in,
-    imported_origins: empty_map(),
-    declaring_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty)
+    imported_origins: empty_map()
   }
 }
 
@@ -1254,7 +1248,7 @@ fn resolve_frame_bound_reference(
       }
     ParameterFrame { arrow_path: arrow_path } =>
       let path = qualified_name_snoc(qn: arrow_path, segment: canonical)
-      match symbol_index_lookup(index: ctx.namespace.declaring_index, qualified_path: path) {
+      match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
         Present { value: _ } =>
           Accepted {
             value: parameter_reference_node(qn: path, occurrence_id: n.occurrence_id),

@@ -146,8 +146,7 @@ fn pr_ctx(kind: FrameKind) -> ResolveContext {
     module_qn: pr_qn(dotted: "m"),
     test_code: test_code_index_empty(),
     declared_in: pr_qn(dotted: "m"),
-    imported_origins: empty_map(),
-    declaring_index: empty_symbol_index()
+    imported_origins: empty_map()
   }
   ResolveContext {
     scope: ScopeFrame {
