@@ -149,13 +149,16 @@ test fn red_membership_fixture_names_change_and_path() -> Bool {
 }
 
 test fn red_freeze_fixture_names_manifest_smuggling() -> Bool {
-  let probe = read_manifest_rows().first()
-  reason_names_all(
-    exit: scope_placement_freeze_verdict(
-      observation: AddedPathsObserved { paths: [probe] }
-    ),
-    markers: ["frozen-manifest", "legacy_manifest_freeze_sha"]
-  )
+  match read_manifest_rows().first() {
+    Present { value: probe } =>
+      reason_names_all(
+        exit: scope_placement_freeze_verdict(
+          observation: AddedPathsObserved { paths: [probe] }
+        ),
+        markers: ["frozen-manifest", "legacy_manifest_freeze_sha"]
+      )
+    Absent => false
+  }
 }
 
 fn synthetic_manifest_add_diff() -> String {

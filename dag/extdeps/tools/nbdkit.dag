@@ -1,5 +1,7 @@
 module extdeps.tools.nbdkit
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { NonEmptyStr }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
@@ -16,8 +18,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data nbdkit_pinned_version: VersionConstraint = ">= 1.34"
 
+fn nbdkit_program() -> ProgramIdentity = cataloged_program(invocation: "nbdkit")
+
 data nbdkit_cli_tool: CliTool = CliTool {
-  name: "nbdkit",
+  program: nbdkit_program(),
   min_version: Present { value: nbdkit_pinned_version },
   installable_via: [SourceApt { package: package_nbdkit, bin_dir: apt_bin_dir }],
 }
