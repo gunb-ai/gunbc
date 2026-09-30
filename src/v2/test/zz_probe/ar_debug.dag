@@ -1,0 +1,116 @@
+module v2.test.zz_probe.ar_debug
+
+import v2.compiler.infer { infer }
+import v2.test.claim.body_lowering.anonymous_record { ar_resolved_value_mismatch_headed, ar_resolved_headed, ar_resolved_headless, ar_resolved_call_argument, ar_resolved_coproduct, ar_resolved_binder, ar_resolved_value_mismatch, ar_construct_paths }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, Diagnostic }
+import v2.std.node { ComputationNode, Arrow, symbol_lexeme, node_synthetic, symbol_eq, construct_tag_elided_marker, Node, TypeNode, Atom, Conj, Named, Positional, node_subtree_nodes }
+import v2.std.node_query { construct_tag_is_elided, construct_node_elided, construct_tag_elided_reference }
+import v2.std.collection { list_at_optional }
+import v2.std.optional { Present, Absent }
+import v2.test.claim.namespace_xl0.reference_conservation { conservation_subject }
+import v2.test.claim.body_lowering.anonymous_record { ar_headless_source }
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text }
+import v2.std.text { String }
+import v2.std.integer { Int }
+import std.process { ProcessExit, exit_failure }
+
+fn ar_dbg(o: Outcome<ResolvedTree>) -> ProcessExit {
+  match o {
+    Accepted { value: _, diagnostics: _ } => exit_failure(reason: concat("ACCEPTED paths=", join(ar_construct_paths(o: o), separator: ",")))
+    Rejected { diagnostics: d } => exit_failure(reason: fold(d.tail, init: concat(concat(concat("REJECTED ", symbol_lexeme(sym: d.head.reason)), " @ "), lens_verdict_diagnostic_locus_text(d: d.head)), f: fn(acc, x) { concat(concat(acc, " | "), symbol_lexeme(sym: x.reason)) }))
+  }
+}
+
+fn dbg_headed() -> ProcessExit { ar_dbg(o: ar_resolved_headed()) }
+fn dbg_headless() -> ProcessExit { ar_dbg(o: ar_resolved_headless()) }
+fn dbg_call() -> ProcessExit { ar_dbg(o: ar_resolved_call_argument()) }
+fn dbg_coproduct() -> ProcessExit { ar_dbg(o: ar_resolved_coproduct()) }
+fn dbg_binder() -> ProcessExit { ar_dbg(o: ar_resolved_binder()) }
+fn dbg_mismatch() -> ProcessExit { ar_dbg(o: ar_resolved_value_mismatch()) }
+
+fn dbg_kind(n: Node) -> String {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => concat("Atom:", symbol_lexeme(sym: id))
+    TypeNode { connective: Conj } => concat("Conj#", to_string(count(n.children)))
+    _ => "other"
+  }
+}
+
+fn dbg_lowered() -> ProcessExit {
+  match conservation_subject(id_tail: "ar_dbg", source: ar_headless_source).normalized {
+    Rejected { diagnostics: d } => exit_failure(reason: concat("NORMALIZE REJECTED ", symbol_lexeme(sym: d.head.reason)))
+    Accepted { value: nt, diagnostics: _ } =>
+      let nodes = node_subtree_nodes(root: nt.root)
+      exit_failure(reason: concat(concat("nodes=", to_string(count(nodes))), fold(nodes, init: "", f: fn(acc, n) {
+        fold(n.children, init: acc, f: fn(a2, e) {
+          match e.label {
+            Named { name: l } =>
+              if symbol_lexeme(sym: l) == "<construct-tag>" {
+                concat(concat(concat(a2, " | tag->"), dbg_kind(n: e.target)), concat(" elided=", to_string(construct_tag_is_elided(n: n))))
+              } else { a2 }
+            Positional => a2
+          }
+        })
+      })))
+  }
+}
+
+fn dbg_unit() -> ProcessExit {
+  let src = node_synthetic(kind: TypeNode { connective: Atom { identity: ^dbg_src } }, children: [])
+  let c = construct_node_elided(field_edges: [], source: src)
+  let r = construct_tag_elided_reference(source: src)
+  exit_failure(reason: concat(concat(concat("elided=", to_string(construct_tag_is_elided(n: c))), concat(" ref=", dbg_kind(n: r))), concat(" eq=", to_string(symbol_eq(a: construct_tag_elided_marker(), b: construct_tag_elided_marker())))))
+}
+
+fn dbg_sexpr(n: Node, depth: Int) -> String {
+  let head = match n.kind {
+    TypeNode { connective: Atom { identity: id } } => concat("A:", symbol_lexeme(sym: id))
+    TypeNode { connective: Conj } => "Conj"
+    TypeNode { connective: Arrow } => "Arrow"
+    TypeNode { connective: _ } => "Type?"
+    ComputationNode { behavior: _ } => "Comp"
+  }
+  if depth == 0 {
+    head
+  } else {
+    concat(concat(concat(head, "("), fold(n.children, init: "", f: fn(acc, e) {
+      let lbl = match e.label {
+        Named { name: l } => symbol_lexeme(sym: l)
+        Positional => "_"
+      }
+      concat(concat(concat(concat(acc, lbl), "="), dbg_sexpr(n: e.target, depth: depth - 1)), " ")
+    })), ")")
+  }
+}
+
+fn dbg_find_ar_x(o: Outcome<ResolvedTree>) -> ProcessExit {
+  match o {
+    Rejected { diagnostics: d } => exit_failure(reason: "REJECTED")
+    Accepted { value: t, diagnostics: _ } =>
+      exit_failure(reason: fold(node_subtree_nodes(root: t.root), init: "", f: fn(acc, n) {
+        fold(n.children, init: acc, f: fn(a2, e) {
+          match e.label {
+            Named { name: l } => if symbol_lexeme(sym: l) == "ar_x" { concat(concat(a2, " || "), dbg_sexpr(n: e.target, depth: 5)) } else { a2 }
+            Positional => a2
+          }
+        })
+      }))
+  }
+}
+
+fn dbg_tree_headless() -> ProcessExit { dbg_find_ar_x(o: ar_resolved_headless()) }
+fn dbg_tree_headed() -> ProcessExit { dbg_find_ar_x(o: ar_resolved_headed()) }
+
+fn dbg_infer(o: Outcome<ResolvedTree>) -> ProcessExit {
+  match o {
+    Rejected { diagnostics: d } => exit_failure(reason: concat("RESOLVE REJECTED ", symbol_lexeme(sym: d.head.reason)))
+    Accepted { value: t, diagnostics: _ } =>
+      match infer(tree: t) {
+        Accepted { value: _, diagnostics: _ } => exit_failure(reason: concat("INFER ACCEPTED paths=", join(ar_construct_paths(o: o), separator: ",")))
+        Rejected { diagnostics: d } => exit_failure(reason: fold(d.tail, init: concat("INFER REJECTED ", symbol_lexeme(sym: d.head.reason)), f: fn(acc, x) { concat(concat(acc, " | "), symbol_lexeme(sym: x.reason)) }))
+      }
+  }
+}
+fn dbg_infer_headless() -> ProcessExit { dbg_infer(o: ar_resolved_value_mismatch()) }
+fn dbg_infer_headed() -> ProcessExit { dbg_infer(o: ar_resolved_value_mismatch_headed()) }

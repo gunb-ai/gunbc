@@ -1,0 +1,17 @@
+module v2.test.zz_probe.tsch
+
+import v2.test.claim.namespace_xl0.reference_conservation { conservation_subject }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { symbol_lexeme }
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text }
+import v2.std.text { String }
+import std.process { ProcessExit, exit_failure }
+
+data src_t: String = "module v2.test.manual.token_stream_content_hash_witness\n\nimport v2.std.node { Hash }\n\nfn token_hash_step(acc: Hash, t: Token) -> Hash {\n  combine_hash(\n    a: acc,\n    b: combine_hash(a: symbol_identity_digest(sym: t.class), b: symbol_identity_digest(sym: symbol_intern_lexeme(lexeme: t.lexeme)))\n  )\n}\n\nfn token_stream_content_hash(stream: TokenStream) -> Hash {\n  fold(\n    token_stream_all(stream: stream),\n    init: symbol_identity_digest(sym: ^token_stream_content_hash_seed),\n    f: token_hash_step\n  )\n}\n\nfn token_stream_content_hash_for_path(path: String) -> Optional<Hash> {\n  let lm = dag_language_model()\n  let source_text = filesystem_read(path: path).content\n  match tokenize(text: source_text, file: ^token_stream_content_hash_file_anchor, rules: lm.lex) {\n    Rejected { diagnostics: _ } => Absent\n    Accepted { value: stream, diagnostics: _ } => Present { value: token_stream_content_hash(stream: stream) }\n  }\n}\n\nfn witness_token_stream_content_hash_tiny() -> Optional<Hash> {\n  token_stream_content_hash_for_path(path: \"src/v2/std/witness.dag\")\n}\n\nfn witness_token_stream_content_hash_small() -> Optional<Hash> {\n  token_stream_content_hash_for_path(path: \"dag/std/execution_mode.dag\")\n}\n"
+
+fn probe_t() -> ProcessExit {
+  let s = conservation_subject(id_tail: "tsch", source: src_t)
+  let p = match s.parsed { Accepted { value: _, diagnostics: _ } => "PARSE ok" Rejected { diagnostics: d } => concat("PARSE REJECTED ", symbol_lexeme(sym: d.head.reason)) }
+  let n = match s.normalized { Accepted { value: _, diagnostics: _ } => " NORMALIZE ok" Rejected { diagnostics: d } => concat(" NORMALIZE REJECTED ", symbol_lexeme(sym: d.head.reason)) }
+  exit_failure(reason: concat(p, n))
+}
