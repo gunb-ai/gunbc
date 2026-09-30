@@ -659,6 +659,23 @@ test fn lbd_insertion_row_is_derived_from_the_projected_node_holds() -> Bool {
   }
 }
 
+// A SAME-GRAPH LOWERING MEMBER IS NOT AN INSERTION. std.occurrence_identity derive_projected_occurrence
+// mints OccurrenceProjected with its cause in the node's OWN graph scope. The delta tells it apart
+// from a projector insertion by that scope, so the insertion test above (cause in the base scope)
+// and this one (cause in the target scope) together discriminate the branch.
+test fn lbd_same_scope_projected_member_is_not_an_insertion_holds() -> Bool {
+  match insertion_provenance_entry(
+    target_scope: legacy_subject_identity(subject: lbd_projected_subject()),
+    identity: node_occurrence_identity_projected(
+      id: OccurrenceId { value: 91 },
+      caused_by: lbd_projected_ref(id: 3),
+    ),
+  ) {
+    NotAnInsertion { target: target } => target.occurrence.value == 91
+    _ => false
+  }
+}
+
 // A CARRIED-FORWARD NODE IS NOT-APPLICABLE RATHER THAN A DEFECT, and it gets its own arm so that a
 // reader can tell it from a projector-created node whose cause went missing. Collapsing the two
 // would be the not-applicable-rendered-as-malformed shape at this seam.

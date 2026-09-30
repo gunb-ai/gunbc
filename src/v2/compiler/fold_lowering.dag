@@ -28,6 +28,8 @@ import v2.std.diagnostic {
 }
 import std.algebra {
   AlgebraFieldTemplate,
+  Cons,
+  Empty,
   collection_fold_shape,
   template_accumulator_position,
   template_receiver_position,
