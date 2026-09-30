@@ -166,7 +166,7 @@ fn fetch_verified_boot_image(
         export_dir: export_dir,
         expected_sha256: expected_sha256,
       )
-    _ => BootImageFetchFailed { url: url }
+    ExitFailure { code: _, reason: _ } => BootImageFetchFailed { url: url }
   }
 }
 
@@ -286,7 +286,8 @@ fn link_verified_boot_image(
   return match host_command(host: host, command: ln_hard_command(source: staging_path as String, destination: published_path as String)) {
     HostCommandDone { stdout: _ } => unstage_then_confirm(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
     HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => unstage_then_confirm(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
-    _ => BootImagePublishFailed { staged: staging_path, destination: published_path }
+    HostCommandFailed { exit_code: _, stderr: _ } => BootImagePublishFailed { staged: staging_path, destination: published_path }
+    HostCommandNotDispatched { reason: _ } => BootImagePublishFailed { staged: staging_path, destination: published_path }
   }
 }
 

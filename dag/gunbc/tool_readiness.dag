@@ -192,7 +192,7 @@ fn matching_frontier_rows(
   tool: CliTool,
   frontier: List<UnpinnedToolFrontierRow>,
 ) -> List<UnpinnedToolFrontierRow> {
-  filter(frontier, row => row.tool.name == tool.name)
+  filter(frontier, row => row.tool.program.invocation == tool.program.invocation)
 }
 
 fn unpinned_tool_readiness(
@@ -212,7 +212,7 @@ fn unpinned_tool_readiness(
     match matching |> first {
       Absent => tool_refused(tool: tool, cause: UnpinnedToolUndeclared)
       Present { value: frontier_row } =>
-        match observed_tool_identity(context: context, tool_name: tool.name) {
+        match observed_tool_identity(context: context, tool_name: tool.program.invocation) {
           ObservedToolIdentityMissing { tool_name: name } =>
             tool_refused(
               tool: tool,

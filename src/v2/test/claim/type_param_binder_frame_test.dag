@@ -109,14 +109,14 @@ fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
 // Each tpb_* specimen below is nullary and pure over an inline source -- Nodes and located
 // diagnostics, no closure -- and is enrolled in v2.workflow.floor_pure_producer_share, so
 // preparation runs the real route once per specimen and the rows read it.
-fn tpb_accepts(o: Outcome<ResolvedTree>) -> Bool {
+fn tpb_accepts<T>(o: Outcome<T>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn tpb_refuses_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+fn tpb_refuses_with<T>(o: Outcome<T>, reason: Symbol) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
@@ -519,11 +519,11 @@ fn tpb_box_member_mixed() -> Node {
   )
 }
 
-fn tpb_type_decl_emit_twin() -> Outcome<ResolvedTree> {
+fn tpb_type_decl_emit_twin() -> Outcome<Node> {
   translate_type_expression_project(node: tpb_box_member(with_params: false), target: rust_target_model(), projection: rust_type_expression_projection())
 }
 
-fn tpb_type_decl_emit_generic() -> Outcome<ResolvedTree> {
+fn tpb_type_decl_emit_generic() -> Outcome<Node> {
   translate_type_expression_project(node: tpb_box_member(with_params: true), target: rust_target_model(), projection: rust_type_expression_projection())
 }
 

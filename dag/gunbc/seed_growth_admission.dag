@@ -51,6 +51,7 @@ import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
+import gunbc.observation_file_effect_seed_growth { observation_file_effect_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
 import gunbc.emitted_crate_workspace_seed_growth { emitted_crate_workspace_seed_growth_justification }
 import gunbc.bootstrap_operation_seed_growth {
@@ -324,7 +325,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_corpus_census_allowance_seed_growth_justification,
     unimported_bare_provider_gate_seed_growth_justification,
     enrolment_dead_band_seed_growth_justification,
-    modeled_operation_realization_seed_growth_justification
+    modeled_operation_realization_seed_growth_justification,
+    observation_file_effect_seed_growth_justification
   ]
 }
 
