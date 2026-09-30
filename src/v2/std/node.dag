@@ -843,6 +843,24 @@ fn declaration_reference_marker() -> Symbol {
   declaration_reference_marker_symbol
 }
 
+// A CONSTRUCT'S TAG IS MARKED BY ITS ROLE, NOT RECOGNISED BY SPELLING. A record construct and a
+// fielded constructor pattern are one Conj whose first edge carries this marker and targets the
+// constructor as an ordinary REFERENCE: the authored qualified-name spine before resolution (a bare
+// `R` is its one-segment case) and v2.std.qualified_name declaration_reference_node after it. The
+// label used to be the constructor's own spelling, read back by comparing it with the target Atom's
+// identity; resolution rewrites that target into a declaration reference, so the comparison failed
+// for every resolved user construct (gunbc.recurring_failure_mode
+// construct_tag_read_by_label_equality_after_resolve_rewrote_the_target), and a module-qualified
+// constructor had no representation at all. It is distinct from the declaration-reference marker,
+// so a nullary `R {}` never reads as a reference. It is a Core structural marker of the typed
+// EdgeLabel coproduct planned in gunbc#12473 (arm ConstructTag), declared here in the form of its
+// sibling until that cut converts both.
+data construct_tag_marker_symbol: Symbol = symbol_intern_lexeme(lexeme: "<construct-tag>")
+
+fn construct_tag_marker() -> Symbol {
+  construct_tag_marker_symbol
+}
+
 // A RESOLVED DECLARATION REFERENCE IS NOT A RECORD CONSTRUCT. `data d: D = A` lowers to a nullary
 // Arrow whose body is the initializer, and when the initializer is a reference that body is the
 // marked Conj. Before this arm the classifier read every Conj body as a record construct, whose
@@ -892,29 +910,78 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
   }
 }
 
+// A Conj body that is not a marked declaration reference is admitted on one of two readings.
+//
+// A CONSTRUCT: the tag edge is FIRST and carries v2.std.node construct_tag_marker, and its target is a
+// reference, which is a Conj in both of its forms (an authored spine, a marked declaration
+// reference); every edge is Named. Which Conj is a well-formed reference is v2.std.qualified_name's to
+// read (v2.std.node_query construct_tag_path_optional), not repeated here.
+//
+// ANY OTHER UNMARKED Conj is admitted exactly as it was before the tag became a marker: every edge
+// Named and SOME Named edge targeting an Atom. That population is not constructs -- it is an authored
+// path before resolution (`fn f() -> T { m.C }`, the spine whose head targets an Atom) and a field
+// projection body (`fn f() -> Symbol { g(x).reason }`, v2.std.node_query field_projection_node,
+// whose field edge targets an Atom). This module cannot name either shape's labels -- v2.std.algebra
+// and v2.std.node_query own them and import this module -- so the admission is kept unchanged rather
+// than narrowed; narrowing it refused v2.std.diagnostic diagnostics_fatal_reason, measured on the
+// native route. A typed arm per body form would let the classifier say which one it holds; it is a
+// follow-up named in docs/plans/construct-tag-reference-design.md, not a change this package makes.
 fn arrow_body_record_construct_conforms(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
-      if !all_edges_named(children: node.children) {
-        false
-      } else {
-        fold(node.children, init: false, f: fn(seen_first_named, edge) {
-          if seen_first_named {
-            seen_first_named
-          } else {
-            match edge.label {
-              Named { name: _ } =>
-                match edge.target.kind {
-                  TypeNode { connective: Atom { identity: _ } } => true
-                  _ => false
-                }
-              Positional => false
-            }
-          }
-        })
-      }
+      all_edges_named(children: node.children)
+        && (arrow_body_construct_tag_leads(node: node) || arrow_body_some_edge_targets_an_atom(node: node))
     _ => false
   }
+}
+
+// The construct reading is a fact about the FIRST edge alone. This module reads a list's head the
+// way arrow_first_positional_target does -- a declared first-edge read, settled by the first element
+// and carried unchanged past it -- because it can take neither alternative: a direct `Cons` match on
+// a List<Edge> does not typecheck in the seed, and `first` answers v2.std.optional Optional, whose
+// import into this module (which nearly every module imports) moves the tree-wide unimported-bare-
+// provider census (measured: the required floor refused a roster row it silently discharged).
+type FirstEdgeRead
+  = FirstEdgeUnread
+  | FirstEdgeFound { edge: Edge }
+
+fn first_edge_read(children: List<Edge>) -> FirstEdgeRead {
+  fold(children, init: FirstEdgeUnread, f: fn(acc, e) {
+    match acc {
+      FirstEdgeFound { edge: _ } => acc
+      FirstEdgeUnread => FirstEdgeFound { edge: e }
+    }
+  })
+}
+
+fn arrow_body_construct_tag_leads(node: Node) -> Bool {
+  match first_edge_read(children: node.children) {
+    FirstEdgeFound { edge: edge } =>
+      match edge.label {
+        Named { name: label } =>
+          symbol_eq(a: label, b: construct_tag_marker())
+            && (match edge.target.kind {
+              TypeNode { connective: Conj } => true
+              _ => false
+            })
+        Positional => false
+      }
+    FirstEdgeUnread => false
+  }
+}
+
+fn arrow_body_some_edge_targets_an_atom(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(found, edge) {
+    found || (match edge.label {
+      Named { name: label } =>
+        !symbol_eq(a: label, b: construct_tag_marker())
+          && (match edge.target.kind {
+            TypeNode { connective: Atom { identity: _ } } => true
+            _ => false
+          })
+      Positional => false
+    })
+  })
 }
 
 fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
