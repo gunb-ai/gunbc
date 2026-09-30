@@ -2222,9 +2222,9 @@ fn infer_declaration_ref_of_reference(node: Node) -> Optional<DeclarationRef> {
         Present { value: last } =>
           let module_path = qualified_name_to_dotted_string(qn: qualified_name_init(qn: qn))
           if module_path == "" {
-            Absent
+            optional_absent()
           } else {
-            Present { value: decl_ref(module_path: module_path, decl_name: symbol_lexeme(sym: last)) }
+            optional_present(value: decl_ref(module_path: module_path, decl_name: symbol_lexeme(sym: last)))
           }
       }
   }
