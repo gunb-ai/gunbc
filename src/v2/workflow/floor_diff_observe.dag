@@ -187,11 +187,15 @@ fn floor_observe_ci_diff_event() -> CiDiffEvent {
 
 fn floor_resolve_baseline(policy: DiffPolicy) -> DiffBaselineResolution {
   let push_parent = policy.base as GitRef
-  resolve_diff_baseline(
-    event: floor_observe_ci_diff_event(),
-    push_parent_ref: push_parent,
-    default_remote_name: git_remote_ref_parts(ref: push_parent).remote
-  )
+  match git_remote_ref_parts(ref: push_parent) {
+    Present { value: parts } =>
+      resolve_diff_baseline(
+        event: floor_observe_ci_diff_event(),
+        push_parent_ref: push_parent,
+        default_remote_name: parts.remote
+      )
+    Absent => BaselineRefused { reason: "diff policy base ref names no remote" }
+  }
 }
 
 fn floor_resolved_head(policy: DiffPolicy) -> String {

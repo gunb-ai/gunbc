@@ -625,11 +625,17 @@ type GitRemoteRefParts {
   ref_name: String
 }
 
-fn git_remote_ref_parts(ref: GitRef) -> GitRemoteRefParts {
+fn git_remote_ref_parts(ref: GitRef) -> GitRemoteRefParts? {
   let parts = split(s: ref as String, delimiter: "/")
-  GitRemoteRefParts {
-    remote: parts.first(),
-    ref_name: fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
+  match parts.first() {
+    Present { value: remote } =>
+      Present {
+        value: GitRemoteRefParts {
+          remote: remote,
+          ref_name: fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
+        }
+      }
+    Absent => none
   }
 }
 
