@@ -827,11 +827,12 @@ fn commit_writer_blob_classification_refusals(
         ),
         items: match artifact.artifact.kind {
           TestClaimArtifact => []
-          _ => commit_writer_text_marker_refusals(
-            path: blob.path,
-            text: text,
-            grammar: marker_grammar,
-          )
+          SourceFile => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
+          GeneratedSource => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
+          ProjectionArtifact => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
+          Stage0Candidate => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
+          CorePackage => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
+          WitnessBundle => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
         },
       )
     CommitWriterBlobNonTextUnclaimed => []
@@ -1684,8 +1685,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
       check_fns: [
-        "ingested_classical_not_resolves_holds",
         "ingested_classical_not_arrow_has_match_holds",
+        "ingested_classical_not_arrow_has_match_rejected_producer_refuses_holds",
         "ingested_classical_not_canonical_emit_accepts_holds",
         "ingested_classical_not_staging_emit_accepts_holds",
         "ingested_classical_not_emit_accepts_holds",
@@ -2905,7 +2906,8 @@ fn project_local_tidy_fmt_rows(roster: List<CommitCheckEnrollment>) -> List<Loca
   fold(roster, init: [], f: fn(acc, row) {
     match row.check {
       CommitCargoFmtCheck => concat(acc, [LocalTidyCargoFmtCheck])
-      _ => acc
+      CommitSpecGate { gate: _ } => acc
+      CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => acc
     }
   })
 }

@@ -5183,11 +5183,8 @@ fn module_paths_of_references(
         .filter(|path| module_names.contains(path.as_str()))
         .cloned()
         .collect();
-    // ONLY MAXIMAL CHAINS. The walk records a chain at every field-access node, so
-    // `extdeps.browser.chromium.anchor` also arrives as `extdeps.browser.chromium` and
-    // `extdeps.browser`; the shorter ones are receivers inside the longer one, not references of
-    // their own, and resolving one names the PARENT module (`extdeps.browser`), which the file
-    // never referenced. A chain that is a strict prefix of another recorded chain is skipped.
+    // The walk records only maximal field chains (`collect_node_refs_inner`), so no recorded
+    // chain is a receiver prefix naming a parent module the file never referenced.
     let chains: Vec<Vec<String>> = refs
         .chains
         .iter()
@@ -5195,11 +5192,7 @@ fn module_paths_of_references(
         .cloned()
         .chain(dotted_names)
         .collect();
-    let receivers: HashSet<&[String]> = chains
-        .iter()
-        .flat_map(|chain| (1..chain.len()).map(move |k| &chain[..k]))
-        .collect();
-    for chain in chains.iter().filter(|c| !receivers.contains(c.as_slice())) {
+    for chain in chains.iter() {
         if let Some(path) = longest_declared_module_prefix(chain, module_names) {
             if path.contains('.') {
                 out.insert(path);
@@ -9714,12 +9707,19 @@ fn visit_bare_reference_providers(
         // entirely) and a permissive one overcounts (it reads an alias target and a
         // `data` initializer's head as variants), and the two answers differ by 30x on
         // the same trace. The census already knows; carrying its verdict costs nothing.
+        // A selection is the provider module and whether the census binding it came from is a
+        // `test` row (`DeclarationMarker::TestMarked`, carried by the parse). A test row is never
+        // pulled as a provider. Only a binding can be one: the `test` marker applies only to a
+        // fn or data item, so a services-census selection is never a test row.
+        let test_marked = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
+            binding.resolved.declaration_marker == crate::v1_std_core::DeclarationMarker::TestMarked
+        };
         let resolve_in =
-            |census: &Rc<SymbolIndex>| -> Result<(Option<String>, &'static str), String> {
+            |census: &Rc<SymbolIndex>| -> Result<(Option<(String, bool)>, &'static str), String> {
                 if service_head {
                     return Ok((
                         v1_rt::map_get(&census.services, name.clone())
-                            .map(|entry| entry.module_path.clone()),
+                            .map(|entry| (entry.module_path.clone(), false)),
                         "service",
                     ));
                 }
@@ -9730,7 +9730,7 @@ fn visit_bare_reference_providers(
                             binding,
                         } => (
                             if pullable(binding) {
-                                Some(module_path.clone())
+                                Some((module_path.clone(), test_marked(binding)))
                             } else {
                                 None
                             },
@@ -9753,7 +9753,7 @@ fn visit_bare_reference_providers(
                                 } => {
                                     return Ok((
                                         if pullable(&binding) {
-                                            Some(module_path)
+                                            Some((module_path, test_marked(&binding)))
                                         } else {
                                             None
                                         },
@@ -9782,7 +9782,7 @@ fn visit_bare_reference_providers(
                     None => (
                         if in_call_position {
                             v1_rt::map_get(&census.services, name.clone())
-                                .map(|entry| entry.module_path.clone())
+                                .map(|entry| (entry.module_path.clone(), false))
                         } else {
                             None
                         },
@@ -9809,7 +9809,7 @@ fn visit_bare_reference_providers(
                 (m, "pool-fallback", state)
             }
         };
-        let Some(module_path) = target_module else {
+        let Some((module_path, is_test_row)) = target_module else {
             continue;
         };
         let Some(dep) = index.source_files.get(&module_path) else {
@@ -9819,20 +9819,7 @@ fn visit_bare_reference_providers(
                  (fail-closed)"
             ));
         };
-        let name_is_test_row = dep.content.lines().any(|l| {
-            let t = l.trim_start();
-            ["test fn ", "test data "].iter().any(|prefix| {
-                t.strip_prefix(prefix).is_some_and(|rest| {
-                    rest.strip_prefix(name.as_str()).is_some_and(|after| {
-                        after
-                            .chars()
-                            .next()
-                            .is_none_or(|c| !c.is_alphanumeric() && c != '_')
-                    })
-                })
-            })
-        });
-        if name_is_test_row {
+        if is_test_row {
             continue;
         }
         let dep_rel = workspace_relative_repo_path(&dep.path);
@@ -10337,6 +10324,83 @@ mod closure_edge_demand_tests {
             None
         );
         reset_bare_reference_admission_completion_for_test();
+    }
+
+    /// A `test` row is never a bare provider, and which rows are tests is the parse's
+    /// `DeclarationMarker`, read off the census binding. The same shape with the marker removed
+    /// is the positive control: the provider is then pulled.
+    #[test]
+    fn a_test_marked_declaration_is_not_pulled_as_a_bare_provider() {
+        let closure_of = |provider: &str| {
+            let fixture = Fixture::new(&[
+                ("provider.dag", provider),
+                (
+                    "entry.dag",
+                    "module probe_entry\nfn main() -> Int { probe() }\n",
+                ),
+            ]);
+            let index = fixture.index();
+            let sources = load_sources_for_entry_with_pool(
+                &index,
+                &fixture.0.join("entry.dag").to_string_lossy(),
+            )
+            .unwrap();
+            sources
+                .iter()
+                .map(|s| extract_module_path(&s.content).unwrap())
+                .collect::<BTreeSet<String>>()
+        };
+        assert_eq!(
+            closure_of("module probe_provider\ntest fn probe() -> Int { 1 }\n"),
+            BTreeSet::from(["probe_entry".into()])
+        );
+        assert_eq!(
+            closure_of("module probe_provider\nfn probe() -> Int { 1 }\n"),
+            BTreeSet::from(["probe_entry".into(), "probe_provider".into()])
+        );
+    }
+
+    /// ONE PARSE PER FILE ON THE ENTRY ROUTE. A module reached only by a dotted reference is
+    /// pulled by the fixpoint's reference half, which reads the index's shared parse; the
+    /// per-entry module-path scan (`extend_with_reference_closure`, timed as
+    /// `load_reference_scan`) is not run at all. Red before: that scan parsed every closure
+    /// file a second time, once per entry.
+    #[test]
+    fn the_pool_entry_route_follows_dotted_references_without_a_second_parse() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module dotted_entry\nfn main() -> Int { dotted.provider.one() }\n",
+            ),
+            (
+                "provider.dag",
+                "module dotted.provider\nfn one() -> Int { 1 }\n",
+            ),
+            (
+                "unrelated.dag",
+                "module unrelated\nfn unused() -> Int { 1 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let scans_before = resolve_stage_slot_snapshot().load_reference_scan_calls;
+        let sources = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("entry.dag").to_string_lossy(),
+        )
+        .unwrap();
+        let modules: BTreeSet<_> = sources
+            .iter()
+            .map(|s| extract_module_path(&s.content).unwrap())
+            .collect();
+        assert_eq!(
+            modules,
+            BTreeSet::from(["dotted_entry".into(), "dotted.provider".into()])
+        );
+        assert_eq!(
+            resolve_stage_slot_snapshot().load_reference_scan_calls - scans_before,
+            0,
+            "the entry route must not re-parse closure files for module-path references"
+        );
     }
 
     /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
@@ -17374,9 +17438,26 @@ fn tree_bare_census_for_root(
         );
     }
     let pool = pool_parse(index)?;
-    let nodes = tree_census_nodes(index, root)?;
+    // THE RAW CENSUS OF THIS ROOT IS ONE FACT. `build_symbol_index_census_nodes` is by definition
+    // `census_with_resolved_fn_sigs` over `build_symbol_index_census_raw_nodes(nodes, si)`, and
+    // `closure_name_census(index, Some(root))` already builds and memoizes exactly that raw census
+    // over the same `tree_census_nodes` and the same `combined_si`. So this upgrades the memoized
+    // raw census instead of rebuilding it. The raw build, when this is the first demand for it,
+    // is recorded on `closure_name_census_build`, not on this miss.
+    let (raw, raw_nanos) = {
+        let started = std::time::Instant::now();
+        let hit = index
+            .closure_name_censuses
+            .borrow()
+            .contains_key(&Some(root.to_string()));
+        let raw = closure_name_census(index, Some(root))?;
+        (raw, if hit { 0 } else { started.elapsed().as_nanos() })
+    };
+    // Only the bare-fill half is upgraded: `symbol_index_with_bare_fill`, this census's one
+    // production reader, keeps the closure's `entries` (see
+    // `v1.compiler.infer.census_bare_fill_with_resolved_fn_sigs`).
     let census =
-        v1_compiler_infer::build_symbol_index_census_nodes(nodes, pool.combined_si.clone());
+        v1_compiler_infer::census_bare_fill_with_resolved_fn_sigs(raw, pool.combined_si.clone());
     index
         .tree_bare_census
         .borrow_mut()
@@ -17389,8 +17470,11 @@ fn tree_bare_census_for_root(
         .pool_parse
         .saturating_sub(pool_before);
     resolve_stage_slot_add(|st| {
-        st.edge_index_tree_census_miss_nanos +=
-            miss_started.elapsed().as_nanos().saturating_sub(pool_here);
+        st.edge_index_tree_census_miss_nanos += miss_started
+            .elapsed()
+            .as_nanos()
+            .saturating_sub(pool_here)
+            .saturating_sub(raw_nanos);
     });
     Ok(census)
 }
@@ -33859,7 +33943,15 @@ fn collect_node_refs_inner(
                     .dotted_head_nodes
                     .insert(Rc::as_ptr(&head));
             }
-            chains.push(chain);
+            // ONLY THE MAXIMAL CHAIN IS A REFERENCE. On the receiver spine of a chain the
+            // enclosing field access already recorded whole, this node's chain is a strict
+            // prefix of that one: `a.b.c.d` also reaches here as `a.b.c` and `a.b`, and a prefix
+            // resolved by longest declared module names the PARENT module (`a.b`), which the
+            // source never referenced. Every consumer of `chains` resolves chains that way, so
+            // the prefix is withheld here, once, rather than filtered by each reader.
+            if !chain_receiver {
+                chains.push(chain);
+            }
             receiver_spine = true;
         }
     }
@@ -41598,6 +41690,53 @@ mod annotation_erased_scan_projection {
             )
             .unwrap(),
             vec!["std.decl_ref.child".to_string()]
+        );
+    }
+
+    /// The over-pull at its producer: the walk records the chain `std.decl_ref.child.k` once,
+    /// never its receiver prefix `std.decl_ref`, so a consumer resolving every recorded chain
+    /// by longest declared prefix -- the reference-edge producer does, with no filter of its
+    /// own -- names only the child module. Red before the producer withheld receiver prefixes:
+    /// the edge set also held the parent `std.decl_ref`.
+    #[test]
+    fn the_reference_edge_producer_names_the_child_module_not_its_parent() {
+        let names = entry_resolve::ReferencePoolNames {
+            decl_index: Default::default(),
+            module_names: ["std.decl_ref", "std.decl_ref.child"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        };
+        let src = "module m\nfn g() -> Int { std.decl_ref.child.k }\n";
+        let entry_resolve::FileReferenceEdges::Edges(edges) =
+            entry_resolve::reference_edges_for_file("fixture/m.dag", Some(src), &names)
+        else {
+            panic!("an import-less parsed file has edges");
+        };
+        let targets: Vec<&str> = edges.iter().map(|e| e.target_module.as_str()).collect();
+        assert_eq!(targets, vec!["std.decl_ref.child"]);
+    }
+
+    #[test]
+    fn the_reference_walk_records_only_the_maximal_chain() {
+        let names = entry_resolve::ReferencePoolNames {
+            decl_index: Default::default(),
+            module_names: ["std.decl_ref", "std.decl_ref.child"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        };
+        let src = "module m\nfn g() -> Int { std.decl_ref.child.k }\n";
+        let refs =
+            entry_resolve::parsed_file_references("fixture/m.dag", src, "m", &names.module_names)
+                .unwrap_or_else(|e| panic!("fixture must parse: {e}"));
+        assert_eq!(
+            refs.chains,
+            vec![vec!["std", "decl_ref", "child", "k"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>()],
+            "only the maximal chain is recorded"
         );
     }
 

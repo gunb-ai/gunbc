@@ -2,9 +2,15 @@ module gunbc.compiler_gate_workflow
 
 // NO LANE THE REQUIRED CONTEXT READS RUNS ON A HOSTED RUNNER (operator ruling 2026-09-28). The
 // lanes the `witnesses` aggregate reads -- `floor` and `generated` -- run on the fleet, and so does
-// the aggregate. Of the two lanes that block nothing, `emit-build` stays on `ubuntu-24.04-arm` and
-// the v1 unit-test lane (`rust-unit-tests`) moved onto the fleet on 2026-09-30, still non-blocking,
-// as the first half of its flip (see the unit-test section below).
+// the aggregate. The one lane that blocks nothing, `emit-build`, stays on `ubuntu-24.04-arm`.
+//
+// THE HOSTED UNIT-TEST LANE WAS DELETED (operator ruling 2026-09-29). `rust-unit-tests` ran
+// `cargo test --release -p v1-compiler --lib` on every pull request and merge_group as a
+// non-blocking measurement, and its step's continue_on_error rendered every run green while the
+// population was red on main -- a verdict nobody could read, bought with about a third of the
+// hosted pool. That ruling said the tests return as a BLOCKING fleet lane once the population is
+// green, never as a hosted measurement again, and on 2026-09-30 they did: `rust-unit-tests` is a
+// blocking fleet lane read by the aggregate (see the unit-test section below).
 //
 // WHY THE HOSTED LANES LEFT THE MERGE PATH. The history below put them there because the fleet was
 // the bottleneck. On 2026-09-28 the bottleneck was the hosted pool: it held at 20 running jobs with
@@ -20,13 +26,11 @@ module gunbc.compiler_gate_workflow
 // compiler_gate_merge_path_runs_on_the_fleet refuses emission of a workflow in which a blocking
 // lane or the aggregate runs hosted.
 //
-// WHY emit-build STAYS HOSTED (and why the unit lane did too until 2026-09-30). Neither is read by the required context, so neither can delay a
-// landing, and together they are most of a run's runner time: the unit-test step and the two
-// emit-build compilations would roughly double the fleet slot-minutes a push costs, which is the
-// cost the history below moved off the fleet. The unit-test step also binds its own cgroup with
-// sudo, which is sound on a throwaway hosted VM and not on a fleet host whose slots share one
-// cgroup tree. Each lane's flip trigger (compiler_gate_lane_rows) states that turning it blocking
-// moves it onto the fleet in the same change.
+// WHY `emit-build` STAYS HOSTED. It is not read by the required context, so it cannot delay a
+// landing, and its two compilations would roughly double the fleet slot-minutes a push costs,
+// which is the cost the history below moved off the fleet. Its flip trigger
+// (compiler_gate_lane_rows) states that turning it blocking moves it onto the fleet in the same
+// change.
 //
 // SUPERSESSION CANCELS FLEET JOBS, AND THIS RULING DID NOT START THAT. The concurrency policy
 // cancels a running pull-request run on the next push, and the history below justified that by the
@@ -248,27 +252,18 @@ fn compiler_gate_lint_step() -> Step {
   }
 }
 
-// THE v1 UNIT TESTS ARE A HOSTED LANE OF THEIR OWN, AND IT BLOCKS NOTHING (operator ruling
-// 2026-09-28). Operator ruling 2026-09-27 ran them as a step after the lint on the hosted `clippy`
-// job and ordered ONE wall-time measurement on this runner BEFORE the step is required, so the step
-// landed NON-REQUIRED (continue_on_error) under a job timeout long enough to complete once. The
-// first run was cancelled at the shared 45-minute cap (the first run on PR #12450), and tests were
-// red on main -- the harm gunbc.rung_drop rust_unit_tests_off_the_merge_path records. That drop
-// stays Standing until the population is green and the complete wall is measured.
+// THE v1 UNIT TESTS ARE A BLOCKING FLEET LANE (2026-09-30, restoring the lane the 2026-09-29 ruling
+// deleted, in the shape that ruling named). The history: a non-required step on the hosted `clippy`
+// job (2026-09-27), its own non-blocking hosted lane (2026-09-28), deleted because continue_on_error
+// made its red unreadable (2026-09-29). It returns without continue_on_error, on the fleet, with the
+// aggregate reading it, so a unit-test red refuses the required context; the restoration retires
+// gunbc.rung_drop rust_unit_tests_off_the_merge_path in the same change.
 //
-// ON THE FLEET SINCE 2026-09-30, STILL NOT BLOCKING (operator ruling via escalation, option A: move,
-// then flip). The flip trigger below requires the move in the flip's change; the move lands first so
-// the lane's fleet wall and a green fleet run on main exist before the flip reads them. The two
-// paragraphs that follow are the 2026-09-28 reasoning for keeping it hosted, kept because the cost
-// they name is the one this move now pays.
-//
-// WHY IT DID NOT FOLLOW THE LINT ONTO THE FLEET. It is the longest step in the workflow, so a fleet
-// slot would pay that wall on every push for a verdict nothing requires, and its cgroup bind (below)
-// is a hosted-VM construction. And as a step on a blocking lane it could still delay a landing: the
-// required context waited for the whole `clippy` job, unit wall included, even though the step
-// could not fail it. So the step keeps its runner and becomes its own lane, announced as not
-// blocking (compiler_gate_lane_rows), and the required context no longer waits for it. The drop's
-// restoration trigger is that lane's flip trigger, and flipping it moves the job onto the fleet.
+// THE FLEET COST IS THE PRICE THE OLDER REASONING DECLINED, AND IT IS NOW PAID DELIBERATELY. The
+// 2026-09-28 reasoning kept the step off the fleet because a fleet slot would pay its wall on every
+// push for a verdict nothing required. The verdict is now required, so the wall buys a gate; and the
+// lane runs BESIDE `floor` and `generated` (needs: []), so it adds slot-minutes but no critical-path
+// minutes unless it is the longest lane.
 //
 // THE BOUND IS REAL, NOT DECLARED, AND ON THE FLEET IT IS THE SLOT'S OWN. The regeneration-host tests
 // read their budget through gunbc.host_budget_source and refuse HostBudgetUnreadable where no cgroup
@@ -283,24 +278,21 @@ fn compiler_gate_lint_step() -> Step {
 // typed refusal rather than passing on a fabricated budget.
 data compiler_gate_unit_test_step_name: String = "Run the v1 unit tests"
 data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
-data compiler_gate_unit_test_cgroup_name: String = "gunbc-unit-tests"
-// THE UNIT STEP CARRIES ITS OWN CAP, AND THE JOB CAP IS DERIVED FROM IT. continue_on_error covers a
-// step FAILURE, not a JOB timeout: with the step uncapped, a slow unit run consumed the whole job cap,
-// GitHub cancelled the clippy job inside the non-required step, and the required witnesses aggregate
-// failed on it (merge_group run 36431733521) -- a harm the 2026-09-28 split also closes from the other
-// side, since the aggregate no longer reads this job at all. A step-level timeout expires as a step
-// failure, which continue_on_error does cover, so the job's conclusion does not depend on the unit
-// step's wall. The job cap is the sum of the step cap and a reserve for everything before it, so the
-// step ends inside the job by construction rather than by two literals agreeing. Both are sized from
-// the clippy job records of witnesses runs 36424259908 and 36434277095 (completed unit walls) and
-// 36431733521 (a unit wall past the job cap), re-read there rather than copied here; they are
-// re-derived when the step turns required or the live-tree tests are reshaped.
+// THE UNIT STEP CARRIES ITS OWN CAP, AND THE JOB CAP IS DERIVED FROM IT, SO THE STEP ENDS INSIDE THE
+// JOB BY CONSTRUCTION. THE RULE, stated so the literal can be re-derived rather than trusted: the step
+// cap is the largest observed step wall on the fleet runner class, times 1.5, rounded up to the next
+// 5 minutes. Headroom is multiplicative because the wall scales with the test population and with
+// slot contention, and a required lane whose cap is hit reads as a red that says nothing about the
+// diff. The observed walls are those of the rust_unit_tests step in this lane's own fleet runs (the
+// first, witnesses run 36676083674 on srv4, is the current maximum), plus the hosted population
+// silent-koi-310 tabulated, which sits below it; re-read them there and re-derive when a fleet wall
+// exceeds two thirds of the cap.
 fn compiler_gate_unit_test_timeout() -> Minute {
-  minute(count: 50)
+  minute(count: 40)
 }
 
-// Checkout and the toolchain install run before the unit step; their measured sum is a small
-// fraction of this reserve.
+// Checkout, toolchain-home isolation and the toolchain install run before the unit step; the step
+// itself compiles the test binary, so this reserve covers only the prelude.
 fn compiler_gate_unit_test_pre_step_reserve() -> Minute {
   minute(count: 10)
 }
@@ -322,7 +314,7 @@ fn compiler_gate_unit_test_step() -> Step {
     env: none,
     working_directory: none,
     if_condition: none,
-    continue_on_error: Present { value: true },
+    continue_on_error: none,
     timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_timeout()) }
   }
 }
@@ -1399,9 +1391,7 @@ fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
         notice: "the v1 unit-test lane is skipped for a fork pull request: it runs on the fleet",
         unobserved_error: "the v1 unit-test lane produced no success"
       },
-      standing: LaneAnnouncedNotBlocking {
-        flip_trigger: "THE v1 UNIT-TEST POPULATION IS GREEN AND ONE COMPLETE WALL IS MEASURED -- the restoration trigger of gunbc.rung_drop rust_unit_tests_off_the_merge_path, which this row names rather than restates. Sufficient for: a head of main on which `cargo test --release -p v1-compiler --lib` exits zero inside the step cap, so that requiring this lane blocks merges only for defects the head in front of it introduced. At that point this row becomes LaneBlocks, the step drops continue_on_error, and the aggregate gains the needs edge and the variable. The job already runs on the fleet with the fleet lanes' fork guard and GateArmSkippableOnFork arm, bound by its slot's MemoryMax rather than a sudo leaf (moved 2026-09-30), so compiler_gate_merge_path_runs_on_the_fleet admits the flip."
-      }
+      standing: LaneBlocks,
     },
     CompilerGateLaneRow {
       job_id: compiler_gate_emit_build_job_id,

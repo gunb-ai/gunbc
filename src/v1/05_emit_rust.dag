@@ -9969,7 +9969,54 @@ fn variant_pattern_shape_str(qualified: String, rust_name: String, resolved_pare
   else if is_fielded { concat(qualified, " { .. }") } else { qualified }
 }
 
+// A VARIANT PATTERN WHOSE PARENT ENUM DOES NOT RESOLVE REFUSES; IT NEVER RENDERS BARE. In Rust a
+// bare identifier in pattern position that names no unit struct or in-scope variant is a fresh
+// BINDING, so `Add => ...` with no `BinOp::*` in scope matches every scrutinee and the first such
+// arm silently takes all of them (wrong-arm execution; rustc only warns). rust_variant_path_opt's
+// Absent arm was that silent widen for every non-optional variant pattern (DESIGN section 5: a
+// failure arm must refuse, never widen). Optional variants are exempt: their Absent-parent residue
+// lowers to Some/None by the host optional's own spelling authority. Only the BARE-IDENTIFIER
+// rendering is the hazard: a fielded or positional render (`Named { .. }`, `Wrap(_)`) is a struct or
+// tuple-struct pattern Rust resolves by path and never binds as a variable, and an unresolved parent
+// there already fails loudly if the name is not in scope (measured: v2.std.node EdgeLabel `Named`
+// patterns over unstamped scrutinees in v2.std.compilers.body_lowering and
+// v2.compiler.emit_produced render `Named { .. }` and resolve through the authored import). The
+// refusal is emitted as
+// compile_error! at the arm, so the build stops at the emitted location with the variant and
+// scrutinee named. Class: gunbc.recurring_failure_mode
+// unresolved_variant_pattern_renders_as_a_catch_all_binding.
+fn variant_pattern_parent_unresolved(name: String, parent_enum: String?, scrut_type: String, emit_info: EmitGraphInfo) -> Bool {
+  let bare_name = qualified_last_segment(name: name)
+  let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
+  resolved_parent == none && !is_optional_variant_name(name: bare_name)
+}
+
+fn rust_pattern_is_bare_identifier(rendered: String) -> Bool {
+  !string_contains(s: rendered, pattern: "{") && !string_contains(s: rendered, pattern: "(") && !string_contains(s: rendered, pattern: "::")
+}
+
+fn refuse_unresolved_bare_variant_pattern(name: String, parent_enum: String?, scrut_type: String, emit_info: EmitGraphInfo, rendered: String) -> String {
+  if variant_pattern_parent_unresolved(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info) && rust_pattern_is_bare_identifier(rendered: rendered) {
+    unresolved_variant_pattern_refusal(name: name, scrut_type: scrut_type)
+  } else {
+    rendered
+  }
+}
+
+fn unresolved_variant_pattern_refusal(name: String, scrut_type: String) -> String {
+  let scrut = if scrut_type == "" { "an unstamped scrutinee" } else { concat("scrutinee type `", scrut_type, "`") }
+  emit_rust_compile_error_expr(message: concat(
+    "v1.compiler.emit_rust will not render the variant pattern `", qualified_last_segment(name: name),
+    "` against ", scrut,
+    ": its parent enum does not resolve, and a bare identifier pattern binds as a catch-all variable in Rust"))
+}
+
 fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  refuse_unresolved_bare_variant_pattern(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info,
+    rendered: emit_resolved_variant_pattern(name: name, parent_enum: parent_enum, field_bindings: field_bindings, path_prefix: path_prefix, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info))
+}
+
+fn emit_resolved_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let bare_name = qualified_last_segment(name: name)
   let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
   let optional_variant = is_optional_variant_name(name: bare_name)
@@ -10221,6 +10268,11 @@ fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_an
 }
 
 fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  refuse_unresolved_bare_variant_pattern(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info,
+    rendered: emit_resolved_variant_pattern_rc_aware(name: name, parent_enum: parent_enum, field_bindings: field_bindings, path_prefix: path_prefix, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info))
+}
+
+fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let bare_name = qualified_last_segment(name: name)
   let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
   let optional_variant = is_optional_variant_name(name: bare_name)
@@ -10323,6 +10375,11 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
 }
 
 fn variant_pattern_shape_for(name: String, parent_enum: String?, scrut_type: String, emit_info: EmitGraphInfo) -> String {
+  refuse_unresolved_bare_variant_pattern(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info,
+    rendered: resolved_variant_pattern_shape_for(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info))
+}
+
+fn resolved_variant_pattern_shape_for(name: String, parent_enum: String?, scrut_type: String, emit_info: EmitGraphInfo) -> String {
   let bare_name = qualified_last_segment(name: name)
   let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
   let optional_variant = is_optional_variant_name(name: bare_name)
@@ -13442,8 +13499,8 @@ fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: M
 // field, or a deeper Rc level inside the nested pattern is NOT grouped and keeps the #8570 guard —
 // so it keeps the E0004 too. A match containing an irrefutable arm is left alone entirely: the
 // wildcard already covers the outer variant, there is no E0004 to remove, and rewriting it would
-// only risk making the inner match non-exhaustive. The tail-call arm emitter
-// (emit_typed_tco_match_arm) is untouched and keeps the guard for the same shape. Next-rung trigger: a general decision-tree
+// only risk making the inner match non-exhaustive. The tail-call lowering
+// shares this grouping through rc_grouped_match_arm_strs. Next-rung trigger: a general decision-tree
 // lowering over the whole arm matrix, which subsumes this one shape and needs a fallthrough
 // representation this grouping deliberately does not invent.
 
@@ -13641,31 +13698,42 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
         present_binding: optional_match_arm_sees_present_value(scrutinee_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
     )
   } else {
-    let entries = arms |> map(arm => RcGroupedArmEntry {
-      arm: arm,
-      plan: rc_grouped_arm_plan(arm: arm, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type)
-    })
-    let folded = entries |> fold(init: RcGroupedArmAcc { seen: [], out: [] }, f: (acc, e) =>
-      let representative = if e.plan.groupable { rc_group_representative(entries: entries, variant: e.plan.variant) } else { none }
-      match representative {
-        Present { value: rep } =>
-          if acc.seen |> any(s => s == e.plan.variant) {
-            acc
-          } else {
-            RcGroupedArmAcc {
-              seen: list_push(acc.seen, e.plan.variant),
-              out: list_push(acc.out, emit_rc_grouped_match_arm(members: rc_group_members(entries: entries, variant: e.plan.variant), plan: rep, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type))
-            }
-          }
-        Absent =>
-          RcGroupedArmAcc {
-            seen: acc.seen,
-            out: list_push(acc.out, emit_typed_match_arm(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, present_binding: false))
-          }
-      }
-    )
-    folded.out
+    rc_grouped_match_arm_strs(arms: arms, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type,
+      emit_group: (members, rep) => emit_rc_grouped_match_arm(members: members, plan: rep, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
+      emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, present_binding: false))
   }
+}
+
+// THE ONE ARM-GROUPING AUTHORITY for both match lowerings. The ordinary renderer and the tail-call
+// renderer differ only in how an arm body is emitted (a value versus a loop continuation), so they
+// pass their body emitters in and share the grouping decision. The tail-call renderer used to render
+// every nested Rc discrimination as a guard, and rustc does not count guarded arms toward
+// exhaustiveness, so an enumerated nested arm set in a tail-recursive fold was E0004
+// (gunbc.recurring_failure_mode tail_call_match_lowering_skips_rc_arm_grouping). `emit_single`
+// receives the arm's source index so a renderer can decide which arm sees an optional's value.
+fn rc_grouped_match_arm_strs(arms: List<Node>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, emit_group: fn(List<RcGroupedArmEntry>, RcGroupedArmPlan) -> String, emit_single: fn(Int, Node) -> String) -> List<String> {
+  let entries = arms |> map(arm => RcGroupedArmEntry {
+    arm: arm,
+    plan: rc_grouped_arm_plan(arm: arm, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type)
+  })
+  let folded = entries |> enumerate |> fold(init: RcGroupedArmAcc { seen: [], out: [] }, f: (acc, pair) =>
+    let e = pair.second
+    let representative = if e.plan.groupable { rc_group_representative(entries: entries, variant: e.plan.variant) } else { none }
+    match representative {
+      Present { value: rep } =>
+        if acc.seen |> any(s => s == e.plan.variant) {
+          acc
+        } else {
+          RcGroupedArmAcc {
+            seen: list_push(acc.seen, e.plan.variant),
+            out: list_push(acc.out, emit_group(rc_group_members(entries: entries, variant: e.plan.variant), rep))
+          }
+        }
+      Absent =>
+        RcGroupedArmAcc { seen: acc.seen, out: list_push(acc.out, emit_single(pair.first, e.arm)) }
+    }
+  )
+  folded.out
 }
 
 fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -15074,6 +15142,15 @@ fn emit_native_freemonoid_tco_match(scrut_str: String, arms: List<Node>, fn_name
   }
 }
 
+// The tail-call rendering of one grouped variant: the #8570 outer pattern, then a nested match on
+// the Rc field whose arms are loop continuations rather than values.
+fn emit_rc_grouped_tco_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let inner_arms = members |> map(e =>
+    concat("    ", e.plan.inner_pat_str, " => { ", emit_typed_tco_expr(texpr: arm_body(n: e.arm), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info), " },")
+  ) |> join(separator: "\n")
+  concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms, "\n} },")
+}
+
 fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprMatch =>
@@ -15093,9 +15170,18 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
       } else {
       let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: frame.scope.type_env.source_indices)
       let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arm_list)
-      let arm_strs = arm_list |> enumerate |> map(pair =>
-        emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
-          present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
+      let has_irrefutable = arm_list |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
+      let arm_strs = if has_irrefutable {
+        arm_list |> enumerate |> map(pair =>
+          emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+            present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
+      } else {
+        rc_grouped_match_arm_strs(arms: arm_list, scope: frame.scope, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+          emit_group: (members, rep) => emit_rc_grouped_tco_match_arm(members: members, plan: rep, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info),
+          emit_single: (index, arm) =>
+          emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+            present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: arm), arm_index: index, absent_arm_index: absent_arm_index)))
+      }
       let arms_str = arm_strs |> join(separator: "\n")
       let tco_needs_as_str = all_arms_are_string_lit(arms: arm_list) && arm_list |> count > 0
       if rc_match.needs_rc_option_ref {

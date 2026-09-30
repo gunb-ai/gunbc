@@ -1922,14 +1922,25 @@ fn marshal_fn_export_signature_node(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     item: &Rc<Node>,
 ) -> InterpResult<Value> {
-    let mut edges = Vec::new();
+    // THE DOMAIN IS NAMED BINDERS, NEVER POSITIONAL TYPES (Program P, one Arrow encoding): one
+    // Named edge per value parameter, labelled with its authored name (`_` stays `_`), in authored
+    // order. The host mints no order edge and no anonymous binder: the substrate half,
+    // `v2.std.decl_index` `export_signature_declared_facts`, passes these edges through
+    // `v2.std.arrow_signature` `declared_signature`, the one constructor of a domain and its order.
+    let mut binders = Vec::new();
     for p in item.params.iter() {
         if param_is_type_param(p, si) {
             continue;
         }
+        let name = param_node_name_at(p.clone(), si.clone());
         let ty = param_node_type_expr(p.clone());
-        edges.push(edge_positional(ctx, marshal_type_expr_ref(ctx, si, &ty)?));
+        binders.push(edge_named(ctx, &name, marshal_type_expr_ref(ctx, si, &ty)?));
     }
+    let domain = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        binders,
+    );
     let ret_val = item
         .inferred
         .as_ref()
@@ -1937,11 +1948,10 @@ fn marshal_fn_export_signature_node(
         .map(|ret| marshal_type_expr_ref(ctx, si, &ret))
         .transpose()?
         .unwrap_or_else(|| unit_type_node(ctx));
-    edges.push(edge_positional(ctx, ret_val));
     Ok(node_record(
         ctx,
         node_kind_type_node(ctx, nullary_connective_variant(ctx, "Arrow")),
-        edges,
+        vec![edge_positional(ctx, domain), edge_positional(ctx, ret_val)],
     ))
 }
 
