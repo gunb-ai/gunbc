@@ -14,7 +14,6 @@ import gunbc.spark.v41_row_store_readback_run { v41_readback_run_receipt_path }
 import gunbc.spark.v41_engram_differential_run { v41_differential_receipt_path }
 import gunbc.spark.v41_runtime_image_converge { v41_distribution_receipt_path }
 import gunbc.spark.v41_group_a_launch { v41_group_a_launch_receipt_path }
-import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
   app_key_version_env_name,

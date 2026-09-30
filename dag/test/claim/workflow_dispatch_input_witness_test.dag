@@ -1,7 +1,7 @@
 module test.claim.workflow_dispatch_input_witness
 
 import extdeps.github.actions {
-  WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep
+  WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep, RunsOnExpression
 }
 import gunbc.fleet_converge_plan {
   LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly,
@@ -27,7 +27,8 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
   fleet_converge_credential_prelude_steps, fleet_converge_mutation_concurrency_group_expression, fleet_converge_spark_v41_checkpoint_materialize_step,
-  fleet_converge_dispatch_inputs,
+  fleet_converge_dispatch_inputs, fleet_converge_shared_runner_spec, fleet_converge_job,
+  fleet_converge_host_pinned_runner_spec, fleet_converge_host_runner_expression,
 }
 import gunbc.host_reset_return {
   DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
@@ -843,3 +844,15 @@ test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> B
   string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
 
+
+// Remote custody can repair a host whose local runners are unavailable.
+// The exact expression also guards the host-local fallback used by all other shared modes.
+test fn credential_custody_runs_remotely_without_retargeting_host_local_modes() -> Bool {
+  match fleet_converge_shared_runner_spec() {
+    RunsOnExpression { expression: e } =>
+      e == "${{ fromJSON(github.event.inputs.mode == 'host_credential_custody_converge' && '[\"self-hosted\", \"linux\", \"arm64\"]' || format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
+      && fleet_converge_job().runner == fleet_converge_shared_runner_spec()
+      && fleet_converge_host_pinned_runner_spec() == RunsOnExpression { expression: fleet_converge_host_runner_expression }
+    _ => false
+  }
+}

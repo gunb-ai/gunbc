@@ -387,7 +387,7 @@ jobs:
           compression-level: 0
         timeout-minutes: 10
   fleet-converge:
-    runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
+    runs-on: ${{ fromJSON(github.event.inputs.mode == 'host_credential_custody_converge' && '["self-hosted", "linux", "arm64"]' || format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     timeout-minutes: 295
     if: github.event.inputs.mode != 'mtcollins1_boot' && github.event.inputs.mode != 'gcp_iam_converge' && github.event.inputs.mode != 'namecheap_observe'
