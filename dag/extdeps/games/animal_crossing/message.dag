@@ -1,0 +1,560 @@
+module extdeps.games.animal_crossing.message
+
+import v2.std.algebra { any, filter }
+import std.types { Bool, Int, List, Map, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.octet_read { be_u32_at, be_u32_octets, hex_octets, octet_hex, octets_hex }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.games.animal_crossing.charset { ac_glyph_index, ac_glyph_octet, ac_octet_glyph }
+import extdeps.games.animal_crossing.font { glyph_advance, inserted_string_max_octets, widest_glyph_advance }
+
+// Animal Crossing (GameCube, GAFE01) dialogue as the game stores and draws it. Messages live in
+// forest_2nd.arc as `data/message_data.bin` (every message concatenated) and
+// `data/message_data_table.bin` (one big-endian u32 per message: the END offset of that message).
+// A message id is an index into that table and is referenced from game code, so the number of
+// messages is fixed. Inside a message, 0x7F starts a control code whose total size -- 0x7F, the
+// code byte and its argument bytes -- is the game's `mFont_cont_info_tbl` entry; every other byte
+// is one glyph of extdeps.games.animal_crossing.charset (0xCD is the line break). Names and sizes below are ac-decomp's
+// (include/m_font.h `mFont_CONT_CODE_*`, src/game/m_font_main.c_inc `mFont_cont_info_tbl`).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ACreTeam/ac-decomp/blob/09ca8e8b5b24e6ab44047ee980cf0088ad7ecb4c/include/m_font.h"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.games.animal_crossing.message",
+      decl_name: "MessageToken",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data message_archive_path: String = "forest_2nd.arc"
+data message_data_path: String = "data/message_data.bin"
+data message_table_path: String = "data/message_data_table.bin"
+
+data control_prefix: Int = 127
+// The octet that ends a drawn line (the font table's "\n").
+data message_line_break: Int = 205
+
+// `size` counts every octet of the code: 0x7F, the code byte and its arguments.
+type ControlCode {
+  code: Int
+  name: String
+  size: Int
+}
+
+data vanilla_control_codes: List<ControlCode> = [
+  ControlCode { code: 0, name: "LAST", size: 2 },
+  ControlCode { code: 1, name: "CONTINUE", size: 2 },
+  ControlCode { code: 2, name: "CLEAR", size: 2 },
+  ControlCode { code: 3, name: "CURSOR_SET_TIME", size: 3 },
+  ControlCode { code: 4, name: "BUTTON", size: 2 },
+  ControlCode { code: 5, name: "COLOR", size: 5 },
+  ControlCode { code: 6, name: "ABLE_CANCEL", size: 2 },
+  ControlCode { code: 7, name: "UNABLE_CANCEL", size: 2 },
+  ControlCode { code: 8, name: "SET_DEMO_ORDER_PLAYER", size: 5 },
+  ControlCode { code: 9, name: "SET_DEMO_ORDER_NPC0", size: 5 },
+  ControlCode { code: 10, name: "SET_DEMO_ORDER_NPC1", size: 5 },
+  ControlCode { code: 11, name: "SET_DEMO_ORDER_NPC2", size: 5 },
+  ControlCode { code: 12, name: "SET_DEMO_ORDER_QUEST", size: 5 },
+  ControlCode { code: 13, name: "SET_SELECT_WINDOW", size: 2 },
+  ControlCode { code: 14, name: "SET_NEXT_MESSAGE_F", size: 4 },
+  ControlCode { code: 15, name: "SET_NEXT_MESSAGE_0", size: 4 },
+  ControlCode { code: 16, name: "SET_NEXT_MESSAGE_1", size: 4 },
+  ControlCode { code: 17, name: "SET_NEXT_MESSAGE_2", size: 4 },
+  ControlCode { code: 18, name: "SET_NEXT_MESSAGE_3", size: 4 },
+  ControlCode { code: 19, name: "SET_NEXT_MESSAGE_RANDOM_2", size: 6 },
+  ControlCode { code: 20, name: "SET_NEXT_MESSAGE_RANDOM_3", size: 8 },
+  ControlCode { code: 21, name: "SET_NEXT_MESSAGE_RANDOM_4", size: 10 },
+  ControlCode { code: 22, name: "SET_SELECT_STRING_2", size: 6 },
+  ControlCode { code: 23, name: "SET_SELECT_STRING_3", size: 8 },
+  ControlCode { code: 24, name: "SET_SELECT_STRING_4", size: 10 },
+  ControlCode { code: 25, name: "SET_FORCE_NEXT", size: 2 },
+  ControlCode { code: 26, name: "PUT_STRING_PLAYER_NAME", size: 2 },
+  ControlCode { code: 27, name: "PUT_STRING_TALK_NAME", size: 2 },
+  ControlCode { code: 28, name: "PUT_STRING_TAIL", size: 2 },
+  ControlCode { code: 29, name: "PUT_STRING_YEAR", size: 2 },
+  ControlCode { code: 30, name: "PUT_STRING_MONTH", size: 2 },
+  ControlCode { code: 31, name: "PUT_STRING_WEEK", size: 2 },
+  ControlCode { code: 32, name: "PUT_STRING_DAY", size: 2 },
+  ControlCode { code: 33, name: "PUT_STRING_HOUR", size: 2 },
+  ControlCode { code: 34, name: "PUT_STRING_MIN", size: 2 },
+  ControlCode { code: 35, name: "PUT_STRING_SEC", size: 2 },
+  ControlCode { code: 36, name: "PUT_STRING_FREE0", size: 2 },
+  ControlCode { code: 37, name: "PUT_STRING_FREE1", size: 2 },
+  ControlCode { code: 38, name: "PUT_STRING_FREE2", size: 2 },
+  ControlCode { code: 39, name: "PUT_STRING_FREE3", size: 2 },
+  ControlCode { code: 40, name: "PUT_STRING_FREE4", size: 2 },
+  ControlCode { code: 41, name: "PUT_STRING_FREE5", size: 2 },
+  ControlCode { code: 42, name: "PUT_STRING_FREE6", size: 2 },
+  ControlCode { code: 43, name: "PUT_STRING_FREE7", size: 2 },
+  ControlCode { code: 44, name: "PUT_STRING_FREE8", size: 2 },
+  ControlCode { code: 45, name: "PUT_STRING_FREE9", size: 2 },
+  ControlCode { code: 46, name: "PUT_STRING_DETERMINATION", size: 2 },
+  ControlCode { code: 47, name: "PUT_STRING_COUNTRY_NAME", size: 2 },
+  ControlCode { code: 48, name: "PUT_STRING_RANDOM_NUMBER_2", size: 2 },
+  ControlCode { code: 49, name: "PUT_STRING_ITEM0", size: 2 },
+  ControlCode { code: 50, name: "PUT_STRING_ITEM1", size: 2 },
+  ControlCode { code: 51, name: "PUT_STRING_ITEM2", size: 2 },
+  ControlCode { code: 52, name: "PUT_STRING_ITEM3", size: 2 },
+  ControlCode { code: 53, name: "PUT_STRING_ITEM4", size: 2 },
+  ControlCode { code: 54, name: "PUT_STRING_FREE10", size: 2 },
+  ControlCode { code: 55, name: "PUT_STRING_FREE11", size: 2 },
+  ControlCode { code: 56, name: "PUT_STRING_FREE12", size: 2 },
+  ControlCode { code: 57, name: "PUT_STRING_FREE13", size: 2 },
+  ControlCode { code: 58, name: "PUT_STRING_FREE14", size: 2 },
+  ControlCode { code: 59, name: "PUT_STRING_FREE15", size: 2 },
+  ControlCode { code: 60, name: "PUT_STRING_FREE16", size: 2 },
+  ControlCode { code: 61, name: "PUT_STRING_FREE17", size: 2 },
+  ControlCode { code: 62, name: "PUT_STRING_FREE18", size: 2 },
+  ControlCode { code: 63, name: "PUT_STRING_FREE19", size: 2 },
+  ControlCode { code: 64, name: "PUT_STRING_MAIL", size: 2 },
+  ControlCode { code: 65, name: "SET_PLAYER_DESTINY0", size: 2 },
+  ControlCode { code: 66, name: "SET_PLAYER_DESTINY1", size: 2 },
+  ControlCode { code: 67, name: "SET_PLAYER_DESTINY2", size: 2 },
+  ControlCode { code: 68, name: "SET_PLAYER_DESTINY3", size: 2 },
+  ControlCode { code: 69, name: "SET_PLAYER_DESTINY4", size: 2 },
+  ControlCode { code: 70, name: "SET_PLAYER_DESTINY5", size: 2 },
+  ControlCode { code: 71, name: "SET_PLAYER_DESTINY6", size: 2 },
+  ControlCode { code: 72, name: "SET_PLAYER_DESTINY7", size: 2 },
+  ControlCode { code: 73, name: "SET_PLAYER_DESTINY8", size: 2 },
+  ControlCode { code: 74, name: "SET_PLAYER_DESTINY9", size: 2 },
+  ControlCode { code: 75, name: "SET_MESSAGE_CONTENTS_NORMAL", size: 2 },
+  ControlCode { code: 76, name: "SET_MESSAGE_CONTENTS_ANGRY", size: 2 },
+  ControlCode { code: 77, name: "SET_MESSAGE_CONTENTS_SAD", size: 2 },
+  ControlCode { code: 78, name: "SET_MESSAGE_CONTENTS_FUN", size: 2 },
+  ControlCode { code: 79, name: "SET_MESSAGE_CONTENTS_SLEEPY", size: 2 },
+  ControlCode { code: 80, name: "SET_COLOR_CHAR", size: 6 },
+  ControlCode { code: 81, name: "SOUND_CUT", size: 3 },
+  ControlCode { code: 82, name: "SET_LINE_OFFSET", size: 3 },
+  ControlCode { code: 83, name: "SET_LINE_TYPE", size: 3 },
+  ControlCode { code: 84, name: "SET_CHAR_SCALE", size: 3 },
+  ControlCode { code: 85, name: "BUTTON2", size: 2 },
+  ControlCode { code: 86, name: "BGM_MAKE", size: 4 },
+  ControlCode { code: 87, name: "BGM_DELETE", size: 4 },
+  ControlCode { code: 88, name: "MSG_TIME_END", size: 3 },
+  ControlCode { code: 89, name: "SOUND_TRG_SYS", size: 3 },
+  ControlCode { code: 90, name: "SET_LINE_SCALE", size: 3 },
+  ControlCode { code: 91, name: "SOUND_NO_PAGE", size: 2 },
+  ControlCode { code: 92, name: "VOICE_TRUE", size: 2 },
+  ControlCode { code: 93, name: "VOICE_FALSE", size: 2 },
+  ControlCode { code: 94, name: "SELECT_NO_B", size: 2 },
+  ControlCode { code: 95, name: "GIVE_OPEN", size: 2 },
+  ControlCode { code: 96, name: "GIVE_CLOSE", size: 2 },
+  ControlCode { code: 97, name: "SET_MESSAGE_CONTENTS_GLOOMY", size: 2 },
+  ControlCode { code: 98, name: "SELECT_NO_B_CLOSE", size: 2 },
+  ControlCode { code: 99, name: "SET_NEXT_MESSAGE_RANDOM_SECTION", size: 6 },
+  ControlCode { code: 100, name: "AGB_DUMMY0", size: 3 },
+  ControlCode { code: 101, name: "AGB_DUMMY1", size: 3 },
+  ControlCode { code: 102, name: "AGB_DUMMY2", size: 4 },
+  ControlCode { code: 103, name: "SPACE", size: 3 },
+  ControlCode { code: 104, name: "AGB_DUMMY3", size: 2 },
+  ControlCode { code: 105, name: "AGB_DUMMY4", size: 2 },
+  ControlCode { code: 106, name: "AGB_MALE_FEMALE_CHECK", size: 6 },
+  ControlCode { code: 107, name: "AGB_DUMMY5", size: 2 },
+  ControlCode { code: 108, name: "AGB_DUMMY6", size: 2 },
+  ControlCode { code: 109, name: "AGB_DUMMY7", size: 3 },
+  ControlCode { code: 110, name: "AGB_DUMMY8", size: 3 },
+  ControlCode { code: 111, name: "AGB_DUMMY9", size: 3 },
+  ControlCode { code: 112, name: "AGB_DUMMY10", size: 3 },
+  ControlCode { code: 113, name: "PUT_STRING_ISLAND_NAME", size: 2 },
+  ControlCode { code: 114, name: "SET_CURSOR_JUST", size: 2 },
+  ControlCode { code: 115, name: "CLR_CURSOR_JUST", size: 2 },
+  ControlCode { code: 116, name: "CUT_ARTICLE", size: 2 },
+  ControlCode { code: 117, name: "CAPITAL_LETTER", size: 2 },
+  ControlCode { code: 118, name: "PUT_STRING_AM_PM", size: 2 },
+  ControlCode { code: 119, name: "SET_NEXT_MESSAGE_4", size: 4 },
+  ControlCode { code: 120, name: "SET_NEXT_MESSAGE_5", size: 4 },
+  ControlCode { code: 121, name: "SET_SELECT_STRING_5", size: 12 },
+  ControlCode { code: 122, name: "SET_SELECT_STRING_6", size: 14 }
+]
+
+// Codes that only change how the current message looks or sounds: pacing, colour, scale, voice
+// on or off, and the operations on inserted strings (names, the catchphrase, dates, items). Every
+// other code steers the conversation -- choices, the next message, item hand-offs, events, the
+// voice cue a line is spoken with (SET_MESSAGE_CONTENTS_*, m_msg_cursol.c_inc
+// mMsg_sound_MessageStatus at the cursor) -- and a rewrite must keep it exactly. A code with no
+// upstream name steers, since nothing says otherwise. The one code whose class depends on its
+// arguments is the speaker's demo order (see token_steers).
+data presentation_control_names: List<String> = [
+  "CLEAR", "CURSOR_SET_TIME", "BUTTON", "BUTTON2", "COLOR", "SET_COLOR_CHAR", "SOUND_CUT",
+  "SET_LINE_OFFSET", "SET_LINE_TYPE", "SET_CHAR_SCALE", "SET_LINE_SCALE", "SOUND_NO_PAGE",
+  "SOUND_TRG_SYS", "VOICE_TRUE", "VOICE_FALSE", "SPACE", "SET_CURSOR_JUST", "CLR_CURSOR_JUST",
+  "CUT_ARTICLE", "CAPITAL_LETTER",
+]
+
+fn control_code_steers(code: ControlCode) -> Bool {
+  !(code.name.starts_with(prefix: "PUT_STRING_") || (presentation_control_names |> any(n => n == code.name)))
+}
+
+// SET_DEMO_ORDER_NPC0 writes (slot, u16) into the speaking villager's order row
+// (extdeps.games.animal_crossing.expression): slot 0 is the expression it makes, which a rewrite
+// may re-cue; every other slot is an action or a mood change and steers. The other rows (player,
+// the other villagers, the quest manager) always steer.
+data speaker_order_name: String = "SET_DEMO_ORDER_NPC0"
+data speaker_expression_order_slot: Int = 0
+
+fn speaker_expression_order(code: ControlCode, arguments: List<Int>) -> Bool {
+  code.name == speaker_order_name && (get(arguments, 0) ?? -1) == speaker_expression_order_slot
+}
+
+type MessageToken
+  = Glyph { octet: Int }
+  | Control { code: ControlCode, arguments: List<Int> }
+
+type MessageOutcome<T>
+  = MessageAccepted { value: T }
+  | MessageRefused { reason: String }
+
+// ---- the table ----
+
+type TableFold {
+  ends: List<Int>
+  valid: Bool
+}
+
+fn table_step(table: List<Int>, acc: TableFold, index: Int) -> TableFold {
+  match be_u32_at(bytes: table, offset: index * 4) {
+    Present { value: end } => TableFold { ends: list_push(acc.ends, end), valid: acc.valid }
+    Absent => TableFold { ends: acc.ends, valid: false }
+  }
+}
+
+fn message_indices(from: Int, to: Int, acc: List<Int>) -> List<Int> {
+  if from >= to { acc } else { message_indices(from: from + 1, to: to, acc: list_push(acc, from)) }
+}
+
+// Each message's end offset in the data file, in id order.
+// Each entry ends one message where the next begins, so the ends never decrease: a decreasing
+// entry would give a message a negative length. `bad` is the first such message id, or -1.
+type EndsOrderFold {
+  previous: Int
+  id: Int
+  bad: Int
+}
+
+fn ends_order_step(acc: EndsOrderFold, end: Int) -> EndsOrderFold {
+  if acc.bad >= 0 { acc }
+  else if end < acc.previous { EndsOrderFold { previous: acc.previous, id: acc.id, bad: acc.id } }
+  else { EndsOrderFold { previous: end, id: acc.id + 1, bad: -1 } }
+}
+
+fn first_decreasing_end(ends: List<Int>) -> Int {
+  fold(ends, init: EndsOrderFold { previous: 0, id: 0, bad: -1 }, f: (acc, e) => ends_order_step(acc: acc, end: e)).bad
+}
+
+fn message_table_ends(table: List<Int>) -> MessageOutcome<List<Int>> {
+  if count(table) % 4 != 0 { MessageRefused { reason: "message table length is not a multiple of 4" } }
+  else {
+    let r = fold(message_indices(from: 0, to: count(table) / 4, acc: []), init: TableFold { ends: [], valid: true }, f: (acc, i) => table_step(table: table, acc: acc, index: i))
+    if r.valid == false { MessageRefused { reason: "message table entry unreadable" } }
+    else {
+      let bad = first_decreasing_end(ends: r.ends)
+      if bad >= 0 { MessageRefused { reason: join(["message table end ", to_string(bad), " is below the one before it"], "") } }
+      else { MessageAccepted { value: r.ends } }
+    }
+  }
+}
+
+fn message_start(ends: List<Int>, id: Int) -> Int {
+  if id == 0 { 0 } else { get(ends, id - 1) ?? 0 }
+}
+
+fn message_end(ends: List<Int>, id: Int) -> Int {
+  get(ends, id) ?? 0
+}
+
+fn push_u32(acc: List<Int>, value: Int) -> List<Int> {
+  match be_u32_octets(value: value) {
+    Present { value: o } => fold(o, init: acc, f: (a, x) => list_push(a, x))
+    Absent => acc
+  }
+}
+
+fn message_table_octets(ends: List<Int>) -> List<Int> {
+  fold(ends, init: [], f: (acc, e) => push_u32(acc: acc, value: e))
+}
+
+// ---- tokens ----
+
+// `remaining`: -1 between tokens; -2 after 0x7F, the code octet is next; n > 0 argument octets
+// still to read.
+type TokenFold {
+  tokens: List<MessageToken>
+  remaining: Int
+  code: Int
+  arguments: List<Int>
+  refusal: String
+}
+
+fn control_code_of(codes: List<ControlCode>, code: Int) -> ControlCode? {
+  match get(codes, code) {
+    null => none
+    other => if other.code == code { Present { value: other } } else { none }
+  }
+}
+
+fn token_step(codes: List<ControlCode>, acc: TokenFold, octet: Int) -> TokenFold {
+  if acc.refusal != "" { acc }
+  else if acc.remaining == -2 {
+    match control_code_of(codes: codes, code: octet) {
+      Absent => TokenFold { tokens: acc.tokens, remaining: -1, code: 0, arguments: [], refusal: join(["unknown control code ", octet_hex(octet: octet)], "") }
+      Present { value: c } =>
+        if c.size == 2 { TokenFold { tokens: list_push(acc.tokens, Control { code: c, arguments: [] }), remaining: -1, code: 0, arguments: [], refusal: "" } }
+        else { TokenFold { tokens: acc.tokens, remaining: c.size - 2, code: octet, arguments: [], refusal: "" } }
+    }
+  } else if acc.remaining > 0 {
+    let args = list_push(acc.arguments, octet)
+    if acc.remaining == 1 {
+      match control_code_of(codes: codes, code: acc.code) {
+        Present { value: c } => TokenFold { tokens: list_push(acc.tokens, Control { code: c, arguments: args }), remaining: -1, code: 0, arguments: [], refusal: "" }
+        Absent => TokenFold { tokens: acc.tokens, remaining: -1, code: 0, arguments: [], refusal: "control code vanished mid-token" }
+      }
+    } else { TokenFold { tokens: acc.tokens, remaining: acc.remaining - 1, code: acc.code, arguments: args, refusal: "" } }
+  } else if octet == control_prefix {
+    TokenFold { tokens: acc.tokens, remaining: -2, code: 0, arguments: [], refusal: "" }
+  } else {
+    TokenFold { tokens: list_push(acc.tokens, Glyph { octet: octet }), remaining: -1, code: 0, arguments: [], refusal: "" }
+  }
+}
+
+fn message_tokens(codes: List<ControlCode>, message: List<Int>) -> MessageOutcome<List<MessageToken>> {
+  let r = fold(message, init: TokenFold { tokens: [], remaining: -1, code: 0, arguments: [], refusal: "" }, f: (acc, o) => token_step(codes: codes, acc: acc, octet: o))
+  if r.refusal != "" { MessageRefused { reason: r.refusal } }
+  else if r.remaining != -1 { MessageRefused { reason: "control code runs past the end of the message" } }
+  else { MessageAccepted { value: r.tokens } }
+}
+
+fn token_octets(token: MessageToken) -> List<Int> {
+  match token {
+    Glyph { octet: o } => [o]
+    Control { code: c, arguments: a } => concat([control_prefix, c.code], a)
+  }
+}
+
+// The steering codes of a message, in order, with their arguments.
+fn token_steers(token: MessageToken) -> Bool {
+  match token {
+    Glyph { octet: _ } => false
+    Control { code: c, arguments: a } => control_code_steers(code: c) && !speaker_expression_order(code: c, arguments: a)
+  }
+}
+
+fn steering_tokens(tokens: List<MessageToken>) -> List<List<Int>> {
+  tokens |> filter(t => token_steers(token: t)) |> map(t => token_octets(token: t))
+}
+
+// ---- readable text ----
+
+fn token_text(index: Map<String, Int>, token: MessageToken) -> String {
+  match token {
+    Control { code: c, arguments: a } =>
+      if count(a) == 0 { join(["{", c.name, "}"], "") }
+      else { join(["{", c.name, ":", a |> map(o => octet_hex(octet: o)) |> join(separator: " "), "}"], "") }
+    Glyph { octet: o } =>
+      match ac_octet_glyph(index: index, octet: o) {
+        Present { value: g } => g
+        Absent => join(["{#", octet_hex(octet: o), "}"], "")
+      }
+  }
+}
+
+fn message_text(tokens: List<MessageToken>) -> String {
+  let index = ac_glyph_index()
+  tokens |> map(t => token_text(index: index, token: t)) |> join(separator: "")
+}
+
+// `mode`: 0 plain text; 2 inside a {placeholder}.
+type TextFold {
+  octets: List<Int>
+  mode: Int
+  placeholder: List<Int>
+  refusal: String
+}
+
+fn text_refused(acc: TextFold, reason: String) -> TextFold {
+  TextFold { octets: acc.octets, mode: 0, placeholder: [], refusal: reason }
+}
+
+fn code_by_name(codes: List<ControlCode>, name: String) -> ControlCode? {
+  match codes |> filter(c => c.name == name) |> first {
+    null => none
+    other => Present { value: other }
+  }
+}
+
+fn placeholder_octets(codes: List<ControlCode>, placeholder: String) -> MessageOutcome<List<Int>> {
+  let parts = split(s: placeholder, delimiter: ":")
+  let name = get(parts, 0) ?? ""
+  let args_text = split(s: get(parts, 1) ?? "", delimiter: " ") |> join(separator: "")
+  if count(parts) > 2 { MessageRefused { reason: join(["malformed placeholder {", placeholder, "}"], "") } }
+  else if name.starts_with(prefix: "#") {
+    match hex_octets(hex: substring(s: name, start: 1, end: name.length())) {
+      Present { value: o } => if count(o) == 1 && count(parts) == 1 { MessageAccepted { value: o } } else { MessageRefused { reason: join(["bad byte escape {", placeholder, "}"], "") } }
+      Absent => MessageRefused { reason: join(["bad byte escape {", placeholder, "}"], "") }
+    }
+  } else {
+    match code_by_name(codes: codes, name: name) {
+      Absent => MessageRefused { reason: join(["unknown control code {", name, "}"], "") }
+      Present { value: c } =>
+        match hex_octets(hex: args_text) {
+          Absent => MessageRefused { reason: join(["arguments of {", placeholder, "} are not hex octets"], "") }
+          Present { value: a } =>
+            if count(a) != c.size - 2 { MessageRefused { reason: join([name, " takes ", to_string(c.size - 2), " argument octets, got ", to_string(count(a))], "") } }
+            else { MessageAccepted { value: concat([control_prefix, c.code], a) } }
+        }
+    }
+  }
+}
+
+fn text_step(codes: List<ControlCode>, index: Map<String, Int>, acc: TextFold, cp: Int) -> TextFold {
+  if acc.refusal != "" { acc }
+  else if acc.mode == 2 {
+    if cp == 125 {
+      match placeholder_octets(codes: codes, placeholder: acc.placeholder |> map(c => from_code_point(c)) |> join(separator: "")) {
+        MessageAccepted { value: o } => TextFold { octets: concat(acc.octets, o), mode: 0, placeholder: [], refusal: "" }
+        MessageRefused { reason: r } => text_refused(acc: acc, reason: r)
+      }
+    } else { TextFold { octets: acc.octets, mode: 2, placeholder: list_push(acc.placeholder, cp), refusal: "" } }
+  } else if cp == 123 { TextFold { octets: acc.octets, mode: 2, placeholder: [], refusal: "" } }
+  else if cp == 125 { text_refused(acc: acc, reason: "'}' outside a control code") }
+  else {
+    match ac_glyph_octet(index: index, glyph: from_code_point(cp)) {
+      Present { value: o } => TextFold { octets: list_push(acc.octets, o), mode: 0, placeholder: [], refusal: "" }
+      Absent => text_refused(acc: acc, reason: join(["'", from_code_point(cp), "' is not in the game's font; write a {#hh} escape for a specific glyph"], ""))
+    }
+  }
+}
+
+// The octets a readable text denotes, refused on any placeholder that is not a known code with
+// exactly its argument count, or any character the font does not draw. Braces never occur as text:
+// the font has no brace glyphs, so '{' always opens a placeholder.
+fn text_message(codes: List<ControlCode>, text: String) -> MessageOutcome<List<Int>> {
+  let index = ac_glyph_index()
+  let r = fold(chars(text), init: TextFold { octets: [], mode: 0, placeholder: [], refusal: "" }, f: (acc, cp) => text_step(codes: codes, index: index, acc: acc, cp: cp))
+  if r.refusal != "" { MessageRefused { reason: r.refusal } }
+  else if r.mode == 2 { MessageRefused { reason: "unterminated '{' placeholder" } }
+  else { MessageAccepted { value: r.octets } }
+}
+
+// ---- layout ----
+
+// A drawn line's width in font units: exact when every octet is known, a range when an inserted
+// string (a name, the catchphrase...) of bounded length is in it, and unbounded when the line holds
+// a string with no length bound or changes its own scale or position.
+type LineExtent
+  = LineWidthRange { min: Int, max: Int }
+  | LineUnbounded { reason: String }
+
+// `line` counts from 0 within `page`; only lines that draw something are counted, because a line
+// holding nothing but control codes takes no row in the window.
+type TextLine {
+  page: Int
+  line: Int
+  extent: LineExtent
+}
+
+type LayoutFold {
+  lines: List<TextLine>
+  page: Int
+  line: Int
+  min: Int
+  max: Int
+  unbounded: String
+  visible: Bool
+}
+
+fn layout_close(acc: LayoutFold) -> LayoutFold {
+  if acc.visible {
+    let extent = if acc.unbounded != "" { LineUnbounded { reason: acc.unbounded } } else { LineWidthRange { min: acc.min, max: acc.max } }
+    LayoutFold { lines: list_push(acc.lines, TextLine { page: acc.page, line: acc.line, extent: extent }), page: acc.page, line: acc.line + 1, min: 0, max: 0, unbounded: "", visible: false }
+  } else {
+    LayoutFold { lines: acc.lines, page: acc.page, line: acc.line, min: 0, max: 0, unbounded: "", visible: false }
+  }
+}
+
+fn layout_widen(acc: LayoutFold, min: Int, max: Int, visible: Bool) -> LayoutFold {
+  LayoutFold { lines: acc.lines, page: acc.page, line: acc.line, min: acc.min + min, max: acc.max + max, unbounded: acc.unbounded, visible: acc.visible || visible }
+}
+
+fn layout_unbound(acc: LayoutFold, reason: String) -> LayoutFold {
+  LayoutFold { lines: acc.lines, page: acc.page, line: acc.line, min: acc.min, max: acc.max, unbounded: if acc.unbounded == "" { reason } else { acc.unbounded }, visible: acc.visible }
+}
+
+fn layout_control(acc: LayoutFold, code: ControlCode, arguments: List<Int>) -> LayoutFold {
+  if code.name == "CLEAR" {
+    let closed = layout_close(acc: acc)
+    LayoutFold { lines: closed.lines, page: closed.page + 1, line: 0, min: 0, max: 0, unbounded: "", visible: false }
+  } else if code.name == "LAST" || code.name == "CONTINUE" || code.name == "MSG_TIME_END" { layout_close(acc: acc) }
+  else if code.name == "SPACE" { layout_widen(acc: acc, min: get(arguments, 0) ?? 0, max: get(arguments, 0) ?? 0, visible: false) }
+  else if code.name == "SET_LINE_SCALE" || code.name == "SET_CHAR_SCALE" || code.name == "SET_LINE_OFFSET" || code.name == "SET_LINE_TYPE" {
+    layout_unbound(acc: acc, reason: join([code.name, " changes how the line is scaled or placed"], ""))
+  } else if code.name.starts_with(prefix: "PUT_STRING_") {
+    match inserted_string_max_octets(code_name: code.name) {
+      Present { value: n } => layout_widen(acc: acc, min: 0, max: n * widest_glyph_advance(), visible: true)
+      Absent => layout_widen(acc: layout_unbound(acc: acc, reason: join([code.name, " inserts a string of unbounded length"], "")), min: 0, max: 0, visible: true)
+    }
+  } else { acc }
+}
+
+fn layout_step(acc: LayoutFold, token: MessageToken) -> LayoutFold {
+  match token {
+    Glyph { octet: o } => if o == message_line_break { layout_close(acc: acc) } else { layout_widen(acc: acc, min: glyph_advance(octet: o), max: glyph_advance(octet: o), visible: true) }
+    Control { code: c, arguments: a } => layout_control(acc: acc, code: c, arguments: a)
+  }
+}
+
+// Every line the window draws for a message, page by page.
+fn message_lines(tokens: List<MessageToken>) -> List<TextLine> {
+  layout_close(acc: fold(tokens, init: LayoutFold { lines: [], page: 0, line: 0, min: 0, max: 0, unbounded: "", visible: false }, f: (acc, t) => layout_step(acc: acc, token: t))).lines
+}
+
+// ---- the buffer ----
+
+// How many octets a message occupies in the window's buffer once its inserted strings are
+// substituted -- mMsg_MoveDataCut replaces each two-octet PUT_STRING code with the string itself,
+// so a message can grow past its encoded size by each insertion's length less two. At least the
+// encoded size, at most that plus every insertion's longest string; unbounded when an insertion
+// has no bound. DETERMINATION inserts the chosen select string, whose longest length is a fact of
+// the build (extdeps.games.animal_crossing_deluxe.control_codes), so the caller supplies it.
+type BufferOccupancy
+  = BufferOctetsRange { min: Int, max: Int }
+  | BufferOctetsUnbounded { reason: String }
+
+type OccupancyFold {
+  min: Int
+  growth: Int
+  unbounded: String
+}
+
+fn insertion_bound(code: ControlCode, determination_max_octets: Int?) -> Int? {
+  if code.name == "PUT_STRING_DETERMINATION" { determination_max_octets } else { inserted_string_max_octets(code_name: code.name) }
+}
+
+fn occupancy_step(acc: OccupancyFold, token: MessageToken, determination_max_octets: Int?) -> OccupancyFold {
+  let size = count(token_octets(token: token))
+  match token {
+    Glyph { octet: _ } => OccupancyFold { min: acc.min + size, growth: acc.growth, unbounded: acc.unbounded }
+    Control { code: c, arguments: _ } =>
+      if c.name.starts_with(prefix: "PUT_STRING_") == false { OccupancyFold { min: acc.min + size, growth: acc.growth, unbounded: acc.unbounded } }
+      else {
+        match insertion_bound(code: c, determination_max_octets: determination_max_octets) {
+          Present { value: n } => OccupancyFold { min: acc.min + size, growth: acc.growth + (if n > size { n - size } else { 0 }), unbounded: acc.unbounded }
+          Absent => OccupancyFold { min: acc.min + size, growth: acc.growth, unbounded: if acc.unbounded == "" { join([c.name, " inserts a string of unbounded length"], "") } else { acc.unbounded } }
+        }
+      }
+  }
+}
+
+fn message_buffer_occupancy(tokens: List<MessageToken>, determination_max_octets: Int?) -> BufferOccupancy {
+  let r = fold(tokens, init: OccupancyFold { min: 0, growth: 0, unbounded: "" }, f: (acc, t) => occupancy_step(acc: acc, token: t, determination_max_octets: determination_max_octets))
+  if r.unbounded != "" { BufferOctetsUnbounded { reason: r.unbounded } } else { BufferOctetsRange { min: r.min, max: r.min + r.growth } }
+}

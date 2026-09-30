@@ -2707,6 +2707,7 @@ impl WorkspaceRootBasis {
 pub fn bind_process_workspace_root(
     source_roots: &[String],
 ) -> Result<(PathBuf, WorkspaceRootBasis), String> {
+    bind_run_source_roots(source_roots);
     if let Some((root, basis)) = PROCESS_WORKSPACE_ROOT.get() {
         return Ok((root.clone(), *basis));
     }
@@ -4537,7 +4538,34 @@ pub fn census_corpus_roots_follow_layer_authority() -> bool {
     follows && live_nonempty
 }
 
+/// THE ROOTS A RUN DECLARED, bound once per process beside the workspace root. Every read of an
+/// `extdeps` module's facts at run time (transport policy, external-authority anchors) resolves
+/// the module to a file through the module-path index, and that index was built from the
+/// witness layer roots under the workspace root -- the gunbc checkout's own `dag/` and `src/v2`.
+/// A run whose corpus lives under other roots (a consumer repository reaching gunbc through
+/// `--source-root gunbc/dag`) therefore panicked the first time a transport needed such a fact
+/// (`resolve_extdeps_module_source_path: file not found: dag/extdeps/systemd/systemctl.dag`,
+/// ac-dialogue, 2026-09-30) although every one of its imports had resolved through the declared
+/// roots. The declared roots ARE the corpus; when a run declared them, the index is built from them.
+static RUN_SOURCE_ROOTS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+pub fn bind_run_source_roots(source_roots: &[String]) {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let absolute: Vec<String> = source_roots
+        .iter()
+        .map(|r| {
+            let p = Path::new(r);
+            if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) }
+        })
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let _ = RUN_SOURCE_ROOTS.set(absolute);
+}
+
 pub(crate) fn default_source_roots() -> Vec<String> {
+    if let Some(declared) = RUN_SOURCE_ROOTS.get() {
+        return declared.clone();
+    }
     let ws = workspace_root();
     witness_layer_roots()
         .iter()
@@ -38986,6 +39014,25 @@ fn try_resolve_extdeps_module_source_path(path: &str) -> Option<std::path::PathB
     let rooted = workspace_root().join(path);
     if rooted.is_file() {
         return Some(rooted);
+    }
+    // A path spelled against the gunbc checkout's layout (`dag/...`, `src/v2/...`) is resolved
+    // against the roots the run declared: a declared root that ends in that layout's segment
+    // serves the remainder, so `gunbc/dag` serves `dag/extdeps/x.dag`. See RUN_SOURCE_ROOTS.
+    if let Some(declared) = RUN_SOURCE_ROOTS.get() {
+        for layout in ["dag/", "src/v2/"] {
+            if let Some(rest) = path.strip_prefix(layout) {
+                let layout_dir = layout.trim_end_matches('/');
+                for root in declared {
+                    let root_path = std::path::Path::new(root);
+                    if root_path.ends_with(layout_dir) {
+                        let under_root = root_path.join(rest);
+                        if under_root.is_file() {
+                            return Some(under_root);
+                        }
+                    }
+                }
+            }
+        }
     }
     None
 }

@@ -1,0 +1,186 @@
+module extdeps.games.animal_crossing.expression
+
+import std.types { Bool, Int, List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.algebra { filter }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// What a villager does while it talks, as the message text orders it. A SET_DEMO_ORDER_* code
+// carries three argument octets: a slot (0..9) and a big-endian u16 value, written into that row of
+// the demo order table (src/game/m_msg_main.c_inc mMsg_Get_OrderCode_forData, m_msg_cursol.c_inc
+// mMsg_Main_Cursol_SetDemoOrder_ControlCursol -> mDemo_Set_OrderValue). The rows are
+// include/m_demo.h demo_order_type: PLAYER, three unnamed, NPC0 (the speaker), NPC1, NPC2, two
+// unnamed, QUEST. The speaking villager polls its row every frame of the conversation
+// (src/actor/npc/ac_npc_talk.c_inc):
+//   slot 0  the expression: an index into that file's eff_idx animation table (aNPC_check_manpu),
+//           0xFF..0xFD reset to the talking, sitting or "keke" wait animation (ac_npc.h
+//           aNPC_MANPU_CODE_RESET*); once the animation stops, eff_idx2 plays its follow-up
+//   slot 1  and slot 3: a timed action (aNPC_check_timing_demoCode): 2/4 hand an item over, 3/5
+//           take one, 15 change clothes, 6/7 take out or put away the phone, with arguments in
+//           the NPC1 row
+//   slot 2  a change of the villager's persisted mood (aNPC_check_feel_demoCode ->
+//           aNPC_set_feel_info), include/m_npc.h mNpc_FEEL_*, with slot 8 as its timer
+// The QUEST row is read by the quest manager as (slot, value) orders (src/actor/ac_quest_manager.c
+// aQMgr_talk_get_talk_order). So of everything a SET_DEMO_ORDER code can say, only the speaker's
+// slot 0 is presentation; the rest is gameplay or state, and a rewrite keeps it exactly.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ACreTeam/ac-decomp/tree/09ca8e8b5b24e6ab44047ee980cf0088ad7ecb4c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.games.animal_crossing.expression",
+      decl_name: "expressions",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ---- the speaker's order slots ----
+
+data speaker_expression_slot: Int = 0
+data speaker_mood_slot: Int = 2
+data speaker_mood_timer_slot: Int = 8
+
+// What one SET_DEMO_ORDER argument triple means for the speaking villager.
+type SpeakerOrder
+  = Expression { code: Int }
+  | MoodChange { feel: Int }
+  | MoodTimer { frames: Int }
+  | TimedAction { slot: Int, value: Int }
+  | OtherOrder { slot: Int, value: Int }
+  | MalformedOrder { reason: String }
+
+fn speaker_order(arguments: List<Int>) -> SpeakerOrder {
+  if count(arguments) != 3 { MalformedOrder { reason: join(["a demo order carries 3 octets, got ", to_string(count(arguments))], "") } }
+  else {
+    let slot = get(arguments, 0) ?? 0
+    let value = (get(arguments, 1) ?? 0) * 256 + (get(arguments, 2) ?? 0)
+    if slot == speaker_expression_slot { Expression { code: value } }
+    else if slot == speaker_mood_slot { MoodChange { feel: value } }
+    else if slot == speaker_mood_timer_slot { MoodTimer { frames: value } }
+    else if slot == 1 || slot == 3 { TimedAction { slot: slot, value: value } }
+    else { OtherOrder { slot: slot, value: value } }
+  }
+}
+
+// ---- the expressions ----
+
+// One entry of ac_npc_talk.c_inc's eff_idx table: the code a message writes, the animation it
+// starts, and a name a writer can use. The table is one for every actor built on ac_npc.c or
+// ac_npc2.c -- villagers (ac_normal_npc) and the special characters (shop_master, police,
+// restart, totakeke, ...) alike -- so any message may ask for any code; whether a given model
+// carries the animation is per-model resource data this module has not read. Entries 24..31 and
+// 33..42 are the upstream "_D", "_E" and "_R" variants of earlier expressions; in
+// include/ac_npc_anim_def.h the _D names sit beside SITDOWN/TO_DECK, _E beside ENSOU (performing)
+// and _R beside GEKIDO/KIEEEEI (rage, shriek), which suggests seated, performing and Resetti
+// sets, but that is a reading of neighbours, not of the decompilation, so their names keep the
+// suffix rather than a guess.
+type ExpressionEntry {
+  code: Int
+  animation: String
+  name: String
+}
+
+data expressions: List<ExpressionEntry> = [
+  ExpressionEntry { code: 1, animation: "aNPC_ANIM_MUKA1", name: "annoyed" },
+  ExpressionEntry { code: 2, animation: "aNPC_ANIM_GAAAN1", name: "shocked" },
+  ExpressionEntry { code: 3, animation: "aNPC_ANIM_SMILE1", name: "smile" },
+  ExpressionEntry { code: 4, animation: "aNPC_ANIM_HA1", name: "surprised" },
+  ExpressionEntry { code: 5, animation: "aNPC_ANIM_PUNPUN1", name: "angry" },
+  ExpressionEntry { code: 6, animation: "aNPC_ANIM_A1", name: "oh" },
+  ExpressionEntry { code: 7, animation: "aNPC_ANIM_ASERU1", name: "flustered" },
+  ExpressionEntry { code: 8, animation: "aNPC_ANIM_BURUBURU1", name: "shivering" },
+  ExpressionEntry { code: 9, animation: "aNPC_ANIM_GOUKYU1", name: "crying" },
+  ExpressionEntry { code: 10, animation: "aNPC_ANIM_HAPPY1", name: "happy" },
+  ExpressionEntry { code: 11, animation: "aNPC_ANIM_HATE1", name: "puzzled" },
+  ExpressionEntry { code: 12, animation: "aNPC_ANIM_HIRAMEKI1", name: "idea" },
+  ExpressionEntry { code: 13, animation: "aNPC_ANIM_HYUUU1", name: "whistling" },
+  ExpressionEntry { code: 14, animation: "aNPC_ANIM_LOVELOVE1", name: "smitten" },
+  ExpressionEntry { code: 15, animation: "aNPC_ANIM_MUUUUU1", name: "sulking" },
+  ExpressionEntry { code: 16, animation: "aNPC_ANIM_OTIKOMU1", name: "down" },
+  ExpressionEntry { code: 17, animation: "aNPC_ANIM_SHITUREN1", name: "heartbroken" },
+  ExpressionEntry { code: 18, animation: "aNPC_ANIM_WARUDAKUMI1", name: "scheming" },
+  ExpressionEntry { code: 19, animation: "aNPC_ANIM_NEBOKE1", name: "dozing" },
+  ExpressionEntry { code: 20, animation: "aNPC_ANIM_LOVE1", name: "love" },
+  ExpressionEntry { code: 21, animation: "aNPC_ANIM_NIKO1", name: "grin" },
+  ExpressionEntry { code: 22, animation: "aNPC_ANIM_MUSU1", name: "pout" },
+  ExpressionEntry { code: 23, animation: "aNPC_ANIM_KOMARI1", name: "troubled" },
+  ExpressionEntry { code: 24, animation: "aNPC_ANIM_SMILE_D1", name: "smile-d" },
+  ExpressionEntry { code: 25, animation: "aNPC_ANIM_GAAAN_D1", name: "shocked-d" },
+  ExpressionEntry { code: 26, animation: "aNPC_ANIM_HIRAMEKI_D1", name: "idea-d" },
+  ExpressionEntry { code: 27, animation: "aNPC_ANIM_HA_D1", name: "surprised-d" },
+  ExpressionEntry { code: 28, animation: "aNPC_ANIM_MUSU_D1", name: "pout-d" },
+  ExpressionEntry { code: 29, animation: "aNPC_ANIM_NIKO_D1", name: "grin-d" },
+  ExpressionEntry { code: 30, animation: "aNPC_ANIM_KOMARI_D1", name: "troubled-d" },
+  ExpressionEntry { code: 31, animation: "aNPC_ANIM_HATE_D1", name: "puzzled-d" },
+  ExpressionEntry { code: 32, animation: "aNPC_ANIM_KEIREI1", name: "salute" },
+  ExpressionEntry { code: 33, animation: "aNPC_ANIM_PUNPUN_R1", name: "angry-r" },
+  ExpressionEntry { code: 34, animation: "aNPC_ANIM_MUSU_R1", name: "pout-r" },
+  ExpressionEntry { code: 35, animation: "aNPC_ANIM_HYUUU_R1", name: "whistling-r" },
+  ExpressionEntry { code: 36, animation: "aNPC_ANIM_A_R1", name: "oh-r" },
+  ExpressionEntry { code: 37, animation: "aNPC_ANIM_AKIRERU_R1", name: "exasperated" },
+  ExpressionEntry { code: 38, animation: "aNPC_ANIM_MATAROU_R1", name: "waiting" },
+  ExpressionEntry { code: 39, animation: "aNPC_ANIM_GEKIDO_R1", name: "furious" },
+  ExpressionEntry { code: 40, animation: "aNPC_ANIM_HA_E1", name: "surprised-e" },
+  ExpressionEntry { code: 41, animation: "aNPC_ANIM_KIEEEEI1", name: "shriek" },
+  ExpressionEntry { code: 42, animation: "aNPC_ANIM_A2_R1", name: "oh-r2" },
+]
+
+// ac_npc.h aNPC_MANPU_CODE_RESET, _RESET_SIT, _RESET_KEKE: back to the animation the villager
+// talks, sits or waits in.
+data expression_reset: Int = 255
+data expression_reset_sit: Int = 254
+data expression_reset_keke: Int = 253
+
+data reset_names: List<ExpressionEntry> = [
+  ExpressionEntry { code: 255, animation: "aNPC_ANIM_TALK1", name: "neutral" },
+  ExpressionEntry { code: 254, animation: "aNPC_ANIM_SITDOWN_WAIT_D1", name: "neutral-sit" },
+  ExpressionEntry { code: 253, animation: "aNPC_ANIM_WAIT_E1", name: "neutral-keke" },
+]
+
+fn expression_named(name: String) -> Int? {
+  match concat(expressions, reset_names) |> filter(e => e.name == name) |> first {
+    null => none
+    e => Present { value: e.code }
+  }
+}
+
+fn expression_name(code: Int) -> String? {
+  match concat(expressions, reset_names) |> filter(e => e.code == code) |> first {
+    null => none
+    e => Present { value: e.name }
+  }
+}
+
+// ---- the moods a message can set ----
+
+// include/m_npc.h mNpc_FEEL_*: the values slot 2 accepts, past which aNPC_check_feel_demoCode
+// drops the order.
+type MoodEntry {
+  feel: Int
+  name: String
+}
+
+data moods: List<MoodEntry> = [
+  MoodEntry { feel: 0, name: "normal" },
+  MoodEntry { feel: 1, name: "happy" },
+  MoodEntry { feel: 2, name: "angry" },
+  MoodEntry { feel: 3, name: "sad" },
+  MoodEntry { feel: 4, name: "sleepy" },
+  MoodEntry { feel: 5, name: "pitfall" },
+]
+
+fn mood_name(feel: Int) -> String? {
+  match moods |> filter(m => m.feel == feel) |> first {
+    null => none
+    m => Present { value: m.name }
+  }
+}

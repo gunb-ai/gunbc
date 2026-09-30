@@ -1,7 +1,5 @@
 module extdeps.tools.wc
 
-import extdeps.exec.program { ProgramIdentity, cataloged_program }
-
 import std.algebra { trim }
 
 import std.types { FilePath, String, NonEmptyStr }
@@ -18,10 +16,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-fn wc_program() -> ProgramIdentity = cataloged_program(invocation: "wc")
-
 data wc_cli_tool: CliTool = CliTool {
-  program: wc_program(),
+  name: "wc",
   min_version: none,
   installable_via: [SourceCoreutils],
 }
@@ -38,6 +34,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
+// `-c` rather than its GNU long form `--bytes`: the manual above documents them as one option, and
+// `-c` is also the POSIX spelling, which the BSD wc on macOS accepts where it rejects `--bytes`.
 service wc.ByteCount {
   operation File {
     input { path: FilePath }
@@ -46,7 +44,7 @@ service wc.ByteCount {
       success: Bool from "exit_success"
     }
     readonly
-    transport shell { argv: ["wc", "--bytes", "{path}"] }
+    transport shell { argv: ["wc", "-c", "{path}"] }
   }
 }
 
@@ -65,7 +63,7 @@ type FileByteCountVerification
 fn file_byte_count_via_wc(path: FilePath) -> FileByteCountRead {
   let read = wc.ByteCount.File(path: path)
   if !read.success {
-    FileByteCountUnavailable { reason: "wc --bytes failed" as NonEmptyStr }
+    FileByteCountUnavailable { reason: "wc -c failed" as NonEmptyStr }
   } else {
     match parse_int(s: split(s: trim(read.stdout), delimiter: " ").first()) {
       Present { value: n } => if n < 0 {
