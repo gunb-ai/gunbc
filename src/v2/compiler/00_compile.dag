@@ -4124,6 +4124,10 @@ fn native_demand_prepared(
 // THE THREE PRODUCERS ARE CALLED HERE EXACTLY AS THE DISPLACED LOOP CALLED THEM. Same functions,
 // same arguments, same order. That is what makes "verdicts preserved" a structural claim rather
 // than an empirical hope.
+// A RESOLVE STEP'S RETURNED CONTEXT IS NOT CARRIED INTO THE NEXT DEMAND: on this route each module is
+// resolved exactly once, so its namespace (v2.compiler.name_resolve ResolutionContext namespaces) is
+// demanded once and nothing is lost. The run carries it when PR2 of
+// docs/plans/declaration-body-resolution-provider.md adds a module's cross-module declaration demands.
 fn native_demand_execute(
   run: NativeDemandRun,
   subject: NativeDemandSubject,
@@ -4135,10 +4139,6 @@ fn native_demand_execute(
     NativeResolveSubject { entry: entry } =>
       DemandAvailable {
         value: NativeResolveValue {
-          // The step's returned context is not carried into the next demand: on this route each
-          // module is resolved exactly once, so its namespace is demanded once and nothing is lost.
-          // The run carries it when PR2 of docs/plans/declaration-body-resolution-provider.md adds
-          // a module's cross-module declaration demands.
           resolution: native_lane_module_resolution(
             context: context,
             refusal_index: refusal_index,
