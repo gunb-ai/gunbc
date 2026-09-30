@@ -18,13 +18,16 @@ import v2.lens.common.source_analysis_standing {
   SourceTokenizationRejected,
   SourceUnreadable
 }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact, import_resolution_facts_live, module_declaration_facts_live }
 import v2.std.node { Node, Atom, TypeNode, symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.algebra { contains, fold_list, length, list_reverse }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.logic { Bool }
-import v2.std.collection { List }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Present }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.primitives {
@@ -95,6 +98,15 @@ import std.primitives {
 // (`gunbc.self_host_compile_phase_frontier`, rustc E0308 at `String`), which reaches only the
 // modules inside that closure. The cross-check is reported per module in the PR, and a module
 // outside the closure is reported as having NO execution half rather than as agreeing.
+
+// WHY A LENS AND NOT CONSTRUCTION: the census exists only because one spelling has two bindings --
+// v1 binds a bare `String` beside `import v2.std.text { String }` to the kernel, v2 to the import.
+// `gunbc.recurring_failure_mode` `carrier_by_spelling`'s trigger capability (one binding per
+// spelling per resolving scope, on both compilers) makes that state unwritable, and at that point
+// there is nothing left to classify: this module dissolves into that single authority.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
 
 // The host text primitives. Each is a `std.primitives` row; the row supplies the name.
 data host_text_primitive_contracts: List<PrimitiveContract> = [
@@ -1070,5 +1082,169 @@ fn module_final_verdict(path: String, r: Rosters, roots: List<String>) -> Import
   match standing {
     WalkNotEstablished { cause: c } => Unclassified { cause: NotEstablished { cause: c } }
     WalkEstablished { walk: w } => verdict_with_crossings(sites: list_reverse(xs: w.sites), crossings: crossings_of(own: w, callees: callees))
+  }
+}
+
+// THE FIXPOINT (neat-boar-16's ruling on #12840): a crossing whose callee parameter is itself an
+// imported bare `String` is decided by that callee module's own verdict, so verdicts are propagated
+// to a fixpoint over those edges. It reads the census's own rows -- it classifies nothing anew.
+// Each module carries two monotone flags, host and structural, seeded from its decided evidence
+// (the `M` row's counts); a module inherits the flags of every module its undecided crossings point
+// at, and the iteration stops when no flag changes. Flags only turn on, so it terminates within
+// 2n + 1 rounds; the bound is checked, not assumed, and exceeding it refuses. What is still
+// undecided at the fixpoint (a cycle, or an edge into a module with no decided evidence) is
+// UndecidedAtFixpoint and is listed with its pending targets. A local callee (declared in the same module) is an edge to the
+// module itself: it can only be decided by the module's own other evidence.
+type FixpointNode {
+  path: String
+  module: String
+  census_verdict: String
+  host: Bool
+  structural: Bool
+  targets: FreeMonoid<String>
+}
+
+data imported_string_parameter_reason: String = "is itself declared with the imported bare String"
+
+fn tsv_fields(line: String) -> List<String> {
+  split(s: line, delimiter: "\t")
+}
+
+fn field_at(fields: List<String>, i: Int) -> String {
+  fold_list(xs: fields, empty: FieldCursor { index: 0, value: "" }, cons: fn(acc, f) {
+    FieldCursor { index: acc.index + 1, value: if acc.index == i { f } else { acc.value } }
+  }).value
+}
+
+type FieldCursor {
+  index: Int
+  value: String
+}
+
+// Built once per run: path to declared module.
+fn module_by_path(decls: List<ModuleDeclarationFact>) -> Map<String, String> {
+  fold_list(xs: decls, empty: empty_map(), cons: fn(m, d) { map_insert(m: m, key: d.path, value: d.module) })
+}
+
+fn module_of_path(modules: Map<String, String>, path: String) -> String {
+  match map_lookup(m: modules, key: path) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+type FixpointEdge {
+  path: String
+  callee_module: String
+}
+
+type FixpointRows {
+  nodes: FreeMonoid<FixpointNode>
+  edges: FreeMonoid<FixpointEdge>
+}
+
+// ONE pass over the rows collects the `M` nodes and the imported-String `X` edges; the edges are
+// then grouped per node. Counts only matter as "> 0", read as the field not being "0".
+fn fixpoint_rows(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>) -> FixpointRows {
+  let modules = module_by_path(decls: decls)
+  fold_list(xs: lines, empty: FixpointRows { nodes: Empty, edges: Empty }, cons: fn(acc, line) {
+    let f = tsv_fields(line: line)
+    let kind = field_at(fields: f, i: 0)
+    if kind == "M" {
+      let path = field_at(fields: f, i: 1)
+      FixpointRows {
+        nodes: Cons { head: FixpointNode {
+          path: path,
+          module: module_of_path(modules: modules, path: path),
+          census_verdict: field_at(fields: f, i: 2),
+          host: !(field_at(fields: f, i: 3) == "0"),
+          structural: !(field_at(fields: f, i: 4) == "0"),
+          targets: empty_strings
+        }, tail: acc.nodes },
+        edges: acc.edges
+      }
+    } else if (kind == "X") && string_contains(s: field_at(fields: f, i: 8), pattern: imported_string_parameter_reason) {
+      FixpointRows { nodes: acc.nodes, edges: Cons { head: FixpointEdge { path: field_at(fields: f, i: 1), callee_module: field_at(fields: f, i: 6) }, tail: acc.edges } }
+    } else {
+      acc
+    }
+  })
+}
+
+fn fixpoint_nodes(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>) -> FreeMonoid<FixpointNode> {
+  let rows = fixpoint_rows(lines: lines, decls: decls)
+  fold_list(xs: rows.nodes, empty: Empty, cons: fn(acc, n) {
+    let targets = fold_list(xs: rows.edges, empty: empty_strings, cons: fn(ts, e) {
+      if e.path == n.path {
+        let target = if e.callee_module == "" { n.module } else { e.callee_module }
+        if member(xs: ts, x: target) { ts } else { Cons { head: target, tail: ts } }
+      } else { ts }
+    })
+    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, host: n.host, structural: n.structural, targets: targets }, tail: acc }
+  })
+}
+
+fn node_flags(nodes: FreeMonoid<FixpointNode>, module: String) -> FixpointNode {
+  fold_list(xs: nodes, empty: FixpointNode { path: "", module: "", census_verdict: "", host: false, structural: false, targets: empty_strings }, cons: fn(acc, n) {
+    if n.module == module { n } else { acc }
+  })
+}
+
+fn fixpoint_round(nodes: FreeMonoid<FixpointNode>) -> FreeMonoid<FixpointNode> {
+  list_reverse(xs: fold_list(xs: nodes, empty: Empty, cons: fn(acc, n) {
+    let inherited = fold_list(xs: n.targets, empty: FixpointNode { path: "", module: "", census_verdict: "", host: n.host, structural: n.structural, targets: empty_strings }, cons: fn(f, t) {
+      let tn = node_flags(nodes: nodes, module: t)
+      FixpointNode { path: "", module: "", census_verdict: "", host: f.host || tn.host, structural: f.structural || tn.structural, targets: empty_strings }
+    })
+    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, host: inherited.host, structural: inherited.structural, targets: n.targets }, tail: acc }
+  }))
+}
+
+fn flag_count(nodes: FreeMonoid<FixpointNode>) -> Int {
+  fold_list(xs: nodes, empty: 0, cons: fn(acc, n) { acc + (if n.host { 1 } else { 0 }) + (if n.structural { 1 } else { 0 }) })
+}
+
+type FixpointOutcome
+  = FixpointReached { nodes: FreeMonoid<FixpointNode>, rounds: Int }
+  | FixpointBoundExceeded { rounds: Int }
+
+fn iterate_fixpoint(nodes: FreeMonoid<FixpointNode>, rounds: Int, bound: Int) -> FixpointOutcome {
+  if rounds > bound {
+    FixpointBoundExceeded { rounds: rounds }
+  } else {
+    let next = fixpoint_round(nodes: nodes)
+    if flag_count(nodes: next) == flag_count(nodes: nodes) { FixpointReached { nodes: next, rounds: rounds + 1 } } else { iterate_fixpoint(nodes: next, rounds: rounds + 1, bound: bound) }
+  }
+}
+
+fn fixpoint_verdict(n: FixpointNode) -> String {
+  if n.host && n.structural { "MIXED" } else if n.host { "HOST" } else if n.structural { "STRUCTURAL" } else if length(xs: n.targets) > 0 { "UNCLASSIFIED:UndecidedAtFixpoint" } else { n.census_verdict }
+}
+
+// The pure half of the fixpoint: rows and module declarations in, outcome out.
+fn fixpoint_over_lines(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>) -> FixpointOutcome {
+  let nodes = fixpoint_nodes(lines: lines, decls: decls)
+  iterate_fixpoint(nodes: nodes, rounds: 0, bound: 2 * length(xs: nodes) + 1)
+}
+
+// Reads the census rows (comma-separated TSV paths), writes one `F` row per module whose verdict
+// the fixpoint could move (it has edges): path, census verdict, fixpoint verdict, targets.
+fn text_string_importer_fixpoint(rows_csv: String, out: String, roots_csv: String) -> ProcessExit {
+  let lines = fold_list(xs: split(s: rows_csv, delimiter: ","), empty: Empty, cons: fn(acc, p) {
+    let read = Filesystem.Read(path: p)
+    fold_list(xs: split(s: read.content, delimiter: "\n"), empty: acc, cons: fn(inner, l) { Cons { head: l, tail: inner } })
+  })
+  let decls = module_declaration_facts_live(pool_roots: split(s: roots_csv, delimiter: ","))
+  match fixpoint_over_lines(lines: list_reverse(xs: lines), decls: decls) {
+    FixpointBoundExceeded { rounds: r } => exit_failure(reason: concat("the fixpoint did not stabilise within its monotone bound of 2n + 1 rounds: ", int_text(n: r)))
+    FixpointReached { nodes: done, rounds: r } => {
+      let rows = fold_list(xs: done, empty: Cons { head: concat(concat("R\trounds\t", int_text(n: r)), "\n"), tail: Empty }, cons: fn(acc, n) {
+        if length(xs: n.targets) == 0 { acc } else {
+          Cons { head: concat(concat(concat(concat(concat(concat(concat(concat("F\t", n.path), "\t"), n.census_verdict), "\t"), fixpoint_verdict(n: n)), "\t"), join(list_reverse(xs: n.targets), ",")), "\n"), tail: acc }
+        }
+      })
+      let written = Filesystem.Write(path: out, content: join(list_reverse(xs: rows), ""))
+      if written.success { ExitSuccess } else { exit_failure(reason: concat("fixpoint write refused: ", written.error)) }
+    }
   }
 }

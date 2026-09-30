@@ -29,11 +29,16 @@ import v2.lens.text_string_importer_census {
   member,
   rosters,
   module_standing,
-  verdict_of
+  verdict_of,
+  fixpoint_over_lines,
+  fixpoint_verdict,
+  FixpointReached,
+  FixpointBoundExceeded
 }
+import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.lens.common.source_analysis_standing { SourceParseRejected }
 import v2.std.algebra { any, fold_list }
-import std.algebra { Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid }
 import v2.lens.common.source_analysis_standing { LanguageGrammarUnavailable }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -47,7 +52,6 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data fixture_root: String = "test/fixture_roots/text_string_importer_census/"
-data unparseable_root: String = "test/fixture_roots/text_string_importer_census_unparseable/"
 data fixture_pool: List<String> = ["test/fixture_roots/text_string_importer_census"]
 
 // A roster refusal is not a module's parse refusal. It is carried as LanguageGrammarUnavailable,
@@ -171,8 +175,10 @@ test fn tsic_bare_spelling_without_operations_is_unclassified_no_evidence() -> B
   }
 }
 
+// The refused fixture is a `.txt`: the required floor and the module index parse every `.dag` in
+// the tree and refuse on one that does not parse, while the lens reads whatever path it is given.
 test fn tsic_parse_refusal_is_listed_unclassified_with_its_cause() -> Bool {
-  match verdict_at(path: concat(unparseable_root, "parse_refused.dag")) {
+  match verdict_at(path: concat(fixture_root, "parse_refused.txt")) {
     Unclassified { cause: NotEstablished { cause: SourceParseRejected } } => true
     _ => false
   }
@@ -219,4 +225,30 @@ test fn tsic_crossing_into_an_imported_string_parameter_stays_undecided() -> Boo
     Unclassified { cause: UndecidedCrossings } => true
     _ => false
   }
+}
+
+// THE FIXPOINT, over SUPPLIED rows (its interface is census rows plus module declarations; the real
+// route is the census run itself). One undecided module crossing into a HOST module becomes HOST;
+// a module whose only edge is to itself stays undecided. Both rows reach the fixpoint through the
+// same edge read, so the first cannot be green unless the edge was followed.
+data fixpoint_decls: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "m.caller", path: "caller.dag" },
+  ModuleDeclarationFact { module: "m.host", path: "host.dag" },
+  ModuleDeclarationFact { module: "m.loop", path: "loop.dag" }
+]
+
+fn fixpoint_verdict_for(path: String) -> String {
+  let lines = Cons { head: "M\tcaller.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1", tail: Cons { head: "M\thost.dag\tHOST\t1\t0\t0\t1\t0", tail: Cons { head: "M\tloop.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1", tail: Cons { head: "X\tcaller.dag\tf\tbinder_argument\ttake\tt\tm.host\tUNDECIDED\tm.host.take.t is itself declared with the imported bare String", tail: Cons { head: "X\tloop.dag\tping\tbinder_argument\tpong\tt\t\tUNDECIDED\t<this module>.pong.t is itself declared with the imported bare String", tail: Empty } } } } }
+  match fixpoint_over_lines(lines: lines, decls: fixpoint_decls) {
+    FixpointBoundExceeded { rounds: _ } => "bound exceeded"
+    FixpointReached { nodes: nodes, rounds: _ } => fold_list(xs: nodes, empty: "absent", cons: fn(acc, n) { if n.path == path { fixpoint_verdict(n: n) } else { acc } })
+  }
+}
+
+test fn tsic_fixpoint_decides_a_crossing_into_a_host_module() -> Bool {
+  fixpoint_verdict_for(path: "caller.dag") == "HOST"
+}
+
+test fn tsic_fixpoint_leaves_a_self_cycle_undecided() -> Bool {
+  fixpoint_verdict_for(path: "loop.dag") == "UNCLASSIFIED:UndecidedAtFixpoint"
 }
