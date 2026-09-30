@@ -103,8 +103,21 @@ data app_attest_interpreted_crypto_typed_admissions: List<FloorCostDebtTypedAdmi
   },
 ]
 
+// THE mtcollins1 BOOT MATRIX'S ONE CASE ABOVE THE PER-SUBJECT LINE (gunbc#12800). It runs the real
+// boot entry TWICE -- the killed run up to StartMedia, then the next run over the world it left --
+// because recovering the dead run's hold is what it asserts, and each run pays the dry KVM observer
+// and gunbc#12434's SOL polling route faithfully. It left the dead band when it crossed the line, as
+// that band's self-staling rule requires. Discharged by the capability
+// gunbc.rung_drop.mtcollins1_boot_matrix_new_witness_eval_step_cost names.
+data mtcollins1_boot_matrix_typed_admissions: List<FloorCostDebtTypedAdmission> = [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one",
+    reason: "the real boot entry end to end over the dry realization twice (the killed run, then the next run recovering its hold), measured above the per-subject line by the enrolment-margin line of PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication); owner: the mtcollins1 boot lane, discharged by the matrix running as natively emitted witnesses" as NonEmptyStr,
+  },
+]
+
 fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
-  app_attest_interpreted_crypto_typed_admissions
+  concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_boot_matrix_typed_admissions)
 }
 
 fn floor_cost_debt_typed_admitted_identities() -> List<String> {
