@@ -414,7 +414,7 @@ test fn ml_probe_v_map_type_only_holds() -> Bool {
   }
 }
 
-data mlp_str_type_source: String = "module v2.test.mlp_str_type\n\ndata y: Int = 1\n"
+data mlp_str_type_source: String = "module v2.test.mlp_str_type\n\nfn g(s: String) -> Int { 1 }\n"
 
 test fn ml_probe_v_str_type_holds() -> Bool {
   match module_roots_from_source_root_ingest(ingest: [
@@ -437,7 +437,7 @@ test fn ml_probe_v_str_type_holds() -> Bool {
   }
 }
 
-data mlp_str_lit_source: String = "module v2.test.mlp_str_lit\n\ndata y: Int = 1\n"
+data mlp_str_lit_source: String = "module v2.test.mlp_str_lit\n\nfn h(x: Int) -> Int { x }\n\ndata w: Int = h(x: \"a\")\n"
 
 test fn ml_probe_v_str_lit_holds() -> Bool {
   match module_roots_from_source_root_ingest(ingest: [
