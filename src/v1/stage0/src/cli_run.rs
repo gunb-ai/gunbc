@@ -5183,11 +5183,8 @@ fn module_paths_of_references(
         .filter(|path| module_names.contains(path.as_str()))
         .cloned()
         .collect();
-    // ONLY MAXIMAL CHAINS. The walk records a chain at every field-access node, so
-    // `extdeps.browser.chromium.anchor` also arrives as `extdeps.browser.chromium` and
-    // `extdeps.browser`; the shorter ones are receivers inside the longer one, not references of
-    // their own, and resolving one names the PARENT module (`extdeps.browser`), which the file
-    // never referenced. A chain that is a strict prefix of another recorded chain is skipped.
+    // The walk records only maximal field chains (`collect_node_refs_inner`), so no recorded
+    // chain is a receiver prefix naming a parent module the file never referenced.
     let chains: Vec<Vec<String>> = refs
         .chains
         .iter()
@@ -5195,11 +5192,7 @@ fn module_paths_of_references(
         .cloned()
         .chain(dotted_names)
         .collect();
-    let receivers: HashSet<&[String]> = chains
-        .iter()
-        .flat_map(|chain| (1..chain.len()).map(move |k| &chain[..k]))
-        .collect();
-    for chain in chains.iter().filter(|c| !receivers.contains(c.as_slice())) {
+    for chain in chains.iter() {
         if let Some(path) = longest_declared_module_prefix(chain, module_names) {
             if path.contains('.') {
                 out.insert(path);
@@ -33875,7 +33868,15 @@ fn collect_node_refs_inner(
                     .dotted_head_nodes
                     .insert(Rc::as_ptr(&head));
             }
-            chains.push(chain);
+            // ONLY THE MAXIMAL CHAIN IS A REFERENCE. On the receiver spine of a chain the
+            // enclosing field access already recorded whole, this node's chain is a strict
+            // prefix of that one: `a.b.c.d` also reaches here as `a.b.c` and `a.b`, and a prefix
+            // resolved by longest declared module names the PARENT module (`a.b`), which the
+            // source never referenced. Every consumer of `chains` resolves chains that way, so
+            // the prefix is withheld here, once, rather than filtered by each reader.
+            if !chain_receiver {
+                chains.push(chain);
+            }
             receiver_spine = true;
         }
     }
@@ -41614,6 +41615,53 @@ mod annotation_erased_scan_projection {
             )
             .unwrap(),
             vec!["std.decl_ref.child".to_string()]
+        );
+    }
+
+    /// The over-pull at its producer: the walk records the chain `std.decl_ref.child.k` once,
+    /// never its receiver prefix `std.decl_ref`, so a consumer resolving every recorded chain
+    /// by longest declared prefix -- the reference-edge producer does, with no filter of its
+    /// own -- names only the child module. Red before the producer withheld receiver prefixes:
+    /// the edge set also held the parent `std.decl_ref`.
+    #[test]
+    fn the_reference_edge_producer_names_the_child_module_not_its_parent() {
+        let names = entry_resolve::ReferencePoolNames {
+            decl_index: Default::default(),
+            module_names: ["std.decl_ref", "std.decl_ref.child"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        };
+        let src = "module m\nfn g() -> Int { std.decl_ref.child.k }\n";
+        let entry_resolve::FileReferenceEdges::Edges(edges) =
+            entry_resolve::reference_edges_for_file("fixture/m.dag", Some(src), &names)
+        else {
+            panic!("an import-less parsed file has edges");
+        };
+        let targets: Vec<&str> = edges.iter().map(|e| e.target_module.as_str()).collect();
+        assert_eq!(targets, vec!["std.decl_ref.child"]);
+    }
+
+    #[test]
+    fn the_reference_walk_records_only_the_maximal_chain() {
+        let names = entry_resolve::ReferencePoolNames {
+            decl_index: Default::default(),
+            module_names: ["std.decl_ref", "std.decl_ref.child"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        };
+        let src = "module m\nfn g() -> Int { std.decl_ref.child.k }\n";
+        let refs =
+            entry_resolve::parsed_file_references("fixture/m.dag", src, "m", &names.module_names)
+                .unwrap_or_else(|e| panic!("fixture must parse: {e}"));
+        assert_eq!(
+            refs.chains,
+            vec![vec!["std", "decl_ref", "child", "k"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>()],
+            "only the maximal chain is recorded"
         );
     }
 
