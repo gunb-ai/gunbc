@@ -1,6 +1,7 @@
 module v2.test.claim.compiler.infer_declared_return_inhabitance_witness_test
 
 import v2.compiler.infer { infer }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.std.inhabitance {
   DeclaredTypeObligation,
   InhabitanceRefused,
@@ -141,7 +142,7 @@ fn dr_outcome_of(argument: Node) -> Node {
 }
 
 fn dr_refuses_at_return(tree: Node) -> Bool {
-  match infer(tree: tree) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tree)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
       diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^arrow_body_does_not_inhabit_declared_return)
@@ -149,7 +150,7 @@ fn dr_refuses_at_return(tree: Node) -> Bool {
 }
 
 fn dr_admits(tree: Node) -> Bool {
-  match infer(tree: tree) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tree)) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -203,7 +204,7 @@ test fn declared_return_list_of_bool_with_a_bool_list_body_admits_holds() -> Boo
 // A RETURN THE BINDING JOIN DOES NOT DENOTE IS COUNTED, NOT REFUSED AND NOT SILENT. Before this
 // relation judged returns, such an Arrow was admitted with no diagnostic at all.
 test fn declared_return_undenoted_atom_is_counted_formal_unresolved_holds() -> Bool {
-  match infer(tree: dr_arrow(return_type: dag_type_atom_node(identity: ^dr_type_undenoted), body: dr_bool_literal())) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: dr_arrow(return_type: dag_type_atom_node(identity: ^dr_type_undenoted), body: dr_bool_literal()))) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
