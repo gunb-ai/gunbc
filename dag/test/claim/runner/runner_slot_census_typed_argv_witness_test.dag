@@ -2,11 +2,11 @@ module test.claim.runner.runner_slot_census_typed_argv_witness
 
 import std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.host_effect_realize {
-  slot_census_from_process_outcome,
+import gunbc.host_effect_realize { slot_census_from_process_outcome }
+import gunbc.runner_slot_population_census {
+  CensusDerived, CensusRefused, SlotCensusRow,
   slot_census_from_typed_argv_outcome,
 }
-import gunbc.runner_slot_population_census { CensusDerived, CensusRefused, SlotCensusRow }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.typed_argv_exec {
@@ -35,8 +35,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the probe is held as an ArgvCommand whose single spelling lives in extdeps.systemd.systemctl
 // (systemctl_list_all_service_units_command), the word list is derived from it, and the census fn
 // dispatches per transport -- run_shell_command_capture on the local seam, run_typed_argv_transport
-// on the remote ones -- with thin adapters flattening each transport's observation record into the
-// census module's one classifier. The rendered bridge and its std.dissolution retirement trigger
+// on the remote ones -- the local record flattened into the classifier's fields beside that fn, the
+// typed record decoded by the census module's own one adapter, shared with its fleet reader. The
+// rendered bridge and its std.dissolution retirement trigger
 // were deleted in the same commit that discharged them, per the trigger's own terms; what remains
 // of that obligation is the counted removal, one row off the section 5.E RetainedShellScript
 // frontier, recorded beside the census fn in host_effect_realize.
@@ -54,8 +55,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   wall admits, where the carrier it arrived in for its whole life was one that wall refused
 //   unconditionally.
 //
-// - A REFUSAL IS UNOBSERVED, NEVER AN EMPTY POPULATION, ON EVERY ARM. The decode adapters turn a
-//   typed transport refusal into CensusRefused and a nonzero local exit into the classifier's
+// - A REFUSAL IS UNOBSERVED, NEVER AN EMPTY POPULATION, ON EVERY ARM. The decoders turn a typed
+//   transport refusal into CensusRefused and a nonzero local exit into the classifier's
 //   refused arm -- so a shrink that cannot read a host stops, exactly as the census module's own
 //   comment requires. The fixtures are constructed the way the srv3 unobservable-probe witness
 //   constructs its transport outcomes: a converged SshSessionExecResult is directly constructible,
@@ -111,8 +112,8 @@ fn rows_mention_unit(rows: List<SlotCensusRow>, unit: String) -> Bool {
 
 // THE TYPED ARM DECODES A CONVERGED READ INTO A REAL CENSUS. The fixture carries one slot unit and
 // one foreign service; the census must derive (not refuse) and must hold the slot row the bytes
-// named. This is the arm the census never had over FleetSsh: bytes from the fleet wall's admitted
-// carrier, decoded by the one classifier.
+// named. This is the arm the host-effect census never had over FleetSsh: bytes from the fleet
+// wall's admitted carrier, decoded by the census module's one decode.
 test fn a_converged_typed_argv_reads_a_real_census() -> Bool {
   match slot_census_from_typed_argv_outcome(
     host: operator_host_srv1,
@@ -146,7 +147,7 @@ test fn a_typed_argv_refusal_is_a_refused_census_not_an_empty_population() -> Bo
     },
   ) {
     CensusRefused { cause: cause } =>
-      starts_with(s: cause, prefix: "runner slot population unreadable over the host-effect transport: ")
+      starts_with(s: cause, prefix: "runner slot population unreadable over the fleet edge: ")
     CensusDerived { rows: _ } => false
   }
 }
