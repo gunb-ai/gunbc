@@ -75,7 +75,7 @@ test fn catalog_derivation_matches_row() -> Bool {
   let shape = shape_from_rtx5090_catalog()
   match shape.domains.first() {
     Present { value: domain } =>
-      match domain.memory.last() {
+      match domain.memory.skip(n: list_length(items: domain.memory) - 1).first() {
         Present { value: device } =>
           match machine_shape_domain_lane_count(shape: shape) {
             Present { value: lanes } =>
@@ -113,18 +113,18 @@ fn shape_from_m5_catalog() -> MachineShape {
 
 test fn gpu_sm_cache_levels_integrated_when_cited() -> Bool {
   match shape_from_rtx5090_catalog().domains.first() {
-    Present { value: domain } =>
-      match domain.memory.first() {
-        Present { value: register } =>
-          match domain.memory.skip(n: 1).first() {
-            Present { value: shared } =>
-              list_length(items: domain.memory) == 3
-                && byte_size_count(b: register.capacity) == rtx5090_sm_register_bytes
-                && byte_size_count(b: shared.capacity) == rtx5090_sm_shared_bytes
-            Absent => false
-          }
-        Absent => false
-      }
+    Present { value: domain } => {
+      let memory = domain.memory
+      list_length(items: memory) == 3
+        && match memory.first() {
+          Present { value: level } => byte_size_count(b: level.capacity) == rtx5090_sm_register_bytes
+          Absent => false
+        }
+        && match memory.skip(n: 1).first() {
+          Present { value: level } => byte_size_count(b: level.capacity) == rtx5090_sm_shared_bytes
+          Absent => false
+        }
+    }
     Absent => false
   }
 }

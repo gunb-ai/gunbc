@@ -63,19 +63,23 @@ fn host_hygiene_observe_slot_listening(unit: NonEmptyStr, now_epoch_secs: Int) -
     SlotListeningReadRefused { unit: unit, cause: "journalctl transport failed" }
   } else {
     let matches = host_hygiene_journal_matching_lines(stdout: result.stdout)
-    match matches.last() {
-      Absent => SlotListeningRead { observation: ListeningNeverSeen { unit: unit } }
-      Present { value: last_line } =>
-        match host_hygiene_epoch_field_whole_seconds(field: host_hygiene_line_epoch_field(line: last_line)) {
-          Absent =>
-            SlotListeningRead {
-              observation: ListeningReadInaccessible {
-                unit: unit,
-                detail: "unparseable journal timestamp on the matched 'Listening for Jobs' line" as NonEmptyStr,
-              },
-            }
-          Present { value: last_epoch_secs } => host_hygiene_slot_listening_age(unit: unit, last_epoch_secs: last_epoch_secs, now_epoch_secs: now_epoch_secs)
-        }
+    if length(matches) == 0 {
+      SlotListeningRead { observation: ListeningNeverSeen { unit: unit } }
+    } else {
+      match matches.skip(n: length(matches) - 1).first() {
+        Absent => SlotListeningReadRefused { unit: unit, cause: "journal match list was nonempty but its last line could not be read" }
+        Present { value: last_line } =>
+          match host_hygiene_epoch_field_whole_seconds(field: host_hygiene_line_epoch_field(line: last_line)) {
+            Absent =>
+              SlotListeningRead {
+                observation: ListeningReadInaccessible {
+                  unit: unit,
+                  detail: "unparseable journal timestamp on the matched 'Listening for Jobs' line" as NonEmptyStr,
+                },
+              }
+            Present { value: last_epoch_secs } => host_hygiene_slot_listening_age(unit: unit, last_epoch_secs: last_epoch_secs, now_epoch_secs: now_epoch_secs)
+          }
+      }
     }
   }
 }

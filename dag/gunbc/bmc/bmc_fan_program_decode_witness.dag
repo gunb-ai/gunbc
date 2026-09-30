@@ -1,6 +1,6 @@
 module gunbc.bmc_fan_program_decode_witness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.live_tree { LiveTreeDisposition }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decimal { exact_decimal_wire }
@@ -126,8 +126,7 @@ fn the_actuator_endpoint_populations_differ() -> Bool {
         Present { value: fan1 } =>
           match actuator_named(program: program, name: "CHASSIS").first() {
             Absent => false
-            Present { value: chassis } =>
-              fan1.inputs.length() == 1 && chassis.inputs.length() == 3
+            Present { value: chassis } => fan1.inputs.length() == 1 && chassis.inputs.length() == 3
           }
       }
   }

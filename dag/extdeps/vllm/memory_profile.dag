@@ -125,8 +125,7 @@ fn parse_gib_hundredths(text: String) -> Nat? {
       } else if fields.length() == 2 {
         match fields.skip(n: 1).first() {
           Absent => none
-          Present { value: fraction_text } =>
-            parse_gib_whole_and_fraction(whole_text: whole_text, fraction_text: fraction_text)
+          Present { value: fraction_text } => parse_gib_whole_and_fraction(whole_text: whole_text, fraction_text: fraction_text)
         }
       } else {
         none
@@ -217,8 +216,7 @@ fn parse_basis_points(text: String) -> Nat? {
       } else if fields.length() == 2 {
         match fields.skip(n: 1).first() {
           Absent => none
-          Present { value: fraction_text } =>
-            parse_bp_whole_and_fraction(whole_text: whole_text, fraction_text: fraction_text)
+          Present { value: fraction_text } => parse_bp_whole_and_fraction(whole_text: whole_text, fraction_text: fraction_text)
         }
       } else {
         none

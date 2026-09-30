@@ -672,7 +672,6 @@ test fn witness_live_sessions_panel_rows() -> Bool {
       let filtered = filter_dispatch_tmux_sessions(entries: entries)
       if count(filtered) == 1 {
         match filtered.first() {
-          Absent => false
           Present { value: entry } => {
             let scope = dispatch_tmux_session_scope_for_process_fingerprint(
               node_id: roadmap_dispatch_actuator_nid(s: "panel-a"),
@@ -687,6 +686,7 @@ test fn witness_live_sessions_panel_rows() -> Bool {
               && row.session_name == "gunbc-dispatch-panel-a"
               && row.lease_verdict == UnknownRefused
           }
+          Absent => false
         }
       } else {
         false

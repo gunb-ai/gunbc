@@ -58,12 +58,12 @@ test fn witness_population_fold_groups_by_host_and_filters_job_name() -> Bool {
   )
   (srv1.durations |> length) == 1
     && (srv2.durations |> length) == 1
-    && match srv1.durations |> first {
-      Present { value: d1 } => measure_count(m: d1) == 600000
+    && match srv1.durations |> skip(n: 0) |> first {
+      Present { value: d } => measure_count(m: d) == 600000
       Absent => false
     }
-    && match srv2.durations |> first {
-      Present { value: d2 } => measure_count(m: d2) == 240000
+    && match srv2.durations |> skip(n: 0) |> first {
+      Present { value: d } => measure_count(m: d) == 240000
       Absent => false
     }
 }

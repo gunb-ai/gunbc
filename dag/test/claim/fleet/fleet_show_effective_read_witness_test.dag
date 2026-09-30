@@ -40,7 +40,10 @@ test fn witness_oom_wire_parses_to_sixty_percent() -> Bool {
       percent_count(p: p) == 60
         && match gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit {
           Present { value: desired } =>
-            managed_oom_pressure_limit_wire_matches_percent(wire: 2576980377, desired: desired)
+            managed_oom_pressure_limit_wire_matches_percent(
+              wire: 2576980377,
+              desired: desired
+            )
           Absent => false
         }
     Absent => false
@@ -49,7 +52,7 @@ test fn witness_oom_wire_parses_to_sixty_percent() -> Bool {
 
 test fn witness_oom_show_value_single_authority() -> Bool {
   match gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit {
-    Present { value: p } => managed_oom_pressure_limit_show_value(p: p) == 2576980377
+    Present { value: limit } => managed_oom_pressure_limit_show_value(p: limit) == 2576980377
     Absent => false
   }
 }
