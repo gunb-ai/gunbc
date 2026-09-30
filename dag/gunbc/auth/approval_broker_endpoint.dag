@@ -5,7 +5,7 @@ import extdeps.tailscale.serve {
   TailscaleServeEndpoint, TailscaleServeMount, ServeRootMount, ServeSetPath,
 }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
-import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from }
+import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from, srv1_tailnet_host_from }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.serve_liveness { serve_liveness_path }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
@@ -217,6 +217,21 @@ data approval_broker_front_door_path_preservation: CitedFigureStanding = Transcr
 // without anyone touching either end. So the base is re-derived here, from the broker's own front
 // door, and the byte-identity is a consequence of the front door rather than a coincidence two
 // modules maintain separately.
+//
+// THE PUBLIC PORT IS A ROW, Absent meaning the default TLS listener (no `:port` suffix), so the two
+// readers of the public address -- the link base here and the approvals app's build config
+// (gunbc.approve_ios_project) -- read one port rather than each assuming 443.
+data approval_broker_public_port: Port? = none
+
+fn approval_broker_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  srv1_tailnet_base_url_from(domain: domain, port: approval_broker_public_port)
+}
+
 fn approval_broker_base_url() -> NonEmptyStr {
-  srv1_tailnet_base_url_from(domain: fleet_intent_network.tailnet_domain, port: none)
+  approval_broker_base_url_from(domain: fleet_intent_network.tailnet_domain)
+}
+
+// THE BARE HOST OF THAT SAME ADDRESS, for a client that composes scheme, host and path itself.
+fn approval_broker_public_host_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  srv1_tailnet_host_from(domain: domain)
 }
