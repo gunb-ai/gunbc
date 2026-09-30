@@ -70,9 +70,13 @@ fn workspace_executor_journal_observe(slot_key: NonEmptyStr) -> WorkspaceExecuto
 // Storage enforces ordering and immutable bindings, not semantic permission to advance a phase.
 // The production adapter must supply the actual start/readback/release/generation evidence.
 // This function does not mint a start or supply permit, remove credentials, or free a guard.
+// A competing writer of the identical record is accepted only by actual protected readback;
+// a different invocation or transition remains a conflict.
 fn workspace_executor_journal_publish(snapshot: WorkspaceExecutorJournalSnapshot,
   record: WorkspaceExecutorRecord) -> WorkspaceExecutorJournalPublication
   admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_commissioning_executor_helper", decl_name: "workspace_executor_helper_publish"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_executor_helper", decl_name: "workspace_executor_helper_bind"),
     decl_ref(module_path: "gunbc.workspace_commissioning_executor_fence", decl_name: "workspace_executor_claim_controller"),
     decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_executor_settlement"),
   ]
@@ -93,7 +97,8 @@ fn workspace_executor_journal_publish(snapshot: WorkspaceExecutorJournalSnapshot
         proposed: workspace_executor_record_text(record: record)) {
         DerivedPayloadAdmitted { verified } => match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: verified) {
           CasCommitted { committed: _ } => workspace_executor_journal_readback(slot_key: snapshot.slot_key, record: record)
-          CasPreconditionFailed { expected: _, observed: _ } => WorkspaceExecutorJournalConflict
+          CasPreconditionFailed { expected: _, observed: _ } => workspace_executor_journal_readback(
+            slot_key: snapshot.slot_key, record: record)
           _ => WorkspaceExecutorJournalRefused { reason: "executor journal conditional publication is unsettled; reread before retry" }
         }
         _ => WorkspaceExecutorJournalRefused { reason: "executor journal key is not addressable" }

@@ -12,7 +12,7 @@ import gunbc.workspace_commissioning_executor_store { workspace_executor_journal
 
 fn journal_fixture(phase: WorkspaceExecutorPhase, invocation: String) -> WorkspaceExecutorRecord {
   WorkspaceExecutorRecord {
-    subject: WorkspaceExecutorSubject { slot: "srv1-13", plan_hash: "reviewed-plan",
+    subject: WorkspaceExecutorSubject { slot: "srv1-13", plan_hash: "reviewed-plan", fleet_bundle_hash: "0123456789abcdef",
       prior_fleet_generation: 17, planned_fleet_generation: 18, mutation_generation: 3 },
     submitter: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", previous_invocation: "11111111111111111111111111111111",
     invocation: invocation, phase: phase,
@@ -83,4 +83,17 @@ test fn released_slot_recovery_does_not_wait_for_the_predecessor_controller() ->
     Present { value: directive } => directive == concat("settle:", journal_invocation)
     _ => false
   }
+}
+
+
+test fn retry_cannot_replace_the_reviewed_bundle_under_the_same_commissioning_plan() -> Bool {
+  let before = journal_fixture(phase: ExecutorSubmissionRecorded, invocation: "")
+  let after = WorkspaceExecutorRecord {
+    subject: WorkspaceExecutorSubject { slot: before.subject.slot, plan_hash: before.subject.plan_hash,
+      fleet_bundle_hash: "fedcba9876543210", prior_fleet_generation: before.subject.prior_fleet_generation,
+      planned_fleet_generation: before.subject.planned_fleet_generation, mutation_generation: before.subject.mutation_generation },
+    submitter: before.submitter, previous_invocation: before.previous_invocation,
+    invocation: journal_invocation, phase: ExecutorInvocationRecorded,
+  }
+  !workspace_executor_record_follows(previous: before, next: after)
 }

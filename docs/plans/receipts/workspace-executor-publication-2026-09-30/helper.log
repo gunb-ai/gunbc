@@ -1,0 +1,27 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 4 seconds
+[pre-entry] phase=workspace_discovery ms=14 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=22 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=4828 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1670 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1960 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=32 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=47 scale=closure
+[pre-entry] phase=closure_load ms=2477 scale=closure
+[pre-entry] phase=closure_parse ms=8990 scale=closure
+[pre-entry] phase=closure_resolve ms=337 scale=closure
+[pre-entry] phase=closure_normalize ms=1044 scale=closure
+[pre-entry] phase=closure_typecheck ms=87491 scale=closure
+[pre-entry] phase=closure_parent_envs ms=10 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=179 scale=closure
+[pre-entry] phase=closure_ownership ms=1217 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=137826 scale=closure
+[pre-entry] population pool_modules=791 closure_files=791
+[pre-entry] process_cpu user_ms=134782 sys_ms=2548 max_rss_kib=5327736
+PASS executor_child_membership_is_not_a_main_pid_equality_test
+PASS copied_invocation_environment_outside_executor_is_refused
+PASS inactive_actor_cannot_bind_from_a_stale_environment
+PASS another_executor_invocation_does_not_inherit_submission
+PASS root_cgroup_is_not_an_executor_membership

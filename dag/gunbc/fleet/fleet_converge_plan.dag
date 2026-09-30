@@ -1,6 +1,12 @@
 module gunbc.fleet_converge_plan
 
-import gunbc.fleet_generation_publication { fleet_generation_publication_decode, FleetGenerationLegacy, FleetGenerationPublished, FleetGenerationUnreadable, fleet_generation_publication_text, fleet_generation_native_read_script }
+import gunbc.fleet_plan_bundle { fleet_plan_component_hash, fleet_plan_bundle_hash }
+
+import gunbc.fleet_converge_terminal { AwaitingCapability, FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, fleet_converge_apply_terminal_of_wire, fleet_converge_apply_terminal_wire }
+
+import gunbc.fleet_generation_execution { fleet_generation_directory, fleet_generation_lock, fleet_generation_path, fleet_generation_writer }
+
+import gunbc.fleet_generation_publication { fleet_generation_publication_decode, FleetGenerationLegacy, FleetGenerationPublished, FleetGenerationUnreadable, fleet_generation_native_publication_script, fleet_generation_native_read_script }
 import std.content_hash { parse_content_hash }
 
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -130,7 +136,6 @@ import gunbc.membership_reconcile {
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fleet_posix_accounts {
-  fleet_posix_ci_runner_principal, grounded_posix_principal_name,
   ci_runner_sudo_binary_path, SudoInstall, SudoSystemctl,
 }
 import gunbc.fleet_converge_timer {
@@ -1302,11 +1307,6 @@ fn fleet_converge_activation_refusal_count(
 // refusal is the trade this lane refused in the first place. What changes is that the terminal is
 // now SAYABLE, so a consumer that wants to gate on full convergence has a state to read instead of
 // an exit code that cannot express one.
-type FleetConvergeApplyTerminal
-  = FullyApplied
-  | PartiallyApplied { refused_axis_count: Int, detail: String }
-  | AwaitingCapability { capability: String }
-
 // THE TERMINAL FOLDS OVER THE REQUEST, SO ITS AXIS SET IS THE SCOPE'S AXIS SET AND NOT A WIDER ONE.
 // It used to take the families as loose parameters, which made the axis set a property of the CALL
 // rather than of the plan: every caller had to pass a slot population and an activation readiness,
@@ -1529,38 +1529,6 @@ fn fleet_converge_apply_terminal_line(terminal: FleetConvergeApplyTerminal) -> S
 
 // The terminal's wire spelling, carried by the plan artifact and both fleet receipts so the RLM-2
 // join can require FullyApplied without re-deriving refusal counts it cannot observe.
-fn fleet_converge_apply_terminal_wire(terminal: FleetConvergeApplyTerminal) -> String {
-  match terminal {
-    FullyApplied => "fully_applied"
-    PartiallyApplied { refused_axis_count: n, detail: d } => join(["partially_applied|", to_string(n), "|", d], "")
-    AwaitingCapability { capability: c } => join(["awaiting_capability|", c], "")
-  }
-}
-
-fn fleet_converge_apply_terminal_of_wire(text: String) -> FleetConvergeApplyTerminal? {
-  if text == "fully_applied" {
-    Present { value: FullyApplied }
-  } else if starts_with(s: text, prefix: "awaiting_capability|") {
-    Present {
-      value: AwaitingCapability {
-        capability: substring(s: text, start: 20, end: string_length(s: text)),
-      },
-    }
-  } else if starts_with(s: text, prefix: "partially_applied|") {
-    let rest = substring(s: text, start: 18, end: string_length(s: text))
-    let n_text = fold(split(s: rest, delimiter: "|"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
-    match parse_int(s: n_text) {
-      Absent => none
-      Present { value: n } =>
-        Present { value: PartiallyApplied {
-          refused_axis_count: n,
-          detail: substring(s: rest, start: string_length(s: n_text) + 1, end: string_length(s: rest)),
-        } }
-    }
-  } else {
-    none
-  }
-}
 
 fn fleet_converge_activation_declaration_lines() -> List<String> {
   [
@@ -2025,34 +1993,15 @@ type FleetConvergePlanArtifact {
 }
 
 fn fleet_converge_plan_body_structural_hash(plan_body: String) -> Fnv1a64Structural? {
-  match content_hash_of_value(value: plan_body as NonEmptyStr) {
-    Fnv1a64(structural) => Present { value: structural }
-    _ => Absent
-  }
+  fleet_plan_component_hash(text: plan_body)
 }
 
 fn fleet_converge_plan_apply_shell_structural_hash(apply_shell: String) -> Fnv1a64Structural? {
-  match content_hash_of_value(value: apply_shell as NonEmptyStr) {
-    Fnv1a64(structural) => Present { value: structural }
-    _ => Absent
-  }
+  fleet_plan_component_hash(text: apply_shell)
 }
 
-fn fleet_converge_plan_bundle_structural_hash(
-  plan_body: String,
-  apply_shell: String,
-) -> Fnv1a64Structural? {
-  match fleet_converge_plan_body_structural_hash(plan_body: plan_body) {
-    Present { value: plan_struct } =>
-      match fleet_converge_plan_apply_shell_structural_hash(apply_shell: apply_shell) {
-        Present { value: shell_struct } =>
-          Present {
-            value: content_hash_combine_structural(left: plan_struct, right: shell_struct),
-          }
-        Absent => Absent
-      }
-    Absent => Absent
-  }
+fn fleet_converge_plan_bundle_structural_hash(plan_body: String, apply_shell: String) -> Fnv1a64Structural? {
+  fleet_plan_bundle_hash(plan_body: plan_body, apply_shell: apply_shell)
 }
 
 fn fleet_converge_plan_bundle_digest_hex(
@@ -2153,10 +2102,10 @@ fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember, TimerRetirement
 // -- two leases with one epoch. The key is the subject host, the same value the lease key carries.
 // The pre-keyed file is left in place as residue: a plan minted against it refuses
 // LeaseGenerationStale on the keyed path, which is the fail-closed direction.
-data fleet_converge_generation_store_dir: String = "/var/lib/gunbc/fleet-converge"
+data fleet_converge_generation_store_dir: String = fleet_generation_directory
 
 fn fleet_converge_generation_store_path(subject_host: NonEmptyStr) -> String {
-  join([fleet_converge_generation_store_dir, "/plan_generation.", subject_host as String], "")
+  fleet_generation_path(host: subject_host)
 }
 
 fn fleet_converge_parse_nonneg_generation_text(content: String) -> Int? {
@@ -2273,10 +2222,10 @@ fn fleet_converge_generation_admission(observation: GenerationStoreObservation) 
 // already write /var/lib/gunbc -- the same principal the apply runs as"). That assumption was true
 // of the design and false of the emitted shell; this makes the shell agree with it.
 fn fleet_converge_lease_owner() -> NonEmptyStr {
-  grounded_posix_principal_name(p: fleet_posix_ci_runner_principal())
+  fleet_generation_writer()
 }
 
-data fleet_converge_generation_lock_path: String = "/var/lib/gunbc/fleet-converge/plan_generation.lock"
+data fleet_converge_generation_lock_path: String = fleet_generation_lock
 
 data fleet_converge_locked_apply_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_locked_apply_script — flock-guarded generation compare, apply.sh, and store commit in one shell transport; DISSOLVES WHEN bash-emit or host_effect_apply provides typed lease acquisition without medium-as-string concat")
 
@@ -2363,6 +2312,20 @@ fn fleet_converge_generation_stale_guard_stmt(prior_generation: Int, planned_gen
   )
 }
 
+data fleet_converge_publication_decision_var: String = "_gunbc_publication_decision"
+
+fn fleet_converge_generation_publication_stmt(action: String, subject_host: NonEmptyStr,
+  prior_generation: Int, planned_generation: Int, plan_hash: NonEmptyStr) -> Node {
+  bash_build_command_with_words(words: [
+    bash_build_word_lit(text: "bash"), bash_build_word_lit(text: "-c"),
+    bash_build_word_lit(text: fleet_generation_native_publication_script),
+    bash_build_word_lit(text: "fleet-generation-publication"), bash_build_word_lit(text: action),
+    bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
+    bash_build_word_lit(text: to_string(prior_generation)), bash_build_word_lit(text: to_string(planned_generation)),
+    bash_build_word_lit(text: plan_hash as String),
+  ])
+}
+
 fn fleet_converge_locked_apply_inner_stmts(
   subject_host: NonEmptyStr,
   prior_generation: Int,
@@ -2372,7 +2335,7 @@ fn fleet_converge_locked_apply_inner_stmts(
 ) -> List<Node> {
   match parse_content_hash(wire: plan_hash as String) {
     Absent => [bash_build_exit(code: "65")]
-    Present { value: identity } => [
+    Present { value: _ } => [
     bash_build_command_with_words(words: [
       bash_build_word_lit(text: "set"),
       bash_build_word_lit(text: "-euo"),
@@ -2384,18 +2347,21 @@ fn fleet_converge_locked_apply_inner_stmts(
       prior_generation: prior_generation,
       planned_generation: planned_generation,
     ),
-    bash_build_command_with_words(words: [
-      bash_build_word_lit(text: "bash"),
-      bash_build_word_lit(text: apply_shell_path),
-    ]),
-    bash_build_with_redir_to_file(
-      inner: bash_build_command_with_words(words: [
-        bash_build_word_lit(text: "printf"),
-        bash_build_word_lit(text: "%s\n"),
-        bash_build_word_lit(text: fleet_generation_publication_text(generation: planned_generation, plan_hash: identity) as String),
-      ]),
-      path: bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
-    ),
+    bash_build_assign(name: fleet_converge_publication_decision_var, value: bash_build_word_cmdsubst(
+      body: fleet_converge_generation_publication_stmt(action: "admit", subject_host: subject_host,
+        prior_generation: prior_generation, planned_generation: planned_generation, plan_hash: plan_hash))),
+    bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "apply"),
+    ]), then_stmts: [bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "recover"),
+    ]), then_stmts: [bash_build_exit(code: "65")])]),
+    bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_publication_decision_var), bash_build_word_lit(text: "="), bash_build_word_lit(text: "apply"),
+    ]), then_stmts: [bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "bash"), bash_build_word_lit(text: apply_shell_path),
+    ])]),
+    fleet_converge_generation_publication_stmt(action: "publish", subject_host: subject_host,
+      prior_generation: prior_generation, planned_generation: planned_generation, plan_hash: plan_hash),
   ]
   }
 }
@@ -2803,7 +2769,7 @@ fn fleet_converge_plan_artifact_of_request(
             serialize_content_hash(hash: subject.member_set_fingerprint) as String,
           ),
           concat("plan_generation:", to_string(planned_generation)),
-          "# generation-publication: counter + applied plan hash; older numeric-only apply readers refuse after this cutover",
+          "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
           concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
           "observed_baseline:",
           baseline,
@@ -2881,7 +2847,7 @@ fn fleet_converge_allocation_store_plan_artifact(
           concat("subject_scope:", fleet_converge_scope_wire(scope: subject.scope)),
           concat("subject_member_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
           concat("plan_generation:", to_string(planned_generation)),
-          "# generation-publication: counter + applied plan hash; older numeric-only apply readers refuse after this cutover",
+          "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
           "# allocation-store",
           allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
           concat("ensure-directory:path=", spec.namespace_path as String),

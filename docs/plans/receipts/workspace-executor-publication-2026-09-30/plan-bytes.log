@@ -1,0 +1,28 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=12 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=18 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=4230 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1554 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1673 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=27 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=44 scale=closure
+[pre-entry] phase=closure_load ms=2008 scale=closure
+[pre-entry] phase=closure_parse ms=7772 scale=closure
+[pre-entry] phase=closure_resolve ms=266 scale=closure
+[pre-entry] phase=closure_normalize ms=895 scale=closure
+[pre-entry] phase=closure_typecheck ms=72220 scale=closure
+[pre-entry] phase=closure_parent_envs ms=7 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=140 scale=closure
+[pre-entry] phase=closure_ownership ms=1067 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=110779 scale=closure
+[pre-entry] population pool_modules=642 closure_files=642
+[pre-entry] process_cpu user_ms=108384 sys_ms=2003 max_rss_kib=3998880
+PASS exact_bundle_and_credential_join_without_a_circular_hash
+PASS replaced_apply_bytes_refuse_even_with_the_same_credential
+PASS duplicated_credential_row_refuses_a_self_consistent_bundle
+PASS another_host_cannot_supply_a_commissioning_receipt
+PASS generic_fleet_receipt_is_not_a_commissioning_subject

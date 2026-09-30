@@ -6,7 +6,7 @@ import std.content_hash { parse_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet_generation_publication {
   fleet_generation_publication_decode, fleet_generation_publication_owned,
-  FleetGenerationLegacy, FleetGenerationUnreadable, fleet_generation_native_read_script,
+  FleetGenerationLegacy, FleetGenerationUnreadable, fleet_generation_native_read_script, fleet_generation_native_publication_script,
 }
 
 test fn equal_numbers_do_not_identify_the_applying_plan() -> Bool {
@@ -35,5 +35,11 @@ test fn malformed_suffix_is_not_discarded() -> Bool {
 
 fn export_generation_reader() -> ProcessExit {
   let result = Filesystem.Write(path: "target/fleet-generation-reader.sh", content: fleet_generation_native_read_script)
+  if result.success { ExitSuccess } else { exit_failure(reason: result.error) }
+}
+
+
+fn export_generation_publication() -> ProcessExit {
+  let result = Filesystem.Write(path: "target/fleet-generation-publication.sh", content: fleet_generation_native_publication_script)
   if result.success { ExitSuccess } else { exit_failure(reason: result.error) }
 }

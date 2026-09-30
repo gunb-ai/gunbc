@@ -18,6 +18,10 @@ import gunbc.runner_unit_file { runner_unit_teardown_directives }
 
 data workspace_executor_template_name: NonEmptyStr = "gunbc-workspace-commissioning@.service"
 
+fn workspace_executor_unit_instance_name(slot: NonEmptyStr) -> NonEmptyStr {
+  join(["gunbc-workspace-commissioning@", slot as String, ".service"], "") as NonEmptyStr
+}
+
 data workspace_executor_script_name: String = "workspace-commissioning-executor.sh"
 
 data workspace_executor_helper_name: String = "workspace-commissioning-helper"
