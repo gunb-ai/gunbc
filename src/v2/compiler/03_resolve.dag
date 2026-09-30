@@ -1083,12 +1083,13 @@ fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending:
   }
 }
 
+// A symbol literal names text, never a declaration: like an int literal it is returned whole, its
+// name payload unread (resolve_node_walk never walks an atom's children), so it cannot bind as a
+// reference.
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: n) {
     Accepted { value: n, diagnostics: None }
   } else if dag_node_is_symbol_literal_atom(node: n) {
-    // A symbol literal names text, never a declaration: returned whole, its name payload unread
-    // (resolve_node_walk never walks an atom's children), so it cannot bind as a reference.
     Accepted { value: n, diagnostics: None }
   } else if dag_node_is_float_literal_atom(node: n) {
     Rejected {

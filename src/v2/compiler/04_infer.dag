@@ -3262,9 +3262,10 @@ fn infer_empty_product_entry(domain: Node) -> Outcome<InferredFactsEntry> {
 // first cut of this rule had). A payload node of any other shape stays on the frontier. Only the
 // edge infer_literal_edge_diagnostics_derived admits reaches here, so a malformed literal keeps
 // every child on the frontier.
+// A symbol literal's payload is its one name atom, and that atom IS the symbol value, so it is
+// typed Symbol; every other literal payload is an int magnitude's digit encoding.
 fn infer_literal_payload_member_type(literal: Node, member: Node) -> Optional<Node> {
   if dag_node_is_symbol_literal_atom(node: literal) {
-    // A symbol literal's payload is its one name atom, and that atom IS the symbol value.
     match member.kind {
       TypeNode { connective: Atom { identity: _ } } => optional_present(value: symbol_type_node())
       _ => optional_absent()
