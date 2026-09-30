@@ -69,3 +69,11 @@ test fn a_ref_input_on_another_action_is_not_read() -> Bool {
     WorkflowCheckoutRefsRefused { refusals: _ } => false
   }
 }
+
+// RED: TEXT AFTER THE CLOSING BRACES. No suffix check exists; the trailing text stays in the last
+// value term, so the allowlist is the only wall and this claim is its discriminator.
+test fn red_text_after_the_closing_braces_is_refused() -> Bool {
+  checkout_refused(ref_text: "${{ github.sha }}-x")
+    && checkout_refused(ref_text: "${{ github.sha }} main")
+    && checkout_refused(ref_text: "${{ github.sha }}${{ github.ref }}")
+}
