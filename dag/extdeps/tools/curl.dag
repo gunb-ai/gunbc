@@ -22,7 +22,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data curl_pinned_version: VersionConstraint = ">= 7.68"
 
 data curl_cli_tool: CliTool = CliTool {
-  name: curl_program().invocation,
+  program: curl_program(),
   min_version: Present { value: curl_pinned_version },
   installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
 }
@@ -121,12 +121,12 @@ fn curl_ftps_upload_command(
 // SECOND CliTool whose min_version is this constraint rather than silently raising curl_pinned_version:
 // the download and FTPS builders above genuinely need no more than 7.68, and a fleet host that
 // carries 7.68 still runs them correctly. curl_cli_tool stays the 7.68 pin; the SigV4 builders
-// emit curl_aws_sigv4_cli_tool.name so a 7.68 host that satisfies curl_cli_tool still owes 7.75
+// emit curl_aws_sigv4_cli_tool.program so a 7.68 host that satisfies curl_cli_tool still owes 7.75
 // on the path that spells --aws-sigv4.
 data curl_aws_sigv4_min_version: VersionConstraint = ">= 7.75"
 
 data curl_aws_sigv4_cli_tool: CliTool = CliTool {
-  name: curl_program().invocation,
+  program: curl_program(),
   min_version: Present { value: curl_aws_sigv4_min_version },
   installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
 }
