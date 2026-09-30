@@ -1,0 +1,19 @@
+module zz_scratch_typecheck.repro
+
+import std.types { String }
+import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_total_count }
+
+data two_level: String = "module probe_two_level\nimport std.types { String, Bool }\ntype Inner { invocation: String }\ntype Tool { program: Inner }\ntype Outcome<S> = Refused { subject: S } | Clean\nfn f(o: Outcome<Tool>) -> Bool {\n  match o {\n    Refused { subject: s } => s.program.invocation == \"x\"\n    Clean => false\n  }\n}\n"
+data one_level: String = "module probe_one_level\nimport std.types { String, Bool }\ntype Inner { invocation: String }\ntype Tool { program: Inner, name: String }\ntype Outcome<S> = Refused { subject: S } | Clean\nfn f(o: Outcome<Tool>) -> Bool {\n  match o {\n    Refused { subject: s } => s.name == \"x\"\n    Clean => false\n  }\n}\n"
+data two_level_cast: String = "module probe_two_level_cast\nimport std.types { String, Bool, NonEmptyStr }\ntype Inner { invocation: NonEmptyStr }\ntype Tool { program: Inner }\ntype Outcome<S> = Refused { subject: S } | Clean\nfn f(o: Outcome<Tool>) -> Bool {\n  match o {\n    Refused { subject: s } => (s.program.invocation as String) == \"x\"\n    Clean => false\n  }\n}\n"
+
+fn show(src: String) -> String {
+  match compile_dag_diagnostic_census(src) {
+    CensusObserved { rows: rows } => to_string(census_total_count(rows: rows))
+    CensusNotRunnable { cause: c } => concat("NR ", c)
+  }
+}
+
+fn run() -> String {
+  concat(concat(concat(concat(concat("TWO=", show(src: two_level)), " ONE="), show(src: one_level)), " TWOCAST="), show(src: two_level_cast))
+}

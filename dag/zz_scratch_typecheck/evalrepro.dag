@@ -1,0 +1,61 @@
+module zz_scratch_typecheck.evalrepro
+
+import std.types { String, Bool, NonEmptyStr }
+import extdeps.exec.program { ProgramIdentity }
+import extdeps.tools.jq { jq_program }
+
+type LocalInner { invocation: NonEmptyStr }
+type LocalTool { program: LocalInner, name: NonEmptyStr }
+type ExtTool { program: ProgramIdentity }
+type Admission<S> = Refused { subject: S } | Admitted
+
+fn refuse<S>(subject: S) -> Admission<S> = Refused { subject: subject }
+
+fn local_two_level() -> Bool {
+  match refuse(subject: LocalTool { program: LocalInner { invocation: "jq" }, name: "jq" }) {
+    Refused { subject: s } => (s.program.invocation as String) == "jq"
+    Admitted => false
+  }
+}
+
+fn sealed_two_level() -> Bool {
+  match refuse(subject: ExtTool { program: jq_program() }) {
+    Refused { subject: s } => (s.program.invocation as String) == "jq"
+    Admitted => false
+  }
+}
+
+fn one_level() -> Bool {
+  match refuse(subject: LocalTool { program: LocalInner { invocation: "jq" }, name: "jq" }) {
+    Refused { subject: s } => (s.name as String) == "jq"
+    Admitted => false
+  }
+}
+
+fn two_level_no_cast() -> Bool {
+  match refuse(subject: LocalTool { program: LocalInner { invocation: "jq" }, name: "jq" }) {
+    Refused { subject: s } => s.program.invocation == ("jq" as NonEmptyStr)
+    Admitted => false
+  }
+}
+
+fn direct_no_generic_fn() -> Bool {
+  let a: Admission<LocalTool> = Refused { subject: LocalTool { program: LocalInner { invocation: "jq" }, name: "jq" } }
+  match a {
+    Refused { subject: s } => (s.program.invocation as String) == "jq"
+    Admitted => false
+  }
+}
+
+fn let_bound_then_read() -> Bool {
+  match refuse(subject: LocalTool { program: LocalInner { invocation: "jq" }, name: "jq" }) {
+    Refused { subject: s } =>
+      let p = s.program
+      (p.invocation as String) == "jq"
+    Admitted => false
+  }
+}
+
+fn run() -> String {
+  concat(concat("LOCAL=", if local_two_level() { "ok" } else { "no" }), concat(" SEALED=", if sealed_two_level() { "ok" } else { "no" }))
+}
