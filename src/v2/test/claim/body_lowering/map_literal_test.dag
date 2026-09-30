@@ -51,12 +51,10 @@ data ml_types_source: String = "module std.types\n\nimport std.algebra { Finitel
 
 data ml_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\ntype FinitelySupportedFunction<K, V> {\n  size: Int\n}\n\ntype MapIntroductionEntry<K, V> {\n  key: K\n  value: V\n}\n\nfn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> FinitelySupportedFunction<K, V> {\n  FinitelySupportedFunction { size: 0 }\n}\n"
 
-// The kernel String is bound as a canonical symbol only where some module declares it, as
-// std.string_type does in the real corpus; without it a fixture's `String` is unbound. The stand-in
-// is OPAQUE -- a record aliasing nothing -- so no claim here can pass because String means something
-// else (ml_an_int_key_under_a_string_map_refuses_holds reds if it did).
-data ml_string_type_source: String = "module std.string_type\n\ntype String {\n  opaque_text: Bool\n}\n"
-
+// K = String is the KERNEL text binding (ruling, neat-boar-16 via gentle-koi-724): an unimported
+// String, not a declaration. It does not bind on the v2 route yet, so every claim below that
+// elaborates under Map<String, V> is an EXPECTED-RED row in gunbc.explicit_witness_admission, owned by
+// the deep-bee-18 lane; the name-key and call-argument controls use K = Int and hold today.
 data ml_headed_source: String = "module v2.test.ml_headed\n\nimport std.types { Map }\nimport std.algebra { MapIntroductionEntry, map_from_entries }\n\ndata ml_x: Map<String, Bool> = map_from_entries(entries: [MapIntroductionEntry { key: \"a\", value: true }, MapIntroductionEntry { key: \"b\", value: false }])\n"
 
 data ml_headless_source: String = "module v2.test.ml_headless\n\nimport std.types { Map }\n\ndata ml_x: Map<String, Bool> = { \"a\": true, \"b\": false }\n"
@@ -72,9 +70,9 @@ data ml_escape_duplicate_source: String = "module v2.test.ml_escape_duplicate\n\
 
 data ml_key_kind_source: String = "module v2.test.ml_key_kind\n\nimport std.types { Map }\n\ndata ml_k: Map<Int, Bool> = { \"k\": true }\n"
 
-data ml_name_key_source: String = "module v2.test.ml_name_key\n\nimport std.types { Map }\n\ndata ml_n: Map<String, Bool> = { k: true }\n"
+data ml_name_key_source: String = "module v2.test.ml_name_key\n\nimport std.types { Map }\n\ndata ml_n: Map<Int, Bool> = { k: true }\n"
 
-data ml_call_argument_source: String = "module v2.test.ml_call_argument\n\nimport std.types { Map }\n\nfn ml_take(m: Map<String, Bool>) -> Bool { true }\n\nfn ml_call() -> Bool { ml_take(m: { \"a\": true }) }\n"
+data ml_call_argument_source: String = "module v2.test.ml_call_argument\n\nimport std.types { Map }\n\nfn ml_take(m: Map<Int, Bool>) -> Bool { true }\n\nfn ml_call() -> Bool { ml_take(m: { \"a\": true }) }\n"
 
 data ml_value_mismatch_source: String = "module v2.test.ml_value_mismatch\n\nimport std.types { Map }\n\ndata ml_bad: Map<String, Bool> = { \"a\": 3 }\n"
 
@@ -84,7 +82,6 @@ data ml_int_key_source: String = "module v2.test.ml_int_key\n\nimport std.types 
 data ml_int_key_ingest: SourceRootIngest = [
   ml_read(source: ml_types_source, id: ^ml_ik_types_read, unit: ^ml_ik_types_cu, path: "src/v2/test/fixture/map_literal/ik_types.dag"),
   ml_read(source: ml_algebra_source, id: ^ml_ik_algebra_read, unit: ^ml_ik_algebra_cu, path: "src/v2/test/fixture/map_literal/ik_algebra.dag"),
-  ml_read(source: ml_string_type_source, id: ^ml_ik_string_read, unit: ^ml_ik_string_cu, path: "src/v2/test/fixture/map_literal/ik_string.dag"),
   ml_read(source: ml_int_key_source, id: ^ml_int_key_read, unit: ^ml_int_key_cu, path: "src/v2/test/fixture/map_literal/int_key.dag")
 ]
 
@@ -103,7 +100,6 @@ fn ml_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceR
 data ml_ingest: SourceRootIngest = [
   ml_read(source: ml_types_source, id: ^ml_types_read, unit: ^ml_types_cu, path: "src/v2/test/fixture/map_literal/types.dag"),
   ml_read(source: ml_algebra_source, id: ^ml_algebra_read, unit: ^ml_algebra_cu, path: "src/v2/test/fixture/map_literal/algebra.dag"),
-  ml_read(source: ml_string_type_source, id: ^ml_string_type_read, unit: ^ml_string_type_cu, path: "src/v2/test/fixture/map_literal/string_type.dag"),
   ml_read(source: ml_headed_source, id: ^ml_headed_read, unit: ^ml_headed_cu, path: "src/v2/test/fixture/map_literal/headed.dag"),
   ml_read(source: ml_headless_source, id: ^ml_headless_read, unit: ^ml_headless_cu, path: "src/v2/test/fixture/map_literal/headless.dag"),
   ml_read(source: ml_distinct_source, id: ^ml_distinct_read, unit: ^ml_distinct_cu, path: "src/v2/test/fixture/map_literal/distinct.dag"),
@@ -271,321 +267,4 @@ test fn ml_a_mixed_key_brace_refuses_at_lowering_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_brace_key_kind_mismatch
   }
-}
-
-// PROBES (temporary)
-
-test fn ml_probe_ingest_accepts_holds() -> Bool {
-  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn ml_probe_headed_accepts_holds() -> Bool {
-  ml_accepts(o: ml_resolve_subject(subject: "v2.test.ml_headed"))
-}
-
-test fn ml_probe_headed__resolve_reason_unbound_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_unbound_symbol)
-}
-
-test fn ml_probe_headed__resolve_reason_ambiguous_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_ambiguous_symbol)
-}
-
-test fn ml_probe_headed__resolve_reason_construct_tag_not_a_constructor_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_construct_tag_not_a_constructor)
-}
-
-test fn ml_probe_headed__resolve_anonymous_map_expected_type_not_map_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_expected_type_not_map)
-}
-
-test fn ml_probe_headed__resolve_anonymous_record_expected_type_not_record_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_record_expected_type_not_record)
-}
-
-test fn ml_probe_headed__resolve_anonymous_map_key_kind_mismatch_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_key_kind_mismatch)
-}
-
-test fn ml_probe_headed__resolve_anonymous_map_expected_type_not_closed_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_expected_type_not_closed)
-}
-
-test fn ml_probe_headed__resolve_anonymous_record_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_record_no_expected_type)
-}
-
-test fn ml_probe_headed__resolve_anonymous_map_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_no_expected_type)
-}
-
-test fn ml_probe_headed__resolve_anonymous_map_name_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_name_key)
-}
-
-test fn ml_probe_headed__resolve_anonymous_map_duplicate_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_duplicate_key)
-}
-
-test fn ml_probe_headed__resolve_reason_malformed_tree_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_malformed_tree)
-}
-
-test fn ml_probe_headed__resolve_reason_observation_incomplete_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_observation_incomplete)
-}
-
-test fn ml_probe_headed__resolve_reason_type_parameter_in_value_position_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_type_parameter_in_value_position)
-}
-
-test fn ml_probe_headless_accepts_holds() -> Bool {
-  ml_accepts(o: ml_resolve_subject(subject: "v2.test.ml_headless"))
-}
-
-test fn ml_probe_headless__resolve_reason_unbound_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_unbound_symbol)
-}
-
-test fn ml_probe_headless__resolve_reason_ambiguous_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_ambiguous_symbol)
-}
-
-test fn ml_probe_headless__resolve_reason_construct_tag_not_a_constructor_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_construct_tag_not_a_constructor)
-}
-
-test fn ml_probe_headless__resolve_anonymous_map_expected_type_not_map_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_expected_type_not_map)
-}
-
-test fn ml_probe_headless__resolve_anonymous_record_expected_type_not_record_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_record_expected_type_not_record)
-}
-
-test fn ml_probe_headless__resolve_anonymous_map_key_kind_mismatch_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_key_kind_mismatch)
-}
-
-test fn ml_probe_headless__resolve_anonymous_map_expected_type_not_closed_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_expected_type_not_closed)
-}
-
-test fn ml_probe_headless__resolve_anonymous_record_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_record_no_expected_type)
-}
-
-test fn ml_probe_headless__resolve_anonymous_map_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_no_expected_type)
-}
-
-test fn ml_probe_headless__resolve_anonymous_map_name_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_name_key)
-}
-
-test fn ml_probe_headless__resolve_anonymous_map_duplicate_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_duplicate_key)
-}
-
-test fn ml_probe_headless__resolve_reason_malformed_tree_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_malformed_tree)
-}
-
-test fn ml_probe_headless__resolve_reason_observation_incomplete_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_observation_incomplete)
-}
-
-test fn ml_probe_headless__resolve_reason_type_parameter_in_value_position_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_type_parameter_in_value_position)
-}
-
-test fn ml_probe_duplicate_accepts_holds() -> Bool {
-  ml_accepts(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"))
-}
-
-test fn ml_probe_duplicate__resolve_reason_unbound_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_reason_unbound_symbol)
-}
-
-test fn ml_probe_duplicate__resolve_reason_ambiguous_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_reason_ambiguous_symbol)
-}
-
-test fn ml_probe_duplicate__resolve_reason_construct_tag_not_a_constructor_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_reason_construct_tag_not_a_constructor)
-}
-
-test fn ml_probe_duplicate__resolve_anonymous_map_expected_type_not_map_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_map_expected_type_not_map)
-}
-
-test fn ml_probe_duplicate__resolve_anonymous_record_expected_type_not_record_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_record_expected_type_not_record)
-}
-
-test fn ml_probe_duplicate__resolve_anonymous_map_key_kind_mismatch_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_map_key_kind_mismatch)
-}
-
-test fn ml_probe_duplicate__resolve_anonymous_map_expected_type_not_closed_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_map_expected_type_not_closed)
-}
-
-test fn ml_probe_duplicate__resolve_anonymous_record_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_record_no_expected_type)
-}
-
-test fn ml_probe_duplicate__resolve_anonymous_map_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_map_no_expected_type)
-}
-
-test fn ml_probe_duplicate__resolve_anonymous_map_name_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_map_name_key)
-}
-
-test fn ml_probe_duplicate__resolve_anonymous_map_duplicate_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_map_duplicate_key)
-}
-
-test fn ml_probe_duplicate__resolve_reason_malformed_tree_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_reason_malformed_tree)
-}
-
-test fn ml_probe_duplicate__resolve_reason_observation_incomplete_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_reason_observation_incomplete)
-}
-
-test fn ml_probe_duplicate__resolve_reason_type_parameter_in_value_position_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_reason_type_parameter_in_value_position)
-}
-
-test fn ml_probe_name_key_accepts_holds() -> Bool {
-  ml_accepts(o: ml_resolve_subject(subject: "v2.test.ml_name_key"))
-}
-
-test fn ml_probe_name_key__resolve_reason_unbound_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_reason_unbound_symbol)
-}
-
-test fn ml_probe_name_key__resolve_reason_ambiguous_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_reason_ambiguous_symbol)
-}
-
-test fn ml_probe_name_key__resolve_reason_construct_tag_not_a_constructor_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_reason_construct_tag_not_a_constructor)
-}
-
-test fn ml_probe_name_key__resolve_anonymous_map_expected_type_not_map_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_anonymous_map_expected_type_not_map)
-}
-
-test fn ml_probe_name_key__resolve_anonymous_record_expected_type_not_record_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_anonymous_record_expected_type_not_record)
-}
-
-test fn ml_probe_name_key__resolve_anonymous_map_key_kind_mismatch_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_anonymous_map_key_kind_mismatch)
-}
-
-test fn ml_probe_name_key__resolve_anonymous_map_expected_type_not_closed_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_anonymous_map_expected_type_not_closed)
-}
-
-test fn ml_probe_name_key__resolve_anonymous_record_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_anonymous_record_no_expected_type)
-}
-
-test fn ml_probe_name_key__resolve_anonymous_map_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_anonymous_map_no_expected_type)
-}
-
-test fn ml_probe_name_key__resolve_anonymous_map_name_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_anonymous_map_name_key)
-}
-
-test fn ml_probe_name_key__resolve_anonymous_map_duplicate_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_anonymous_map_duplicate_key)
-}
-
-test fn ml_probe_name_key__resolve_reason_malformed_tree_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_reason_malformed_tree)
-}
-
-test fn ml_probe_name_key__resolve_reason_observation_incomplete_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_reason_observation_incomplete)
-}
-
-test fn ml_probe_name_key__resolve_reason_type_parameter_in_value_position_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_name_key"), reason: ^resolve_reason_type_parameter_in_value_position)
-}
-
-test fn ml_probe_call_argument_accepts_holds() -> Bool {
-  ml_accepts(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"))
-}
-
-test fn ml_probe_call_argument__resolve_reason_unbound_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_reason_unbound_symbol)
-}
-
-test fn ml_probe_call_argument__resolve_reason_ambiguous_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_reason_ambiguous_symbol)
-}
-
-test fn ml_probe_call_argument__resolve_reason_construct_tag_not_a_constructor_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_reason_construct_tag_not_a_constructor)
-}
-
-test fn ml_probe_call_argument__resolve_anonymous_map_expected_type_not_map_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_anonymous_map_expected_type_not_map)
-}
-
-test fn ml_probe_call_argument__resolve_anonymous_record_expected_type_not_record_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_anonymous_record_expected_type_not_record)
-}
-
-test fn ml_probe_call_argument__resolve_anonymous_map_key_kind_mismatch_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_anonymous_map_key_kind_mismatch)
-}
-
-test fn ml_probe_call_argument__resolve_anonymous_map_expected_type_not_closed_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_anonymous_map_expected_type_not_closed)
-}
-
-test fn ml_probe_call_argument__resolve_anonymous_record_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_anonymous_record_no_expected_type)
-}
-
-test fn ml_probe_call_argument__resolve_anonymous_map_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_anonymous_map_no_expected_type)
-}
-
-test fn ml_probe_call_argument__resolve_anonymous_map_name_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_anonymous_map_name_key)
-}
-
-test fn ml_probe_call_argument__resolve_anonymous_map_duplicate_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_anonymous_map_duplicate_key)
-}
-
-test fn ml_probe_call_argument__resolve_reason_malformed_tree_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_reason_malformed_tree)
-}
-
-test fn ml_probe_call_argument__resolve_reason_observation_incomplete_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_reason_observation_incomplete)
-}
-
-test fn ml_probe_call_argument__resolve_reason_type_parameter_in_value_position_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_reason_type_parameter_in_value_position)
-}
-
-test fn ml_probe_headed_intro_count_holds() -> Bool {
-  length(xs: ml_introduction_hashes(o: ml_resolve_subject(subject: "v2.test.ml_headed"))) == 1
-}
-
-test fn ml_probe_headless_intro_count_holds() -> Bool {
-  length(xs: ml_introduction_hashes(o: ml_resolve_subject(subject: "v2.test.ml_headless"))) == 1
 }

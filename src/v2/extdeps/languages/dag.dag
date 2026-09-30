@@ -3685,10 +3685,10 @@ fn dag_kernel_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
 }
 
 // THE KERNEL SPELLING OF THE TYPE A STRING LITERAL DENOTES: host text, the kernel `String`
-// (DESIGN section 4, Ruling 3). It has no declaration and no canonical binding in the table above,
-// so an unbound `String` is judged by this spelling and nowhere else; a `String` that resolves to a
-// declaration (the structural v2.std.text String) is a different type, reached from a literal only
-// through the declared unfold. Consumed by v2.compiler.resolve's map arm (the key-kind rule).
+// (DESIGN section 4, Ruling 3; ruling neat-boar-16: an unimported String denotes the kernel text
+// binding, never std.string_type). It is admitted as a key type only where the kernel table above
+// binds it, which it does not yet (the deep-bee-18 lane adds it); a `String` that resolves to a
+// declaration is a different type. Consumed by v2.compiler.resolve's map arm (the key-kind rule).
 fn dag_kernel_string_type_spelling(sym: Symbol) -> Bool {
   symbol_lexeme(sym: sym) == "String"
 }
