@@ -375,7 +375,7 @@ index 0000000..ed3e6e0
 +    device: torch.device,
 +) -> Tuple[FileBackedEngramStorage, torch.Tensor]:
 +    storage = FileBackedEngramStorage(path, expected)
-+    staging = torch.empty((staging_rows, row_bytes), dtype=torch.uint8, pin_memory=True)
++    staging = torch.empty((staging_rows, row_bytes), dtype=torch.uint8, device="cpu", pin_memory=True)
 +    if staging.numel() >= os.path.getsize(path):
 +        raise EngramFullTablePinned(
 +            "pinned staging is not smaller than the row store; refusing full-table pin"
@@ -577,7 +577,7 @@ index 0000000..ed3e6e0
 +            n = tokens * local_heads
 +            ids_dev = compact_ids.cuda()
 +            _engram_lookup_kernel[(triton.cdiv(n, 16),)](weight, scales, ids_dev, upstream, vocab_start, vocab_start + rows, n, ids_dev.stride(0), ids_dev.stride(1), HEAD_START=head_start, LOCAL_HEADS=local_heads, TOTAL_HEADS=total_heads, DIM=dim, QUANT_BLOCK=block, BLOCK_R=16, GRID=triton.cdiv(n, 16))
-+            staging = torch.empty((n, m.record_bytes), dtype=torch.uint8, pin_memory=True)
++            staging = torch.empty((n, m.record_bytes), dtype=torch.uint8, device="cpu", pin_memory=True)
 +            ours = torch.empty_like(upstream)
 +            present = total_heads - head_start
 +            local_ids = torch.full((tokens, local_heads), -1, dtype=torch.int64)
