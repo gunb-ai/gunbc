@@ -243,6 +243,7 @@ fn fe_domain_names(domain: Node) -> List<Symbol> {
   fold(domain.children, init: [], f: fn(acc, e) {
     match e.label {
       Authored { name: n } => list_snoc_item(xs: acc, item: n)
+      StructuralLabel { label: _ } => acc
       Positional => acc
     }
   })
