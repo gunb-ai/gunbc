@@ -46,6 +46,7 @@ import gunbc.machine_intake_mtcollins1_census_image {
   mtcollins1_census_volume_id,
   mtcollins1_seeded_image_input,
 }
+import gunbc.host_command_binding { LocalCommandHost }
 import gunbc.seeded_install_media_publish {
   SeededImageResolution,
   SeededImageResolved,
@@ -284,18 +285,18 @@ test fn a_removed_image_is_absent_not_diverged_by_real_execution() -> Bool {
   }
   let record = ubuntu_seeded_install_media_record_path(dir: d, input: census_input_supplied())
   let wrote_record = Filesystem.Write(path: record as String, content: concat(digest as String, "\n"))
-  let absent = match resolve_seeded_image(input: census_input_supplied(), dir: d) {
+  let absent = match resolve_seeded_image(host: LocalCommandHost, input: census_input_supplied(), dir: d) {
     SeededImageRecordedImageAbsent { path: _, recorded: r } => r == digest
     _ => false
   }
   let image = census_image_path_in(dir: d, digest: digest)
   let wrote_other = Filesystem.Write(path: image as String, content: "some-other-bytes")
-  let diverged = match resolve_seeded_image(input: census_input_supplied(), dir: d) {
+  let diverged = match resolve_seeded_image(host: LocalCommandHost, input: census_input_supplied(), dir: d) {
     SeededImageRecordDiverged { path: _, recorded: _, observed: _ } => true
     _ => false
   }
   let wrote_same = Filesystem.Write(path: image as String, content: "census-image-bytes")
-  let resolved = match resolve_seeded_image(input: census_input_supplied(), dir: d) {
+  let resolved = match resolve_seeded_image(host: LocalCommandHost, input: census_input_supplied(), dir: d) {
     SeededImageResolved { built: b, path: p } => b.output_digest == digest && p == image
     _ => false
   }

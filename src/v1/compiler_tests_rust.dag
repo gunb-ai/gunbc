@@ -1412,6 +1412,7 @@ fn ct_resource_item_is_not_a_type_item_test() -> String {
     "        std::rc::Rc::new(crate::v1_std_core::Node {\n",
     "            properties: std::rc::Rc::new(props),\n",
     "            module_item_kind: kind, declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,\n",
+    "            declaration: None,\n",
     "            ..(*shaped_type_node(name, Vec::new())).clone()\n",
     "        })\n",
     "    }\n\n",
@@ -1618,6 +1619,79 @@ fn ct_kernel_identity_single_authority_test() -> String {
     "\n")
 }
 
+// Cause 1b of the type-reference identity census: a declaration field's reference carries resolve's
+// binding. The Rust it renders says what each row discriminates.
+fn ct_declaration_field_reference_identity_test() -> String {
+  concat(
+    "    // CAUSE 1b: A DECLARATION FIELD'S TYPE REFERENCE CARRIES THE DECLARATION RESOLVE BOUND IT TO.\n",
+    "    // v1.compiler.infer_resolve resolve_item_types resolved each field's authored reference and kept\n",
+    "    // only its properties, so the typed tree's field reference named no declaration.\n",
+    "    // field_inferred_with_declaration records resolve's binding on Node.declaration. The rows run\n",
+    "    // the REAL route, parse through resolve through infer, via the census entry. Each row reads two\n",
+    "    // columns: decl_identity (the production reading, which must stay UNCHANGED while\n",
+    "    // Node.declaration is in shadow) and recorded_declaration (the shadow slot resolve wrote).\n",
+    "    // THE RED is the first row: without the writer recorded_declaration reads none. The control keeps\n",
+    "    // a kernel spelling identified by the kernel, so a repair that bound kernel fields to a mint\n",
+    "    // (measured once, through the inferred slot: every String/Int field turned Unidentified) fails it.\n",
+    "    #[test]\n",
+    "    fn declaration_field_reference_names_its_declaration() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let sources = vec![\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/field_identity/a.dag\".to_string(), content: \"module fid.a\\n\\ntype Leaf {\\n  count: Int\\n}\\n\\ntype Tree {\\n  kids: List<Tree>\\n}\\n\\nfn tree_size(t: Tree) -> Int {\\n  1\\n}\\n\\ntype Box<T> {\\n  held: T\\n}\\n\\nfn rebox<T>(b: Box<T>) -> Box<T> {\\n  b\\n}\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/field_identity/b.dag\".to_string(), content: \"module fid.b\\n\\nimport fid.a { Leaf }\\n\\ntype Holder {\\n  leaf: Leaf\\n}\\n\".to_string() }),\n",
+    "        ];\n",
+    "        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(std::rc::Rc::new(sources.into()));\n",
+    "        assert!(!receipt.starts_with(\"REFUSED\"), \"the census must compile the fixture: \{receipt}\");\n",
+    "        let identity_at = |enclosing: &str, position: &str, authored: &str| -> Vec<String> {\n",
+    "            receipt.lines().skip(1).map(|l| l.split('\\t').collect::<Vec<_>>())\n",
+    "                .filter(|c| c[1] == enclosing && c[2] == position && c[3] == authored)\n",
+    "                .map(|c| format!(\"\{}|\{}\", c[8], c[12])).collect()\n",
+    "        };\n",
+    "        let decl_identity = |enclosing: &str, authored: &str| identity_at(enclosing, \"declaration_field\", authored);\n",
+    "        // (1) THE RED: a field naming another module's record.\n",
+    "        assert_eq!(decl_identity(\"Holder\", \"Leaf\"), vec![\"Unidentified:SpanDeclaresNothing/resolved:none|Declaration:fid.a::Leaf\".to_string()], \"\{receipt}\");\n",
+    "        // (2) The control: a kernel spelling is identified by the kernel, not bound to a mint.\n",
+    "        assert_eq!(decl_identity(\"Leaf\", \"Int\"), vec![\"Kernel:Int|none\".to_string()], \"\{receipt}\");\n",
+    "        // (3) CAUSE 1a, THE RED: a signature reference to a RECURSIVE type. Resolve leaves it in place\n",
+    "        // rather than expanding it (is_recursive_type_for), and now records its identity there. Only the\n",
+    "        // shadow column is asserted: the production reading of this position is not this row's subject.\n",
+    "        let tree = identity_at(\"tree_size\", \"fn_signature_param\", \"Tree\");\n",
+    "        assert!(tree.len() == 1 && tree[0].ends_with(\"|Declaration:fid.a::Tree\"), \"\{receipt}\");\n",
+    "        // (4) CAUSE 3, THE RED: a reference to a type parameter names its BINDER, (owner, TypeParameter).\n",
+    "        // The two binders are spelled T, and the owner is the nearest header binding the name, so Box's\n",
+    "        // field T and rebox's T inside Box<T> are DIFFERENT identities. Keying by spelling would make them one.\n",
+    "        let box_t = identity_at(\"Box\", \"declaration_field\", \"T\");\n",
+    "        let rebox_t = identity_at(\"rebox\", \"fn_signature_param/type_arg\", \"T\");\n",
+    "        assert!(box_t.len() == 1 && box_t[0].ends_with(\"|Declaration:fid.a::Box::<T>\"), \"\{receipt}\");\n",
+    "        assert!(rebox_t.len() == 1 && rebox_t[0].ends_with(\"|Declaration:fid.a::rebox::<T>\"), \"\{receipt}\");\n",
+    "    }\n\n"
+  )
+}
+
+// Cause 3's refusal: one header may bind a type-parameter name once, because a binder's identity is
+// (owner, name). The Rust it renders says what the row discriminates.
+fn ct_duplicate_type_parameter_refuses_test() -> String {
+  concat(
+    "    // A REPEATED TYPE PARAMETER IN ONE HEADER REFUSES, LOCATED, AND SAYS WHICH NAME. The refusal\n",
+    "    // predates this row. Its message once blamed a value parameter and called a type a fn, so the\n",
+    "    // row asserts the NAME and the OWNER, not merely that some diagnostic fired. The control header\n",
+    "    // binds two distinct names and must not produce that diagnostic.\n",
+    "    #[test]\n",
+    "    fn duplicate_type_parameter_in_one_header_refuses() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let messages = |content: &str| -> Vec<String> {\n",
+    "            let sources = vec![std::rc::Rc::new(SourceFile { path: \"fixtures/dup_binder/a.dag\".to_string(), content: content.to_string() })];\n",
+    "            let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources.into()));\n",
+    "            result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect()\n",
+    "        };\n",
+    "        let red = messages(\"module dup.a\\n\\ntype Pair<T, T> {\\n  left: T\\n}\\n\");\n",
+    "        assert!(red.iter().any(|m| m.contains(\"the name 'T' is bound twice in the header of 'Pair'\")), \"\{red:?}\");\n",
+    "        let control = messages(\"module dup.b\\n\\ntype Pair<T, U> {\\n  left: T\\n  right: U\\n}\\n\");\n",
+    "        assert!(!control.iter().any(|m| m.contains(\"is bound twice in the header\")), \"\{control:?}\");\n",
+    "    }\n\n"
+  )
+}
+
 // CARRIER-KEY-1 split witness; the Rust it renders says what each row discriminates.
 fn ct_type_reference_identity_split_test() -> String {
   concat(
@@ -1742,6 +1816,8 @@ fn ct_coercion_tests() -> String {
     ct_witness_carrier_declines_non_witness_expected_type_test(),
     ct_kernel_identity_single_authority_test(),
     ct_type_reference_identity_split_test(),
+    ct_declaration_field_reference_identity_test(),
+    ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())
 }
 
@@ -2048,6 +2124,7 @@ fn ct_renderer_hop_identity_keying_test() -> String {
     "                has_non_tail_self_call: false,\n",
     "                match_pattern: None,\n",
     "                module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,\n",
+    "                declaration: None,\n",
     "                expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),\n",
     "            })\n",
     "        }\n",
@@ -2278,6 +2355,7 @@ fn ct_rust_btree_set_ord_eligibility_test() -> String {
     "            has_non_tail_self_call: false,\n",
     "            match_pattern: None,\n",
     "            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,\n",
+    "            declaration: None,\n",
     "            expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),\n",
     "        })\n",
     "    }\n\n",
@@ -3856,8 +3934,18 @@ fn ct_function_value_named_application_controls_witness_test() -> String {
     "                    \"hof_positional.dag\",\n",
     "                    \"module hof_positional\\nfn cmp(left: Int, right: Int) -> Bool { left < right }\\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2) }\\nfn witness() -> Bool { host(cmp) }\\n\",\n",
     "                );\n",
+    "                // ADMIT here is \"no diagnostic but the advisory every function-value call owes\":\n",
+    "                // since #10688 a call through a function value reports its effect summary as a\n",
+    "                // lower bound (EffectSummaryIncompleteAtFunctionValue, SeverityNonError). Any\n",
+    "                // other diagnostic, of any severity, is still a red.\n",
+    "                let only_function_value_advisory = |ds: &im::Vector<std::rc::Rc<crate::v1_std_core::ErrorNode>>| {\n",
+    "                    ds.iter().all(|d| matches!(\n",
+    "                        *d.diagnostic,\n",
+    "                        crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. }\n",
+    "                    ) && !crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))\n",
+    "                };\n",
     "                assert!(\n",
-    "                    hof_positional.diagnostics.is_empty(),\n",
+    "                    only_function_value_advisory(&hof_positional.diagnostics),\n",
     "                    \"positional function-value application must ADMIT, got: {:?}\",\n",
     "                    hof_positional.diagnostics\n",
     "                );\n",
@@ -3898,7 +3986,7 @@ fn ct_function_value_named_application_controls_witness_test() -> String {
     "                    \"module semantic_swap\\nfn cmp(left: Int, right: Int) -> Bool { left < right }\\nfn host(agree: fn(Int, Int) -> Bool, a: Int, b: Int) -> Bool { agree(a, b) }\\nfn correct_order() -> Bool { host(cmp, 1, 2) }\\nfn swapped_order() -> Bool { host(cmp, 2, 1) }\\n\",\n",
     "                );\n",
     "                assert!(\n",
-    "                    semantic.diagnostics.is_empty(),\n",
+    "                    only_function_value_advisory(&semantic.diagnostics),\n",
     "                    \"swapped positional controls must compile clean for semantic RED, got: {:?}\",\n",
     "                    semantic.diagnostics\n",
     "                );\n",
