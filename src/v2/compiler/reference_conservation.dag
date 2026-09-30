@@ -121,12 +121,12 @@ type DroppedReference {
 // A module the check could not measure is its own typed outcome, never an empty (green) report:
 // a module that does not tokenize or parse has no parse tree to enumerate, and reporting it as
 // "zero drops" would be the fabricated green.
+// StringLiteralValueUncarried: a string literal whose value the parse did not carry cannot be
+// conserved by value -- the value is in neither tree, so comparing the bare class atom on both
+// sides would count as conserved exactly the loss this check exists to see (population_walk_node).
 type ReferenceConservationUnmeasured
   = TokenizeOrParseRefused { diagnostics: NonEmptyDiagnostics }
   | AtomExtentUnreadable { occurrence: OccurrenceId }
-  // A string literal whose value the parse did not carry cannot be conserved by value: the value is
-  // in neither tree, so comparing the bare class atom on both sides would count as conserved
-  // exactly the loss this check exists to see (population_walk_node).
   | StringLiteralValueUncarried { occurrence: OccurrenceId }
   | OccurrenceRoleTableUnadmitted { unlisted: List<Symbol>, unknown: List<Symbol>, unkeyed: List<Symbol> }
 
