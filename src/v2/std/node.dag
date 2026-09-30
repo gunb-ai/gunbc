@@ -981,6 +981,18 @@ fn match_arm_node_conforms(arm: Node) -> Bool {
   }
 }
 
+// THE PATTERN EDGE OF A MATCH ARM: the arm's one ^match_arm_pattern edge. Its subtree is a binding
+// form -- binders, wildcards, literals, nested constructor patterns -- so a stage that derives facts
+// for VALUES declines it (v2.compiler.infer infer_match_arm_pattern_edge) and a walk over the nodes
+// that stage derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes).
+fn match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
+  match_arm_node_conforms(arm: parent)
+    && (match edge.label {
+      Named { name: label } => symbol_eq(a: label, b: match_arm_pattern)
+      Positional => false
+    })
+}
+
 type MatchArmChildrenConformFold {
   ok: Bool
   skipped_scrutinee: Bool
