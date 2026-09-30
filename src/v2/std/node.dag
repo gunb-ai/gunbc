@@ -1,7 +1,21 @@
 module v2.std.node
 
-import std.algebra { Cons, Empty }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
+import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.optional { Present }
+import std.occurrence_identity {
+  NodeOccurrenceIdentity,
+  OccurrenceAllocatorSnapshot,
+  OccurrenceId,
+  OccurrenceMinted,
+  OccurrenceProjected,
+  OccurrenceSynthetic,
+  ProjectedOccurrenceDerivation,
+  ProjectedOccurrenceDerived,
+  ProjectedOrdinalOutOfRange,
+  ProjectedSourceNotAuthoredInSnapshot,
+  derive_projected_occurrence,
+  occurrence_identity_in_image_of,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.content_hash {
@@ -126,24 +140,120 @@ fn node_rebuild(n: Node, children: List<Edge>) -> Node {
 
 // A LOWERED NODE IS NOT A SYNTHETIC ONE, and the difference is the whole reason a diagnostic can
 // name a file. `node_synthetic` says "no authored origin exists"; this says "the authored origin is
-// the node I am lowering, and the shape changed while the occurrence did not". The front end lowers
-// an authored construct into its semantic form -- a type name into a type atom, a surface
-// expression into its core node -- and the result stands FOR the same authored text at the same
-// position, so it keeps that text's occurrence rather than losing it. `std.occurrence_identity`
-// names this case explicitly and rules out the alternative: "a carried-forward node gets no arm
-// here", i.e. OccurrenceProjected is for a node minted in a DIFFERENT allocator with a scoped
-// cause, not for a same-graph lowering, which owns its source's occurrence outright.
+// the node I am lowering". The front end lowers an authored construct into its semantic form, and
+// the result stands for the same authored text, so it takes that text's occurrence rather than
+// losing it.
+//
+// BUT A LOWERING IS AN IMAGE, NOT A NODE, AND ONE OCCURRENCE NAMES ONE NODE. The earlier rule said a
+// same-graph lowering "owns its source's occurrence outright" and let every node it built carry it.
+// That made an occurrence stop identifying a node inside one tree: a function declaration's wrap,
+// arrow, order transform, head spine and every parameter label all carried the declaration's id,
+// and every occurrence-keyed fact over them was ambiguous. The rule is therefore: this helper marks
+// a node as a MEMBER of its source's image, and the builder that returns the image root closes the
+// image with `project_image_occurrences`, which keeps OccurrenceMinted on that root alone and gives
+// every other member OccurrenceProjected with the source as its cause (std.occurrence_identity
+// derive_projected_occurrence). A tree that still holds two nodes with one minted id is an unclosed
+// image. RUNG, HONESTLY: until the producer cut lands, this is the stated rule and nothing enforces
+// it; the cut adds the admission wall that refuses a duplicated minted id, and that wall's red (an
+// image root with its closing pass removed) is the evidence the rule holds.
 //
 // THE SOURCE'S IDENTITY IS TAKEN WHOLE, including OccurrenceSynthetic. Lowering a node that had no
-// authored origin produces a node that still has none -- carrying "nothing" forward is the honest
-// answer, and borrowing a NEIGHBOUR's occurrence to fill the gap would be the plausible guess
-// DESIGN section 5 forbids. So this is never a way to manufacture attribution: it can only preserve
-// attribution that the source already had.
+// authored origin produces nodes that still have none, and closing such an image changes nothing --
+// carrying "nothing" forward is the honest answer, and borrowing a NEIGHBOUR's occurrence to fill
+// the gap would be the plausible guess DESIGN section 5 forbids.
 fn node_lowered_from(kind: NodeKind, children: List<Edge>, source: Node) -> Node {
   node_with_occurrence_id(
     kind: kind,
     children: children,
     occurrence_id: source.occurrence_id
+  )
+}
+
+type ImageOccurrenceProjection
+  = ImageOccurrencesProjected { root: Node }
+  | ImageRootIsAlreadyProjected { observed: NodeOccurrenceIdentity }
+  | ImageDerivationRefused { refusal: ProjectedOccurrenceDerivation }
+
+type ImageOccurrenceWalk
+  = ImageWalkAt { node: Node, next_ordinal: Int }
+  | ImageWalkRefused { refusal: ProjectedOccurrenceDerivation }
+
+type ImageEdgesWalk
+  = ImageEdgesAt { edges: List<Edge>, next_ordinal: Int }
+  | ImageEdgesRefused { refusal: ProjectedOccurrenceDerivation }
+
+// Closes the image whose root the builder names. The root keeps the source's OccurrenceMinted; every
+// other member of that source's image, in pre-order, is renumbered k = 1, 2, ... and projected.
+// Nodes carrying any other occurrence (a sub-image of a different source) and synthetic nodes are
+// untouched, though their subtrees are still walked. Renumbering covers members already projected
+// from this source, so applying the pass to an image that contains a closed same-source image
+// yields the same tree as a single application: the ordinal is one authority over the whole image.
+fn project_image_occurrences(
+  root: Node,
+  snapshot: OccurrenceAllocatorSnapshot
+) -> ImageOccurrenceProjection {
+  match root.occurrence_id {
+    OccurrenceSynthetic => ImageOccurrencesProjected { root: root }
+    OccurrenceProjected { id: _, caused_by: _ } =>
+      ImageRootIsAlreadyProjected { observed: root.occurrence_id }
+    OccurrenceMinted { id: source } =>
+      match project_image_edges(edges: root.children, source: source, snapshot: snapshot, next_ordinal: 1) {
+        ImageEdgesRefused { refusal: refusal } => ImageDerivationRefused { refusal: refusal }
+        ImageEdgesAt { edges: edges, next_ordinal: _ } =>
+          ImageOccurrencesProjected { root: node_rebuild(n: root, children: edges) }
+      }
+  }
+}
+
+fn project_image_member(
+  node: Node,
+  source: OccurrenceId,
+  snapshot: OccurrenceAllocatorSnapshot,
+  next_ordinal: Int
+) -> ImageOccurrenceWalk {
+  if occurrence_identity_in_image_of(identity: node.occurrence_id, source: source, snapshot: snapshot) {
+    match derive_projected_occurrence(snapshot: snapshot, source: source, ordinal: next_ordinal) {
+      ProjectedOccurrenceDerived { identity: identity } =>
+        match project_image_edges(edges: node.children, source: source, snapshot: snapshot, next_ordinal: next_ordinal + 1) {
+          ImageEdgesRefused { refusal: refusal } => ImageWalkRefused { refusal: refusal }
+          ImageEdgesAt { edges: edges, next_ordinal: after } =>
+            ImageWalkAt {
+              node: node_with_occurrence_id(kind: node.kind, children: edges, occurrence_id: identity),
+              next_ordinal: after,
+            }
+        }
+      ProjectedSourceNotAuthoredInSnapshot { source: s, bound: b } =>
+        ImageWalkRefused { refusal: ProjectedSourceNotAuthoredInSnapshot { source: s, bound: b } }
+      ProjectedOrdinalOutOfRange { source: s, ordinal: o } =>
+        ImageWalkRefused { refusal: ProjectedOrdinalOutOfRange { source: s, ordinal: o } }
+    }
+  } else {
+    match project_image_edges(edges: node.children, source: source, snapshot: snapshot, next_ordinal: next_ordinal) {
+      ImageEdgesRefused { refusal: refusal } => ImageWalkRefused { refusal: refusal }
+      ImageEdgesAt { edges: edges, next_ordinal: after } =>
+        ImageWalkAt { node: node_rebuild(n: node, children: edges), next_ordinal: after }
+    }
+  }
+}
+
+fn project_image_edges(
+  edges: List<Edge>,
+  source: OccurrenceId,
+  snapshot: OccurrenceAllocatorSnapshot,
+  next_ordinal: Int
+) -> ImageEdgesWalk {
+  fold(
+    edges,
+    init: ImageEdgesAt { edges: [], next_ordinal: next_ordinal },
+    f: (acc, e) => match acc {
+      ImageEdgesRefused { refusal: _ } => acc
+      ImageEdgesAt { edges: done, next_ordinal: k } =>
+        match project_image_member(node: e.target, source: source, snapshot: snapshot, next_ordinal: k) {
+          ImageWalkRefused { refusal: refusal } => ImageEdgesRefused { refusal: refusal }
+          ImageWalkAt { node: child, next_ordinal: after } =>
+            ImageEdgesAt { edges: list_snoc_item(xs: done, item: Edge { label: e.label, target: child }), next_ordinal: after }
+        }
+    },
   )
 }
 
@@ -808,22 +918,22 @@ fn arrow_body_record_construct_conforms(node: Node) -> Bool {
   }
 }
 
+// The construct reading is a fact about the FIRST edge alone, so it is read from the head, not folded
+// over every edge.
 fn arrow_body_construct_tag_leads(node: Node) -> Bool {
-  fold(node.children, init: 0, f: fn(seen, edge) {
-    if seen != 0 {
-      seen
-    } else {
+  match first(node.children) {
+    Present { value: edge } =>
       match edge.label {
         Named { name: label } =>
-          if symbol_eq(a: label, b: construct_tag_marker())
+          symbol_eq(a: label, b: construct_tag_marker())
             && (match edge.target.kind {
               TypeNode { connective: Conj } => true
               _ => false
-            }) { 1 } else { 2 }
-        Positional => 2
+            })
+        Positional => false
       }
-    }
-  }) == 1
+    _ => false
+  }
 }
 
 fn arrow_body_some_edge_targets_an_atom(node: Node) -> Bool {
