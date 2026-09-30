@@ -702,14 +702,28 @@ fn demand_ready_sync<V>(
 }
 
 // IN FLIGHT IS A DELTA, NOT A SCAN -- and the scan it replaces could not have answered anything else.
-// demand_engine_in_flight filtered every entry for DemandRunning, and NOTHING IN THIS CORPUS SETS THAT
-// STATE: no producer transitions a demand to running, so the filter walked the population to compute a
-// constant zero on every admission.
+// demand_engine_in_flight filtered every entry for DemandRunning to compute a constant zero on every
+// admission, because NO PRODUCER IN THIS CORPUS SETS THAT STATE.
 //
-// IT IS STILL READ FROM THE STATE RATHER THAN HARDCODED. Returning 0 with a comment would be correct
-// today and a fail-open the moment a producer appears -- admitting past the seat count because the
-// count was a literal. So the delta is taken at the one site state changes, which costs nothing and
-// tracks a producer that does not exist yet.
+// DemandRunning IS THEREFORE A DECLARED FRONTIER, NOT LIVE VOCABULARY, and saying so is the point: a
+// variant nothing produces is the same unconsumed declaration (DESIGN section 3c) as the inspection
+// counter deleted from this module one commit ago, and it deserves the same treatment rather than a
+// quiet pass because it happens to sit in a coproduct.
+//
+// ITS NAMED PRODUCER, AND WHY THAT PRODUCER CANNOT EXIST YET. The seat vocabulary is real and consumed
+// -- demand_lease_admits asks the caller's offer whether an admitted demand obtains a lease -- but
+// admission does not RECORD that a demand went in flight, because demand_engine_next answers a
+// DemandAdmission and not an engine. Nothing it could write would reach a caller. So the producer is
+// the admission path returning the engine it changed, which is the SAME structural gap that made an
+// inspection counter unreadable: one missing return, two dangling declarations.
+//
+// TRIGGER: multi-seat realization. With one seat the driver executes immediately after admission and
+// no demand is ever observably in flight, so the state has nothing to mark; with more than one, the
+// admission must mark it and settlement must clear it, and the delta below is what clears it.
+//
+// IT STAYS DERIVED FROM STATE RATHER THAN HARDCODED for the same reason. Returning 0 with a comment
+// would be correct today and a fail-open the moment that producer lands -- admitting past the seat
+// count because the count was a literal -- and the delta costs nothing while the frontier stands.
 fn demand_in_flight_delta<V>(before: DemandState<V>, after: DemandState<V>) -> Int {
   if demand_state_is_running(s: after) {
     if demand_state_is_running(s: before) { 0 } else { 1 }

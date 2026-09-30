@@ -19,6 +19,7 @@ import v2.std.demand_engine {
   DemandNotAdmitted,
   DemandReady,
   DemandRefused,
+  DemandRunning,
   DemandState,
   DemandWaiting,
   demand_engine_closure,
@@ -599,15 +600,55 @@ test fn the_maintained_ready_order_matches_a_full_rebuild_holds() -> Bool {
     && g_maintained_matches_rebuild(e: after_refusal)
 }
 
-// AND READING THE IN-FLIGHT STANDING IS A READ. It was a filter over every entry for a state NO
-// PRODUCER IN THIS CORPUS SETS -- a whole-population walk computing a constant zero on every admission.
-// It is still derived from state rather than hardcoded, so a producer that appears later is tracked
-// instead of silently over-admitting past the seat count.
+// READING THE IN-FLIGHT STANDING IS A READ, NOT A SCAN. It was a filter over every entry for
+// DemandRunning on every admission.
+//
+// THIS ROW ESTABLISHES ONLY WHAT IT SAYS, AND THAT IS THE CORRECTION. Asserting the count is
+// "population-independent and zero" cannot fail if the running path breaks, because no producer in this
+// corpus reaches that path -- so on its own it would be a control that looks like a guard over the
+// in-flight delta and is actually a guard over nothing (DESIGN section 4b: a check that cannot go red is
+// a decoration). It is kept for what it does establish -- the population no longer participates -- and
+// the delta gets its own discriminating row below.
 test fn the_in_flight_standing_does_not_depend_on_population_holds() -> Bool {
   let small = demand_engine_seal(e: g_lopsided_unsealed())
   let wide = demand_engine_seal(e: g_wide_extra(e: g_lopsided_unsealed(), n: 40, tag: "w"))
   (demand_engine_in_flight(e: small) == demand_engine_in_flight(e: wide))
     && (demand_engine_in_flight(e: small) == 0)
+}
+
+// THE DELTA IS EXERCISED BY SUPPLYING THE STATE NO PRODUCER YET SETS. DemandRunning is a declared
+// frontier -- its producer is the admission path returning the engine it changed, which does not exist
+// because demand_engine_next answers an admission and not an engine -- so the state cannot be reached
+// by running the engine. It CAN be supplied: demand_engine_settle takes any state, which is the
+// boundary this claim discriminates at (DESIGN section 3's witness rule).
+//
+// SO THIS ROW GOES RED IF THE DELTA BREAKS, which the population row above cannot. Entering running
+// raises the count, and leaving it for a settled state lowers it again -- a delta that only added, or
+// that counted the same demand twice, fails here.
+test fn entering_and_leaving_the_running_state_moves_the_in_flight_count_holds() -> Bool {
+  let sealed = demand_engine_seal(e: g_lopsided_unsealed())
+  let running = demand_engine_settle(e: sealed, id: g_a(), state: DemandRunning)
+  let again = demand_engine_settle(e: running, id: g_a(), state: DemandRunning)
+  let finished = demand_engine_settle(e: running, id: g_a(), state: DemandAvailable { value: 1 })
+  (demand_engine_in_flight(e: sealed) == 0)
+    && (demand_engine_in_flight(e: running) == 1)
+    && (demand_engine_in_flight(e: again) == 1)
+    && (demand_engine_in_flight(e: finished) == 0)
+}
+
+// AND A RUNNING DEMAND IS NOT READY, so a seat held is not also a seat offered: the admission head must
+// not still name a demand that is in flight.
+test fn a_running_demand_is_not_in_the_ready_order_holds() -> Bool {
+  let running = demand_engine_settle(
+    e: demand_engine_seal(e: g_lopsided_unsealed()),
+    id: g_a(),
+    state: DemandRunning
+  )
+  !contains(
+    xs: demand_engine_ready_queue(e: running),
+    item: g_a(),
+    eq: fn(x, y) { demand_identity_eq(a: x, b: y) }
+  )
 }
 
 // THE CANONICAL HEAD DOES NOT DEPEND ON WHAT SETTLED LAST. Two runs of one closure must admit in one
