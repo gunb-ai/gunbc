@@ -547,8 +547,10 @@ fn spark_native_mount_source_checks(spec: DockerCreateSpec) -> String {
   }), "")
 }
 
+// DEV-ONLY (operator ruling 2026-09-30, never merged): `--gpus all` is served by the NVIDIA container
+// toolkit hook, not by a Docker runtime named nvidia, so this check is skipped on the V4.1 dev branch.
 fn spark_native_gpu_runtime_check(spec: DockerCreateSpec) -> String {
-  if spec.gpus_all {
+  if false && spec.gpus_all {
     "if ! docker info --format '\{\{.Runtimes}}' 2>/dev/null | grep -q nvidia; then echo PREFLIGHT-REFUSED-no-nvidia-runtime; exit 1; fi\n"
   } else {
     ""
