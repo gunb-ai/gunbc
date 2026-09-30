@@ -1,6 +1,6 @@
 module v2.compiler.parse_diagnostic
 
-import std.algebra { FreeMonoid, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra {
   Cons,
   Empty,

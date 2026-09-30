@@ -277,26 +277,29 @@ fn decode_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
         }
       }
     )
-    if scan.unknown.length() != 0 {
-      EnvelopeRefused { refusal: EnvelopeOperationUnknown { received: scan.unknown.first() } }
-    } else if envelope.ladder_holes.length() == 0 {
-      EnvelopeRefused { refusal: EnvelopeCarriesNoOperations }
-    } else {
-      EnvelopeDecodedV0 {
-        decoded: DecodedRealizationV0 {
-          geometry: hole_diameter_coupon_geometry(
-            plate: plate_dimensions(
-              size_x: micrometer(count: envelope.plate_x_um),
-              size_y: micrometer(count: envelope.plate_y_um),
-              size_z: micrometer(count: envelope.plate_z_um),
-            ),
-            orientation_datum: decode_operation_row(row: envelope.orientation_datum),
-            ladder_holes: fold(envelope.ladder_holes, init: [], f: fn(acc, row) {
-              concat(acc, [decode_operation_row(row: row)])
-            }),
-          ),
-        },
-      }
+    match scan.unknown.first() {
+      Present { value: unknown_kind } =>
+        EnvelopeRefused { refusal: EnvelopeOperationUnknown { received: unknown_kind } }
+      Absent =>
+        if envelope.ladder_holes.length() == 0 {
+          EnvelopeRefused { refusal: EnvelopeCarriesNoOperations }
+        } else {
+          EnvelopeDecodedV0 {
+            decoded: DecodedRealizationV0 {
+              geometry: hole_diameter_coupon_geometry(
+                plate: plate_dimensions(
+                  size_x: micrometer(count: envelope.plate_x_um),
+                  size_y: micrometer(count: envelope.plate_y_um),
+                  size_z: micrometer(count: envelope.plate_z_um),
+                ),
+                orientation_datum: decode_operation_row(row: envelope.orientation_datum),
+                ladder_holes: fold(envelope.ladder_holes, init: [], f: fn(acc, row) {
+                  concat(acc, [decode_operation_row(row: row)])
+                }),
+              ),
+            },
+          }
+        }
     }
   }
 }
