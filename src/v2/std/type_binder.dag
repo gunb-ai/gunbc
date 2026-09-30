@@ -9,6 +9,8 @@ import v2.std.node {
   ParameterReferenceKind,
   resolved_reference_body_kind,
   Arrow,
+  Atom,
+  Instantiation,
   Behavior,
   Bind,
   ComputationNode,
@@ -430,4 +432,72 @@ fn type_binder_first_mislabelled(root: Node) -> Optional<Node> {
       Absent => if type_binder_node_conforms(n: n) { acc } else { optional_present(value: n) }
     }
   })
+}
+
+// WHETHER AN ALIAS DECLARATION IS A PURE RENAMING, decided once, on the declaration
+// (docs/plans/anonymous-record-literal-design.md, section Pure-renaming aliases). `type A<p1..pn> = H<p1..pn>` -- the aliased expression is a head applied
+// to exactly the alias's own binders, in declared order, or `type A = H` with none -- denotes H with
+// the same arguments in the same positions, so a reader that follows it substitutes nothing. Every
+// other declaration is not a renaming: a reordering, constant or partially applied alias, a
+// generic record, a plain type. v2.std.symbol_index records the answer when it records the
+// declaration, and readers take it from there rather than re-deriving it at each use.
+type AliasRenaming
+  = PureRenamingOf { head: Symbol }
+  | NotARenaming
+
+fn type_alias_renaming(target: Node) -> AliasRenaming {
+  match type_decl_view(target: target) {
+    TypeAlias { binders: binders, aliased: aliased } =>
+      type_alias_renaming_of(binders: binder_conj_names(conj: binders), aliased: aliased)
+    _ => NotARenaming
+  }
+}
+
+fn type_alias_renaming_of(binders: List<Symbol>, aliased: Node) -> AliasRenaming {
+  match aliased.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if count(binders) == 0 { PureRenamingOf { head: id } } else { NotARenaming }
+    TypeNode { connective: Instantiation } =>
+      let scan = type_binder_instantiation_scan(n: aliased)
+      match scan.head {
+        Present { value: head } =>
+          if scan.args_are_atoms && (scan.arg_ids == binders) { PureRenamingOf { head: head } } else { NotARenaming }
+        Absent => NotARenaming
+      }
+    _ => NotARenaming
+  }
+}
+
+// An instantiation read once, positionally: its head atom (if the head is one), the identities of
+// its argument atoms in order, and whether every argument is an atom.
+type TypeBinderInstantiationScan {
+  seen: Int
+  head: Optional<Symbol>
+  arg_ids: List<Symbol>
+  args_are_atoms: Bool
+}
+
+fn type_binder_instantiation_scan(n: Node) -> TypeBinderInstantiationScan {
+  fold(n.children, init: TypeBinderInstantiationScan { seen: 0, head: optional_absent(), arg_ids: Empty, args_are_atoms: true }, f: fn(acc, e) {
+    match e.label {
+      Positional =>
+        let id = type_binder_atom_identity_optional(n: e.target)
+        if acc.seen == 0 {
+          TypeBinderInstantiationScan { seen: 1, head: id, arg_ids: acc.arg_ids, args_are_atoms: acc.args_are_atoms }
+        } else {
+          match id {
+            Present { value: a } => TypeBinderInstantiationScan { seen: acc.seen + 1, head: acc.head, arg_ids: list_snoc_item(xs: acc.arg_ids, item: a), args_are_atoms: acc.args_are_atoms }
+            Absent => TypeBinderInstantiationScan { seen: acc.seen + 1, head: acc.head, arg_ids: acc.arg_ids, args_are_atoms: false }
+          }
+        }
+      _ => acc
+    }
+  })
+}
+
+fn type_binder_atom_identity_optional(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => optional_absent()
+  }
 }
