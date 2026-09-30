@@ -3962,37 +3962,49 @@ fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
   }
 }
 
-fn dag_string_literal_refusal(reason: Symbol, at: Node) -> Outcome<Node> {
+fn dag_string_literal_refusal(reason: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
   outcome_rejected(
     d: Diagnostic {
       reason: reason,
-      at: node_locus(node: at),
+      at: node_locus(
+        node: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
+          children: [],
+          occurrence_id: occurrence_id
+        }
+      ),
       correction: Unavailable { reason: CorrectionNotModeled }
     }
   )
 }
 
-// Refuses, located at the literal's own occurrence, when the lexeme is not quote-framed
-// (^dag_string_literal_lexeme_unframed) or carries a backslash followed by a character with no
-// dag_string_escapes row, or a backslash with nothing after it (^dag_string_literal_escape_malformed).
-// The raw spelling is never carried as the value.
-fn dag_string_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
-  let bare = Node {
-    kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
-    children: [],
-    occurrence_id: occurrence_id
-  }
+// THE VALUE A STRING LITERAL'S LEXEME SPELLS: the framing quotes removed and each escape replaced
+// by its dag_string_escapes row's scalar. Refuses, located at `occurrence_id`, when the lexeme is
+// not quote-framed (^dag_string_literal_lexeme_unframed) or carries a backslash followed by a
+// character with no dag_string_escapes row, or by nothing (^dag_string_literal_escape_malformed).
+// The raw spelling is never answered as the value. Every reader of string-literal text decodes
+// here, so the escape vocabulary has one reader as it has one table.
+fn dag_string_literal_decoded_text(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
   match dag_string_literal_body_optional(lexeme: lexeme) {
-    Absent => dag_string_literal_refusal(reason: ^dag_string_literal_lexeme_unframed, at: bare)
+    Absent => dag_string_literal_refusal(reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
     Present { value: body } =>
       match fold(body, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
-        DagStringDecodeText { text: value } =>
-          outcome_accepted(value: dag_string_literal_node(value: value, occurrence_id: occurrence_id))
+        DagStringDecodeText { text: value } => outcome_accepted(value: value)
         DagStringDecodeEscape { text: _ } =>
-          dag_string_literal_refusal(reason: ^dag_string_literal_escape_malformed, at: bare)
+          dag_string_literal_refusal(reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
         DagStringDecodeMalformed { spelled: _ } =>
-          dag_string_literal_refusal(reason: ^dag_string_literal_escape_malformed, at: bare)
+          dag_string_literal_refusal(reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
       }
+  }
+}
+
+// The string-literal node for a lexeme: its decoded text as the value payload, or the decode's
+// located refusal.
+fn dag_string_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
+  match dag_string_literal_decoded_text(lexeme: lexeme, occurrence_id: occurrence_id) {
+    Accepted { value: value, diagnostics: _ } =>
+      outcome_accepted(value: dag_string_literal_node(value: value, occurrence_id: occurrence_id))
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
