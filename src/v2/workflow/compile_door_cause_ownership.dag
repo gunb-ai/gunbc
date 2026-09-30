@@ -151,6 +151,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; full normalize refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips when a realization binding carrier (a transport handler bound to the interface shape) and a typed operation-modifier carrier exist, so that no set-aside reason has a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_uses_clause_unmodeled,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a fn declaring a `uses` clause parses and refuses at the clause on both lowering arms (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional), because v2 has no carrier for a fn's resource requirement and lowering the fn would drop it. Flips when a lowered fn signature carries every `uses` entry's resource requirement -- a v2 effect-requirement carrier that body lowering reads each entry onto (name, resource type, config) -- so the reason has no producer (gunbc.recurring_failure_mode uses_clause_has_no_carrier)"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_field_decl_unlowered,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
