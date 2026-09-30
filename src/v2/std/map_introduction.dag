@@ -2,9 +2,10 @@ module v2.std.map_introduction
 
 import std.algebra { list_snoc_item }
 import std.types { Map, String }
-import v2.std.collection { Absent, List, Present, empty_map, map_insert, map_lookup }
+import v2.std.collection { List, empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.integer { Int }
-import v2.std.list_introduction { list_introduction_head_path }
+import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Edge, Named, Node, Positional, Symbol, Transform, node_with_occurrence_id }
 import v2.std.node_query { construct_node }
@@ -23,9 +24,12 @@ import v2.std.qualified_name { QualifiedName, declaration_reference_node }
 // reader. The declaration lives in std.algebra, below std.types, because std.types' own map
 // literals elaborate to it (an import cycle otherwise).
 
-// A STRING-KEYED ITEM of a headless brace, as body lowering records it: an edge with this label
-// whose target is a tag-elided construct carrying exactly `key` and `value`. Lowering records the
-// key's KIND and chooses nothing; the map arm reads these edges.
+// A STRING-KEYED BRACE, as body lowering records it. Each item is first an edge labelled
+// map_literal_entry_label targeting a tag-elided `{ key, value }` construct; once the brace is
+// known to be all string keys, lowering collapses those items into ONE edge labelled
+// map_literal_entries_label whose target is a list literal of the pairs -- one edge, because a
+// construct's named edges must be distinct (v2.std.node well_formed). Lowering records the key's
+// KIND and chooses nothing; resolve's map arm reads the list.
 fn map_literal_entry_label() -> Symbol {
   ^map_literal_entry
 }
@@ -35,6 +39,27 @@ fn edge_is_map_literal_entry(e: Edge) -> Bool {
     Named { name: n } => n == map_literal_entry_label()
     Positional => false
   }
+}
+
+fn map_literal_entries_label() -> Symbol {
+  ^map_literal_entries
+}
+
+fn edge_is_map_literal_entries(e: Edge) -> Bool {
+  match e.label {
+    Named { name: n } => n == map_literal_entries_label()
+    Positional => false
+  }
+}
+
+// The authored pairs of a string-keyed brace, in order; Absent for any node that carries none.
+fn map_literal_entries_optional(n: Node) -> Optional<List<Node>> {
+  fold(n.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if edge_is_map_literal_entries(e: e) { list_introduction_elements_optional(node: e.target) } else { optional_absent() }
+    }
+  })
 }
 
 fn map_introduction_head_path() -> QualifiedName {

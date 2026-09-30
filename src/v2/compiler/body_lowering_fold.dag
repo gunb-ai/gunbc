@@ -75,7 +75,7 @@ import v2.std.compilers.body_lowering {
   lower_unary_prefix
 }
 import v2.std.list_introduction { lower_list_introduction }
-import v2.std.map_introduction { edge_is_map_literal_entry, map_literal_entry_label }
+import v2.std.map_introduction { edge_is_map_literal_entry, map_literal_entries_label, map_literal_entry_label }
 import v2.std.arrow_signature { declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
@@ -7802,6 +7802,20 @@ fn body_lower_map_literal_entry_edge(key: Node, after_key: Node, item: Node, ref
   }
 }
 
+// A brace already known to be all string keys (body_lower_brace_key_kinds_refusal_optional ran
+// first) carries its pairs on ONE edge, a list literal of them in authored order; any other brace
+// is returned as it is.
+fn body_lower_map_literal_entries_collapsed(edges: List<Edge>, source: Node) -> List<Edge> {
+  let pairs = fold(edges, init: [], f: fn(acc, e) {
+    if edge_is_map_literal_entry(e: e) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+  })
+  match pairs {
+    Empty => edges
+    Cons { head: _, tail: _ } =>
+      [Edge { label: Named { name: map_literal_entries_label() }, target: lower_list_introduction(elements: pairs, source: source) }]
+  }
+}
+
 // ONE KIND OF KEY PER BRACE, AND STRING KEYS ONLY WITHOUT A HEAD. Lowering does not choose record or
 // map, but it can see a brace no choice could type: a constructor head over string keys
 // (`R { "k": v }`), or a headless brace mixing name keys and string keys. Each refuses at the first
@@ -7889,7 +7903,7 @@ fn body_lower_record_construct(reference: Node, items: List<Node>, source: Node)
           outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_brace_key_kind_mismatch, n: offending.target))
         Absent =>
       Accepted {
-        value: construct_node(reference: reference, field_edges: edges, source: source),
+        value: construct_node(reference: reference, field_edges: body_lower_map_literal_entries_collapsed(edges: edges, source: source), source: source),
         diagnostics: d
       }
       }
@@ -7934,7 +7948,7 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<RecordLite
 // (v2.std.node_query construct_tag_elided_reference), and resolve's construct-tag writer either
 // writes the expected record's reference or refuses located
 // (docs/plans/anonymous-record-literal-design.md). The field set is never consulted to choose. A
-// string-keyed item (a map literal) lowers to a map_literal_entry edge, and resolve's map arm reads
+// string-keyed brace (a map literal) carries its pairs on one map_literal_entries edge; resolve's map arm reads
 // it (docs/plans/map-literal-introduction-design.md).
 fn body_lower_try_headless_record_literal(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_record_brace_items_optional(brace: captured) {
