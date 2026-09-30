@@ -1,113 +1,150 @@
 # Map-literal introduction: the model (MQ, PR1)
 
-Status: MODEL. No lowering, resolve, infer or realization change lands here; PR2 fills the map arm of the
-one declared-type check site that #12711 (anonymous record literals, Form B) builds. It builds no
-second site.
+Status: MODEL. No lowering, resolve, infer or realization change lands here. PR2 adds the map arm
+to the ONE elaboration writer that #12711 (anonymous record literals, Form B) builds,
+`resolve_construct_walk`. It builds no second site: one writer, both arms.
 
 ## The symptom and the slice
 
 `dag/std/types` is file-refused on the native route at `data kernel_type_set: Map<String, Bool> = {
-"String": true, .. }`, so every module importing `std.types` is refused with it. #12711 routes a
-headless brace to the one elaboration writer, `resolve_construct_walk` in resolve, which carries a top-down `ResolveContext.expected` (revised in #12711; infer is a bottom-up fold and cannot synthesize an elided construct). There a `Map` expected head
-takes the map arm, which refuses located `map_literal_construction_not_modeled`. That refusal is
-correct: the arm has nothing to elaborate TO. The earliest unjustified boundary is not lowering and
-not the writer. It is `std.algebra`: **`Map` has no introduction declaration to name.**
+"String": true, .. }`, so every module importing `std.types` is refused with it. #12711 (revised)
+lowers a headless brace to `construct_node` with its tag edge targeting
+`construct_tag_elided_marker`. Resolve's construct-tag writer then elaborates the brace from a
+top-down `ResolveContext.expected`. Infer is a bottom-up fold and cannot synthesize an elided
+construct, so elaboration is in resolve, not infer. Under a `Map` head, that writer refuses today
+with `map_literal_construction_not_modeled`: there is no modeled introduction to elaborate TO.
 
-## Why the list precedent does not transfer as-is (the modeling gap)
+## The gap, and why it closes without a new std constructor
 
-`v2.std.list_introduction` heads a list literal with a reference to `std.algebra` `FreeMonoid`. That
-is lawful because `FreeMonoid<T>` is a FREE, inductive type (`Empty | Cons { head, tail }`). Its
-elements determine its inhabitant, so "the head plus positional elements" DENOTES a value, and
-`[]` is the head alone.
+`v2.std.list_introduction` heads a list literal with `std.algebra` `FreeMonoid`. That is lawful
+because `FreeMonoid` is free and inductive: its elements determine its inhabitant. `Map<K, V>`
+aliases `std.algebra` `FinitelySupportedFunction<K, V>`, which is a record of operations and not a
+free structure, so a literal has no type constructor to head. That is the gap.
 
-`Map<K, V>` aliases `std.algebra` `FinitelySupportedFunction<K, V>`. That is a RECORD OF OPERATIONS
-(`lookup`, `empty`, `insert`, `merge`, `map_keys`, ..): an interface a finite map answers, not a
-structure it is built from. Heading a Transform with it and hanging `(key, value)` pairs under it
-would claim a constructor that the declaration does not have. That is the same error as a
-`Map { lookup: .. }` literal naming ten operations and supplying one (see the `std.types` alias
-note). Folding over `empty_map`/`map_insert` in lowering is ruled out by the brief. It would also be
-realization choosing semantics: `map_insert` is last-wins, so it is exactly the silent overwrite
-this model must refuse.
+It closes WITHOUT a new `std.algebra` declaration (review condition 1). The carrier already
+declares `empty` and `insert`, and the corpus already binds them to reachable, host-bound
+realizations: `v2.std.collection` `empty_map` and `map_insert`, which `dag/std/types` itself uses.
+A map literal therefore DENOTES the fold of `insert` over `empty`, in authored order. The objection
+in the brief was to lowering inventing that fold ad hoc. Here the fold lives in the one authority,
+`v2.std.map_introduction`, so it is not a second spelling anywhere. An earlier draft of this PR
+proposed `std.algebra` `finitely_supported_function_from_graph`. It is dropped: it established
+nothing the fold does not, and it would have been a second constructor beside `empty`/`insert`.
 
-## The model
+## The model: `v2.std.map_introduction`, one authority
 
-A finitely supported function is introduced by its **graph**: a finite, functional relation, one
-entry per supported key. The introduction declaration is authored in `std.algebra` next to the
-carrier it introduces:
+It is modeled on `v2.std.list_introduction`, which carries head path, constructor and reader
+together:
 
-```
-// the graph of a finitely supported function: entries in authored order, keys pairwise distinct
-type FiniteGraphEntry<K, V> { key: K, value: V }
-fn finitely_supported_function_from_graph<K, V>(entries: FreeMonoid<FiniteGraphEntry<K, V>>)
-  -> FinitelySupportedFunction<K, V>?   // Absent exactly when two entries share a key
-```
+- **Head.** `map_introduction_head_path()` = `[^v2, ^std, ^map_introduction,
+  ^map_from_entries]`. A map literal is ONE Transform headed by a reference to that declaration.
+- **Entries.** One positional `MapIntroductionEntry { key, value }` construct per entry, in authored
+  order. `MapIntroductionEntry<K, V>` is declared in this module. `std` has no general product, and
+  minting one for a single consumer would be premature. `{}` under a `Map` expected type is the head
+  alone.
+- **Denotation.**
+  `map_from_entries<K, V>(entries: List<MapIntroductionEntry<K, V>>) -> Map<K, V>` is
+  `fold(entries, init: empty_map(), f: map_insert)`, and it is defined ONLY here.
+- **Constructor and reader.** `lower_map_introduction(entries, source)` and
+  `map_introduction_entries_optional(node)` read and write the same head path, so the producer and
+  the readers cannot disagree.
+- **The duplicate check lives here too** (next section), as
+  `map_introduction_duplicate_key(keys, equality) -> Outcome<Unit, MapIntroductionDuplicateKey>`.
 
-- **Head.** `std.algebra.finitely_supported_function_from_graph`: the declaration a map literal
-  names, as `FreeMonoid` is the declaration a list literal names.
-- **Children.** One positional child per entry, in authored order. Each is a
-  `FiniteGraphEntry { key, value }` construct, so the entry is an ordinary record construct with no
-  new edge kind. `{}` under a `Map` expected type is the head alone, the empty graph.
-- **Authority.** `v2.std.map_introduction` carries head path, constructor
-  (`lower_map_introduction`) and reader (`map_introduction_entries_optional`) together, exactly as
-  `v2.std.list_introduction` does. The map arm of `resolve_construct_walk` is its producer, and infer, eval and
-  emit are its readers. There is one spelling of the path.
-- **Why a function and not a type.** The relation is not free: a list of entries with a repeated
-  key does not denote a function. The introduction is therefore partial, and its partiality is the
-  duplicate-key law below. It is not a hidden `insert` fold.
+## Duplicate keys: checked BEFORE the fold, by the key type's declared equality
 
-## Typing rule
+`insert` is last-write-wins, so the fold alone would drop a duplicate silently (review
+condition 2). The check therefore runs before the fold, at elaboration, and it is a total function
+in the authority:
 
-The expected `Map<K, V>` comes ONLY from an authored annotation (data initializer, fn return, record
-field, list element) through `ResolveContext.expected`, resolved through the alias to
-`FinitelySupportedFunction<K, V>`. It is never inferred. A headless string-keyed brace with no
-authored expected type refuses located (`resolve_map_literal_no_expected_type`). The work splits
-along what each stage can decide:
+- `MapIntroductionDuplicateKey { first_index, second_index }` is a refusal VALUE naming both
+  occurrences. Resolve maps `second_index` to that entry's occurrence and reports
+  `resolve_anonymous_map_duplicate_key` there, naming the key and the first occurrence.
+- **Equality is the KEY TYPE's declared equality, never assumed structural equality.** Its home is
+  the one that already decides equality admissibility: `std.algebra`
+  `algebra_profile_equality_extensional`, consequence of `algebra_profile_support`. Scalars and
+  finite-support carriers have decidable extensional equality; open-support carriers
+  (`PartialFunction`, the pointwise power) do not. The key relation itself is owned by the keys /
+  hashing conformance row (`conformance-identity`). That row's homes today are structural node
+  identity and the materialization keys, neither of which is value equality over `K`. So PR2 either
+  cites the `std.algebra` equality home against that row as a stated scope extension, or states the
+  divergence on the PR. It does not add a third equality.
+- **Decidable at the site, or refuse.** Keys are compared as elaborated literals of `K`. Where `K`'s
+  equality is not decidable at elaboration, the literal refuses located at its first key with
+  `resolve_anonymous_map_key_equality_undecidable`, and nothing is guessed. That covers an
+  open-support `K`, and any key that is not a literal of a scalar carrier. For string-literal keys,
+  equality is equality of the unfolded scalar sequences after escape normalization, the declared
+  text unfold of DESIGN section 4, and never spelling.
 
-- **Resolve (the map arm of `resolve_construct_walk`)** elaborates the brace to the introduction,
-  sets `ResolveContext.expected` to `FiniteGraphEntry<K, V>`'s `value` field type `V` for each
-  entry value (so a nested headless value such as `Map<String, Rec>` with `{ "a": { f: 1 } }`
-  elaborates recursively through the same writer), and refuses, located at the offending entry:
-  - `resolve_map_literal_key_type_mismatch`: `K` does not admit a string-literal key. Keys are
-    string literals by grammar, and under DESIGN section 4 a text crossing goes through the declared
-    unfold or refuses, so `Map<Int, Bool>` with `{ "k": true }` refuses at `"k"`. This is decided on
-    the declaration `K` resolves to, never on its leaf name.
-  - `resolve_map_literal_duplicate_key` (below).
-  - a mixed name-key/string-key brace already refuses at lowering (#12711).
-- **Infer** needs no map-specific arm. The elaborated node applies a declared function to
-  `FiniteGraphEntry` constructs, so values that do not inhabit `V` refuse through infer's ordinary
-  construct-field check. This is one more reason the head must be a declaration: typing falls out
-  of inhabitance, with no second rule.
+Every accepted introduction therefore has pairwise-distinct keys, so the fold's last-wins is
+unobservable, and eval and emit may realize the fold however the target prefers.
 
-## Consumers (PR2), a declared frontier
+## Lowering: the edge form of a string-keyed item
 
-| Consumer | Role | Change |
-|---|---|---|
-| `v2.std.map_introduction` | authority | new: head path, constructor, reader |
-| `std.algebra` | declaration | `FiniteGraphEntry`, `finitely_supported_function_from_graph` |
-| `resolve_construct_walk` map arm (#12711, owned by sleek-fox-423) | producer | replaces `map_literal_construction_not_modeled` with elaboration + three located refusals |
-| `v2.compiler.infer` | reader | no new arm; values typed through the `FiniteGraphEntry` construct |
-| `v2.compiler.eval`, `v2.std.compilers.target_model`, emit | readers | realize the introduction (graph → finite container) |
-| `v2.workflow.compile_door_cause_ownership` | ownership | one row per new refusal; `map_literal_construction_not_modeled` retired |
-| `reference_conservation_accepted_drops` `a_map_literal_value_refuses_at_the_literal_holds` | control | flips to a positive control: `std/types`'s literal elaborates to exactly the introduction |
-| #12711's `gunbc.rung_drop` (map population) | drop | retired by PR2; its trigger is this capability |
+A name-keyed item keeps its `Named { name }` field edge (#12711). A string-keyed item lowers to an
+edge labelled `MapLiteralEntry` (new, `v2.std.node`). Its target is a node with two positional
+children, `(key literal, value)`. Lowering records the key kind and never chooses map or record. A
+mixed brace refuses at lowering (#12711).
+
+## Typing: what resolve decides, and what infer still checks
+
+**Expected type, syntactic only** (binds both arms, per the #12711 approval conditions). The
+expected `Map<K, V>` is peeled syntactically from an AUTHORED annotation: the data declared type,
+the fn return, a record field's declared type, or a `List<T>` element. `Map` reaches its carrier
+through resolve's existing alias lookup and nothing more. The writer refuses located, and never
+guesses or unifies, whenever reaching a closed `Map<K, V>` would need inference, type-variable
+instantiation, or deeper alias unfolding. The expected type is cleared at every other position,
+such as a call argument or an unannotated `let`, so it cannot leak.
+
+**The resolve map arm** elaborates to the introduction. For each entry value it sets one more
+`ResolveContext.expected` position rule, map entry value gets `V`, so nested headless values
+elaborate through the same writer. It refuses located at the offending entry:
+
+- `resolve_anonymous_map_no_expected_type`: a string-keyed brace at a cleared position.
+- `resolve_anonymous_map_expected_type_not_closed`: the expected type is not syntactically a closed
+  `Map<K, V>`.
+- `resolve_anonymous_map_key_kind_mismatch`: `K` does not admit a string-literal key. This is
+  decided on the declaration `K` resolves to, never on its leaf name. `Map<Int, Bool>` with
+  `{ "k": true }` refuses at `"k"`, because a text crossing goes through the declared unfold or
+  refuses.
+- `resolve_anonymous_map_key_equality_undecidable` and `resolve_anonymous_map_duplicate_key` (above).
+
+**Infer still checks, because resolve's choice is not proof.** Infer types the elaborated node as an
+application of `map_from_entries` over `MapIntroductionEntry` constructs. Its result is checked
+against the declared type, and each value is checked against `V` by the ordinary construct-field
+check. A value that does not inhabit `V` refuses in infer after a successful elaboration.
+
+## Consumers (PR2), a declared frontier: every new declaration is consumed in PR2
+
+| New declaration | Consumer, and route at execution |
+|---|---|
+| `map_introduction_head_path` | `lower_map_introduction` and `map_introduction_entries_optional` (one spelling) |
+| `lower_map_introduction` | the Map-head arm of `resolve_construct_walk` (owned by sleek-fox-423 under #12711; this lane adds the arm) |
+| `map_introduction_entries_optional` | `v2.compiler.infer` (reader arm beside `infer_transform_freemonoid_introduction`), `v2.compiler.eval`, `v2.std.compilers.target_model` / emit |
+| `map_from_entries` | the head the introduction names: infer types the node as its application; eval evaluates it; emit realizes it via `empty_map`/`map_insert` |
+| `MapIntroductionEntry` | constructed by the resolve arm, typed by infer, read by eval and emit |
+| `map_introduction_duplicate_key`, `MapIntroductionDuplicateKey` | called by the resolve arm before elaboration; its refusal value locates `resolve_anonymous_map_duplicate_key` |
+| `v2.std.node` `MapLiteralEntry` edge label | written by body lowering, read by the resolve arm |
+| `ResolveContext.expected` rule: map entry value gets `V` | the same resolve walk, recursing into nested values |
+| the `resolve_anonymous_map_*` refusals | `v2.workflow.compile_door_cause_ownership`, one row each; `map_literal_construction_not_modeled` is retired |
+| control `a_map_literal_value_refuses_at_the_literal_holds` | flips to positive control 1 |
+| #12711's `gunbc.rung_drop` map population | retired by PR2; its trigger is this capability |
 
 ## PR2 controls
 
-1. `dag/std/types` `kernel_type_set` elaborates to a Transform headed by
-   `finitely_supported_function_from_graph` with eight `FiniteGraphEntry` children in authored
-   order, compared by `content_hash` against the hand-built introduction.
-2. A duplicate key refuses `resolve_map_literal_duplicate_key` at the second occurrence.
-3. `Map<Int, Bool>` with `{ "k": true }` refuses `resolve_map_literal_key_type_mismatch` at `"k"`.
-4. Mutation: dropping the duplicate check, so the graph reaches eval and `map_insert` last-wins,
-   turns control 2 red. The control reads the resolve outcome, not the evaluated map.
-5. Evidence: a base-vs-head native-route census (recipe on #12550) showing `dag/std/types` and
-   every other map-literal file admitted, with no unexplained new refusal.
-
-## Open for review
-
-- Home and name of the introduction. The proposal is `std.algebra`, beside the carrier. The
-  alternative is `v2.std.collection`, but that is realization-adjacent and would invert the layer.
-- Whether `FiniteGraphEntry` should be a general product (`std` has no `Pair`) rather than a
-  map-specific record. Minting a general product only for this use would be premature, so the
-  proposal is the specific record until a second consumer appears.
-
+1. `dag/std/types` `kernel_type_set` elaborates to a Transform headed by `map_from_entries` with
+   eight `MapIntroductionEntry` children in authored order. It is compared by `content_hash` against
+   the hand-built introduction.
+2. A duplicate key refuses `resolve_anonymous_map_duplicate_key` at the second occurrence, naming
+   the key.
+3. Distinct keys are accepted. This includes keys that differ only after escape normalization in
+   the non-equal direction.
+4. A key type without decidable equality refuses `resolve_anonymous_map_key_equality_undecidable`.
+5. `Map<Int, Bool>` with `{ "k": true }` refuses `resolve_anonymous_map_key_kind_mismatch` at `"k"`.
+6. Mutation: the pre-fold check removed, so the fold's last-wins absorbs the duplicate, turns
+   control 2 red. The control reads the resolve outcome, not the evaluated map.
+7. Infer still checks: `Map<String, Bool>` with `{ "k": 1 }` elaborates and then refuses in infer
+   at `1`.
+8. No leak: a string-keyed brace as a call argument refuses
+   `resolve_anonymous_map_no_expected_type`.
+9. Evidence: a base-vs-head native-route census (recipe on #12550) showing `dag/std/types` and every
+   other map-literal file admitted, with no unexplained new refusal.
