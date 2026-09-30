@@ -2,7 +2,7 @@ module gunbc.host_effect_realize
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text }
 
-import std.algebra { trim, list_snoc_item, list_append }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, trim }
 import extdeps.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }

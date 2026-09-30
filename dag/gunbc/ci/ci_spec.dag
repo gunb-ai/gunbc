@@ -172,6 +172,7 @@ import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.algebra { Cons, Empty }
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 

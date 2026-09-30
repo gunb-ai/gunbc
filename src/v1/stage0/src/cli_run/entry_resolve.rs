@@ -573,12 +573,12 @@ pub(crate) fn load_sources_for_entry_with_pool(
 }
 
 pub(crate) fn load_sources_for_entry_with_index(
-    index: &ModuleSourceIndex,
-    facts: &ModuleGraphFactsLive,
+    index: &MultiEntryIndex,
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let sources = load_import_closure_for_entry(index, facts, entry_path)?;
-    let mut sources = extend_with_reference_closure(sources, index, facts)?;
+    let sources =
+        load_import_closure_for_entry(&index.source_files, &index.module_graph_facts, entry_path)?;
+    let mut sources = extend_with_reference_closure(sources, index)?;
     sources.sort_by(|a, b| a.path.cmp(&b.path));
     sources.dedup_by(|a, b| a.path == b.path);
     Ok(sources)
@@ -673,6 +673,12 @@ thread_local! {
     pub(crate) static PROCESS_RESOLVE_INDEX: RefCell<[Option<(String, Rc<MultiEntryIndex>)>; 2]> =
         const { RefCell::new([None, None]) };
 
+    /// Every roots key each slot has built on this thread. A run's roots are fixed (above), so a
+    /// key built a second time is an evicted index being rebuilt: the same pool indexed twice.
+    #[allow(clippy::type_complexity)]
+    pub(crate) static PROCESS_RESOLVE_INDEX_BUILT: RefCell<[BTreeSet<String>; 2]> =
+        const { RefCell::new([BTreeSet::new(), BTreeSet::new()]) };
+
     // While loading the materialization-provider authority, cross-process disk hits
     // must not re-enter provider routing (review 44268: bootstrap recursion).
     pub(crate) static CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED: Cell<usize> = const { Cell::new(0) };
@@ -710,6 +716,7 @@ pub(crate) fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<Strin
 /// that joins absolute-path reads to this relative-path index can still fork source
 /// identity. The divergence census walls that site with parent-owned `Rc` identity;
 /// the class-wide next rung is canonical `SourceFile` identity at construction.
+#[track_caller]
 pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     try_process_shared_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
 }
@@ -893,6 +900,7 @@ pub(crate) fn memoized_process_shared_index(
 /// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
 /// discovery must not install a partial index that every later caller in the process would
 /// then read as complete.
+#[track_caller]
 pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntryIndex>, String> {
     try_process_shared_index_for_pool(source_roots, false)
 }
@@ -921,6 +929,7 @@ pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntry
 ///
 /// PRECEDENCE IS PART OF THE SLOT IDENTITY, never a parameter applied to a shared slot: see the
 /// two-slot note on `PROCESS_RESOLVE_INDEX`.
+#[track_caller]
 pub fn try_process_shared_index_for_pool(
     source_roots: &[String],
     primary_precedence: bool,
@@ -939,6 +948,26 @@ pub fn try_process_shared_index_for_pool(
     });
     if let Some(idx) = existing {
         return Ok(idx);
+    }
+    // A REBUILD IS REFUSED WHERE IT HAPPENS, not counted at the end of a run it can prevent from
+    // ending: an evicted pool rebuilt re-parses every file and, while the evicted index is still
+    // held, doubles resident memory -- the shape that grew a floor past 40 GiB inside
+    // prepare-closure-resolve before any later control could look.
+    if PROCESS_RESOLVE_INDEX_BUILT.with(|b| b.borrow()[slot].contains(&roots_key)) {
+        let site = std::panic::Location::caller();
+        let resident = PROCESS_RESOLVE_INDEX.with(|s| {
+            s.borrow()[slot]
+                .as_ref()
+                .map(|(k, _)| k.split('\u{1f}').map(str::to_string).collect::<Vec<_>>())
+        });
+        return Err(format!(
+            "SharedIndexRebuiltAfterEviction: roots {roots:?} (slot {slot}) were already indexed \
+             on this thread and evicted by roots {resident:?}; rebuilding them would parse the same \
+             pool twice. Demanded at {}:{} -- carry an index from its owner instead of alternating \
+             roots through the shared slot",
+            site.file(),
+            site.line()
+        ));
     }
     #[cfg(test)]
     yield_live_pool_before_building_another();
@@ -960,7 +989,28 @@ pub fn try_process_shared_index_for_pool(
         build_started.elapsed(),
     );
     PROCESS_RESOLVE_INDEX.with(|s| {
-        s.borrow_mut()[slot] = Some((roots_key, idx.clone()));
+        let mut slots = s.borrow_mut();
+        // AN EVICTION IS A REBUILD OWED LATER. The slot holds one index per precedence, so a
+        // caller with other roots displaces the resident one, and the next caller with the
+        // resident's roots builds it again -- every file re-parsed, typed caches lost. Reported
+        // with the demanding site so the second demand can be carried to its owner.
+        if let Some((evicted, old)) = slots[slot].as_ref() {
+            let site = std::panic::Location::caller();
+            eprintln!(
+                "[shared-index] evict slot={slot} evicted_generation={} evicted_roots={:?} \
+                 new_generation={} new_roots={:?} site={}:{}",
+                old.generation,
+                evicted.split('\u{1f}').collect::<Vec<_>>(),
+                idx.generation,
+                roots,
+                site.file(),
+                site.line()
+            );
+        }
+        slots[slot] = Some((roots_key.clone(), idx.clone()));
+    });
+    PROCESS_RESOLVE_INDEX_BUILT.with(|b| {
+        b.borrow_mut()[slot].insert(roots_key);
     });
     Ok(idx)
 }
@@ -1053,11 +1103,13 @@ pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String>
     index.resolved_graph_memo.borrow().keys().cloned().collect()
 }
 
+#[track_caller]
 pub(crate) fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
     cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
 ) -> MultiEntryIndex {
+    record_multi_entry_index_site(std::panic::Location::caller(), &source_files);
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
@@ -1089,6 +1141,8 @@ pub(crate) fn new_multi_entry_index_shell(
         closure_name_censuses: RefCell::new(HashMap::new()),
         bare_reference_admission: RefCell::new(HashMap::new()),
         pool_module_names: std::cell::OnceCell::new(),
+        pool_path_lookup: std::cell::OnceCell::new(),
+        reference_reading_parses: std::cell::Cell::new(0),
         parsed_references: RefCell::new(HashMap::new()),
         live_read_manifest: RefCell::new(None),
     }
@@ -3105,6 +3159,7 @@ pub(crate) fn parsed_file_references(
         decl_index: None,
         module_names: Some(module_names),
         module_path_heads: std::collections::HashSet::new(),
+        dotted_head_nodes: std::collections::HashSet::new(),
         tally: &mut scratch_tally,
         unclassified: &mut scratch_unclassified,
         module: self_module.to_string(),
@@ -3624,5 +3679,42 @@ mod tree_census_from_raw_differential {
             compared += 1;
         }
         assert!(compared >= 2, "both live roots compared ({compared})");
+    }
+}
+
+/// ONE HEADS PARSE PER (SPELLING, BYTES), asserted: over the live `[dag, src/v2]` pool, building
+/// the module path index (`parse_module_binding`) and the pool census (`pool_parse`) -- the two
+/// consumers of `pool_acquire::heads_reading_for` -- parses each acquisition key's heads exactly
+/// once, and every pool file was read.
+#[cfg(test)]
+mod heads_parse_count {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn each_pool_file_is_heads_parsed_once_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let _ = build_module_path_index(&pool_roots_for_module_graph_closure(&roots));
+        let index = process_shared_index(&roots);
+        let _ = super::super::pool_parse(&index).expect("pool parse");
+        let (keys, max, over): (usize, usize, Vec<String>) = super::pool_acquire::HEADS_PARSES
+            .with(|p| {
+                let p = p.borrow();
+                (
+                    p.len(),
+                    p.values().copied().max().unwrap_or(0),
+                    p.iter()
+                        .filter(|(_, n)| **n > 1)
+                        .map(|((f, _, _), n)| format!("{f} x{n}"))
+                        .take(20)
+                        .collect(),
+                )
+            });
+        eprintln!("HEADS keys={keys} max_parses_per_key={max}");
+        assert!(keys > 5000, "the live pool was read ({keys} keys)");
+        assert!(over.is_empty(), "heads parsed more than once: {over:?}");
     }
 }

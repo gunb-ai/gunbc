@@ -19,6 +19,7 @@ import gunbc.host_hygiene_liveness {
   reconcile_fleet_listening,
   gunbc_host_hygiene_liveness_bound,
 }
+import std.algebra { trim }
 
 data gunbc_host_hygiene_liveness_observe_scope_disposition: Disposition = Terminal {
   reason: "The OBSERVE half of the liveness vertical (brief: split observe from mutate). Runs LocalShell only: unit enumeration reuses gunbc.systemctl_list_units's all-states seam (the same one-op, different-binding move the reaper observe module uses — a listener slot is worth checking whether active, inactive, or failed, since a failed slot is exactly the outage this exists to catch), and the journal read goes through the new extdeps.systemd.Journalctl.UnitLog typed op rather than a piped `journalctl | grep | tail` shell body. Marker-matching (last 'Listening for Jobs' line) and freshness (age against extdeps.clock's typed Clock.UnixMillis read) are pure .dag folds over one typed stdout read, replacing what the deleted host_hygiene_liveness_script.dag did as one hand-written pipeline in a single shell body."
