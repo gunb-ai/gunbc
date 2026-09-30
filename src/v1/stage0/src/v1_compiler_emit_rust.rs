@@ -1037,6 +1037,21 @@ pub fn rust_opaque_kernel_alias_carrier(name: String) -> Option<String> {
     }
 }
 
+pub fn rust_opaque_declaration_has_exact_row(module_path: String, name: String) -> bool {
+    match (*crate::v1_compiler_coercion::rust_lookup_exact_binding(Some(
+        crate::std_decl_ref::decl_ref(module_path.clone(), name.clone()),
+    )))
+    .clone()
+    {
+        ExactBindingResolution::ExactBindingAbsent => false,
+        ExactBindingResolution::ExactSourceIdentityUnavailable { cause: _, .. } => false,
+        ExactBindingResolution::ResolvedExactBinding { binding: _, .. } => true,
+        ExactBindingResolution::ExactBindingAmbiguous {
+            candidate_count: _, ..
+        } => true,
+    }
+}
+
 pub fn rust_opaque_kernel_alias_type_decl(name: String, module_path: String) -> String {
     {
         let carrier = match rust_exact_binding_spelling(
@@ -13080,7 +13095,11 @@ pub fn type_item_has_rust_nominal_shell_authority(
                 source_indices.clone(),
             ) {
                 if (((item.params.clone().len() as i64) == 0)
-                    && rust_opaque_kernel_alias_type_eligible(item_text.clone()))
+                    && (rust_opaque_kernel_alias_type_eligible(item_text.clone())
+                        || rust_opaque_declaration_has_exact_row(
+                            module_name.clone(),
+                            item_text.clone(),
+                        )))
                 {
                     true
                 } else {
@@ -15575,7 +15594,11 @@ pub fn emit_typed_item(
                         env.source_indices.clone(),
                     ) {
                         if (((item.params.clone().len() as i64) == 0)
-                            && rust_opaque_kernel_alias_type_eligible(item_text.clone()))
+                            && (rust_opaque_kernel_alias_type_eligible(item_text.clone())
+                                || rust_opaque_declaration_has_exact_row(
+                                    module_name.clone(),
+                                    item_text.clone(),
+                                )))
                         {
                             rust_opaque_kernel_alias_type_decl(
                                 item_text.clone(),
@@ -15666,7 +15689,11 @@ pub fn emit_typed_item(
                             env.source_indices.clone(),
                         ) {
                             if (((item.params.clone().len() as i64) == 0)
-                                && rust_opaque_kernel_alias_type_eligible(item_text.clone()))
+                                && (rust_opaque_kernel_alias_type_eligible(item_text.clone())
+                                    || rust_opaque_declaration_has_exact_row(
+                                        module_name.clone(),
+                                        item_text.clone(),
+                                    )))
                             {
                                 rust_opaque_kernel_alias_type_decl(
                                     item_text.clone(),
