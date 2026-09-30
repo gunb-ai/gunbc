@@ -24,16 +24,15 @@ The slice, read from the grammar forward:
   `unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering`). This refusal is
   CORRECT at this link. Lowering runs before resolve and before infer, so it cannot know the
   constructor. The earliest unjustified boundary is therefore not lowering. It is the construct
-  carrier, which has no tag-absent case, together with typing, which has no site that checks a body
-  against its declared type.
-- **Typing has no check site.** `v2.std.inhabitance` `DeclaredTypePosition` declares
-  `PositionDeclaredReturn`, but nothing constructs it. `v2.compiler.infer` builds only
-  `position_direct_call_argument` obligations. v2 infer synthesises bottom-up and never pushes a
-  declared type into a body. So "typing, which checks against the declared type" does not exist
-  in v2 yet. Form B is the first consumer that needs it. The obligation vocabulary already has a
-  home for it (`DeclaredTypeObligation`, `declared_type_inhabitance`). The v1 seed carries the
-  missing positions by name (`src/v1/04_infer.dag` `PositionDataInitializer`,
-  `PositionVariantPayload`).
+  carrier, which has no tag-absent case, together with the absence of any stage that carries a
+  declared type DOWN into the expression it types.
+- **No stage pushes a declared type down.** v2 infer is a bottom-up fold. Its declared-type
+  judgments run AFTER a body is synthesised: `infer_arrow_body_inhabits_declared_return` compares a
+  derived body type with a declared return (cause `arrow_body_does_not_inhabit_declared_return`),
+  and only for a return the language join denotes (`dag_binding_denotation`). Call arguments are
+  judged the same way (`position_direct_call_argument`). A tag-elided construct cannot be
+  synthesised at all, because its tag is what types it. So its tag must be supplied BEFORE infer's
+  fold reaches it, by a stage that walks top-down with the declared type as context.
 - **The seed is not an oracle for the choice.** v1 chooses the struct in its Rust emitter by
   matching field names: `v1.compiler.emit_rust` `anonymous_record_struct_candidates`, and it
   refuses `AmbiguousAnonymousRecordLiteral` ("shape matches N structs -- add a nominal type").
@@ -60,58 +59,75 @@ The tag-absent construct is `Conj { <construct_tag_marker>: <construct_tag_elide
   is `Named { name }`, as today. A string key has no field-edge form yet (see Scope). Lowering does
   not decide "record" versus "map". It records what was written.
 
-**Where elaboration happens: at a declared-type check site in infer, before synthesis.** This is
-the one place where both facts meet: the expected type, which only a declared position carries,
-and resolved declarations, which infer's facts carry. The check site is a `DeclaredTypeObligation`
-at a named position. A position is where a declared type meets a produced expression:
+**Where elaboration happens: in resolve, at the construct-tag writer, with an expected-type
+context threaded down from declared types.** (Revised after the first review. The first draft
+placed it in infer "before synthesis". Infer is a bottom-up fold, so that would have been a second,
+top-down pass beside it.)
 
-- `PositionDataInitializer`: `data x: T = e`. New arm, v1 vocabulary.
-- `PositionDeclaredReturn`: `fn f(..) -> T { e }`. The arm exists. This change gives it a
-  constructor.
-- `PositionRecordField`: the expected type of a field init is the declared type of that field on
-  the (authored or elaborated) constructor. This is how nesting works. `host_transport`'s
-  `RuntimePrimitive { value: { .. } }` elaborates the inner literal from `RuntimePrimitive.value`'s
-  declared type, and `compile_stage_memo`'s `key_derivation: { .. }` elaborates from the outer
-  record's field. New arm.
-- `PositionListElement`: the expected type of a list literal's element is the element type of the
-  list's own expected type (`List<T>` gives `T`). `dag/std/algebra` needs this: its 88
-  `AlgebraFieldTemplate` rows are headless literals inside list literals. New arm, v1 vocabulary.
-  A list literal with no expected type passes none down, so its headless elements refuse
-  `infer_anonymous_record_no_expected_type`.
+Choosing the tag reads exactly two facts, and both are NAME facts that resolve already has:
 
-At each such site, before the body is synthesised, a tag-elided construct at the root of `e` is
-elaborated. Elaboration recurses through field inits under `PositionRecordField`. It is:
+- The expected type's HEAD resolves to a declaration. Resolve resolves every type expression.
+- Whether that declaration is a single record, and, for nesting, its fields' declared types. Resolve's
+  `ResolveContext.namespace.symbol_index` returns the declaration node through `symbol_index_lookup`,
+  and `v2.std.type_binder` `type_decl_view` reads its shape.
 
-1. Resolve the expected type's HEAD to a declaration. Type arguments (`BoundedLattice<DescentEvidence>`)
-   do not choose the constructor; they flow into the field expected types by the existing
-   instantiation (`TypeVariableInstance`). A transparent alias is chased through the existing
-   alias-identity authority, not re-implemented.
-2. The declaration must have exactly ONE record-shaped constructor: a `type R { .. }` record. The
-   single-variant coproduct form is admitted only if the existing record/coproduct classification
-   already names it one constructor.
-3. Replace `construct_tag_elided_marker` with `declaration_reference_node(path)` of THAT
-   declaration, through `resolved_reference_node`. This is the same carrier resolve writes for an
-   authored head.
-4. Synthesis then proceeds on an ordinary resolved construct. Field names are checked against the
-   chosen constructor by the existing construct typing (#12701's infer migration). A surplus or
-   missing field refuses there, at the field.
+Resolve is also, after #12714, the ONE writer of construct tags: `resolve_construct_walk` rewrites
+the authored tag spine into `declaration_reference_node(path)`. Writing the elided tag anywhere else
+would give one fact, "the declaration this construct constructs", two writers (§3). So the elided
+case is a second arm of that same writer, with the reference derived from the expected type rather
+than from an authored spine. Infer then sees only ordinary resolved constructs, and checks them
+with its existing construct typing and declared-return judgment.
 
-The choice reads the expected type only. The field set is never an input to step 1 or step 2. Its
-only role is step 4, which CHECKS a choice already made.
+Resolve gains an expected-type context: `ResolveContext.expected`, an `Optional` resolved type
+expression. It is set at four positions and cleared everywhere else, so a construct reached through
+any other edge sees Absent:
+
+- **data initializer**: `data x: T = e` lowers to `Arrow(<empty domain>, T, T, body: e)`, so the
+  body edge of an Arrow is walked with `expected = ` its declared return;
+- **declared return**: the same Arrow rule covers `fn f(..) -> T { e }`, reaching `e`'s tail
+  expression through blocks and `let .. in` bodies (the value position, not the statements);
+- **record field**: under a construct resolved to record `R` (authored OR elaborated), field `f`'s
+  init is walked with `expected = ` the declared type of `R.f`, with `R`'s type parameters
+  substituted by the expected type's arguments. This is how nesting works: `compile_stage_memo`'s
+  `key_derivation: { .. }`, and `host_transport`'s `RuntimePrimitive { value: { .. } }`;
+- **list element**: under a list literal whose expected head is `List` (through its alias
+  authority), each element is walked with `expected = ` the element type argument.
+  `dag/std/algebra`'s 88 `AlgebraFieldTemplate` rows need this.
+
+At a tag-elided construct, the elided arm of the writer:
+
+1. Takes `expected`. If it is Absent, refuse `resolve_anonymous_record_no_expected_type`.
+2. Takes its HEAD's resolved declaration, chasing a transparent alias through the existing alias
+   authority. Type arguments (`BoundedLattice<DescentEvidence>`) never choose the constructor; they
+   are substituted into field expected types (step 5). If the head does not resolve, the head's own
+   resolve refusal stands. No second cause is minted for it.
+3. Requires the declaration to be a single record (`type_decl_view` `PlainTypeDecl` whose member is a
+   product), or `Map` (the MAP arm, which this lane refuses located; see Scope). Anything else,
+   whether a multi-variant coproduct, a primitive, or `List`, refuses
+   `resolve_anonymous_record_expected_type_not_record`.
+4. Writes `declaration_reference_node(path)` of that declaration through `resolved_reference_node`,
+   the same carrier the authored arm writes.
+5. Walks the fields under the record-field rule above.
+
+The choice reads `expected` only. The field set is never an input to steps 1-3. Field names are
+CHECKED after the choice, by infer's existing construct typing: a surplus or missing field refuses
+there, at the field.
 
 **Refusal causes** (typed, located at the literal's `{`, each with an ownership row in
 `v2.workflow.compile_door_cause_ownership`, per
 `refusal_producer_lands_without_its_ownership_row`):
 
-- `infer_anonymous_record_no_expected_type`: a tag-elided construct reached synthesis without
-  passing through a check site. Examples: a call argument whose formal is a type variable not yet
-  instantiated, a `let` without an annotation, a match-arm body. These are not guessed.
-- `infer_anonymous_record_expected_type_not_record`: the expected head resolves to a coproduct with
-  more than one constructor, a primitive, or `Map`/`List` while the literal has name keys.
-- `infer_anonymous_record_expected_type_unresolved`: the expected head does not resolve. This is
-  distinct from the above so that a missing import is not reported as a shape error.
+- `resolve_anonymous_record_no_expected_type`: the construct sits in a position with no declared
+  type. Examples: a `let` without an annotation, a call argument, a match-arm body, a list literal
+  that itself has no expected type. These are not guessed. Call arguments stay here on purpose:
+  their formal's declared type is a fact about the CALLEE, whose resolution this position does not
+  own. Widening to them is a named follow-up, not an implicit one.
+- `resolve_anonymous_record_expected_type_not_record`: the expected head resolves to something other
+  than a single record or `Map`.
+- `map_literal_construction_not_modeled`: the expected head is `Map`. This is the MAP arm, and it
+  plugs into the same writer.
 
-A tag-elided construct that survives infer is unwritable downstream. The emit, eval and target_model
+A tag-elided construct that survives resolve is unwritable downstream. The emit, eval and target_model
 readers gate on a reference target, and the elision marker is not one. So a missed elaboration
 refuses at their existing gates, and cannot emit an anonymous struct.
 
@@ -125,14 +141,15 @@ the elided case adds.
 | v2.std.node | `construct_tag_elided_marker` | vocabulary | New structural core marker beside `construct_tag_marker`. |
 | v2.std.node_query | `construct_node` | producer | Takes the tag target as the reference OR the elision marker (one parameter; a typed `ConstructTag = Authored { reference } \| Elided` at the call boundary so a caller cannot pass an arbitrary node). |
 | v2.std.node_query | `construct_tag_optional` | reader | Answers the reference only. For an elided tag it answers Absent. `construct_tag_is_elided` is the one reader of the elided case. |
-| v2.std.node | `arrow_body_record_construct_conforms`, `classify_arrow_body_form` | well_formed gate | Admits the elided marker ONLY pre-infer. The post-infer well_formed gate refuses it. |
+| v2.std.node | `arrow_body_record_construct_conforms`, `classify_arrow_body_form` | well_formed gate | Admits the elided marker ONLY before resolve. After resolve the well_formed gate refuses it. |
 | v2.compiler.body_lowering_fold | `body_lower_try_record_literal` | producer | A headless `{ field_init_list }` whose every key is a name lowers to `construct_node(Elided, ..)`. The field inits go through the existing `body_lower_field_init_edge`. |
-| v2.compiler.resolve | `resolve_node_walk`, `resolve_pattern_node_walk` Conj arm | rewriter | The elided tag edge is passed through untouched (there is nothing to resolve). Field values walk as today. |
-| v2.std.inhabitance | `DeclaredTypePosition` | vocabulary | Add `PositionDataInitializer`, `PositionRecordField` and `PositionListElement`. `PositionDeclaredReturn` gains its constructor. |
-| v2.compiler.infer | new `infer_elaborate_expected_construct` | elaborator | Steps 1-4 above, called from the data-initializer, declared-return, record-field and list-element check sites. It is the only writer that replaces the elision marker. |
-| v2.compiler.infer | Conj gather arms | reader | A tag-elided construct reached here refuses `infer_anonymous_record_no_expected_type` (it is never typed as a bare product). |
-| v2.workflow.compile_door_cause_ownership | three rows, plus `map_literal_construction_not_modeled` | ownership | One row per refusal cause. |
-| v2.test.claim.namespace_xl0.reference_conservation_accepted_drops | `a_map_literal_value_refuses_at_the_literal_holds` | control | Today it asserts `unsupported_form` for `Map<String, Bool> = { "k": .. }`. It moves to `map_literal_construction_not_modeled` at the check site. It must read the INFER outcome, because the literal now clears lowering and the `.normalized` read would go green-then-false. It stays enrolled as the map arm's refusal control. |
+| v2.compiler.resolve | `ResolveContext` | context | Gains `expected: Optional<Node>`. It is set by the four position rules above and cleared by every other child walk (`resolve_ctx_with_scope` and siblings clear it by default, so a new edge kind cannot inherit it silently). |
+| v2.compiler.resolve | `resolve_construct_walk` | writer | Gains the elided arm (steps 1-5). The authored arm also sets field expectations, so a headless literal nested under an authored head elaborates. |
+| v2.compiler.resolve | `resolve_arrow_node_in`, the list-literal walk | position rules | Set `expected` for the body edge and for list elements. |
+| v2.compiler.resolve | `resolve_pattern_node_walk` | reader | A tag-elided PATTERN does not arise (the pattern grammar requires a head). No change. |
+| v2.compiler.infer | Conj gather arms | reader | No change. A tag-elided construct cannot reach infer, because resolve either writes its tag or refuses. |
+| v2.workflow.compile_door_cause_ownership | three rows | ownership | One row per refusal cause. |
+| v2.test.claim.namespace_xl0.reference_conservation_accepted_drops | `a_map_literal_value_refuses_at_the_literal_holds` | control | Today it asserts `unsupported_form` for `Map<String, Bool> = { "k": .. }`. It moves to `map_literal_construction_not_modeled` at the elided-tag writer in resolve. It must read the RESOLVE outcome, because the literal now clears lowering, so the `.normalized` read would turn green and the claim false. It stays enrolled as the map arm's refusal control. |
 | v2.compiler.eval, v2.std.compilers.target_model, emit | construct gates | reader | No change. They already refuse a non-reference tag after #12701. PR2 adds a control proving an elided construct cannot reach them. |
 
 ## Scope: which of the seven Form B admits
@@ -149,13 +166,13 @@ file can have later blockers beyond its first.
 | dag/std/termination | 45, `data .. : BoundedLattice<DescentEvidence> = {` | data initializer, generic, newline-separated fields | yes, via generic instantiation. The newline separator is to be confirmed in PR2. |
 | dag/extdeps/realization/compile_stage_memo | 39, `key_derivation: {` | record field under a headless data initializer (lowering refuses the inner brace first) | yes: data initializer plus record field |
 | dag/extdeps/realization/parse_table_memo | 50, `key_derivation: {` | same | yes |
-| dag/std/types | 5, `data kernel_type_set: Map<String, Bool> = {` | MAP literal | **no: MAP arm.** Reaches the check site and refuses located `map_literal_construction_not_modeled`, as a declared population (below). |
-| src/v2/std/host_transport | about 119, `reason: ^emit_host_runtime_row_..` | **caret symbol literal** (`body_lowering_reason_caret_symbol_not_lowered`), not Form B | **not by Form B alone.** Its first blocker is the caret form. Its Form B site (`RuntimePrimitive { value: { .. } }`, record field) is admitted by this lane, but the file stays refused until caret symbols lower. |
+| dag/std/types | 5, `data kernel_type_set: Map<String, Bool> = {` | MAP literal | **no: MAP arm.** Reaches the elided-tag writer in resolve and refuses located `map_literal_construction_not_modeled`, as a declared population (below). |
+| src/v2/std/host_transport | about 119, `reason: ^emit_host_runtime_row_..` | **caret symbol literal** (`body_lowering_reason_caret_symbol_not_lowered`), not Form B | **not by Form B alone.** Its first blocker is the caret form. Its Form B site (`RuntimePrimitive { value: { .. } }`, record field) is admitted by this lane, but the file stays refused until caret symbols lower. That is #12420 (vivid-ant-536), so PR2 lists it as depending on #12420. |
 
-**The map arm (ruling, gentle-koi-724).** This lane builds the ONE declared-type check site and its
+**The map arm (ruling, gentle-koi-724).** This lane builds the ONE elided-tag writer (in resolve) and its
 RECORD arm. At that same site, a headless brace whose expected head is `Map` takes the MAP arm, which
 refuses located `map_literal_construction_not_modeled`, with its ownership row. It is not left as
-`unsupported_form`, and there is no second check site later: map construction plugs into this arm.
+`unsupported_form`, and there is no second site later: map construction plugs into this arm.
 
 For lowering to reach the site, a string-keyed item needs a field-edge form. It lowers to the same
 tag-elided construct, with each item carried as a `map_literal_entry_marker` edge to a
@@ -183,8 +200,8 @@ files a `gunbc.recurring_failure_mode` receipt for it.
    children, so it should fall outside the hash. PR2 confirms this by execution. If it does not, the
    control compares the occurrence-erased projection, and says so.
 2. A tag-elided literal with no expected type (a `let` without an annotation) refuses
-   `infer_anonymous_record_no_expected_type`, located at its `{`.
-3. The expected type is a two-constructor coproduct: refuses `..._expected_type_not_record`.
+   `resolve_anonymous_record_no_expected_type`, located at its `{`.
+3. The expected type is a two-constructor coproduct: refuses `resolve_anonymous_record_expected_type_not_record`.
 4. Fields that do not match the chosen record refuse at the field, through the existing construct
    typing, and not as "no constructor".
 5. **Mutation: choose by field names.** Two records share the literal's field set. The expected
