@@ -794,6 +794,13 @@ fn produced_decl_subject_from_decl(decl: Node) -> Outcome<ProducedDeclSignatureS
                 fn_name: fn_name,
                 arrow: decl_edge.target
               )
+            StructuralLabel { label: _ } =>
+              outcome_rejected(
+                d: produced_decl_render_diagnostic(
+                  reason: ^produced_decl_render_decl_unnamed,
+                  node: decl
+                )
+              )
             Positional =>
               outcome_rejected(
                 d: produced_decl_render_diagnostic(

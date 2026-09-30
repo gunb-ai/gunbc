@@ -51,6 +51,12 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
         Present { value: edge } =>
           match edge.label {
             Authored { name: _ } => Accepted { value: edge.target, diagnostics: None }
+            StructuralLabel { label: _ } =>
+              Rejected {
+                diagnostics: diagnostics_singleton(
+                  d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_unnamed, node: decl)
+                )
+              }
             Positional =>
               Rejected {
                 diagnostics: diagnostics_singleton(

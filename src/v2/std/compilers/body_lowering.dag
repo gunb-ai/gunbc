@@ -348,6 +348,7 @@ fn application_positional_targets(site: Node) -> Outcome<List<Node>> {
       Present { value: first } =>
         match first.label {
           Authored { name: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
+          StructuralLabel { label: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
           Positional =>
             outcome_accepted(value: fold(site.children, init: Empty, f: fn(acc, e) {
               if edge_is_cast_target(e: e) { acc } else { list_snoc_item(xs: acc, item: e.target) }

@@ -6482,6 +6482,7 @@ fn namespace_graft_spine_shaped_edge_optional(node: Node) -> Optional<Edge> {
                 } else {
                   optional_absent()
                 }
+              StructuralLabel { label: _ } => optional_absent()
               Positional => optional_absent()
             }
         }

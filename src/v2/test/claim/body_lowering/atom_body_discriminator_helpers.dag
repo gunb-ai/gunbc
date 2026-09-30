@@ -142,6 +142,7 @@ fn atom_body_discriminator_walk_spine_to_body(captured: Node) -> Node {
           Present { value: edge } =>
             match edge.label {
               Authored { name: _ } => atom_body_discriminator_walk_spine_to_body(captured: edge.target)
+              StructuralLabel { label: _ } => captured
               Positional => captured
             }
           Absent => captured
