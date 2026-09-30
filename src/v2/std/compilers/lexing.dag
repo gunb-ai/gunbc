@@ -9,7 +9,8 @@ import v2.std.collection {
   Map,
   empty_map,
   list_at_optional,
-  map_insert
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -155,32 +156,46 @@ type Token {
 // sometimes needs to know (a `-` that begins a new line after a complete operand is ambiguous
 // between infix and prefix, and the seed refuses it: v1.compiler.parse
 // is_ambiguous_prefix_infix_newline_boundary). The source text stays the ONE authority for that
-// fact: nothing about layout is stored on a Token or as a token of its own, and
-// `token_stream_line_break_between` reads the gap at the point a question is asked. A stream built
-// from tokens alone (fixtures) carries `Absent`, and a layout question on it answers
-// `LineBreakUnknownWithoutSource` -- never an assumed single line.
+// fact: nothing about layout is stored on a Token or as a token of its own. `StreamLayout` pairs the
+// source with the answer to "is there a line break in the gap before this token?" for every token,
+// DERIVED from that source and those tokens in one walk by its only constructor
+// (`stream_layout_of`), so the two cannot disagree and a layout question is a lookup rather than a
+// rescan of the file. A stream built from tokens alone (fixtures) carries no layout, and a layout
+// question on it answers `LineBreakUnknownWithoutSource` -- never an assumed single line.
+type StreamLayout {
+  source: String
+  line_break_before: Map<Int, Bool>
+}
+
 type TokenStream {
   all: List<Token>
   pos: Int
-  source: Optional<String>
+  layout: Optional<StreamLayout>
 }
 
 fn token_stream_new(all: List<Token>) -> TokenStream {
-  TokenStream { all: all, pos: 0, source: optional_absent() }
+  TokenStream { all: all, pos: 0, layout: optional_absent() }
 }
 
 // The tokenizer's constructor: the tokens together with the exact scalar sequence they were lexed
 // from, whose UTF-8 octet offsets their `start`/`end` name.
 fn token_stream_lexed(all: List<Token>, source: String) -> TokenStream {
-  TokenStream { all: all, pos: 0, source: optional_present(value: source) }
+  TokenStream { all: all, pos: 0, layout: optional_present(value: stream_layout_of(tokens: all, source: source)) }
 }
 
 fn token_stream_empty() -> TokenStream {
-  TokenStream { all: Empty, pos: 0, source: optional_absent() }
+  TokenStream { all: Empty, pos: 0, layout: optional_absent() }
+}
+
+fn token_stream_layout(stream: TokenStream) -> Optional<StreamLayout> {
+  stream.layout
 }
 
 fn token_stream_source(stream: TokenStream) -> Optional<String> {
-  stream.source
+  match stream.layout {
+    Absent => optional_absent()
+    Present { value: layout } => optional_present(value: layout.source)
+  }
 }
 
 type LineBreakAnswer
@@ -188,39 +203,74 @@ type LineBreakAnswer
   | NoLineBreakInGap
   | LineBreakUnknownWithoutSource
 
-type LineBreakScan {
+// ONE WALK: the source's scalars in order, with the tokens still ahead and the end of the last token
+// passed. A line feed (U+000A) counts only in a GAP -- at or after the previous token's end -- so a
+// line feed inside a token (a multi-line string) is not layout. When the walk reaches a token's
+// first octet, whether a line feed was seen since the previous token is that token's answer.
+// Offsets are UTF-8 octets, as token extents are, so each scalar advances by its encoded width.
+type StreamLayoutWalk {
   octet: Int
-  found: Bool
+  ahead: List<Token>
+  last_end: Int
+  seen: Bool
+  answers: Map<Int, Bool>
 }
 
-// Whether the source holds a line feed (U+000A) at an octet offset in [from, to). Offsets are UTF-8
-// octets, as token extents are, so each scalar advances the position by its own encoded width.
-fn source_has_line_break_between(source: String, from: Int, to: Int) -> Bool {
-  fold_list(
+fn stream_layout_of(tokens: List<Token>, source: String) -> StreamLayout {
+  let walked = fold_list(
     xs: source,
-    empty: LineBreakScan { octet: 0, found: false },
-    cons: fn(acc, c) { line_break_scan_step(acc: acc, c: c, from: from, to: to) }
-  ).found
+    empty: StreamLayoutWalk { octet: 0, ahead: tokens, last_end: 0, seen: false, answers: empty_map() },
+    cons: fn(acc, c) { stream_layout_step(acc: acc, c: c) }
+  )
+  StreamLayout { source: source, line_break_before: walked.answers }
 }
 
-fn line_break_scan_step(acc: LineBreakScan, c: Char, from: Int, to: Int) -> LineBreakScan {
+fn stream_layout_step(acc: StreamLayoutWalk, c: Char) -> StreamLayoutWalk {
+  let at_token = stream_layout_record_token(acc: acc)
   let code = unicode_char_code_point(c: c)
-  LineBreakScan {
-    octet: acc.octet + unicode_scalar_utf8_octet_count(code_point: code),
-    found: acc.found || ((code == 10) && (acc.octet >= from) && (acc.octet < to))
+  StreamLayoutWalk {
+    octet: at_token.octet + unicode_scalar_utf8_octet_count(code_point: code),
+    ahead: at_token.ahead,
+    last_end: at_token.last_end,
+    seen: at_token.seen || ((code == 10) && (at_token.octet >= at_token.last_end)),
+    answers: at_token.answers
   }
 }
 
-// THE NAMED DERIVATION. Is there a line break in the source between octet `from` (the end of the
-// token before) and octet `to` (the start of the token asked about)?
-fn token_stream_line_break_between(source: Optional<String>, from: Int, to: Int) -> LineBreakAnswer {
-  match source {
-    Absent => LineBreakUnknownWithoutSource
-    Present { value: text } =>
-      if source_has_line_break_between(source: text, from: from, to: to) {
-        LineBreakInGap
+// At a token's first octet: record the gap's answer for it, then start a new gap at its end.
+fn stream_layout_record_token(acc: StreamLayoutWalk) -> StreamLayoutWalk {
+  match list_at_optional(xs: acc.ahead, index: 0) {
+    Absent => acc
+    Present { value: tok } =>
+      if tok.start == acc.octet {
+        StreamLayoutWalk {
+          octet: acc.octet,
+          ahead: skip(xs: acc.ahead, n: 1),
+          last_end: tok.end,
+          seen: false,
+          answers: map_insert(m: acc.answers, key: tok.start, value: acc.seen)
+        }
       } else {
-        NoLineBreakInGap
+        acc
+      }
+  }
+}
+
+// THE NAMED DERIVATION, READ AT THE POINT OF USE: is there a line break in the source between the
+// token before the one starting at octet `token_start` and that token? A stream without layout
+// cannot answer; neither can a start no token of the stream has.
+fn token_stream_line_break_before(layout: Optional<StreamLayout>, token_start: Int) -> LineBreakAnswer {
+  match layout {
+    Absent => LineBreakUnknownWithoutSource
+    Present { value: l } =>
+      match map_lookup(m: l.line_break_before, key: token_start) {
+        Absent => LineBreakUnknownWithoutSource
+        Present { value: seen } =>
+          if seen {
+            LineBreakInGap
+          } else {
+            NoLineBreakInGap
+          }
       }
   }
 }
@@ -250,7 +300,7 @@ fn token_stream_get(stream: TokenStream, offset: Int) -> Optional<Token> {
 }
 
 fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
-  TokenStream { all: stream.all, pos: stream.pos + n, source: stream.source }
+  TokenStream { all: stream.all, pos: stream.pos + n, layout: stream.layout }
 }
 
 // AnnotationPlacement is NOT declared here. It is the language-agnostic concept and its authority

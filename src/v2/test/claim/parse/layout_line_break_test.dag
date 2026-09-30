@@ -13,9 +13,9 @@ import v2.std.compilers.lexing {
   Token,
   TokenStream,
   token_stream_all,
-  token_stream_line_break_between,
-  token_stream_new,
-  token_stream_source
+  token_stream_layout,
+  token_stream_line_break_before,
+  token_stream_new
 }
 import v2.std.diagnostic {
   Accepted,
@@ -63,7 +63,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // LAYOUT IS DERIVED FROM THE SOURCE THE STREAM CARRIES, AND IT IS READ ONLY WHERE A PRODUCTION ASKS.
 // `x - 1` and `x` newline `- 1` lex to the same tokens at the same octets (a space and a line feed are
 // each one octet), so the token stream alone cannot tell them apart; the source can. These claims hold
-// the carrier (v2.std.compilers.lexing TokenStream.source, token_stream_line_break_between) and the two
+// the carrier (v2.std.compilers.lexing TokenStream.layout, token_stream_line_break_before) and the two
 // grammar arms that read it (v2.std.grammar AfterLineBreak, RefuseOnMatch) to that, over hand grammars.
 
 data same_line_text: String = "x - 1"
@@ -78,11 +78,11 @@ fn lexed(text: String, file: Symbol) -> Outcome<TokenStream> {
 fn gap_before_second(stream: TokenStream) -> LineBreakAnswer {
   match list_at_optional(xs: token_stream_all(stream: stream), index: 0) {
     Absent => NoLineBreakInGap
-    Present { value: first } =>
+    Present { value: _ } =>
       match list_at_optional(xs: token_stream_all(stream: stream), index: 1) {
         Absent => NoLineBreakInGap
         Present { value: second } =>
-          token_stream_line_break_between(source: token_stream_source(stream: stream), from: first.end, to: second.start)
+          token_stream_line_break_before(layout: token_stream_layout(stream: stream), token_start: second.start)
       }
   }
 }
@@ -274,8 +274,29 @@ test fn same_tokens_different_layout_have_different_stream_digests_holds() -> Bo
         Rejected { diagnostics: _ } => false
         Accepted { value: next, diagnostics: _ } =>
           (parse_token_stream_digest(all_tokens: token_stream_all(stream: same)) == parse_token_stream_digest(all_tokens: token_stream_all(stream: next)))
-            && (parse_token_stream_source_digest(all_tokens: token_stream_all(stream: same), source: token_stream_source(stream: same))
-              != parse_token_stream_source_digest(all_tokens: token_stream_all(stream: next), source: token_stream_source(stream: next)))
+            && (parse_token_stream_source_digest(all_tokens: token_stream_all(stream: same), layout: token_stream_layout(stream: same))
+              != parse_token_stream_source_digest(all_tokens: token_stream_all(stream: next), layout: token_stream_layout(stream: next)))
+      }
+  }
+}
+
+// A LINE FEED INSIDE A TOKEN IS NOT LAYOUT. The layout walk counts a line feed only at or after the
+// previous token's end, so a multi-line string literal between two tokens on one line leaves the next
+// token's gap line-break-free; only the gap after the string is asked about.
+data string_line_feed_text: String = "x \"a\nb\" - 1"
+
+test fn a_line_feed_inside_a_token_is_not_layout_holds() -> Bool {
+  match lexed(text: string_line_feed_text, file: ^layout_string) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      match list_at_optional(xs: token_stream_all(stream: stream), index: 2) {
+        Absent => false
+        Present { value: minus } =>
+          match token_stream_line_break_before(layout: token_stream_layout(stream: stream), token_start: minus.start) {
+            NoLineBreakInGap => true
+            LineBreakInGap => false
+            LineBreakUnknownWithoutSource => false
+          }
       }
   }
 }

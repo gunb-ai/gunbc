@@ -118,12 +118,13 @@ import v2.std.compilers.lexing {
   LineBreakUnknownWithoutSource,
   Lexeme,
   NoLineBreakInGap,
+  StreamLayout,
   Token,
   TokenStream,
-  token_stream_line_break_between,
+  token_stream_line_break_before,
   token_stream_remaining,
   token_stream_remaining_count,
-  token_stream_source,
+  token_stream_layout,
 }
 import v2.std.parse_refusal_reason { LayoutUnknownWithoutSource, ParseRefusalReason, parse_refusal_reason_symbol }
 import v2.std.grammar {
@@ -350,7 +351,7 @@ type ParseTableRealization {
   first_rows: Map<Symbol, List<FirstKey>>
   productions_by_name: Map<Symbol, GrammarProduction>
   prepared_exprs: Map<Symbol, PreparedGrammarExpr>
-  source: Optional<v2.std.text.String>
+  layout: Optional<StreamLayout>
   refusal: Optional<Diagnostic>
 }
 
@@ -717,7 +718,7 @@ fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, 
     first_rows: table.first_rows,
     productions_by_name: table.productions_by_name,
     prepared_exprs: table.prepared_exprs,
-    source: table.source,
+    layout: table.layout,
     refusal: table.refusal
   }
 }
@@ -791,7 +792,7 @@ fn parse_table_with_furthest(table: ParseTable, furthest: ParseFurthestFailure) 
     first_rows: table.first_rows,
     productions_by_name: table.productions_by_name,
     prepared_exprs: table.prepared_exprs,
-    source: table.source,
+    layout: table.layout,
     refusal: table.refusal
   }
 }
@@ -829,7 +830,7 @@ fn parse_table_with_refusal(table: ParseTable, refusal: Diagnostic) -> ParseTabl
     first_rows: table.first_rows,
     productions_by_name: table.productions_by_name,
     prepared_exprs: table.prepared_exprs,
-    source: table.source,
+    layout: table.layout,
     refusal: optional_present(value: refusal)
   }
 }
@@ -892,14 +893,14 @@ fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
 // byte 255 and every non-Latin-1 codepoint collide in the seed interpreter's cross-parse memo key
 // (v1_interpreter parse_table_memo_scope_and_key reads this field). Offsets and positions now go
 // through the Int content authority and the lexeme through its interned symbol.
-fn parse_token_stream_source_digest(all_tokens: List<Token>, source: Optional<v2.std.text.String>) -> Hash {
-  match source {
+fn parse_token_stream_source_digest(all_tokens: List<Token>, layout: Optional<StreamLayout>) -> Hash {
+  match layout {
     Absent => parse_token_stream_digest(all_tokens: all_tokens)
-    Present { value: text } =>
+    Present { value: l } =>
       combine_hash(
         a: parse_token_stream_digest(all_tokens: all_tokens),
         b: fold_list(
-          xs: text,
+          xs: l.source,
           empty: symbol_identity_digest(sym: ^parse_token_stream_source_digest_nil),
           cons: fn(acc, c) { combine_hash(a: acc, b: integer_int_content_digest(value: unicode_char_code_point(c: c))) }
         )
@@ -947,20 +948,20 @@ fn parse_table_for_production_analyzed(
     validated: validated,
     analysis: analysis,
     all_tokens: all_tokens,
-    source: optional_absent(),
+    layout: optional_absent(),
     materialization: materialization
   )
 }
 
-// The stream's source rides on the table so a layout-conditioned production can ask its question at
-// the point of use (v2.std.compilers.lexing token_stream_line_break_between), and it is part of the
+// The stream's layout rides on the table so a layout-conditioned production can ask its question at
+// the point of use (v2.std.compilers.lexing token_stream_line_break_before), and its source is part of the
 // stream's digest: two sources can lex to byte-identical tokens and differ only in layout, and a memo
 // entry must never serve one's answer to the other.
 fn parse_table_for_stream_analyzed(
   validated: ValidatedGrammarRoot,
   analysis: GrammarFirstAnalysis,
   all_tokens: List<Token>,
-  source: Optional<v2.std.text.String>,
+  layout: Optional<StreamLayout>,
   materialization: Materialization
 ) -> ParseTable {
   ParseTableRealization {
@@ -968,7 +969,7 @@ fn parse_table_for_stream_analyzed(
     provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
     materialization: materialization,
     grammar_digest: analysis.grammar_digest,
-    token_stream_digest: parse_token_stream_source_digest(all_tokens: all_tokens, source: source),
+    token_stream_digest: parse_token_stream_source_digest(all_tokens: all_tokens, layout: layout),
     entries: empty_map(),
     memo_hits: 0,
     memo_misses: 0,
@@ -978,7 +979,7 @@ fn parse_table_for_stream_analyzed(
     first_rows: analysis.first_rows,
     productions_by_name: analysis.productions_by_name,
     prepared_exprs: analysis.prepared_exprs,
-    source: source,
+    layout: layout,
     refusal: optional_absent()
   }
 }
@@ -1016,7 +1017,7 @@ fn parse_table_empty(materialization: Materialization) -> ParseTable {
     first_rows: empty_map(),
     productions_by_name: empty_map(),
     prepared_exprs: empty_map(),
-    source: optional_absent(),
+    layout: optional_absent(),
     refusal: optional_absent()
   }
 }
@@ -4006,7 +4007,7 @@ fn parse_expr_refuse_on_match(
 }
 
 // A MATCH CONDITIONED ON LAYOUT. The element is parsed first, so a layout question is asked only of
-// a match; then the source decides (v2.std.compilers.lexing token_stream_line_break_between) whether a
+// a match; then the stream's layout decides (v2.std.compilers.lexing token_stream_line_break_before) whether a
 // line break separates the token before the match from its first token. No line break: an ordinary
 // failed alternative. A stream that carries no source cannot answer, and the parse refuses with
 // LayoutUnknownWithoutSource rather than assume one line.
@@ -4021,7 +4022,7 @@ fn parse_expr_after_line_break(
   match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
     ParseExprRejected { diagnostics: diags, table: table1 } => ParseExprRejected { diagnostics: diags, table: table1 }
     ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 } =>
-      match parse_line_break_before_first(tokens: tokens, all_tokens: all_tokens, source: table1.source) {
+      match parse_line_break_before_first(tokens: tokens, layout: table1.layout) {
         LineBreakInGap =>
           ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 }
         NoLineBreakInGap => ParseExprRejected { diagnostics: [], table: table1 }
@@ -4037,33 +4038,13 @@ fn parse_expr_after_line_break(
   }
 }
 
-// The gap before the first token of `tokens`: from the end of the token before it in the stream (the
-// start of the source when it is the first token) to its own start. An empty remainder has no first
-// token and so no gap; it answers NoLineBreakInGap, a failed match rather than a layout question.
-fn parse_line_break_before_first(
-  tokens: List<Token>,
-  all_tokens: List<Token>,
-  source: Optional<v2.std.text.String>
-) -> LineBreakAnswer {
+// The gap before the first token of `tokens`, answered by the stream's layout (a lookup by that
+// token's start). An empty remainder has no first token and so no gap; it answers NoLineBreakInGap, a
+// failed match rather than a layout question.
+fn parse_line_break_before_first(tokens: List<Token>, layout: Optional<StreamLayout>) -> LineBreakAnswer {
   match parse_token_first(tokens: tokens) {
     Absent => NoLineBreakInGap
-    Present { value: first } =>
-      token_stream_line_break_between(
-        source: source,
-        from: parse_token_end_before(all_tokens: all_tokens, index: length(xs: all_tokens) - length(xs: tokens)),
-        to: first.start
-      )
-  }
-}
-
-fn parse_token_end_before(all_tokens: List<Token>, index: Int) -> Int {
-  if index <= 0 {
-    0
-  } else {
-    match list_at_optional(xs: all_tokens, index: index - 1) {
-      Present { value: prev } => prev.end
-      Absent => 0
-    }
+    Present { value: first } => token_stream_line_break_before(layout: layout, token_start: first.start)
   }
 }
 
@@ -4318,7 +4299,7 @@ fn parse_production_prepared_measured(
     analysis: analysis,
     production_name: production_name,
     seed: occurrence_id_allocator_initial(),
-    source: optional_absent(),
+    layout: optional_absent(),
     materialization: materialization
   )
 }
@@ -4329,7 +4310,7 @@ fn parse_production_prepared_measured_seeded(
   analysis: GrammarFirstAnalysis,
   production_name: Symbol,
   seed: OccurrenceIdAllocator,
-  source: Optional<v2.std.text.String>,
+  layout: Optional<StreamLayout>,
   materialization: Materialization
 ) -> ParseProductionMeasured {
   let root = validated.root
@@ -4339,7 +4320,7 @@ fn parse_production_prepared_measured_seeded(
       let table = parse_table_for_stream_analyzed(
         validated: validated,
         analysis: analysis,
-        source: source,
+        layout: layout,
         all_tokens: tokens,
         materialization: materialization
       )
@@ -4602,7 +4583,7 @@ fn parse_module_prepared_measured_seeded(
         analysis: modeled.analysis,
         production_name: modeled.validated.root.start,
         seed: seed,
-        source: token_stream_source(stream: tokens),
+        layout: token_stream_layout(stream: tokens),
         materialization: materialization
       )
       match measured.outcome {
