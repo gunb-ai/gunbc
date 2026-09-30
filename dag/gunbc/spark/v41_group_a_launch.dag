@@ -149,8 +149,9 @@ data v41_engram_touch_receipt_env_name: NonEmptyStr = "GUNBC_ENGRAM_TOUCH_RECEIP
 // a path the manifest names and a path the engine opens are one string. The manifest is read-only to
 // the engine; the receipt directory is the one place it writes. The row stores are mounted read-only
 // at their own path for the same reason: the manifest names them by the path the encode wrote them to.
-data v41_engram_manifest_dir: NonEmptyStr = "/var/lib/gunbc/v41-engram-manifest" as NonEmptyStr
-data v41_engram_touch_receipt_dir: NonEmptyStr = "/var/lib/gunbc/v41-engram-touch" as NonEmptyStr
+// DEV-ONLY (never merged): user-writable, because the Engram staging runs unprivileged over the fleet edge.
+data v41_engram_manifest_dir: NonEmptyStr = "/home/briansrls/.gunbc/v41-engram-manifest" as NonEmptyStr
+data v41_engram_touch_receipt_dir: NonEmptyStr = "/home/briansrls/.gunbc/v41-engram-touch" as NonEmptyStr
 
 fn v41_engram_manifest_path() -> NonEmptyStr {
   join([v41_engram_manifest_dir as String, "/row-store-manifest.json"], "") as NonEmptyStr
