@@ -1616,41 +1616,48 @@ fn body_lower_tail_pipes_into_fold(tail: Node) -> Bool {
   }
 }
 
-// The operator of a tail's FIRST element -- the tail is sequence(operator, operand) or
-// sequence(sequence(operator, operand), rest) -- read from the node's own shape, no walk.
-fn body_lower_tail_first_operator_optional(tail: Node) -> Optional<Node> {
+// Whether a node is the `|>` token: one identity comparison, no operator-list scan.
+fn body_lower_node_is_pipe_token(node: Node) -> Bool {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_pipe_gt
+    Absent => false
+  }
+}
+
+// Whether a tail's FIRST element is headed by `|>`: the tail is sequence(operator, operand) or
+// sequence(sequence(operator, operand), rest), read from the node's own shape.
+fn body_lower_tail_starts_with_pipe(tail: Node) -> Bool {
   match sugar_sequence_pair_optional(node: tail) {
-    Absent => optional_absent()
+    Absent => false
     Present { value: pair } =>
-      match body_lower_operator_token_optional(node: pair.left, binary: true) {
-        Present { value: operator } => optional_present(value: operator)
-        Absent =>
-          match sugar_sequence_pair_optional(node: pair.left) {
-            Absent => optional_absent()
-            Present { value: element } => body_lower_operator_token_optional(node: element.left, binary: true)
-          }
+      if body_lower_node_is_pipe_token(node: pair.left) {
+        true
+      } else {
+        match sugar_sequence_pair_optional(node: pair.left) {
+          Absent => false
+          Present { value: element } => body_lower_node_is_pipe_token(node: element.left)
+        }
       }
   }
 }
 
-// THE ROOT OF A PIPE TOWER, DECIDED FROM THE NODE'S OWN SHAPE IN CONSTANT TIME. body_lower_fold runs
-// at every node, so its guard may not walk anything: this reads one shell, the node's own sequence
-// pair and the first operator of its tail. The pipe is the outermost level of
-// v2.extdeps.languages.dag dag_grammar_binary_expr_expr, so a tower whose tail starts with `|>` is
-// at its root. A repeat-spine node inside the tail, sequence(sequence(operator, operand), rest), is
-// excluded by its left element being operator-headed, so the tower is decided once, at the root,
-// and never re-decided at every spine node beneath it (the per-node rescan the first cut paid).
+// THE ROOT OF A PIPE TOWER, DECIDED FROM THE NODE'S OWN SHAPE BY IDENTITY COMPARISONS ALONE.
+// body_lower_fold runs at every node, so this guard reads only the node's own sequence pair and
+// compares token identities with `|>`: no walk, and no scan of the operator roster (the first
+// constant-time cut asked body_lower_operator_token_optional, whose roster fold ran several times
+// per node and doubled the native route's context phase -- 918s at base against 1892s, census
+// gunbc#12550). The pipe is the outermost level of v2.extdeps.languages.dag
+// dag_grammar_binary_expr_expr, so a sequence whose tail starts with `|>` is a pipe tower; a
+// repeat-spine node inside that tail, sequence(sequence(`|>`, operand), rest), is excluded by its
+// left element starting with `|>`, so the tower is decided once, at its root.
 fn body_lower_is_pipe_tower_root(node: Node) -> Bool {
   match sugar_sequence_pair_optional(node: node) {
     Absent => false
     Present { value: pair } =>
-      match body_lower_tail_first_operator_optional(tail: pair.left) {
-        Present { value: _ } => false
-        Absent =>
-          match body_lower_tail_first_operator_optional(tail: pair.right) {
-            Present { value: operator } => body_lower_operator_is_pipe(operator: operator)
-            Absent => false
-          }
+      if body_lower_tail_starts_with_pipe(tail: pair.left) {
+        false
+      } else {
+        body_lower_tail_starts_with_pipe(tail: pair.right)
       }
   }
 }

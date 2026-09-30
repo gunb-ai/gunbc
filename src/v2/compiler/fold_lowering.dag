@@ -51,7 +51,7 @@ import v2.std.node {
   TypeNode,
   is_empty_conj_root,
   node_synthetic,
-  symbol_lexeme
+  symbol_intern_lexeme
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
@@ -156,9 +156,15 @@ fn collection_fold_slots(t: AlgebraFieldTemplate) -> FoldSlots {
   }
 }
 
+// The collection operation's head, interned ONCE from its template row's own `name` -- still the one
+// spelling -- so classifying a head is a symbol comparison. fold_family_realization runs at every call
+// site body lowering meets; building the template and comparing lexemes there was a per-call-site cost
+// on the native route's context phase (gunbc#12550 census).
+data collection_fold_head: Symbol = symbol_intern_lexeme(lexeme: collection_fold_shape().name)
+
 fn fold_family_realization(head: Symbol) -> Optional<FoldRealization> {
-  let t = collection_fold_shape()
-  if symbol_lexeme(sym: head) == t.name {
+  if head == collection_fold_head {
+    let t = collection_fold_shape()
     optional_present(value: FoldRealizesRosterOperation {
       template: t,
       row: DeclarationRef { module_path: "std.algebra", decl_name: "collection_fold_shape", field: WholeDeclaration },
