@@ -1,5 +1,6 @@
 module v2.extdeps.languages.english
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel, language_model_empty_canonical_symbols }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -417,15 +418,7 @@ fn english_noun_inhabitant_node() -> Node {
 }
 
 fn english_add_fn_emitted_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: english_noun_inhabitant_node() },
-      Edge { label: Positional, target: english_noun_inhabitant_node() },
-      Edge { label: Positional, target: english_noun_inhabitant_node() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [english_noun_inhabitant_node(), english_noun_inhabitant_node()], codomain: english_noun_inhabitant_node(), source: english_noun_inhabitant_node())
 }
 
 fn english_add_fn_concrete_tokens() -> List<ConcreteSyntaxToken> {

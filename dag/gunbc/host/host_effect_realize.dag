@@ -482,12 +482,208 @@ fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverg
   )
 }
 
+fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEffect) -> ResolvedHostEffectCell {
+  match effect {
+    RedfishAction { action: _ } =>
+      IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
+    ConvergePlan { policy: p } =>
+      if n.identity != p.identity {
+        IncompatibleCell { reason: converge_plan_identity_mismatch_reason(node: n, policy: p) }
+      } else {
+        ConvergeOnHost { node: n, host_converge: p }
+      }
+    OsInstallActuatorToolchainEnsure {} =>
+      OsInstallActuatorToolchainOnHost { node: n }
+    EnsureBuildCacheInstance { desired: d } =>
+      ProvisionBuildCacheOnHost { node: n, desired: d }
+    ProvisionCodexRuntime {} =>
+      ProvisionCodexRuntimeOnHost { node: n }
+    EnsureCompilePoolSlice {} =>
+      EnsureCompilePoolSliceOnHost { node: n }
+    Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
+    Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
+    Srv3SeededInstallMediaToolchainEnsure =>
+      SeededInstallMediaToolchainOnHost { node: n }
+    Srv3BmcwebSessionLogin =>
+      BmcwebSessionLoginOnHost { node: n }
+    Srv3BmcwebTokenExtract =>
+      BmcwebTokenExtractOnHost { node: n }
+    Srv3BootOnceReadBackSleep =>
+      BootOnceReadBackSleepOnHost { node: n }
+    Srv3ReceiptEmit { lines: lines } =>
+      ReceiptEmitOnHost { node: n, lines: lines }
+    SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
+      HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
+    ReadEffectivePosixPrincipal { read: r } =>
+      EffectivePrincipalReadOnHost { node: n, read: r }
+    SudoNopasswdExecuteProbe { probe: p } =>
+      SudoNopasswdExecuteProbeOnHost { node: n, probe: p }
+    SudoNopasswdGrantListProbe { probe: p } =>
+      SudoNopasswdGrantListProbeOnHost { node: n, probe: p }
+    Srv3NbdProxyServe { intent: i, lease_key: k } =>
+      NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
+    CodexSupervisedWorkerTurn { intent: i, lease_key: k } =>
+      CodexSupervisedWorkerTurnOnHost { node: n, intent: i, lease_key: k }
+    HostIdentityShortHostnameRead =>
+      HostnameReadOnHost { node: n }
+    LiveDeployApply { spec: s, candidate: c, plan: p } =>
+      LiveDeployApplyOnHost { node: n, spec: s, candidate: c, plan: p }
+    LiveDeployRetract { spec: s } =>
+      LiveDeployRetractOnHost { node: n, spec: s }
+    LiveDeployApprovalBrokerDarkInstall { spec: s, candidate: c } =>
+      LiveDeployApprovalBrokerDarkInstallOnHost { node: n, spec: s, candidate: c }
+    LiveDeployMicrovmControllerInstall { candidate: c } =>
+      LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c }
+    LiveDeployEnsureDependency { dep: d } =>
+      LiveDeployEnsureDependencyOnHost { node: n, dep: d }
+    LiveDeployDigestReadback { port: p } =>
+      LiveDeployDigestReadbackOnHost { node: n, port: p }
+    EnsureActionsRunnerRelease { runner_release: r } =>
+      EnsureActionsRunnerReleaseOnHost { node: n, runner_release: r }
+    EnsureRunnerSlotDirectory { slot: s, artifact: a } =>
+      EnsureRunnerSlotDirectoryOnHost { node: n, slot: s, artifact: a }
+    EnsureRunnerJitWrapper { host_label: l } =>
+      EnsureRunnerJitWrapperOnHost { node: n, host_label: l }
+    EnsureRunnerSystemdTemplate { host_label: l } =>
+      EnsureRunnerSystemdTemplateOnHost { node: n, host_label: l }
+    EnsureRunnerMemoryCaps { slot: s } =>
+      EnsureRunnerMemoryCapsOnHost { node: n, slot: s }
+    ActivateRunnerSlot { slot: s } =>
+      ActivateRunnerSlotOnHost { node: n, slot: s }
+    ReplaceRunnerIncarnation { from: inc, cause: c } =>
+      ReplaceRunnerIncarnationOnHost { node: n, from: inc, cause: c }
+    ObserveRunnerLocalState { slot: s } =>
+      ObserveRunnerLocalStateOnHost { node: n, slot: s }
+    ObserveGitHubRunnerRegistration { slot: s, organization: o } =>
+      ObserveGitHubRunnerRegistrationOnHost { node: n, slot: s, organization: o }
+    ProbeToolchainHomeInterference {} =>
+      IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is runner-local and cannot name a fleet HostOs; target RunnerLocalHost instead." }
+    DeployAccessPreflight {} =>
+      IncompatibleCell {
+        reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
+      }
+  }
+}
+
+fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEffect) -> ResolvedHostEffectCell {
+  match effect {
+    RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
+    ConvergePlan { policy: _ } =>
+      IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    OsInstallActuatorToolchainEnsure {} =>
+      IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureBuildCacheInstance { desired: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ProvisionCodexRuntime {} =>
+      IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureCompilePoolSlice {} =>
+      IncompatibleCell { reason: "host_effect: EnsureCompilePoolSlice is in-band (per-host systemd slice) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3InstallMediaFetch =>
+      IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3SeededInstallMediaRemaster =>
+      IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3SeededInstallMediaToolchainEnsure =>
+      IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3BmcwebSessionLogin =>
+      IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3BmcwebTokenExtract =>
+      IncompatibleCell { reason: "host_effect: Srv3BmcwebTokenExtract is in-band (actuator host typed jq extract + write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3NbdProxyServe { intent: _, lease_key: _ } =>
+      IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
+      IncompatibleCell { reason: "host_effect: CodexSupervisedWorkerTurn is in-band (actuator host app-server stdio session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3BootOnceReadBackSleep =>
+      IncompatibleCell { reason: "host_effect: Srv3BootOnceReadBackSleep is in-band (actuator host typed sleep) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    Srv3ReceiptEmit { lines: _ } =>
+      IncompatibleCell { reason: "host_effect: Srv3ReceiptEmit is in-band (actuator host typed receipt) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
+      IncompatibleCell { reason: "host_effect: SetHostnameCas is in-band (shell hostnamectl) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ReadEffectivePosixPrincipal { read: _ } =>
+      IncompatibleCell { reason: "host_effect: ReadEffectivePosixPrincipal is in-band (shell whoami) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    SudoNopasswdExecuteProbe { probe: _ } =>
+      IncompatibleCell { reason: "host_effect: SudoNopasswdExecuteProbe is in-band (shell sudo -n probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    SudoNopasswdGrantListProbe { probe: _ } =>
+      IncompatibleCell { reason: "host_effect: SudoNopasswdGrantListProbe is in-band (typed sudo grant-list probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    HostIdentityShortHostnameRead =>
+      IncompatibleCell { reason: "host_effect: HostIdentityShortHostnameRead is in-band (shell hostname -s) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployApply { spec: _, candidate: _, plan: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployApply is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployRetract { spec: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployRetract is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployApprovalBrokerDarkInstall is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployMicrovmControllerInstall { candidate: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployMicrovmControllerInstall is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployEnsureDependency { dep: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployEnsureDependency is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeployDigestReadback { port: _ } =>
+      IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureActionsRunnerRelease { runner_release: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureActionsRunnerRelease is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureRunnerSlotDirectory is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureRunnerJitWrapper { host_label: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureRunnerJitWrapper is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureRunnerSystemdTemplate { host_label: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureRunnerSystemdTemplate is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    EnsureRunnerMemoryCaps { slot: _ } =>
+      IncompatibleCell { reason: "host_effect: EnsureRunnerMemoryCaps is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ActivateRunnerSlot { slot: _ } =>
+      IncompatibleCell { reason: "host_effect: ActivateRunnerSlot is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ReplaceRunnerIncarnation { from: _, cause: _ } =>
+      IncompatibleCell { reason: "host_effect: ReplaceRunnerIncarnation is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ObserveRunnerLocalState { slot: _ } =>
+      IncompatibleCell { reason: "host_effect: ObserveRunnerLocalState is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } =>
+      IncompatibleCell { reason: "host_effect: ObserveGitHubRunnerRegistration is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    ProbeToolchainHomeInterference {} =>
+      IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is an in-band concurrent filesystem/tool-execution probe and cannot target BmcController; target HostOs instead." }
+    DeployAccessPreflight {} =>
+      IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
+  }
+}
+
 fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> ResolvedHostEffectCell {
   match target {
     RunnerLocalHost =>
       match effect {
         ProbeToolchainHomeInterference {} => ToolchainHomeInterferenceProbeOnHost
-        _ => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        RedfishAction { action: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ConvergePlan { policy: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        OsInstallActuatorToolchainEnsure {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureBuildCacheInstance { desired: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ProvisionCodexRuntime {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureCompilePoolSlice {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ReadEffectivePosixPrincipal { read: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        SudoNopasswdExecuteProbe { probe: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        SudoNopasswdGrantListProbe { probe: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3InstallMediaFetch => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3SeededInstallMediaRemaster => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3SeededInstallMediaToolchainEnsure => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3BmcwebSessionLogin => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3BmcwebTokenExtract => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3NbdProxyServe { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3BootOnceReadBackSleep => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3ReceiptEmit { lines: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        HostIdentityShortHostnameRead => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployApply { spec: _, candidate: _, plan: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployRetract { spec: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployMicrovmControllerInstall { candidate: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployEnsureDependency { dep: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployDigestReadback { port: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        DeployAccessPreflight {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureActionsRunnerRelease { runner_release: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureRunnerSlotDirectory { slot: _, artifact: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureRunnerJitWrapper { host_label: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureRunnerSystemdTemplate { host_label: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        EnsureRunnerMemoryCaps { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ActivateRunnerSlot { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ReplaceRunnerIncarnation { from: _, cause: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ObserveRunnerLocalState { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        ObserveGitHubRunnerRegistration { slot: _, organization: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
       }
     HostOs { node: n } =>
       match effect {
@@ -523,87 +719,27 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           LiveDeployDigestReadbackOnHost { node: n, port: p }
         ProbeToolchainHomeInterference {} =>
           IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is runner-local and cannot name a fleet HostOs; target RunnerLocalHost instead." }
-        _ =>
-          match effect {
-            RedfishAction { action: _ } =>
-              IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
-            ConvergePlan { policy: p } =>
-              if n.identity != p.identity {
-                IncompatibleCell { reason: converge_plan_identity_mismatch_reason(node: n, policy: p) }
-              } else {
-                ConvergeOnHost { node: n, host_converge: p }
-              }
-            OsInstallActuatorToolchainEnsure {} =>
-              OsInstallActuatorToolchainOnHost { node: n }
-            EnsureBuildCacheInstance { desired: d } =>
-              ProvisionBuildCacheOnHost { node: n, desired: d }
-            ProvisionCodexRuntime {} =>
-              ProvisionCodexRuntimeOnHost { node: n }
-            EnsureCompilePoolSlice {} =>
-              EnsureCompilePoolSliceOnHost { node: n }
-            Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
-            Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
-            Srv3SeededInstallMediaToolchainEnsure =>
-              SeededInstallMediaToolchainOnHost { node: n }
-            Srv3BmcwebSessionLogin =>
-              BmcwebSessionLoginOnHost { node: n }
-            Srv3BmcwebTokenExtract =>
-              BmcwebTokenExtractOnHost { node: n }
-            Srv3BootOnceReadBackSleep =>
-              BootOnceReadBackSleepOnHost { node: n }
-            Srv3ReceiptEmit { lines: lines } =>
-              ReceiptEmitOnHost { node: n, lines: lines }
-            SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
-              HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
-            ReadEffectivePosixPrincipal { read: r } =>
-              EffectivePrincipalReadOnHost { node: n, read: r }
-            SudoNopasswdExecuteProbe { probe: p } =>
-              SudoNopasswdExecuteProbeOnHost { node: n, probe: p }
-            SudoNopasswdGrantListProbe { probe: p } =>
-              SudoNopasswdGrantListProbeOnHost { node: n, probe: p }
-            Srv3NbdProxyServe { intent: i, lease_key: k } =>
-              NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
-            CodexSupervisedWorkerTurn { intent: i, lease_key: k } =>
-              CodexSupervisedWorkerTurnOnHost { node: n, intent: i, lease_key: k }
-            HostIdentityShortHostnameRead =>
-              HostnameReadOnHost { node: n }
-            LiveDeployApply { spec: s, candidate: c, plan: p } =>
-              LiveDeployApplyOnHost { node: n, spec: s, candidate: c, plan: p }
-            LiveDeployRetract { spec: s } =>
-              LiveDeployRetractOnHost { node: n, spec: s }
-            LiveDeployApprovalBrokerDarkInstall { spec: s, candidate: c } =>
-              LiveDeployApprovalBrokerDarkInstallOnHost { node: n, spec: s, candidate: c }
-            LiveDeployMicrovmControllerInstall { candidate: c } =>
-              LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c }
-            LiveDeployEnsureDependency { dep: d } =>
-              LiveDeployEnsureDependencyOnHost { node: n, dep: d }
-            LiveDeployDigestReadback { port: p } =>
-              LiveDeployDigestReadbackOnHost { node: n, port: p }
-            EnsureActionsRunnerRelease { runner_release: r } =>
-              EnsureActionsRunnerReleaseOnHost { node: n, runner_release: r }
-            EnsureRunnerSlotDirectory { slot: s, artifact: a } =>
-              EnsureRunnerSlotDirectoryOnHost { node: n, slot: s, artifact: a }
-            EnsureRunnerJitWrapper { host_label: l } =>
-              EnsureRunnerJitWrapperOnHost { node: n, host_label: l }
-            EnsureRunnerSystemdTemplate { host_label: l } =>
-              EnsureRunnerSystemdTemplateOnHost { node: n, host_label: l }
-            EnsureRunnerMemoryCaps { slot: s } =>
-              EnsureRunnerMemoryCapsOnHost { node: n, slot: s }
-            ActivateRunnerSlot { slot: s } =>
-              ActivateRunnerSlotOnHost { node: n, slot: s }
-            ReplaceRunnerIncarnation { from: inc, cause: c } =>
-              ReplaceRunnerIncarnationOnHost { node: n, from: inc, cause: c }
-            ObserveRunnerLocalState { slot: s } =>
-              ObserveRunnerLocalStateOnHost { node: n, slot: s }
-            ObserveGitHubRunnerRegistration { slot: s, organization: o } =>
-              ObserveGitHubRunnerRegistrationOnHost { node: n, slot: s, organization: o }
-            ProbeToolchainHomeInterference {} =>
-              IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is runner-local and cannot name a fleet HostOs; target RunnerLocalHost instead." }
-            DeployAccessPreflight {} =>
-              IncompatibleCell {
-                reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
-              }
-          }
+        RedfishAction { action: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ConvergePlan { policy: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ReadEffectivePosixPrincipal { read: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        SudoNopasswdExecuteProbe { probe: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        SudoNopasswdGrantListProbe { probe: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3InstallMediaFetch => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3SeededInstallMediaRemaster => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3NbdProxyServe { intent: _, lease_key: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        HostIdentityShortHostnameRead => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        DeployAccessPreflight {} => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureActionsRunnerRelease { runner_release: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerSlotDirectory { slot: _, artifact: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerJitWrapper { host_label: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerSystemdTemplate { host_label: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerMemoryCaps { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ActivateRunnerSlot { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ReplaceRunnerIncarnation { from: _, cause: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ObserveRunnerLocalState { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        ObserveGitHubRunnerRegistration { slot: _, organization: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
       }
     BmcController { node: n } =>
       match effect {
@@ -619,82 +755,37 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
           IncompatibleCell { reason: "host_effect: CodexSupervisedWorkerTurn is in-band (actuator host app-server stdio session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-        _ =>
-          match effect {
-            RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
-            ConvergePlan { policy: _ } =>
-              IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            OsInstallActuatorToolchainEnsure {} =>
-              IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureBuildCacheInstance { desired: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ProvisionCodexRuntime {} =>
-              IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureCompilePoolSlice {} =>
-              IncompatibleCell { reason: "host_effect: EnsureCompilePoolSlice is in-band (per-host systemd slice) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3InstallMediaFetch =>
-              IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3SeededInstallMediaRemaster =>
-              IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3SeededInstallMediaToolchainEnsure =>
-              IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3BmcwebSessionLogin =>
-              IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3BmcwebTokenExtract =>
-              IncompatibleCell { reason: "host_effect: Srv3BmcwebTokenExtract is in-band (actuator host typed jq extract + write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3NbdProxyServe { intent: _, lease_key: _ } =>
-              IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
-              IncompatibleCell { reason: "host_effect: CodexSupervisedWorkerTurn is in-band (actuator host app-server stdio session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3BootOnceReadBackSleep =>
-              IncompatibleCell { reason: "host_effect: Srv3BootOnceReadBackSleep is in-band (actuator host typed sleep) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3ReceiptEmit { lines: _ } =>
-              IncompatibleCell { reason: "host_effect: Srv3ReceiptEmit is in-band (actuator host typed receipt) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
-              IncompatibleCell { reason: "host_effect: SetHostnameCas is in-band (shell hostnamectl) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ReadEffectivePosixPrincipal { read: _ } =>
-              IncompatibleCell { reason: "host_effect: ReadEffectivePosixPrincipal is in-band (shell whoami) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            SudoNopasswdExecuteProbe { probe: _ } =>
-              IncompatibleCell { reason: "host_effect: SudoNopasswdExecuteProbe is in-band (shell sudo -n probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            SudoNopasswdGrantListProbe { probe: _ } =>
-              IncompatibleCell { reason: "host_effect: SudoNopasswdGrantListProbe is in-band (typed sudo grant-list probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            HostIdentityShortHostnameRead =>
-              IncompatibleCell { reason: "host_effect: HostIdentityShortHostnameRead is in-band (shell hostname -s) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployApply { spec: _, candidate: _, plan: _ } =>
-              IncompatibleCell { reason: "host_effect: LiveDeployApply is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployRetract { spec: _ } =>
-              IncompatibleCell { reason: "host_effect: LiveDeployRetract is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } =>
-              IncompatibleCell { reason: "host_effect: LiveDeployApprovalBrokerDarkInstall is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployMicrovmControllerInstall { candidate: _ } =>
-              IncompatibleCell { reason: "host_effect: LiveDeployMicrovmControllerInstall is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployEnsureDependency { dep: _ } =>
-              IncompatibleCell { reason: "host_effect: LiveDeployEnsureDependency is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployDigestReadback { port: _ } =>
-              IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureActionsRunnerRelease { runner_release: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureActionsRunnerRelease is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerSlotDirectory { slot: _, artifact: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureRunnerSlotDirectory is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerJitWrapper { host_label: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureRunnerJitWrapper is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerSystemdTemplate { host_label: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureRunnerSystemdTemplate is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerMemoryCaps { slot: _ } =>
-              IncompatibleCell { reason: "host_effect: EnsureRunnerMemoryCaps is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ActivateRunnerSlot { slot: _ } =>
-              IncompatibleCell { reason: "host_effect: ActivateRunnerSlot is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ReplaceRunnerIncarnation { from: _, cause: _ } =>
-              IncompatibleCell { reason: "host_effect: ReplaceRunnerIncarnation is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ObserveRunnerLocalState { slot: _ } =>
-              IncompatibleCell { reason: "host_effect: ObserveRunnerLocalState is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ObserveGitHubRunnerRegistration { slot: _, organization: _ } =>
-              IncompatibleCell { reason: "host_effect: ObserveGitHubRunnerRegistration is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ProbeToolchainHomeInterference {} =>
-              IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is an in-band concurrent filesystem/tool-execution probe and cannot target BmcController; target HostOs instead." }
-            DeployAccessPreflight {} =>
-              IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
-          }
+        RedfishAction { action: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ConvergePlan { policy: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ReadEffectivePosixPrincipal { read: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        SudoNopasswdExecuteProbe { probe: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        SudoNopasswdGrantListProbe { probe: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3InstallMediaFetch => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3SeededInstallMediaRemaster => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3SeededInstallMediaToolchainEnsure => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3BmcwebSessionLogin => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3BmcwebTokenExtract => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3BootOnceReadBackSleep => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3ReceiptEmit { lines: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        HostIdentityShortHostnameRead => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployApply { spec: _, candidate: _, plan: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployRetract { spec: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployMicrovmControllerInstall { candidate: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployEnsureDependency { dep: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployDigestReadback { port: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        DeployAccessPreflight {} => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureActionsRunnerRelease { runner_release: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerSlotDirectory { slot: _, artifact: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerJitWrapper { host_label: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerSystemdTemplate { host_label: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        EnsureRunnerMemoryCaps { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ActivateRunnerSlot { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ReplaceRunnerIncarnation { from: _, cause: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ObserveRunnerLocalState { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ObserveGitHubRunnerRegistration { slot: _, organization: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        ProbeToolchainHomeInterference {} => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
       }
   }
 }
@@ -830,7 +921,7 @@ fn srv3_seeded_install_media_toolchain_receipt_line(outcome: NonEmptyStr) -> Str
   concat(
     concat("InstallMediaRemasterToolchainReceipt: outcome=", outcome as String),
     concat(
-      concat(" tool=", xorriso_cli_tool.name as String),
+      concat(" tool=", xorriso_cli_tool.program.invocation as String),
       concat(" package=", package_xorriso as String),
     ),
   )
@@ -1462,6 +1553,15 @@ fn realize_provision_codex_runtime_body(
   }
 }
 
+fn realize_provision_codex_runtime_wrong_effect(
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  NotConverged {
+    reason: "host_effect_apply: realize_provision_codex_runtime requires ProvisionCodexRuntime effect",
+    applied: effect_intent,
+  }
+}
+
 fn realize_provision_codex_runtime(
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -1489,11 +1589,42 @@ fn realize_provision_codex_runtime(
             applied: effect_intent,
           }
       }
-    _ =>
-      NotConverged {
-        reason: "host_effect_apply: realize_provision_codex_runtime requires ProvisionCodexRuntime effect",
-        applied: effect_intent,
-      }
+    RedfishAction { action: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ConvergePlan { policy: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    OsInstallActuatorToolchainEnsure {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureBuildCacheInstance { desired: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureCompilePoolSlice {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ReadEffectivePosixPrincipal { read: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    SudoNopasswdExecuteProbe { probe: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    SudoNopasswdGrantListProbe { probe: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3InstallMediaFetch => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3SeededInstallMediaRemaster => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3SeededInstallMediaToolchainEnsure => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebTokenExtract => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3BootOnceReadBackSleep => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3ReceiptEmit { lines: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    HostIdentityShortHostnameRead => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployApply { spec: _, candidate: _, plan: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployRetract { spec: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployMicrovmControllerInstall { candidate: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployEnsureDependency { dep: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployDigestReadback { port: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    DeployAccessPreflight {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerJitWrapper { host_label: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerMemoryCaps { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ActivateRunnerSlot { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ReplaceRunnerIncarnation { from: _, cause: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ObserveRunnerLocalState { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    ProbeToolchainHomeInterference {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
   }
 }
 
@@ -1690,7 +1821,7 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
 // /usr/bin/<name>, searching PATH, or trying a second directory.
 fn srv3_undeclared_apt_path_reason(tool: CliTool) -> String {
   concat(
-    tool.name as String,
+    tool.program.invocation as String,
     " declares no apt source, so it has no declared install path for a FleetSsh readback to test",
   )
 }
@@ -1698,14 +1829,14 @@ fn srv3_undeclared_apt_path_reason(tool: CliTool) -> String {
 fn srv3_apt_tool_present(tool: CliTool, transport: HostEffectTransport) -> Srv3HostPredicate {
   match transport {
     LocalShell =>
-      if shell.PosixCommandV.Check(command: tool.name).exists {
+      if shell.PosixCommandV.Check(command: tool.program.invocation).exists {
         Srv3PredicateHolds
       } else {
         Srv3PredicateFails
       }
     SshShell { ssh_host: h } =>
       srv3_predicate_from_typed_argv(
-        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.name)),
+        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.program.invocation)),
       )
     FleetSsh { target: _, context: _ } =>
       match apt_binary_path_of(tool: tool) {
@@ -1729,7 +1860,7 @@ fn srv3_apt_tool_present(tool: CliTool, transport: HostEffectTransport) -> Srv3H
 fn srv3_tool_bin_path(tool: CliTool, transport: HostEffectTransport) -> Srv3ObservedToken {
   match transport {
     LocalShell => {
-      let found = shell.PosixCommandV.Check(command: tool.name)
+      let found = shell.PosixCommandV.Check(command: tool.program.invocation)
       if found.exists {
         match found.path {
           Present { value: tool_path } => Srv3TokenObserved { value: tool_path as String }
@@ -1741,7 +1872,7 @@ fn srv3_tool_bin_path(tool: CliTool, transport: HostEffectTransport) -> Srv3Obse
     }
     SshShell { ssh_host: h } =>
       srv3_observed_token_from_typed_argv(
-        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.name)),
+        outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.program.invocation)),
       )
     FleetSsh { target: _, context: _ } =>
       match apt_binary_path_of(tool: tool) {
@@ -2749,6 +2880,14 @@ fn websocat_after_readback(outcome: Srv3HostPredicate) -> Srv3HostPredicate {
 // cannot sequence anything, because by the time a list reaches it every element has been
 // evaluated. Reading it as "run these in order, stopping on failure" is what let the websocat
 // path run four mutations unconditionally. Sequencing lives in websocat_after and nowhere else.
+fn srv3_combine_observed_accumulator_with_step(acc: Srv3HostPredicate, step: Srv3HostPredicate) -> Srv3HostPredicate {
+  match step {
+    Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3PredicateFails => Srv3PredicateFails
+    Srv3PredicateHolds => acc
+  }
+}
+
 fn srv3_summarize_independent_observations(steps: List<Srv3HostPredicate>) -> Srv3HostPredicate {
   fold_list(
     xs: steps,
@@ -2756,12 +2895,8 @@ fn srv3_summarize_independent_observations(steps: List<Srv3HostPredicate>) -> Sr
     cons: fn(acc, step) {
       match acc {
         Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-        _ =>
-          match step {
-            Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-            Srv3PredicateFails => Srv3PredicateFails
-            Srv3PredicateHolds => acc
-          }
+        Srv3PredicateFails => srv3_combine_observed_accumulator_with_step(acc: acc, step: step)
+        Srv3PredicateHolds => srv3_combine_observed_accumulator_with_step(acc: acc, step: step)
       }
     },
   )
@@ -2868,7 +3003,7 @@ fn srv3_realize_os_install_actuator_toolchain_ensure_body(
     xs: srv3_toolchain_rows(),
     f: fn(row) {
       Srv3ToolObservation {
-        tool_name: row.tool.name,
+        tool_name: row.tool.program.invocation,
         verdict: srv3_ensure_tool(row: row, transport: transport),
       }
     },
@@ -3227,6 +3362,15 @@ fn realize_provision_build_cache_body(
   }
 }
 
+fn realize_provision_build_cache_wrong_effect(
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  NotConverged {
+    reason: "host_effect_apply: realize_provision_build_cache requires EnsureBuildCacheInstance effect",
+    applied: effect_intent,
+  }
+}
+
 fn realize_provision_build_cache(
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -3262,11 +3406,42 @@ fn realize_provision_build_cache(
               }
           }
       }
-    _ =>
-      NotConverged {
-        reason: "host_effect_apply: realize_provision_build_cache requires EnsureBuildCacheInstance effect",
-        applied: effect_intent,
-      }
+    RedfishAction { action: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ConvergePlan { policy: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    OsInstallActuatorToolchainEnsure {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ProvisionCodexRuntime {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureCompilePoolSlice {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ReadEffectivePosixPrincipal { read: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    SudoNopasswdExecuteProbe { probe: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    SudoNopasswdGrantListProbe { probe: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3InstallMediaFetch => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3SeededInstallMediaRemaster => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3SeededInstallMediaToolchainEnsure => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebTokenExtract => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3BootOnceReadBackSleep => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3ReceiptEmit { lines: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    HostIdentityShortHostnameRead => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployApply { spec: _, candidate: _, plan: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployRetract { spec: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployMicrovmControllerInstall { candidate: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployEnsureDependency { dep: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployDigestReadback { port: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    DeployAccessPreflight {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerJitWrapper { host_label: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    EnsureRunnerMemoryCaps { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ActivateRunnerSlot { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ReplaceRunnerIncarnation { from: _, cause: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ObserveRunnerLocalState { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    ProbeToolchainHomeInterference {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
   }
 }
 

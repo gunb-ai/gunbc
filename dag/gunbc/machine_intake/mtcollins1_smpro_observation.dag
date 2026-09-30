@@ -366,13 +366,13 @@ fn mtcollins1_smpro_dossier_text(outcomes: List<SmproProbeOutcome>) -> String {
 // reading was established anywhere (the dossier says why), or when every socket agrees.
 fn reported_failed(s: SmproSocketStage) -> Bool {
   match s.reported {
-    ReportedStageEstablished { bootstage: b } => match b.status { SmproStatusDefined { status: Failed } => true _ => false }
+    ReportedStageEstablished { bootstage: b } => match b.status { SmproStatusDefined { status: Failed } => true SmproStatusDefined { status: NotStarted } => false SmproStatusDefined { status: Started } => false SmproStatusDefined { status: Completed } => false SmproStatusUndefined { code: _ } => false }
     ReportedStageUnavailable { reason: _ } => false
   }
 }
 
 fn established_any(s: SmproSocketStage) -> Bool {
-  (match s.current { CurrentStageEstablished { stage: _ } => true _ => false }) || (match s.reported { ReportedStageEstablished { bootstage: _ } => true _ => false })
+  (match s.current { CurrentStageEstablished { stage: _ } => true CurrentStageUnavailable { reason: _ } => false }) || (match s.reported { ReportedStageEstablished { bootstage: _ } => true ReportedStageUnavailable { reason: _ } => false })
 }
 
 // The comparison key is the readings alone: an unavailable reading keys as UNAVAILABLE whatever its

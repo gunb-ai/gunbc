@@ -74,7 +74,9 @@ fn census_regression_holds(r: CensusRegression) -> Bool {
   match r {
     RegressionReproduced { build_key: _, digest: _, chain: c, build_work: w, scratch: s } =>
       census_member_readback_holds(readback: c) && scratch_removed(o: w) && scratch_removed(o: s)
-    _ => false
+    RegressionDiverged { build_key: _, expected: _, observed: _, build_work: _, scratch: _ } => false
+    RegressionUnbuilt { reason: _, build_work: _, scratch: _ } => false
+    RegressionNotApplicable { reason: _ } => false
   }
 }
 
