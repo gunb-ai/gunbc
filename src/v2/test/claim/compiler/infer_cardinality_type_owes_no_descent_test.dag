@@ -2,24 +2,26 @@ module v2.test.claim.compiler.infer_cardinality_type_owes_no_descent_test
 
 // A type node owes no evaluation descent: v2.std.cardinality connective_multiplicity answers
 // Bounded for every connective, Cardinality (T?) included, and repetition enters a program only
-// through the Loop behavior. These claims run source text through the production front end
-// (tokenize, parse, normalize, resolve) into v2.compiler.infer infer, and pair the admitted
-// optional programs with the controls that must not move: an Int-at-Int return admits, a Bool at
-// an Int return refuses at the return, and a Loop whose measure has no descent fact still refuses
-// with infer_descent_not_derived.
+// through the Loop behavior. The discriminating red for T? is
+// v2.test.claim.compiler.infer_application_argument_inhabitance_witness_test
+// infer_optional_formal_reaches_optional_carrier_frontier_holds; this module holds the control
+// that must not move when Cardinality stops owing descent. The tree is SUPPLIED at the infer
+// boundary (DESIGN §3, a witness discriminates at one interface).
 
-import v2.test.compiler.pipeline.stage_bridge { pipeline_resolved_source }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer { infer }
+import v2.extdeps.languages.dag {
+  dag_int_literal_fixture_one
+}
 import v2.std.diagnostic {
   Accepted,
   Rejected,
   Some,
-  bind_outcome,
   diagnostics_has_reason
 }
 import v2.std.logic { Bool }
 import v2.std.node {
+  Atom,
   ComputationNode,
   Edge,
   Loop,
@@ -28,78 +30,31 @@ import v2.std.node {
   OccurrenceSynthetic,
   Positional,
   Symbol,
-  TypeNode,
-  Atom
+  TypeNode
 }
 
-fn cod_infer_source_rejected_for(source: String, reason: Symbol) -> Bool {
-  match bind_outcome(
-    o: pipeline_resolved_source(source: source, file: ^cod_source_file),
-    f: fn(resolved) { infer(tree: resolved) }
-  ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: nds } =>
-      diagnostics_has_reason(d: Some { diagnostics: nds }, reason: reason)
-  }
-}
-
-fn cod_infer_source_accepted(source: String) -> Bool {
-  match bind_outcome(
-    o: pipeline_resolved_source(source: source, file: ^cod_source_file),
-    f: fn(resolved) { infer(tree: resolved) }
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn infer_optional_parameter_is_not_refused_for_descent_holds() -> Bool {
-  !cod_infer_source_rejected_for(
-    source: "module m\n\nfn cod_f(x: Int?) -> Int { x }\n",
-    reason: ^infer_descent_not_derived
-  )
-}
-
-test fn infer_optional_return_is_not_refused_for_descent_holds() -> Bool {
-  !cod_infer_source_rejected_for(
-    source: "module m\n\nfn cod_p(x: Int) -> Int? { x }\n",
-    reason: ^infer_descent_not_derived
-  )
-}
-
-test fn infer_optional_return_program_is_accepted_holds() -> Bool {
-  cod_infer_source_accepted(source: "module m\n\nfn cod_p(x: Int) -> Int? { x }\n")
-}
-
-test fn infer_int_at_int_control_is_accepted_holds() -> Bool {
-  cod_infer_source_accepted(source: "module m\n\nfn cod_f(x: Int) -> Int { x }\n")
-}
-
-test fn infer_bool_at_int_control_refuses_at_return_holds() -> Bool {
-  cod_infer_source_rejected_for(
-    source: "module m\n\nfn cod_f(x: Int) -> Int { true }\n",
-    reason: ^arrow_body_does_not_inhabit_declared_return
-  )
-}
-
-fn cod_atom(s: Symbol) -> Node {
+fn cod_loop(measure: Symbol) -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: s } },
-    children: [],
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
-test fn infer_loop_without_descent_fact_still_refuses_holds() -> Bool {
-  let body = Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: cod_atom(s: ^cod_body) },
-      Edge { label: Named { name: ^loop_bound_edge }, target: cod_atom(s: ^cod_unregistered_measure) }
+      Edge { label: Positional, target: dag_int_literal_fixture_one() },
+      Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: measure } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+        }
+      }
     ],
     occurrence_id: OccurrenceSynthetic
   }
-  match infer(tree: claim_resolved_tree_without_declarations(root: body)) {
+}
+
+// The control that must not move: a Loop whose measure carries no descent fact still refuses,
+// and refuses FOR descent.
+test fn infer_loop_without_descent_fact_still_refuses_for_descent_holds() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: cod_loop(measure: ^cod_unregistered_measure))) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
       diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^infer_descent_not_derived)
