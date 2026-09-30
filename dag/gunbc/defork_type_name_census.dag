@@ -226,15 +226,6 @@ data defork_census_rows: List<SharedTypeNameRow> = [
     disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
   },
   SharedTypeNameRow {
-    names: ["Nat"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`= CommutativeSemiring<Magnitude>`",
-      v2_side: "`= Zero \\| Succ` (Peano coproduct)",
-      class: "same concept, divergent model"
-    },
-    disposition: ForkNeedsDecisionRecord { family: "integer family root" }
-  },
-  SharedTypeNameRow {
     names: ["Int", "UInt"],
     reading: AuthoredResolutionReading {
       dag_side: "→ `std.nat` `Nat` (via `std.algebra` `GroupCompletion`)",
@@ -291,6 +282,11 @@ data defork_census_rows: List<SharedTypeNameRow> = [
 ]
 
 data defork_census_resolved: List<ResolvedSharedTypeName> = [
+  ResolvedSharedTypeName {
+    names: ["Nat"],
+    resolution: ResolvedByDeletingV2 { reason: "operator ruling A (2026-09-30): the carrier is Peano, declared once in `std.nat` and realized as the kernel integer (`gunbc.structural_realization_bindings` `kernel_grounding_rows`); the `v2.std.nat` declaration is deleted, `std.magnitude` retired, and the semiring moved to inhabitance" },
+    change: 12846
+  },
   ResolvedSharedTypeName {
     names: ["ProjectionKind"],
     resolution: ResolvedByDeletingV2 { reason: "`v2.std.projection` (compiler lens kinds) had zero importers; `std.planar_projection` keeps the name for drawing views" },

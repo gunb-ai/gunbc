@@ -4648,8 +4648,20 @@ fn applied_type_argument_is_nested_application(n: Node, scope: InferScope) -> Bo
 // So the test is structural rather than nominal, and it fails open twice over: an argument whose
 // name does not resolve, and an argument that resolves to something structureless (a bare alias,
 // a parameter), are both left unjudged.
+//
+// A KERNEL-GROUNDED CARRIER'S STRUCTURE IS A VIEW, NOT ITS REALIZATION (std.literal_elaboration
+// KernelGrounding: std.nat Nat is declared Zero | Succ and realized as the kernel integer), so it is
+// not counted as an argument whose identity this structural test establishes. That keeps the
+// judgment where it stood before the Nat de-fork (operator ruling A, 2026-09-30), when Nat was a
+// structureless alias and so unjudged here: `GoalAssessment<Nat, ..>` produced by `count(..)` at a
+// declared `GoalAssessment<Int, ..>` (gunbc.fleet.app_control_plane_inspection assess_app_hook)
+// stays admitted. Deciding whether a Nat argument inhabits an Int one is the covariance question
+// this arm does not answer for any argument; admitting it here is the existing unjudged state, not a
+// new widen.
 fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool {
   if name == "" {
+    false
+  } else if env_name_is_kernel_grounded_carrier(name: name, env: scope.type_env) {
     false
   } else if is_kernel_type(name: name) {
     true
