@@ -1710,6 +1710,13 @@ pub fn minute_to_millisecond(m: Minute) -> Millisecond {
     ))
 }
 
+pub fn second_to_millisecond(s: Second) -> Millisecond {
+    millisecond(v1_rt::int_mul(
+        second_count(s.clone()),
+        milliseconds_per_second(),
+    ))
+}
+
 pub type Percent = Rc<Measure<Dimensionless, One, i64>>;
 
 pub fn percent(count: Nat) -> Percent {
