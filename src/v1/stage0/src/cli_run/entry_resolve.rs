@@ -657,8 +657,8 @@ thread_local! {
     // policy + group syntax, plus the floor runner) resolves against this single
     // MultiEntryIndex, so its parse/typed caches share the union of all those closures:
     // the shared std/spec prefix typechecks ONCE, not once per prelude entry. Keyed by
-    // source_roots — a run's roots are fixed, so this is a get-or-build, rebuilt only on
-    // the rare roots change. Thread-local by the same Rc-not-Send reason as the store:
+    // source_roots — a run's roots are fixed, so this is a get-or-build over exactly one pool
+    // per slot (below). Thread-local by the same Rc-not-Send reason as the store:
     // each shard keeps its own index rather than smuggling Rc across threads.
     //
     // TWO SLOTS, ONE PER POOL SEMANTICS, and the pair is what makes the memo safe rather than
@@ -667,15 +667,16 @@ thread_local! {
     // for is a silently divergent resolution, which is the §5 fail-open this cache would
     // otherwise introduce. So precedence is part of the identity of the slot, not a build flag
     // applied to a shared one -- a roots-keyed single slot cannot express the distinction and
-    // would answer whichever mode ran first. Each slot keeps the original single-entry,
-    // rebuild-on-roots-change shape, so an index is never held for a pool nobody is asking about.
+    // would answer whichever mode ran first.
     #[allow(clippy::type_complexity)]
     //
-    // ONE INDEX PER ROOTS KEY WITHIN A SLOT, never one index per slot. A process may legitimately
-    // demand several pools on one thread (the regen round indexes [src/v1, dag] and [dag, src/v2]);
-    // a single entry per slot made each such demand evict the other, and the next demand for the
-    // evicted roots rebuilt it from scratch -- every file re-parsed, typed caches lost, the evicted
-    // index often still held. Distinct roots are distinct demands and are kept side by side.
+    // ONE RESIDENT POOL PER SLOT, REFUSED AT BUILD. The map is keyed by canonical roots so a
+    // second demand for the resident roots is a hit, never an eviction and rebuild; a demand for
+    // DIFFERENT roots is refused by `try_process_shared_index_for_pool`
+    // (`SharedIndexSecondResidentPool`) before anything is walked, so a slot never holds more
+    // than one entry. A one-shot reader of another pool (a fixture, the regen round's emitted
+    // tree) owns its index instead. `shared_index_residency_control` reads the bound back at
+    // the end of the floor and of a regen round as the positive control.
     pub(crate) static PROCESS_RESOLVE_INDEX: RefCell<[BTreeMap<String, Rc<MultiEntryIndex>>; 2]> =
         const { RefCell::new([BTreeMap::new(), BTreeMap::new()]) };
 
