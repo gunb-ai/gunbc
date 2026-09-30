@@ -193,13 +193,6 @@ fn token_stream_layout(stream: TokenStream) -> Optional<StreamLayout> {
   stream.layout
 }
 
-fn token_stream_source(stream: TokenStream) -> Optional<String> {
-  match stream.layout {
-    Absent => optional_absent()
-    Present { value: layout } => optional_present(value: layout.source)
-  }
-}
-
 type LineBreakAnswer
   = LineBreakInGap
   | NoLineBreakInGap
