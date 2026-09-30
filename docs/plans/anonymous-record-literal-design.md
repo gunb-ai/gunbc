@@ -80,7 +80,16 @@ with its existing construct typing and declared-return judgment.
 
 Resolve gains an expected-type context: `ResolveContext.expected`, an `Optional` resolved type
 expression. It is set at four positions and cleared everywhere else, so a construct reached through
-any other edge sees Absent:
+any other edge sees Absent.
+
+**`expected` is set ONLY from an AUTHORED type annotation** (ruling, gentle-koi-724): a data
+declaration's declared type, a fn's declared return, a record field's declared type, or the element
+type of an annotated list. Resolve never infers, unifies or propagates a type it computed. Where no
+annotation reaches an elided construct, it refuses located (`resolve_anonymous_record_no_expected_type`)
+and never guesses. A record field's declared type is an annotation authored on the record
+declaration, so nesting stays within this rule. The type-parameter substitution in the record-field
+rule substitutes AUTHORED type arguments from the annotation (`BoundedLattice<DescentEvidence>`), and
+never inferred ones. A binder the annotation leaves unsubstituted gives Absent. The four positions:
 
 - **data initializer**: `data x: T = e` lowers to `Arrow(<empty domain>, T, T, body: e)`, so the
   body edge of an Arrow is walked with `expected = ` its declared return;
