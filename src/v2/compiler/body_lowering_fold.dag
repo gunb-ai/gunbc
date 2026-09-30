@@ -1839,7 +1839,12 @@ fn body_lower_collect_typed_param_slots(sequence_capture: Node) -> List<Outcome<
         Present { value: param } => [outcome_accepted(value: param)]
         Absent =>
           match sugar_sequence_pair_optional(node: sequence_capture) {
-            Absent => [body_lower_typed_param_slot(param_capture: sequence_capture)]
+            Absent =>
+              if is_empty_conj_root(n: sequence_capture) {
+                Empty
+              } else {
+                [body_lower_typed_param_slot(param_capture: sequence_capture)]
+              }
             Present { value: pair } =>
               let slot = body_lower_typed_param_slot(param_capture: pair.left)
               match body_lower_after_comma_tail_optional(node: pair.right) {
