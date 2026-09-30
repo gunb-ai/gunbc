@@ -78,7 +78,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::v1_compiler_parse::ParseWithTableResult;
 use crate::v1_compiler_tokenize::V1LexArtifact;
 use crate::v1_std_core::{build_newline_index, NewlineIndex, Token};
 use im::Vector as RtVec;
@@ -101,7 +100,7 @@ struct Acquired {
     newline_index: Rc<NewlineIndex>,
     /// The heads reading of these bytes, parsed in a FILE-LOCAL space (empty intern table,
     /// occurrence ordinals from zero), filled on first demand. See `heads_reading_for`.
-    heads: RefCell<Option<Rc<ParseWithTableResult>>>,
+    heads: RefCell<Option<Rc<HeadsReading>>>,
 }
 
 thread_local! {
@@ -149,6 +148,30 @@ pub fn newline_index_for(file: &str, content: &str) -> Rc<NewlineIndex> {
     acquire(file, content).newline_index.clone()
 }
 
+/// WHAT THE HEADS READING RETAINS: exactly the fields its consumers read, and nothing else. Its
+/// consumers are `module_path_index::parse_module_binding` (the module name and span, and the
+/// refusal) and the pool census's `census_heads::project_heads_reading` (the module node, the
+/// refusal, and the file-local intern strings and occurrence-allocator end it relabels into the
+/// pool's space). The parse's occurrence transport, its full intern index and its allocator are
+/// not read by either, so they are not retained: holding the whole parse result for every pool
+/// file for the life of the process was the +16% peak-RSS regression the #12656 bisect measured.
+pub struct HeadsReading {
+    pub module: Option<Rc<crate::v1_std_core::Node>>,
+    pub error: Option<Rc<crate::v1_std_core::ErrorNode>>,
+    /// The file-local intern strings, in local-id order (local id `k` is `local_strings[k]`).
+    pub local_strings: Rc<RtVec<String>>,
+    /// The file-local occurrence allocator's next id after the parse.
+    pub local_next: i64,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Heads parses per (spelling, bytes) acquisition key: the control that the heads reading is
+    /// parsed at most once per key.
+    pub(crate) static HEADS_PARSES: RefCell<HashMap<(String, usize, u64), usize>> =
+        RefCell::new(HashMap::new());
+}
+
 /// THE ONE HEADS READING of a file, computed once per (spelling, bytes).
 ///
 /// It is parsed in a FILE-LOCAL space: an empty intern table and occurrence ordinals from zero.
@@ -157,18 +180,37 @@ pub fn newline_index_for(file: &str, content: &str) -> Rc<NewlineIndex> {
 /// name, its span and the refusal, none of which carry an id. The pool census reads it through
 /// `census_heads::project_heads_reading`, which maps it into the pool's threaded intern table
 /// and occurrence space. That projection is total, so the census needs no second parse.
-pub fn heads_reading_for(file: &str, content: &str) -> Rc<ParseWithTableResult> {
+pub fn heads_reading_for(file: &str, content: &str) -> Rc<HeadsReading> {
     let acquired = acquire(file, content);
     if let Some(hit) = acquired.heads.borrow().clone() {
         return hit;
     }
+    #[cfg(test)]
+    {
+        let (len, hash) = content_fingerprint(content);
+        HEADS_PARSES.with(|p| {
+            *p.borrow_mut()
+                .entry((file.to_string(), len, hash))
+                .or_default() += 1
+        });
+    }
     let mut indices = im::HashMap::new();
     indices.insert(file.to_string(), acquired.newline_index.clone());
-    let reading = crate::v1_compiler_parse::parse_heads_with_table(
+    let parsed = crate::v1_compiler_parse::parse_heads_with_table(
         acquired.artifact.tokens.clone(),
         Rc::new(indices),
         crate::v1_std_core::empty_intern_table(),
     );
+    let reading = Rc::new(HeadsReading {
+        module: parsed.result.module.clone(),
+        error: parsed.result.error.clone(),
+        local_strings: parsed.intern_table.strings.clone(),
+        local_next: parsed
+            .intern_table
+            .authored_token_ordinals
+            .allocator
+            .next_id,
+    });
     *acquired.heads.borrow_mut() = Some(reading.clone());
     reading
 }
