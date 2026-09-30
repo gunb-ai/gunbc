@@ -28,7 +28,6 @@ import v2.std.grammar {
   grammar_formal_production,
   grammar_expr_optional,
   grammar_expr_terminal,
-  grammar_expr_terminal_bound,
   grammar_expr_literal_terminal,
   grammar_expr_terminal_lexeme,
   formal_grammar_symbol_to_grammar_expr,
@@ -687,10 +686,6 @@ fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal(token_class: token_class)
 }
 
-fn dag_grammar_terminal_bound(token_class: Symbol, binding: Symbol) -> GrammarExpr {
-  grammar_expr_terminal_bound(token_class: token_class, binding: binding)
-}
-
 fn dag_grammar_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal_lexeme(token_class: token_class)
 }
@@ -972,59 +967,6 @@ fn dag_grammar_ident_or_type_decl_modifier_name() -> GrammarExpr {
     right: dag_grammar_choice(
       left: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_nominal_opaque),
       right: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_sole_constructor)
-    )
-  )
-}
-
-// The identity-preserving sibling, for the name site that was dag_grammar_terminal
-// (StampClass) before the modifier classes were admitted, and that must keep publishing
-// what StampClass published there BEFORE promotion: dag_grammar_caret_symbol_expr's
-// referenced identifier. dag_grammar_generic_params_expr's parameter names USED to share
-// this helper and no longer do: a type parameter is a BINDER, and a binder whose spelling
-// the tree does not carry cannot be lowered onto v2.std.type_binder's type-parameter edge, so
-// resolve had nothing to scope and `T` fell through to the ordinary name chain
-// (gunbc.recurring_failure_mode generic_type_parameter_resolved_as_an_ordinary_atom_in_v2).
-// Those names now go through dag_grammar_ident_or_type_decl_modifier_name -- the SAME three
-// token classes, lexeme-stamped, exactly as every other declared name. Admitting
-// two more token classes is the whole of this change, and PRESERVING THE STAMP MODE IS NOT
-// ENOUGH TO PRESERVE THE IDENTITY. Two distinct transitions have to be held out:
-//
-//   1. StampClass -> StampLexeme. Routing these sites through the lexeme-stamped helper
-//      would make every caret literal carry its own text as the
-//      node's atom identity (v2.compiler.02_parse symbol_intern_lexeme).
-//   2. The token CLASS a class stamp publishes. v2.compiler.02_parse resolves it as
-//      exactly `StampClass => tok.class`. Before promotion these spellings lexed as
-//      ^dag_token_ident, so a class-stamped site published ^dag_token_ident; once they lex
-//      as their own keyword classes, the SAME StampClass publishes
-//      ^dag_token_kw_sole_constructor instead. Holding the mode fixed does not hold the
-//      identity fixed.
-//
-// So THIS HELPER IS NO LONGER UNIFORMLY CLASS-STAMPED, and the arms differ on purpose:
-// the ordinary identifier arm stays StampClass, whose published identity IS
-// ^dag_token_ident; the two promoted keyword arms use a FIXED StampBinding of
-// ^dag_token_ident (v2.std.grammar grammar_expr_terminal_bound, published by
-// v2.compiler.02_parse as `StampBinding { binding: b } => b`). Both arms therefore publish
-// the SAME generic identifier identity and NEITHER publishes authored text, which is the
-// property these sites had before promotion -- reached by two mechanisms rather than one. That keeps
-// v2.lens.identity_captured_navigation.analyze node_source_symbol_note true as the
-// UNIVERSAL grammar property it states -- every caret literal carries the generic
-// ^dag_token_ident and never the particular spelling -- rather than true only of a corpus
-// that happens not to use these spellings as names. This PR deliberately makes
-// `^sole_constructor` legal and authors one in its own witness, so a census-relative
-// reading would not discharge the note (DESIGN section 4b(1): the reported rung must equal
-// the rung established by executed evidence).
-fn dag_grammar_ident_or_type_decl_modifier_generic_ident_identity() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_terminal(token_class: ^dag_token_ident),
-    right: dag_grammar_choice(
-      left: dag_grammar_terminal_bound(
-        token_class: ^dag_token_kw_nominal_opaque,
-        binding: ^dag_token_ident
-      ),
-      right: dag_grammar_terminal_bound(
-        token_class: ^dag_token_kw_sole_constructor,
-        binding: ^dag_token_ident
-      )
     )
   )
 }
@@ -1435,10 +1377,15 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
   )
 }
 
+// The name a caret symbol carries is lexeme-stamped like every other declared name
+// (dag_grammar_ident_or_type_decl_modifier_name), so `^a` and `^b` publish different identities
+// and v2.compiler.body_lowering_fold lowers the pair to a symbol literal (dag_symbol_literal_node).
+// Until MQ-1 PR-2 this site was class-stamped and published the generic ^dag_token_ident for
+// every caret literal, which is how two different symbols reached one lowered node.
 fn dag_grammar_caret_symbol_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_caret),
-    right: dag_grammar_ident_or_type_decl_modifier_generic_ident_identity()
+    right: dag_grammar_ident_or_type_decl_modifier_name()
   )
 }
 
@@ -3763,6 +3710,46 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
   match node_atom_identity_optional(node: node) {
     Present { value: id } => id == ^dag_token_int_literal
     Absent => false
+  }
+}
+
+// A CARET SYMBOL LOWERS TO A SYMBOL LITERAL, NOT A REFERENCE: std.syntax LitSymbol, elaborated as
+// std.literal_elaboration KernelSymbolLiteral. Its name terminal is lexeme-stamped by
+// dag_grammar_caret_symbol_expr (the int literal's StampLexeme precedent), so the node is the caret
+// atom carrying that terminal -- with its authored occurrence -- as its one named payload. The
+// payload is the symbol's value, never a name the resolver looks up.
+fn dag_symbol_literal_node(name: Node, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_token_caret } },
+    children: [Edge { label: Named { name: ^symbol_literal_name_field }, target: name }],
+    occurrence_id: occurrence_id
+  }
+}
+
+fn dag_symbol_literal_name_edge_target_optional(edge: Edge) -> Optional<Node> {
+  match edge.label {
+    Named { name: field } =>
+      if field == ^symbol_literal_name_field {
+        optional_present(value: edge.target)
+      } else {
+        optional_absent()
+      }
+    Positional => optional_absent()
+  }
+}
+
+fn dag_symbol_literal_name_optional(node: Node) -> Optional<Node> {
+  match node_atom_identity_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: id } =>
+      if (id == ^dag_token_caret) && (length(xs: node.children) == 1) {
+        match list_at_optional(xs: node.children, index: 0) {
+          Present { value: edge } => dag_symbol_literal_name_edge_target_optional(edge: edge)
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
   }
 }
 

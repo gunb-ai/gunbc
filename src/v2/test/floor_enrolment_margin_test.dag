@@ -9,7 +9,8 @@ import v2.workflow.floor_enrolment_margin {
   EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored,
   EnrolmentBoundWithoutCeiling, EnrolmentNotMeasured,
   EnrolmentOutsideThisRunsExecution, EnrolmentExpensivenessDeclared, EnrolmentRosterGroundStale,
-  EnrolmentDeadBandStale, EnrolmentDeadBandWrongGround,
+  EnrolmentDeadBandStale, EnrolmentDeadBandWrongGround, EnrolmentDeadBandWithinRunnerEnvelope,
+  floor_enrolment_dead_band_envelope_floor_ms_count,
   EnrolmentExpensivenessNotDeclared, EnrolmentExpensivenessIsDeclared,
   EnrolmentExpensivenessGround, EnrolmentExpensivenessRoster, EnrolmentExpensivenessLongHome, EnrolmentExpensivenessDeadBand,
   enrolment_expensiveness_declaration,
@@ -119,8 +120,9 @@ fn standing_kind(s: EnrolmentMarginStanding) -> String {
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside-this-run"
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => "expensiveness-declared"
     EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => "roster-ground-stale"
-    EnrolmentDeadBandStale { witness_identity: _, observed_cpu_ms: _, budget_ms: _ } => "dead-band-stale"
+    EnrolmentDeadBandStale { witness_identity: _, observed_cpu_ms: _, budget_ms: _, envelope_floor_ms: _ } => "dead-band-stale"
     EnrolmentDeadBandWrongGround { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => "dead-band-wrong-ground"
+    EnrolmentDeadBandWithinRunnerEnvelope { witness_identity: _, observed_cpu_ms: _, budget_ms: _, envelope_floor_ms: _ } => "dead-band-within-runner-envelope"
   }
 }
 
@@ -581,12 +583,50 @@ test fn a_dead_band_reading_at_the_line_is_observed_not_blocking() -> Bool {
   standing_kind(s: s) == "expensiveness-declared" && !enrolment_margin_standing_blocks(standing: s)
 }
 
-// SELF-STALING, LOW SIDE: at or under the margin the row is stale and blocks, naming its deletion.
-test fn a_dead_band_reading_at_the_margin_is_stale_and_blocks() -> Bool {
+// A FAST RUNNER'S READING OF A BAND MEMBER: at or under the margin but above the envelope floor the
+// row holds with a typed standing that names both bounds and does not block -- the specimen is two
+// matrix cases read at 332/339 ms on one CI run and 294/294 ms on the next (gunbc#12533).
+test fn a_dead_band_reading_at_the_margin_is_within_the_runner_envelope() -> Bool {
   let s = dead_band(reading: observed(cpu_ms: floor_enrolment_margin_budget_ms_count()))
+  standing_kind(s: s) == "dead-band-within-runner-envelope"
+    && !enrolment_margin_standing_blocks(standing: s)
+    && enrolment_margin_standing_name(standing: s) == "dead_band_within_runner_envelope"
+}
+
+test fn a_dead_band_reading_just_over_the_envelope_floor_is_within_the_runner_envelope() -> Bool {
+  let s = dead_band(reading: observed(cpu_ms: floor_enrolment_dead_band_envelope_floor_ms_count() + 1))
+  standing_kind(s: s) == "dead-band-within-runner-envelope" && !enrolment_margin_standing_blocks(standing: s)
+}
+
+// SELF-STALING, LOW SIDE: at or under the envelope floor -- under the margin even on a p90-slow
+// runner -- the row is stale and blocks, naming its deletion.
+test fn a_dead_band_reading_at_the_envelope_floor_is_stale_and_blocks() -> Bool {
+  let s = dead_band(reading: observed(cpu_ms: floor_enrolment_dead_band_envelope_floor_ms_count()))
   standing_kind(s: s) == "dead-band-stale"
     && enrolment_margin_standing_blocks(standing: s)
     && enrolment_margin_blocking_cause(standing: s) == "enrolment_dead_band_stale"
+}
+
+// THE FLOOR IS DERIVED, AND IT SITS STRICTLY BETWEEN ZERO AND THE MARGIN: it is the margin applied
+// once more to the same measured envelope, so it cannot be a decoration at either end.
+test fn the_envelope_floor_is_strictly_inside_the_margin() -> Bool {
+  floor_enrolment_dead_band_envelope_floor_ms_count() > 0
+    && floor_enrolment_dead_band_envelope_floor_ms_count() < floor_enrolment_margin_budget_ms_count()
+}
+
+// THE DISCRIMINATING RED: the envelope standing is reachable ONLY through a dead-band row. The same
+// under-margin-but-over-floor reading is an ordinary admission undeclared, and an undeclared reading
+// over the margin still refuses -- the new standing admits no genuinely over-margin claim.
+test fn an_undeclared_reading_over_the_margin_still_refuses() -> Bool {
+  let s = enrolment_margin_standing(
+    reading: observed(cpu_ms: floor_enrolment_margin_budget_ms_count() + 1),
+    budget_ms: floor_enrolment_margin_budget_ms(),
+    per_subject_line_ms: required_floor_per_subject_cpu_line_ms(),
+    declaration: EnrolmentExpensivenessNotDeclared,
+  )
+  standing_kind(s: s) == "over-margin"
+    && enrolment_margin_standing_blocks(standing: s)
+    && enrolment_margin_blocking_cause(standing: s) == "enrolment_measured_over_margin"
 }
 
 // SELF-STALING, HIGH SIDE: above the line the ground is wrong and it blocks.

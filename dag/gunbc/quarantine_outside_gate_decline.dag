@@ -1,0 +1,75 @@
+module gunbc.quarantine_outside_gate_decline
+
+import std.types { NonEmptyStr, List }
+import v2.std.text { String }
+
+// QUARANTINE PROBES THE REQUIRED FLOOR NEVER PLANS, ONE ROW PER PROBE, EACH WITH ITS OWN TRIGGER.
+//
+// A known-red quarantine probe whose module no v2.workflow.required_floor selector admits is
+// declined before execution: nothing runs it, so nothing asserts its red. These rows RECORD that
+// state so gunbc.quarantine_probe_disposition can derive a holder for it -- the
+// NeverRunDeclinedOutsideGate arm, whose verification standing is WitnessNeverRuns. A row here is
+// NOT coverage: it is an unenforced red named in the open, and the fold only honours it while its
+// module really is outside the gate (joined on the module's identity against
+// required_gate_admits), so a probe inside the gate cannot be parked here.
+//
+// Each row names its own module and its own next-rung trigger rather than sharing a blanket one,
+// so this list cannot become the place unrun reds go to be ignored (DESIGN section 5, the
+// absorbing fallback). The population is the scope of the declared drop gunbc.rung_drop
+// required_gate_bankruptcy, member "every witness outside the roster".
+//
+// MEASURED 2026-09-29 with claim_batch on main 785934a38b6: all nine probes rostered here FAIL
+// (their declared red).
+type QuarantineOutsideGateDecline {
+  module: String
+  function: String
+  trigger: NonEmptyStr
+}
+
+data quarantine_outside_gate_declines: List<QuarantineOutsideGateDecline> = [
+  QuarantineOutsideGateDecline {
+    module: "test.claim.algebra_receiver_callable_witness_test",
+    function: "shorthand_match_binder_is_callable",
+    trigger: "the module test.claim.algebra_receiver_callable_witness_test is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
+  },
+  QuarantineOutsideGateDecline {
+    module: "test.claim.algebra_receiver_callable_witness_test",
+    function: "explicit_match_binder_pool_free_name_is_callable",
+    trigger: "the module test.claim.algebra_receiver_callable_witness_test is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
+  },
+  QuarantineOutsideGateDecline {
+    module: "test.claim.algebra_receiver_callable_witness_test",
+    function: "shorthand_match_binder_pool_free_name_is_callable",
+    trigger: "the module test.claim.algebra_receiver_callable_witness_test is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
+  },
+  QuarantineOutsideGateDecline {
+    module: "test.claim.algebra_receiver_callable_witness_test",
+    function: "explicit_match_binder_colliding_name_is_callable",
+    trigger: "the module test.claim.algebra_receiver_callable_witness_test is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
+  },
+  QuarantineOutsideGateDecline {
+    module: "test.claim.algebra_receiver_callable_witness_test",
+    function: "nested_let_in_match_arm_is_callable",
+    trigger: "the module test.claim.algebra_receiver_callable_witness_test is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
+  },
+  QuarantineOutsideGateDecline {
+    module: "test.claim.algebra_receiver_callable_witness_test",
+    function: "function_parameter_is_callable",
+    trigger: "the module test.claim.algebra_receiver_callable_witness_test is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
+  },
+  QuarantineOutsideGateDecline {
+    module: "test.claim.algebra_receiver_alias_witness_test",
+    function: "alias_return_is_a_refusal_fixture",
+    trigger: "the module test.claim.algebra_receiver_alias_witness_test is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
+  },
+  QuarantineOutsideGateDecline {
+    module: "test.claim.algebra_receiver_alias_witness_test",
+    function: "alias_field_is_a_refusal_fixture",
+    trigger: "the module test.claim.algebra_receiver_alias_witness_test is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
+  },
+  QuarantineOutsideGateDecline {
+    module: "test.claim.algebra_receiver_alias_witness_test",
+    function: "explicit_initializer_is_an_acceptance_fixture",
+    trigger: "the module test.claim.algebra_receiver_alias_witness_test is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
+  },
+]

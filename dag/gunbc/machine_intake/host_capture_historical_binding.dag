@@ -268,7 +268,10 @@ fn binding_holds_against_argv(historical: String?, stages: List<HostCaptureStage
             Present { value: _ } => true
           }
       }
-    _ => binding_holds_against_present_section(historical: historical, carried: carried, b: b)
+    HistoricalStageExact { argv: _ } => binding_holds_against_present_section(historical: historical, carried: carried, b: b)
+    HistoricalStageNormalized { original: _, replacement: _, reason: _ } => binding_holds_against_present_section(historical: historical, carried: carried, b: b)
+    HistoricalStageAuthoredFromDescription { original: _, reason: _ } => binding_holds_against_present_section(historical: historical, carried: carried, b: b)
+    HistoricalStageDeliberatelyOmitted { reason: _ } => binding_holds_against_present_section(historical: historical, carried: carried, b: b)
   }
 }
 

@@ -906,7 +906,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/std/machine_shape.dag", name: "map_insert", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/std/materialization_ladder.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/std/materialization_object.dag", name: "get", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/std/measure.dag", name: "Time", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/std/measure.dag", name: "Time", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/std/node.dag", name: "map_get", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/std/observation_completeness.dag", name: "any", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/std/observation_completeness.dag", name: "filter", standing: Retired { cause: NotAReference } },

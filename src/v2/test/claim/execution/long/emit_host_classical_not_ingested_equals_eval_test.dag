@@ -201,8 +201,8 @@ fn ingested_staging_inferred_tree_from_source(source: String) -> Outcome<Inferre
 
 // Takes the ARROW, not the source: the emit claims supply the rostered
 // ingested_classical_not_arrow_with_body rather than re-ingesting per claim (DESIGN §3 witness
-// rule). ingested_classical_not_arrow_has_match_holds stays the inhabitance claim that runs the
-// real tokenize->parse->normalize->resolve->find-arrow path from the source and asserts its route.
+// rule). ingested_classical_not_arrow_has_match_holds is the inhabitance claim over that same served
+// arrow, whose producer runs the real tokenize->parse->normalize->resolve->find-arrow path.
 fn ingested_emit_shape_frontier_tree_from_arrow(arrow: Outcome<Node>) -> Outcome<InferredTree> {
   bind_outcome(
     o: arrow,
@@ -298,15 +298,8 @@ fn ingested_classical_not_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
-fn ingested_resolves(source: String) -> Bool {
-  match ingested_resolved_module_from_source(source: source) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn ingested_arrow_has_match_body(source: String) -> Bool {
-  match ingested_arrow_from_source(source: source) {
+fn ingested_arrow_has_match_body(arrow: Outcome<Node>) -> Bool {
+  match arrow {
     Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
@@ -576,12 +569,24 @@ test fn ingested_classical_not_canonical_emit_accepts_holds() -> Bool {
   }
 }
 
-test fn ingested_classical_not_resolves_holds() -> Bool {
-  ingested_resolves(source: ingested_classical_not_source)
+// The inhabitance claim for the real path: the served arrow IS ingested_arrow_from_source over
+// ingested_classical_not_source, forced in the floor's warm pure-producer prep, so the real
+// tokenize->parse->normalize->resolve->find-arrow path executes every floor run and this claim
+// asserts its route (a Match body). An ingest break makes the served producer Rejected, and the
+// control below executes that arm.
+test fn ingested_classical_not_arrow_has_match_holds() -> Bool {
+  ingested_arrow_has_match_body(arrow: ingested_classical_not_arrow_with_body())
 }
 
-test fn ingested_classical_not_arrow_has_match_holds() -> Bool {
-  ingested_arrow_has_match_body(source: ingested_classical_not_source)
+test fn ingested_classical_not_arrow_has_match_rejected_producer_refuses_holds() -> Bool {
+  !ingested_arrow_has_match_body(
+    arrow: outcome_rejected(
+      d: ingested_classical_not_diagnostic(
+        reason: ^ingested_classical_not_arrow_miss,
+        node: ingested_classical_not_eval_subgraph_canonical()
+      )
+    )
+  )
 }
 
 fn ingested_classical_not_staging_emit_accepts_arrow(arrow: Outcome<Node>) -> Bool {
