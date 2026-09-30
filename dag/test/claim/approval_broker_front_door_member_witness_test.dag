@@ -70,7 +70,7 @@ test fn the_device_enrolment_path_is_under_an_installed_mount() -> Bool {
   starts_with(s: approval_device_enrol_path as String, prefix: "/approve/")
     && contains_all(
       cmds: map(deployment_approval_broker_front_door_endpoints(), e => join(tailscale_serve_enable_argv(endpoint: e), " ")),
-      wants: ["--set-path=/approve "],
+      wants: ["--set-path=/approve"],
     )
 }
 
@@ -84,6 +84,10 @@ test fn apply_and_teardown_realize_both_mappings() -> Bool {
   let down = step_commands(steps: emit_artifact_teardown(art: art, spec: spec))
   let port = to_string(approval_broker_listen_port)
   count(up) == 2 && count(down) == 2
-    && contains_all(cmds: up, wants: ["--set-path=/approve ", "--set-path=/approvals ", port])
-    && contains_all(cmds: down, wants: ["--set-path=/approve ", "--set-path=/approvals ", " off"])
+    && count(filter(up, c => string_contains(s: c, pattern: "--set-path=/approvals"))) == 1
+    && count(filter(up, c => string_contains(s: c, pattern: "--set-path=/approve"))) == 2
+    && count(filter(up, c => string_contains(s: c, pattern: port))) == 2
+    && count(filter(down, c => string_contains(s: c, pattern: "--set-path=/approvals"))) == 1
+    && count(filter(down, c => string_contains(s: c, pattern: "--set-path=/approve"))) == 2
+    && count(filter(down, c => string_contains(s: c, pattern: "off"))) == 2
 }
