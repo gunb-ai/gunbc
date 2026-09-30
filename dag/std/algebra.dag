@@ -249,12 +249,15 @@ type FinitelySupportedFunction<K, V> {
 // this call (v2.compiler.resolve, the map arm) refuses a repeated key BEFORE it builds it
 // (v2.std.map_introduction map_introduction_duplicate_key). A caller that bypasses that writer and
 // calls this directly with a repeated key gets insert's semantics, which is what it asked for.
+// The result is spelled `Map<K, V>`, the kernel container spelling this module already uses bare
+// (kernel_algebra_profile_value), because the seed types `empty_map()` only under a keyed-collection
+// expectation; it names this carrier (std.types Map = FinitelySupportedFunction).
 type MapIntroductionEntry<K, V> {
   key: K
   value: V
 }
 
-fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> FinitelySupportedFunction<K, V> {
+fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> Map<K, V> {
   entries |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.key, entry.value))
 }
 
