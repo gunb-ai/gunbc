@@ -1419,6 +1419,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_put_or_advance_into_store_areas_that_refuse_every_principal_is_a_typed_fault_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_put_or_advance_into_store_areas_that_refuse_every_principal_is_a_typed_fault_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "the_identity_route_echoes_the_presented_login_and_touches_no_head_by_real_execution" },
       entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "the_identity_route_echoes_the_presented_login_and_touches_no_head_by_real_execution",
