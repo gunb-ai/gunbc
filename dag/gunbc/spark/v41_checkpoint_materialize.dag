@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.content_hash { Sha256Digest, sha256_hex_digest, Sha256DigestHex }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemListingObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
@@ -21,7 +21,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision,
   deepseek_v4_1_flash_weight_manifest_standing, WeightManifestAdmitted, WeightManifestRefused,
   deepseek_v4_1_flash_tokenizer_standing, TokenizerPopulationAdmitted, TokenizerPopulationRefused,
-  deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
+  deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files, deepseek_v4_1_flash_published_file_row,
 }
 import gunbc.artifact_acquisition {
   AcquisitionSubject, AcquisitionSource, SourceArgv, SourceUrl, ContentDigestSha256, UpstreamRevision,
@@ -119,6 +119,12 @@ type V41CheckpointPopulation
   = V41CheckpointPopulationAdmitted { files: List<DeepseekV41PublishedFile> }
   | V41CheckpointPopulationRefused { defects: List<NonEmptyStr> }
 
+// DEV-ONLY (operator ruling 2026-09-30, never merged): config.json has no published-file row upstream, so
+// it was never materialized and vLLM refuses '/model'. Size and sha256 read from the Hub at the pinned
+// revision dba1be0a40aa45a94ad051997016db3960a90277 on 2026-09-30. The real fix is a row in
+// extdeps.deepseek.deepseek_v4_1_flash.
+data v41_dev_config_json_file: DeepseekV41PublishedFile = deepseek_v4_1_flash_published_file_row(path: "config.json" as NonEmptyStr, file_bytes: byte_size(count: 3311), sha256_hex: "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879" as Sha256DigestHex)
+
 fn v41_checkpoint_population() -> V41CheckpointPopulation {
   match deepseek_v4_1_flash_weight_manifest_standing() {
     WeightManifestRefused { defects: d } => V41CheckpointPopulationRefused { defects: map(d, x => join(["weight manifest: ", x as String], "") as NonEmptyStr) }
@@ -126,7 +132,7 @@ fn v41_checkpoint_population() -> V41CheckpointPopulation {
       match deepseek_v4_1_flash_tokenizer_standing() {
         TokenizerPopulationRefused { defects: d } => V41CheckpointPopulationRefused { defects: map(d, x => join(["tokenizer population: ", x as String], "") as NonEmptyStr) }
         TokenizerPopulationAdmitted { files: tokenizer, canonical_text: _ } =>
-          V41CheckpointPopulationAdmitted { files: concat(concat(weights, [index]), tokenizer) }
+          V41CheckpointPopulationAdmitted { files: concat(concat(concat(weights, [index]), tokenizer), [v41_dev_config_json_file]) }
       }
   }
 }
