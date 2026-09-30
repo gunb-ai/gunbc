@@ -79,12 +79,22 @@ fn declared_signature(params: List<Edge>, source: Node) -> DeclaredSignatureEdge
 // position refuses it (v2.compiler.translate translate_arrow_signature_split, v2.std.decl_index
 // export_signature_declared_arrow). A well_formed wall requiring the order edge on every Arrow is A4's.
 fn anonymous_signature_arrow(domain_types: List<Node>, codomain: Node, source: Node) -> Node {
-  let signature = declared_signature(
+  declared_signature_arrow(
     params: fold(domain_types, init: Empty, f: fn(acc, t) {
       list_snoc_item(xs: acc, item: Edge { label: Named { name: pattern_wildcard_name() }, target: t })
     }),
+    codomain: codomain,
     source: source
   )
+}
+
+// THE ONE ASSEMBLER OF A BODILESS SIGNATURE ARROW: [domain, codomain, order], the domain and order from
+// one declared_signature mint over `params` (Named edges in authored order). Every producer of a
+// signature-only Arrow reaches the node layout here -- anonymous_signature_arrow for type-only
+// signatures, v2.std.decl_index export_signature_declared_from for exported ones -- so the child layout
+// of the one encoding is decided in one place.
+fn declared_signature_arrow(params: List<Edge>, codomain: Node, source: Node) -> Node {
+  let signature = declared_signature(params: params, source: source)
   node_with_occurrence_id(
     kind: TypeNode { connective: Arrow },
     children: [signature.domain, Edge { label: Positional, target: codomain }, signature.order],

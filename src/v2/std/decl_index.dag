@@ -1,8 +1,8 @@
 module v2.std.decl_index
-import v2.std.arrow_signature { declared_signature }
+import v2.std.arrow_signature { declared_signature_arrow }
 import std.algebra { Empty, list_snoc_item }
 import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected }
-import v2.std.node { Arrow, Conj, Edge, Named, Node, Positional, TypeNode }
+import v2.std.node { Arrow, Conj, Node, TypeNode, all_edges_named, all_edges_positional }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.collection { Absent, Present, list_at_optional }
 type ItemKind
@@ -96,7 +96,7 @@ fn export_signature_declared_facts(pool_roots: List<String>) -> Outcome<List<Dec
 fn export_signature_declared_arrow(arrow: Node) -> Outcome<Node> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
-      if (count(arrow.children) != 2) || !all_edges_positional_outer(children: arrow.children) {
+      if (count(arrow.children) != 2) || !all_edges_positional(children: arrow.children) {
         outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
       } else {
         let targets = node_positional_child_targets(node: arrow)
@@ -123,30 +123,7 @@ fn export_signature_declared_arrow(arrow: Node) -> Outcome<Node> {
 }
 
 fn export_signature_declared_from(arrow: Node, domain: Node, ret: Node) -> Outcome<Node> {
-  let signature = declared_signature(params: domain.children, source: domain)
-  outcome_accepted(value: Node {
-    kind: TypeNode { connective: Arrow },
-    children: [signature.domain, Edge { label: Positional, target: ret }, signature.order],
-    occurrence_id: arrow.occurrence_id
-  })
-}
-
-fn all_edges_positional_outer(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
-    match e.label {
-      Positional => acc
-      Named { name: _ } => false
-    }
-  })
-}
-
-fn all_edges_named(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
-    match e.label {
-      Named { name: _ } => acc
-      Positional => false
-    }
-  })
+  outcome_accepted(value: declared_signature_arrow(params: domain.children, codomain: ret, source: arrow))
 }
 
 fn export_signature_host_shape_diagnostic(arrow: Node) -> Diagnostic {
