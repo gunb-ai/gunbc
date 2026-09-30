@@ -1918,13 +1918,17 @@ fn resolve_map_literal_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation)
           match resolve_map_first_name_keyed_item(items: skip(xs: n.children, n: 1)) {
             Present { value: offending } => resolve_anonymous_record_refused(n: offending, reason: ^resolve_anonymous_map_name_key)
             Absent =>
-              if resolve_map_key_type_is_string_literal_type(ctx: ctx, position: x.position, t: key_type) {
-                resolve_map_literal_entries(ctx: ctx, n: n, items: items, value_x: ResolveExpectation { expected: value_type, position: x.position, at_use_site: x.at_use_site })
-              } else {
-                match list_at_optional(xs: items, index: 0) {
-                  Present { value: first } => resolve_anonymous_record_refused(n: resolve_map_entry_key(entry: first.target), reason: ^resolve_anonymous_map_key_kind_mismatch)
-                  Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_key_kind_mismatch)
-                }
+              match resolve_map_pairs(pairs: resolve_map_pair_targets(items: items)) {
+                ResolveMapPairMalformed { at: p } => resolve_anonymous_record_refused(n: p, reason: ^resolve_anonymous_map_entry_malformed)
+                ResolveMapPairsRead { entries: entries } =>
+                  if resolve_map_key_type_is_string_literal_type(ctx: ctx, position: x.position, t: key_type) {
+                    resolve_map_literal_entries(ctx: ctx, n: n, items: items, entries: entries, value_x: ResolveExpectation { expected: value_type, position: x.position, at_use_site: x.at_use_site })
+                  } else {
+                    match list_at_optional(xs: entries, index: 0) {
+                      Present { value: first } => resolve_anonymous_record_refused(n: first.key, reason: ^resolve_anonymous_map_key_kind_mismatch)
+                      Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_key_kind_mismatch)
+                    }
+                  }
               }
           }
       }
@@ -1975,13 +1979,6 @@ fn resolve_named_edge_target_optional(edges: List<Edge>, field: Symbol) -> Optio
   })
 }
 
-fn resolve_map_entry_key(entry: Node) -> Node {
-  match resolve_map_entry_field(entry: entry, field: ^key) {
-    Present { value: k } => k
-    Absent => entry
-  }
-}
-
 // A KEY'S TEXT, OR NONE, read through the ONE string decoder: a string literal lowers to a terminal
 // carrying its decoded text (gunbc#12759, v2.extdeps.languages.dag dag_string_literal_value_optional;
 // a malformed escape already refused at lowering). A key without that payload has no text, and the
@@ -1990,70 +1987,83 @@ fn resolve_map_key_text_optional(key: Node) -> Optional<String> {
   dag_string_literal_value_optional(node: key)
 }
 
-fn resolve_map_first_textless_key(items: List<Edge>) -> Optional<Node> {
-  fold(items, init: optional_absent(), f: fn(acc, e) {
+// THE PAIRS, READ TOTALLY. A pair is a tag-elided construct carrying `key` and `value` (body lowering
+// body_lower_map_literal_entry_edge). Either every pair carries both, and the entries come back typed
+// (key, value, source), or the first pair that does not is named -- never substituted: DESIGN 5 forbids
+// a fabricated default, so a missing field is a located refusal
+// (resolve_anonymous_map_entry_malformed), however unlikely lowering is to produce one.
+type ResolveMapPairs
+  = ResolveMapPairsRead { entries: List<MapIntroductionEntryNodes> }
+  | ResolveMapPairMalformed { at: Node }
+
+fn resolve_map_pairs(pairs: List<Node>) -> ResolveMapPairs {
+  fold(pairs, init: ResolveMapPairsRead { entries: [] }, f: fn(acc, p) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match resolve_map_key_text_optional(key: resolve_map_entry_key(entry: e.target)) {
-          Present { value: _ } => optional_absent()
-          Absent => optional_present(value: resolve_map_entry_key(entry: e.target))
+      ResolveMapPairMalformed { at: _ } => acc
+      ResolveMapPairsRead { entries: es } =>
+        match resolve_map_entry_field(entry: p, field: ^key) {
+          Absent => ResolveMapPairMalformed { at: p }
+          Present { value: k } =>
+            match resolve_map_entry_field(entry: p, field: ^value) {
+              Absent => ResolveMapPairMalformed { at: p }
+              Present { value: v } =>
+                ResolveMapPairsRead { entries: list_snoc_item(xs: es, item: MapIntroductionEntryNodes { key: k, value: v, source: p }) }
+            }
         }
     }
   })
 }
 
-// The pairs are walked under a Transform carrier (positional edges only) that never leaves this
-// arm; only its resolved children are read.
-fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, items: List<Edge>, value_x: ResolveExpectation) -> ResolveNodeWalk {
-  match resolve_map_first_textless_key(items: items) {
-    Present { value: key } => resolve_anonymous_record_refused(n: key, reason: ^resolve_anonymous_map_key_text_unavailable)
-    Absent => resolve_map_literal_distinct_entries(ctx: ctx, n: n, items: items, value_x: value_x)
-  }
+fn resolve_map_pair_targets(items: List<Edge>) -> List<Node> {
+  fold(items, init: [], f: fn(acc, e) { list_snoc_item(xs: acc, item: e.target) })
 }
 
-fn resolve_map_literal_distinct_entries(ctx: ResolveContext, n: Node, items: List<Edge>, value_x: ResolveExpectation) -> ResolveNodeWalk {
-  let keys = fold(items, init: [], f: fn(acc, e) {
-    match resolve_map_key_text_optional(key: resolve_map_entry_key(entry: e.target)) {
-      Present { value: t } => list_snoc_item(xs: acc, item: t)
-      Absent => acc
+// THE KEYS' TEXTS, READ TOTALLY: one text per entry, in order, or the first key with no text, named.
+type ResolveMapKeyTexts
+  = ResolveMapKeyTextsRead { texts: List<String> }
+  | ResolveMapKeyTextless { at: Node }
+
+fn resolve_map_key_texts(entries: List<MapIntroductionEntryNodes>) -> ResolveMapKeyTexts {
+  fold(entries, init: ResolveMapKeyTextsRead { texts: [] }, f: fn(acc, e) {
+    match acc {
+      ResolveMapKeyTextless { at: _ } => acc
+      ResolveMapKeyTextsRead { texts: ts } =>
+        match resolve_map_key_text_optional(key: e.key) {
+          Present { value: t } => ResolveMapKeyTextsRead { texts: list_snoc_item(xs: ts, item: t) }
+          Absent => ResolveMapKeyTextless { at: e.key }
+        }
     }
   })
-  match map_introduction_duplicate_key(keys: keys) {
-    MapIntroductionKeyRepeated { first_index: _, second_index: second } =>
-      match list_at_optional(xs: items, index: second) {
-        Present { value: e } => resolve_anonymous_record_refused(n: resolve_map_entry_key(entry: e.target), reason: ^resolve_anonymous_map_duplicate_key)
-        Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_duplicate_key)
-      }
-    MapIntroductionKeysDistinct =>
-      let walked = fold(items, init: child_walk_init(), f: fn(acc, e) {
-        child_walk_step(w: acc, e: e, r: resolve_map_entry_walk(ctx: ctx, entry: e.target, value_x: value_x))
-      })
-      let carrier = node_with_occurrence_id(kind: ComputationNode { behavior: Transform }, children: [], occurrence_id: n.occurrence_id)
-      match child_walk_node(w: walked, n: carrier) {
-        ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
-        ResolveWalkAccepted { value: resolved, diagnostics: d } =>
-          ResolveWalkAccepted {
-            value: lower_map_introduction(
-              entries: fold(resolved.children, init: [], f: fn(acc, e) {
-                list_snoc_item(xs: acc, item: resolve_map_entry_nodes(entry: e.target))
-              }),
-              source: n
-            ),
-            diagnostics: d
-          }
-      }
-  }
 }
 
-fn resolve_map_entry_nodes(entry: Node) -> MapIntroductionEntryNodes {
-  MapIntroductionEntryNodes {
-    key: resolve_map_entry_key(entry: entry),
-    value: match resolve_map_entry_field(entry: entry, field: ^value) {
-      Present { value: v } => v
-      Absent => entry
-    },
-    source: entry
+// The key law sees one text per entry, so its indices are entry indices.
+// The pairs are walked under a Transform carrier (positional edges only) that never leaves this
+// arm; the resolved pairs are read again through resolve_map_pairs, never defaulted.
+fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, items: List<Edge>, entries: List<MapIntroductionEntryNodes>, value_x: ResolveExpectation) -> ResolveNodeWalk {
+  match resolve_map_key_texts(entries: entries) {
+    ResolveMapKeyTextless { at: key } => resolve_anonymous_record_refused(n: key, reason: ^resolve_anonymous_map_key_text_unavailable)
+    ResolveMapKeyTextsRead { texts: texts } =>
+      match map_introduction_duplicate_key(keys: texts) {
+        MapIntroductionKeyRepeated { first_index: _, second_index: second } =>
+          match list_at_optional(xs: entries, index: second) {
+            Present { value: e } => resolve_anonymous_record_refused(n: e.key, reason: ^resolve_anonymous_map_duplicate_key)
+            Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_duplicate_key)
+          }
+        MapIntroductionKeysDistinct =>
+          let walked = fold(items, init: child_walk_init(), f: fn(acc, e) {
+            child_walk_step(w: acc, e: e, r: resolve_map_entry_walk(ctx: ctx, entry: e.target, value_x: value_x))
+          })
+          let carrier = node_with_occurrence_id(kind: ComputationNode { behavior: Transform }, children: [], occurrence_id: n.occurrence_id)
+          match child_walk_node(w: walked, n: carrier) {
+            ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
+            ResolveWalkAccepted { value: resolved, diagnostics: d } =>
+              match resolve_map_pairs(pairs: resolve_map_pair_targets(items: resolved.children)) {
+                ResolveMapPairMalformed { at: p } => resolve_anonymous_record_refused(n: p, reason: ^resolve_anonymous_map_entry_malformed)
+                ResolveMapPairsRead { entries: resolved_entries } =>
+                  ResolveWalkAccepted { value: lower_map_introduction(entries: resolved_entries, source: n), diagnostics: d }
+              }
+          }
+      }
   }
 }
 
