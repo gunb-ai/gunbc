@@ -5021,7 +5021,7 @@ mod compiler_tests {
     fn declaration_field_reference_names_its_declaration() {
         use crate::v1_compiler_compile::SourceFile;
         let sources = vec![
-            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/a.dag".to_string(), content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n\ntype Tree {\n  kids: List<Tree>\n}\n\nfn tree_size(t: Tree) -> Int {\n  1\n}\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/a.dag".to_string(), content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n\ntype Tree {\n  kids: List<Tree>\n}\n\nfn tree_size(t: Tree) -> Int {\n  1\n}\n\ntype Box<T> {\n  held: T\n}\n\nfn rebox<T>(b: Box<T>) -> Box<T> {\n  b\n}\n".to_string() }),
             std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/b.dag".to_string(), content: "module fid.b\n\nimport fid.a { Leaf }\n\ntype Holder {\n  leaf: Leaf\n}\n".to_string() }),
         ];
         let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
@@ -5064,6 +5064,54 @@ mod compiler_tests {
         assert!(
             tree.len() == 1 && tree[0].ends_with("|Declaration:fid.a::Tree"),
             "{receipt}"
+        );
+        // (4) CAUSE 3, THE RED: a reference to a type parameter names its BINDER, (owner, TypeParameter).
+        // The two binders are spelled T, and the owner is the nearest header binding the name, so Box's
+        // field T and rebox's T inside Box<T> are DIFFERENT identities. Keying by spelling would make them one.
+        let box_t = identity_at("Box", "declaration_field", "T");
+        let rebox_t = identity_at("rebox", "fn_signature_param/type_arg", "T");
+        assert!(
+            box_t.len() == 1 && box_t[0].ends_with("|Declaration:fid.a::Box::<T>"),
+            "{receipt}"
+        );
+        assert!(
+            rebox_t.len() == 1 && rebox_t[0].ends_with("|Declaration:fid.a::rebox::<T>"),
+            "{receipt}"
+        );
+    }
+
+    // A REPEATED TYPE PARAMETER IN ONE HEADER REFUSES, LOCATED, AND SAYS WHICH NAME. The refusal
+    // predates this row. Its message once blamed a value parameter and called a type a fn, so the
+    // row asserts the NAME and the OWNER, not merely that some diagnostic fired. The control header
+    // binds two distinct names and must not produce that diagnostic.
+    #[test]
+    fn duplicate_type_parameter_in_one_header_refuses() {
+        use crate::v1_compiler_compile::SourceFile;
+        let messages = |content: &str| -> Vec<String> {
+            let sources = vec![std::rc::Rc::new(SourceFile {
+                path: "fixtures/dup_binder/a.dag".to_string(),
+                content: content.to_string(),
+            })];
+            let result =
+                crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources.into()));
+            result
+                .diagnostics
+                .iter()
+                .map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone()))
+                .collect()
+        };
+        let red = messages("module dup.a\n\ntype Pair<T, T> {\n  left: T\n}\n");
+        assert!(
+            red.iter()
+                .any(|m| m.contains("the name 'T' is bound twice in the header of 'Pair'")),
+            "{red:?}"
+        );
+        let control = messages("module dup.b\n\ntype Pair<T, U> {\n  left: T\n  right: U\n}\n");
+        assert!(
+            !control
+                .iter()
+                .any(|m| m.contains("is bound twice in the header")),
+            "{control:?}"
         );
     }
 
