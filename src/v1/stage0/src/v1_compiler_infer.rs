@@ -9775,6 +9775,7 @@ pub fn resolve_pattern_subject(
 pub fn annotate_pattern_parent_enums(
     pattern: Rc<MatchPattern>,
     scrutinee_subject: Rc<PatternSubject>,
+    site: Rc<SourceSpan>,
     scope: Rc<InferScope>,
 ) -> Rc<MatchPattern> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -9836,6 +9837,7 @@ pub fn annotate_pattern_parent_enums(
                 let variant_lookup = crate::v1_compiler_infer_patterns::lookup_variant_in_type(
                     resolved_scrut.clone(),
                     variant_name.clone(),
+                    site.clone(),
                     scope.module_name.clone(),
                     scope.type_env.clone(),
                     (bindings.clone().len() as i64),
@@ -9870,6 +9872,7 @@ pub fn annotate_pattern_parent_enums(
                                 annotate_pattern_parent_enums(
                                     crate::v1_std_core::field_binding_pattern(binding.clone()),
                                     field_subject.clone(),
+                                    binding.span.clone(),
                                     scope.clone(),
                                 ),
                                 binding.span.clone(),
@@ -10197,6 +10200,7 @@ pub fn extend_scope_with_pattern_node(
     scope: Rc<InferScope>,
     pattern: Rc<MatchPattern>,
     scrutinee_subject: Rc<PatternSubject>,
+    site: Rc<SourceSpan>,
     scrutinee_provenance: Rc<SubValueRelation>,
 ) -> Rc<PatternScopeResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -10233,6 +10237,7 @@ pub fn extend_scope_with_pattern_node(
                 let variant_lookup = crate::v1_compiler_infer_patterns::lookup_variant_in_type(
                     resolved_scrut.clone(),
                     vname.clone(),
+                    site.clone(),
                     scope.module_name.clone(),
                     scope.type_env.clone(),
                     (bindings.clone().len() as i64),
@@ -10294,6 +10299,7 @@ pub fn extend_scope_with_pattern_node(
                                     acc.scope.clone(),
                                     fb_pattern.clone(),
                                     field_subject.clone(),
+                                    fb.span.clone(),
                                     field_provenance.clone(),
                                 );
                                 Rc::new(PatternScopeResult {
@@ -13123,12 +13129,14 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         let typed_pattern = annotate_pattern_parent_enums(
                             arm_pat.clone(),
                             arm_subject.clone(),
+                            arm_node.span.clone(),
                             scope.clone(),
                         );
                         let pattern_result = extend_scope_with_pattern_node(
                             scope.clone(),
                             typed_pattern.clone(),
                             arm_subject.clone(),
+                            arm_node.span.clone(),
                             scrut_provenance.clone(),
                         );
                         let arm_scope = pattern_result.scope.clone();
@@ -13299,12 +13307,14 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                         let typed_pattern = annotate_pattern_parent_enums(
                                             arm_pat.clone(),
                                             scrut_subject.clone(),
+                                            arm_node.span.clone(),
                                             scope.clone(),
                                         );
                                         let pattern_result = extend_scope_with_pattern_node(
                                             scope.clone(),
                                             typed_pattern.clone(),
                                             scrut_subject.clone(),
+                                            arm_node.span.clone(),
                                             scrut_provenance.clone(),
                                         );
                                         let arm_scope = pattern_result.scope.clone();
@@ -22606,7 +22616,10 @@ pub fn substitute_generics_apply(
                         if (type_node_label(c.clone(), source_indices.clone()) == tv_id.clone()) {
                             n.clone()
                         } else {
-                            c.clone()
+                            crate::v1_std_core::preserve_outer_optional_cardinality(
+                                n.clone(),
+                                c.clone(),
+                            )
                         }
                     }
                     std::option::Option::None => n.clone(),
@@ -22619,7 +22632,10 @@ pub fn substitute_generics_apply(
                     && ((n.params.clone().len() as i64) == 0));
                 if is_bare.clone() {
                     match v1_rt::map_get(&subst, nm.clone()) {
-                        Some(c) => c.clone(),
+                        Some(c) => crate::v1_std_core::preserve_outer_optional_cardinality(
+                            n.clone(),
+                            c.clone(),
+                        ),
                         std::option::Option::None => n.clone(),
                     }
                 } else {

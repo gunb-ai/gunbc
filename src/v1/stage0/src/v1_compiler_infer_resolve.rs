@@ -714,7 +714,10 @@ pub fn substitute_type_slots_scoped(
             std::option::Option::None
         };
         if (tv_slot.clone() != std::option::Option::None) {
-            return tv_slot.clone().unwrap();
+            return crate::v1_std_core::preserve_outer_optional_cardinality(
+                n.clone(),
+                tv_slot.clone().unwrap(),
+            );
         }
         let is_slot = (((((n.children.clone().len() as i64) == 0)
             && (n.connective.clone() == Connective::NoConnective))
@@ -725,7 +728,10 @@ pub fn substitute_type_slots_scoped(
                 &slot_bindings,
                 crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
             ) {
-                Some(concrete) => concrete.clone(),
+                Some(concrete) => crate::v1_std_core::preserve_outer_optional_cardinality(
+                    n.clone(),
+                    concrete.clone(),
+                ),
                 std::option::Option::None => n.clone(),
             }
         } else {

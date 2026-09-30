@@ -1050,6 +1050,41 @@ mod compiler_tests {
     }
 
     #[test]
+    fn generic_optional_over_a_type_application_keeps_the_optional() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let semiring = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_semiring.dag".to_string(),
+                    content: "module probe.semiring\ntype Ring<M> { m: M }\ntype Mag { v: Int }\ntype NatLike = Ring<Mag>\n".to_string(),
+                });
+                let holder = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_holder.dag".to_string(),
+                    content: "module probe.holder\nimport probe.semiring { NatLike }\ntype Opt<L> { last: L? }\ntype Req<L> { v: L }\nfn opt_ok(h: Opt<NatLike>) -> Bool {\n  match h { Opt { last: l } => match l { Present { value: _ } => true, Absent => false } }\n}\nfn opt_int(h: Opt<Int>) -> Bool {\n  match h { Opt { last: l } => match l { Present { value: _ } => true, Absent => false } }\n}\nfn req_bad(h: Req<NatLike>) -> Bool {\n  match h { Req { v: l } => match l { Present { value: _ } => true, Absent => false } }\n}\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![semiring, holder]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let variant_not_found: Vec<std::rc::Rc<crate::std_types::SourceSpan>> = result.diagnostics.iter()
+                    .filter(|e| matches!(&*e.diagnostic, crate::v1_std_core::CompilerDiagnostic::VariantNotFound { .. }))
+                    .map(|e| crate::v1_std_core::diagnostic_to_span(e.diagnostic.clone()))
+                    .collect();
+                let rendered: Vec<String> = result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert_eq!(
+                    variant_not_found.len(), 2,
+                    "exactly the two arms of req_bad (a NON-optional field) must refuse; opt_ok binds l at NatLike? and opt_int at Int?, so Present/Absent are its variants. Four refusals means substitution dropped the slot's ? for the type-application argument; diagnostics: {:?}",
+                    rendered
+                );
+                assert!(
+                    variant_not_found.iter().all(|s| s.file == "probe_holder.dag"),
+                    "a refused variant is located at the pattern that names it, never at the declaration of the scrutinee's type argument (probe_semiring.dag); spans: {:?}",
+                    variant_not_found.iter().map(|s| (s.file.clone(), s.start)).collect::<Vec<_>>()
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("generic_optional_over_a_type_application_keeps_the_optional panicked");
+    }
+
+    #[test]
     fn pub_use_crate_lines_are_sorted_and_two_emissions_are_byte_identical() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
