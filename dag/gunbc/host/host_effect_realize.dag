@@ -4561,7 +4561,8 @@ type BuildCacheReadResult
 // body -- the ensure step, still unconverted -- is strictly smaller as a share of what this effect
 // does than it was.
 
-// IT TAKES A COMMAND RATHER THAN A WORD LIST, for the same reason bmc_netboot_run_bmc now does: a
+// IT TAKES A COMMAND RATHER THAN A WORD LIST, for the same reason gunbc.bmc_netboot_serve's
+// executor does: a
 // List<String> parameter is a place an argv can be hand-spelled, and one of this function's callers
 // was doing exactly that ("stat", "-c", "%i", ...). The ssh arms still need the flat vector, which
 // they derive here with argv_words instead of receiving pre-flattened.
