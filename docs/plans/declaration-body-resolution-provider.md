@@ -89,6 +89,13 @@ per native ingest, built in `v2.compiler.compile`).
   resolved tree references in type positions, and `ResolvedTree` carries that set as a projection of
   the provider's values (C10).
 
+**Every loop over modules threads the context in PR2.** In PR1 a module's namespace is demanded only
+by its own resolve, so two loops drop the returned context at no cost: `v2.compiler.compile`
+`native_demand_execute`, the demand-engine drain that replaced the seed main's lane loop in #12401,
+and `gunbc.namespace_xl2_rehearsal_census` `xl2_observe_module`. Once PR2 adds cross-module
+declaration demands, a dropped context re-produces what another module already produced. So PR2
+carries the context on `NativeDemandRun` and through that census fold.
+
 **Sequencing (quiet-gull-780 decision A, 2026-09-30).** #12629, #12407, #12506 and smart-newt-725's PR
 land first. PR2 then cuts over on main in one commit: every reader switch plus the deletion. P2 is
 built meanwhile on a branch off PR1, not opened for merge, and never merges without its production
