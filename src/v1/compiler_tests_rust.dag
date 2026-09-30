@@ -1692,6 +1692,31 @@ fn ct_duplicate_type_parameter_refuses_test() -> String {
   )
 }
 
+// Every effect-summary refusal is located at its call site. The Rust it renders says what it pins.
+fn ct_effect_summary_diagnostic_is_located_test() -> String {
+  concat(
+    "    // AN EFFECT-SUMMARY DIAGNOSTIC NAMES THE CALL SITE IT IS ABOUT. v1.compiler.infer\n",
+    "    // effect_incompleteness_diagnostics used to pass no_span() in every arm, so all of them reported\n",
+    "    // at <synthetic>: 243 on the whole corpus, measured. The call edge now carries its call-site span\n",
+    "    // (v1.compiler.infer_service CalleeEdge) through EffectIncompleteness into the diagnostic. The fixture\n",
+    "    // calls through a function value, which the effect pass cannot join, and the diagnostic must be\n",
+    "    // located in the fixture file, not at <synthetic>.\n",
+    "    #[test]\n",
+    "    fn effect_summary_diagnostic_is_located_at_the_call() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let src = \"module esl.a\\n\\nfn apply(f: fn(Int) -> Int, x: Int) -> Int {\\n  f(x)\\n}\\n\";\n",
+    "        let sources = vec![std::rc::Rc::new(SourceFile { path: \"fixtures/effect_span/a.dag\".to_string(), content: src.to_string() })];\n",
+    "        let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources.into()));\n",
+    "        let effect: Vec<(String, String)> = result.diagnostics.iter()\n",
+    "            .map(|e| (crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone()), crate::v1_std_core::diagnostic_to_span(e.diagnostic.clone()).file.clone()))\n",
+    "            .filter(|(m, _)| m.contains(\"effect summary incomplete\"))\n",
+    "            .collect();\n",
+    "        assert!(!effect.is_empty(), \"the fixture must produce an effect-summary diagnostic: \{:?}\", result.diagnostics.len());\n",
+    "        assert!(effect.iter().all(|(_, f)| f == \"fixtures/effect_span/a.dag\"), \"\{effect:?}\");\n",
+    "    }\n\n"
+  )
+}
+
 // CARRIER-KEY-1 split witness; the Rust it renders says what each row discriminates.
 fn ct_type_reference_identity_split_test() -> String {
   concat(
@@ -1817,6 +1842,7 @@ fn ct_coercion_tests() -> String {
     ct_witness_carrier_declines_non_witness_expected_type_test(),
     ct_kernel_identity_single_authority_test(),
     ct_type_reference_identity_split_test(),
+    ct_effect_summary_diagnostic_is_located_test(),
     ct_declaration_field_reference_identity_test(),
     ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())

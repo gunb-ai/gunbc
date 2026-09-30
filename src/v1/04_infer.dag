@@ -15590,10 +15590,10 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
 fn effect_incompleteness_diagnostics(causes: List<EffectIncompleteness>) -> List<ErrorNode> {
   causes |> map(reason =>
     match reason {
-      UnresolvedCalleeEdge { item_identity: item_identity, spelling: spelling } =>
+      UnresolvedCalleeEdge { item_identity: item_identity, spelling: spelling, span: call_span } =>
         inference_error(
           message: concat("effect summary incomplete: call to '", spelling, "' in ", callable_identity(id: item_identity), " has no established callee identity, so its effects cannot be joined"),
-          span: no_span(),
+          span: call_span,
           module_name: item_identity.owner_module_path
         )
       ExpansionBudgetExhausted { remaining_delta: _ } =>
@@ -15602,20 +15602,20 @@ fn effect_incompleteness_diagnostics(causes: List<EffectIncompleteness>) -> List
           span: no_span(),
           module_name: ""
         )
-      ResolvedCalleeRegistryRowAbsent { caller: caller, callee: callee } =>
+      ResolvedCalleeRegistryRowAbsent { caller: caller, callee: callee, span: call_span } =>
         inference_error(
           message: concat("effect summary incomplete: ", callable_identity(id: caller), " calls ", callable_identity(id: callee), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does"),
-          span: no_span(),
+          span: call_span,
           module_name: caller.owner_module_path
         )
-      FunctionValueEffectsUnresolved { caller: caller } =>
+      FunctionValueEffectsUnresolved { caller: caller, span: call_span } =>
         make_error_node(
-          diagnostic: EffectSummaryIncompleteAtFunctionValue { caller: callable_identity(id: caller), span: no_span() },
+          diagnostic: EffectSummaryIncompleteAtFunctionValue { caller: callable_identity(id: caller), span: call_span },
           module_name: caller.owner_module_path
         )
-      LocalBindingEffectsUnresolved { caller: caller, name: name } =>
+      LocalBindingEffectsUnresolved { caller: caller, name: name, span: call_span } =>
         make_error_node(
-          diagnostic: EffectSummaryIncompleteAtLocalBinding { caller: callable_identity(id: caller), name: name, span: no_span() },
+          diagnostic: EffectSummaryIncompleteAtLocalBinding { caller: callable_identity(id: caller), name: name, span: call_span },
           module_name: caller.owner_module_path
         )
     }

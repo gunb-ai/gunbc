@@ -5007,6 +5007,48 @@ mod compiler_tests {
         );
     }
 
+    // AN EFFECT-SUMMARY DIAGNOSTIC NAMES THE CALL SITE IT IS ABOUT. v1.compiler.infer
+    // effect_incompleteness_diagnostics used to pass no_span() in every arm, so all of them reported
+    // at <synthetic>: 243 on the whole corpus, measured. The call edge now carries its call-site span
+    // (v1.compiler.infer_service CalleeEdge) through EffectIncompleteness into the diagnostic. The fixture
+    // calls through a function value, which the effect pass cannot join, and the diagnostic must be
+    // located in the fixture file, not at <synthetic>.
+    #[test]
+    fn effect_summary_diagnostic_is_located_at_the_call() {
+        use crate::v1_compiler_compile::SourceFile;
+        let src = "module esl.a\n\nfn apply(f: fn(Int) -> Int, x: Int) -> Int {\n  f(x)\n}\n";
+        let sources = vec![std::rc::Rc::new(SourceFile {
+            path: "fixtures/effect_span/a.dag".to_string(),
+            content: src.to_string(),
+        })];
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources.into()));
+        let effect: Vec<(String, String)> = result
+            .diagnostics
+            .iter()
+            .map(|e| {
+                (
+                    crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone()),
+                    crate::v1_std_core::diagnostic_to_span(e.diagnostic.clone())
+                        .file
+                        .clone(),
+                )
+            })
+            .filter(|(m, _)| m.contains("effect summary incomplete"))
+            .collect();
+        assert!(
+            !effect.is_empty(),
+            "the fixture must produce an effect-summary diagnostic: {:?}",
+            result.diagnostics.len()
+        );
+        assert!(
+            effect
+                .iter()
+                .all(|(_, f)| f == "fixtures/effect_span/a.dag"),
+            "{effect:?}"
+        );
+    }
+
     // CAUSE 1b: A DECLARATION FIELD'S TYPE REFERENCE CARRIES THE DECLARATION RESOLVE BOUND IT TO.
     // v1.compiler.infer_resolve resolve_item_types resolved each field's authored reference and kept
     // only its properties, so the typed tree's field reference named no declaration.

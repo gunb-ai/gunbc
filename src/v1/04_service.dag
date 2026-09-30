@@ -136,11 +136,11 @@ fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum, source_indice
 // value so that not-knowing is representable. Collapsing the third arm into an absence is what
 // makes an incomplete effect summary indistinguishable from a complete empty one.
 type CalleeEdge
-  = ResolvedCallee { identity: DeclaredCallableIdentity }
+  = ResolvedCallee { identity: DeclaredCallableIdentity, span: SourceSpan }
   | PrimitiveCallee
-  | FunctionValueCallee
-  | LocalBindingCallee { name: String }
-  | UnresolvedCallee { spelling: String }
+  | FunctionValueCallee { span: SourceSpan }
+  | LocalBindingCallee { name: String, span: SourceSpan }
+  | UnresolvedCallee { spelling: String, span: SourceSpan }
 
 type CalleeAccum {
   seen: Map<String, Bool>
@@ -175,17 +175,17 @@ type CalleeAccum {
 // different facts with different repairs: an unresolved spelling names nothing and must
 // BLOCK; a local binding names something whose effects this pass cannot join through, which
 // is the same epistemic state as a function value and is reported the same advisory way.
-fn callee_edge_of_semantics(cs: CallSemantics?, spelling: String) -> CalleeEdge {
+fn callee_edge_of_semantics(cs: CallSemantics?, spelling: String, span: SourceSpan) -> CalleeEdge {
   match cs {
-    Present { value: FunctionValueCallSemantics } => FunctionValueCallee
-    Absent => UnresolvedCallee { spelling: spelling }
+    Present { value: FunctionValueCallSemantics } => FunctionValueCallee { span: span }
+    Absent => UnresolvedCallee { spelling: spelling, span: span }
     _ =>
       match call_semantics_target(cs: cs) {
         SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
-          ResolvedCallee { identity: DeclaredCallableIdentity { owner_module_path: owner, decl_name: decl } }
+          ResolvedCallee { identity: DeclaredCallableIdentity { owner_module_path: owner, decl_name: decl }, span: span }
         RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => PrimitiveCallee
-        LocallyBoundCall { name: n } => LocalBindingCallee { name: n }
-        CallableTargetUndetermined => UnresolvedCallee { spelling: spelling }
+        LocallyBoundCall { name: n } => LocalBindingCallee { name: n, span: span }
+        CallableTargetUndetermined => UnresolvedCallee { spelling: spelling, span: span }
       }
   }
 }
@@ -219,10 +219,10 @@ type CalleeEdgeDedup
 
 fn callee_edge_dedup_key(edge: CalleeEdge) -> CalleeEdgeDedup {
   match edge {
-    ResolvedCallee { identity: identity } => Tracked { key: concat("d:", callable_identity(id: identity)) }
-    UnresolvedCallee { spelling: spelling } => Tracked { key: concat("u:", spelling) }
-    FunctionValueCallee => Tracked { key: "v:" }
-    LocalBindingCallee { name: n } => Tracked { key: concat("l:", n) }
+    ResolvedCallee { identity: identity, span: _ } => Tracked { key: concat("d:", callable_identity(id: identity)) }
+    UnresolvedCallee { spelling: spelling, span: _ } => Tracked { key: concat("u:", spelling) }
+    FunctionValueCallee { span: _ } => Tracked { key: "v:" }
+    LocalBindingCallee { name: n, span: _ } => Tracked { key: concat("l:", n) }
     PrimitiveCallee => NotTracked
   }
 }
@@ -230,7 +230,7 @@ fn callee_edge_dedup_key(edge: CalleeEdge) -> CalleeEdgeDedup {
 fn collect_callee_edges_into(texpr: Node, acc: CalleeAccum, source_indices: Map<String, NewlineIndex>) -> CalleeAccum {
   let this_acc = match texpr.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
-      let edge = callee_edge_of_semantics(cs: cs, spelling: expr_call_func_at(texpr: texpr, source_indices: source_indices))
+      let edge = callee_edge_of_semantics(cs: cs, spelling: expr_call_func_at(texpr: texpr, source_indices: source_indices), span: texpr.span)
       match callee_edge_dedup_key(edge: edge) {
         NotTracked => acc
         Tracked { key: key } =>
@@ -309,15 +309,15 @@ fn expand_transitive_services_once(module_callees: List<ModuleCallees>, registry
           let called = entry.called
           let extra = called |> flat_map(edge =>
             match edge {
-              ResolvedCallee { identity: callee_identity } =>
+              ResolvedCallee { identity: callee_identity, span: _ } =>
                 match map_get(reg2, callable_identity(id: callee_identity)) {
                   Present { value: callee_info } => callee_info.service_names
                   Absent => []
                 }
               PrimitiveCallee => []
-              FunctionValueCallee => []
-              LocalBindingCallee { name: _ } => []
-              UnresolvedCallee { spelling: _ } => []
+              FunctionValueCallee { span: _ } => []
+              LocalBindingCallee { name: _, span: _ } => []
+              UnresolvedCallee { spelling: _, span: _ } => []
             }
           )
           let merged = extra |> fold(init: info.service_names, f: (svc_list, svc) =>
@@ -405,11 +405,11 @@ type ServiceEffectAnalysis
 // is indistinguishable from "this callee has no effects". Absence of instances is not absence of
 // effects, so both are now REPRESENTED and both make the analysis incomplete.
 type EffectIncompleteness
-  = UnresolvedCalleeEdge { item_identity: DeclaredCallableIdentity, spelling: String }
+  = UnresolvedCalleeEdge { item_identity: DeclaredCallableIdentity, spelling: String, span: SourceSpan }
   | ExpansionBudgetExhausted { remaining_delta: Int }
-  | ResolvedCalleeRegistryRowAbsent { caller: DeclaredCallableIdentity, callee: DeclaredCallableIdentity }
-  | FunctionValueEffectsUnresolved { caller: DeclaredCallableIdentity }
-  | LocalBindingEffectsUnresolved { caller: DeclaredCallableIdentity, name: String }
+  | ResolvedCalleeRegistryRowAbsent { caller: DeclaredCallableIdentity, callee: DeclaredCallableIdentity, span: SourceSpan }
+  | FunctionValueEffectsUnresolved { caller: DeclaredCallableIdentity, span: SourceSpan }
+  | LocalBindingEffectsUnresolved { caller: DeclaredCallableIdentity, name: String, span: SourceSpan }
 
 // The unresolved edges are a property of the PRECOMPUTED callee lists, not of any iteration, so
 // they are read once from the same structure the fold consumes rather than re-derived per pass.
@@ -418,12 +418,12 @@ fn unresolved_callee_edges(module_callees: List<ModuleCallees>) -> List<EffectIn
     m.items |> flat_map(entry =>
       entry.called |> flat_map(edge =>
         match edge {
-          UnresolvedCallee { spelling: spelling } =>
-            [UnresolvedCalleeEdge { item_identity: entry.item_identity, spelling: spelling }]
-          ResolvedCallee { identity: _ } => []
+          UnresolvedCallee { spelling: spelling, span: sp } =>
+            [UnresolvedCalleeEdge { item_identity: entry.item_identity, spelling: spelling, span: sp }]
+          ResolvedCallee { identity: _, span: _ } => []
           PrimitiveCallee => []
-          FunctionValueCallee => []
-          LocalBindingCallee { name: _ } => []
+          FunctionValueCallee { span: _ } => []
+          LocalBindingCallee { name: _, span: _ } => []
         }
       )
     )
@@ -448,15 +448,15 @@ fn unjoinable_callee_edges(module_callees: List<ModuleCallees>, registry: Map<St
           else {
             entry.called |> flat_map(edge =>
               match edge {
-                ResolvedCallee { identity: callee_identity } =>
+                ResolvedCallee { identity: callee_identity, span: call_span } =>
                   match map_get(registry, callable_identity(id: callee_identity)) {
                     Present { value: _ } => []
-                    Absent => [ResolvedCalleeRegistryRowAbsent { caller: entry.item_identity, callee: callee_identity }]
+                    Absent => [ResolvedCalleeRegistryRowAbsent { caller: entry.item_identity, callee: callee_identity, span: call_span }]
                   }
-                FunctionValueCallee => [FunctionValueEffectsUnresolved { caller: entry.item_identity }]
-                LocalBindingCallee { name: n } => [LocalBindingEffectsUnresolved { caller: entry.item_identity, name: n }]
+                FunctionValueCallee { span: fv_span } => [FunctionValueEffectsUnresolved { caller: entry.item_identity, span: fv_span }]
+                LocalBindingCallee { name: n, span: lb_span } => [LocalBindingEffectsUnresolved { caller: entry.item_identity, name: n, span: lb_span }]
                 PrimitiveCallee => []
-                UnresolvedCallee { spelling: _ } => []
+                UnresolvedCallee { spelling: _, span: _ } => []
               }
             )
           }
