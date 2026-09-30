@@ -1,0 +1,15 @@
+module gunbc.workspace_commissioning_evidence
+
+import std.types { Int }
+import std.decl_ref { decl_ref }
+import product.fabric.sanitation { CellId }
+
+// Only the commissioning admission, after administrator provenance and complete audit, can mint
+// the initial readiness permit. Kept lightweight so readiness codecs do not import fleet planning.
+type WorkspaceInitialReadinessPermit sole_constructor { cell: CellId, settled_generation: Int }
+
+fn workspace_initial_readiness_permit(cell: CellId, settled_generation: Int) -> WorkspaceInitialReadinessPermit
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning", decl_name: "workspace_commissioning_admit")]
+{
+  WorkspaceInitialReadinessPermit { cell: cell, settled_generation: settled_generation }
+}

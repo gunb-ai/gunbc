@@ -1,0 +1,3 @@
+module test.manual.synthesis_family_adapter
+import v2.test.synthesis_gate.optimality_gap_completeness { synthesis_optimality_family_gate }
+test fn existing_synthesis_family_gate() -> Bool { synthesis_optimality_family_gate() }

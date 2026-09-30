@@ -1,0 +1,21 @@
+{
+  "source": "b43704581b31b8a9b0faf5a4fad540cd9b6a2bbc",
+  "workflow_run": 36605269073,
+  "host": "srv1",
+  "result": "success",
+  "credential": "fabric_state_writer_key",
+  "file": "/etc/gunbc-fabric-storage/state-writer-mac-key",
+  "file_owner": "root:briansrls",
+  "file_mode": "0640",
+  "directory_owner": "root:briansrls",
+  "directory_mode": "0750",
+  "pinned_secret_version": "1",
+  "content_readback": "identical-to-sm-version",
+  "staging": "absent",
+  "independent_metadata_readback": "matched",
+  "limitation": "permission-bit readback, not a non-declared-principal effective-open proof",
+  "storage_service_commissioned": false,
+  "vm_reserved": false,
+  "srv2_workflow_run": 36607031635,
+  "srv2_status": "pending"
+}

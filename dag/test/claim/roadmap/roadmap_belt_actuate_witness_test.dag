@@ -1,5 +1,8 @@
 module test.claim.roadmap_belt_actuate_witness
 
+import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
+
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
@@ -1119,6 +1122,8 @@ fn fixture_verification_subject(node_id: String) -> VerificationSubject {
 
 fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
   workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
     node_id: node_id,
     attempt_key: "feedfacefeedface",
     branch: join(["dispatch/", node_id, "-afeedfacefeedface"], ""),
@@ -1207,6 +1212,8 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
   match belt_verify_attempt_for_instance(
     instance: srv2_preview_dashboard_instance(),
     progress: workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
       node_id: "belt-verify-running-node",
       attempt_key: "feedfacefeedface",
       branch: "dispatch/belt-verify-running-node-afeedfacefeedface",

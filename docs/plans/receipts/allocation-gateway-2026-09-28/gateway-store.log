@@ -1,0 +1,103 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.translate done in 6 seconds
+◐ started shell.Mktemp.Dir
+✓ shell.Mktemp.Dir done in 3ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] list /tmp/tmp.HW5ipXxccD/heads
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] list /tmp/tmp.HW5ipXxccD/heads
+[file] write_create_new /tmp/tmp.HW5ipXxccD/objects/50284e11ae10e4cf (709 bytes)
+[file] read /tmp/tmp.HW5ipXxccD/objects/50284e11ae10e4cf
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] list /tmp/tmp.HW5ipXxccD/heads
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] list /tmp/tmp.HW5ipXxccD/heads
+[file] write_create_new /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1 (16 bytes)
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/objects/50284e11ae10e4cf
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/objects/50284e11ae10e4cf
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/objects/50284e11ae10e4cf
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/objects/50284e11ae10e4cf
+[file] write_create_new /tmp/tmp.HW5ipXxccD/objects/a7f02b90d4614e6d (207 bytes)
+[file] read /tmp/tmp.HW5ipXxccD/objects/a7f02b90d4614e6d
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] write_create_new /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2 (16 bytes)
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] read /tmp/tmp.HW5ipXxccD/objects/a7f02b90d4614e6d
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] read /tmp/tmp.HW5ipXxccD/objects/a7f02b90d4614e6d
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] read /tmp/tmp.HW5ipXxccD/objects/a7f02b90d4614e6d
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] read /tmp/tmp.HW5ipXxccD/objects/a7f02b90d4614e6d
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] read /tmp/tmp.HW5ipXxccD/objects/a7f02b90d4614e6d
+[file] write_create_new /tmp/tmp.HW5ipXxccD/objects/d74d5997b484da48 (709 bytes)
+[file] read /tmp/tmp.HW5ipXxccD/objects/d74d5997b484da48
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] write_create_new /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3 (16 bytes)
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] read /tmp/tmp.HW5ipXxccD/objects/d74d5997b484da48
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] read /tmp/tmp.HW5ipXxccD/objects/d74d5997b484da48
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.1
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.2
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.4
+[file] read /tmp/tmp.HW5ipXxccD/heads/cas-slot-workspace-gateway-srv1-13.3
+[file] read /tmp/tmp.HW5ipXxccD/objects/d74d5997b484da48
+◐ started shell.Remove.RecursiveForce
+✓ shell.Remove.RecursiveForce done in 2ms
+PASS refresh_failure_withdraws_success_delayed_success_cannot_revive_and_new_refresh_recovers

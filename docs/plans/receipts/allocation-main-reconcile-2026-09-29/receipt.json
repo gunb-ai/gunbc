@@ -1,0 +1,33 @@
+{
+  "source": "2ad001dc88dcd554e0de9a2dd2853ab3f77124b8",
+  "merged_main": "c39426540cef73eff9d734feb489168e292d089f",
+  "binary_sha256": "6a04ba3191b94f6ada6c08873a8d0189cd6d284b7b8979ee299ea4c5c9a4976c",
+  "focused_controls_passed": 18,
+  "closures": {
+    "reconcile-claim-closure": {
+      "modules": 773,
+      "changed_from_test_snapshot": []
+    },
+    "reconcile-storage-server": {
+      "modules": 554,
+      "changed_from_test_snapshot": []
+    },
+    "reconcile-storage-client": {
+      "modules": 158,
+      "changed_from_test_snapshot": []
+    }
+  },
+  "full_serve_ready": true,
+  "served_unix_storage_passed": true,
+  "local_generator": "OOM at 6 GiB; no generated result",
+  "ci_run": 36588368366,
+  "ci_status_at_recording": "floor failed: stale roadmap_event_cli#step debt; generated pending",
+  "deployed": false,
+  "followup": {
+    "source": "6b213577c",
+    "claim_executor_build": "passed under 6 GiB/no swap",
+    "full_local_floor": "exit 143; scope Result=oom-kill; no verdict",
+    "memory_max_bytes": 6442450944,
+    "swap_max_bytes": 0
+  }
+}

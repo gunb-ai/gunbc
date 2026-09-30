@@ -1,0 +1,8 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 23 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+[file] read <removed-private-token-file>
+[rest] GET https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fabric-state-writer-mac-key:getIamPolicy
+[rest] POST https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fabric-state-writer-mac-key:setIamPolicy
+[rest] GET https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fabric-state-writer-mac-key:getIamPolicy
+grant secret=fabric-state-writer-mac-key accessor=fleet-cloud-convergence standing=converged

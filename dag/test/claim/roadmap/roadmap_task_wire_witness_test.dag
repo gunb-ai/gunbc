@@ -1,0 +1,27 @@
+module test.claim.roadmap_task_wire_witness_test
+
+import std.types { Bool, String }
+import gunbc.roadmap.roadmap_task_wire { roadmap_task_revision_submission, roadmap_task_revision_value }
+import gunbc.roadmap.roadmap_task_editorial { RoadmapTaskEditorial }
+import extdeps.google.issue_tracker { IssueStatusNew, IssueStatusFixed }
+
+data task_edit_fixture: String = "{\"csrf_token\":\"csrf\",\"expected_revision\":\"head-1\",\"title\":\"Changed title\",\"body\":\"Changed body\",\"state\":\"Fixed\",\"prerequisites\":[\"parent\"]}"
+
+test fn witness_editorial_edit_preserves_identity_and_contract() -> Bool {
+  match roadmap_task_revision_submission(body: task_edit_fixture) {
+    Absent => false
+    Present { value: submission } => {
+      let prior = RoadmapTaskEditorial { identity: "minted-node", code_contract: Present { value: "minted-contract" }, title: "Old", body: "Old body", prerequisites: [], state: IssueStatusNew }
+      let edited = roadmap_task_revision_value(prior: prior, submission: submission)
+      edited.identity == prior.identity && edited.code_contract == prior.code_contract
+        && edited.title == "Changed title" && edited.body == "Changed body"
+        && edited.state == IssueStatusFixed && edited.prerequisites == ["parent"]
+    }
+  }
+}
+
+test fn witness_editorial_wire_refuses_identity_authority_and_duplicates() -> Bool {
+  roadmap_task_revision_submission(body: "{\"csrf_token\":\"csrf\",\"expected_revision\":\"head\",\"title\":\"Title\",\"body\":\"Body\",\"state\":\"New\",\"prerequisites\":[],\"identity\":\"replacement\"}") == none
+    && roadmap_task_revision_submission(body: "{\"csrf_token\":\"csrf\",\"expected_revision\":\"head\",\"title\":\"Title\",\"title\":\"Replacement\",\"state\":\"New\",\"prerequisites\":[]}") == none
+    && roadmap_task_revision_submission(body: "{\"csrf_token\":\"csrf\",\"expected_revision\":\"head\",\"title\":\"Title\",\"body\":\"Body\",\"state\":\"New\",\"prerequisites\":[\"same\",\"same\"]}") == none
+}

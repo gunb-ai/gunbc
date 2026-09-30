@@ -1,5 +1,6 @@
 module test.claim.floor_demand_witness_test
 
+import v2.std.algebra { any }
 import std.types { Bool, String, List, Int }
 import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, second, second_count, events_per_minute, events_per_minute_count, MeasureDifference, MeasureSubtrahendExceedsMinuend, GrainRounded, GrainUnrepresentable }
 import std.checked_arithmetic { int_inclusive_max, CheckedIntReady, CheckedIntOverflow }
@@ -31,7 +32,7 @@ import gunbc.floor_demand {
   beat_stall_is_zero, beat_stall_is_positive,
   SeamArmSetPlanning, SeamInterfaceConsumerPlanning, floor_seam_of_token,
 }
-import gunbc.fabric_witness_run { floor_execution_requirements }
+import gunbc.fabric_floor_policy { floor_execution_requirements }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 
 fn receipt(peak: Int, high: Int) -> FloorRunCgroupPeakReceipt {

@@ -1,0 +1,6 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+✓ typecheck v2.compiler.translate done in 5 seconds
+◐ started shell.Exec.RunArgv
+✓ shell.Exec.RunArgv done in 1ms
+PASS foreign_host_supply_refuses_before_local_authorities_are_read

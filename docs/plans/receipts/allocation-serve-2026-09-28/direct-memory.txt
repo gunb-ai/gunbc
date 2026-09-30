@@ -1,0 +1,4 @@
+Result=oom-kill
+MemoryMax=6442450944
+MemorySwapMax=0
+Description=/usr/bin/python3 tools/tests/roadmap_preview_readiness.py --output target/serve-readiness-31930c0

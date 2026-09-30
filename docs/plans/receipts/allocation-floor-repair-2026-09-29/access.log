@@ -1,0 +1,8 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+PASS workspace_readiness_requires_bootstrap_and_live_ssh_key
+PASS workspace_readiness_refuses_old_guest_at_reused_address
+PASS workspace_readiness_refuses_foreign_bootstrap
+PASS workspace_public_key_refuses_options_and_record_injection
+PASS workspace_production_machine_config_consumes_committed_grant

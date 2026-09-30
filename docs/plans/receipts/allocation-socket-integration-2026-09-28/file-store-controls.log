@@ -1,0 +1,323 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] write_create_new /tmp/gunbc_fabric_storage.hyCMzo/objects/d96dd5a60da085bc (26 bytes)
+[file] write_create_new /tmp/gunbc_fabric_storage.hyCMzo/objects/8ae560baf4394d8c (44 bytes)
+[file] write_create_new /tmp/gunbc_fabric_storage.hyCMzo/objects/ed6ccb052461725c (44 bytes)
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/objects/d96dd5a60da085bc
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.1
+[file] list /tmp/gunbc_fabric_storage.hyCMzo/heads
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.1
+[file] list /tmp/gunbc_fabric_storage.hyCMzo/heads
+[file] write_create_new /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.1 (16 bytes)
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.1
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.2
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/objects/8ae560baf4394d8c
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.1
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.2
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.1
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.2
+[file] write_create_new /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.2 (16 bytes)
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.1
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.2
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.4
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.3
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/objects/ed6ccb052461725c
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.1
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.2
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.4
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.3
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.1
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.2
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.4
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.3
+[file] write_create_new /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.3 (16 bytes)
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.1
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.2
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.4
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.3
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.1
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.2
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.4
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/heads/group-a.3
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/objects/ed6ccb052461725c
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/objects/8ae560baf4394d8c
+[file] read /tmp/gunbc_fabric_storage.hyCMzo/objects/d96dd5a60da085bc
+PASS a_chain_appended_through_the_store_is_read_back_whole_by_the_closure
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 3ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] write_create_new /tmp/gunbc_fabric_storage.hg3LZh/objects/d96dd5a60da085bc (26 bytes)
+[file] write_create_new /tmp/gunbc_fabric_storage.hg3LZh/objects/8ae560baf4394d8c (44 bytes)
+[file] write_create_new /tmp/gunbc_fabric_storage.hg3LZh/objects/d2de67c78943cf21 (45 bytes)
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/objects/d96dd5a60da085bc
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.hg3LZh/heads
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.hg3LZh/heads
+[file] write_create_new /tmp/gunbc_fabric_storage.hg3LZh/heads/p.1 (16 bytes)
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.2
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/objects/8ae560baf4394d8c
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.2
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.2
+[file] write_create_new /tmp/gunbc_fabric_storage.hg3LZh/heads/p.2 (16 bytes)
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.2
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.4
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.3
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/objects/d2de67c78943cf21
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.2
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.4
+[file] read /tmp/gunbc_fabric_storage.hg3LZh/heads/p.3
+PASS an_advance_against_a_moved_head_is_a_lost_race_naming_the_winner
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 3ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc_fabric_storage.2NaG9m/objects/c8b5ffbf861f54ad
+[file] read /tmp/gunbc_fabric_storage.2NaG9m/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.2NaG9m/heads
+PASS an_advance_to_an_unstored_object_is_refused_as_missing_and_the_head_stays_absent
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] write_create_new /tmp/gunbc_fabric_storage.gQbOeY/objects/8ae560baf4394d8c (44 bytes)
+[file] read /tmp/gunbc_fabric_storage.gQbOeY/objects/8ae560baf4394d8c
+[file] read /tmp/gunbc_fabric_storage.gQbOeY/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.gQbOeY/heads
+[file] read /tmp/gunbc_fabric_storage.gQbOeY/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.gQbOeY/heads
+[file] write_create_new /tmp/gunbc_fabric_storage.gQbOeY/heads/p.1 (16 bytes)
+[file] read /tmp/gunbc_fabric_storage.gQbOeY/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.gQbOeY/heads/p.2
+[file] read /tmp/gunbc_fabric_storage.gQbOeY/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.gQbOeY/heads/p.2
+[file] read /tmp/gunbc_fabric_storage.gQbOeY/objects/8ae560baf4394d8c
+[file] read /tmp/gunbc_fabric_storage.gQbOeY/objects/d96dd5a60da085bc
+PASS a_closure_over_a_hole_refuses_with_the_missing_object
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] write /tmp/gunbc_fabric_storage.wKeavn/objects/d96dd5a60da085bc (26 bytes)
+[file] read /tmp/gunbc_fabric_storage.wKeavn/objects/d96dd5a60da085bc
+PASS an_object_file_holding_other_bytes_is_refused_as_corrupt
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] write_create_new /tmp/gunbc_fabric_storage.gILGxW/objects/d96dd5a60da085bc (26 bytes)
+[file] write_create_new /tmp/gunbc_fabric_storage.gILGxW/objects/8ae560baf4394d8c (44 bytes)
+[file] read /tmp/gunbc_fabric_storage.gILGxW/objects/8ae560baf4394d8c
+[file] read /tmp/gunbc_fabric_storage.gILGxW/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.gILGxW/heads
+[file] read /tmp/gunbc_fabric_storage.gILGxW/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.gILGxW/heads
+[file] write_create_new /tmp/gunbc_fabric_storage.gILGxW/heads/p.1 (16 bytes)
+[file] read /tmp/gunbc_fabric_storage.gILGxW/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.gILGxW/heads/p.2
+[file] read /tmp/gunbc_fabric_storage.gILGxW/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.gILGxW/heads/p.2
+[file] read /tmp/gunbc_fabric_storage.gILGxW/objects/8ae560baf4394d8c
+PASS a_closure_longer_than_its_bound_refuses_rather_than_truncating
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+PASS a_head_name_with_a_separator_is_refused
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] write_create_new /tmp/gunbc_fabric_storage.gLneQL/objects/d96dd5a60da085bc (26 bytes)
+[file] write_create_new /tmp/gunbc_fabric_storage.gLneQL/objects/d96dd5a60da085bc (26 bytes)
+[file] read /tmp/gunbc_fabric_storage.gLneQL/objects/d96dd5a60da085bc
+PASS putting_the_same_object_twice_is_answered_stored_both_times
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] write_create_new /tmp/gunbc_fabric_storage.KrhEQJ/objects/d96dd5a60da085bc (26 bytes)
+[file] write_create_new /tmp/gunbc_fabric_storage.KrhEQJ/objects/8ae560baf4394d8c (44 bytes)
+[file] read /tmp/gunbc_fabric_storage.KrhEQJ/objects/d96dd5a60da085bc
+[file] read /tmp/gunbc_fabric_storage.KrhEQJ/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.KrhEQJ/heads
+[file] read /tmp/gunbc_fabric_storage.KrhEQJ/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.KrhEQJ/heads
+[file] write_create_new /tmp/gunbc_fabric_storage.KrhEQJ/heads/p.1 (16 bytes)
+[file] read /tmp/gunbc_fabric_storage.KrhEQJ/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.KrhEQJ/heads/p.2
+[file] read /tmp/gunbc_fabric_storage.KrhEQJ/objects/8ae560baf4394d8c
+[file] read /tmp/gunbc_fabric_storage.KrhEQJ/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.KrhEQJ/heads/p.2
+PASS a_lost_race_through_the_served_handler_decodes_as_the_same_lost_race_by_real_execution
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 3ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc_fabric_storage.P2Mlxr/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.P2Mlxr/heads
+PASS the_identity_route_echoes_the_presented_login_and_touches_no_head_by_real_execution
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] write_create_new_with_mode /tmp/gunbc_fabric_storage_mode.0dIZdo/objects/d96dd5a60da085bc (26 bytes, mode 444)
+◐ started coreutils.Stat.PathMode
+✓ coreutils.Stat.PathMode done in 2ms
+[file] read /tmp/gunbc_fabric_storage_mode.0dIZdo/objects/d96dd5a60da085bc
+[file] read /tmp/gunbc_fabric_storage_mode.0dIZdo/heads/p.1
+[file] list /tmp/gunbc_fabric_storage_mode.0dIZdo/heads
+[file] read /tmp/gunbc_fabric_storage_mode.0dIZdo/heads/p.1
+[file] list /tmp/gunbc_fabric_storage_mode.0dIZdo/heads
+[file] write_create_new_with_mode /tmp/gunbc_fabric_storage_mode.0dIZdo/heads/p.1 (16 bytes, mode 444)
+[file] read /tmp/gunbc_fabric_storage_mode.0dIZdo/heads/p.1
+[file] read /tmp/gunbc_fabric_storage_mode.0dIZdo/heads/p.2
+◐ started coreutils.Stat.PathMode
+✓ coreutils.Stat.PathMode done in 2ms
+[file] write_create_new /tmp/gunbc_fabric_storage.ThhzRg/objects/d96dd5a60da085bc (26 bytes)
+◐ started coreutils.Stat.PathMode
+✓ coreutils.Stat.PathMode done in 1ms
+PASS a_declared_entry_mode_is_the_published_mode_of_objects_and_heads
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 1ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc_fabric_storage.D3kiSg/objects/d96dd5a60da085bc
+[file] write_create_new /tmp/gunbc_fabric_storage.D3kiSg/objects/d96dd5a60da085bc (26 bytes)
+[file] read /tmp/gunbc_fabric_storage.D3kiSg/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.D3kiSg/heads
+PASS a_put_or_advance_from_a_login_outside_the_roster_is_refused_at_the_served_door_by_real_execution
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 1ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc_fabric_storage.V3l0fl/objects/d96dd5a60da085bc
+[file] write_create_new /tmp/gunbc_fabric_storage.V3l0fl/objects/d96dd5a60da085bc (26 bytes)
+[file] read /tmp/gunbc_fabric_storage.V3l0fl/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.V3l0fl/heads
+PASS a_put_or_advance_with_no_presented_login_is_refused_at_the_served_door_by_real_execution
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] write_create_new /tmp/gunbc_fabric_storage.pECMNL/objects/d96dd5a60da085bc (26 bytes)
+[file] read /tmp/gunbc_fabric_storage.pECMNL/objects/d96dd5a60da085bc
+[file] read /tmp/gunbc_fabric_storage.pECMNL/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.pECMNL/heads
+[file] read /tmp/gunbc_fabric_storage.pECMNL/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.pECMNL/heads
+[file] write_create_new /tmp/gunbc_fabric_storage.pECMNL/heads/p.1 (16 bytes)
+[file] read /tmp/gunbc_fabric_storage.pECMNL/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.pECMNL/heads/p.2
+[file] read /tmp/gunbc_fabric_storage.pECMNL/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.pECMNL/heads/p.2
+PASS a_rostered_login_puts_and_advances_through_the_served_door_by_real_execution
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] write_create_new /tmp/gunbc_fabric_storage.HS8K5o/objects/d96dd5a60da085bc (26 bytes)
+◐ started shell.Chmod.RecursiveReadOnly
+✓ shell.Chmod.RecursiveReadOnly done in 2ms
+◐ started shell.Chmod.RecursiveReadOnly
+✓ shell.Chmod.RecursiveReadOnly done in 2ms
+[file] write_create_new /tmp/gunbc_fabric_storage.HS8K5o/objects/d96dd8a60da08ad5 (26 bytes)
+[file] read /tmp/gunbc_fabric_storage.HS8K5o/objects/d96dd5a60da085bc
+[file] read /tmp/gunbc_fabric_storage.HS8K5o/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.HS8K5o/heads
+[file] read /tmp/gunbc_fabric_storage.HS8K5o/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.HS8K5o/heads
+[file] write_create_new /tmp/gunbc_fabric_storage.HS8K5o/heads/p.1 (16 bytes)
+[file] read /tmp/gunbc_fabric_storage.HS8K5o/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.HS8K5o/heads
+[file] read /tmp/gunbc_fabric_storage.HS8K5o/objects/d96dd8a60da08ad5
+[file] read /tmp/gunbc_fabric_storage.HS8K5o/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.HS8K5o/heads
+PASS a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_by_the_real_file_store
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 3ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc_fabric_storage.tNX92c/objects/d96dd5a60da085bc
+[file] write_create_new /tmp/gunbc_fabric_storage.tNX92c/objects/d96dd5a60da085bc (26 bytes)
+[file] read /tmp/gunbc_fabric_storage.tNX92c/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.tNX92c/heads
+PASS a_put_or_advance_from_an_unrostered_local_account_is_refused_even_with_a_rostered_login_by_real_execution
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/gunbc_fabric_storage.mO2Ggw/objects/d96dd5a60da085bc
+[file] write_create_new /tmp/gunbc_fabric_storage.mO2Ggw/objects/d96dd5a60da085bc (26 bytes)
+[file] read /tmp/gunbc_fabric_storage.mO2Ggw/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.mO2Ggw/heads
+PASS a_put_or_advance_on_an_unattested_connection_is_refused_by_real_execution
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] write_create_new /tmp/gunbc_fabric_storage.4Y0qSg/objects/d96dd5a60da085bc (26 bytes)
+[file] read /tmp/gunbc_fabric_storage.4Y0qSg/objects/d96dd5a60da085bc
+[file] read /tmp/gunbc_fabric_storage.4Y0qSg/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.4Y0qSg/heads
+[file] read /tmp/gunbc_fabric_storage.4Y0qSg/heads/p.1
+[file] list /tmp/gunbc_fabric_storage.4Y0qSg/heads
+[file] write_create_new /tmp/gunbc_fabric_storage.4Y0qSg/heads/p.1 (16 bytes)
+[file] read /tmp/gunbc_fabric_storage.4Y0qSg/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.4Y0qSg/heads/p.2
+[file] read /tmp/gunbc_fabric_storage.4Y0qSg/heads/p.1
+[file] read /tmp/gunbc_fabric_storage.4Y0qSg/heads/p.2
+PASS a_rostered_local_account_puts_and_advances_through_the_door_by_real_execution

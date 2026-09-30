@@ -1,0 +1,10 @@
+module test.probe.principal_mint_unadmitted_probe
+
+import extdeps.auth.oidc { OidcIdTokenVerdict }
+import gunbc.principal_projection { HumanPrincipalMint, mint_human_principal_from_verdict }
+
+// This caller is deliberately outside the mint's admitted roster. Even a supplied verified
+// verdict cannot authorize this declaration to mint a principal.
+fn unadmitted_mint(verdict: OidcIdTokenVerdict) -> HumanPrincipalMint {
+  mint_human_principal_from_verdict(verdict: verdict)
+}

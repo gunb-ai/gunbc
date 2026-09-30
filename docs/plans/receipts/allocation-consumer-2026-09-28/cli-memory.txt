@@ -1,0 +1,4 @@
+Result=oom-kill
+OOMPolicy=stop
+MemoryPeak=[not set]
+MemoryMax=6442450944

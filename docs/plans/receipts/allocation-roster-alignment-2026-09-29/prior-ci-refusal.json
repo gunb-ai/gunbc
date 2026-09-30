@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "receipt": {
+    "standing": "measurement_completed",
+    "blockers": [
+      {
+        "phase": "floor",
+        "identity": "<phase>",
+        "cause": "floor refused: REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed REQUIRED-FLOOR REFUSAL cause=UnimportedBareProvider RosterRetirementChanged dag/gunbc/instruments/e0599_probe_census.dag#skip (Retired ImportsFixed -> ActiveDebt) base=origin/main\nREQUIRED-FLOOR REFUSAL cause=UnimportedBareProvider RosterRetirementChanged dag/std/scoped_authorization.dag#is_empty (Retired ImportsFixed -> ActiveDebt) base=origin/main\nREQUIRED-FLOOR REFUSAL cause=UnimportedBareProvider RosterRetirementChanged dag/std/scoped_authorization.dag#length (Retired ImportsFixed -> ActiveDebt) base=origin/main\nREQUIRED-FLOOR REFUSAL cause=UnimportedBareProvider RosterRetirementChanged src/v2/lens/synthesis.dag#Report (Retired ImportsFixed -> ActiveDebt) base=origin/main\nREQUIRED-FLOOR REFUSAL cause=UnimportedBareProvider RosterRetirementChanged src/v2/lens/synthesis.dag#SynthesisGapDecisionTree (Retired ImportsFixed -> ActiveDebt) base=origin/main\nREQUIRED-FLOOR REFUSAL cause=UnimportedBareProvider RosterRetirementChanged src/v2/lens/synthesis.dag#SynthesisGapInformationTheoretic (Retired ImportsFixed -> ActiveDebt) base=origin/main\nREQUIRED-FLOOR REFUSAL cause=UnimportedBareProvider RosterRetirementChanged src/v2/workflow/compile_door_ledger.dag#ends_with (Retired ImportsFixed -> ActiveDebt) base=origin/main — the changed-witness execution sublane could not observe or attribute the CI diff"
+      }
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 3ms
+◐ started http.Client.PostStdinWithin
+✓ http.Client.PostStdinWithin done in 49ms

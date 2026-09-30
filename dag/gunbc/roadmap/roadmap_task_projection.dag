@@ -1,0 +1,125 @@
+module gunbc.roadmap.roadmap_task_projection
+
+import std.list { distinct_by_key }
+import std.graph { CallGraph, GraphEdge, graph_cycle_members }
+
+import std.types { String, Bool, List, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge }
+import gunbc.roadmap_status { node_title, item_description }
+import extdeps.google.issue_tracker { IssueStatusNew }
+import gunbc.roadmap.roadmap_task_editorial { RoadmapTaskEditorial, roadmap_task_binding_equal }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId, EventPrincipal,
+  TaskCreated, TaskRevised, roadmap_event_heads, roadmap_event_missing_parents, roadmap_event_chain,
+}
+
+// This is a projection of the same node event chain used by assignments and comments.
+// No mutable field is read from the source tree after its one-time seed has been recorded.
+type RoadmapTaskProjection
+  = RoadmapTaskAbsent
+  | RoadmapTaskCurrent { task: RoadmapTaskEditorial, revision: RoadmapEventId }
+  | RoadmapTaskUnreadable { reason: String }
+
+fn roadmap_task_step(acc: RoadmapTaskProjection, env: RoadmapEventEnvelope) -> RoadmapTaskProjection {
+  match acc {
+    RoadmapTaskUnreadable { reason: _ } => acc
+    RoadmapTaskAbsent => match env.event.kind {
+      TaskCreated { task: created } => RoadmapTaskCurrent { task: created, revision: env.id }
+      TaskRevised { task: _ } => RoadmapTaskUnreadable { reason: "task edit precedes its creation" }
+      _ => acc
+    }
+    RoadmapTaskCurrent { task: prior, revision: _ } => match env.event.kind {
+      TaskCreated { task: _ } => RoadmapTaskUnreadable { reason: "node has more than one editorial creation" }
+      TaskRevised { task: edited } => if roadmap_task_binding_equal(left: prior, right: edited) {
+        RoadmapTaskCurrent { task: edited, revision: env.id }
+      } else { RoadmapTaskUnreadable { reason: "editorial change cannot replace node identity or code-contract binding" } }
+      _ => RoadmapTaskCurrent { task: prior, revision: env.id }
+    }
+  }
+}
+
+fn roadmap_task_projection(node: RoadmapNodeId, events: List<RoadmapEventEnvelope>) -> RoadmapTaskProjection {
+  let relevant = filter(events, env => env.event.node == node)
+  let heads = roadmap_event_heads(envs: relevant)
+  if count(roadmap_event_missing_parents(envs: relevant)) != 0 { RoadmapTaskUnreadable { reason: "node history is incomplete" } }
+  else if count(relevant) == 0 { RoadmapTaskAbsent }
+  else if count(heads) != 1 { RoadmapTaskUnreadable { reason: "node history is forked" } }
+  else { match heads.first() {
+    Absent => RoadmapTaskUnreadable { reason: "node head vanished" }
+    Present { value: current_head } => fold(roadmap_event_chain(envs: relevant, head: current_head, budget: count(relevant)),
+      init: RoadmapTaskAbsent, f: (acc, item) => roadmap_task_step(acc: acc, env: item))
+  } }
+}
+
+fn roadmap_task_binding_available(node: RoadmapNodeId, task: RoadmapTaskEditorial, events: List<RoadmapEventEnvelope>) -> Bool {
+  !any(events, item => item.event.node != node && match item.event.kind {
+    TaskCreated { task: other } => other.identity == task.identity
+    _ => false
+  })
+}
+
+fn roadmap_task_append_admits(event: RoadmapEvent, events: List<RoadmapEventEnvelope>) -> Bool {
+  match event.kind {
+    TaskCreated { task: proposed } => match roadmap_task_projection(node: event.node, events: events) {
+      RoadmapTaskAbsent => roadmap_task_binding_available(node: event.node, task: proposed, events: events)
+        && !any(proposed.prerequisites, dependency => dependency == event.node)
+      _ => false
+    }
+    TaskRevised { task: proposed } => match roadmap_task_projection(node: event.node, events: events) {
+      RoadmapTaskCurrent { task: prior, revision: _ } => roadmap_task_binding_equal(left: prior, right: proposed)
+        && !any(proposed.prerequisites, dependency => dependency == event.node)
+      _ => false
+    }
+    _ => true
+  }
+}
+
+// Seed once during the reviewed source-to-store migration. Contract identity is retained as
+// a read-only join; later title/body/state/relationship writes are ordinary store CAS events.
+fn roadmap_task_authored_seed(node: RoadmapNode, edges: List<RoadmapEdge>, author: EventPrincipal,
+  parent: RoadmapEventId?, recorded_at: String) -> RoadmapEvent? {
+  let seed_title = node_title(item: node.line)
+  if seed_title == "" { none } else { Present { value: RoadmapEvent {
+    node: node.node,
+    author: author,
+    parent: parent,
+    kind: TaskCreated { task: RoadmapTaskEditorial {
+      identity: node.identity,
+      code_contract: Present { value: node.identity },
+      title: seed_title as NonEmptyStr,
+      body: item_description(item: node.line),
+      prerequisites: map(filter(edges, edge => edge.child == node.node), edge => edge.parent),
+      state: IssueStatusNew,
+    } },
+    recorded_at: recorded_at,
+  } } }
+}
+
+
+type RoadmapTaskGraphNode { node: RoadmapNodeId, task: RoadmapTaskEditorial }
+type RoadmapTaskGraphRead = RoadmapTaskGraphReady { nodes: List<RoadmapTaskGraphNode> } | RoadmapTaskGraphUnreadable { reason: String }
+
+// Relations are the existing node prerequisite edges. The shared graph authority owns cycle
+// detection; only explicit import-target seeding may temporarily reference a not-yet-seeded node.
+fn roadmap_task_graph_refusal(events: List<RoadmapEventEnvelope>, allow_unresolved: Bool) -> String? {
+  let population = distinct_by_key(xs: map(events, item => item.event.node), key: node => node as String)
+  let projected = fold(population, init: RoadmapTaskGraphReady { nodes: [] }, f: (acc, item) => match acc {
+    RoadmapTaskGraphUnreadable { reason: _ } => acc
+    RoadmapTaskGraphReady { nodes: prior } => match roadmap_task_projection(node: item, events: events) {
+      RoadmapTaskUnreadable { reason: detail } => RoadmapTaskGraphUnreadable { reason: detail }
+      RoadmapTaskAbsent => acc
+      RoadmapTaskCurrent { task: current, revision: _ } => RoadmapTaskGraphReady { nodes: prior + [RoadmapTaskGraphNode { node: item, task: current }] }
+    }
+  })
+  match projected {
+    RoadmapTaskGraphUnreadable { reason: detail } => Present { value: detail }
+    RoadmapTaskGraphReady { nodes: current } => {
+      let edges = fold(current, init: [], f: (acc, row) => acc + map(row.task.prerequisites, dependency => GraphEdge { caller: row.node as String, callee: dependency as String }))
+      if !allow_unresolved && any(edges, edge => !any(current, row => (row.node as String) == edge.callee)) {
+        Present { value: "prerequisite references an unknown editorial node identity" }
+      } else if graph_cycle_members(names: map(current, row => row.node as String), graph: CallGraph { edges: edges }).count() != 0 {
+        Present { value: "prerequisite relations contain a dependency cycle" }
+      } else { none }
+    }
+  }
+}

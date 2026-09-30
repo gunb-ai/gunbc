@@ -1,0 +1,91 @@
+module test.claim.roadmap.roadmap_task_projection_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
+import gunbc.roadmap_model { RoadmapNodeIdentity, RoadmapNodeId }
+import extdeps.google.issue_tracker { IssueStatusNew, IssueStatusFixed }
+import gunbc.principal_projection { fabric_workflow_principal }
+import gunbc.roadmap.roadmap_task_editorial { RoadmapTaskEditorial }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, TaskCreated, TaskRevised, Progress, roadmap_event_envelope, roadmap_event_wire_text, roadmap_event_decode,
+  RoadmapEventDecoded, event_principal_authenticated, roadmap_event_id_for, roadmap_event_canonical_json_for, roadmap_event_schema_v3,
+}
+import gunbc.roadmap.roadmap_task_projection { roadmap_task_projection, roadmap_task_graph_refusal, roadmap_task_append_admits, RoadmapTaskCurrent, RoadmapTaskUnreadable }
+
+fn editorial_fixture(title: NonEmptyStr) -> RoadmapTaskEditorial {
+  RoadmapTaskEditorial { identity: "minted-node-1" as RoadmapNodeIdentity, code_contract: none, title: title, body: "", prerequisites: [], state: IssueStatusNew }
+}
+fn editorial_creation() -> RoadmapEvent {
+  RoadmapEvent { node: "first-node" as RoadmapNodeId, author: event_principal_authenticated(ref: fabric_workflow_principal), parent: none,
+    kind: TaskCreated { task: editorial_fixture(title: "Initial") }, recorded_at: "2026-09-27T00:00:00Z" }
+}
+
+test fn editorial_v4_roundtrip_preserves_identity_and_empty_body() -> Bool {
+  let original = roadmap_event_envelope(e: editorial_creation())
+  match roadmap_event_decode(text: roadmap_event_wire_text(env: original)) {
+    RoadmapEventDecoded { envelope: decoded } => decoded.id == original.id
+    _ => false
+  }
+}
+
+test fn editorial_revision_and_progress_share_one_expected_head() -> Bool {
+  let created = roadmap_event_envelope(e: editorial_creation())
+  let edited = roadmap_event_envelope(e: RoadmapEvent { node: created.event.node, author: created.event.author, parent: Present { value: created.id },
+    kind: TaskRevised { task: editorial_fixture(title: "Edited") }, recorded_at: "2026-09-27T00:01:00Z" })
+  let progress = roadmap_event_envelope(e: RoadmapEvent { node: created.event.node, author: created.event.author, parent: Present { value: edited.id },
+    kind: Progress { note: "Same stream" }, recorded_at: "2026-09-27T00:02:00Z" })
+  match roadmap_task_projection(node: created.event.node, events: [progress, created, edited]) {
+    RoadmapTaskCurrent { task: projected, revision: current_revision } => projected.title == "Edited" && current_revision == progress.id
+    _ => false
+  }
+}
+
+test fn editorial_edit_cannot_replace_minted_identity_or_code_binding() -> Bool {
+  let created = roadmap_event_envelope(e: editorial_creation())
+  let changed = RoadmapTaskEditorial { identity: "different" as RoadmapNodeIdentity, code_contract: none, title: "Edited", body: "", prerequisites: [], state: IssueStatusFixed }
+  let edit_event = RoadmapEvent { node: created.event.node, author: created.event.author, parent: Present { value: created.id }, kind: TaskRevised { task: changed }, recorded_at: "2026-09-27T00:01:00Z" }
+  !roadmap_task_append_admits(event: edit_event, events: [created]) && match roadmap_task_projection(node: created.event.node, events: [created, roadmap_event_envelope(e: edit_event)]) {
+    RoadmapTaskUnreadable { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn editorial_creation_is_once_and_dependency_cannot_be_self() -> Bool {
+  let created = roadmap_event_envelope(e: editorial_creation())
+  let invalid = RoadmapTaskEditorial { identity: "minted-node-1" as RoadmapNodeIdentity, code_contract: none, title: "Recursive", body: "", prerequisites: [created.event.node], state: IssueStatusNew }
+  let edit_event = RoadmapEvent { node: created.event.node, author: created.event.author, parent: Present { value: created.id }, kind: TaskRevised { task: invalid }, recorded_at: "2026-09-27T00:01:00Z" }
+  !roadmap_task_append_admits(event: created.event, events: [created]) && !roadmap_task_append_admits(event: edit_event, events: [created])
+}
+
+test fn editorial_v4_reader_preserves_v3_authenticated_history_ids() -> Bool {
+  let created = editorial_creation()
+  let old_event = RoadmapEvent { node: created.node, author: created.author, parent: none, kind: Progress { note: "before editorial migration" }, recorded_at: created.recorded_at }
+  let old_id = roadmap_event_id_for(e: old_event, schema: roadmap_event_schema_v3)
+  let old_wire = serialize_json(v: json_object(members: [
+    json_kv(key: "id", value: json_string(s: old_id as String)),
+    json_kv(key: "event", value: roadmap_event_canonical_json_for(e: old_event, schema: roadmap_event_schema_v3)),
+  ]))
+  match roadmap_event_decode(text: old_wire) { RoadmapEventDecoded { envelope: decoded } => decoded.id == old_id  _ => false }
+}
+
+
+fn editorial_graph_creation(node: NonEmptyStr, dependencies: List<RoadmapNodeId>) -> RoadmapEvent {
+  RoadmapEvent { node: node as RoadmapNodeId, author: event_principal_authenticated(ref: fabric_workflow_principal), parent: none,
+    kind: TaskCreated { task: RoadmapTaskEditorial { identity: node as RoadmapNodeIdentity, code_contract: none,
+      title: node, body: "", prerequisites: dependencies, state: IssueStatusNew } }, recorded_at: "2026-09-27T00:00:00Z" }
+}
+
+test fn editorial_unknown_prerequisite_only_allowed_during_incremental_import() -> Bool {
+  let dependent = roadmap_event_envelope(e: editorial_graph_creation(node: "a", dependencies: ["b" as RoadmapNodeId]))
+  let prerequisite = roadmap_event_envelope(e: editorial_graph_creation(node: "b", dependencies: []))
+  (match roadmap_task_graph_refusal(events: [dependent], allow_unresolved: false) { Present { value: _ } => true Absent => false })
+    && (match roadmap_task_graph_refusal(events: [dependent], allow_unresolved: true) { Absent => true _ => false })
+    && (match roadmap_task_graph_refusal(events: [dependent, prerequisite], allow_unresolved: false) { Absent => true _ => false })
+}
+
+test fn editorial_two_node_cycle_refuses_in_production_and_import() -> Bool {
+  let a = roadmap_event_envelope(e: editorial_graph_creation(node: "a", dependencies: ["b" as RoadmapNodeId]))
+  let b = roadmap_event_envelope(e: editorial_graph_creation(node: "b", dependencies: ["a" as RoadmapNodeId]))
+  (match roadmap_task_graph_refusal(events: [a, b], allow_unresolved: false) { Present { value: _ } => true Absent => false })
+    && (match roadmap_task_graph_refusal(events: [a, b], allow_unresolved: true) { Present { value: _ } => true Absent => false })
+}

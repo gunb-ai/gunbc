@@ -1,0 +1,78 @@
+module gunbc.workspace_request_consumer_cli
+
+import std.types { String, path_segment_is_safe }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.workspace_allocation_policy { workspace_operator_principal }
+import gunbc.workspace_allocation_store { workspace_record_preparation_wait, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused }
+import gunbc.workspace_request_consumer {
+  workspace_consumer_reconcile_owner, WorkspaceConsumerNext, WorkspaceConsumerIdle,
+  WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare,
+  WorkspaceConsumerRoute, WorkspaceConsumerSettled, WorkspaceConsumerRetry,
+}
+
+// The small consumer entry reads protected intent and reconciles retirement without importing
+// the host apply/UI closure. A route result names work still owed, never a launched VM.
+fn workspace_consumer_result_json(next: WorkspaceConsumerNext) -> JsonValue {
+  match next {
+    WorkspaceConsumerIdle => json_object(members: [json_kv(key: "status", value: json_string(s: "idle"))])
+    WorkspaceConsumerRetry => json_object(members: [json_kv(key: "status", value: json_string(s: "retry"))])
+    WorkspaceConsumerRefused { reason: detail } => json_object(members: [
+      json_kv(key: "status", value: json_string(s: "refused")), json_kv(key: "reason", value: json_string(s: detail)),
+    ])
+    WorkspaceConsumerRetire { allocation: allocation } => json_object(members: [
+      json_kv(key: "status", value: json_string(s: "retirement-pending")),
+      json_kv(key: "request", value: json_string(s: allocation.request.idempotency_key as String)),
+    ])
+    WorkspaceConsumerSettled { allocation: allocation } => json_object(members: [
+      json_kv(key: "status", value: json_string(s: "released")),
+      json_kv(key: "request", value: json_string(s: allocation.request.idempotency_key as String)),
+    ])
+    WorkspaceConsumerPrepare { allocation: allocation } => json_object(members: [
+      json_kv(key: "status", value: json_string(s: "preparation-pending")),
+      json_kv(key: "request", value: json_string(s: allocation.request.idempotency_key as String)),
+      json_kv(key: "reason", value: json_string(s: allocation.reason)),
+    ])
+    WorkspaceConsumerRoute { allocation: allocation } => match allocation.plan {
+      Absent => json_object(members: [json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "reason", value: json_string(s: "routing requires a durable reservation plan"))])
+      Present { value: plan } => json_object(members: [
+        json_kv(key: "status", value: json_string(s: "host-convergence-pending")),
+        json_kv(key: "request", value: json_string(s: allocation.request.idempotency_key as String)),
+        json_kv(key: "host", value: json_string(s: plan.reservation.slot.host as String)),
+        json_kv(key: "generation", value: json_int(n: plan.reservation.generation)),
+      ])
+    }
+  }
+}
+
+fn workspace_reconcile_once(receipt_name: String) -> ProcessExit {
+  if !path_segment_is_safe(raw: receipt_name) { exit_failure(reason: "consumer receipt name is not a path segment") }
+  else { match clock_now_probed_at() {
+    Absent => exit_failure(reason: "workspace consumer clock is unavailable")
+    Present { value: now } => {
+      let store = fabric_state_storage_binding()
+      let selected = workspace_consumer_reconcile_owner(store: store, owner: workspace_operator_principal(), observed_at: now)
+      let next = match selected {
+        WorkspaceConsumerPrepare { allocation: allocation } => match workspace_record_preparation_wait(store: store,
+          request: allocation.request, reason: "Request discovered; awaiting commissioned supply and authoritative preparation policy") {
+          WorkspaceStoreWritten { allocation: saved } => WorkspaceConsumerPrepare { allocation: saved }
+          WorkspaceStoreConflict => WorkspaceConsumerRetry
+          WorkspaceStoreWriteRefused { reason: detail } => WorkspaceConsumerRefused { reason: detail }
+        }
+        other => other
+      }
+      let written = Filesystem.WriteCreateNew(path: concat("target/workspace-consumer-", receipt_name, ".json"),
+        content: serialize_json(v: workspace_consumer_result_json(next: next)))
+      if !written.success { exit_failure(reason: "consumer receipt publication failed; durable intent remains recoverable") }
+      else { match next {
+        WorkspaceConsumerRefused { reason: detail } => exit_failure(reason: detail)
+        _ => ExitSuccess
+      } }
+    }
+  }
+}
+}

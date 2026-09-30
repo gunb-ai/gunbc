@@ -1,0 +1,8 @@
+{
+  "source_revision": "31930c02846c997c82a09347d65869ecf7d0328e",
+  "binary_sha256": "fe300df9b3f6f69c290f69cbc72281ff65d61c91745992396cacd130c5ab1c84",
+  "full_closure_modules": 1031,
+  "full_closure_manifest_sha256": "20f6df22d4d7991f24bbd2894d16a05dddb11c3466b80e8a4e27a477992a0d64",
+  "ready": false,
+  "result": "Both direct-root and byte-identical full-closure serve startup OOM-killed at 6 GiB; no readiness."
+}

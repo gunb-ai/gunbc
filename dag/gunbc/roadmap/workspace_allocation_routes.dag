@@ -1,0 +1,52 @@
+module gunbc.workspace_allocation_routes
+
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+
+import std.types { NonEmptyStr }
+import extdeps.clock { Clock }
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, DeploymentAccessPolicy }
+import gunbc.auth.approval_capability { utc_instant_is_canonical }
+import gunbc.clock_read { clock_now_probed_at }
+
+import gunbc.workspace_allocation_policy { workspace_authorization_policy }
+import gunbc.workspace_artifact_policy { workspace_demo_image_identity, workspace_fleet_operator_public_key_ref }
+import gunbc.workspace_allocation_http { workspace_http_create_over, workspace_http_list_over, workspace_http_get_over, workspace_http_release_over, workspace_http_reason }
+
+// The route adapter records intent through the same protected fabric workflow. It never reserves,
+// starts a controller, probes a host, or treats a successful write as a running workspace.
+fn workspace_route_create(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  match clock_now_probed_at() {
+    Absent => workspace_http_reason(status: 503, reason: "Allocation clock unavailable")
+    Present { value: observed } => if !utc_instant_is_canonical(t: observed) {
+      workspace_http_reason(status: 503, reason: "Allocation clock is not canonical UTC")
+    } else {
+      workspace_http_create_over(request: request, store: fabric_state_storage_binding(), policy: workspace_authorization_policy(),
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: true }, observed_at: observed,
+        new_expires_at: Clock.TimestampAdd(timestamp: observed, offset: 3600).result,
+        pinned_image: workspace_demo_image_identity(), public_key_ref: workspace_fleet_operator_public_key_ref())
+    }
+  }
+}
+
+fn workspace_route_list(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  match clock_now_probed_at() {
+    Absent => workspace_http_reason(status: 503, reason: "Allocation clock unavailable")
+    Present { value: observed } => workspace_http_list_over(request: request, store: fabric_state_storage_binding(), policy: workspace_authorization_policy(), observed_at: observed)
+  }
+}
+
+fn workspace_route_get(request: ServeHttpRequest<RequestAuthenticationEvidence>, allocation_id: NonEmptyStr) -> ServeHttpResponse {
+  match clock_now_probed_at() {
+    Absent => workspace_http_reason(status: 503, reason: "Allocation clock unavailable")
+    Present { value: observed } => workspace_http_get_over(request: request, store: fabric_state_storage_binding(), policy: workspace_authorization_policy(), observed_at: observed, allocation_id: allocation_id)
+  }
+}
+
+fn workspace_route_release(request: ServeHttpRequest<RequestAuthenticationEvidence>, allocation_id: NonEmptyStr) -> ServeHttpResponse {
+  match clock_now_probed_at() {
+    Absent => workspace_http_reason(status: 503, reason: "Allocation clock unavailable")
+    Present { value: observed } => workspace_http_release_over(request: request, store: fabric_state_storage_binding(), policy: workspace_authorization_policy(),
+      deployment_policy: DeploymentAccessPolicy { tailnet_path_required: true }, observed_at: observed, allocation_id: allocation_id)
+  }
+}

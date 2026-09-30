@@ -1,0 +1,17 @@
+Read-only observation on 2026-09-28 through briansrls@srv1 with BatchMode and
+StrictHostKeyChecking enabled. No provisioning or service mutation.
+
+hostname: srv1
+unit: gunbc-microvm-slot@srv1-13.service
+LoadState=loaded
+ActiveState=failed
+FragmentPath=/etc/systemd/system/gunbc-microvm-slot@.service
+MemoryMax=infinity
+MemorySwapMax=infinity
+/var/lib/gunbc/fabric/allocation: stat reports No such file or directory
+/var/lib/gunbc/microvm-cell-readiness: stat reports No such file or directory
+/dev/kvm: root kvm 660
+
+The unit-level readings are not an attempt/cell budget observation. They do not
+qualify the existing 28 GiB envelope, prove sanitation, or admit the slot. The
+missing stores remain commissioning work, not evidence that capacity is free.

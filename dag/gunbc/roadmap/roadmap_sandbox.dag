@@ -1,13 +1,13 @@
 module gunbc.roadmap_sandbox
 
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, NodeInProgress }
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, NodeInProgress, LegacyEmailPrincipal }
 import std.types { Int, String, Bool, List, NonEmptyStr }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved }
 import gunbc.harness.harness_throughput { RoundObservation, RoundsObserved }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
-import gunbc.roadmap_page { roadmap_header, render_work_row, node_li_attributes, workspace_entries_ul, round_strip_nodes }
+import gunbc.roadmap_page { roadmap_header, workspace_row_li, node_li_attributes, workspace_entries_ul, round_strip_nodes }
 import gunbc.roadmap_presentation {
   WorkRowView, ActivityView, NoDisclosure,
   OpenLifecycle, SchedulingReady,
@@ -409,6 +409,7 @@ fn fixture_specimen_view(node_id: String, activity: ActivityView, rounds: Harnes
     disclosure: NoDisclosure,
     rounds: rounds,
     worker_alive: worker_alive,
+    attempt_stale: false,
     standing: standing,
   }
 }
@@ -419,7 +420,7 @@ fn fixture_active_view() -> WorkRowView {
     remaining: 4,
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     throughput: ThroughputUnobserved { reason: "sandbox fixture models no provider event stream" as NonEmptyStr },
-    current_activity: "Worked for 6m 34s"), worker_alive: true, standing: Present { value: NodeInProgress { by: "session-a" as NonEmptyStr, last_note: "wiring the fold" as NonEmptyStr } })
+    current_activity: "Worked for 6m 34s"), worker_alive: true, standing: Present { value: NodeInProgress { by: LegacyEmailPrincipal { email: "session-a@example.invalid", authentication_unestablished: true }, last_note: "wiring the fold" as NonEmptyStr } })
 }
 
 fn fixture_refused_view() -> WorkRowView {
@@ -435,11 +436,7 @@ fn fixture_refused_view() -> WorkRowView {
 }
 
 fn fixture_row_li(view: WorkRowView) -> Fragment {
-  Element {
-    tag: "li",
-    attributes: node_li_attributes(view: view),
-    children: render_work_row(view: view),
-  }
+  workspace_row_li(view: view, observation: ObservationsNominal)
 }
 
 fn fixture_frame(label: String, cls: String) -> Fragment {
@@ -487,6 +484,7 @@ fn fixture_ready_view(node_id: String, headline: String) -> WorkRowView {
     disclosure: NoDisclosure,
     rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     worker_alive: false,
+    attempt_stale: false,
     standing: none,
   }
 }
@@ -521,6 +519,8 @@ fn family_fixture_frame(label: String, cls: String) -> Fragment {
     workspace_entries_ul(
       entries: band_entries(
         rows: fixture_family_rows(),
+        all_rows: fixture_family_rows(),
+        edges: [],
         families: [fixture_family_decl()],
         members: fixture_family_members(),
       ),

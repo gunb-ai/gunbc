@@ -4,6 +4,7 @@ import std.dissolution { DissolutionCondition, retires_dissolution, unbound_diss
 
 import std.types { NonEmptyStr, String, List, Bool }
 import std.integer { PositiveInt }
+import v2.std.optional { Optional, Present, Absent }
 import std.citation {
   CitationSelector,
   CitationSelectorConstructed,

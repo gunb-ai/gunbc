@@ -1,0 +1,8 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 2ms
+◐ started http.Client.PostStdinWithinUnixSocket
+✗ http.Client.PostStdinWithinUnixSocket failed: $ curl -sS --unix-socket /tmp/gunbc-hold-storage-8jqzatb8/door.sock --connect-timeout 5 --max-time 60 -X POST --data-binary @- -w %{http_code} http://localhost/fabric-storage/state/authenticated (exit=7) in 8ms
+| curl: (7) Failed to connect to localhost port 80 after 0 ms: Couldn't connect to server
+served storage check failed: above-cap

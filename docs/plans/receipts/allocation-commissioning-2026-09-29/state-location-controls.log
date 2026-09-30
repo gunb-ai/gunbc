@@ -1,0 +1,5 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+PASS witness_state_authenticated_request_roundtrip
+PASS witness_state_expired_and_future_proofs_refuse
+PASS witness_state_tampered_message_refuses
+PASS witness_state_raw_request_is_not_authentication

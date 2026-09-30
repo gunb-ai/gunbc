@@ -1,0 +1,26 @@
+module test.manual.roadmap_import_audit
+
+import std.types { String, FilePath }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.git.object_store { git_sha1_object_id }
+import gunbc.roadmap.roadmap_event_migration {
+  RoadmapEventImportSource, roadmap_import_source_read, RoadmapImportReadComplete, RoadmapImportReadRefused,
+  roadmap_import_decode, RoadmapImportEventsDecoded, RoadmapImportEventsRefused,
+}
+
+// Read-only preflight: no target binding exists, so this entry cannot migrate or publish state.
+fn roadmap_import_audit(repository: String, revision: String, expected_count: String) -> ProcessExit {
+  match git_sha1_object_id(hex: revision) {
+    Absent => ExitFailure { code: 1, reason: "source revision is not a full Git SHA-1" }
+    Present { value: pinned } => match roadmap_import_source_read(source: RoadmapEventImportSource {
+      repository: repository as FilePath, revision: pinned, git_program: "/usr/bin/git" as FilePath,
+    }) {
+      RoadmapImportReadRefused { reason: detail } => ExitFailure { code: 1, reason: detail }
+      RoadmapImportReadComplete { files } => match roadmap_import_decode(files: files) {
+        RoadmapImportEventsRefused { reason: detail } => ExitFailure { code: 1, reason: detail }
+        RoadmapImportEventsDecoded { events: decoded_events } => if to_string(decoded_events.count()) == expected_count { ExitSuccess }
+          else { ExitFailure { code: 1, reason: "pinned event population differs from the reviewed count" } }
+      }
+    }
+  }
+}

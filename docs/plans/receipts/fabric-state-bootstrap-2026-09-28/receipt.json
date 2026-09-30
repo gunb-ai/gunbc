@@ -1,0 +1,16 @@
+{
+  "source": "b496cc257",
+  "project": "gunbai-secrets",
+  "secret": "fabric-state-writer-mac-key",
+  "version": "1",
+  "material_exit": 0,
+  "access_exit": 0,
+  "material_observed": "version-added-and-verified",
+  "access_observed": "converged",
+  "accessor": "serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com",
+  "token_file_removed": true,
+  "memory_max_bytes": 6442450944,
+  "swap_max_bytes": 0,
+  "host_installation": false,
+  "permanent_approval_workflow_commissioned": false
+}

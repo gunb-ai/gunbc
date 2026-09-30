@@ -1,0 +1,19 @@
+module gunbc.auth.login_browser_binding
+
+import std.types { String, Bool }
+import extdeps.auth.oidc { OidcLoginTransaction }
+import extdeps.crypto.sha2 { sha256_hex }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import gunbc.auth.session { session_cookie_id_of_header, SessionCookieIdParsed }
+
+// Domain-separated from the public PKCE challenge and state; only the initiating browser receives it.
+fn auth_login_browser_binding(transaction: OidcLoginTransaction) -> String {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: join(["gunbc/login-browser/v1", transaction.state as String, transaction.verifier.verifier as String], ":"))))
+}
+
+fn auth_login_browser_admitted(transaction: OidcLoginTransaction, cookie_header: String) -> Bool {
+  match session_cookie_id_of_header(cookie_header: cookie_header, cookie_name: "__Host-gunbc-login") {
+    SessionCookieIdParsed { session_id: presented } => (presented as String) == auth_login_browser_binding(transaction: transaction)
+    _ => false
+  }
+}

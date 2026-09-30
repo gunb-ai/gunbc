@@ -23,7 +23,7 @@ import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinary
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner_lifecycle { RunnerReplacementCause }
 import gunbc.auth.github_apps { gunbai_ci_declared }
-import gunbc.live_deploy.candidate { CandidateRelease }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import std.effects {
   EffectShape,

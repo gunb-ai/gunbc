@@ -1,0 +1,35 @@
+module test.claim.roadmap.roadmap_approval_transport_witness_test
+
+import std.types { Bool }
+import extdeps.ietf.http_semantics { POST }
+import extdeps.http.server { ServeHttpRequest, RequestSecurityContext, AccessPathLocalDev, AccessPathTailnetProxy, TailnetRouteReadbackUnobserved }
+import extdeps.tailscale.identity { TailnetIdentityAbsent, TailnetUser }
+import gunbc.auth.request_authentication { AuthAbsent }
+import gunbc.auth.approval_transport { roadmap_approval_transport_request }
+
+test fn non_tailnet_request_never_gains_a_broker_identity() -> Bool {
+  let request = ServeHttpRequest {
+    method: POST, path: "/approvals/example", body: "unchanged",
+    security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent },
+  }
+  let projected = roadmap_approval_transport_request(request: request)
+  projected.security.authentication == TailnetIdentityAbsent
+    && projected.security.access_path == request.security.access_path
+    && projected.body == request.body && projected.method == request.method
+}
+
+test fn broker_adapter_preserves_transport_evidence_without_manufacturing_a_session() -> Bool {
+  let observed = TailnetUser { login: "transport@example.test" }
+  let request = ServeHttpRequest {
+    method: POST, path: "/approvals/example", body: "unchanged",
+    security: RequestSecurityContext {
+      access_path: AccessPathTailnetProxy { transport_observation: observed,
+        route_readback: TailnetRouteReadbackUnobserved { reason: "test has no route admission" } },
+      authentication: AuthAbsent,
+    },
+  }
+  let projected = roadmap_approval_transport_request(request: request)
+  projected.security.authentication == observed
+    && projected.security.access_path == request.security.access_path
+    && projected.path == request.path && projected.body == request.body
+}

@@ -1,0 +1,8 @@
+{
+  "fixture": "/tmp/gunbc-login-race-rrbqnp8v",
+  "results": {
+    "a": "loser",
+    "b": "winner"
+  },
+  "both_read_before_release": true
+}

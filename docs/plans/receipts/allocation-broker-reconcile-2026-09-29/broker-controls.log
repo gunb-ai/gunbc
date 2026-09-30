@@ -1,0 +1,34 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 4 seconds
+[pre-entry] phase=workspace_discovery ms=4 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=22 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=5207 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1813 scale=tree
+[pre-entry] phase=closure_name_census_build ms=2047 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=32 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=51 scale=closure
+[pre-entry] phase=closure_load ms=2504 scale=closure
+[pre-entry] phase=closure_parse ms=9380 scale=closure
+[pre-entry] phase=closure_resolve ms=343 scale=closure
+[pre-entry] phase=closure_normalize ms=1072 scale=closure
+[pre-entry] phase=closure_typecheck ms=94856 scale=closure
+[pre-entry] phase=closure_parent_envs ms=10 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=181 scale=closure
+[pre-entry] phase=closure_ownership ms=1411 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=148047 scale=closure
+[pre-entry] population pool_modules=801 closure_files=800
+[pre-entry] process_cpu user_ms=145013 sys_ms=2493 max_rss_kib=5339312
+PASS the_committed_hold_is_owned_by_the_shakedown_demand
+PASS a_second_reserve_of_the_held_shakedown_cell_refuses
+PASS the_roster_binding_refuses_an_offer_that_is_not_the_cell
+PASS the_broker_receipt_names_the_demand_and_the_holder
+PASS the_reserve_step_admits_only_a_committed_reservation
+PASS the_broker_unit_is_fixed_root_and_not_installable
+PASS the_broker_start_grant_is_exact_and_on_the_shakedown_host_only
+PASS the_production_field_admits_exactly_the_shakedown_offer
+PASS github_egress_is_admitted_only_because_the_posture_names_it
+PASS a_superseding_posture_revision_leaves_the_shakedown_sanction_stale
+PASS workspace_transfer_blocks_the_production_ci_broker_before_reservation

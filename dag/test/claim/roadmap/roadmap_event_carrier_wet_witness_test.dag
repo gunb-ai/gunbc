@@ -1,0 +1,242 @@
+module test.claim.roadmap.roadmap_event_carrier_wet_witness_test
+
+import gunbc.roadmap.roadmap_task_migration { roadmap_tasks_finish_migration, RoadmapTaskSeeded, RoadmapTaskSeedRefused }
+
+import std.types { Bool, NonEmptyStr, String, FilePath, List }
+import std.algebra { trim }
+import extdeps.gunbc
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import extdeps.git.object_store { git_sha1_object_id }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.roadmap.roadmap_event_log { RoadmapEvent, Progress, TaskRevised, LegacyEmailPrincipal, roadmap_event_id_for, roadmap_event_canonical_json_for, roadmap_event_schema_v1 }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, roadmap_event_carrier_service_layout, roadmap_event_carrier_layout, roadmap_event_snapshot_read,
+  RoadmapEventSnapshotObserved, RoadmapEventSnapshotRefused, roadmap_event_append_snapshot, roadmap_event_append,
+  EventAppended, EventAlreadyPresent, EventAppendRefused,
+}
+import gunbc.roadmap.roadmap_event_migration {
+  RoadmapImportFile, RoadmapEventImportSource, roadmap_import_decode, RoadmapImportEventsDecoded,
+  RoadmapImportEventsRefused, roadmap_import_recover, roadmap_import_publish, RoadmapEventsImported, roadmap_events_import_pinned,
+}
+import test.claim.roadmap.roadmap_task_projection_witness_test { editorial_creation, editorial_fixture, editorial_graph_creation }
+import gunbc.roadmap.roadmap_task_projection { roadmap_task_projection, RoadmapTaskCurrent }
+import test.claim.roadmap.roadmap_event_carrier_witness_test { roadmap_carrier_test_event }
+
+fn roadmap_fresh_fabric_fixture() -> RoadmapEventCarrierLayout? {
+  let root = fabric_storage_file_root(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_roadmap_events.XXXXXX").path as NonEmptyStr)
+  match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => Present { value: roadmap_event_carrier_layout(store: FabricStorageLocalFiles { root: root }) }
+    _ => none
+  }
+}
+
+// Two contenders use the identical observed head. Exactly one wins; retry then appends against
+// its observed successor. Replaying either event cannot add another history row.
+test fn roadmap_fabric_competing_writes_and_idempotent_retry_preserve_both_events() -> Bool {
+  match roadmap_fresh_fabric_fixture() {
+    Absent => false
+    Present { value: layout } => match roadmap_event_snapshot_read(layout: layout) {
+      RoadmapEventSnapshotObserved { snapshot } => match roadmap_event_append_snapshot(layout: layout, snapshot: snapshot, event: roadmap_carrier_test_event(note: "one")) {
+        EventAppended { id: first_id } => match roadmap_event_append_snapshot(layout: layout, snapshot: snapshot, event: RoadmapEvent { node: "other-node" as RoadmapNodeId, author: roadmap_carrier_test_event(note: "two").author, parent: none, kind: Progress { note: "two" }, recorded_at: "2026-09-27T00:00:00Z" }) {
+          EventAppendRefused { id: _, step, reason: _ } => if step != "advance" { false } else {
+            match roadmap_event_append(layout: layout, event: RoadmapEvent { node: "other-node" as RoadmapNodeId, author: roadmap_carrier_test_event(note: "two").author, parent: none, kind: Progress { note: "two" }, recorded_at: "2026-09-27T00:00:00Z" }) {
+              EventAppended { id: second_id } => match roadmap_event_append(layout: layout, event: roadmap_carrier_test_event(note: "one")) {
+                EventAlreadyPresent { id: replay_id } => match roadmap_event_snapshot_read(layout: layout) {
+                  RoadmapEventSnapshotObserved { snapshot: final_snapshot } => final_snapshot.events.count() == 2 && first_id != second_id && replay_id == first_id
+                  _ => false
+                }
+                _ => false
+              }
+              _ => false
+            }
+          }
+          _ => false
+        }
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
+
+fn roadmap_legacy_import_fixture() -> RoadmapImportFile {
+  let event = RoadmapEvent { node: "legacy-node" as RoadmapNodeId, author: LegacyEmailPrincipal { email: "old@example.test", authentication_unestablished: true }, parent: none, kind: Progress { note: "historical progress" }, recorded_at: "2026-09-01T00:00:00Z" }
+  let id = roadmap_event_id_for(e: event, schema: roadmap_event_schema_v1)
+  let wire = serialize_json(v: json_object(members: [json_kv(key: "id", value: json_string(s: id as String)), json_kv(key: "event", value: roadmap_event_canonical_json_for(e: event, schema: roadmap_event_schema_v1))]))
+  RoadmapImportFile { path: join(["events/legacy-node/", id as String, ".json"], "") as NonEmptyStr, wire: wire as NonEmptyStr }
+}
+
+test fn roadmap_legacy_import_and_replay_keep_original_bytes_and_ids() -> Bool {
+  match roadmap_fresh_fabric_fixture() {
+    Absent => false
+    Present { value: layout } => {
+      let file = roadmap_legacy_import_fixture()
+      match git_sha1_object_id(hex: "1111111111111111111111111111111111111111") { Absent => false Present { value: revision } => {
+      let source = RoadmapEventImportSource { repository: "/fixture-read-only" as FilePath, revision: revision, git_program: "/usr/bin/git" as FilePath }
+      match roadmap_import_decode(files: [file]) {
+        RoadmapImportEventsRefused { reason: _ } => false
+        RoadmapImportEventsDecoded { events } => match roadmap_import_publish(layout: layout, source: source, events: events) {
+          RoadmapEventsImported { event_count: first_count, manifest: _, receipt: _ } => match roadmap_import_publish(layout: layout, source: source, events: events) {
+            RoadmapEventsImported { event_count: replay_count, manifest: _, receipt: _ } => match roadmap_event_snapshot_read(layout: layout) {
+              RoadmapEventSnapshotObserved { snapshot } => match snapshot.events.first() {
+                Present { value: stored } => first_count == 1 && replay_count == 1 && snapshot.events.count() == 1 && stored.wire == file.wire
+                Absent => false
+              }
+              _ => false
+            }
+            _ => false
+          }
+          _ => false
+        }
+      }
+    }
+  }
+ } }
+}
+
+fn roadmap_fixture_git(repository: FilePath, arguments: List<String>) -> Bool {
+  gunbc.WitnessBin.Run(workdir: repository, bin_path: "/usr/bin/git" as FilePath, args: arguments, expect: OutcomeIsData).success
+}
+
+// This exercises the actual pinned Git read, not just the decoded importer. The checkout is
+// deliberately dirtied after commit; only the committed original bytes may reach the store.
+test fn roadmap_pinned_git_import_ignores_uncommitted_changes_and_reads_back_history() -> Bool {
+  let repository = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_roadmap_import_git.XXXXXX").path as FilePath
+  let file = roadmap_legacy_import_fixture()
+  let directory = shell.Mkdir.Parents(path: join([repository as String, "/events/legacy-node"], "") as FilePath)
+  if !directory.success { false } else {
+    let event_path = join([repository as String, "/", file.path as String], "")
+    let written = Filesystem.WriteCreateNew(path: event_path, content: file.wire as String)
+    if !written.success { false }
+    else if !roadmap_fixture_git(repository: repository, arguments: ["init", "-q"])
+      || !roadmap_fixture_git(repository: repository, arguments: ["add", "events"])
+      || !roadmap_fixture_git(repository: repository, arguments: ["-c", "user.name=Migration Witness", "-c", "user.email=witness@example.invalid", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "commit", "-qm", "original history"]) { false }
+    else {
+      let revision_read = gunbc.WitnessBin.Run(workdir: repository, bin_path: "/usr/bin/git" as FilePath, args: ["rev-parse", "HEAD"], expect: OutcomeIsData)
+      if !revision_read.success { false } else { match git_sha1_object_id(hex: trim(s: revision_read.stdout)) {
+        Absent => false
+        Present { value: pinned_revision } => {
+          let stray = Filesystem.WriteCreateNew(path: join([repository as String, "/events/legacy-node/uncommitted.json"], ""), content: "not an event")
+          if !stray.success { false } else { match roadmap_fresh_fabric_fixture() {
+            Absent => false
+            Present { value: target_layout } => match roadmap_events_import_pinned(layout: target_layout,
+              source: RoadmapEventImportSource { repository: repository, revision: pinned_revision, git_program: "/usr/bin/git" as FilePath }) {
+              RoadmapEventsImported { event_count: imported_count, manifest: _, receipt: _ } => match roadmap_event_snapshot_read(layout: target_layout) {
+                RoadmapEventSnapshotObserved { snapshot: readback } => match readback.events.first() {
+                  Present { value: original } => imported_count == 1 && readback.events.count() == 1 && original.wire == file.wire
+                  Absent => false
+                }
+                _ => false
+              }
+              _ => false
+            }
+          } }
+        }
+      } }
+    }
+  }
+}
+
+// A task edit participates in the same per-node expected revision as comments/assignment.
+// A stale second edit cannot erase the first, and the stored projection survives reread.
+test fn roadmap_editorial_store_edit_and_stale_revision_refusal() -> Bool {
+  match roadmap_fresh_fabric_fixture() {
+    Absent => false
+    Present { value: target_layout } => {
+      let create_event = editorial_creation()
+      match roadmap_event_append(layout: target_layout, event: create_event) {
+        EventAppended { id: created_id } => {
+          let edit_event = RoadmapEvent { node: create_event.node, author: create_event.author, parent: Present { value: created_id },
+            kind: TaskRevised { task: editorial_fixture(title: "Persisted edit") }, recorded_at: "2026-09-27T00:01:00Z" }
+          match roadmap_event_append(layout: target_layout, event: edit_event) {
+            EventAppended { id: edited_id } => match roadmap_event_append(layout: target_layout,
+              event: RoadmapEvent { node: create_event.node, author: create_event.author, parent: Present { value: created_id },
+                kind: TaskRevised { task: editorial_fixture(title: "Stale edit") }, recorded_at: "2026-09-27T00:02:00Z" }) {
+              EventAppendRefused { id: _, step: refused_step, reason: _ } => if refused_step != "revision" { false } else {
+                match roadmap_event_snapshot_read(layout: target_layout) {
+                  RoadmapEventSnapshotObserved { snapshot: readback } => match roadmap_task_projection(node: create_event.node, events: map(readback.events, item => item.envelope)) {
+                    RoadmapTaskCurrent { task: persisted, revision: current_revision } => persisted.title == "Persisted edit" && current_revision == edited_id
+                    _ => false
+                  }
+                  _ => false
+                }
+              }
+              _ => false
+            }
+            _ => false
+          }
+        }
+        _ => false
+      }
+    }
+  }
+}
+
+
+test fn raw_import_receipt_recovers_after_new_events_before_migration_gate() -> Bool {
+  match roadmap_fresh_fabric_fixture() {
+    Absent => false
+    Present { value: layout } => match git_sha1_object_id(hex: "1111111111111111111111111111111111111111") {
+      Absent => false
+      Present { value: revision } => {
+        let source = RoadmapEventImportSource { repository: "/fixture-read-only" as FilePath, revision: revision, git_program: "/usr/bin/git" as FilePath }
+        match roadmap_import_decode(files: [roadmap_legacy_import_fixture()]) {
+          RoadmapImportEventsRefused { reason: _ } => false
+          RoadmapImportEventsDecoded { events: originals } => match roadmap_import_publish(layout: layout, source: source, events: originals) {
+            RoadmapEventsImported { event_count: _, manifest: _, receipt: imported_receipt } => match roadmap_event_append(layout: layout, event: roadmap_carrier_test_event(note: "post-import event")) {
+              EventAppended { id: _ } => match roadmap_import_recover(layout: layout, source: source, events: originals) {
+                RoadmapEventsImported { event_count: recovered_count, manifest: _, receipt: recovered_receipt } =>
+                  if recovered_count != 1 || recovered_receipt != imported_receipt { false }
+                  else { match roadmap_tasks_finish_migration(layout: layout, nodes: [], source: source, imported: originals) {
+                    RoadmapTaskSeeded { count: _ } => match roadmap_event_snapshot_read(layout: roadmap_event_carrier_service_layout(store: layout.store)) {
+                      RoadmapEventSnapshotObserved { snapshot: final_state } => final_state.events.count() == 2
+                      _ => false
+                    }
+                    _ => false
+                  } }
+                _ => false
+              }
+              _ => false
+            }
+            _ => false
+          }
+        }
+      }
+    }
+  }
+}
+
+
+test fn migration_completion_refuses_unresolved_seed_graph() -> Bool {
+  match roadmap_fresh_fabric_fixture() {
+    Absent => false
+    Present { value: layout } => match git_sha1_object_id(hex: "1111111111111111111111111111111111111111") {
+      Absent => false
+      Present { value: revision } => {
+        let source = RoadmapEventImportSource { repository: "/fixture-read-only" as FilePath, revision: revision, git_program: "/usr/bin/git" as FilePath }
+        match roadmap_import_decode(files: [roadmap_legacy_import_fixture()]) {
+          RoadmapImportEventsRefused { reason: _ } => false
+          RoadmapImportEventsDecoded { events: originals } => match roadmap_import_publish(layout: layout, source: source, events: originals) {
+            RoadmapEventsImported { event_count: _, manifest: _, receipt: _ } => match roadmap_event_append(layout: layout,
+              event: editorial_graph_creation(node: "incomplete-seed", dependencies: ["not-seeded" as RoadmapNodeId])) {
+              EventAppended { id: _ } => match roadmap_tasks_finish_migration(layout: layout, nodes: [], source: source, imported: originals) {
+                RoadmapTaskSeedRefused { reason: _ } => match roadmap_event_snapshot_read(layout: roadmap_event_carrier_service_layout(store: layout.store)) {
+                  RoadmapEventSnapshotRefused { step: rejected_step, reason: _ } => rejected_step == "migration"
+                  _ => false
+                }
+                _ => false
+              }
+              _ => false
+            }
+            _ => false
+          }
+        }
+      }
+    }
+  }
+}

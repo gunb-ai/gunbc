@@ -1,0 +1,3 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+PASS every_claim_state_round_trips_through_its_wire_form
+PASS bytes_that_inhabit_no_claim_state_parse_to_nothing

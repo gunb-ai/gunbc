@@ -1,0 +1,33 @@
+module test.claim.workspace_allocation_wire_witness_test
+
+import gunbc.workspace_allocation_wire { workspace_create_submission, workspace_release_submission }
+
+
+
+test fn witness_allocation_browser_cannot_supply_owner() -> Bool {
+  match workspace_create_submission(body: "{\"csrf_token\":\"t\",\"idempotency_key\":\"a\",\"profile\":\"2cpu-4gib\",\"owner\":\"other\"}") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_allocation_duplicate_fields_refuse() -> Bool {
+  match workspace_create_submission(body: "{\"csrf_token\":\"a\",\"csrf_token\":\"b\",\"idempotency_key\":\"k\"}") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_allocation_browser_json_decodes() -> Bool {
+  match workspace_create_submission(body: "{\"csrf_token\":\"t\",\"idempotency_key\":\"a\",\"profile\":\"2cpu-4gib\"}") {
+    Absent => false
+    Present { value: submission } => submission.idempotency_key == "a" && submission.profile == "2cpu-4gib"
+  }
+}
+
+test fn witness_release_negative_generation_refuses() -> Bool {
+  match workspace_release_submission(body: "{\"csrf_token\":\"t\",\"generation\":\"-1\"}") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

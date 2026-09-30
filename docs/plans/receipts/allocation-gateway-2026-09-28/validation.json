@@ -1,0 +1,23 @@
+{
+  "binary_sha256": "e6d8571156538304137139853153e1d30f77f99ba71d8c76ccd3a943b8875e5b",
+  "memory_max": "6G",
+  "memory_swap_max": 0,
+  "closures": {
+    "target/gateway-refresh-validation/sources.json": {
+      "modules": 537,
+      "manifest_sha256": "4f47dc0dcded6e15c57e3b9ad47d92aa4cda85d2b9a3adacdea747b1b03f06d8"
+    },
+    "target/login-race-validation/sources.json": {
+      "modules": 536,
+      "manifest_sha256": "1a013a3891bf5018e0c6338aead5b113dc6613aa86878859ed6227370587404b"
+    },
+    "target/storage-server-validation/sources.json": {
+      "modules": 107,
+      "manifest_sha256": "08e615108480205f01813e5728331f0908378c8836e1cb30a945cac74117422c"
+    },
+    "target/storage-client-validation/sources.json": {
+      "modules": 157,
+      "manifest_sha256": "bb8438734e25c0675d408466fb3f452a9d435a71cb56d52da462a017453cb1d3"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "binary_sha256": "e6d8571156538304137139853153e1d30f77f99ba71d8c76ccd3a943b8875e5b",
+  "limit_bytes": 6442450944,
+  "swap_bytes": 0,
+  "closures": {
+    "consumer-split-validation": {
+      "manifest_sha256": "152a923a621ff3fab3911614ebf73cc86cb9ee8c8c06561a6ec49af19d20038b",
+      "modules": 298
+    },
+    "acquisition-split-validation": {
+      "manifest_sha256": "e581acb108b62266e400bbac93ae6201eda7c8d8aadcb12a2e3c891776a38e0e",
+      "modules": 751
+    },
+    "consumer-cli-small-validation": {
+      "manifest_sha256": "ef6bb8029d0cb8b3236983cf3fdbd3cac97c683edcba3cd1d1654705f3a6749f",
+      "modules": 573
+    },
+    "directive-split-validation": {
+      "manifest_sha256": "4ebd86cd6bb19d41322b1ce7fafe858caab39daeff3e6dd84419ab9a8804e89a",
+      "modules": 746
+    }
+  }
+}

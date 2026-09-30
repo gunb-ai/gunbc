@@ -1,0 +1,13 @@
+{
+  "source_revision": "b8f407dcd3d1642834ec0b3f2810156637393d5a",
+  "binary_sha256": "dff993b47eed01a6946b8621dc9f15a051e6ab2edb79566b9616e5fdfbcca972",
+  "witness_module": "test.claim.runner.runner_microvm_ci_admission_witness_test",
+  "witness_closure_modules": 574,
+  "witness_memory_max": 6442450944,
+  "witness_swap_max": 0,
+  "witnesses_passed": 4,
+  "full_controller_check": "normal dag and src/v2 roots typechecked; intentional missing-function refusal before effects",
+  "deployment_performed": false,
+  "controller_memory_max": 25769803776,
+  "controller_swap_max": 0
+}

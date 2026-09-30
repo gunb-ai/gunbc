@@ -1,0 +1,60 @@
+{
+  "fixture": "/tmp/gunbc-hold-storage-8jqzatb8",
+  "transport": "unix",
+  "results": [
+    {
+      "step": "socket-cookie-and-response-headers",
+      "exit": 0
+    },
+    {
+      "step": "empty",
+      "exit": 0
+    },
+    {
+      "step": "append",
+      "exit": 0
+    },
+    {
+      "step": "read",
+      "exit": 0
+    },
+    {
+      "step": "above-cap",
+      "exit": 0
+    },
+    {
+      "step": "unrostered-peer",
+      "exit": 0
+    },
+    {
+      "step": "proxy-read",
+      "exit": 0
+    },
+    {
+      "step": "wrong-signing-key",
+      "exit": 0
+    },
+    {
+      "step": "proxy-wrong-signing-key",
+      "exit": 0
+    },
+    {
+      "step": "read-after-refusals",
+      "exit": 0
+    },
+    {
+      "step": "read-after-restart",
+      "exit": 0
+    },
+    {
+      "step": "above-cap-transport-refusal",
+      "exit": 1
+    }
+  ],
+  "server_memory_max": 56908316672,
+  "server_memory_high": 52613349376,
+  "client_memory_max": 6442450944,
+  "swap_max": 0,
+  "revision": "42d676c533aa5f61fd0821e2db4850a090e82cff",
+  "binary_sha256": "bf9fae33a19042737978cd913c77f7aab3548a83ab4d58c59f34b6c6404ead9f"
+}

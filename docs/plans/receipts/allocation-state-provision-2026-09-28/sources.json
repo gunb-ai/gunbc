@@ -1,0 +1,3542 @@
+[
+  {
+    "module": "extdeps.abi",
+    "source": "dag/extdeps/abi.dag",
+    "copy": "target/state-provision-validation/extdeps.abi.dag",
+    "sha256": "598bcdd3af7fc0f9a68e494347571155cdd22a6fbb42fe8c2b88e59802ea751f"
+  },
+  {
+    "module": "extdeps.access.posix",
+    "source": "dag/extdeps/access/posix.dag",
+    "copy": "target/state-provision-validation/extdeps.access.posix.dag",
+    "sha256": "b4bdc1b42701b947b3643fa2b720cdd6572d1a301a430dbb3ec95d82a7fbc482"
+  },
+  {
+    "module": "extdeps.access.posix_effective_principal",
+    "source": "dag/extdeps/access/posix_effective_principal.dag",
+    "copy": "target/state-provision-validation/extdeps.access.posix_effective_principal.dag",
+    "sha256": "eaaf8612957b1d75a5d4ddd3d6c1ef9a370322c24575d47aba00b85ef59c8165"
+  },
+  {
+    "module": "extdeps.accounting.budget",
+    "source": "dag/extdeps/accounting/budget.dag",
+    "copy": "target/state-provision-validation/extdeps.accounting.budget.dag",
+    "sha256": "807844aad0b892cc0944df5c14b5c6211ea637697bb117c12bd6eb21e7cd3462"
+  },
+  {
+    "module": "extdeps.android.key_attestation",
+    "source": "dag/extdeps/android/key_attestation.dag",
+    "copy": "target/state-provision-validation/extdeps.android.key_attestation.dag",
+    "sha256": "4d1683fed82cdecbf1ea83e7892d428adefab7380957c5a6196560bc34ca51c6"
+  },
+  {
+    "module": "extdeps.apple.apns",
+    "source": "dag/extdeps/apple/apns.dag",
+    "copy": "target/state-provision-validation/extdeps.apple.apns.dag",
+    "sha256": "5cce9a9e1fbb23decf8238f949c0d05775cc0571a168bc083dc639dd3e668c29"
+  },
+  {
+    "module": "extdeps.apple.app_attest",
+    "source": "dag/extdeps/apple/app_attest.dag",
+    "copy": "target/state-provision-validation/extdeps.apple.app_attest.dag",
+    "sha256": "66944bfe047d6be2419d89d89553e19e79a5f21f1ff845d7407c3a8745e7e332"
+  },
+  {
+    "module": "extdeps.apt",
+    "source": "dag/extdeps/package_managers/apt.dag",
+    "copy": "target/state-provision-validation/extdeps.apt.dag",
+    "sha256": "4e3d456f2ef068a0a014ad03fd87ffe5a2212315c72a52362079ff73d4153ba0"
+  },
+  {
+    "module": "extdeps.archive.format",
+    "source": "dag/extdeps/archive/format.dag",
+    "copy": "target/state-provision-validation/extdeps.archive.format.dag",
+    "sha256": "de91f0209288d706b59eba7598b2b25f34635a0c149beacd9f37aae4f2b869ca"
+  },
+  {
+    "module": "extdeps.assurance.claim_evidence",
+    "source": "dag/extdeps/assurance/claim_evidence.dag",
+    "copy": "target/state-provision-validation/extdeps.assurance.claim_evidence.dag",
+    "sha256": "d0700ef31aaba2b7775b672b035f7d83555146f97c4a498f912d4ff1a03b645c"
+  },
+  {
+    "module": "extdeps.auth.jws",
+    "source": "dag/extdeps/auth/jws.dag",
+    "copy": "target/state-provision-validation/extdeps.auth.jws.dag",
+    "sha256": "186c6d1ed006805819fed04cd9f476f929e399919c8c03c061cf49e285a5bb28"
+  },
+  {
+    "module": "extdeps.auth.jwt",
+    "source": "dag/extdeps/auth/jwt.dag",
+    "copy": "target/state-provision-validation/extdeps.auth.jwt.dag",
+    "sha256": "5dd4a233cf87366a397357213e80cdeaca92487b3c922204cd43991a0006d385"
+  },
+  {
+    "module": "extdeps.auth.oidc",
+    "source": "dag/extdeps/auth/oidc.dag",
+    "copy": "target/state-provision-validation/extdeps.auth.oidc.dag",
+    "sha256": "b855553082599a5edb3d775b1973e0f8de12e3c07eacc85c92f0317f1bd81e70"
+  },
+  {
+    "module": "extdeps.bmc.access_profile",
+    "source": "dag/extdeps/bmc/access_profile.dag",
+    "copy": "target/state-provision-validation/extdeps.bmc.access_profile.dag",
+    "sha256": "1131243c482f6179dd852cda12060d3fbb5de4bc4c4b0fd474939125650f2258"
+  },
+  {
+    "module": "extdeps.bmc.capability",
+    "source": "dag/extdeps/bmc/capability.dag",
+    "copy": "target/state-provision-validation/extdeps.bmc.capability.dag",
+    "sha256": "fb9a217e5b3473d1cd3ebbadef4b429e539e10002216b988ec57e76ac00078ae"
+  },
+  {
+    "module": "extdeps.bmc.endpoint",
+    "source": "dag/extdeps/bmc/endpoint.dag",
+    "copy": "target/state-provision-validation/extdeps.bmc.endpoint.dag",
+    "sha256": "c37db4fd1b0c0cdcbbfe57ee0bb0758574ffb30f718e536b2464b30c89f08e2c"
+  },
+  {
+    "module": "extdeps.bmc.megarac",
+    "source": "dag/extdeps/bmc/megarac.dag",
+    "copy": "target/state-provision-validation/extdeps.bmc.megarac.dag",
+    "sha256": "7b79102a4b5724877204b008376cd98b44dbb9d58b373db4f2e1b244ffde86a4"
+  },
+  {
+    "module": "extdeps.bmc.openbmc",
+    "source": "dag/extdeps/bmc/openbmc.dag",
+    "copy": "target/state-provision-validation/extdeps.bmc.openbmc.dag",
+    "sha256": "d52c0af5275a851ba8cf2dc3e20069a1ba3d5490a40552f5f56d960ec008877b"
+  },
+  {
+    "module": "extdeps.bmc.redfish_virtual_media",
+    "source": "dag/extdeps/bmc/redfish_virtual_media.dag",
+    "copy": "target/state-provision-validation/extdeps.bmc.redfish_virtual_media.dag",
+    "sha256": "489d86a38fee4b7e7adccc238b74b2a11fcf072a76fc410e9f4c87d604ed8e75"
+  },
+  {
+    "module": "extdeps.bmc.types",
+    "source": "dag/extdeps/bmc/types.dag",
+    "copy": "target/state-provision-validation/extdeps.bmc.types.dag",
+    "sha256": "fc498428478478f8af59692945f275ae31752fb2388cd8d927ea23b6eee9f451"
+  },
+  {
+    "module": "extdeps.bmc.virtual_media",
+    "source": "dag/extdeps/bmc/virtual_media.dag",
+    "copy": "target/state-provision-validation/extdeps.bmc.virtual_media.dag",
+    "sha256": "9b723f0d72128fa3d6b63d412ea4a0339986fd2730424afa0978353d845c7ed3"
+  },
+  {
+    "module": "extdeps.bmc.webui.nbd_proxy",
+    "source": "dag/extdeps/bmc/webui/nbd_proxy.dag",
+    "copy": "target/state-provision-validation/extdeps.bmc.webui.nbd_proxy.dag",
+    "sha256": "6efa8dfc4b93cb0e743a07faf4149b7a6d09cc22dd1fb51c1f5b198874e9a3e4"
+  },
+  {
+    "module": "extdeps.bmc.webui.nbd_proxy_serve",
+    "source": "dag/extdeps/bmc/webui/nbd_proxy_serve.dag",
+    "copy": "target/state-provision-validation/extdeps.bmc.webui.nbd_proxy_serve.dag",
+    "sha256": "455652c149ea0339e96ef2826d50f7f381214669ad7d1eddb3500d3f8812be6f"
+  },
+  {
+    "module": "extdeps.boards.asrock_rack",
+    "source": "dag/extdeps/boards/asrock_rack.dag",
+    "copy": "target/state-provision-validation/extdeps.boards.asrock_rack.dag",
+    "sha256": "a7e5eff4bb86f4a2774f12c0e6f256734096f36aa474e6d92d39370f0eb46c47"
+  },
+  {
+    "module": "extdeps.boards.types",
+    "source": "dag/extdeps/boards/types.dag",
+    "copy": "target/state-provision-validation/extdeps.boards.types.dag",
+    "sha256": "35515005ad3ff7e9df45f09b38d566df17ffa44a2453b889baeef7f0f5338f51"
+  },
+  {
+    "module": "extdeps.brew",
+    "source": "dag/extdeps/package_managers/brew.dag",
+    "copy": "target/state-provision-validation/extdeps.brew.dag",
+    "sha256": "e1d06f7223f16e86f8c20c77521bc01a26f459bbfb8ef4d1cc8bc6cc5dfb7502"
+  },
+  {
+    "module": "extdeps.cache.catalog_io",
+    "source": "dag/extdeps/cache/catalog_io.dag",
+    "copy": "target/state-provision-validation/extdeps.cache.catalog_io.dag",
+    "sha256": "a1dee6c80c29923e563512bb37a545863e46c1c0e2783775ee029a7d5ff59a0b"
+  },
+  {
+    "module": "extdeps.cache.catalog_placement",
+    "source": "dag/extdeps/cache/catalog_placement.dag",
+    "copy": "target/state-provision-validation/extdeps.cache.catalog_placement.dag",
+    "sha256": "e2d0bdfbf57d24373096f3dfe4a150aee14ff80bddd886b630010a95d98064b5"
+  },
+  {
+    "module": "extdeps.cache.materialization",
+    "source": "dag/extdeps/cache/materialization.dag",
+    "copy": "target/state-provision-validation/extdeps.cache.materialization.dag",
+    "sha256": "b4dc9757a5b23db54fa92026da589501cc470464270ab9b710201dd8d58f0fc1"
+  },
+  {
+    "module": "extdeps.cache.sccache",
+    "source": "dag/extdeps/cache/sccache.dag",
+    "copy": "target/state-provision-validation/extdeps.cache.sccache.dag",
+    "sha256": "9220d832056bb6cc66ea8d8a27bb4e070e3161cb0985712c1e713a63080be8c1"
+  },
+  {
+    "module": "extdeps.cache.types",
+    "source": "dag/extdeps/cache/types.dag",
+    "copy": "target/state-provision-validation/extdeps.cache.types.dag",
+    "sha256": "e45541ebe73c1e7e0ad4d5ec1fa17cb893831497ff8ed9922bd237204d206239"
+  },
+  {
+    "module": "extdeps.climbing_holds.types",
+    "source": "dag/extdeps/climbing_holds/types.dag",
+    "copy": "target/state-provision-validation/extdeps.climbing_holds.types.dag",
+    "sha256": "7cecccb75fec79d1e287e6a84ff3e235c52564c8c5198d71730fd614918b4fe0"
+  },
+  {
+    "module": "extdeps.clock",
+    "source": "dag/extdeps/clock/clock.dag",
+    "copy": "target/state-provision-validation/extdeps.clock.dag",
+    "sha256": "857e989ee290f385bcc08f423348bac59b7d5ebf0305301b23e91e7806d1b4e0"
+  },
+  {
+    "module": "extdeps.cloud.gcp.auth_print_access_token",
+    "source": "dag/extdeps/cloud/gcp/auth_print_access_token.dag",
+    "copy": "target/state-provision-validation/extdeps.cloud.gcp.auth_print_access_token.dag",
+    "sha256": "72dc2d4fbb843a6541ed3c72f0c804c5b2aab9b7475c0416a947b743de87055b"
+  },
+  {
+    "module": "extdeps.cloud.gcp.errors",
+    "source": "dag/extdeps/cloud/gcp/errors.dag",
+    "copy": "target/state-provision-validation/extdeps.cloud.gcp.errors.dag",
+    "sha256": "a1d72d0ad12ca45bc23f3204a451b1b5d956fa9bfe2ff061f36215503b4deb78"
+  },
+  {
+    "module": "extdeps.cloud.gcp.gcp",
+    "source": "dag/extdeps/cloud/gcp/gcp.dag",
+    "copy": "target/state-provision-validation/extdeps.cloud.gcp.gcp.dag",
+    "sha256": "f7a779f5022bcb1795bf20ffdeef2b098528b678eba69f1421f0c0e1779b6793"
+  },
+  {
+    "module": "extdeps.cloud.gcp.iam",
+    "source": "dag/extdeps/cloud/gcp/iam.dag",
+    "copy": "target/state-provision-validation/extdeps.cloud.gcp.iam.dag",
+    "sha256": "12733d44c4162210424148336f3c6f11696ac96432d858073333a6b5d5090846"
+  },
+  {
+    "module": "extdeps.cloud.gcp.secret_manager",
+    "source": "dag/extdeps/cloud/gcp/secret_manager.dag",
+    "copy": "target/state-provision-validation/extdeps.cloud.gcp.secret_manager.dag",
+    "sha256": "8d0c3e3c468f0e33733827b0ad32afe3af4ed366f10ee5d30f9a5881c97a3846"
+  },
+  {
+    "module": "extdeps.cloud.gcp.secret_ref",
+    "source": "dag/extdeps/cloud/gcp/secret_ref.dag",
+    "copy": "target/state-provision-validation/extdeps.cloud.gcp.secret_ref.dag",
+    "sha256": "843fc306be22696575eb1463875c225bcd2f8e4950ad32db248e48f1d23efb1e"
+  },
+  {
+    "module": "extdeps.communication.fidelity_carriers",
+    "source": "dag/extdeps/communication/fidelity_carriers.dag",
+    "copy": "target/state-provision-validation/extdeps.communication.fidelity_carriers.dag",
+    "sha256": "135d1c63cf56d1020e613e021818dfd2207cf997c4320cd644636f11a23410a1"
+  },
+  {
+    "module": "extdeps.communication.medium",
+    "source": "dag/extdeps/communication/medium.dag",
+    "copy": "target/state-provision-validation/extdeps.communication.medium.dag",
+    "sha256": "a09c4f10d7098a6ad40d94e6a9e19a69e53deba6863edb3285727cf7ba3afae9"
+  },
+  {
+    "module": "extdeps.container.docker_engine",
+    "source": "dag/extdeps/container/docker_engine.dag",
+    "copy": "target/state-provision-validation/extdeps.container.docker_engine.dag",
+    "sha256": "9769f885d5d4715e3fa84a2e764b1e2edec674bcfc8f8ac7bdc5f2be5d8a14e5"
+  },
+  {
+    "module": "extdeps.container.engine",
+    "source": "dag/extdeps/container/engine.dag",
+    "copy": "target/state-provision-validation/extdeps.container.engine.dag",
+    "sha256": "9c1394afbdda534f3a29d583c3fbf2344a3741d2f376a49ab331b09b47643889"
+  },
+  {
+    "module": "extdeps.container.oci.descriptor",
+    "source": "dag/extdeps/container/oci/descriptor.dag",
+    "copy": "target/state-provision-validation/extdeps.container.oci.descriptor.dag",
+    "sha256": "612c3262c0de612344920945dd4bad9cb0c9c15bbb794a7aa7000a2e520373ef"
+  },
+  {
+    "module": "extdeps.container.oci.digest",
+    "source": "dag/extdeps/container/oci/digest.dag",
+    "copy": "target/state-provision-validation/extdeps.container.oci.digest.dag",
+    "sha256": "6fea6eb799ab09a198d898d9130353cf51d6af5ae5daae13ee2262e67ede5704"
+  },
+  {
+    "module": "extdeps.container.oci.image_config",
+    "source": "dag/extdeps/container/oci/image_config.dag",
+    "copy": "target/state-provision-validation/extdeps.container.oci.image_config.dag",
+    "sha256": "3e66f4af7e64bf50ac2f49bc2d58d2c4e6f02f30876da2926816c8b76d75a7d8"
+  },
+  {
+    "module": "extdeps.container.oci.manifest",
+    "source": "dag/extdeps/container/oci/manifest.dag",
+    "copy": "target/state-provision-validation/extdeps.container.oci.manifest.dag",
+    "sha256": "fa79bed6e1d2dafc47d216e33e0de0c6565293ef141665599b38439d9ed32943"
+  },
+  {
+    "module": "extdeps.container.oci.media_types",
+    "source": "dag/extdeps/container/oci/media_types.dag",
+    "copy": "target/state-provision-validation/extdeps.container.oci.media_types.dag",
+    "sha256": "d0e577cbdb01180296beef34031ff776af2aed1bfe9e3420302ceb628094c3b7"
+  },
+  {
+    "module": "extdeps.container.oci.reference",
+    "source": "dag/extdeps/container/oci/reference.dag",
+    "copy": "target/state-provision-validation/extdeps.container.oci.reference.dag",
+    "sha256": "be2af3886c46e676b688ff0dc02457d6788f0a83ab435eb4eb677fd162625efe"
+  },
+  {
+    "module": "extdeps.container.oci.types",
+    "source": "dag/extdeps/container/oci/types.dag",
+    "copy": "target/state-provision-validation/extdeps.container.oci.types.dag",
+    "sha256": "a179eeb05502e5e06a4a280e19194cd738470e76471891219bcd3cb349eaee79"
+  },
+  {
+    "module": "extdeps.coverage",
+    "source": "dag/extdeps/coverage.dag",
+    "copy": "target/state-provision-validation/extdeps.coverage.dag",
+    "sha256": "1496e2c45039583852e4df7a1aab2e5e604bc44a1be28b449665ce22294e1bc4"
+  },
+  {
+    "module": "extdeps.cpu",
+    "source": "dag/extdeps/cpu.dag",
+    "copy": "target/state-provision-validation/extdeps.cpu.dag",
+    "sha256": "9e18c2a187bfc39edaacd46b68befb0a2054608e1f0c08eee390ea0732a1a1a2"
+  },
+  {
+    "module": "extdeps.cpu.ampere",
+    "source": "dag/extdeps/cpu/ampere.dag",
+    "copy": "target/state-provision-validation/extdeps.cpu.ampere.dag",
+    "sha256": "dee493bfe5feb83f242519c67ff3bf9f7574e89ef1130f27c51310a95c1d466b"
+  },
+  {
+    "module": "extdeps.cpu.types",
+    "source": "dag/extdeps/cpu/types.dag",
+    "copy": "target/state-provision-validation/extdeps.cpu.types.dag",
+    "sha256": "0b793105133d86f9ff3d02619a820958348a0a0d32ee5e8d88782f6a7dd75336"
+  },
+  {
+    "module": "extdeps.cron.schedule_model",
+    "source": "dag/extdeps/cron/schedule_model.dag",
+    "copy": "target/state-provision-validation/extdeps.cron.schedule_model.dag",
+    "sha256": "5c5e356cc09f7d55ba27d8b561dbb1581a1d3bce6028ab352a2206a34db710c2"
+  },
+  {
+    "module": "extdeps.crypto.hash",
+    "source": "dag/extdeps/crypto/hash.dag",
+    "copy": "target/state-provision-validation/extdeps.crypto.hash.dag",
+    "sha256": "7c660d5623d710ce9677a987f4341520b27bc1c2671de05dc686bf58a4389b47"
+  },
+  {
+    "module": "extdeps.crypto.mac",
+    "source": "dag/extdeps/crypto/mac.dag",
+    "copy": "target/state-provision-validation/extdeps.crypto.mac.dag",
+    "sha256": "015a8c62476004416065d70c09dd4b0aa9c90818ed9103c4ee3b38f25baed2a1"
+  },
+  {
+    "module": "extdeps.crypto.nist_p256",
+    "source": "dag/extdeps/crypto/nist_p256.dag",
+    "copy": "target/state-provision-validation/extdeps.crypto.nist_p256.dag",
+    "sha256": "e896ef20d7df4a35706b20c013aaa9df59b7555b57f609cf10fb1fadbee9ef22"
+  },
+  {
+    "module": "extdeps.crypto.nist_p384",
+    "source": "dag/extdeps/crypto/nist_p384.dag",
+    "copy": "target/state-provision-validation/extdeps.crypto.nist_p384.dag",
+    "sha256": "3533286947261830541073ecc261820cf4b328a596d0909ed95d923c4b0fd289"
+  },
+  {
+    "module": "extdeps.crypto.nist_prime_curve",
+    "source": "dag/extdeps/crypto/nist_prime_curve.dag",
+    "copy": "target/state-provision-validation/extdeps.crypto.nist_prime_curve.dag",
+    "sha256": "885dd87de825a70fc740d0854ba0323e85f3f8af7f2642f706af12799b9e8f35"
+  },
+  {
+    "module": "extdeps.crypto.sha2",
+    "source": "dag/extdeps/crypto/sha2.dag",
+    "copy": "target/state-provision-validation/extdeps.crypto.sha2.dag",
+    "sha256": "0833bfb6ad35d3fe4ae0da4eb82244ed3432d00c7e28ba364db9547c0d3fb062"
+  },
+  {
+    "module": "extdeps.crypto.signature",
+    "source": "dag/extdeps/crypto/signature.dag",
+    "copy": "target/state-provision-validation/extdeps.crypto.signature.dag",
+    "sha256": "f38cbee35df5cddabe6fd9f3646f3f3cc004b6bc613a776dfa060067b7b50e0e"
+  },
+  {
+    "module": "extdeps.ctrl.gunbc_pin",
+    "source": "dag/extdeps/ctrl/gunbc_pin.dag",
+    "copy": "target/state-provision-validation/extdeps.ctrl.gunbc_pin.dag",
+    "sha256": "6b71ace9352a510697949b4ddd1ada58c51a11b87e644195e0ff3e8ec5315bd4"
+  },
+  {
+    "module": "extdeps.currency.currency",
+    "source": "dag/extdeps/currency/currency.dag",
+    "copy": "target/state-provision-validation/extdeps.currency.currency.dag",
+    "sha256": "3016615f96e07bea627ba31aca76c1b6bbf0a95979928f9038e7c6c1143eede8"
+  },
+  {
+    "module": "extdeps.dhcp.v4",
+    "source": "dag/extdeps/dhcp/v4.dag",
+    "copy": "target/state-provision-validation/extdeps.dhcp.v4.dag",
+    "sha256": "7345654bdfaced990fd42629af87fa715fb3abc146cd275b10e40e49befc1fa5"
+  },
+  {
+    "module": "extdeps.dns.domain_name",
+    "source": "dag/extdeps/dns/domain_name.dag",
+    "copy": "target/state-provision-validation/extdeps.dns.domain_name.dag",
+    "sha256": "75c7f92dbd2b358b7a22a4b730fc2d459bac5358a26c2af1415985faae18da3d"
+  },
+  {
+    "module": "extdeps.entropy",
+    "source": "dag/extdeps/entropy/entropy.dag",
+    "copy": "target/state-provision-validation/extdeps.entropy.dag",
+    "sha256": "d48ebc83d1c35c1f94f1e37c6d05afcf5753dc64f187eb5f81474f03762d9627"
+  },
+  {
+    "module": "extdeps.ethernet.link_mode",
+    "source": "dag/extdeps/ethernet/link_mode.dag",
+    "copy": "target/state-provision-validation/extdeps.ethernet.link_mode.dag",
+    "sha256": "78f2cf1eb0c3aa18a7f7727202f8a844f9ca45b521b03406ba5de6e47a312883"
+  },
+  {
+    "module": "extdeps.exec.command",
+    "source": "dag/extdeps/exec/command.dag",
+    "copy": "target/state-provision-validation/extdeps.exec.command.dag",
+    "sha256": "d69fd7a5e216b04624494030b9f3a65dcca49d62726f9f3c254220775db29018"
+  },
+  {
+    "module": "extdeps.exec.exec_arg_limit",
+    "source": "dag/extdeps/exec/exec_arg_limit.dag",
+    "copy": "target/state-provision-validation/extdeps.exec.exec_arg_limit.dag",
+    "sha256": "e8298e58a6d4f70fce35245c4f3b7ff2b5d06cfe48a0a9f6804533f9454b4541"
+  },
+  {
+    "module": "extdeps.external_authority",
+    "source": "dag/extdeps/external_authority.dag",
+    "copy": "target/state-provision-validation/extdeps.external_authority.dag",
+    "sha256": "88e4aeb78428f3cbd583016c8e4dea926b6a9ff0a9d81b613e22d736e5fba1b4"
+  },
+  {
+    "module": "extdeps.filesystem.filesystem_io",
+    "source": "dag/extdeps/filesystem/filesystem_io.dag",
+    "copy": "target/state-provision-validation/extdeps.filesystem.filesystem_io.dag",
+    "sha256": "befeac5fa2d367ec2250bbb2c8f3a9747cb20ef078126e80dca4b2c526d2fb47"
+  },
+  {
+    "module": "extdeps.filesystem.linux",
+    "source": "dag/extdeps/filesystem/linux.dag",
+    "copy": "target/state-provision-validation/extdeps.filesystem.linux.dag",
+    "sha256": "02255828e052cf01689a8c0e8a28dcbdc5d3be05bd3fb9f53807ddf3d398f9f4"
+  },
+  {
+    "module": "extdeps.firmware.types",
+    "source": "dag/extdeps/firmware/types.dag",
+    "copy": "target/state-provision-validation/extdeps.firmware.types.dag",
+    "sha256": "626f0b0d3056e511bdf56b5fb3ad97c92c4e45abebfc107b679ba58ddcc0d335"
+  },
+  {
+    "module": "extdeps.git",
+    "source": "dag/extdeps/git/git.dag",
+    "copy": "target/state-provision-validation/extdeps.git.dag",
+    "sha256": "33a260dc2ad9596de109e936f2676f5465069fec60717585ecc4248559f10b48"
+  },
+  {
+    "module": "extdeps.git.hooks",
+    "source": "dag/extdeps/git/hooks.dag",
+    "copy": "target/state-provision-validation/extdeps.git.hooks.dag",
+    "sha256": "f40b6cb75ce3d35d419736f170ccc85a6e3d48296aa9abd0c71eadfae221be5b"
+  },
+  {
+    "module": "extdeps.git.inspect",
+    "source": "dag/extdeps/git/inspect.dag",
+    "copy": "target/state-provision-validation/extdeps.git.inspect.dag",
+    "sha256": "7463b601690c8bf9d11f7b4cf7bbecba0005a3b02a63f6137259e72b69255d5c"
+  },
+  {
+    "module": "extdeps.git.object_store",
+    "source": "dag/extdeps/git/object_store.dag",
+    "copy": "target/state-provision-validation/extdeps.git.object_store.dag",
+    "sha256": "501378bcee1750f8f6ba782e234aea61cd53f00db9e4dd87851ddaadf5a8e7b1"
+  },
+  {
+    "module": "extdeps.git.plumbing",
+    "source": "dag/extdeps/git/plumbing.dag",
+    "copy": "target/state-provision-validation/extdeps.git.plumbing.dag",
+    "sha256": "f3a57a27fab446c90fb593a611257d80b10303cd335443a368a0f3e2edfc1b78"
+  },
+  {
+    "module": "extdeps.git.publication_transport",
+    "source": "dag/extdeps/git/publication_transport.dag",
+    "copy": "target/state-provision-validation/extdeps.git.publication_transport.dag",
+    "sha256": "8c022dadc852ef306516392fc9707ead2f3c7071ffaf0d29c02b7a07d7209d55"
+  },
+  {
+    "module": "extdeps.github.action_release",
+    "source": "dag/extdeps/github/action_release.dag",
+    "copy": "target/state-provision-validation/extdeps.github.action_release.dag",
+    "sha256": "929ed31990a4372d8ae27b925c013fa8efb9d2eb1380d4ce8e0412d178106d38"
+  },
+  {
+    "module": "extdeps.github.actions",
+    "source": "dag/extdeps/github/actions.dag",
+    "copy": "target/state-provision-validation/extdeps.github.actions.dag",
+    "sha256": "14100b1ab8d98e55b09a3724b3061ea2a32dd0b9881c832f966dbc4557d93b2f"
+  },
+  {
+    "module": "extdeps.github.actions_environment",
+    "source": "dag/extdeps/github/actions_environment.dag",
+    "copy": "target/state-provision-validation/extdeps.github.actions_environment.dag",
+    "sha256": "a77d62c2794bdb1637d9364114ce8e6cc61ca405db5e0db1dbdb3efe9c32bcc2"
+  },
+  {
+    "module": "extdeps.github.actions_runner",
+    "source": "dag/extdeps/github/actions_runner.dag",
+    "copy": "target/state-provision-validation/extdeps.github.actions_runner.dag",
+    "sha256": "65361c87b6a8c20fb790c3e042067ead677a7351df140f7718b17e5fbbf8ea13"
+  },
+  {
+    "module": "extdeps.github.app",
+    "source": "dag/extdeps/github/app.dag",
+    "copy": "target/state-provision-validation/extdeps.github.app.dag",
+    "sha256": "c04b4beeb1d70339f29a6c51e121a8d4f973cb8dd1aedf1c909dd7ae973baf5d"
+  },
+  {
+    "module": "extdeps.github.checks",
+    "source": "dag/extdeps/github/checks.dag",
+    "copy": "target/state-provision-validation/extdeps.github.checks.dag",
+    "sha256": "d854406c68c3f02ce105c960bdd09aa02bc3b2a907e3849c7fddfaae81d4b2af"
+  },
+  {
+    "module": "extdeps.github.checks_contracts",
+    "source": "dag/extdeps/github/checks_contracts.dag",
+    "copy": "target/state-provision-validation/extdeps.github.checks_contracts.dag",
+    "sha256": "23a64841ab6c8195397d435d5354114df3b146b943c853cfe73d512f31e52335"
+  },
+  {
+    "module": "extdeps.github.ci_runner",
+    "source": "dag/extdeps/github/ci_runner.dag",
+    "copy": "target/state-provision-validation/extdeps.github.ci_runner.dag",
+    "sha256": "7adfb4c64cf1f827f47b352f7a2384ed442c11acf5e9769410140c88e4a2bab9"
+  },
+  {
+    "module": "extdeps.github.errors",
+    "source": "dag/extdeps/github/errors.dag",
+    "copy": "target/state-provision-validation/extdeps.github.errors.dag",
+    "sha256": "07ddeb7c6a19ebeab2414a29a8f102ac704cd45837edc118dd53a848dcb44a88"
+  },
+  {
+    "module": "extdeps.github.github",
+    "source": "dag/extdeps/github/github.dag",
+    "copy": "target/state-provision-validation/extdeps.github.github.dag",
+    "sha256": "d7493b711821a510d6dc83d74865c9d1456db012f3fbff1165af4cdab07d8f76"
+  },
+  {
+    "module": "extdeps.github.github_contracts",
+    "source": "dag/extdeps/github/github_contracts.dag",
+    "copy": "target/state-provision-validation/extdeps.github.github_contracts.dag",
+    "sha256": "a0f651f690a3aed53ad21c1b773963df9e7942974cb9169b3181c272496d23f0"
+  },
+  {
+    "module": "extdeps.github.log_annotations",
+    "source": "dag/extdeps/github/log_annotations.dag",
+    "copy": "target/state-provision-validation/extdeps.github.log_annotations.dag",
+    "sha256": "48c9c9cd6febee6d001c0627ea42297b423c0783dee38738990192543fe469f7"
+  },
+  {
+    "module": "extdeps.github.org_admin_auth",
+    "source": "dag/extdeps/github/org_admin_auth.dag",
+    "copy": "target/state-provision-validation/extdeps.github.org_admin_auth.dag",
+    "sha256": "b27708d15ea20390612051d92c5485ed3564f25e6358dd7f5e4202d2de1461fc"
+  },
+  {
+    "module": "extdeps.github.pulls",
+    "source": "dag/extdeps/github/pulls.dag",
+    "copy": "target/state-provision-validation/extdeps.github.pulls.dag",
+    "sha256": "1028c0eb10bd4057ba64705bcaf301f41260190044eda382106b553e723d4e3d"
+  },
+  {
+    "module": "extdeps.github.pulls_contracts",
+    "source": "dag/extdeps/github/pulls_contracts.dag",
+    "copy": "target/state-provision-validation/extdeps.github.pulls_contracts.dag",
+    "sha256": "d733eef06b05dd42ba6496c658601a97891a1f58d6b841fbc820459aff28565a"
+  },
+  {
+    "module": "extdeps.github.push_event",
+    "source": "dag/extdeps/github/push_event.dag",
+    "copy": "target/state-provision-validation/extdeps.github.push_event.dag",
+    "sha256": "6c9e4854e13103864389a06bd86c40d39664fc2192e2d6450c4dd5f6564ea86d"
+  },
+  {
+    "module": "extdeps.github.workflow_run_event",
+    "source": "dag/extdeps/github/workflow_run_event.dag",
+    "copy": "target/state-provision-validation/extdeps.github.workflow_run_event.dag",
+    "sha256": "a21a791b6098a00b96576992d0a209f0f78bca8e754269e3fcaa7847bdf26a8f"
+  },
+  {
+    "module": "extdeps.github.workflow_runs",
+    "source": "dag/extdeps/github/workflow_runs.dag",
+    "copy": "target/state-provision-validation/extdeps.github.workflow_runs.dag",
+    "sha256": "8f92d1222273cb08eda58e4dd31e2865b49ca588c847774124ed576ef19e4e46"
+  },
+  {
+    "module": "extdeps.github.workflow_runs_contracts",
+    "source": "dag/extdeps/github/workflow_runs_contracts.dag",
+    "copy": "target/state-provision-validation/extdeps.github.workflow_runs_contracts.dag",
+    "sha256": "a6d03e47a5401d3616130276f99e100884005448e01ced66a529238884f6e11f"
+  },
+  {
+    "module": "extdeps.google.fcm",
+    "source": "dag/extdeps/google/fcm.dag",
+    "copy": "target/state-provision-validation/extdeps.google.fcm.dag",
+    "sha256": "b1e0f1a85aa0b6af6017c5411af056ba8ecf661d44922293c74fc5aaf3ec2e85"
+  },
+  {
+    "module": "extdeps.gpu.types",
+    "source": "dag/extdeps/gpu/types.dag",
+    "copy": "target/state-provision-validation/extdeps.gpu.types.dag",
+    "sha256": "5dda0a842a124b8d5922d3899f9fac4686b1ca842afafbbbaefe37abdb97ebd8"
+  },
+  {
+    "module": "extdeps.hardware",
+    "source": "dag/extdeps/hardware.dag",
+    "copy": "target/state-provision-validation/extdeps.hardware.dag",
+    "sha256": "97741b53d621ff8afaad36ae423ea22ca6d060de5a0916a51d8b9597d35cd6a2"
+  },
+  {
+    "module": "extdeps.http.client",
+    "source": "dag/extdeps/http/client.dag",
+    "copy": "target/state-provision-validation/extdeps.http.client.dag",
+    "sha256": "99a70f84ed6c893c7566b0bc5f9fb5d261bab75b812ecd86fc2a958fedca5d84"
+  },
+  {
+    "module": "extdeps.http.server",
+    "source": "dag/extdeps/http/server.dag",
+    "copy": "target/state-provision-validation/extdeps.http.server.dag",
+    "sha256": "8fd70566a68ce44721e6945072ab636dcf4a4e907af7fcc77a027897c9151fb1"
+  },
+  {
+    "module": "extdeps.ietf.http_semantics",
+    "source": "dag/extdeps/ietf/http_semantics.dag",
+    "copy": "target/state-provision-validation/extdeps.ietf.http_semantics.dag",
+    "sha256": "606fc53707bbf45632049ea67659287eb25b95291f9138e68fbbe803553054ab"
+  },
+  {
+    "module": "extdeps.jobserver",
+    "source": "dag/extdeps/jobserver.dag",
+    "copy": "target/state-provision-validation/extdeps.jobserver.dag",
+    "sha256": "9ed87d620f863138266c7fc0e019bf914f55207becb5ec3324daa80bc8135ad2"
+  },
+  {
+    "module": "extdeps.languages.html",
+    "source": "dag/extdeps/languages/html.dag",
+    "copy": "target/state-provision-validation/extdeps.languages.html.dag",
+    "sha256": "ff049643c5cf8bf2392659731b016da8402ce9e0cd1486d67fd3885bbf69328a"
+  },
+  {
+    "module": "extdeps.languages.html_fragment",
+    "source": "dag/extdeps/languages/html_fragment.dag",
+    "copy": "target/state-provision-validation/extdeps.languages.html_fragment.dag",
+    "sha256": "88f64ca15c214f379b6b66219d63e4188a5edbf7920c0581754684b3b2225ba9"
+  },
+  {
+    "module": "extdeps.languages.json.emit",
+    "source": "dag/extdeps/languages/json/emit.dag",
+    "copy": "target/state-provision-validation/extdeps.languages.json.emit.dag",
+    "sha256": "a40f075c87c09dd9f0dc8819e746cb0a2bf613abe54f4eba0579963149f16d58"
+  },
+  {
+    "module": "extdeps.languages.json.grammar",
+    "source": "dag/extdeps/languages/json/grammar.dag",
+    "copy": "target/state-provision-validation/extdeps.languages.json.grammar.dag",
+    "sha256": "5a5114ac942b635a21490bda26b8d896aba9358af7a16ec708f31909f9affe2a"
+  },
+  {
+    "module": "extdeps.languages.json.parse",
+    "source": "dag/extdeps/languages/json/parse.dag",
+    "copy": "target/state-provision-validation/extdeps.languages.json.parse.dag",
+    "sha256": "44b89df89e7610ef9d978992d434a4b9fc46ed6b34f37d0b23bddc147e7053cf"
+  },
+  {
+    "module": "extdeps.languages.markdown",
+    "source": "dag/extdeps/languages/markdown.dag",
+    "copy": "target/state-provision-validation/extdeps.languages.markdown.dag",
+    "sha256": "2ce3b6f160550c98fe63c3018f352229f706df7993edb2f7919be70c02f59116"
+  },
+  {
+    "module": "extdeps.languages.yaml.ingest",
+    "source": "dag/extdeps/languages/yaml/ingest.dag",
+    "copy": "target/state-provision-validation/extdeps.languages.yaml.ingest.dag",
+    "sha256": "0d5e6024da519f0945f1c153c9474b1ee6bc3c81222f1e6dc5794aff83a94a70"
+  },
+  {
+    "module": "extdeps.languages.yaml.types",
+    "source": "dag/extdeps/languages/yaml/types.dag",
+    "copy": "target/state-provision-validation/extdeps.languages.yaml.types.dag",
+    "sha256": "089bd3f3ee26b4ea27b5d12ea058f23b4da80c50038612e21617eb84301a1da9"
+  },
+  {
+    "module": "extdeps.linux.cgroup_v2",
+    "source": "dag/extdeps/linux/cgroup_v2.dag",
+    "copy": "target/state-provision-validation/extdeps.linux.cgroup_v2.dag",
+    "sha256": "fbb9d57d4adba1c2a551cbd73cbf9828faf1fa7b40b5e3e1e38f51f0a65da5e3"
+  },
+  {
+    "module": "extdeps.linux.proc_self_cgroup",
+    "source": "dag/extdeps/linux/proc_self_cgroup.dag",
+    "copy": "target/state-provision-validation/extdeps.linux.proc_self_cgroup.dag",
+    "sha256": "a3db0d941a3a10c530d1b8003dca61042a5a426f844075fed749032e416e1c91"
+  },
+  {
+    "module": "extdeps.linux.procfs",
+    "source": "dag/extdeps/linux/procfs.dag",
+    "copy": "target/state-provision-validation/extdeps.linux.procfs.dag",
+    "sha256": "cbfd0f2ea5f9eb644212ed306c0cf2491346a518fb2ca54a99dba131d9b97afa"
+  },
+  {
+    "module": "extdeps.llm.codex_app_server",
+    "source": "dag/extdeps/llm/codex_app_server.dag",
+    "copy": "target/state-provision-validation/extdeps.llm.codex_app_server.dag",
+    "sha256": "efd8ddb237f03160d9d9f8a4b940c077e4f928cec3c4913838631d0c805cd458"
+  },
+  {
+    "module": "extdeps.llm.codex_app_server_stdio_session",
+    "source": "dag/extdeps/llm/codex_app_server_stdio_session.dag",
+    "copy": "target/state-provision-validation/extdeps.llm.codex_app_server_stdio_session.dag",
+    "sha256": "eff3dedb6251895f49228e0c763ed131a8a1d93c71455611cec7631212e2d84e"
+  },
+  {
+    "module": "extdeps.llm.codex_auth",
+    "source": "dag/extdeps/llm/codex_auth.dag",
+    "copy": "target/state-provision-validation/extdeps.llm.codex_auth.dag",
+    "sha256": "ef833cc27292c54641cb073e09888181ff9038db146c228fe1d241735134c1ad"
+  },
+  {
+    "module": "extdeps.memory",
+    "source": "dag/extdeps/memory.dag",
+    "copy": "target/state-provision-validation/extdeps.memory.dag",
+    "sha256": "c382d180c73bac2bb68cb1ae13d29880ec4aa0975cf2910eb21d186b9cc28a4e"
+  },
+  {
+    "module": "extdeps.memory.samsung",
+    "source": "dag/extdeps/memory/samsung.dag",
+    "copy": "target/state-provision-validation/extdeps.memory.samsung.dag",
+    "sha256": "dec7e4039baace8c3ccbb225f898a2490c637f4cd366cabf62d6443211340ec7"
+  },
+  {
+    "module": "extdeps.memory.sk_hynix",
+    "source": "dag/extdeps/memory/sk_hynix.dag",
+    "copy": "target/state-provision-validation/extdeps.memory.sk_hynix.dag",
+    "sha256": "be0d3af89d1973a865b44785289414ad457d45d67b17c3df3b893fe63d15a303"
+  },
+  {
+    "module": "extdeps.memory.types",
+    "source": "dag/extdeps/memory/types.dag",
+    "copy": "target/state-provision-validation/extdeps.memory.types.dag",
+    "sha256": "d03770f4f2e2f22f5481ea5bbe691b82a7b07f957085ff804ba6c2a7f574fc1d"
+  },
+  {
+    "module": "extdeps.mikrotik.crs812",
+    "source": "dag/extdeps/mikrotik/crs812.dag",
+    "copy": "target/state-provision-validation/extdeps.mikrotik.crs812.dag",
+    "sha256": "df43ff4f3b7fc571a843d2094021ec23d123f59b1ddb0458ed4caf0be682194a"
+  },
+  {
+    "module": "extdeps.netfilter.iptables_legacy",
+    "source": "dag/extdeps/netfilter/iptables_legacy.dag",
+    "copy": "target/state-provision-validation/extdeps.netfilter.iptables_legacy.dag",
+    "sha256": "61984221e395c81ae47794f44895c1380e827a580f4cc7ee440ceec6c781bad9"
+  },
+  {
+    "module": "extdeps.netfilter.nfct",
+    "source": "dag/extdeps/netfilter/nfct.dag",
+    "copy": "target/state-provision-validation/extdeps.netfilter.nfct.dag",
+    "sha256": "3464ac683331116dfb3a73fe772eb1e6c74d9eecc96c6ac94cdc53439bed8d56"
+  },
+  {
+    "module": "extdeps.netplan.netplan",
+    "source": "dag/extdeps/netplan/netplan.dag",
+    "copy": "target/state-provision-validation/extdeps.netplan.netplan.dag",
+    "sha256": "e3cc16ae4eafc29193a963900cef89fb94c8620cf81f4c6eb01b00e1ecd59001"
+  },
+  {
+    "module": "extdeps.network.address",
+    "source": "dag/extdeps/network/address.dag",
+    "copy": "target/state-provision-validation/extdeps.network.address.dag",
+    "sha256": "ec16c313201ab6d85f6377fb41c886ed682521d27dff8dd425bcbcfa80c59f52"
+  },
+  {
+    "module": "extdeps.network.endpoint",
+    "source": "dag/extdeps/network/endpoint.dag",
+    "copy": "target/state-provision-validation/extdeps.network.endpoint.dag",
+    "sha256": "366cf716a13cd977ad44b5689a9a5480e89fccf434d686da4331612d2bbb13bc"
+  },
+  {
+    "module": "extdeps.network.ipv4",
+    "source": "dag/extdeps/network/ipv4.dag",
+    "copy": "target/state-provision-validation/extdeps.network.ipv4.dag",
+    "sha256": "a3243a396abcd171c868b451906ee3d708b5e077f64d83bb9b1338d2ee6ff697"
+  },
+  {
+    "module": "extdeps.network.ipv6",
+    "source": "dag/extdeps/network/ipv6.dag",
+    "copy": "target/state-provision-validation/extdeps.network.ipv6.dag",
+    "sha256": "912b70fbe05375103a1ee36980cc57592f9e1742f1c3cfb18bdaab952cba8bd2"
+  },
+  {
+    "module": "extdeps.network.reach",
+    "source": "dag/extdeps/network/reach.dag",
+    "copy": "target/state-provision-validation/extdeps.network.reach.dag",
+    "sha256": "38b0394d8dc2dc61aa361b68197c189b1657096d136b03dabc558f7e2faa6002"
+  },
+  {
+    "module": "extdeps.nftables.ruleset",
+    "source": "dag/extdeps/nftables/ruleset.dag",
+    "copy": "target/state-provision-validation/extdeps.nftables.ruleset.dag",
+    "sha256": "0fb42111955b5a0f198d2e1e8e717278bc2cde7cf7420165793ceec52558e025"
+  },
+  {
+    "module": "extdeps.npm",
+    "source": "dag/extdeps/npm.dag",
+    "copy": "target/state-provision-validation/extdeps.npm.dag",
+    "sha256": "ba65b047e4bf1f33a088f355dea9fcfacdde13e5940940ee7b7808911b4503ca"
+  },
+  {
+    "module": "extdeps.ntfy.ntfy",
+    "source": "dag/extdeps/ntfy/ntfy.dag",
+    "copy": "target/state-provision-validation/extdeps.ntfy.ntfy.dag",
+    "sha256": "e41065c46beeb410239da7a7fa1cfe2f1cf090c7d3e01097bfe5fcd57c14bee2"
+  },
+  {
+    "module": "extdeps.numeric.base16",
+    "source": "dag/extdeps/numeric/base16.dag",
+    "copy": "target/state-provision-validation/extdeps.numeric.base16.dag",
+    "sha256": "3623dd73f3681a6e292b627cb9b456818effd393624626683b954e7d146c0e64"
+  },
+  {
+    "module": "extdeps.object_storage",
+    "source": "dag/extdeps/object_storage/object_storage.dag",
+    "copy": "target/state-provision-validation/extdeps.object_storage.dag",
+    "sha256": "a29465155d57c1faed1ddca8cb5537fcede68d7d7e4722105cda254726c23294"
+  },
+  {
+    "module": "extdeps.object_storage.content_addressed",
+    "source": "dag/extdeps/object_storage/content_addressed.dag",
+    "copy": "target/state-provision-validation/extdeps.object_storage.content_addressed.dag",
+    "sha256": "3484768b85c4d5c25edbbe656896e17b8aed3bbfd9cc95684f7ccb1cccec17fb"
+  },
+  {
+    "module": "extdeps.ollama.binary_release",
+    "source": "dag/extdeps/ollama/binary_release.dag",
+    "copy": "target/state-provision-validation/extdeps.ollama.binary_release.dag",
+    "sha256": "fa580666afbf10ee0bcba2f722ac34bd8eb3039df898fa5477136d4b281c250a"
+  },
+  {
+    "module": "extdeps.os.ubuntu",
+    "source": "dag/extdeps/os/ubuntu.dag",
+    "copy": "target/state-provision-validation/extdeps.os.ubuntu.dag",
+    "sha256": "8e296c7fe1cbe7fe44a1e43f1585ed92884e7d369053adf47438daf83c41c350"
+  },
+  {
+    "module": "extdeps.os.ubuntu_autoinstall",
+    "source": "dag/extdeps/os/ubuntu_autoinstall.dag",
+    "copy": "target/state-provision-validation/extdeps.os.ubuntu_autoinstall.dag",
+    "sha256": "f77985f6dc906897c4a916c4fcd0d52d13dce50217cbee3266021d96bddd194a"
+  },
+  {
+    "module": "extdeps.package",
+    "source": "dag/extdeps/package.dag",
+    "copy": "target/state-provision-validation/extdeps.package.dag",
+    "sha256": "ae95e5ee95da2b391fac14de9040c74af6adbd2ae6abc7a95e3d26541607cd09"
+  },
+  {
+    "module": "extdeps.pin",
+    "source": "dag/extdeps/pin.dag",
+    "copy": "target/state-provision-validation/extdeps.pin.dag",
+    "sha256": "b9c184a3731d5427619ca3253b722618fe0b1def28be2726690bebeea2f850b3"
+  },
+  {
+    "module": "extdeps.posix.sh_invocation",
+    "source": "dag/extdeps/posix/sh_invocation.dag",
+    "copy": "target/state-provision-validation/extdeps.posix.sh_invocation.dag",
+    "sha256": "343cc2ca0d5212df7f22c215b0094574a8c7837f4c1d4eb06afc09b3101b4bd1"
+  },
+  {
+    "module": "extdeps.posix.shell_command_language",
+    "source": "dag/extdeps/posix/shell_command_language.dag",
+    "copy": "target/state-provision-validation/extdeps.posix.shell_command_language.dag",
+    "sha256": "6e7268a08bd58cb9d5a70fc074adbcdcb61f1beeb3cea1221953a50d19c18d5c"
+  },
+  {
+    "module": "extdeps.process.gnu_bash_exit",
+    "source": "dag/extdeps/process/gnu_bash_exit.dag",
+    "copy": "target/state-provision-validation/extdeps.process.gnu_bash_exit.dag",
+    "sha256": "a15a59808e4c996318f62f68db463b836fc6203421fe1214d2969d499c025c42"
+  },
+  {
+    "module": "extdeps.process.posix_exit",
+    "source": "dag/extdeps/process/posix_exit.dag",
+    "copy": "target/state-provision-validation/extdeps.process.posix_exit.dag",
+    "sha256": "57b76d62b3ca996426e6f669c55e3e82a849225c59824613458d4dc813c6d8f5"
+  },
+  {
+    "module": "extdeps.provisioning.dhcp_client_arch",
+    "source": "dag/extdeps/provisioning/dhcp_client_arch.dag",
+    "copy": "target/state-provision-validation/extdeps.provisioning.dhcp_client_arch.dag",
+    "sha256": "1fb59d9fc436aad4ee836b36cc3da85b66e3a6376b5f2a919deb4f7cea80ed57"
+  },
+  {
+    "module": "extdeps.provisioning.network_boot",
+    "source": "dag/extdeps/provisioning/network_boot.dag",
+    "copy": "target/state-provision-validation/extdeps.provisioning.network_boot.dag",
+    "sha256": "c4194d133180018bf9b7f09a1388ce75ad44dc3fe44dd77175eeeb102a8a6780"
+  },
+  {
+    "module": "extdeps.provisioning.ubuntu_install_media",
+    "source": "dag/extdeps/provisioning/ubuntu_install_media.dag",
+    "copy": "target/state-provision-validation/extdeps.provisioning.ubuntu_install_media.dag",
+    "sha256": "6ada28a2af0e3e4866c28f9de05d15f0905bbf8f9f87f04c9034c174c0fed743"
+  },
+  {
+    "module": "extdeps.provisioning.ubuntu_seeded_install_media",
+    "source": "dag/extdeps/provisioning/ubuntu_seeded_install_media.dag",
+    "copy": "target/state-provision-validation/extdeps.provisioning.ubuntu_seeded_install_media.dag",
+    "sha256": "1d098e46fd5e2650b9b7ffe8658df74e0e79a40d568f0e57ddca2029a2ebb501"
+  },
+  {
+    "module": "extdeps.publication",
+    "source": "dag/extdeps/publication.dag",
+    "copy": "target/state-provision-validation/extdeps.publication.dag",
+    "sha256": "7ef7e8fbb50dbe23b54e181f0b04f3ca5000342e5a0a3464aeda14b2e7897fe6"
+  },
+  {
+    "module": "extdeps.realization.compile_stage_memo",
+    "source": "dag/extdeps/realization/compile_stage_memo.dag",
+    "copy": "target/state-provision-validation/extdeps.realization.compile_stage_memo.dag",
+    "sha256": "4f0bd3b2d1db88281eff9de0a033efdf486258b38926042da1ddbfee8dc29a21"
+  },
+  {
+    "module": "extdeps.realization.parse_table_memo",
+    "source": "dag/extdeps/realization/parse_table_memo.dag",
+    "copy": "target/state-provision-validation/extdeps.realization.parse_table_memo.dag",
+    "sha256": "85609359830fad1e83b670701c092fe5a215bd57bb32018eb8542a4282fe43b5"
+  },
+  {
+    "module": "extdeps.render.ansi",
+    "source": "dag/extdeps/render/ansi.dag",
+    "copy": "target/state-provision-validation/extdeps.render.ansi.dag",
+    "sha256": "2c3de3a022c59ee5a50aae54099c04218f454baffd510a91c2e5929000d3d08b"
+  },
+  {
+    "module": "extdeps.render.glyph",
+    "source": "dag/extdeps/render/glyph.dag",
+    "copy": "target/state-provision-validation/extdeps.render.glyph.dag",
+    "sha256": "faff987cbcf08523899ab0475c2c9eac36e3d0ced785f946e698acb5480cdabf"
+  },
+  {
+    "module": "extdeps.render.glyphs",
+    "source": "dag/extdeps/render/glyphs.dag",
+    "copy": "target/state-provision-validation/extdeps.render.glyphs.dag",
+    "sha256": "124bdf852b1cc15ee5ff73d0f78b25a848a93f3e72644cc7c4b6e1f944260064"
+  },
+  {
+    "module": "extdeps.render.surface",
+    "source": "dag/extdeps/render/surface.dag",
+    "copy": "target/state-provision-validation/extdeps.render.surface.dag",
+    "sha256": "ca8859158f7a1d79567e6bb075e07342b28128cd13c8f9353f27dc17b451cfd4"
+  },
+  {
+    "module": "extdeps.render.terminal",
+    "source": "dag/extdeps/render/terminal.dag",
+    "copy": "target/state-provision-validation/extdeps.render.terminal.dag",
+    "sha256": "1ad3f47bf57afb09e017210161e10da415a79c038b9c5965fa7731c94a64bf4c"
+  },
+  {
+    "module": "extdeps.render.tier_glyphs",
+    "source": "dag/extdeps/render/tier_glyphs.dag",
+    "copy": "target/state-provision-validation/extdeps.render.tier_glyphs.dag",
+    "sha256": "ddbba9198c1c87c98734a156df9e85103383b22604e94fd3f7fd66a51c4e2c22"
+  },
+  {
+    "module": "extdeps.router.verizon_cr1000a",
+    "source": "dag/extdeps/router/verizon_cr1000a.dag",
+    "copy": "target/state-provision-validation/extdeps.router.verizon_cr1000a.dag",
+    "sha256": "31676cd07b8d069ff6b857ddf4ca05e3349f391690b8ebab3f43aaa817f0c41a"
+  },
+  {
+    "module": "extdeps.runtime.abi.aapcs64",
+    "source": "dag/extdeps/runtime/abi/aapcs64.dag",
+    "copy": "target/state-provision-validation/extdeps.runtime.abi.aapcs64.dag",
+    "sha256": "44fad81b1ecbbf31b378ef80416cf55992ea0944cc121f318ea1360844774dee"
+  },
+  {
+    "module": "extdeps.runtime.abi.sysv_amd64",
+    "source": "dag/extdeps/runtime/abi/sysv_amd64.dag",
+    "copy": "target/state-provision-validation/extdeps.runtime.abi.sysv_amd64.dag",
+    "sha256": "dec8e88108d5098c1810ebe1bcff882af480c1c47bf3906ec1fb4572d2eab16a"
+  },
+  {
+    "module": "extdeps.runtime.architecture.x86_64_linux",
+    "source": "dag/extdeps/runtime/architecture/x86_64_linux.dag",
+    "copy": "target/state-provision-validation/extdeps.runtime.architecture.x86_64_linux.dag",
+    "sha256": "c742e341ea507b7ea5b067b5bc2fd7bb3910e8ce12841b30da710f8b788bfcf2"
+  },
+  {
+    "module": "extdeps.runtime.errno",
+    "source": "dag/extdeps/runtime/errno.dag",
+    "copy": "target/state-provision-validation/extdeps.runtime.errno.dag",
+    "sha256": "021d7615c82df3d00fab2a4d57f1822d26783f9f674c7aa84bbedbba02085d98"
+  },
+  {
+    "module": "extdeps.runtime.syscalls.linux",
+    "source": "dag/extdeps/runtime/syscalls/linux.dag",
+    "copy": "target/state-provision-validation/extdeps.runtime.syscalls.linux.dag",
+    "sha256": "53fd24ad1f02950ea687285043699f732973cde905108a5b946ed30648a50041"
+  },
+  {
+    "module": "extdeps.rust.std_process",
+    "source": "dag/extdeps/rust/std_process.dag",
+    "copy": "target/state-provision-validation/extdeps.rust.std_process.dag",
+    "sha256": "28fa7dbd8acb2587393c914289f8de7c70255bba13d32e9aff3cab8a4e178756"
+  },
+  {
+    "module": "extdeps.rustup",
+    "source": "dag/extdeps/rust/rustup.dag",
+    "copy": "target/state-provision-validation/extdeps.rustup.dag",
+    "sha256": "d9232129751b35c5881af0831a30f87deabef91aaf47db22b7bc5fcc98cb01dd"
+  },
+  {
+    "module": "extdeps.shell",
+    "source": "dag/extdeps/shell.dag",
+    "copy": "target/state-provision-validation/extdeps.shell.dag",
+    "sha256": "d17dc14133892c9d243bbbe78be28a918f13848bdc46ea26beb404a97ee08aa7"
+  },
+  {
+    "module": "extdeps.shell.exec",
+    "source": "dag/extdeps/shell/exec.dag",
+    "copy": "target/state-provision-validation/extdeps.shell.exec.dag",
+    "sha256": "b3e3440e314df62301f7c6f67e8420d607980fa151e670ffd0a97b892e1315dd"
+  },
+  {
+    "module": "extdeps.software",
+    "source": "dag/extdeps/software.dag",
+    "copy": "target/state-provision-validation/extdeps.software.dag",
+    "sha256": "359dffb6f44d85df85e213933aabcea0a55799e243d57b1e22fac63c7fe1bf22"
+  },
+  {
+    "module": "extdeps.ssh",
+    "source": "dag/extdeps/ssh/keys.dag",
+    "copy": "target/state-provision-validation/extdeps.ssh.dag",
+    "sha256": "9e247283dce00a934061eb655de01bad503f797b9a8110746e1f760748976e0c"
+  },
+  {
+    "module": "extdeps.ssh.client_options",
+    "source": "dag/extdeps/ssh/client_options.dag",
+    "copy": "target/state-provision-validation/extdeps.ssh.client_options.dag",
+    "sha256": "e1f572f6abfe705f5278ee0e2b86ae380fd2d60895b4c561bb90e4e6eef12240"
+  },
+  {
+    "module": "extdeps.ssh.openssh_client_commands",
+    "source": "dag/extdeps/ssh/openssh_client_commands.dag",
+    "copy": "target/state-provision-validation/extdeps.ssh.openssh_client_commands.dag",
+    "sha256": "dfb1fdfad88d16bd8f9357c51bd69ac425af802d6e30cbd982a19b3896e42982"
+  },
+  {
+    "module": "extdeps.ssh.password_session",
+    "source": "dag/extdeps/ssh/password_session.dag",
+    "copy": "target/state-provision-validation/extdeps.ssh.password_session.dag",
+    "sha256": "a31fd62a35496542220f9183c97d4a5eead18640c4f68e8c04e5d6456d693110"
+  },
+  {
+    "module": "extdeps.ssh.session",
+    "source": "dag/extdeps/ssh/session.dag",
+    "copy": "target/state-provision-validation/extdeps.ssh.session.dag",
+    "sha256": "0c1c28fc5354c6a6cb2f87286316ce11fefa913c09d4a93259c8d5bd0b802ab3"
+  },
+  {
+    "module": "extdeps.standards.micro_atx",
+    "source": "dag/extdeps/standards/micro_atx.dag",
+    "copy": "target/state-provision-validation/extdeps.standards.micro_atx.dag",
+    "sha256": "86664d46c29f8a6a8954aa0c0ab78723cf06de2a2bebf2c37690d224b2563aa7"
+  },
+  {
+    "module": "extdeps.standards.rfc_5280",
+    "source": "dag/extdeps/standards/rfc_5280.dag",
+    "copy": "target/state-provision-validation/extdeps.standards.rfc_5280.dag",
+    "sha256": "abe70f0c9d3473c01979b85e3d0e5f3e90455727723b2accd56b991035809090"
+  },
+  {
+    "module": "extdeps.standards.rfc_7468",
+    "source": "dag/extdeps/standards/rfc_7468.dag",
+    "copy": "target/state-provision-validation/extdeps.standards.rfc_7468.dag",
+    "sha256": "3a2c82daba389ddcb1903d82b46b9465ee0abcfc20599df898b765b450063370"
+  },
+  {
+    "module": "extdeps.standards.rfc_8949",
+    "source": "dag/extdeps/standards/rfc_8949.dag",
+    "copy": "target/state-provision-validation/extdeps.standards.rfc_8949.dag",
+    "sha256": "9049ddac6906cff4d8d1f21732712cb1511e331e054a64d0d198430ddc07df93"
+  },
+  {
+    "module": "extdeps.standards.webauthn_authenticator_data",
+    "source": "dag/extdeps/standards/webauthn_authenticator_data.dag",
+    "copy": "target/state-provision-validation/extdeps.standards.webauthn_authenticator_data.dag",
+    "sha256": "adb68e18f5ab65b041bcd6c4cd233a8f30513accfc02db84d5176c81e47413dd"
+  },
+  {
+    "module": "extdeps.standards.x690_der",
+    "source": "dag/extdeps/standards/x690_der.dag",
+    "copy": "target/state-provision-validation/extdeps.standards.x690_der.dag",
+    "sha256": "97a263c00f6420e434d9c42d06509c254f76d50b41790e3c8119e5ad253e66bc"
+  },
+  {
+    "module": "extdeps.storage.samsung",
+    "source": "dag/extdeps/storage/samsung.dag",
+    "copy": "target/state-provision-validation/extdeps.storage.samsung.dag",
+    "sha256": "c55f7b21cda2abc5dede4c88e0af9f75b36a484af36666664eebc140157b5d42"
+  },
+  {
+    "module": "extdeps.storage.types",
+    "source": "dag/extdeps/storage/types.dag",
+    "copy": "target/state-provision-validation/extdeps.storage.types.dag",
+    "sha256": "bfb19271a1ed212c2d780afde332f9162a97e8e447d1953ed640d3b99b2f84f3"
+  },
+  {
+    "module": "extdeps.storage.western_digital",
+    "source": "dag/extdeps/storage/western_digital.dag",
+    "copy": "target/state-provision-validation/extdeps.storage.western_digital.dag",
+    "sha256": "9989cf70f0dc593806fe71338913104d66dd3d0554eac370ad87dda819f9b61f"
+  },
+  {
+    "module": "extdeps.sudo.elevation",
+    "source": "dag/extdeps/sudo/elevation.dag",
+    "copy": "target/state-provision-validation/extdeps.sudo.elevation.dag",
+    "sha256": "3d08b08c8a423e1b28df7169e1aa50d63afa0fa034efdd5ab20dde1ea03ea59f"
+  },
+  {
+    "module": "extdeps.sudo.nopasswd_execute_probe",
+    "source": "dag/extdeps/sudo/nopasswd_execute_probe.dag",
+    "copy": "target/state-provision-validation/extdeps.sudo.nopasswd_execute_probe.dag",
+    "sha256": "3ff63fdcb4ea117272473b325f50586a9c21d3374b52bd0b7c4e5b89db03cae0"
+  },
+  {
+    "module": "extdeps.systemd",
+    "source": "dag/extdeps/systemd/systemd.dag",
+    "copy": "target/state-provision-validation/extdeps.systemd.dag",
+    "sha256": "81448bab01f720377a7384de7e4edae8d02ec3469c3692dad54d40d6e15e9e35"
+  },
+  {
+    "module": "extdeps.systemd.oomd",
+    "source": "dag/extdeps/systemd/oomd.dag",
+    "copy": "target/state-provision-validation/extdeps.systemd.oomd.dag",
+    "sha256": "dfbf8d2134902d43c6c722d134ac78cb47934d8a64bb51a1ba1a2e71b84a99ae"
+  },
+  {
+    "module": "extdeps.systemd.systemctl",
+    "source": "dag/extdeps/systemd/systemctl.dag",
+    "copy": "target/state-provision-validation/extdeps.systemd.systemctl.dag",
+    "sha256": "ab91a9368fee971f0a3e460918f44682eb255781b53f9d21b98f6ea60c8a110c"
+  },
+  {
+    "module": "extdeps.systemd.systemd_contracts",
+    "source": "dag/extdeps/systemd/systemd_contracts.dag",
+    "copy": "target/state-provision-validation/extdeps.systemd.systemd_contracts.dag",
+    "sha256": "722527b719ffb710a286668f06ce3e07287e4d7997261d55fd889f6746596008"
+  },
+  {
+    "module": "extdeps.systemd.unit_file",
+    "source": "dag/extdeps/systemd/unit_file.dag",
+    "copy": "target/state-provision-validation/extdeps.systemd.unit_file.dag",
+    "sha256": "6f9c51e8790b85fa731449a6a9f785cb09038dba10be68267d867ee4420f67f7"
+  },
+  {
+    "module": "extdeps.systems.nvidia",
+    "source": "dag/extdeps/systems/nvidia.dag",
+    "copy": "target/state-provision-validation/extdeps.systems.nvidia.dag",
+    "sha256": "04a5d9e38edb5221d1620667226d43d789a18fe5666e40b1ecdd5bf08a53a41f"
+  },
+  {
+    "module": "extdeps.systems.nvidia_fleet_lifecycle",
+    "source": "dag/extdeps/systems/nvidia_fleet_lifecycle.dag",
+    "copy": "target/state-provision-validation/extdeps.systems.nvidia_fleet_lifecycle.dag",
+    "sha256": "3cd7d368ef8577f0b7dab9dfc90d5f7cf7ee6348bdbd204c0726941bde0ace14"
+  },
+  {
+    "module": "extdeps.systems.types",
+    "source": "dag/extdeps/systems/types.dag",
+    "copy": "target/state-provision-validation/extdeps.systems.types.dag",
+    "sha256": "8834227c77708edc8cd1163da90020998d04ef63bab3ce0011cf3ce8ca49dca2"
+  },
+  {
+    "module": "extdeps.tailscale.identity",
+    "source": "dag/extdeps/tailscale/identity.dag",
+    "copy": "target/state-provision-validation/extdeps.tailscale.identity.dag",
+    "sha256": "4dd7dfdde01e2f59b772435f1859eda375a4c4bfa88ef9a4e9e3e32f71a47c76"
+  },
+  {
+    "module": "extdeps.tailscale.serve",
+    "source": "dag/extdeps/tailscale/serve.dag",
+    "copy": "target/state-provision-validation/extdeps.tailscale.serve.dag",
+    "sha256": "21b8d35f59c673d3073aaf699c37a989d88f9d27ec1b422fc44dca7e2078c7c6"
+  },
+  {
+    "module": "extdeps.time.rfc3339",
+    "source": "dag/extdeps/time/rfc3339.dag",
+    "copy": "target/state-provision-validation/extdeps.time.rfc3339.dag",
+    "sha256": "f1377fe08c3aebda7aadb464fe1b91cb0976026f4d39e83c70dcd35fcfcfbbdb"
+  },
+  {
+    "module": "extdeps.tmux",
+    "source": "dag/extdeps/tmux/tmux.dag",
+    "copy": "target/state-provision-validation/extdeps.tmux.dag",
+    "sha256": "dbfebb5bee7182bdb75943faca2b582da63e34a81e65893e215d2100d20270ed"
+  },
+  {
+    "module": "extdeps.toolchain.architecture_profile",
+    "source": "dag/extdeps/toolchain/architecture_profile.dag",
+    "copy": "target/state-provision-validation/extdeps.toolchain.architecture_profile.dag",
+    "sha256": "f52f7b937d8a2090abc1622669544d8f80501f1189967ab9b7183fbd83f47ae8"
+  },
+  {
+    "module": "extdeps.toolchain.types",
+    "source": "dag/extdeps/toolchain/types.dag",
+    "copy": "target/state-provision-validation/extdeps.toolchain.types.dag",
+    "sha256": "cedf999e801ef28b73105996d0b591dea8c14722d05f88745ef41a34fd54c81f"
+  },
+  {
+    "module": "extdeps.tools",
+    "source": "dag/extdeps/tools.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.dag",
+    "sha256": "00c1d49c96732aa80073467f01f9ed9a2a44a928d160fe44d01efc481055a785"
+  },
+  {
+    "module": "extdeps.tools.conntrack",
+    "source": "dag/extdeps/tools/conntrack.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.conntrack.dag",
+    "sha256": "52a3ccd5f2029e1ba25b4ddd789ae279ca88f6ea223983ad19f41c127b7081dd"
+  },
+  {
+    "module": "extdeps.tools.curl",
+    "source": "dag/extdeps/tools/curl.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.curl.dag",
+    "sha256": "02edb5829a940bdfa1b5bb4a7c87b17a6fd3b28894db675e7906ab50434ceea9"
+  },
+  {
+    "module": "extdeps.tools.env",
+    "source": "dag/extdeps/tools/env.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.env.dag",
+    "sha256": "72bb809144f1f7d9b69e076c24d68bb1ea14fd55cd9d947f1da20aae7a4cbdbf"
+  },
+  {
+    "module": "extdeps.tools.gh",
+    "source": "dag/extdeps/tools/gh.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.gh.dag",
+    "sha256": "a0baadc00ee7de5c696220c78f90f13e7b28e4266f9a3aef33b1eb9d8e6cd3ba"
+  },
+  {
+    "module": "extdeps.tools.gnu_coreutils",
+    "source": "dag/extdeps/tools/gnu_coreutils.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.gnu_coreutils.dag",
+    "sha256": "0c4d27dfea75a5cfbb7098fcd3611576f66b3e8d00fd5177776283765f1a3c9e"
+  },
+  {
+    "module": "extdeps.tools.hostname",
+    "source": "dag/extdeps/tools/hostname.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.hostname.dag",
+    "sha256": "9af915db8d5506786305c5d6673a5eb5d67ea10387376f7508ffbaafb8174b38"
+  },
+  {
+    "module": "extdeps.tools.nbdkit",
+    "source": "dag/extdeps/tools/nbdkit.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.nbdkit.dag",
+    "sha256": "2c78eb48460b9828e18a32d5deade2a6b69f81a2f8782f192c91af12ba818ae6"
+  },
+  {
+    "module": "extdeps.tools.node",
+    "source": "dag/extdeps/tools/node.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.node.dag",
+    "sha256": "d23e0105a7964d3c2b160717bba03467df45e23fb3e78b54a0656239b7e8b345"
+  },
+  {
+    "module": "extdeps.tools.npm",
+    "source": "dag/extdeps/tools/npm.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.npm.dag",
+    "sha256": "ada366ba46c6a997cbfcbed30f23143cc6c01855ab556112b839428e8cf8faf4"
+  },
+  {
+    "module": "extdeps.tools.openssl",
+    "source": "dag/extdeps/tools/openssl.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.openssl.dag",
+    "sha256": "3c05fd3dedc1bac341a94b1151620a33093fae2f727a695e84b51ce76aa554de"
+  },
+  {
+    "module": "extdeps.tools.sed",
+    "source": "dag/extdeps/tools/sed.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.sed.dag",
+    "sha256": "b71f3306f4d8b87f2f3eb34604fa27d32fa2b5c7c7f57742046f8951c728a944"
+  },
+  {
+    "module": "extdeps.tools.sha256sum",
+    "source": "dag/extdeps/tools/sha256sum.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.sha256sum.dag",
+    "sha256": "fa8fa6e5f72b367e1d851331bb2bb672b3fdd74f442c674f43f6c6c71da3975b"
+  },
+  {
+    "module": "extdeps.tools.sha512sum",
+    "source": "dag/extdeps/tools/sha512sum.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.sha512sum.dag",
+    "sha256": "06d44f1a1a4b8b5676553a6fe48776724d556d2fc522cea10f49ad8f0a5d2d1f"
+  },
+  {
+    "module": "extdeps.tools.sleep",
+    "source": "dag/extdeps/tools/sleep.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.sleep.dag",
+    "sha256": "350895bed35bdc4638ce519472cb3a2656958b15e3d0debc0781cfecd47ed0a2"
+  },
+  {
+    "module": "extdeps.tools.socat",
+    "source": "dag/extdeps/tools/socat.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.socat.dag",
+    "sha256": "8a45f167c183a39464227a27b215ec73b0cbf703a671d97a3cbfb35e3bf52f1a"
+  },
+  {
+    "module": "extdeps.tools.sshpass",
+    "source": "dag/extdeps/tools/sshpass.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.sshpass.dag",
+    "sha256": "9dd7a1c983995cbecd77ab345d8c8ca73c9d1a2a94a08dec7761da7ce1c4bc19"
+  },
+  {
+    "module": "extdeps.tools.stat",
+    "source": "dag/extdeps/tools/stat.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.stat.dag",
+    "sha256": "9b6be5fdae4dac67e5b5ea5f2bda843c9447e1d005b261708755ba700e225cf8"
+  },
+  {
+    "module": "extdeps.tools.websocat",
+    "source": "dag/extdeps/tools/websocat.dag",
+    "copy": "target/state-provision-validation/extdeps.tools.websocat.dag",
+    "sha256": "7cd24f1c78d5440c14bcca7c4dbbf1ae3926092dada33aa3ab618d16b79232cb"
+  },
+  {
+    "module": "extdeps.transceiver.sff_8636",
+    "source": "dag/extdeps/transceiver/sff_8636.dag",
+    "copy": "target/state-provision-validation/extdeps.transceiver.sff_8636.dag",
+    "sha256": "07e0115f47e4ec6c92f29300b0215f5bede3d17774817f5f2adbd1a1e628afc2"
+  },
+  {
+    "module": "extdeps.transports.rest",
+    "source": "dag/extdeps/transports/rest.dag",
+    "copy": "target/state-provision-validation/extdeps.transports.rest.dag",
+    "sha256": "6e548bb722d1cf4ecd0fd31285c0c9b35c7c83d718f1f4899a1f285226a30bd0"
+  },
+  {
+    "module": "extdeps.transports.shell",
+    "source": "dag/extdeps/transports/shell.dag",
+    "copy": "target/state-provision-validation/extdeps.transports.shell.dag",
+    "sha256": "30abd106c6f06bd18db2e0d230f1a18777f7c9e835ca0ee5ae75eb49345dca6e"
+  },
+  {
+    "module": "extdeps.unicode.blocks",
+    "source": "dag/extdeps/unicode/blocks.dag",
+    "copy": "target/state-provision-validation/extdeps.unicode.blocks.dag",
+    "sha256": "341d18e382afcccf3d2422cd99a2c0872b25049d84fc7501a401a4b9ec413921"
+  },
+  {
+    "module": "extdeps.unicode.display",
+    "source": "dag/extdeps/unicode/display.dag",
+    "copy": "target/state-provision-validation/extdeps.unicode.display.dag",
+    "sha256": "c5a55d205f8a65efbdb382d845a2415fc4896fdd973a39fd7470d0637b5ea213"
+  },
+  {
+    "module": "extdeps.units.dimensionless",
+    "source": "dag/extdeps/units/dimensionless.dag",
+    "copy": "target/state-provision-validation/extdeps.units.dimensionless.dag",
+    "sha256": "4ce0c3cf4268976852663dc5faec7c4a8555ad232f8bebe1a6240ebe920f2f99"
+  },
+  {
+    "module": "extdeps.units.iec_80000_13",
+    "source": "dag/extdeps/units/iec_80000_13.dag",
+    "copy": "target/state-provision-validation/extdeps.units.iec_80000_13.dag",
+    "sha256": "81b1def06b779d7df8985e96aed48d3843c1d229f913821f0e7b73d7c204d1e9"
+  },
+  {
+    "module": "extdeps.units.iso8601",
+    "source": "dag/extdeps/units/iso8601.dag",
+    "copy": "target/state-provision-validation/extdeps.units.iso8601.dag",
+    "sha256": "3c65b8483141ebdf694baca379b0fab620f4a53d6df10d0adc7958dbb16a7c6f"
+  },
+  {
+    "module": "extdeps.units.iso_80000_3",
+    "source": "dag/extdeps/units/iso_80000_3.dag",
+    "copy": "target/state-provision-validation/extdeps.units.iso_80000_3.dag",
+    "sha256": "9b2b5204077998805292431b096a121f0ad16b8e272064012a8d455928e23eef"
+  },
+  {
+    "module": "extdeps.uri",
+    "source": "dag/extdeps/uri.dag",
+    "copy": "target/state-provision-validation/extdeps.uri.dag",
+    "sha256": "97d3c7fcbadb72d3d1ca0875fb0af711bce9edd290ebaa8597a5176a944f80a9"
+  },
+  {
+    "module": "extdeps.uri_path",
+    "source": "dag/extdeps/uri_path.dag",
+    "copy": "target/state-provision-validation/extdeps.uri_path.dag",
+    "sha256": "bdc372c881a09577849b46690cd019e825fb6dd34d03c3ac18f1f17f2425e2df"
+  },
+  {
+    "module": "extdeps.uri_validation",
+    "source": "dag/extdeps/uri_validation.dag",
+    "copy": "target/state-provision-validation/extdeps.uri_validation.dag",
+    "sha256": "fa2782da063fd5279df0f77a44c37d0c5aa70ab319acdd3c099b0aa35d2dfbea"
+  },
+  {
+    "module": "extdeps.uuid",
+    "source": "dag/extdeps/uuid/uuid.dag",
+    "copy": "target/state-provision-validation/extdeps.uuid.dag",
+    "sha256": "0ae99e52da571b657b5230f1094785e55025dd43dc083991aebd9306a9b51063"
+  },
+  {
+    "module": "extdeps.vendor",
+    "source": "dag/extdeps/vendor.dag",
+    "copy": "target/state-provision-validation/extdeps.vendor.dag",
+    "sha256": "c2d9a3dd2f6ea4cb70c7d2f33023c369facc958d3f659ac10734a7160089ed2f"
+  },
+  {
+    "module": "extdeps.vendor.amd",
+    "source": "dag/extdeps/vendor/amd.dag",
+    "copy": "target/state-provision-validation/extdeps.vendor.amd.dag",
+    "sha256": "40efd85193853acebb214dfa1dd75a3f3fc920c4838fb4c1adf53cf46f3e12df"
+  },
+  {
+    "module": "extdeps.vendor.ami",
+    "source": "dag/extdeps/vendor/ami.dag",
+    "copy": "target/state-provision-validation/extdeps.vendor.ami.dag",
+    "sha256": "dd0e449e42892f4b2ea2c7443b186226679a173f8d96dbd2885a29296b57dcd5"
+  },
+  {
+    "module": "extdeps.vendor.ampere",
+    "source": "dag/extdeps/vendor/ampere.dag",
+    "copy": "target/state-provision-validation/extdeps.vendor.ampere.dag",
+    "sha256": "a0bd59c646330e05d5b502835097cda9ba83633560257a379f6404d750230850"
+  },
+  {
+    "module": "extdeps.vendor.asrock_rack",
+    "source": "dag/extdeps/vendor/asrock_rack.dag",
+    "copy": "target/state-provision-validation/extdeps.vendor.asrock_rack.dag",
+    "sha256": "3cd1a5b041d92db21c4cd76eee1f3dfd04e7a97eca55f23171bd4a4562c79855"
+  },
+  {
+    "module": "extdeps.vendor.docker_inc",
+    "source": "dag/extdeps/vendor/docker_inc.dag",
+    "copy": "target/state-provision-validation/extdeps.vendor.docker_inc.dag",
+    "sha256": "decb98596a273baa7f6dab78149b3a31fdedcc2830cc9d90e8ed0aa156b2318b"
+  },
+  {
+    "module": "extdeps.vendor.nvidia",
+    "source": "dag/extdeps/vendor/nvidia.dag",
+    "copy": "target/state-provision-validation/extdeps.vendor.nvidia.dag",
+    "sha256": "fde4dcd0b4409b1103c630b1d9ef8d7af00201236c7aabb2fa79ba018c5c062d"
+  },
+  {
+    "module": "extdeps.vendor.samsung",
+    "source": "dag/extdeps/vendor/samsung.dag",
+    "copy": "target/state-provision-validation/extdeps.vendor.samsung.dag",
+    "sha256": "a82d66651ba266d18852e8c28fe7b68336e82b2dc1a88b6219427935205d8426"
+  },
+  {
+    "module": "extdeps.vendor.sk_hynix",
+    "source": "dag/extdeps/vendor/sk_hynix.dag",
+    "copy": "target/state-provision-validation/extdeps.vendor.sk_hynix.dag",
+    "sha256": "d978472afc3690f45b88debbecef0c6abcd2b1050e3898daff100aa35c27a450"
+  },
+  {
+    "module": "extdeps.vendor.verizon",
+    "source": "dag/extdeps/vendor/verizon.dag",
+    "copy": "target/state-provision-validation/extdeps.vendor.verizon.dag",
+    "sha256": "129ac3d44f08ef3ed818b93b1341cccf7b8691bc7d2632a01c47431e7396ae30"
+  },
+  {
+    "module": "extdeps.vendor.western_digital",
+    "source": "dag/extdeps/vendor/western_digital.dag",
+    "copy": "target/state-provision-validation/extdeps.vendor.western_digital.dag",
+    "sha256": "bde9239423030a04138fb8f53195948ce8c698c64845a3e7b61ff21c11186cbb"
+  },
+  {
+    "module": "extdeps.version",
+    "source": "dag/extdeps/version.dag",
+    "copy": "target/state-provision-validation/extdeps.version.dag",
+    "sha256": "4760c88ff448447d176e49c0417e0541298573d566e56f78af9605e70aa8d90b"
+  },
+  {
+    "module": "extdeps.version.semver",
+    "source": "dag/extdeps/version/semver.dag",
+    "copy": "target/state-provision-validation/extdeps.version.semver.dag",
+    "sha256": "9e7fed48b0f0fc4163cc406d41f7ed079bd37dc270dd3854dad0ae02bd9eac02"
+  },
+  {
+    "module": "gunbc.actions_run_binding",
+    "source": "dag/gunbc/actions_run_binding.dag",
+    "copy": "target/state-provision-validation/gunbc.actions_run_binding.dag",
+    "sha256": "2f0a1a68e7d56a4461ff0bc54354ef964207415a52f2ee8120b787d27f74c5bd"
+  },
+  {
+    "module": "gunbc.auth.access_request",
+    "source": "dag/gunbc/auth/access_request.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.access_request.dag",
+    "sha256": "84038f42f719c20d382f7e5545023312cea2d2eec1233e85b70ad5b06e764382"
+  },
+  {
+    "module": "gunbc.auth.access_token_source",
+    "source": "dag/gunbc/auth/access_token_source.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.access_token_source.dag",
+    "sha256": "f4415343508e628a914de42420541cb207f2918138135803e53a002d067a8311"
+  },
+  {
+    "module": "gunbc.auth.approval_broker",
+    "source": "dag/gunbc/auth/approval_broker.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_broker.dag",
+    "sha256": "f259096ff31205741bcc9400d7c86e9049e08692c31236f5f834f48a194f0517"
+  },
+  {
+    "module": "gunbc.auth.approval_broker_endpoint",
+    "source": "dag/gunbc/auth/approval_broker_endpoint.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_broker_endpoint.dag",
+    "sha256": "26671d32f5c66614ecd3554a37c36d46b23e0591caecc089958a2951b12870d2"
+  },
+  {
+    "module": "gunbc.auth.approval_capability",
+    "source": "dag/gunbc/auth/approval_capability.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_capability.dag",
+    "sha256": "32e52d4d12a172144c6c19c5047fa9d64421aee6ea97324e0883f673856b6952"
+  },
+  {
+    "module": "gunbc.auth.approval_decision_store",
+    "source": "dag/gunbc/auth/approval_decision_store.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_decision_store.dag",
+    "sha256": "9395cfbbe75936902dc1a5fc0063814a3c3ff1e576dbc22546559ba3020d2909"
+  },
+  {
+    "module": "gunbc.auth.approval_device_wire",
+    "source": "dag/gunbc/auth/approval_device_wire.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_device_wire.dag",
+    "sha256": "2154c3a9ac379a122bfab6a4ee65cde5feb81d99ea8948d3113f21dd43bd1ce1"
+  },
+  {
+    "module": "gunbc.auth.approval_gate",
+    "source": "dag/gunbc/auth/approval_gate.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_gate.dag",
+    "sha256": "7ea0104124dcc97eee1efe51b20d80ead96880fcc18dabd40b9bd56265413f2a"
+  },
+  {
+    "module": "gunbc.auth.approval_keyring_pins",
+    "source": "dag/gunbc/auth/approval_keyring_pins.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_keyring_pins.dag",
+    "sha256": "5c04b65bee0a9a42850fc800266cc5bd5251d14bea1833e0265b6d2108575cb2"
+  },
+  {
+    "module": "gunbc.auth.approval_mac_key_provision",
+    "source": "dag/gunbc/auth/approval_mac_key_provision.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_mac_key_provision.dag",
+    "sha256": "0169af377c6250dd87a12144ad8d7bd70d1201ab669b20789492e1e9c755d8a7"
+  },
+  {
+    "module": "gunbc.auth.approval_notification",
+    "source": "dag/gunbc/auth/approval_notification.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_notification.dag",
+    "sha256": "957eaf80d4322dffc78a3ba536f99319a53ea49e28faa69c216f9f136e70c011"
+  },
+  {
+    "module": "gunbc.auth.approval_ntfy_deployment",
+    "source": "dag/gunbc/auth/approval_ntfy_deployment.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_ntfy_deployment.dag",
+    "sha256": "7e6e551c61a231d2bdf6cacf392c04b17e685741b331859ac0b3e51d5e9f87cc"
+  },
+  {
+    "module": "gunbc.auth.approval_request_client",
+    "source": "dag/gunbc/auth/approval_request_client.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_request_client.dag",
+    "sha256": "c6c371f57b83a29b3a6960ed3ab096bc5ea0742c0f26b2fca3a661667cc9f578"
+  },
+  {
+    "module": "gunbc.auth.approval_request_submission",
+    "source": "dag/gunbc/auth/approval_request_submission.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_request_submission.dag",
+    "sha256": "b8c874853f190efbc72eea78d7092c4757df1983053a1ac42ed456d40359cfb6"
+  },
+  {
+    "module": "gunbc.auth.approval_run_identity",
+    "source": "dag/gunbc/auth/approval_run_identity.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_run_identity.dag",
+    "sha256": "b792c4930963b203eb023442c15f091df1e981e90fc9ce3e40c0158172446da9"
+  },
+  {
+    "module": "gunbc.auth.approval_status_wire",
+    "source": "dag/gunbc/auth/approval_status_wire.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approval_status_wire.dag",
+    "sha256": "8528d67d33489f24e62450cc27636f370c402cafab2ae7450c9ea56943d5aa4b"
+  },
+  {
+    "module": "gunbc.auth.approved_gcp_access",
+    "source": "dag/gunbc/auth/approved_gcp_access.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approved_gcp_access.dag",
+    "sha256": "3b14bdaf1f3486d607f567417a619e84a139183e64b26d12574483fb9b3e12f6"
+  },
+  {
+    "module": "gunbc.auth.approved_secret_grants",
+    "source": "dag/gunbc/auth/approved_secret_grants.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.approved_secret_grants.dag",
+    "sha256": "afb649593a310604ab8a5d1aef9c0842b052318a48aee4e387c871f56e20de4a"
+  },
+  {
+    "module": "gunbc.auth.fleet_secret_accessor_roster",
+    "source": "dag/gunbc/auth/fleet_secret_accessor_roster.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.fleet_secret_accessor_roster.dag",
+    "sha256": "4593801b9961e6457f48ce236aec85f0300c0c05b337f11d073386c2e9a4f031"
+  },
+  {
+    "module": "gunbc.auth.gcp_secret_access",
+    "source": "dag/gunbc/auth/gcp_secret_access.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.gcp_secret_access.dag",
+    "sha256": "e89e53b0541a77c724bec66bd6d4c049f6d96d2ed681c55e5b939d2db769e2b1"
+  },
+  {
+    "module": "gunbc.auth.github_apps",
+    "source": "dag/gunbc/auth/github_apps.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.github_apps.dag",
+    "sha256": "618fba15d0bceeb7731ed335438159f2dce41c4d9e712cc441071256216fe0f9"
+  },
+  {
+    "module": "gunbc.auth.github_gcp_federation",
+    "source": "dag/gunbc/auth/github_gcp_federation.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.github_gcp_federation.dag",
+    "sha256": "f9afcf39834712020e1b397d7914b37760edf86c12fcf72bbf3cfee2aa36540d"
+  },
+  {
+    "module": "gunbc.auth.mac_keyring",
+    "source": "dag/gunbc/auth/mac_keyring.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.mac_keyring.dag",
+    "sha256": "33f04dcbb41968229ea0a57b53456b78405dc738a8e903a27b716969c51cfd54"
+  },
+  {
+    "module": "gunbc.auth.materialized_secret",
+    "source": "dag/gunbc/auth/materialized_secret.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.materialized_secret.dag",
+    "sha256": "c999b02dfbc78e940e9c67937ab8080bd18d27d348616c7cb94815b3f01bd3bf"
+  },
+  {
+    "module": "gunbc.auth.secret_ref_credential",
+    "source": "dag/gunbc/auth/secret_ref_credential.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.secret_ref_credential.dag",
+    "sha256": "7f7470d972b505ee2ce8b0a03f326bf7adfdb543425342d92e6fd342817cc0f2"
+  },
+  {
+    "module": "gunbc.auth.secret_rotation",
+    "source": "dag/gunbc/auth/secret_rotation.dag",
+    "copy": "target/state-provision-validation/gunbc.auth.secret_rotation.dag",
+    "sha256": "b2b15ab64954f2233118f5ba83205fc55f90569f11773b7f12f9cf511ec4d360"
+  },
+  {
+    "module": "gunbc.bmc_fan_alignment_standing",
+    "source": "dag/gunbc/bmc/bmc_fan_alignment_standing.dag",
+    "copy": "target/state-provision-validation/gunbc.bmc_fan_alignment_standing.dag",
+    "sha256": "ba2471755cde56c6e5c845c54050f78a5caa506eea8628cd044ceda28f03d230"
+  },
+  {
+    "module": "gunbc.bmc_fan_projection",
+    "source": "dag/gunbc/bmc/bmc_fan_projection.dag",
+    "copy": "target/state-provision-validation/gunbc.bmc_fan_projection.dag",
+    "sha256": "47780c9ab89a650908afc725dfc886ab74b886512ffec74e1f703212cf6f0570"
+  },
+  {
+    "module": "gunbc.bmc_intent",
+    "source": "dag/gunbc/bmc/bmc_intent.dag",
+    "copy": "target/state-provision-validation/gunbc.bmc_intent.dag",
+    "sha256": "d91b54af42a1470c09b76437a07188093163ac35aeecd719a58adadf2c2d0969"
+  },
+  {
+    "module": "gunbc.bmc_onboarding",
+    "source": "dag/gunbc/bmc/bmc_onboarding.dag",
+    "copy": "target/state-provision-validation/gunbc.bmc_onboarding.dag",
+    "sha256": "cb87b486d2c3265569eb3fafd170d5664ba5438664356caa0785cfa156e90fad"
+  },
+  {
+    "module": "gunbc.boot_artifact",
+    "source": "dag/gunbc/boot_artifact.dag",
+    "copy": "target/state-provision-validation/gunbc.boot_artifact.dag",
+    "sha256": "0455d4cf4dd1e6fc15845c070e1141ed798305cef20c40ff04334d82d93d09c9"
+  },
+  {
+    "module": "gunbc.boot_artifact_delivery",
+    "source": "dag/gunbc/boot_artifact_delivery.dag",
+    "copy": "target/state-provision-validation/gunbc.boot_artifact_delivery.dag",
+    "sha256": "fca11e8843649647af7f66d2f8629b4dbba4b58aa74f74c58bbe8074b6304f90"
+  },
+  {
+    "module": "gunbc.build_cache_instance",
+    "source": "dag/gunbc/build_cache/build_cache_instance.dag",
+    "copy": "target/state-provision-validation/gunbc.build_cache_instance.dag",
+    "sha256": "9e25995b5e9340b1138d3939dbd404cb3aa4e5991266ef219dbea5aa2f72f34e"
+  },
+  {
+    "module": "gunbc.ci_failure_class",
+    "source": "dag/gunbc/ci/ci_failure_class.dag",
+    "copy": "target/state-provision-validation/gunbc.ci_failure_class.dag",
+    "sha256": "ad5bd83502442017b110a95d3d1b2b0a3e3aeb3e046a8a7cefc6ad9e4657758d"
+  },
+  {
+    "module": "gunbc.ci_fleet",
+    "source": "dag/gunbc/ci/ci_fleet.dag",
+    "copy": "target/state-provision-validation/gunbc.ci_fleet.dag",
+    "sha256": "6e6a94bfc9d64d965939e82e14f34aa494860d876a41031110df6cb483a5d85f"
+  },
+  {
+    "module": "gunbc.ci_floor_measurement",
+    "source": "dag/gunbc/ci/ci_floor_measurement.dag",
+    "copy": "target/state-provision-validation/gunbc.ci_floor_measurement.dag",
+    "sha256": "47c9aa15b0fa4fa0e69bc1ca9e1cb79a9d7558fb649559f70d81b9ea3c63e31a"
+  },
+  {
+    "module": "gunbc.ci_gate",
+    "source": "dag/gunbc/ci/ci_gate.dag",
+    "copy": "target/state-provision-validation/gunbc.ci_gate.dag",
+    "sha256": "b78cf9683f8f3993032d0e28f949ce682ed16cad3e34b588308de6edad394ff3"
+  },
+  {
+    "module": "gunbc.ci_layer_roots",
+    "source": "dag/gunbc/ci/ci_layer_roots.dag",
+    "copy": "target/state-provision-validation/gunbc.ci_layer_roots.dag",
+    "sha256": "0efebd881296792cc7c29ccc91f4bcc054fa1a4d9dc723b8e8dc0e752acadd25"
+  },
+  {
+    "module": "gunbc.ci_runner_placement",
+    "source": "dag/gunbc/ci/ci_runner_placement.dag",
+    "copy": "target/state-provision-validation/gunbc.ci_runner_placement.dag",
+    "sha256": "fa0649d874ef684bccd614d76cb01502637698c725c295ac9579c8e9e79763a5"
+  },
+  {
+    "module": "gunbc.cli_invoke",
+    "source": "dag/gunbc/cli_invoke.dag",
+    "copy": "target/state-provision-validation/gunbc.cli_invoke.dag",
+    "sha256": "0bc8f59e4c6d64d0af44a1a11dec07f0fb219825343f1c0eb8787235ef219605"
+  },
+  {
+    "module": "gunbc.cli_wire",
+    "source": "dag/gunbc/cli_wire.dag",
+    "copy": "target/state-provision-validation/gunbc.cli_wire.dag",
+    "sha256": "3627fbd016cc13dc2bd2a8dc5ba16f6d5e05f9d3ed78a6baec6590ee9c70d801"
+  },
+  {
+    "module": "gunbc.clock_read",
+    "source": "dag/gunbc/clock_read.dag",
+    "copy": "target/state-provision-validation/gunbc.clock_read.dag",
+    "sha256": "a60ed5525acbdcfcc03adaaeff8b523d6e96a608b0b6444baa4811812ba143f1"
+  },
+  {
+    "module": "gunbc.codex_runtime_paths",
+    "source": "dag/gunbc/codex_runtime_paths.dag",
+    "copy": "target/state-provision-validation/gunbc.codex_runtime_paths.dag",
+    "sha256": "ad0dbe144669687570c35ebef60c87554d790edad85eb702645a7f2713374f1b"
+  },
+  {
+    "module": "gunbc.command_runner",
+    "source": "dag/gunbc/command_runner.dag",
+    "copy": "target/state-provision-validation/gunbc.command_runner.dag",
+    "sha256": "54f197878b2c752bf9be2e1b115f8004ba93bd0341e5497af7e95641811c361c"
+  },
+  {
+    "module": "gunbc.commit_workflow",
+    "source": "dag/gunbc/commit_workflow.dag",
+    "copy": "target/state-provision-validation/gunbc.commit_workflow.dag",
+    "sha256": "7474017f18b66688ff70b5405b9e1584cd42e178eb7c4b801fb1e2b2abfe8b58"
+  },
+  {
+    "module": "gunbc.durable_cas_file_store",
+    "source": "dag/gunbc/durable_cas_file_store.dag",
+    "copy": "target/state-provision-validation/gunbc.durable_cas_file_store.dag",
+    "sha256": "afd48bcd4aaf2997f17d444667b58a7f59a8c8130d2d7c11c15340348101313f"
+  },
+  {
+    "module": "gunbc.ensure",
+    "source": "dag/gunbc/ensure.dag",
+    "copy": "target/state-provision-validation/gunbc.ensure.dag",
+    "sha256": "4321b4d3d6b5720d43db5b15b53376d28e77b9331ddb518ef70b761e7863bf10"
+  },
+  {
+    "module": "gunbc.executor_privileged_operation",
+    "source": "dag/gunbc/executor_privileged_operation.dag",
+    "copy": "target/state-provision-validation/gunbc.executor_privileged_operation.dag",
+    "sha256": "0386ae9e17353492cf430af0889940da53fe0eef93cf274ace5db35b32c54d0c"
+  },
+  {
+    "module": "gunbc.explicit_witness_admission",
+    "source": "dag/gunbc/explicit_witness_admission.dag",
+    "copy": "target/state-provision-validation/gunbc.explicit_witness_admission.dag",
+    "sha256": "68bb62d6e27fbaf6cc31b2dcfc7d7e2939caa273214e56b5cd4173ec2f5c21cc"
+  },
+  {
+    "module": "gunbc.fabric_control_plane_charge",
+    "source": "dag/gunbc/fabric/fabric_control_plane_charge.dag",
+    "copy": "target/state-provision-validation/gunbc.fabric_control_plane_charge.dag",
+    "sha256": "2a16a341f30a0e4b280b620c3f7181e538523a597449c8ccffc1e9bc3dc602c1"
+  },
+  {
+    "module": "gunbc.fabric_storage_address",
+    "source": "dag/gunbc/fabric/fabric_storage_address.dag",
+    "copy": "target/state-provision-validation/gunbc.fabric_storage_address.dag",
+    "sha256": "ee5a34ad549a5d1b07bda52308863fe8d78dff9fc6395ac80123d54e87662c82"
+  },
+  {
+    "module": "gunbc.fabric_storage_file_store",
+    "source": "dag/gunbc/fabric/fabric_storage_file_store.dag",
+    "copy": "target/state-provision-validation/gunbc.fabric_storage_file_store.dag",
+    "sha256": "534cb059adbeba240c54a1f64451af3b01a1ac9ef109528e0849e940cd9537fb"
+  },
+  {
+    "module": "gunbc.fabric_storage_placement",
+    "source": "dag/gunbc/fabric/fabric_storage_placement.dag",
+    "copy": "target/state-provision-validation/gunbc.fabric_storage_placement.dag",
+    "sha256": "5a08c6725228ad6cae26efc9807a47ad74bd4c57e61e2b2d3a62381f1a47d2b6"
+  },
+  {
+    "module": "gunbc.fabric_storage_state_policy",
+    "source": "dag/gunbc/fabric/fabric_storage_state_policy.dag",
+    "copy": "target/state-provision-validation/gunbc.fabric_storage_state_policy.dag",
+    "sha256": "6353a5e6b01adca5f883a7580feaed57f27124f3dfe2d8a5ca50e32e4f99e9e1"
+  },
+  {
+    "module": "gunbc.fabric_storage_state_provision",
+    "source": "dag/gunbc/fabric/fabric_storage_state_provision.dag",
+    "copy": "target/state-provision-validation/gunbc.fabric_storage_state_provision.dag",
+    "sha256": "4ab800e1a2076e9ddd0c51f1535f507b8c08b753019688f3df2fbdb350fd4d12"
+  },
+  {
+    "module": "gunbc.fleet_asset_identity",
+    "source": "dag/gunbc/fleet/fleet_asset_identity.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_asset_identity.dag",
+    "sha256": "a00b779cc9782c449a034a24746814cacb9678b69a5be4a44763cd26e6b01f2e"
+  },
+  {
+    "module": "gunbc.fleet_bmc_firmware_evidence",
+    "source": "dag/gunbc/fleet/fleet_bmc_firmware_evidence.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_bmc_firmware_evidence.dag",
+    "sha256": "ebd94ccd1b36bf2de8df1122b8bb019005f56cd29cc51ee5c65c0db0dc62be61"
+  },
+  {
+    "module": "gunbc.fleet_bmc_observation",
+    "source": "dag/gunbc/fleet/fleet_bmc_observation.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_bmc_observation.dag",
+    "sha256": "e9b4e2f8e8e566e134f203b951e6183b972bf1124bb6090ba0246680d6f31e30"
+  },
+  {
+    "module": "gunbc.fleet_bootstrap_principal_session",
+    "source": "dag/gunbc/fleet/fleet_bootstrap_principal_session.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_bootstrap_principal_session.dag",
+    "sha256": "d1e45798b9e424aebefae66cb073f50af0864fc4fb65d3d828e6b70d520aebe9"
+  },
+  {
+    "module": "gunbc.fleet_container",
+    "source": "dag/gunbc/fleet/fleet_container.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_container.dag",
+    "sha256": "50670117939d1c9cf61be1b9633d869763a94eeb200382ecc3c9214514394b3c"
+  },
+  {
+    "module": "gunbc.fleet_host_budget",
+    "source": "dag/gunbc/fleet/fleet_host_budget.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_host_budget.dag",
+    "sha256": "49a90cf46bbc3577a9f2a252e727a99072cb1523d67184b5998c46ae4bf025fb"
+  },
+  {
+    "module": "gunbc.fleet_host_key_enrollment",
+    "source": "dag/gunbc/fleet/fleet_host_key_enrollment.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_host_key_enrollment.dag",
+    "sha256": "8e490b88ecd23ce36c3c669889e6634ee70aacb6981fe330520a69e46fb49af1"
+  },
+  {
+    "module": "gunbc.fleet_intent",
+    "source": "dag/gunbc/fleet/fleet_intent.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_intent.dag",
+    "sha256": "57a44e0c62b90b436210aa700cac64461e6c0df2b7019e426f446183f8633b5f"
+  },
+  {
+    "module": "gunbc.fleet_intent_network",
+    "source": "dag/gunbc/fleet/fleet_intent_network.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_intent_network.dag",
+    "sha256": "a7ab3839f3d262daf09df8cd63dfcc7ef8fb52e85a6a4db2f232030e7183bf86"
+  },
+  {
+    "module": "gunbc.fleet_known_hosts_anchor",
+    "source": "dag/gunbc/fleet/fleet_known_hosts_anchor.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_known_hosts_anchor.dag",
+    "sha256": "38b0e63f6f16b53a84b131191e0361e8ee580b8a37bffaed1c12165623d3c3a5"
+  },
+  {
+    "module": "gunbc.fleet_lifecycle_observation",
+    "source": "dag/gunbc/fleet/fleet_lifecycle_observation.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_lifecycle_observation.dag",
+    "sha256": "8636d75006da322f7d032773dc1e44a4610fad3fee2a36ed2a660ff8d53d3c61"
+  },
+  {
+    "module": "gunbc.fleet_main_revision",
+    "source": "dag/gunbc/fleet/fleet_main_revision.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_main_revision.dag",
+    "sha256": "028ba89d7a5a56d33365b4354a6db9654d9c519b887068b76d8d4a2f5c965ddb"
+  },
+  {
+    "module": "gunbc.fleet_posix_accounts",
+    "source": "dag/gunbc/fleet/fleet_posix_accounts.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_posix_accounts.dag",
+    "sha256": "7d2b7df06e95f9b0f24ed90e468414c0a2331d4cf4f1930c6b09f0bb56432d45"
+  },
+  {
+    "module": "gunbc.fleet_reach",
+    "source": "dag/gunbc/fleet/fleet_reach.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_reach.dag",
+    "sha256": "606a961ebc6f053c1628a8ef4d428f4b829f0d54ecbf42f6a266af804a899d01"
+  },
+  {
+    "module": "gunbc.fleet_reach_endpoint",
+    "source": "dag/gunbc/fleet/fleet_reach_endpoint.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_reach_endpoint.dag",
+    "sha256": "0d7262eadb662fc5c95163562a707de2dbf7649eaa5626b51956013ad3c7f6e0"
+  },
+  {
+    "module": "gunbc.fleet_revision_acceptance",
+    "source": "dag/gunbc/fleet/fleet_revision_acceptance.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_revision_acceptance.dag",
+    "sha256": "e2cd1d38ef7d799aec3c6a356dc6d10e764444540a6e96ea4ac180b0641bb09f"
+  },
+  {
+    "module": "gunbc.fleet_secrets_config",
+    "source": "dag/gunbc/fleet/fleet_secrets_config.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_secrets_config.dag",
+    "sha256": "07a0ac5ee8e0d52b0a4b77d7e8ba48807a934f8c5abbdf7f9c698c7fb2a42f4e"
+  },
+  {
+    "module": "gunbc.fleet_shell_transport_observation",
+    "source": "dag/gunbc/fleet/fleet_shell_transport_observation.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_shell_transport_observation.dag",
+    "sha256": "c18be4cec277d651facbbd3a5e4e72aede1fd39f5d550309f29736af2e215026"
+  },
+  {
+    "module": "gunbc.fleet_ssh_access",
+    "source": "dag/gunbc/fleet/fleet_ssh_access.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_ssh_access.dag",
+    "sha256": "3744b56fb38175658ab6c73c5f0c40a711b292c1ccd72d646042b930b89b873c"
+  },
+  {
+    "module": "gunbc.fleet_ssh_credential_verify",
+    "source": "dag/gunbc/fleet/fleet_ssh_credential_verify.dag",
+    "copy": "target/state-provision-validation/gunbc.fleet_ssh_credential_verify.dag",
+    "sha256": "eeb2e914bbf8f395812fd26ac7a55c4e4e705475ec2e3db7690ff5ab0780a722"
+  },
+  {
+    "module": "gunbc.floor_demand",
+    "source": "dag/gunbc/floor/floor_demand.dag",
+    "copy": "target/state-provision-validation/gunbc.floor_demand.dag",
+    "sha256": "6623322bd237e28ca84baa1117e3e2973df1655b6242a5d4db5f44116c103a55"
+  },
+  {
+    "module": "gunbc.generated_artifact",
+    "source": "dag/gunbc/generated_artifact.dag",
+    "copy": "target/state-provision-validation/gunbc.generated_artifact.dag",
+    "sha256": "20933e5054af471fcba32cff62061252ab35a2ffdb3b0b3d678154670e159d4a"
+  },
+  {
+    "module": "gunbc.generated_artifact_merge_driver",
+    "source": "dag/gunbc/generated_artifact_merge_driver.dag",
+    "copy": "target/state-provision-validation/gunbc.generated_artifact_merge_driver.dag",
+    "sha256": "4bfd90eb0214d2e6b794d6671eeb40f526b21031e80042deba74c63bc637bea9"
+  },
+  {
+    "module": "gunbc.guarantee_measurement",
+    "source": "dag/gunbc/guarantee_measurement.dag",
+    "copy": "target/state-provision-validation/gunbc.guarantee_measurement.dag",
+    "sha256": "74018bf47975334a80c164995d209ce8c8dbd6efa49c35bfff789c419fe9a821"
+  },
+  {
+    "module": "gunbc.guarantee_rung",
+    "source": "dag/gunbc/guarantee_rung.dag",
+    "copy": "target/state-provision-validation/gunbc.guarantee_rung.dag",
+    "sha256": "ec18121f814976b68b8a4db2cf6dbf8008466308d4ec89f1edff1f12149a9166"
+  },
+  {
+    "module": "gunbc.host_assimilation_program",
+    "source": "dag/gunbc/host/host_assimilation_program.dag",
+    "copy": "target/state-provision-validation/gunbc.host_assimilation_program.dag",
+    "sha256": "e477d60829520db8319ffc6ffee2c853539a8e0b0acc52e0353f6413e9441b60"
+  },
+  {
+    "module": "gunbc.host_budget_source",
+    "source": "dag/gunbc/host/host_budget_source.dag",
+    "copy": "target/state-provision-validation/gunbc.host_budget_source.dag",
+    "sha256": "3311aacc69364e92ffe7a04e75f7666df3830e53fe44bbcf4689fa5f01af4385"
+  },
+  {
+    "module": "gunbc.host_cli_dependency",
+    "source": "dag/gunbc/host/host_cli_dependency.dag",
+    "copy": "target/state-provision-validation/gunbc.host_cli_dependency.dag",
+    "sha256": "88aa08bfae0e46c055a85320fec2b73aa8e60b421b92a03d64407d3754a27c5e"
+  },
+  {
+    "module": "gunbc.host_converge",
+    "source": "dag/gunbc/host/host_converge.dag",
+    "copy": "target/state-provision-validation/gunbc.host_converge.dag",
+    "sha256": "f0bff976e63895c69b066a8b0dcb27118079d3ab65c73c88f0eb45dc8aa59c9e"
+  },
+  {
+    "module": "gunbc.host_convergence_census",
+    "source": "dag/gunbc/host_convergence_census.dag",
+    "copy": "target/state-provision-validation/gunbc.host_convergence_census.dag",
+    "sha256": "3bed277e005a1532c1e4dea88d71618a851fdc340b486137e201022cc69c434d"
+  },
+  {
+    "module": "gunbc.host_convergence_protocol",
+    "source": "dag/gunbc/host_convergence_protocol.dag",
+    "copy": "target/state-provision-validation/gunbc.host_convergence_protocol.dag",
+    "sha256": "0d96b1340d0017dfb459dde1ad1d0eb2689d61dedf00c6327718934d8518456b"
+  },
+  {
+    "module": "gunbc.host_disk_observation",
+    "source": "dag/gunbc/host/host_disk_observation.dag",
+    "copy": "target/state-provision-validation/gunbc.host_disk_observation.dag",
+    "sha256": "168cd9d0e0264232c9b5c4819e92bb8748222aaf7b9ce633938635c025b46b03"
+  },
+  {
+    "module": "gunbc.host_effect",
+    "source": "dag/gunbc/host/host_effect.dag",
+    "copy": "target/state-provision-validation/gunbc.host_effect.dag",
+    "sha256": "ef68f308add9de2b92fb23248dc464088665dc9359754fee7dbf63e68b2a34e6"
+  },
+  {
+    "module": "gunbc.host_layout",
+    "source": "dag/gunbc/host/host_layout.dag",
+    "copy": "target/state-provision-validation/gunbc.host_layout.dag",
+    "sha256": "703a25a7f5f9329d2cd5262d4318f008a21e32a40389cd5b5bcb18f6b06762d1"
+  },
+  {
+    "module": "gunbc.host_memory_observation",
+    "source": "dag/gunbc/host/host_memory_observation.dag",
+    "copy": "target/state-provision-validation/gunbc.host_memory_observation.dag",
+    "sha256": "eb5cc75cb446d28f66541eb922c43fcfe3cd4c6ff755db427c15cee40f96ca61"
+  },
+  {
+    "module": "gunbc.host_phase_status",
+    "source": "dag/gunbc/host/host_phase_status.dag",
+    "copy": "target/state-provision-validation/gunbc.host_phase_status.dag",
+    "sha256": "70541808967f0ab884d3417055def6afe5c7a44e7dbb1ff8d810c6c614c29e3b"
+  },
+  {
+    "module": "gunbc.host_reach_identity_probe",
+    "source": "dag/gunbc/host/host_reach_identity_probe.dag",
+    "copy": "target/state-provision-validation/gunbc.host_reach_identity_probe.dag",
+    "sha256": "2a23f9ab3e4b855335522a1a525ff519574a89011799cc78af66c8fb1fc2dac1"
+  },
+  {
+    "module": "gunbc.host_standup",
+    "source": "dag/gunbc/host/host_standup.dag",
+    "copy": "target/state-provision-validation/gunbc.host_standup.dag",
+    "sha256": "437593bee65ca525046e77aca90d76bb36c1d8420d0d363aa275f127a613d92a"
+  },
+  {
+    "module": "gunbc.host_standup_assimilation_deduction",
+    "source": "dag/gunbc/host/host_standup_assimilation_deduction.dag",
+    "copy": "target/state-provision-validation/gunbc.host_standup_assimilation_deduction.dag",
+    "sha256": "211c6bf6bc840fb2ee306a44f6ad76cda0536330df985bb8c39f3d0155e75b11"
+  },
+  {
+    "module": "gunbc.hostname_allocation",
+    "source": "dag/gunbc/hostname_allocation.dag",
+    "copy": "target/state-provision-validation/gunbc.hostname_allocation.dag",
+    "sha256": "fdc4cc1fc43210a47b347c9519adb2f29cf2f37bf4b16d25a08d3d6765f2181e"
+  },
+  {
+    "module": "gunbc.install_transport_qualification",
+    "source": "dag/gunbc/install_transport_qualification.dag",
+    "copy": "target/state-provision-validation/gunbc.install_transport_qualification.dag",
+    "sha256": "41f2c98d9c186b60d39a2ac052de6092a8397d57b18820e3b24a63b875e1dbdb"
+  },
+  {
+    "module": "gunbc.live_deploy.candidate_identity",
+    "source": "dag/gunbc/live_deploy/candidate_identity.dag",
+    "copy": "target/state-provision-validation/gunbc.live_deploy.candidate_identity.dag",
+    "sha256": "b28f119095b6f29af6057da388c69f0d2859a7a0f1f70ed60f27181edd220196"
+  },
+  {
+    "module": "gunbc.live_deploy.member_identity",
+    "source": "dag/gunbc/live_deploy/member_identity.dag",
+    "copy": "target/state-provision-validation/gunbc.live_deploy.member_identity.dag",
+    "sha256": "849ae8433afa7352f93d4ebb51e8eefdc4e890ef5ec2f7b4d052ac83790b417c"
+  },
+  {
+    "module": "gunbc.live_deploy.revision",
+    "source": "dag/gunbc/live_deploy/revision.dag",
+    "copy": "target/state-provision-validation/gunbc.live_deploy.revision.dag",
+    "sha256": "e7f3777aecb0f9304a26851eb5a1b0a9906df45a065605da30cd8e454001ccfd"
+  },
+  {
+    "module": "gunbc.live_deploy.served_slice_charge",
+    "source": "dag/gunbc/live_deploy/served_slice_charge.dag",
+    "copy": "target/state-provision-validation/gunbc.live_deploy.served_slice_charge.dag",
+    "sha256": "732f5b446ecb23dc78b0a16becbc918732bf7334433f682e5a94f9f40555da32"
+  },
+  {
+    "module": "gunbc.live_deploy.slice_bounds",
+    "source": "dag/gunbc/live_deploy/slice_bounds.dag",
+    "copy": "target/state-provision-validation/gunbc.live_deploy.slice_bounds.dag",
+    "sha256": "39cbee914ba252df780375a503b4da9966f1615db37551a4946f9068567c5e84"
+  },
+  {
+    "module": "gunbc.live_deploy.spec",
+    "source": "dag/gunbc/live_deploy/spec.dag",
+    "copy": "target/state-provision-validation/gunbc.live_deploy.spec.dag",
+    "sha256": "afd8d93ffce0914c3f1e1e042c3d5b81a45880aeaeaaff37cd2d1768d6da477b"
+  },
+  {
+    "module": "gunbc.machine_intake_access",
+    "source": "dag/gunbc/machine_intake/access.dag",
+    "copy": "target/state-provision-validation/gunbc.machine_intake_access.dag",
+    "sha256": "b96da0b94d9160bcf9dd024ba09990ea7de5341e667904da093374575b6f6f8b"
+  },
+  {
+    "module": "gunbc.machine_intake_phase",
+    "source": "dag/gunbc/machine_intake/phase.dag",
+    "copy": "target/state-provision-validation/gunbc.machine_intake_phase.dag",
+    "sha256": "0d1d1fe8dec5cf4384da9f76059d5974ea244c808e4e5a7db9288316196327bf"
+  },
+  {
+    "module": "gunbc.machine_intake_receipt",
+    "source": "dag/gunbc/machine_intake/receipt.dag",
+    "copy": "target/state-provision-validation/gunbc.machine_intake_receipt.dag",
+    "sha256": "859a89c5c48389b58f08373b8f47ba8aaf03d3ea62865d3d165bf710a599dbdd"
+  },
+  {
+    "module": "gunbc.machine_intake_subject",
+    "source": "dag/gunbc/machine_intake/subject.dag",
+    "copy": "target/state-provision-validation/gunbc.machine_intake_subject.dag",
+    "sha256": "1d2d48d9ee1f14a848d84c614f8b1a4ac267af0c2e531869233742e558abe101"
+  },
+  {
+    "module": "gunbc.managed_directory",
+    "source": "dag/gunbc/managed_directory.dag",
+    "copy": "target/state-provision-validation/gunbc.managed_directory.dag",
+    "sha256": "1d9afa5f5c671c4c25429921ee6a81e3512dc199c83ce0f4872958c500fe8c63"
+  },
+  {
+    "module": "gunbc.membership_reconcile",
+    "source": "dag/gunbc/membership_reconcile.dag",
+    "copy": "target/state-provision-validation/gunbc.membership_reconcile.dag",
+    "sha256": "ffc6de9acd54ff4c327d9a384fcc107f6cb8049ea87bcbd914a15346541b4a88"
+  },
+  {
+    "module": "gunbc.memory_stall_refusal",
+    "source": "dag/gunbc/host/memory_stall_refusal.dag",
+    "copy": "target/state-provision-validation/gunbc.memory_stall_refusal.dag",
+    "sha256": "710187be7b11bde382f5f0413f0738439a133bc61b258db936cc7367277da1ab"
+  },
+  {
+    "module": "gunbc.merge_admission",
+    "source": "dag/gunbc/merge_admission.dag",
+    "copy": "target/state-provision-validation/gunbc.merge_admission.dag",
+    "sha256": "7ab665e06aea317c8078435933a247c5498102dd27bc65e48f774132297afb67"
+  },
+  {
+    "module": "gunbc.merge_admission_subject",
+    "source": "dag/gunbc/merge_admission_subject.dag",
+    "copy": "target/state-provision-validation/gunbc.merge_admission_subject.dag",
+    "sha256": "4880f1534406454506cf27ff37d9920ab953cd33e954cdca9c4fd0bb24c477fe"
+  },
+  {
+    "module": "gunbc.network_boot_delivery",
+    "source": "dag/gunbc/network_boot_delivery.dag",
+    "copy": "target/state-provision-validation/gunbc.network_boot_delivery.dag",
+    "sha256": "b73d5fecb003691c6d31ee2618e1b27bc0a6fc9bd0ed0d35241dc2e5db608e16"
+  },
+  {
+    "module": "gunbc.network_identity_subsumption",
+    "source": "dag/gunbc/network_identity_subsumption.dag",
+    "copy": "target/state-provision-validation/gunbc.network_identity_subsumption.dag",
+    "sha256": "92343048967b1f622033e5cd960f91284c13ab50b02954e37f00ce4290cfb234"
+  },
+  {
+    "module": "gunbc.oomd_install",
+    "source": "dag/gunbc/oomd_install.dag",
+    "copy": "target/state-provision-validation/gunbc.oomd_install.dag",
+    "sha256": "271877d7d0833136035d29d965da872d176516d954862b37ee919ba4955672c2"
+  },
+  {
+    "module": "gunbc.os_install",
+    "source": "dag/gunbc/os_install.dag",
+    "copy": "target/state-provision-validation/gunbc.os_install.dag",
+    "sha256": "a0b226afc832b5a86a9f3322455f7a0909efb229ea6f2196cbfa1c9ebbf96930"
+  },
+  {
+    "module": "gunbc.os_install_deduction",
+    "source": "dag/gunbc/os_install_deduction.dag",
+    "copy": "target/state-provision-validation/gunbc.os_install_deduction.dag",
+    "sha256": "f70207794bea4916ece8825d0c1b3c1fb8192dbec69fcfd497e1467419675298"
+  },
+  {
+    "module": "gunbc.os_install_mechanism",
+    "source": "dag/gunbc/os_install_mechanism.dag",
+    "copy": "target/state-provision-validation/gunbc.os_install_mechanism.dag",
+    "sha256": "1949b9e39d7ef83ea89b61e60ea226815fe3f80329a85318f836759ed119ac16"
+  },
+  {
+    "module": "gunbc.output_policy",
+    "source": "dag/gunbc/output_policy.dag",
+    "copy": "target/state-provision-validation/gunbc.output_policy.dag",
+    "sha256": "8c84d835ef0c764716e5b5b9793e391e498545bc6f4c489cb47878b718596920"
+  },
+  {
+    "module": "gunbc.ownership",
+    "source": "dag/gunbc/ownership.dag",
+    "copy": "target/state-provision-validation/gunbc.ownership.dag",
+    "sha256": "98f4ec3e28bbe90abf65a5ce0accb99aa0839f767f2722aea224aaba2fc48f68"
+  },
+  {
+    "module": "gunbc.package_delivery",
+    "source": "dag/gunbc/package_delivery.dag",
+    "copy": "target/state-provision-validation/gunbc.package_delivery.dag",
+    "sha256": "251dae873e356e361e9ea2427f38305ceca1f0a136d7331af3742aab2317def1"
+  },
+  {
+    "module": "gunbc.plan",
+    "source": "dag/gunbc/plan.dag",
+    "copy": "target/state-provision-validation/gunbc.plan.dag",
+    "sha256": "c8324706153252c9e972b2a587472872fbaed8502e2918ad6a699e2c3cc2d2fe"
+  },
+  {
+    "module": "gunbc.provider_account",
+    "source": "dag/gunbc/provider_account.dag",
+    "copy": "target/state-provision-validation/gunbc.provider_account.dag",
+    "sha256": "7a831423140036e413297904156f0d52dc5a7ac8330d74497337dff74ef41d05"
+  },
+  {
+    "module": "gunbc.readback_independence",
+    "source": "dag/gunbc/readback_independence.dag",
+    "copy": "target/state-provision-validation/gunbc.readback_independence.dag",
+    "sha256": "28e5582d8eb1646c3f441ce59d8f807c3c72b126d99f352e2cce64d51e5821eb"
+  },
+  {
+    "module": "gunbc.recurring_failure_mode",
+    "source": "dag/gunbc/recurring_failure_mode.dag",
+    "copy": "target/state-provision-validation/gunbc.recurring_failure_mode.dag",
+    "sha256": "377378f6145d8a9f5969d4c4a68fc1f0befa729bbdf4e9fda4273dcb20afbad2"
+  },
+  {
+    "module": "gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming",
+    "source": "dag/gunbc/recurring_failure_mode/command_not_found_exit_cannot_distinguish_eviction_from_misnaming.dag",
+    "copy": "target/state-provision-validation/gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming.dag",
+    "sha256": "94c85d22f477e3744ab45358ae70241808f6a4f27478b9b9f59bad72338ba3b9"
+  },
+  {
+    "module": "gunbc.remote_shell_command",
+    "source": "dag/gunbc/remote_shell_command.dag",
+    "copy": "target/state-provision-validation/gunbc.remote_shell_command.dag",
+    "sha256": "fff7b91c77c02034f7454f9908dda590d69472b3139cfd9bf345800e696ad699"
+  },
+  {
+    "module": "gunbc.repo_identity",
+    "source": "dag/gunbc/repo/repo_identity.dag",
+    "copy": "target/state-provision-validation/gunbc.repo_identity.dag",
+    "sha256": "2d0229ec71f17228cba7ed4a0e8b2fc4f3c48587379e2fd0d92720677f3423e1"
+  },
+  {
+    "module": "gunbc.repository",
+    "source": "dag/gunbc/repository.dag",
+    "copy": "target/state-provision-validation/gunbc.repository.dag",
+    "sha256": "31b00a1d46ee81da90ca75df55ca28faaac404e3d7d72298708122b4ec405e61"
+  },
+  {
+    "module": "gunbc.repository_census_observation",
+    "source": "dag/gunbc/repository_census_observation.dag",
+    "copy": "target/state-provision-validation/gunbc.repository_census_observation.dag",
+    "sha256": "c6f711fc84531a3fed0298cd35f089b0c8c21a2be2361ab881d3f51d6d155009"
+  },
+  {
+    "module": "gunbc.required_ci_contract_epoch",
+    "source": "dag/gunbc/required_ci_contract_epoch.dag",
+    "copy": "target/state-provision-validation/gunbc.required_ci_contract_epoch.dag",
+    "sha256": "a2007319814036e3bc31cca0809398c84647c85dda994c63816c3b7df5692570"
+  },
+  {
+    "module": "gunbc.required_ci_epoch_observation",
+    "source": "dag/gunbc/required_ci_epoch_observation.dag",
+    "copy": "target/state-provision-validation/gunbc.required_ci_epoch_observation.dag",
+    "sha256": "fe3bedbec493f5bbf759d53b747480489eeb9d1e274f0c5a314194adfaa84763"
+  },
+  {
+    "module": "gunbc.roadmap_dashboard_instance",
+    "source": "dag/gunbc/roadmap/roadmap_dashboard_instance.dag",
+    "copy": "target/state-provision-validation/gunbc.roadmap_dashboard_instance.dag",
+    "sha256": "0d34aba0578138921806bde42305cef2221e57c054f457207a27a8ba7e5d1f65"
+  },
+  {
+    "module": "gunbc.roadmap_execution_contract",
+    "source": "dag/gunbc/roadmap/roadmap_execution_contract.dag",
+    "copy": "target/state-provision-validation/gunbc.roadmap_execution_contract.dag",
+    "sha256": "86756677b37fc35bca6c432cb4a7b374b787ea47e8c2af26b26817bd96159e31"
+  },
+  {
+    "module": "gunbc.roadmap_model",
+    "source": "dag/gunbc/roadmap/roadmap_model.dag",
+    "copy": "target/state-provision-validation/gunbc.roadmap_model.dag",
+    "sha256": "4ef109d22a07da697e435c963a094106ee2fe28fe70dd2954a30755ef731d793"
+  },
+  {
+    "module": "gunbc.roadmap_sizing",
+    "source": "dag/gunbc/roadmap/roadmap_sizing.dag",
+    "copy": "target/state-provision-validation/gunbc.roadmap_sizing.dag",
+    "sha256": "8c5e6d3532d3d757e615d6c7b2f8281dbb47e099b2fb41f019e48fe43727685a"
+  },
+  {
+    "module": "gunbc.roadmap_status",
+    "source": "dag/gunbc/roadmap/roadmap_status.dag",
+    "copy": "target/state-provision-validation/gunbc.roadmap_status.dag",
+    "sha256": "83234a00a95ba20be9724b2ae13c6984492ab1cc5d462615e77dedf4d5a0219a"
+  },
+  {
+    "module": "gunbc.rung_drop",
+    "source": "dag/gunbc/rung_drop.dag",
+    "copy": "target/state-provision-validation/gunbc.rung_drop.dag",
+    "sha256": "37b1b491bf35150fe6bf899b7b3e4f697545a7624f5081a506944412cc96e7f2"
+  },
+  {
+    "module": "gunbc.rung_drop.transitional_admission_exception",
+    "source": "dag/gunbc/rung_drop/transitional_admission_exception.dag",
+    "copy": "target/state-provision-validation/gunbc.rung_drop.transitional_admission_exception.dag",
+    "sha256": "a0023a849b27d54d823db6f6690a34e37f9c8f420bd1eba725717319ea496790"
+  },
+  {
+    "module": "gunbc.runner_incarnation",
+    "source": "dag/gunbc/runner/runner_incarnation.dag",
+    "copy": "target/state-provision-validation/gunbc.runner_incarnation.dag",
+    "sha256": "67e5d9fc7222438d0f205a2cf3d6c721383d8a5ce851646b29f36a1e9d71b7e1"
+  },
+  {
+    "module": "gunbc.runner_lifecycle",
+    "source": "dag/gunbc/runner/runner_lifecycle.dag",
+    "copy": "target/state-provision-validation/gunbc.runner_lifecycle.dag",
+    "sha256": "62c3d82518da5d6a95de9cad1fbf9f6eb8a7398b737c9b65eaea8d478c13f506"
+  },
+  {
+    "module": "gunbc.runner_slot_allocation",
+    "source": "dag/gunbc/runner/runner_slot_allocation.dag",
+    "copy": "target/state-provision-validation/gunbc.runner_slot_allocation.dag",
+    "sha256": "90d270bb89cd5536bc508240005f53cbcd9ebb81e65583c66faf04becba31671"
+  },
+  {
+    "module": "gunbc.runner_spec_from_offer",
+    "source": "dag/gunbc/runner/runner_spec_from_offer.dag",
+    "copy": "target/state-provision-validation/gunbc.runner_spec_from_offer.dag",
+    "sha256": "e1e931c2a9e81c98ccb7beda43e4abd1f2b0c037cd0ba88b42928884d461d729"
+  },
+  {
+    "module": "gunbc.runner_unit",
+    "source": "dag/gunbc/runner/runner_unit.dag",
+    "copy": "target/state-provision-validation/gunbc.runner_unit.dag",
+    "sha256": "827c25b531d3b4edf357b6a94cc0e6063485e3860ca77185f12377e4261aee60"
+  },
+  {
+    "module": "gunbc.running_release_identity",
+    "source": "dag/gunbc/running_release_identity.dag",
+    "copy": "target/state-provision-validation/gunbc.running_release_identity.dag",
+    "sha256": "af49bbc46752ea7cefc14a8ec029c547b56c9aff094ac35846471a89891d8767"
+  },
+  {
+    "module": "gunbc.secret_provision",
+    "source": "dag/gunbc/secret_provision.dag",
+    "copy": "target/state-provision-validation/gunbc.secret_provision.dag",
+    "sha256": "30c34e55d461ee47dae679da303eb4ea10cc21d5336edaf7eeff7587dd2e5841"
+  },
+  {
+    "module": "gunbc.secret_provision_actuator",
+    "source": "dag/gunbc/secret_provision_actuator.dag",
+    "copy": "target/state-provision-validation/gunbc.secret_provision_actuator.dag",
+    "sha256": "0c3e302591f604d8c669341a12b2e422d7ff25eb22d9c30b3453cae17ecbb93b"
+  },
+  {
+    "module": "gunbc.seed_growth",
+    "source": "dag/gunbc/seed_growth.dag",
+    "copy": "target/state-provision-validation/gunbc.seed_growth.dag",
+    "sha256": "94ded00430c2178da0c42b91be86819de149ede00710d53f8c09c731435751f1"
+  },
+  {
+    "module": "gunbc.serve_liveness",
+    "source": "dag/gunbc/serve_liveness.dag",
+    "copy": "target/state-provision-validation/gunbc.serve_liveness.dag",
+    "sha256": "cfe37d4fe5472da2b2c9e08512d36022fc54d60695e6c77a4c1d8903aa0c0bbc"
+  },
+  {
+    "module": "gunbc.session_admission_policy",
+    "source": "dag/gunbc/session_admission_policy.dag",
+    "copy": "target/state-provision-validation/gunbc.session_admission_policy.dag",
+    "sha256": "d64364192859cc1e76a2b8a981f0e297eecf85661b251326d3a9087c8a59da74"
+  },
+  {
+    "module": "gunbc.session_reservation_policy",
+    "source": "dag/gunbc/session_reservation_policy.dag",
+    "copy": "target/state-provision-validation/gunbc.session_reservation_policy.dag",
+    "sha256": "90409f86c1f497c1b627dd447337ce97bd650b18b96d87f1bc0c1c7d885b8f6e"
+  },
+  {
+    "module": "gunbc.session_residency",
+    "source": "dag/gunbc/session_residency.dag",
+    "copy": "target/state-provision-validation/gunbc.session_residency.dag",
+    "sha256": "091821f29bd5dd136f23b638b68f2d3529ce0f0a89a224702e5edebb0ffed0ed"
+  },
+  {
+    "module": "gunbc.shell_bash_runner",
+    "source": "dag/gunbc/shell_bash_runner.dag",
+    "copy": "target/state-provision-validation/gunbc.shell_bash_runner.dag",
+    "sha256": "e5029d9a446f5fa6b3d6c900617ededd98db5dc469afcbb0697a1dce3fbee09d"
+  },
+  {
+    "module": "gunbc.source_root_read",
+    "source": "dag/gunbc/source_root_read.dag",
+    "copy": "target/state-provision-validation/gunbc.source_root_read.dag",
+    "sha256": "55e5556a40fedfcfa2a111c820b0ff9590efd738b57a1376c468cc103ae6520d"
+  },
+  {
+    "module": "gunbc.spark.bootstrap_provision",
+    "source": "dag/gunbc/spark/bootstrap_provision.dag",
+    "copy": "target/state-provision-validation/gunbc.spark.bootstrap_provision.dag",
+    "sha256": "a92e5f039d15392ea2a540bfac974fb59f3dd72d09ec4aba93c6b9b570de2fcd"
+  },
+  {
+    "module": "gunbc.spark.credential_workflow",
+    "source": "dag/gunbc/spark/credential_workflow.dag",
+    "copy": "target/state-provision-validation/gunbc.spark.credential_workflow.dag",
+    "sha256": "0cf37f300e026415b4524fcc2dbd196426eafafbbd82ecda3445b47a8c655f98"
+  },
+  {
+    "module": "gunbc.spark.dgx_procurement",
+    "source": "dag/gunbc/spark/dgx_procurement.dag",
+    "copy": "target/state-provision-validation/gunbc.spark.dgx_procurement.dag",
+    "sha256": "de3b9b51598e83c94750a74a4cb0f795bdb58dfe4f5b3ea317e8dd966d848fef"
+  },
+  {
+    "module": "gunbc.spark.fabric_rail_desired",
+    "source": "dag/gunbc/spark/fabric_rail_desired.dag",
+    "copy": "target/state-provision-validation/gunbc.spark.fabric_rail_desired.dag",
+    "sha256": "0ef95e81d096f9619e11ae89c92d0f8b6e92ee45ea79f47e298fe3681e97339b"
+  },
+  {
+    "module": "gunbc.spark.fabric_reach",
+    "source": "dag/gunbc/spark/fabric_reach.dag",
+    "copy": "target/state-provision-validation/gunbc.spark.fabric_reach.dag",
+    "sha256": "3002b8724706d1ce0fb9ce6e02d3ef0e0b27800a5f2a4046836f628a81332612"
+  },
+  {
+    "module": "gunbc.spark.fabric_switch_observed",
+    "source": "dag/gunbc/spark/fabric_switch_observed.dag",
+    "copy": "target/state-provision-validation/gunbc.spark.fabric_switch_observed.dag",
+    "sha256": "cd6ebf2702dbeae415a114cbe958486c31e572e282c64f9e979b984adc6b7e3d"
+  },
+  {
+    "module": "gunbc.srv3_actuate_shell_paths",
+    "source": "dag/gunbc/srv3/srv3_actuate_shell_paths.dag",
+    "copy": "target/state-provision-validation/gunbc.srv3_actuate_shell_paths.dag",
+    "sha256": "4d079da6eb3b7b0e38a96c24f77b1d435a0620c2b31b143098dac3434f0c6635"
+  },
+  {
+    "module": "gunbc.srv3_os_install_diagnostic",
+    "source": "dag/gunbc/srv3/srv3_os_install_diagnostic.dag",
+    "copy": "target/state-provision-validation/gunbc.srv3_os_install_diagnostic.dag",
+    "sha256": "0e935996f62c71092da53315bf91e43a84b6cab7ac9af5951868d000ed44cf52"
+  },
+  {
+    "module": "gunbc.typed_argv_exec",
+    "source": "dag/gunbc/typed_argv_exec.dag",
+    "copy": "target/state-provision-validation/gunbc.typed_argv_exec.dag",
+    "sha256": "8277846d6a1d64ec2ab3db215f75f7d18e2204c7bf071668bc62319eb7fb6b5c"
+  },
+  {
+    "module": "gunbc.whole_corpus_compile_admission",
+    "source": "dag/gunbc/whole_corpus_compile_admission.dag",
+    "copy": "target/state-provision-validation/gunbc.whole_corpus_compile_admission.dag",
+    "sha256": "d70194b9185734aeb7da597872d4537b572be059352b143e1f35200102a74749"
+  },
+  {
+    "module": "gunbc.whole_corpus_compile_demand_projection",
+    "source": "dag/gunbc/whole_corpus_compile_demand_projection.dag",
+    "copy": "target/state-provision-validation/gunbc.whole_corpus_compile_demand_projection.dag",
+    "sha256": "362d3c898d55d62f72fbb6fae3e37fb526166b1f1abce7057b182cf0b185dd19"
+  },
+  {
+    "module": "product.budget_tree",
+    "source": "dag/gunbc/product/budget_tree.dag",
+    "copy": "target/state-provision-validation/product.budget_tree.dag",
+    "sha256": "1040e961840397f6746d93a79b78ba9c27515d6082fa11639762c24f29165139"
+  },
+  {
+    "module": "product.cable_leg_observation",
+    "source": "dag/gunbc/product/cable_leg_observation.dag",
+    "copy": "target/state-provision-validation/product.cable_leg_observation.dag",
+    "sha256": "f506749755af1b64b8152d4ec3732031e49e3251f976d61f9321228f01ffe210"
+  },
+  {
+    "module": "product.cable_plant_assessment",
+    "source": "dag/gunbc/product/cable_plant_assessment.dag",
+    "copy": "target/state-provision-validation/product.cable_plant_assessment.dag",
+    "sha256": "0cf52858f1d010b6391615516fa4d0a24f318dcd608c75ca462a36d7bacfaedd"
+  },
+  {
+    "module": "product.fabric.customer_image",
+    "source": "dag/gunbc/product/fabric/customer_image.dag",
+    "copy": "target/state-provision-validation/product.fabric.customer_image.dag",
+    "sha256": "34b66865245c3ec5210223b4a196ea1cf6c3619b911096c4c9438fd7f8490fec"
+  },
+  {
+    "module": "product.fabric.envelope",
+    "source": "dag/gunbc/product/fabric/envelope.dag",
+    "copy": "target/state-provision-validation/product.fabric.envelope.dag",
+    "sha256": "c6e62d4169476de2e12aebea6fac64592bdbc8424bba22b3ce8c29f84c527b7a"
+  },
+  {
+    "module": "product.network_topology",
+    "source": "dag/gunbc/product/network_topology.dag",
+    "copy": "target/state-provision-validation/product.network_topology.dag",
+    "sha256": "b1e643d5ae05dfe283a002c2c7a6e2fec897a1d9f1d8bd6881a1434ed5001264"
+  },
+  {
+    "module": "product.placement_supply",
+    "source": "dag/gunbc/product/placement_supply.dag",
+    "copy": "target/state-provision-validation/product.placement_supply.dag",
+    "sha256": "48559ce2a18f6cfda6319dd331413c01387f7b9ba15077612a19d08c5d7545aa"
+  },
+  {
+    "module": "std.access",
+    "source": "dag/std/access.dag",
+    "copy": "target/state-provision-validation/std.access.dag",
+    "sha256": "82b70a77ff0032f3b61427edb73fc3b839eed8f2d9eec9a12142c0170eae1ffa"
+  },
+  {
+    "module": "std.affine_space",
+    "source": "dag/std/affine_space.dag",
+    "copy": "target/state-provision-validation/std.affine_space.dag",
+    "sha256": "7b53590565c3bef6075a3610e57201b2f0171a3eb32229881c9d2363373c3826"
+  },
+  {
+    "module": "std.algebra",
+    "source": "dag/std/algebra.dag",
+    "copy": "target/state-provision-validation/std.algebra.dag",
+    "sha256": "9a616d77bbccd27b074c01fd4cdebe09a29aeae9687f36591158ade938dfe99e"
+  },
+  {
+    "module": "std.allocation_roster",
+    "source": "dag/std/allocation_roster.dag",
+    "copy": "target/state-provision-validation/std.allocation_roster.dag",
+    "sha256": "a7b4cbaa50af1240ca99272373d6afa6b7a5283ca31e12bded1bede800aeb963"
+  },
+  {
+    "module": "std.approximate_field",
+    "source": "dag/std/approximate_field.dag",
+    "copy": "target/state-provision-validation/std.approximate_field.dag",
+    "sha256": "0331840b2cbb13c18a4da12c815d4f9de570cdd089d906d2bd53f359b61aaed0"
+  },
+  {
+    "module": "std.authorization_profile",
+    "source": "dag/std/authorization_profile.dag",
+    "copy": "target/state-provision-validation/std.authorization_profile.dag",
+    "sha256": "8eb7a8762462dce18733b6fd7897802bb5770346f751df58aad36b0689f36ed7"
+  },
+  {
+    "module": "std.bignat",
+    "source": "dag/std/bignat.dag",
+    "copy": "target/state-provision-validation/std.bignat.dag",
+    "sha256": "0b1586d9fa06a7c5e8d2066f7f4c8aa72e010266bd44100466471ee48dea0845"
+  },
+  {
+    "module": "std.bit",
+    "source": "dag/std/bit.dag",
+    "copy": "target/state-provision-validation/std.bit.dag",
+    "sha256": "bd7780103bc8adde799202cd33f0a75c51554a51f1caab051975193b9af2150f"
+  },
+  {
+    "module": "std.bitwise",
+    "source": "dag/std/bitwise.dag",
+    "copy": "target/state-provision-validation/std.bitwise.dag",
+    "sha256": "b1e03e0fcc958ee632982db4c758eaa1b5337844928117f22612d6d290f0610c"
+  },
+  {
+    "module": "std.bytes",
+    "source": "dag/std/bytes.dag",
+    "copy": "target/state-provision-validation/std.bytes.dag",
+    "sha256": "85df447a3a423406e88bfd7885d1ecfb0924c6ebb39c12ffd43660d7a8abb312"
+  },
+  {
+    "module": "std.cache_identity",
+    "source": "dag/std/cache_identity.dag",
+    "copy": "target/state-provision-validation/std.cache_identity.dag",
+    "sha256": "c45c49d869cb817d1164d91cc93497c6dee7939be3dcb3a906888cfefe40fe12"
+  },
+  {
+    "module": "std.cache_interface",
+    "source": "dag/std/cache_interface.dag",
+    "copy": "target/state-provision-validation/std.cache_interface.dag",
+    "sha256": "cb7731b075f7dc2ec9703f48fb391c5f9b05cdabf968e6f92f66efb313e3f51e"
+  },
+  {
+    "module": "std.change",
+    "source": "dag/std/change.dag",
+    "copy": "target/state-provision-validation/std.change.dag",
+    "sha256": "ec737b529b252e72062823cbedffe6fb2a59c4b7599aedb4272c2cde07de25ca"
+  },
+  {
+    "module": "std.checked_arithmetic",
+    "source": "dag/std/checked_arithmetic.dag",
+    "copy": "target/state-provision-validation/std.checked_arithmetic.dag",
+    "sha256": "f7217d0f7f2151c185bbf35035039e52292ddd5f5df2665119673268eff7ea3d"
+  },
+  {
+    "module": "std.citation",
+    "source": "dag/std/citation.dag",
+    "copy": "target/state-provision-validation/std.citation.dag",
+    "sha256": "2a8aa865da1504e2f289eeb004434611aec96c1153f6923bdf2d8ee748ffa7d8"
+  },
+  {
+    "module": "std.claim_evidence",
+    "source": "dag/std/claim_evidence.dag",
+    "copy": "target/state-provision-validation/std.claim_evidence.dag",
+    "sha256": "5e13abee888b03b0eae5ece847b2a1e87a5bb7ca351b958d0147e041ae3edf46"
+  },
+  {
+    "module": "std.computation",
+    "source": "dag/std/computation.dag",
+    "copy": "target/state-provision-validation/std.computation.dag",
+    "sha256": "9398241ad9a76f7eef90c26306d662c6622d8951ee238fe0ea26380ac2a2c095"
+  },
+  {
+    "module": "std.constructors",
+    "source": "dag/std/constructors.dag",
+    "copy": "target/state-provision-validation/std.constructors.dag",
+    "sha256": "2402a8a41df34a71e6c03bc82fc9d58215e7de558d4160277f4b0acc0bbf576c"
+  },
+  {
+    "module": "std.content_hash",
+    "source": "dag/std/content_hash.dag",
+    "copy": "target/state-provision-validation/std.content_hash.dag",
+    "sha256": "8ba1a2f1bdcd8a0fb1699a7a637d5d37c908f17072ca5ed6cef6d6d147375c85"
+  },
+  {
+    "module": "std.contract_identity",
+    "source": "dag/std/contract_identity.dag",
+    "copy": "target/state-provision-validation/std.contract_identity.dag",
+    "sha256": "92ea781353092228f3a82074cee3a998d0b18d43a0ea1312c49fe8676de4b4df"
+  },
+  {
+    "module": "std.coordinate_frame",
+    "source": "dag/std/coordinate_frame.dag",
+    "copy": "target/state-provision-validation/std.coordinate_frame.dag",
+    "sha256": "c529958bd977133a1a5ccdf54d182b68a1d03837c5a1b9da481bf4a329abe4c8"
+  },
+  {
+    "module": "std.credentials",
+    "source": "dag/std/credentials.dag",
+    "copy": "target/state-provision-validation/std.credentials.dag",
+    "sha256": "650ead23b620333525dcfbf9f39ae7c7a3907d9f1259442bf638c32f2d84f2a4"
+  },
+  {
+    "module": "std.decimal",
+    "source": "dag/std/decimal.dag",
+    "copy": "target/state-provision-validation/std.decimal.dag",
+    "sha256": "f3c3bce89ef9931f7b15448e6489f69e243d4ec307b3d9db9b0a66bbc340a178"
+  },
+  {
+    "module": "std.decl_ref",
+    "source": "dag/std/decl_ref.dag",
+    "copy": "target/state-provision-validation/std.decl_ref.dag",
+    "sha256": "26082e2d3b20e94c666088be09a38af7004dd0a3585a23d001819eae838c097c"
+  },
+  {
+    "module": "std.disposition",
+    "source": "dag/std/disposition.dag",
+    "copy": "target/state-provision-validation/std.disposition.dag",
+    "sha256": "40cd746f00554945e53e85d17c3d0e2728652ca991927f95db731cfc2eaa5902"
+  },
+  {
+    "module": "std.dissolution",
+    "source": "dag/std/dissolution.dag",
+    "copy": "target/state-provision-validation/std.dissolution.dag",
+    "sha256": "16bac1ef13d250b8e8e5b119fb50b8b9bdd8b85ca1b4b255a91b29c6ecba3fa4"
+  },
+  {
+    "module": "std.durable_compare_and_set",
+    "source": "dag/std/durable_compare_and_set.dag",
+    "copy": "target/state-provision-validation/std.durable_compare_and_set.dag",
+    "sha256": "2afbc04750db9b6b28a71990a70384e7ece8e395d655e392ed0aca0dcbdce33c"
+  },
+  {
+    "module": "std.effect_grant",
+    "source": "dag/std/effect_grant.dag",
+    "copy": "target/state-provision-validation/std.effect_grant.dag",
+    "sha256": "2e229f90c2113ba54fb45c3df043ae5788d71e116b892534cb3e006138ccce76"
+  },
+  {
+    "module": "std.effects",
+    "source": "dag/std/effects.dag",
+    "copy": "target/state-provision-validation/std.effects.dag",
+    "sha256": "62951c43ccd8a52e0d7b01e45b233957d167df645e54b9d8ebcd315e959a7e22"
+  },
+  {
+    "module": "std.encoding",
+    "source": "dag/std/encoding.dag",
+    "copy": "target/state-provision-validation/std.encoding.dag",
+    "sha256": "511a854354223689dd61f43413e41e16b8ae82656b17e33ff658716eb73f104a"
+  },
+  {
+    "module": "std.error_primitives",
+    "source": "dag/std/error_primitives.dag",
+    "copy": "target/state-provision-validation/std.error_primitives.dag",
+    "sha256": "9dafc12f20fa0592a0cc74159a8ec11462308e577d28bb80a74d3166a670c69d"
+  },
+  {
+    "module": "std.euclidean_geometry",
+    "source": "dag/std/euclidean_geometry.dag",
+    "copy": "target/state-provision-validation/std.euclidean_geometry.dag",
+    "sha256": "ae96df1d09b73cf9ae0a3ccff36361debd73baca29192a4527c4a2d8688e9c97"
+  },
+  {
+    "module": "std.evaluation_budget",
+    "source": "dag/std/evaluation_budget.dag",
+    "copy": "target/state-provision-validation/std.evaluation_budget.dag",
+    "sha256": "fd9dfd925eaa9e423c44d4a2ce1cbfc0010d45e9e11a339835864c46a57428ac"
+  },
+  {
+    "module": "std.execution_mode",
+    "source": "dag/std/execution_mode.dag",
+    "copy": "target/state-provision-validation/std.execution_mode.dag",
+    "sha256": "c0f66cc1914de3bbf40b49dd9a5bb533bf1f3ec96b854a2eff35b53d95f35ddb"
+  },
+  {
+    "module": "std.fabric_storage",
+    "source": "dag/std/fabric_storage.dag",
+    "copy": "target/state-provision-validation/std.fabric_storage.dag",
+    "sha256": "84cafb92bf70c8f8dcfeb852d72d72452b830fa7174dd73227d8b48288e70aca"
+  },
+  {
+    "module": "std.fermi",
+    "source": "dag/std/fermi.dag",
+    "copy": "target/state-provision-validation/std.fermi.dag",
+    "sha256": "e3e1762717457e08f185b8ee5328893806e3812f9c14976f1b5f19da885b329f"
+  },
+  {
+    "module": "std.fidelity",
+    "source": "dag/std/fidelity.dag",
+    "copy": "target/state-provision-validation/std.fidelity.dag",
+    "sha256": "7f15f69ef1e14b04ebc93b32ea77cf2c5b99b2cee99621389cd3555995d0ee37"
+  },
+  {
+    "module": "std.filesystem.types",
+    "source": "dag/std/filesystem/types.dag",
+    "copy": "target/state-provision-validation/std.filesystem.types.dag",
+    "sha256": "630ac15915a035d08c0d3ad33f201c552e4e4ee17f977eddc7a97d0be1556379"
+  },
+  {
+    "module": "std.float",
+    "source": "dag/std/float.dag",
+    "copy": "target/state-provision-validation/std.float.dag",
+    "sha256": "7c6259e6ba904af324aa858189eb204347cf8876475092423a2df38d5d8ebe5c"
+  },
+  {
+    "module": "std.goal_assessment",
+    "source": "dag/std/goal_assessment.dag",
+    "copy": "target/state-provision-validation/std.goal_assessment.dag",
+    "sha256": "76dcc64334098456ff026ad3979a6e606746d46180d11c5e7229067e3ce3b256"
+  },
+  {
+    "module": "std.human_intervention",
+    "source": "dag/std/human_intervention.dag",
+    "copy": "target/state-provision-validation/std.human_intervention.dag",
+    "sha256": "7dc738d3c4f4f799e6faf4b7ad26f48eee9e93c7afd1099c7fe235ecb8831a41"
+  },
+  {
+    "module": "std.induction",
+    "source": "dag/std/induction.dag",
+    "copy": "target/state-provision-validation/std.induction.dag",
+    "sha256": "452e0389b6fddea7b2bd4af3c8d21469afd61cb95b31661e7b88d3d9809b3bbe"
+  },
+  {
+    "module": "std.integer",
+    "source": "dag/std/integer.dag",
+    "copy": "target/state-provision-validation/std.integer.dag",
+    "sha256": "da2e701838e23ce32db6c1ceb1a509370a743e38bac31d1ea4166daaebae4861"
+  },
+  {
+    "module": "std.interval",
+    "source": "dag/std/interval.dag",
+    "copy": "target/state-provision-validation/std.interval.dag",
+    "sha256": "27bf64e0b74bb1a10176d5d3bb88b6d45e80a53777027a714b3a52bb27a70c24"
+  },
+  {
+    "module": "std.key_relation",
+    "source": "dag/std/key_relation.dag",
+    "copy": "target/state-provision-validation/std.key_relation.dag",
+    "sha256": "22d2cc609e47bd49d0e8fef86aaa23497dc75caec192929962d6e89f2b603160"
+  },
+  {
+    "module": "std.keyed_roster",
+    "source": "dag/std/keyed_roster.dag",
+    "copy": "target/state-provision-validation/std.keyed_roster.dag",
+    "sha256": "41f346765f15aed3ecf28ff990ebb111864d524ab9bf95e03131638717abe584"
+  },
+  {
+    "module": "std.keyed_row",
+    "source": "dag/std/keyed_row.dag",
+    "copy": "target/state-provision-validation/std.keyed_row.dag",
+    "sha256": "e5bce67aea16eabf826cf18ccd4a542142c42bf6950da0b1b977edaa02fba1dc"
+  },
+  {
+    "module": "std.languages",
+    "source": "dag/std/languages.dag",
+    "copy": "target/state-provision-validation/std.languages.dag",
+    "sha256": "4574ba5f32a0063f23b6a05763abd8b9bc018ef8a33ac03e9469cbcc2e6a899a"
+  },
+  {
+    "module": "std.layout",
+    "source": "dag/std/layout.dag",
+    "copy": "target/state-provision-validation/std.layout.dag",
+    "sha256": "e7b769e93c44d34d70d4c821588f7fcda4108c4403a2db24cc5abbd9e0080043"
+  },
+  {
+    "module": "std.list",
+    "source": "dag/std/list.dag",
+    "copy": "target/state-provision-validation/std.list.dag",
+    "sha256": "d3860de0dc11e01baef5e38ce37ef79930e4aa8dbc9941e89386400a018d9395"
+  },
+  {
+    "module": "std.logic",
+    "source": "dag/std/logic.dag",
+    "copy": "target/state-provision-validation/std.logic.dag",
+    "sha256": "f508ba9750df53d5d3021119a1ec7870b9f10671a1882d1cf9224c7319fd0689"
+  },
+  {
+    "module": "std.machine_constraints",
+    "source": "dag/std/machine_constraints.dag",
+    "copy": "target/state-provision-validation/std.machine_constraints.dag",
+    "sha256": "dcf59511c69d268cedf9fd403741253850bd741badd20b5ea6bd0c5b4f9db78b"
+  },
+  {
+    "module": "std.machine_shape",
+    "source": "dag/std/machine_shape.dag",
+    "copy": "target/state-provision-validation/std.machine_shape.dag",
+    "sha256": "a3b1b78649a86dcbaea370a34aa0682befc8856c440bd72611faf1893bc2b5bc"
+  },
+  {
+    "module": "std.machine_word",
+    "source": "dag/std/machine_word.dag",
+    "copy": "target/state-provision-validation/std.machine_word.dag",
+    "sha256": "352bad38972aaa048d2c24eafc92779370423b2afc259fc5fc986f44fd1c1bf8"
+  },
+  {
+    "module": "std.magnitude",
+    "source": "dag/std/magnitude.dag",
+    "copy": "target/state-provision-validation/std.magnitude.dag",
+    "sha256": "76bf8826e9986a021a6baa5abd18dd9958fda4d8178ccbe8112d1551be273b9b"
+  },
+  {
+    "module": "std.markdown",
+    "source": "dag/std/markdown.dag",
+    "copy": "target/state-provision-validation/std.markdown.dag",
+    "sha256": "9341d3988db3cb8c61f16cb39c78215bdceb4192450da9d20f16f0f74598e520"
+  },
+  {
+    "module": "std.markup",
+    "source": "dag/std/markup.dag",
+    "copy": "target/state-provision-validation/std.markup.dag",
+    "sha256": "4fd26219f611748357be80d6876d36c9d5f578ac7614068e55e983f8dedd9079"
+  },
+  {
+    "module": "std.materialization_ladder",
+    "source": "dag/std/materialization_ladder.dag",
+    "copy": "target/state-provision-validation/std.materialization_ladder.dag",
+    "sha256": "03f0b84b9344c1d2b459d4e2c3c495282282b634dc6c54c87aaf48e0911c26bf"
+  },
+  {
+    "module": "std.measure",
+    "source": "dag/std/measure.dag",
+    "copy": "target/state-provision-validation/std.measure.dag",
+    "sha256": "7c9f67965114ed1b12cf22d885a7b7d555becde93be32d866892ca09e96d998b"
+  },
+  {
+    "module": "std.nat",
+    "source": "dag/std/nat.dag",
+    "copy": "target/state-provision-validation/std.nat.dag",
+    "sha256": "70f854bda16ffc0e5ae6e2b46c155cd8fc05f894133a8c18155924752aa613c0"
+  },
+  {
+    "module": "std.observation",
+    "source": "dag/std/observation.dag",
+    "copy": "target/state-provision-validation/std.observation.dag",
+    "sha256": "8869633bcf4df4d97b16f2d5aef0b6ddae68a1937fe4b54f5042898b80004a70"
+  },
+  {
+    "module": "std.occurrence_identity",
+    "source": "dag/std/occurrence_identity.dag",
+    "copy": "target/state-provision-validation/std.occurrence_identity.dag",
+    "sha256": "2c8934d5c379a18f2d8fae4372fd7be5025b6d3bf46da9d9f105c5e12ed3116e"
+  },
+  {
+    "module": "std.orthogonal_geometry",
+    "source": "dag/std/orthogonal_geometry.dag",
+    "copy": "target/state-provision-validation/std.orthogonal_geometry.dag",
+    "sha256": "5c784c0b4a17e95ec6935e038c28b974c3527875e2093e0c0241e32dcc6420ef"
+  },
+  {
+    "module": "std.os.invocation",
+    "source": "dag/std/os/invocation.dag",
+    "copy": "target/state-provision-validation/std.os.invocation.dag",
+    "sha256": "727b46a158a9ff2e39a32bbc868e4e7efd42cc8bcc918dbacf85a36b28acb58c"
+  },
+  {
+    "module": "std.os.types",
+    "source": "dag/std/os/types.dag",
+    "copy": "target/state-provision-validation/std.os.types.dag",
+    "sha256": "923e5e48eee3e0ca89d2c07e9767af5f0adde3668f46eccb732184fc757c02c0"
+  },
+  {
+    "module": "std.pareto",
+    "source": "dag/std/pareto.dag",
+    "copy": "target/state-provision-validation/std.pareto.dag",
+    "sha256": "df8cb6b3943d9fea248d323bb14af15bd746c4fda63363d3bb4904d3f52354a0"
+  },
+  {
+    "module": "std.path_intent",
+    "source": "dag/std/path_intent.dag",
+    "copy": "target/state-provision-validation/std.path_intent.dag",
+    "sha256": "2b067f69ff573a4ce091d4d0051c518d68cd4e32bf77e8f6557827b6d2f5ea26"
+  },
+  {
+    "module": "std.primitives",
+    "source": "dag/std/primitives.dag",
+    "copy": "target/state-provision-validation/std.primitives.dag",
+    "sha256": "e56a1c1a7f4f922ddda2a46240c2e5642b29fab46b903420ddca6ee76e94e74c"
+  },
+  {
+    "module": "std.process",
+    "source": "dag/std/process.dag",
+    "copy": "target/state-provision-validation/std.process.dag",
+    "sha256": "718c0e29480409fddb47bc3ad7d18fc588288aab9188dc5f82efafae105259b3"
+  },
+  {
+    "module": "std.process_termination",
+    "source": "dag/std/process_termination.dag",
+    "copy": "target/state-provision-validation/std.process_termination.dag",
+    "sha256": "ec4a657d62b7f208e2267008cef187313cee090cffca5eb7823929b9520b1f3c"
+  },
+  {
+    "module": "std.realization",
+    "source": "dag/std/realization.dag",
+    "copy": "target/state-provision-validation/std.realization.dag",
+    "sha256": "77211ca0e368d8abdebf0a823f10a5ff307ee97404c7b4dc98a0625a9bafb3b5"
+  },
+  {
+    "module": "std.realization_measurement",
+    "source": "dag/std/realization_measurement.dag",
+    "copy": "target/state-provision-validation/std.realization_measurement.dag",
+    "sha256": "3c0b776a5345195653be424bc0630e69c40b71695a083105bfffb91b507fcda0"
+  },
+  {
+    "module": "std.realization_reconcile",
+    "source": "dag/std/realization_reconcile.dag",
+    "copy": "target/state-provision-validation/std.realization_reconcile.dag",
+    "sha256": "6dcd02545863ed9fba7fb9886a2ff895b31040b5915a53a40a0989494adcbd13"
+  },
+  {
+    "module": "std.realization_schedule",
+    "source": "dag/std/realization_schedule.dag",
+    "copy": "target/state-provision-validation/std.realization_schedule.dag",
+    "sha256": "60a2d0b8354ad341b04baf3a493302c98afaa82f11907e7018765cc8af38c82f"
+  },
+  {
+    "module": "std.realization_width",
+    "source": "dag/std/realization_width.dag",
+    "copy": "target/state-provision-validation/std.realization_width.dag",
+    "sha256": "3a6628f1b86e3563c5ee8f3930264e29258ea09c1de51d9c0157e6c2825ae13c"
+  },
+  {
+    "module": "std.render",
+    "source": "dag/std/render.dag",
+    "copy": "target/state-provision-validation/std.render.dag",
+    "sha256": "ad2b8d9cb501e9792adac0cdb391d543c6bc3259c8ca45442810b5b3075258cc"
+  },
+  {
+    "module": "std.render_repeat_string_bootstrap",
+    "source": "dag/std/render_repeat_string_bootstrap.dag",
+    "copy": "target/state-provision-validation/std.render_repeat_string_bootstrap.dag",
+    "sha256": "006044620a11c6c78ac51173d3a24c06f0492138df798ad46235938d19966e8a"
+  },
+  {
+    "module": "std.roster_frontier",
+    "source": "dag/std/roster_frontier.dag",
+    "copy": "target/state-provision-validation/std.roster_frontier.dag",
+    "sha256": "1254294a5d4be2a8312c2ab563786dde1f6b022570fba8a78041b292774e9998"
+  },
+  {
+    "module": "std.scoped_authorization",
+    "source": "dag/std/scoped_authorization.dag",
+    "copy": "target/state-provision-validation/std.scoped_authorization.dag",
+    "sha256": "364001bc9d44e88d9cef8bccee393f1e2c0b0b34f37b1400a9b328a92ebf5f44"
+  },
+  {
+    "module": "std.serialization",
+    "source": "dag/std/serialization.dag",
+    "copy": "target/state-provision-validation/std.serialization.dag",
+    "sha256": "c3093200fcd2d53ddb95cb5cae63f06cb00bc72191240d41de1eba1f3aa0e6c2"
+  },
+  {
+    "module": "std.source_annotation",
+    "source": "dag/std/source_annotation.dag",
+    "copy": "target/state-provision-validation/std.source_annotation.dag",
+    "sha256": "096f7cd4233564cb72722cf9694b5d7154a7d087d57e4e30fe070bdcff5b0f62"
+  },
+  {
+    "module": "std.spatial_frame",
+    "source": "dag/std/spatial_frame.dag",
+    "copy": "target/state-provision-validation/std.spatial_frame.dag",
+    "sha256": "3fc05c9b127a48fc80692562eb4b7a0703c3b46601c011fa6128f6e389a0f9a6"
+  },
+  {
+    "module": "std.state_durability",
+    "source": "dag/std/state_durability.dag",
+    "copy": "target/state-provision-validation/std.state_durability.dag",
+    "sha256": "d6088eb6ce58544e937fd4d76321a5560991df812491206459d3590b1f3a3617"
+  },
+  {
+    "module": "std.string_type",
+    "source": "dag/std/string_type.dag",
+    "copy": "target/state-provision-validation/std.string_type.dag",
+    "sha256": "54300558500e6c0d8988d1dc5dbe679c3b5fce52db229b1282fe5f163ad1cd18"
+  },
+  {
+    "module": "std.symbols",
+    "source": "dag/std/symbols.dag",
+    "copy": "target/state-provision-validation/std.symbols.dag",
+    "sha256": "b72965de39285e3f2f7034a4f73486d7408811f8acd3116ff15efded23e4dc91"
+  },
+  {
+    "module": "std.temporal_effect",
+    "source": "dag/std/temporal_effect.dag",
+    "copy": "target/state-provision-validation/std.temporal_effect.dag",
+    "sha256": "555f44690043e0b41b558f562cb68cd4f51c5b40f18c19b8fc6f0b4c5ae4106d"
+  },
+  {
+    "module": "std.termination",
+    "source": "dag/std/termination.dag",
+    "copy": "target/state-provision-validation/std.termination.dag",
+    "sha256": "ae22e516e67037d9a4f916ea70f98e1d625e55a8c510ea70c21e3a9900104d54"
+  },
+  {
+    "module": "std.types",
+    "source": "dag/std/types.dag",
+    "copy": "target/state-provision-validation/std.types.dag",
+    "sha256": "2abfc53c499aa0063202944fc7321c02d194ab26006ea35cf32433d1b4187c4e"
+  },
+  {
+    "module": "std.unicode.types",
+    "source": "dag/std/unicode/types.dag",
+    "copy": "target/state-provision-validation/std.unicode.types.dag",
+    "sha256": "d9729ed6cd4156e21ec64eb7ba0a6bc5cc52bc1b525bb370a131d25c85e2dede"
+  },
+  {
+    "module": "std.upsert_decision",
+    "source": "dag/std/upsert_decision.dag",
+    "copy": "target/state-provision-validation/std.upsert_decision.dag",
+    "sha256": "1c1f47c52f77b0183238feddfd253a75497c2a0f73fdb173bdb4bf8866bb21ff"
+  },
+  {
+    "module": "std.witness_admission",
+    "source": "dag/std/witness_admission.dag",
+    "copy": "target/state-provision-validation/std.witness_admission.dag",
+    "sha256": "ef3bf6354631729f2da05b633a16934f6b6c3f281b935b12cf9b20e845fac967"
+  },
+  {
+    "module": "std.workspace_artifact",
+    "source": "dag/std/workspace_artifact.dag",
+    "copy": "target/state-provision-validation/std.workspace_artifact.dag",
+    "sha256": "088fa4ac5b0177f418278e86d38ce338b097429481574219532263dd91b14030"
+  },
+  {
+    "module": "test.claim.auth.fabric_state_provision_witness_test",
+    "source": "dag/test/claim/auth/fabric_state_provision_witness_test.dag",
+    "copy": "target/state-provision-validation/test.claim.auth.fabric_state_provision_witness_test.dag",
+    "sha256": "6effadbfb9972511e38bb08269854ea54c5e63b2d174000d0829ed9becbcfb90"
+  },
+  {
+    "module": "v2.compiler.body_lowering_fold",
+    "source": "src/v2/compiler/body_lowering_fold.dag",
+    "copy": "target/state-provision-validation/v2.compiler.body_lowering_fold.dag",
+    "sha256": "783105f35864131c9a597059eceb2357331d3b2310deb8c371d68384fe96975a"
+  },
+  {
+    "module": "v2.compiler.body_producer_forward",
+    "source": "src/v2/compiler/body_producer_forward.dag",
+    "copy": "target/state-provision-validation/v2.compiler.body_producer_forward.dag",
+    "sha256": "b5b891a810598d27a0c43de53ede4ee1137bed88e5572a4ea3e551a5a57e832a"
+  },
+  {
+    "module": "v2.compiler.fold_lowering",
+    "source": "src/v2/compiler/fold_lowering.dag",
+    "copy": "target/state-provision-validation/v2.compiler.fold_lowering.dag",
+    "sha256": "3381b414fa8fc0b83e8ad4052b1716d526ce7ef228aa25ec5d3fec9856877523"
+  },
+  {
+    "module": "v2.compiler.materialization_carriers",
+    "source": "src/v2/compiler/materialization_carriers.dag",
+    "copy": "target/state-provision-validation/v2.compiler.materialization_carriers.dag",
+    "sha256": "c9021056fd507a54f968e1789c3d15e616207c0b53c6daa6b023677f94b28b3a"
+  },
+  {
+    "module": "v2.compiler.namespace_graft",
+    "source": "src/v2/compiler/namespace_graft.dag",
+    "copy": "target/state-provision-validation/v2.compiler.namespace_graft.dag",
+    "sha256": "ad75b10913fe8eaaa63250e7684a920387e28e545a649e7b4f2a040cd39b80c0"
+  },
+  {
+    "module": "v2.compiler.normalize",
+    "source": "src/v2/compiler/03_normalize.dag",
+    "copy": "target/state-provision-validation/v2.compiler.normalize.dag",
+    "sha256": "d20f9cdf3db917a35703b294d65912b269100d8287b08212aa5ecc97b0257ca0"
+  },
+  {
+    "module": "v2.compiler.normalized_tree",
+    "source": "src/v2/compiler/normalized_tree.dag",
+    "copy": "target/state-provision-validation/v2.compiler.normalized_tree.dag",
+    "sha256": "e34361fd8536ea7a427e1d6754aa88c21ddeb897e4f7037268530a0b10b74915"
+  },
+  {
+    "module": "v2.compiler.parse",
+    "source": "src/v2/compiler/02_parse.dag",
+    "copy": "target/state-provision-validation/v2.compiler.parse.dag",
+    "sha256": "6e73f730471da674255a9778ec501f88784d9297e504ff767e58c454f91c872a"
+  },
+  {
+    "module": "v2.compiler.parse_diagnostic",
+    "source": "src/v2/compiler/parse_diagnostic.dag",
+    "copy": "target/state-provision-validation/v2.compiler.parse_diagnostic.dag",
+    "sha256": "8d8b2af7e5d68144a2c26a5774b703dc4a5f3c0bc37e0101290f2591cf01a024"
+  },
+  {
+    "module": "v2.compiler.resolve",
+    "source": "src/v2/compiler/03_resolve.dag",
+    "copy": "target/state-provision-validation/v2.compiler.resolve.dag",
+    "sha256": "62e8cc60a5cbc62993a78e367c7222f258f3306a3b0938203eac51d3d2889bc4"
+  },
+  {
+    "module": "v2.compiler.source_authority",
+    "source": "src/v2/compiler/source_authority.dag",
+    "copy": "target/state-provision-validation/v2.compiler.source_authority.dag",
+    "sha256": "88fee811f94f44923f7f89eb5771a0e9dd301e1a4621ff710a2320c7f8bca16d"
+  },
+  {
+    "module": "v2.compiler.symbol_index_fill",
+    "source": "src/v2/compiler/symbol_index_fill.dag",
+    "copy": "target/state-provision-validation/v2.compiler.symbol_index_fill.dag",
+    "sha256": "74747be4751371a0d4de342d3b28cda8e2174afa81fd70812e61bca3a7de076f"
+  },
+  {
+    "module": "v2.compiler.target_carriers",
+    "source": "src/v2/compiler/07_target_carriers.dag",
+    "copy": "target/state-provision-validation/v2.compiler.target_carriers.dag",
+    "sha256": "1d0e2afdaf8d7705b7717edb99b45f100c16e626c7eae7d5b1b2ca876ec5813e"
+  },
+  {
+    "module": "v2.compiler.target_serialize",
+    "source": "src/v2/compiler/target_serialize.dag",
+    "copy": "target/state-provision-validation/v2.compiler.target_serialize.dag",
+    "sha256": "d90cbeacf97f02e8adeff463cd907ddc4882ee50786c976a7716b03a1b603525"
+  },
+  {
+    "module": "v2.compiler.test_marker_capture",
+    "source": "src/v2/compiler/test_marker_capture.dag",
+    "copy": "target/state-provision-validation/v2.compiler.test_marker_capture.dag",
+    "sha256": "e7c4356fefc20a0e88bbda79f24505092af9e3a4367be8543ce481c2c59e6b84"
+  },
+  {
+    "module": "v2.compiler.tokenize",
+    "source": "src/v2/compiler/01_tokenize.dag",
+    "copy": "target/state-provision-validation/v2.compiler.tokenize.dag",
+    "sha256": "3e8bf3bbd4f72bf9352146eb6c0f695733619e7819a77eaa75b4c6649e276ebc"
+  },
+  {
+    "module": "v2.compiler.wrap_decision",
+    "source": "src/v2/compiler/wrap_decision.dag",
+    "copy": "target/state-provision-validation/v2.compiler.wrap_decision.dag",
+    "sha256": "55c8a518dd91b8e97e43daabdf35a7af5c9e299c933b99018db61bad157e6e94"
+  },
+  {
+    "module": "v2.extdeps.languages.bash",
+    "source": "src/v2/extdeps/languages/bash.dag",
+    "copy": "target/state-provision-validation/v2.extdeps.languages.bash.dag",
+    "sha256": "6b86a6a5b2fffa47456da95236cc5244664890aa4a1540a8fd7f5bebae399911"
+  },
+  {
+    "module": "v2.extdeps.languages.bash_build",
+    "source": "src/v2/extdeps/languages/bash_build.dag",
+    "copy": "target/state-provision-validation/v2.extdeps.languages.bash_build.dag",
+    "sha256": "24d5f4a6f20d23a74839390d8562fc7c60eecca51d3a27dc5e5fdd2180a2f3d5"
+  },
+  {
+    "module": "v2.extdeps.languages.bash_command_fold",
+    "source": "src/v2/extdeps/languages/bash_command_fold.dag",
+    "copy": "target/state-provision-validation/v2.extdeps.languages.bash_command_fold.dag",
+    "sha256": "b41edef7c2e0a88d4a3b1407bec487bf710932a6f690c2c7d8c2839f1cd40cd9"
+  },
+  {
+    "module": "v2.extdeps.languages.bash_orch_if",
+    "source": "src/v2/extdeps/languages/bash_orch_if.dag",
+    "copy": "target/state-provision-validation/v2.extdeps.languages.bash_orch_if.dag",
+    "sha256": "c7703ac60f37d0eb5cfc4724dd9090be77d7e1791126ad9fc83dbac425d3adda"
+  },
+  {
+    "module": "v2.extdeps.languages.bash_orch_tier2",
+    "source": "src/v2/extdeps/languages/bash_orch_tier2.dag",
+    "copy": "target/state-provision-validation/v2.extdeps.languages.bash_orch_tier2.dag",
+    "sha256": "2cb9c9955e7412938674a5fe0d1bc229ebdd208c88ae49d5ca0d8f779b77adb0"
+  },
+  {
+    "module": "v2.extdeps.languages.bash_proc_self_cgroup",
+    "source": "src/v2/extdeps/languages/bash_proc_self_cgroup.dag",
+    "copy": "target/state-provision-validation/v2.extdeps.languages.bash_proc_self_cgroup.dag",
+    "sha256": "9ce7e304d6232d7553a0b2e42299cdadab1d0a4516fe9d615c56ac912306e267"
+  },
+  {
+    "module": "v2.extdeps.languages.dag",
+    "source": "src/v2/extdeps/languages/dag.dag",
+    "copy": "target/state-provision-validation/v2.extdeps.languages.dag.dag",
+    "sha256": "08a26fb97b88b84f84a4d82844fff62a2b66c36347fa5f35e019e82d70485e00"
+  },
+  {
+    "module": "v2.extdeps.languages.fidelity",
+    "source": "src/v2/extdeps/languages/fidelity.dag",
+    "copy": "target/state-provision-validation/v2.extdeps.languages.fidelity.dag",
+    "sha256": "3d832517376fe724b83fdf5175f7d7d25e0a10259418691de1dd3e96c751879f"
+  },
+  {
+    "module": "v2.std.algebra",
+    "source": "src/v2/std/algebra.dag",
+    "copy": "target/state-provision-validation/v2.std.algebra.dag",
+    "sha256": "5be90c2411ad93003bb3b020766ddbb587684cda3f7deb3b72d8bcd51cf02387"
+  },
+  {
+    "module": "v2.std.anonymous_binder",
+    "source": "src/v2/std/anonymous_binder.dag",
+    "copy": "target/state-provision-validation/v2.std.anonymous_binder.dag",
+    "sha256": "5130ef4d83e542f31e021bfb7e9f02bfe1346191ef462ee7bff80838a272b3fa"
+  },
+  {
+    "module": "v2.std.anti_unification",
+    "source": "src/v2/std/anti_unification.dag",
+    "copy": "target/state-provision-validation/v2.std.anti_unification.dag",
+    "sha256": "7b0fb7082df5e1d38d62500f1b9fdf86eb5353eb2fe09bcb5f9f05ecaedc4689"
+  },
+  {
+    "module": "v2.std.artifact",
+    "source": "src/v2/std/artifact.dag",
+    "copy": "target/state-provision-validation/v2.std.artifact.dag",
+    "sha256": "c0312504be92076163840f02013f7956ab7ca4577b3dd9f5e8efd805b80004e3"
+  },
+  {
+    "module": "v2.std.cardinality",
+    "source": "src/v2/std/cardinality.dag",
+    "copy": "target/state-provision-validation/v2.std.cardinality.dag",
+    "sha256": "04885b8bfa88e993c2679b277f3cd74552bee6fe37c6069a9f86d5b07db5e641"
+  },
+  {
+    "module": "v2.std.collection",
+    "source": "src/v2/std/collection.dag",
+    "copy": "target/state-provision-validation/v2.std.collection.dag",
+    "sha256": "f160775b65f55c663418ec482d53cafc612f95aed905fe449f35f433f865abb4"
+  },
+  {
+    "module": "v2.std.compilers.body_lowering",
+    "source": "src/v2/std/compilers/body_lowering.dag",
+    "copy": "target/state-provision-validation/v2.std.compilers.body_lowering.dag",
+    "sha256": "42b5d2ba42f161a3e5a4693553029cdc271ad32ee46f09954ca2daadda34a532"
+  },
+  {
+    "module": "v2.std.compilers.cli_surface",
+    "source": "src/v2/std/compilers/cli_surface.dag",
+    "copy": "target/state-provision-validation/v2.std.compilers.cli_surface.dag",
+    "sha256": "bf7dfe36956eef72e1803401b7f9e839a6fb0404954ab375d8a087590f271cf3"
+  },
+  {
+    "module": "v2.std.compilers.lexing",
+    "source": "src/v2/std/compilers/lexing.dag",
+    "copy": "target/state-provision-validation/v2.std.compilers.lexing.dag",
+    "sha256": "e0c2144cd315c23002ebf09ad85eac42d7d16bdc1078b00f659cd077c620cb37"
+  },
+  {
+    "module": "v2.std.compilers.sugar",
+    "source": "src/v2/std/compilers/sugar.dag",
+    "copy": "target/state-provision-validation/v2.std.compilers.sugar.dag",
+    "sha256": "c4694f9da11834e49e477d03bd394357a8bc64155e7e0dbac30734b4662c018b"
+  },
+  {
+    "module": "v2.std.compilers.target_model",
+    "source": "src/v2/std/compilers/target_model.dag",
+    "copy": "target/state-provision-validation/v2.std.compilers.target_model.dag",
+    "sha256": "48a0f56f2a03ef60efd855ab2048759e830e8aa2fb1521c0c8652772d78b5be2"
+  },
+  {
+    "module": "v2.std.constraint_satisfaction_predicate",
+    "source": "src/v2/std/constraint_satisfaction_predicate.dag",
+    "copy": "target/state-provision-validation/v2.std.constraint_satisfaction_predicate.dag",
+    "sha256": "360768b2ed38cdd33c5b80e1cc37d6dac54ae0ec2d2765f5f8cd9efef3627b2d"
+  },
+  {
+    "module": "v2.std.cross_tree.import_model",
+    "source": "src/v2/std/cross_tree/import_model.dag",
+    "copy": "target/state-provision-validation/v2.std.cross_tree.import_model.dag",
+    "sha256": "d338205ca7d76dfe9a8009cadbdd118aa455cebebfb321db6a005d1b243b926d"
+  },
+  {
+    "module": "v2.std.cross_tree.resolution",
+    "source": "src/v2/std/cross_tree/resolution.dag",
+    "copy": "target/state-provision-validation/v2.std.cross_tree.resolution.dag",
+    "sha256": "8da66d79a2cb6f449565220b9598272bbb7e2976c1f204aeaa173e35f622247e"
+  },
+  {
+    "module": "v2.std.declaration_marker",
+    "source": "src/v2/std/declaration_marker.dag",
+    "copy": "target/state-provision-validation/v2.std.declaration_marker.dag",
+    "sha256": "33e20e13f06efcce545731d57c9af4001f69a4db1196ce8792ef9db8cd39aae5"
+  },
+  {
+    "module": "v2.std.diagnostic",
+    "source": "src/v2/std/diagnostic.dag",
+    "copy": "target/state-provision-validation/v2.std.diagnostic.dag",
+    "sha256": "42e23757590aa65c08c8ebcdf18267c32c2eddfb3ca1921b74c930d32417a8cb"
+  },
+  {
+    "module": "v2.std.exact_structural_equality_zip_fold_predicate",
+    "source": "src/v2/std/exact_structural_equality_zip_fold_predicate.dag",
+    "copy": "target/state-provision-validation/v2.std.exact_structural_equality_zip_fold_predicate.dag",
+    "sha256": "d574b778c094b0d9fb1345c9555fe4034e10ad81dce1a5f2bade5f2917c741cf"
+  },
+  {
+    "module": "v2.std.find_witness",
+    "source": "src/v2/std/find_witness.dag",
+    "copy": "target/state-provision-validation/v2.std.find_witness.dag",
+    "sha256": "7787623f8d31015e4036adcc034eb0a8dc68ae142eff70d048a6ad5c64e3b149"
+  },
+  {
+    "module": "v2.std.fold_assembly",
+    "source": "src/v2/std/fold_assembly.dag",
+    "copy": "target/state-provision-validation/v2.std.fold_assembly.dag",
+    "sha256": "d38c67aa005a8ff4e8f81c89e5808b6911cc00ed8ee5a04152ca3d72ccf3cacf"
+  },
+  {
+    "module": "v2.std.grammar",
+    "source": "src/v2/std/grammar.dag",
+    "copy": "target/state-provision-validation/v2.std.grammar.dag",
+    "sha256": "4d0240fea73874ecbc4151913ab26f59c065823d469608f41320d1875d2e0a76"
+  },
+  {
+    "module": "v2.std.grammar_choice_ambiguity",
+    "source": "src/v2/std/grammar_choice_ambiguity.dag",
+    "copy": "target/state-provision-validation/v2.std.grammar_choice_ambiguity.dag",
+    "sha256": "129f4769000e4de831221fd40fd74aa07339a476bd3ef19532d56fea0ef84657"
+  },
+  {
+    "module": "v2.std.host_transport",
+    "source": "src/v2/std/host_transport.dag",
+    "copy": "target/state-provision-validation/v2.std.host_transport.dag",
+    "sha256": "0908d1bc00ad9a556854033c5e290cfe8a8d449c7e98263c832b55c39197b52a"
+  },
+  {
+    "module": "v2.std.integer",
+    "source": "src/v2/std/integer.dag",
+    "copy": "target/state-provision-validation/v2.std.integer.dag",
+    "sha256": "bea807f4458a0ba6bbe77bcec1d394b931589e8032a2ec81057fff4af070aa5a"
+  },
+  {
+    "module": "v2.std.integer_value_set",
+    "source": "src/v2/std/integer_value_set.dag",
+    "copy": "target/state-provision-validation/v2.std.integer_value_set.dag",
+    "sha256": "8eaad2efc01ba052691f5cea5baf6863b6d11e196853ab03cbecd5494e634e26"
+  },
+  {
+    "module": "v2.std.language_model",
+    "source": "src/v2/std/language_model.dag",
+    "copy": "target/state-provision-validation/v2.std.language_model.dag",
+    "sha256": "ab92fa354e6e4a1837c6ffaf7173efbeca71840a4d7a4fc3bf073e74b90bc3a5"
+  },
+  {
+    "module": "v2.std.layer",
+    "source": "src/v2/std/layer.dag",
+    "copy": "target/state-provision-validation/v2.std.layer.dag",
+    "sha256": "b3cfb7d689f56906864dc555ad1343b5856d0273e52d34b986bfd9a1d4e8275b"
+  },
+  {
+    "module": "v2.std.live_tree",
+    "source": "src/v2/std/live_tree.dag",
+    "copy": "target/state-provision-validation/v2.std.live_tree.dag",
+    "sha256": "df342eaf1b7f295c201eda1db180308cc69604c63202f032db22b71972661355"
+  },
+  {
+    "module": "v2.std.logic",
+    "source": "src/v2/std/logic.dag",
+    "copy": "target/state-provision-validation/v2.std.logic.dag",
+    "sha256": "367d6fb4ed51c8bf83e32faad414c5fed094c16483cb115b2868d89016df53dd"
+  },
+  {
+    "module": "v2.std.machine",
+    "source": "src/v2/std/machine.dag",
+    "copy": "target/state-provision-validation/v2.std.machine.dag",
+    "sha256": "294512f1f4d45c55d06fee6dc1911e3bd51ec1d1c4dcb1f5e6afc657ab478fad"
+  },
+  {
+    "module": "v2.std.model_core",
+    "source": "src/v2/std/model_core.dag",
+    "copy": "target/state-provision-validation/v2.std.model_core.dag",
+    "sha256": "d71cece1bcb3ee10faaa1f3376b32521ef5947df0807810b78600027ea5f54e1"
+  },
+  {
+    "module": "v2.std.namespace_alias",
+    "source": "src/v2/std/namespace_alias.dag",
+    "copy": "target/state-provision-validation/v2.std.namespace_alias.dag",
+    "sha256": "3178cd910cc7d6528b109fa3c5b65474cc1fc688d9ad72c426a8535ba698e328"
+  },
+  {
+    "module": "v2.std.nat",
+    "source": "src/v2/std/nat.dag",
+    "copy": "target/state-provision-validation/v2.std.nat.dag",
+    "sha256": "143bdb9e0ba746ffb3342b93b1131175a1fd4b5919467a85d422025a3111ebd5"
+  },
+  {
+    "module": "v2.std.node",
+    "source": "src/v2/std/node.dag",
+    "copy": "target/state-provision-validation/v2.std.node.dag",
+    "sha256": "40dbd4616ff1502a95735a18406e33e3be918d72183b1ace597451265b869f30"
+  },
+  {
+    "module": "v2.std.node_query",
+    "source": "src/v2/std/node_query.dag",
+    "copy": "target/state-provision-validation/v2.std.node_query.dag",
+    "sha256": "32310e03a2714fefa327bcec685b8e70c82c6f1f238e2edd0ea10d80153ae953"
+  },
+  {
+    "module": "v2.std.node_shape",
+    "source": "src/v2/std/node_shape.dag",
+    "copy": "target/state-provision-validation/v2.std.node_shape.dag",
+    "sha256": "a1bfb36024f7c0cba48489c0b1ca3c285ebb4eb304a7bec38093b20370937c38"
+  },
+  {
+    "module": "v2.std.occurrence_id",
+    "source": "src/v2/std/occurrence_id.dag",
+    "copy": "target/state-provision-validation/v2.std.occurrence_id.dag",
+    "sha256": "83e240623a57b7e98b1b03b5cd1a53ac47e1b7f58b2f5b016123b5c6c6a79738"
+  },
+  {
+    "module": "v2.std.operation_argv",
+    "source": "src/v2/std/operation_argv.dag",
+    "copy": "target/state-provision-validation/v2.std.operation_argv.dag",
+    "sha256": "3aebeb4b28f225578592bb4ccaaebeb15c7d951ee9beeb76c08fd9c69990437d"
+  },
+  {
+    "module": "v2.std.optional",
+    "source": "src/v2/std/optional.dag",
+    "copy": "target/state-provision-validation/v2.std.optional.dag",
+    "sha256": "6a686cbc761854f5bbbd83c07e21ff87b8154fe4f466be8b4d46f2fd85d3347b"
+  },
+  {
+    "module": "v2.std.orchestration",
+    "source": "src/v2/std/orchestration.dag",
+    "copy": "target/state-provision-validation/v2.std.orchestration.dag",
+    "sha256": "d03035c4421c3dcb9b2cd836ea8f1575fbae9dbccb0beba768df257a898d0449"
+  },
+  {
+    "module": "v2.std.passing_candidate_fold",
+    "source": "src/v2/std/passing_candidate_fold.dag",
+    "copy": "target/state-provision-validation/v2.std.passing_candidate_fold.dag",
+    "sha256": "3a9ace8eadb4cf10584e9839dbf529cac090847e57e6a22ada30e422992d6336"
+  },
+  {
+    "module": "v2.std.project_to_core_predicate",
+    "source": "src/v2/std/project_to_core_predicate.dag",
+    "copy": "target/state-provision-validation/v2.std.project_to_core_predicate.dag",
+    "sha256": "a444055743bfd137c4e4b69a316c2f6210aeb853667221c6f5d2ace51b8fd394"
+  },
+  {
+    "module": "v2.std.provenance",
+    "source": "src/v2/std/provenance.dag",
+    "copy": "target/state-provision-validation/v2.std.provenance.dag",
+    "sha256": "5a5862968e1c2d2ad301174b25b99bced2250a5152d6198affec834600366c32"
+  },
+  {
+    "module": "v2.std.qualified_name",
+    "source": "src/v2/std/qualified_name.dag",
+    "copy": "target/state-provision-validation/v2.std.qualified_name.dag",
+    "sha256": "8086d1d8e8a4e184480ce4355b02e544d34dc089bd6102ea5e793173ad7e9954"
+  },
+  {
+    "module": "v2.std.refinement",
+    "source": "src/v2/std/refinement.dag",
+    "copy": "target/state-provision-validation/v2.std.refinement.dag",
+    "sha256": "5cc136ae729754c0fb51a9cc972a5516d48f50c6706e0d7be482b6fa8309736b"
+  },
+  {
+    "module": "v2.std.refinement_widening_predicate",
+    "source": "src/v2/std/refinement_widening_predicate.dag",
+    "copy": "target/state-provision-validation/v2.std.refinement_widening_predicate.dag",
+    "sha256": "6a53373234541898a66f8093b231aaf6a551abdb8e425f5e160c6ebf48102c79"
+  },
+  {
+    "module": "v2.std.resolution_policy",
+    "source": "src/v2/std/resolution_policy.dag",
+    "copy": "target/state-provision-validation/v2.std.resolution_policy.dag",
+    "sha256": "003c57d263b88962ee0bc28b8b682ecfb3004b7a127f8553820759125cacebe3"
+  },
+  {
+    "module": "v2.std.runtime",
+    "source": "src/v2/std/runtime.dag",
+    "copy": "target/state-provision-validation/v2.std.runtime.dag",
+    "sha256": "3da9b7391a0a789aba535d0792b1c9aa7c292d1afdaa733bb8ea8e17c4b7559d"
+  },
+  {
+    "module": "v2.std.staging",
+    "source": "src/v2/std/staging.dag",
+    "copy": "target/state-provision-validation/v2.std.staging.dag",
+    "sha256": "812d95660a6dd909659cb6b05ea56a45635cf7161bdef46a3b94da91f61e9b96"
+  },
+  {
+    "module": "v2.std.symbol_index",
+    "source": "src/v2/std/symbol_index.dag",
+    "copy": "target/state-provision-validation/v2.std.symbol_index.dag",
+    "sha256": "770dc9c926bbde62546ac5a8b942f06efab1f58eb851105713032117117c9844"
+  },
+  {
+    "module": "v2.std.text",
+    "source": "src/v2/std/text.dag",
+    "copy": "target/state-provision-validation/v2.std.text.dag",
+    "sha256": "35fcf688ef21518acc1fbc932f3043e58fc1c954a2da38d29be6fdd9945b88bd"
+  },
+  {
+    "module": "v2.std.type_binder",
+    "source": "src/v2/std/type_binder.dag",
+    "copy": "target/state-provision-validation/v2.std.type_binder.dag",
+    "sha256": "4f736f4cfb7b45884fb7d17d9416eebf210793ec27d73cded24e955519b61ad9"
+  },
+  {
+    "module": "v2.std.witness",
+    "source": "src/v2/std/witness.dag",
+    "copy": "target/state-provision-validation/v2.std.witness.dag",
+    "sha256": "d01351415ee75b59f060b1916b150e9263f0c401c0872851ee578b7c8f868377"
+  },
+  {
+    "module": "v2.workflow.bash_command_fold_serialize",
+    "source": "src/v2/workflow/bash_command_fold_serialize.dag",
+    "copy": "target/state-provision-validation/v2.workflow.bash_command_fold_serialize.dag",
+    "sha256": "7619976ea5528f3f4786f620abf91819de0299e12baa8c2533309baf4363f7df"
+  }
+]

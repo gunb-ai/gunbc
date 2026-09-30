@@ -1,0 +1,19 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 23 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+[file] read <removed-private-token-file>
+[rest] GET https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fabric-state-writer-mac-key
+◐ started Urandom.ReadBytes
+✓ Urandom.ReadBytes done in 14ms
+◐ started shell.Mktemp.Dir
+✓ shell.Mktemp.Dir done in 2ms
+[file] write_owner_only /tmp/tmp.4whODTdmKJ/minted (64 bytes)
+◐ started sha256sum.Sha256.DigestFile
+✓ sha256sum.Sha256.DigestFile done in 3ms
+[file] read /tmp/tmp.4whODTdmKJ/minted
+◐ started shell.Remove.RecursiveForce
+✓ shell.Remove.RecursiveForce done in 2ms
+[rest] POST https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets
+[rest] POST https://secretmanager.googleapis.com/v1/projects/582015116396/secrets/fabric-state-writer-mac-key:addVersion
+[rest] GET https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fabric-state-writer-mac-key/versions/1:access
+secret=fabric-state-writer-mac-key standing=version-added version=1 sha256_prefix=680d60f7d495

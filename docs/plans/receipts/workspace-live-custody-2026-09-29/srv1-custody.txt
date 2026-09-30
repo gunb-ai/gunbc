@@ -1,0 +1,24 @@
+probed_at=2026-09-29T17:42:42Z
+credential agent_socket=/tmp/ssh-SPo3Nxl8MNy5/agent.35567 public_selector_file=target/fleet-ssh-attempt-host-credential-custody-converge-ci-selector.pub trust=attempt-owned known_hosts anchor materialized and content-verified by THIS entry
+known-hosts-anchor path=target/fleet-ssh-attempt-host-credential-custody-converge-ci-known-hosts-28697c0e388402f9 attempt=host-credential-custody-converge-ci identity=28697c0e388402f9 rows=12
+  enrolled host=srv1 endpoint=srv1 provenance=scanned-first-contact
+  enrolled host=srv2 endpoint=srv2 provenance=scanned-first-contact
+  enrolled host=srv3 endpoint=srv3 provenance=scanned-first-contact
+  enrolled host=srv4 endpoint=srv4 provenance=scanned-first-contact
+  enrolled host=srv5 endpoint=192.168.1.226 provenance=scanned-first-contact
+  enrolled host=srv6 endpoint=192.168.1.225 provenance=scanned-first-contact
+  enrolled host=srv7 endpoint=192.168.1.232 provenance=scanned-first-contact
+  enrolled host=srv8 endpoint=192.168.1.233 provenance=scanned-first-contact
+  enrolled host=srv9 endpoint=192.168.1.236 provenance=scanned-first-contact
+  enrolled host=srv10 endpoint=192.168.1.237 provenance=scanned-first-contact
+  enrolled host=srv11 endpoint=192.168.1.238 provenance=scanned-first-contact
+  enrolled host=srv12 endpoint=192.168.1.239 provenance=scanned-first-contact
+HostCredentialCustodyReceipt credential=fabric_state_writer_key host=srv1 path=/etc/gunbc-fabric-storage/state-writer-mac-key sm_version=projects/582015116396/secrets/fabric-state-writer-mac-key/versions/1
+  action=written
+  file=owner=root:briansrls mode=0640
+  dir=owner=root:briansrls mode=0750
+  ancestors=root-only
+  content=identical-to-sm-version
+  staging=absent
+  custody=HELD
+  scope=permission-bits readback only; NOT an observation that a non-declared principal is refused open

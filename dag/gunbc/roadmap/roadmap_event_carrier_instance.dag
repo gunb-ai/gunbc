@@ -1,0 +1,11 @@
+module gunbc.roadmap.roadmap_event_carrier_instance
+
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_service_layout }
+
+fn roadmap_event_carrier_layout_for_instance(instance: HostDashboardInstance) -> RoadmapEventCarrierLayout {
+  roadmap_event_carrier_service_layout(store: fabric_state_storage_binding())
+}

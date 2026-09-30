@@ -1,0 +1,94 @@
+module gunbc.roadmap.roadmap_task_editorial
+
+import std.types { String, Bool, List, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapNodeIdentity, RoadmapNodeId }
+import extdeps.google.issue_tracker { IssueStatus, issue_status_wire, issue_status_parse }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonString, json_object, json_kv, json_string, json_array }
+import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound }
+
+// Editorial state never changes an executable contract or discharges its receipt obligations.
+// Identity is minted independently of title, dependencies and display slug. Every node has
+// the same recursive structure; no TYPE or project/task hierarchy participates in admission.
+type RoadmapTaskEditorial {
+  identity: RoadmapNodeIdentity
+  code_contract: RoadmapNodeIdentity?
+  title: NonEmptyStr
+  body: String
+  prerequisites: List<RoadmapNodeId>
+  state: IssueStatus
+}
+
+fn roadmap_task_editorial_json(task: RoadmapTaskEditorial) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "identity", value: json_string(s: task.identity as String)),
+    json_kv(key: "code_contract", value: json_string(s: match task.code_contract { Present { value: binding } => binding as String  Absent => "" })),
+    json_kv(key: "title", value: json_string(s: task.title as String)),
+    json_kv(key: "body", value: json_string(s: task.body)),
+    json_kv(key: "prerequisites", value: json_array(elements: map(task.prerequisites, dependency => json_string(s: dependency as String)))),
+    json_kv(key: "state", value: json_string(s: issue_status_wire(status: task.state))),
+  ])
+}
+
+fn roadmap_task_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: wire } } => Present { value: wire }
+    _ => none
+  }
+}
+
+fn roadmap_task_dependencies(values: List<JsonValue>) -> List<RoadmapNodeId>? {
+  fold(values, init: Present { value: [] }, f: (acc, entry) => match acc {
+    Absent => none
+    Present { value: prior } => match entry {
+      JsonString { value: wire } => if wire == "" || any(prior, item => (item as String) == wire) { none }
+        else { Present { value: concat(prior, [wire as RoadmapNodeId]) } }
+      _ => none
+    }
+  })
+}
+
+fn roadmap_task_editorial_decode(doc: JsonValue) -> RoadmapTaskEditorial? {
+  match roadmap_task_string(doc: doc, key: "identity") {
+    Absent => none
+    Present { value: wire_identity } => if wire_identity == "" { none } else {
+      match roadmap_task_string(doc: doc, key: "code_contract") {
+        Absent => none
+        Present { value: wire_contract } => match roadmap_task_string(doc: doc, key: "title") {
+          Absent => none
+          Present { value: wire_title } => if wire_title == "" { none } else {
+            match roadmap_task_string(doc: doc, key: "body") {
+              Absent => none
+              Present { value: wire_body } => match roadmap_task_string(doc: doc, key: "state") {
+                Absent => none
+                Present { value: wire_state } => match issue_status_parse(wire: wire_state) {
+                  Absent => none
+                  Present { value: selected_state } => match json_object_unique_member(v: doc, key: "prerequisites") {
+                    JsonMemberFound { value: JsonArray { elements: wire_dependencies } } => match roadmap_task_dependencies(values: wire_dependencies) {
+                      Absent => none
+                      Present { value: selected_dependencies } => Present { value: RoadmapTaskEditorial {
+                        identity: wire_identity as RoadmapNodeIdentity,
+                        code_contract: if wire_contract == "" { none } else { Present { value: wire_contract as RoadmapNodeIdentity } },
+                        title: wire_title as NonEmptyStr,
+                        body: wire_body,
+                        prerequisites: selected_dependencies,
+                        state: selected_state,
+                      } }
+                    }
+                    _ => none
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn roadmap_task_binding_equal(left: RoadmapTaskEditorial, right: RoadmapTaskEditorial) -> Bool {
+  left.identity == right.identity && match left.code_contract {
+    Absent => match right.code_contract { Absent => true  Present { value: _ } => false }
+    Present { value: bound } => match right.code_contract { Absent => false  Present { value: other } => bound == other }
+  }
+}

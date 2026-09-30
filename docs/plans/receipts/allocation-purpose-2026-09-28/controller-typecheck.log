@@ -1,0 +1,6 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 3 seconds
+error: evaluating validation_no_effect_entry in dag/gunbc/runner/runner_microvm_slot_controller.dag
+  cause: NoSuchFunction { name: "validation_no_effect_entry" }

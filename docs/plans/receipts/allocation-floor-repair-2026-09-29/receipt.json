@@ -1,0 +1,16 @@
+{
+  "source": "79155ee24aaf11742f3452e99437b51fac65eb27",
+  "binary_sha256": "b58aca6ec5fbde7bb842207e3927c5cd937663df8625d4206944f7ad635cf43f",
+  "focused_passes": {
+    "wire": 4,
+    "auth": 11,
+    "oidc": 15,
+    "access": 5
+  },
+  "memory_max_bytes": 6442450944,
+  "memory_swap_max_bytes": 0,
+  "ci_run": 36514441574,
+  "integrated_qualification": "outstanding",
+  "deployed": false,
+  "full_preview_ready": true
+}

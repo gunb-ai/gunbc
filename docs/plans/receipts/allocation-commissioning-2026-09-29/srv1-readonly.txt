@@ -1,0 +1,12 @@
+srv1
+ActiveState=failed
+SubState=failed
+FragmentPath=/etc/systemd/system/gunbc-microvm-slot@.service
+MemoryMax=infinity
+MemorySwapMax=infinity
+LoadState=loaded
+ActiveState=inactive
+FragmentPath=
+stat: cannot statx '/etc/gunbc-fabric-storage/state-writer-mac-key': No such file or directory
+stat: cannot statx '/var/lib/gunbc/fabric/allocation': No such file or directory
+stat: cannot statx '/var/lib/gunbc/microvm-cell-readiness': No such file or directory

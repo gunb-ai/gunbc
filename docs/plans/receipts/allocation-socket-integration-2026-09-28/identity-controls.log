@@ -1,0 +1,5 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+PASS the_subject_is_admitted_only_when_the_dispatch_names_the_running_host
+PASS the_receipt_renders_each_reading_and_only_a_served_reading_grounds_the_roster

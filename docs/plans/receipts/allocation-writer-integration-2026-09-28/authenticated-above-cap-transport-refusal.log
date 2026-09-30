@@ -1,0 +1,8 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 2ms
+◐ started http.Client.PostStdinWithin
+✗ http.Client.PostStdinWithin failed: $ curl -sS --connect-timeout 5 --max-time 60 -X POST --data-binary @- -w %{http_code} http://127.0.0.1:54005/fabric-storage/state/authenticated (exit=7) in 9ms
+| curl: (7) Failed to connect to 127.0.0.1 port 54005 after 0 ms: Couldn't connect to server
+served storage check failed: above-cap

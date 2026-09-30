@@ -1,0 +1,49 @@
+module test.manual.roadmap_served_storage_hold_wet
+
+import std.types { String, NonEmptyStr, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.http.server { ServeWireResponse }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric_storage_state_serve { fabric_storage_state_serve_over }
+import gunbc.fabric_storage_protocol { text_response, fabric_storage_closure_bound_cap }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageServed, FabricStorageDoorSocket, fabric_storage_closure, fabric_storage_head }
+import std.fabric_storage { FabricReplyUndecodable, FabricClosureRefused, FabricHeadReadRefused }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout, roadmap_event_snapshot_read, roadmap_event_append, RoadmapEventSnapshotObserved, EventAppended }
+import test.claim.roadmap.roadmap_event_carrier_witness_test { roadmap_carrier_test_event }
+
+fn served_storage_hold_check(endpoint: String, step: String) -> ProcessExit {
+  if starts_with(s: endpoint, prefix: "unix:/tmp/gunbc-hold-storage-") {
+    served_storage_hold_check_binding(binding: FabricStorageDoorSocket {
+      socket: substring(s: endpoint, start: 5, end: string_length(s: endpoint)) as NonEmptyStr,
+      route_prefix: (if starts_with(s: step, prefix: "proxy-") { "/fixture/proxy/fabric-storage/state" } else { "/fabric-storage/state" }) as NonEmptyStr,
+    }, step: if starts_with(s: step, prefix: "proxy-") { substring(s: step, start: 6, end: string_length(s: step)) } else { step })
+  } else if starts_with(s: endpoint, prefix: "http://127.0.0.1:") {
+    served_storage_hold_check_binding(binding: FabricStorageServed { endpoint: endpoint as NonEmptyStr }, step: step)
+  } else { exit_failure(reason: "isolated fixture only") }
+}
+
+fn served_storage_hold_check_binding(binding: FabricStorageBinding, step: String) -> ProcessExit {
+  let layout = roadmap_event_carrier_layout(store: binding)
+    let passed = if step == "empty" {
+      match roadmap_event_snapshot_read(layout: layout) { RoadmapEventSnapshotObserved { snapshot } => count(snapshot.events) == 0 _ => false }
+    } else if step == "append" {
+      match roadmap_event_append(layout: layout, event: roadmap_carrier_test_event(note: "served hold repair")) { EventAppended { id: _ } => true _ => false }
+    } else if step == "read" {
+      match roadmap_event_snapshot_read(layout: layout) { RoadmapEventSnapshotObserved { snapshot } => count(snapshot.events) == 1 _ => false }
+    } else if step == "unrostered-peer" || step == "wrong-signing-key" {
+      let expected = if step == "unrostered-peer" { "HTTP 403: fabric state transport principal refused\n" }
+        else { "HTTP 403: fabric state service authentication refused\n" }
+      match fabric_storage_head(binding: binding, name: "roadmap-events-v1" as NonEmptyStr) {
+        FabricHeadReadRefused { fault: FabricReplyUndecodable { detail } } => (detail as String) == expected
+        _ => false
+      }
+    } else if step == "above-cap" {
+      match fabric_storage_closure(binding: binding, name: "roadmap-events-v1" as NonEmptyStr, bound: fabric_storage_closure_bound_cap + 1) {
+        FabricClosureRefused { fault: FabricReplyUndecodable { detail: detail } } =>
+          (detail as String) == "HTTP 400: fabric_storage/1 malformed request: closure bound out of range\n"
+        _ => false
+      }
+    } else { false }
+    if passed { ExitSuccess } else { exit_failure(reason: concat("served storage check failed: ", step)) }
+}
