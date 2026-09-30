@@ -1,5 +1,7 @@
 module extdeps.tools.websocat
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { NonEmptyStr }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
@@ -25,8 +27,10 @@ data websocat_asset_x86_64: NonEmptyStr = "websocat_max.x86_64-unknown-linux-mus
 
 data websocat_install_path: NonEmptyStr = "/var/lib/gunbc/bin/websocat"
 
+fn websocat_program() -> ProgramIdentity = cataloged_program(invocation: "websocat")
+
 data websocat_cli_tool: CliTool = CliTool {
-  name: "websocat",
+  program: websocat_program(),
   min_version: Present { value: websocat_pinned_version },
   installable_via: [
     SourceGitHubRelease {

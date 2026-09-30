@@ -1,0 +1,9 @@
+module fixture.bare_service_provider.consumer
+
+// ZERO IMPORTS, BY DESIGN. The only edge to the provider is the bare service call below, so this file
+// discriminates a scoped loader that runs the bare-reference closure from one that runs only the
+// module-path reference closure (v1_compiler.cli_run load_compile_clean_entry_sources).
+fn say_hello() -> Bool {
+  let reply = fixture.BareServiceEcho.Say(word: "hello")
+  reply.success
+}
