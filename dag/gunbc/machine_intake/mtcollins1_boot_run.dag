@@ -14,7 +14,7 @@ import std.temporal_effect {
   held_lease_observed_verdict,
 }
 import std.algebra { trim }
-import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
+import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond, measure_add, measure_le, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.machine_intake_mtcollins1_census_medium_readback {
@@ -513,6 +513,8 @@ type SolEstablishmentFailure
   | SolActivationUnconfirmed { collector: SolCollectorObservation, allowance: Second }
   | SolActivationUnrecorded { detail: String }
   | SolEstablishmentClockUnread { detail: String }
+  | SolEstablishmentPaceRefused
+  | SolEstablishmentClockStalled { at_ms: Nat }
   | SolAdoptedActivationUnproven { collector: SolCollectorObservation, receipt: String }
 
 fn last_nonempty_line(s: String) -> String {
@@ -549,6 +551,8 @@ fn sol_establishment_failure_text(failure: SolEstablishmentFailure) -> String {
     SolCollectorLeftUnexplained { collector: o, last_line: l } => concat(sol_collector_observation_text(observation: o), "; its last line: ", if l == "" { "(none)" } else { l })
     SolActivationUnconfirmed { collector: o, allowance: a } => concat(sol_collector_observation_text(observation: o), concat(", but the session did not print its operational banner within ", concat(to_string(second_count(s: a)), " s, so activation is unconfirmed")))
     SolEstablishmentClockUnread { detail: d } => concat("the establishment deadline could not be measured, so activation is unconfirmed: ", d)
+    SolEstablishmentPaceRefused => "the establishment wait could not pace its next poll, so activation is unconfirmed"
+    SolEstablishmentClockStalled { at_ms: t } => concat("the monotonic clock did not advance across a paced poll (uptime ", concat(to_string(t), " ms), so the establishment deadline cannot be measured and activation is unconfirmed"))
     SolActivationUnrecorded { detail: d } => concat("the banner was seen but the activation receipt could not be recorded: ", d)
     SolAdoptedActivationUnproven { collector: o, receipt: r } => concat(sol_collector_observation_text(observation: o), concat("; no activation receipt names this instance, so an adopted collector is not taken as established (receipt: ", concat(if r == "" { "(none)" } else { r }, ")")))
   })
@@ -638,56 +642,97 @@ fn sol_capture_opens_with_banner(capture: String) -> Bool {
 // (sol_establishment_expired), so the time the wait grants does not depend on how long a poll takes:
 // fast polls do not exhaust it early and slow polls do not stretch it. An unreadable clock refuses
 // with its cause (SolEstablishmentClockUnread) rather than falling back to counting.
-fn sol_establishment_deadline_ms(start: Millisecond, allowance: Second) -> Nat {
-  millisecond_count(m: start) + second_count(s: allowance) * 1000
+// THE ORDER IS OBSERVE, THEN READ THE CLOCK, THEN DECIDE. Success depends on a readable monotonic
+// reading inside the deadline: a banner first observed at or after the deadline is not admitted, so a
+// slow poll cannot carry an establishment past its allowance (sol_establishment_gate). The deadline
+// is a Millisecond on /proc/uptime -- start plus the allowance through std.measure
+// second_to_millisecond -- never an untyped count.
+type SolEstablishmentGate
+  = GateEstablish
+  | GateExpired
+  | GateContinue
+
+fn sol_establishment_deadline(start: Millisecond, allowance: Second) -> Millisecond {
+  measure_add(a: start, b: second_to_millisecond(s: allowance))
 }
 
-fn sol_establishment_expired(now: Millisecond, deadline_ms: Nat) -> Bool {
-  millisecond_count(m: now) >= deadline_ms
+fn sol_establishment_gate(banner_seen: Bool, now: Millisecond, deadline: Millisecond) -> SolEstablishmentGate {
+  if measure_le(a: deadline, b: now) {
+    GateExpired
+  } else if banner_seen {
+    GateEstablish
+  } else {
+    GateContinue
+  }
+}
+
+// THE LOOP'S OWN TERMINATION DOES NOT DEPEND ON THE CLOCK BEING RIGHT. The pace's result is consumed: a
+// refused pace ends the wait (SolEstablishmentPaceRefused). And after an admitted pace the next reading
+// must be later than the previous one; a clock that did not advance ends the wait
+// (SolEstablishmentClockStalled) instead of polling without bound.
+type SolEstablishmentPace
+  = PaceAdvanced
+  | PaceRefused
+  | PaceClockStalled
+
+fn sol_establishment_pace(paced: Bool, previous: Millisecond, now: Millisecond) -> SolEstablishmentPace {
+  if !paced {
+    PaceRefused
+  } else if measure_le(a: now, b: previous) {
+    PaceClockStalled
+  } else {
+    PaceAdvanced
+  }
 }
 
 fn mtcollins1_sol_await_establishment(pid_path: String, capture_path: String, allowance: Second) -> SolEstablishment {
   match proc_uptime_read() {
     UptimeRefused { detail: d } => SolNotEstablished { failure: SolEstablishmentClockUnread { detail: d } }
-    UptimeObserved { uptime: u } => sol_await_establishment_until(pid_path: pid_path, capture_path: capture_path, allowance: allowance, deadline_ms: sol_establishment_deadline_ms(start: u, allowance: allowance))
+    UptimeObserved { uptime: u } => sol_await_establishment_until(pid_path: pid_path, capture_path: capture_path, allowance: allowance, deadline: sol_establishment_deadline(start: u, allowance: allowance), previous: u, paced: true, first: true)
   }
 }
 
-fn sol_await_establishment_until(pid_path: String, capture_path: String, allowance: Second, deadline_ms: Nat) -> SolEstablishment {
+fn sol_await_establishment_until(pid_path: String, capture_path: String, allowance: Second, deadline: Millisecond, previous: Millisecond, paced: Bool, first: Bool) -> SolEstablishment {
   let at = clock_now_probed_at_or_unknown()
   let collector = mtcollins1_sol_collector_observe(pid_path: pid_path)
-  let pending = match collector {
+  let banner_seen = match collector {
     SolCollectorHeld => {
       let capture = Filesystem.Read(path: capture_path)
-      if capture.success && sol_capture_opens_with_banner(capture: capture.content) {
-        return sol_record_activation(pid_path: pid_path, at: at)
-      }
-      true
+      capture.success && sol_capture_opens_with_banner(capture: capture.content)
     }
-    SolCollectorUnobservable { cause: _ } => true
+    SolCollectorUnobservable { cause: _ } => false
     SolCollectorUnrecorded => {
       let client = Filesystem.Read(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path))
       let words = if client.success { client.content } else { "" }
       if string_contains(s: words, pattern: sol_hold_pid_not_published_line) || string_contains(s: words, pattern: sol_hold_pid_not_published_unstopped_line) || string_contains(s: words, pattern: sol_hold_exit_record_prefix) {
         return SolNotEstablished { failure: sol_establishment_failure(collector: collector, client_diagnostics: words, at: at) }
       }
-      true
+      false
     }
-    _ => false
+    _ => {
+      let client = Filesystem.Read(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path))
+      return SolNotEstablished { failure: sol_establishment_failure(collector: collector, client_diagnostics: if client.success { client.content } else { "" }, at: at) }
+    }
   }
-  if !pending {
-    let client = Filesystem.Read(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path))
-    return SolNotEstablished { failure: sol_establishment_failure(collector: collector, client_diagnostics: if client.success { client.content } else { "" }, at: at) }
-  }
-  let expired = match proc_uptime_read() {
+  let now = match proc_uptime_read() {
     UptimeRefused { detail: d } => return SolNotEstablished { failure: SolEstablishmentClockUnread { detail: d } }
-    UptimeObserved { uptime: n } => sol_establishment_expired(now: n, deadline_ms: deadline_ms)
+    UptimeObserved { uptime: n } => n
   }
-  if expired {
-    return SolNotEstablished { failure: SolActivationUnconfirmed { collector: collector, allowance: allowance } }
+  if !first {
+    match sol_establishment_pace(paced: paced, previous: previous, now: now) {
+      PaceRefused => return SolNotEstablished { failure: SolEstablishmentPaceRefused }
+      PaceClockStalled => return SolNotEstablished { failure: SolEstablishmentClockStalled { at_ms: millisecond_count(m: now) } }
+      PaceAdvanced => {}
+    }
   }
-  let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
-  sol_await_establishment_until(pid_path: pid_path, capture_path: capture_path, allowance: allowance, deadline_ms: deadline_ms)
+  match sol_establishment_gate(banner_seen: banner_seen, now: now, deadline: deadline) {
+    GateExpired => SolNotEstablished { failure: SolActivationUnconfirmed { collector: collector, allowance: allowance } }
+    GateEstablish => sol_record_activation(pid_path: pid_path, at: at)
+    GateContinue => {
+      let slept = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+      sol_await_establishment_until(pid_path: pid_path, capture_path: capture_path, allowance: allowance, deadline: deadline, previous: now, paced: slept, first: false)
+    }
+  }
 }
 
 // THE ACTIVATION RECEIPT IS BOUND TO THE INSTANCE. Once the banner is seen for the held collector, its

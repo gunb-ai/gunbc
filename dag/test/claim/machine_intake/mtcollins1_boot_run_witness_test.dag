@@ -1,7 +1,7 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
 import gunbc.machine_intake_mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
-import gunbc.machine_intake_mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused, sol_establishment_deadline_ms, sol_establishment_expired }
+import gunbc.machine_intake_mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused, sol_establishment_deadline, sol_establishment_gate, SolEstablishmentGate, GateEstablish, GateExpired, GateContinue, sol_establishment_pace, PaceAdvanced, PaceRefused, PaceClockStalled }
 import extdeps.github.log_annotations { log_annotation_message_line }
 import gunbc.machine_intake_megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -999,16 +999,43 @@ test fn the_boot_requires_the_recorded_live_watcher() -> Bool {
     && [gone, reused, zombie, unread_stat, unread_record, empty].all(r => match r { Present { value: why } => string_contains(s: why, pattern: "the SOL notice watcher is required before a further BMC effect")  _ => false })
 }
 
-// THE ESTABLISHMENT ALLOWANCE IS ELAPSED TIME, NOT A POLL COUNT, in both directions, over supplied uptime
-// instants. Twenty fast polls 100 ms apart -- twice a ten-poll count -- are all inside a ten-second
-// allowance, so none has expired; three slow polls four seconds apart pass the deadline at the third
-// though a ten-poll count would still have seven to go. The start is an arbitrary uptime reading.
-test fn the_establishment_allowance_is_elapsed_time_not_a_poll_count() -> Bool {
+// THE ESTABLISHMENT GATE, over supplied uptime instants (the loop's own decision, sol_establishment_gate).
+// ELAPSED TIME, NOT A POLL COUNT: twenty fast polls 100 ms apart -- twice a ten-poll count -- all
+// continue inside a ten-second allowance; three slow polls four seconds apart expire at the third.
+// A LATE BANNER IS NOT ADMITTED: a banner seen before the deadline establishes, the same banner first
+// seen at or after it is expired.
+fn gate_name(g: SolEstablishmentGate) -> String {
+  match g {
+    GateEstablish => "establish"
+    GateExpired => "expired"
+    GateContinue => "continue"
+  }
+}
+
+fn gate_is(g: SolEstablishmentGate, want: String) -> Bool {
+  gate_name(g: g) == want
+}
+
+test fn the_establishment_gate_is_elapsed_time_and_refuses_a_late_banner() -> Bool {
   let start = 350735470
-  let deadline = sol_establishment_deadline_ms(start: millisecond(count: start), allowance: second(count: 10))
-  let fast = map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], i => sol_establishment_expired(now: millisecond(count: start + i * 100), deadline_ms: deadline))
-  let slow = map([1, 2, 3], i => sol_establishment_expired(now: millisecond(count: start + i * 4000), deadline_ms: deadline))
-  deadline == start + 10000
-    && fast.all(e => !e)
-    && slow == [false, false, true]
+  let deadline = sol_establishment_deadline(start: millisecond(count: start), allowance: second(count: 10))
+  let fast = map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], i => gate_is(g: sol_establishment_gate(banner_seen: false, now: millisecond(count: start + i * 100), deadline: deadline), want: "continue"))
+  let slow = map([1, 2, 3], i => gate_name(g: sol_establishment_gate(banner_seen: false, now: millisecond(count: start + i * 4000), deadline: deadline)))
+  deadline == millisecond(count: start + 10000)
+    && fast.all(ok => ok)
+    && slow == ["continue", "continue", "expired"]
+    && gate_is(g: sol_establishment_gate(banner_seen: true, now: millisecond(count: start + 9999), deadline: deadline), want: "establish")
+    && gate_is(g: sol_establishment_gate(banner_seen: true, now: millisecond(count: start + 10000), deadline: deadline), want: "expired")
+    && gate_is(g: sol_establishment_gate(banner_seen: true, now: millisecond(count: start + 12000), deadline: deadline), want: "expired")
+}
+
+// THE LOOP TERMINATES WITHOUT TRUSTING THE CLOCK (sol_establishment_pace): a refused pace is PaceRefused;
+// an admitted pace followed by a reading no later than the previous one is PaceClockStalled; an
+// admitted pace with an advancing clock continues.
+test fn a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait() -> Bool {
+  let before = millisecond(count: 1000)
+  (match sol_establishment_pace(paced: false, previous: before, now: millisecond(count: 2000)) { PaceRefused => true  _ => false })
+    && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 1000)) { PaceClockStalled => true  _ => false })
+    && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 900)) { PaceClockStalled => true  _ => false })
+    && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 2000)) { PaceAdvanced => true  _ => false })
 }
