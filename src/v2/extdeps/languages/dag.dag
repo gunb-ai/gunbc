@@ -4192,6 +4192,7 @@ fn dag_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> 
       } else {
         optional_absent()
       }
+    Edge { label: StructuralLabel { label: _ }, target: _ } => optional_absent()
     Edge { label: Positional, target: _ } => optional_absent()
   }
 }
