@@ -1036,12 +1036,14 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
             },
             message: format!(
                 "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={} \
-                 door_refusal_reason=\"{}\"",
+                 red_module={} red_line=\"{}\" door_refusal_reason=\"{}\"",
                 held.closure_identity,
                 held.binary_identity,
                 held.seed_identity,
                 held.exit_status,
                 held.warning_count,
+                held.discriminating_red_module,
+                held.discriminating_red_line,
                 held.door_refusal_reason,
             ),
         },
@@ -1132,13 +1134,15 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
             },
             message: format!(
                 "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={} \
-                 door_exit_status={} door_emitted_bytes={} door_refusal_exit_status={} \
-                 generation_one_executable={}",
+                 red_module={} red_line=\"{}\" door_exit_status={} door_emitted_bytes={} \
+                 door_refusal_exit_status={} generation_one_executable={}",
                 held.closure_identity,
                 held.binary_identity,
                 held.seed_identity,
                 held.exit_status,
                 held.warning_count,
+                held.discriminating_red_module,
+                held.discriminating_red_line,
                 held.door_exit_status,
                 held.door_emitted_bytes,
                 held.door_refusal_exit_status,
