@@ -648,6 +648,8 @@ import v2.std.collection { List }
 // THE XL-2 REIFY-OPERAND ROW: v2.test.claim.body_lowering.reify_operand_refusal ror_verdicts tokenizes
 // and parses two inline modules and reifies two supplied bodies over each; the stored value is four
 // verdicts (no Node, no closure), portable for the same reason cav_outcomes is.
+// THE XL-2 PARAMETER-SLOT ROW: v2.test.claim.body_lowering.parameter_slot_refusal psr_verdicts parses one
+// inline module and lowers a supplied and an unmodified fn declaration; the stored value is two verdicts.
 // THE XL-2 MATCH-POSITION ROW: v2.test.claim.body_lowering.match_position_structure mps_normalized
 // runs the production route (module_roots_from_source_root_ingest) over three inline modules; the
 // stored value is the normalized trees (Nodes, no resolution context and no closure), portable for
@@ -785,6 +787,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_lowered",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_third_arm_malformed",
   "v2.test.claim.body_lowering.reify_operand_refusal.ror_verdicts",
+  "v2.test.claim.body_lowering.parameter_slot_refusal.psr_verdicts",
   "v2.test.claim.namespace_xl0.return_tail_position.rtp_outcomes",
   "v2.test.claim.body_lowering.wildcard_pattern_form.wpf_patterns",
   "v2.test.claim.body_lowering.match_position_structure.mps_normalized",
@@ -1069,6 +1072,16 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation_census.under_floor_fixture_files",
   "v2.test.claim.namespace_xl0.reference_conservation_census.half_share_fixture_files",
   "v2.test.claim.occurrence_role.occurrence_role.roles_fixture_outcome",
+  "v2.test.claim.parse.admit_callers_trailing_comma.trailing_comma_parsed",
+  "v2.test.claim.parse.admit_callers_trailing_comma.no_trailing_comma_parsed",
+  "v2.test.claim.parse.admit_callers_trailing_comma.only_a_comma_parsed",
+  "v2.test.parse.block_expr_as_binary_operand_parse.match_heading_chain_parsed",
+  "v2.test.parse.block_expr_as_binary_operand_parse.if_heading_chain_parsed",
+  "v2.test.parse.block_expr_as_binary_operand_parse.bare_match_parsed",
+  "v2.test.parse.block_expr_as_binary_operand_parse.bare_if_parsed",
+  "v2.test.parse.block_expr_as_binary_operand_parse.ordinary_binary_parsed",
+  "v2.test.parse.block_expr_as_binary_operand_parse.bare_match_body_is_match",
+  "v2.test.parse.block_expr_as_binary_operand_parse.bare_if_body_is_branch",
   "v2.test.claim.occurrence_role.occurrence_role.binders_fixture_outcome",
   "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_parsed",
   "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_planted",
@@ -1109,6 +1122,19 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_lowering.qualified_construct.qc_resolved_type_tag",
   "v2.test.claim.body_lowering.qualified_construct.qc_resolved_unimported",
   "v2.test.claim.body_lowering.qualified_construct.qc_resolved_bodyless",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_fixture_normalized",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_bad",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_good",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_generic_good",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_nested_good",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_missing",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_unknown",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_generic_bad",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_other",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_far_value",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_far_missing",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_bool_field",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_pattern",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_local_consumer",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_declared_consumer",

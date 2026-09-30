@@ -1,0 +1,254 @@
+module test.claim.shell.bmc_netboot_typed_staging_witness_test
+
+import std.types { Bool, String, Int, List, NonEmptyStr, list_length }
+import std.algebra { list_append }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import gunbc.bmc_netboot_serve {
+  srv4_bmc_netboot_serve_plan,
+  BmcNetbootMakeDir,
+  BmcNetbootPutArtifact,
+  BmcNetbootPutText,
+  BmcNetbootPutFromUri,
+  BmcNetbootStagedPathVerdict,
+  BmcNetbootStagedPathWellFormed,
+  BmcNetbootStagedPathNotRelative,
+  BmcNetbootPreparedOp,
+  BmcNetbootPreparedDisposition,
+  BmcNetbootPreparedMakeDir,
+  BmcNetbootPreparedPutArtifact,
+  BmcNetbootPreparedPutText,
+  BmcNetbootPreparedLaunchServe,
+  BmcNetbootStaging,
+  BmcNetbootStagingReady,
+  BmcNetbootStagingRefused,
+  bmc_netboot_staged_path_verdict,
+  bmc_netboot_op_prepared,
+  bmc_netboot_staging_of,
+  bmc_netboot_provision_staging,
+  bmc_netboot_staged_path,
+  bmc_netboot_local_staging_path,
+}
+
+// THE DOMAIN SIDE of the bmc-netboot witness split (the shell-typed-invocation shape, applied to
+// this lane). THIS module gates the typed staging and its refusals: the fold that refuses the
+// WHOLE staging at the first op that does not prepare, the relative-path verdict the prepared
+// remote paths are derived behind, and the cross-module probe proving the sealed staged value is
+// not hand-authorable. It imports NO argv type -- what a prepared operation lowers to is the
+// tool-realization side's subject (dag/test/claim/bmc/bmc_netboot_serve_witness_test.dag), and no
+// domain gate here learns what an operation means from anything rendered.
+
+fn staging_ready(staging: BmcNetbootStaging) -> Bool {
+  match staging {
+    BmcNetbootStagingReady { operations: _ } => true
+    BmcNetbootStagingRefused { reason: _ } => false
+  }
+}
+
+fn staging_reason(staging: BmcNetbootStaging) -> String {
+  match staging {
+    BmcNetbootStagingReady { operations: _ } => ""
+    BmcNetbootStagingRefused { reason: r } => r as String
+  }
+}
+
+fn staging_ops(staging: BmcNetbootStaging) -> List<BmcNetbootPreparedOp> {
+  match staging {
+    BmcNetbootStagingReady { operations: os } => os
+    BmcNetbootStagingRefused { reason: _ } => []
+  }
+}
+
+fn is_make_dir(d: BmcNetbootPreparedDisposition) -> Bool {
+  match d {
+    BmcNetbootPreparedMakeDir { remote_path: _ } => true
+    BmcNetbootPreparedPutArtifact { remote_path: _, local_path: _ } => false
+    BmcNetbootPreparedPutText { remote_path: _, text: _ } => false
+    BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => false
+  }
+}
+
+fn is_put(d: BmcNetbootPreparedDisposition) -> Bool {
+  match d {
+    BmcNetbootPreparedMakeDir { remote_path: _ } => false
+    BmcNetbootPreparedPutArtifact { remote_path: _, local_path: _ } => true
+    BmcNetbootPreparedPutText { remote_path: _, text: _ } => true
+    BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => false
+  }
+}
+
+fn is_launch_serve(d: BmcNetbootPreparedDisposition) -> Bool {
+  match d {
+    BmcNetbootPreparedMakeDir { remote_path: _ } => false
+    BmcNetbootPreparedPutArtifact { remote_path: _, local_path: _ } => false
+    BmcNetbootPreparedPutText { remote_path: _, text: _ } => false
+    BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => true
+  }
+}
+
+// The field readers, modeled once: a prepared op's disposition is read by matching, and a fold
+// finds the one op of a shape -- no indexing into the staged list.
+fn prepared_make_dir_path(ops: List<BmcNetbootPreparedOp>) -> String {
+  fold(ops, init: "", f: (acc, op) => match op.disposition {
+    BmcNetbootPreparedMakeDir { remote_path: p } => p as String
+    BmcNetbootPreparedPutArtifact { remote_path: _, local_path: _ } => acc
+    BmcNetbootPreparedPutText { remote_path: _, text: _ } => acc
+    BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => acc
+  })
+}
+
+fn prepared_put_path(ops: List<BmcNetbootPreparedOp>) -> String {
+  fold(ops, init: "", f: (acc, op) => match op.disposition {
+    BmcNetbootPreparedMakeDir { remote_path: _ } => acc
+    BmcNetbootPreparedPutArtifact { remote_path: p, local_path: _ } => p as String
+    BmcNetbootPreparedPutText { remote_path: p, text: _ } => p as String
+    BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => acc
+  })
+}
+
+type LaunchFields {
+  serve_root: String
+  serve_port: String
+  busybox_path: String
+}
+
+fn prepared_launch_fields(ops: List<BmcNetbootPreparedOp>) -> LaunchFields {
+  fold(ops, init: LaunchFields { serve_root: "", serve_port: "", busybox_path: "" }, f: (acc, op) =>
+    match op.disposition {
+      BmcNetbootPreparedMakeDir { remote_path: _ } => acc
+      BmcNetbootPreparedPutArtifact { remote_path: _, local_path: _ } => acc
+      BmcNetbootPreparedPutText { remote_path: _, text: _ } => acc
+      BmcNetbootPreparedLaunchServe { serve_root: r, serve_port: p, busybox_path: b } =>
+        LaunchFields { serve_root: r as String, serve_port: to_string(p), busybox_path: b as String }
+    })
+}
+
+// THE WHOLE PROVISION STAGES READY: one mkdir, seven puts, one serve launch, in the order they
+// must act -- and the serve launch carries every field FROM THE PLAN, so a serve from somewhere
+// else or on another port is not authorable, and the busybox it runs is the busybox the puts
+// stage (both derive from the same plan record, so they cannot diverge).
+test fn whole_provision_stages_ready_with_the_serve_launch_derived_from_the_plan() -> Bool {
+  let plan = srv4_bmc_netboot_serve_plan
+  let staged = bmc_netboot_provision_staging(plan: plan)
+  let ops = staging_ops(staging: staged)
+  let launch = prepared_launch_fields(ops: ops)
+  staging_ready(staging: staged)
+    && list_length(items: ops) == 9
+    && count(filter(ops, op => is_make_dir(d: op.disposition))) == 1
+    && count(filter(ops, op => is_put(d: op.disposition))) == 7
+    && count(filter(ops, op => is_launch_serve(d: op.disposition))) == 1
+    && launch.serve_root == (plan.netboot_dir as String)
+    && launch.serve_port == to_string(plan.serve_port)
+    && launch.busybox_path == (bmc_netboot_staged_path(plan: plan, name: "busybox") as String)
+}
+
+// THE REMOTE PATH IS DERIVED, NOT AUTHORED: a staged name lands under the plan's serve root by
+// construction -- the op carries a relative name, staging joins it under the plan's netboot_dir,
+// and the subdirectory form (`nocloud/user-data`) stages exactly as a flat one.
+test fn staged_names_derive_the_remote_path_from_the_plan() -> Bool {
+  let plan = srv4_bmc_netboot_serve_plan
+  let dir = bmc_netboot_op_prepared(plan: plan, op: BmcNetbootMakeDir { name: "nocloud" })
+  let sub = bmc_netboot_op_prepared(plan: plan, op: BmcNetbootPutText {
+    name: "nocloud/user-data",
+    text: "instance-id: srv4",
+  })
+  staging_ready(staging: dir)
+    && staging_ready(staging: sub)
+    && prepared_make_dir_path(ops: staging_ops(staging: dir))
+      == join([plan.netboot_dir as String, "/nocloud"], "")
+    && prepared_put_path(ops: staging_ops(staging: sub))
+      == (bmc_netboot_staged_path(plan: plan, name: "nocloud/user-data") as String)
+}
+
+// A NAME THAT IS NOT RELATIVE REFUSES THE WHOLE STAGING: absolute spellings, empty segments, and
+// dot segments all refuse, and the refusal is a STOP -- the good ops prepared before the bad one
+// never become observable, because a refused staging carries no operation list at all (the type
+// has no state in which a refused op sits beside prepared ones).
+test fn staged_names_that_are_not_relative_refuse_the_whole_staging() -> Bool {
+  let plan = srv4_bmc_netboot_serve_plan
+  let good_put = BmcNetbootPutText { name: "grub.cfg", text: "set timeout=1" }
+  let absolute = bmc_netboot_staging_of(plan: plan, ops: [good_put, BmcNetbootMakeDir { name: "/etc" }])
+  let empty_seg = bmc_netboot_staging_of(plan: plan, ops: [good_put, BmcNetbootMakeDir { name: "nocloud//user-data" }])
+  let dot_seg = bmc_netboot_staging_of(plan: plan, ops: [good_put, BmcNetbootMakeDir { name: "../netboot" }])
+  let dot_name = bmc_netboot_staging_of(plan: plan, ops: [good_put, BmcNetbootMakeDir { name: "." }])
+  !staging_ready(staging: absolute)
+    && !staging_ready(staging: empty_seg)
+    && !staging_ready(staging: dot_seg)
+    && !staging_ready(staging: dot_name)
+    && list_length(items: staging_ops(staging: absolute)) == 0
+    && string_contains(s: staging_reason(staging: absolute), pattern: "relative path under the serve root")
+}
+
+// THE VERDICT IS THE ONE PLACE THE LAW LIVES: it answers for every path-carrying op, and the
+// positive side is the estate's own manifest names -- relative, well-formed, staging READY.
+test fn the_relative_path_verdict_answers_well_formed_for_the_estates_names() -> Bool {
+  match bmc_netboot_staged_path_verdict(name: "busybox") {
+    BmcNetbootStagedPathNotRelative { name: _ } => false
+    BmcNetbootStagedPathWellFormed { name: n } => (n as String) == "busybox"
+  }
+    && match bmc_netboot_staged_path_verdict(name: "nocloud/user-data") {
+      BmcNetbootStagedPathNotRelative { name: _ } => false
+      BmcNetbootStagedPathWellFormed { name: n } => (n as String) == "nocloud/user-data"
+    }
+    && match bmc_netboot_staged_path_verdict(name: "/tmp/netboot/busybox") {
+      BmcNetbootStagedPathWellFormed { name: _ } => false
+      BmcNetbootStagedPathNotRelative { name: _ } => true
+    }
+}
+
+// THE UNREALIZABLE SOURCE REFUSES AT STAGING, NOT MID-FOLD: the old provision ran its mkdir and
+// every earlier scp before discovering the put-from-uri had no realized transport; now the
+// refusal is a staging verdict and NOTHING runs -- and a good op prepared before it does not
+// rescue the staging.
+test fn put_from_uri_refuses_the_staging_before_anything_prepares() -> Bool {
+  let plan = srv4_bmc_netboot_serve_plan
+  let mixed = bmc_netboot_staging_of(plan: plan, ops: [
+    BmcNetbootMakeDir { name: "nocloud" },
+    BmcNetbootPutFromUri { name: "later.iso", source: plan.bulk_iso_url },
+  ])
+  !staging_ready(staging: mixed)
+    && list_length(items: staging_ops(staging: mixed)) == 0
+    && string_contains(s: staging_reason(staging: mixed), pattern: "no realized transport")
+}
+
+// THE STAGED TEXT PUTS CARRY THE RENDERED PAYLOADS, AND THEIR LOCAL STAGING NAMES ARE DERIVED
+// FROM THE REMOTE PATH each will land at -- so two staged texts cannot overwrite one another's
+// local file, and the write-then-transfer pair cannot disagree about which file they mean.
+test fn staged_text_puts_derive_distinct_local_staging_paths() -> Bool {
+  let grub_local = bmc_netboot_local_staging_path(remote_path: "/tmp/netboot/grub.cfg" as NonEmptyStr)
+  let user_local = bmc_netboot_local_staging_path(remote_path: "/tmp/netboot/nocloud/user-data" as NonEmptyStr)
+  let meta_local = bmc_netboot_local_staging_path(remote_path: "/tmp/netboot/nocloud/meta-data" as NonEmptyStr)
+  (grub_local as String) == "/tmp/gunbc-bmc-grub.cfg"
+    && (user_local as String) == "/tmp/gunbc-bmc-user-data"
+    && (meta_local as String) == "/tmp/gunbc-bmc-meta-data"
+    && (user_local as String) != (meta_local as String)
+}
+
+// ---- CROSS-MODULE NEGATIVE CONTROL (the seal is the enforcement, so the seal is what is probed) ----
+
+// The typed tests above prove the honest route works; they do not prove the bypass is
+// unwritable. This probe compiles a FOREIGN module source through the guarantee probe corpus --
+// the same harness dag/test/claim/shell/shell_typed_invocation_witness_test.dag uses -- and
+// asserts the compiler refuses the hand-authored construction. The source is compiled as DATA,
+// not as a module of this tree: a bypass that resolved would refuse inside the probe's own
+// compilation, never in this file. The exact spelling a bypass author would reach for: a
+// prepared put with a remote path the author chose, handed to the world as if staging had
+// minted it. The wrapper is a sole_constructor declared in gunbc.bmc_netboot_serve, so the
+// foreign record literal is a SoleConstructorViolation -- a staged fact stays something only
+// staging can mint, which is the whole enforcement surface the seal claims.
+data prepared_op_bypass_probe_source: String = "module probe.bmc_netboot_prepared_op_bypass\nimport gunbc.bmc_netboot_serve { BmcNetbootPreparedOp, BmcNetbootPreparedPutText }\n\ndata probe_bypass_prepared: BmcNetbootPreparedOp = BmcNetbootPreparedOp {\n  disposition: BmcNetbootPreparedPutText {\n    remote_path: \"/etc/somewhere-else/payload\",\n    text: \"authored outside staging\",\n  },\n}\n"
+
+fn bypass_probe_census(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+test fn foreign_module_cannot_hand_author_a_prepared_op() -> Bool {
+  match census_blocking_count_for_class(
+    census: bypass_probe_census(source: prepared_op_bypass_probe_source),
+    wanted: "SoleConstructorViolation",
+  ) {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
