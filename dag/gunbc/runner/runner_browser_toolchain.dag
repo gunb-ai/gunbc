@@ -644,9 +644,9 @@ fn runner_browser_toolchain_apt_requirements() -> List<BrowserToolchainAptRequir
   list_append(
     left: [
       BrowserToolchainAptRequirement {
-        label: unzip_cli_tool.name,
+        label: unzip_cli_tool.program.invocation,
         subject: AptBinaryOnPath { tool: unzip_cli_tool },
-        package: match apt_package_of(tool: unzip_cli_tool) { Present { value: p } => p  Absent => unzip_cli_tool.name },
+        package: match apt_package_of(tool: unzip_cli_tool) { Present { value: p } => p  Absent => unzip_cli_tool.program.invocation },
       },
       BrowserToolchainAptRequirement {
         label: package_xz_utils,

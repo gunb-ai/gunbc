@@ -38,27 +38,33 @@ test fn witness_oom_wire_parses_to_sixty_percent() -> Bool {
   match parse_managed_oom_pressure_limit_show(raw: "2576980377") {
     Present { value: p } =>
       percent_count(p: p) == 60
-        && managed_oom_pressure_limit_wire_matches_percent(
-          wire: 2576980377,
-          desired: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit
-        )
+        && match gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit {
+          Present { value: desired } =>
+            managed_oom_pressure_limit_wire_matches_percent(
+              wire: 2576980377,
+              desired: desired
+            )
+          Absent => false
+        }
     Absent => false
   }
 }
 
 test fn witness_oom_show_value_single_authority() -> Bool {
-  managed_oom_pressure_limit_show_value(
-    p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit
-  ) == 2576980377
+  match gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit {
+    Present { value: limit } => managed_oom_pressure_limit_show_value(p: limit) == 2576980377
+    Absent => false
+  }
 }
 
 test fn witness_oom_fixture_converges_to_policy_percent() -> Bool {
   match oom_pressure_limit_live_read_typed(row: gunbc_srv1_oom_pressure_limit_fixture_row) {
     Present { value: read } =>
-      oom_pressure_limit_converge_verdict(
-        read: read,
-        desired: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit
-      ) == VerdictConverged
+      match gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit {
+        Present { value: desired } =>
+          oom_pressure_limit_converge_verdict(read: read, desired: desired) == VerdictConverged
+        Absent => false
+      }
     Absent => false
   }
 }

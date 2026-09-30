@@ -1,5 +1,7 @@
 module extdeps.netfilter.nfct
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { String, NonEmptyStr, List, FilePath }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -30,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // the flow and expectation tables; `nfct` manages the USERSPACE helper objects that create
 // expectations. They are separate programs in the same upstream project, so they are separate
 // authorities here rather than one module with two spellings.
-data nfct_program: NonEmptyStr = "nfct"
+fn nfct_program() -> ProgramIdentity = cataloged_program(invocation: "nfct")
 
 // NO ArgvCommand BUILDER HERE, DELIBERATELY. The only consumer in this repository reaches this
 // program through a privileged read projection that prepends its own sudo binary path, so it needs
@@ -50,7 +52,7 @@ data nfct_helper_list_arguments: List<NonEmptyStr> = ["helper", "list"]
 data nfct_bin_dir: FilePath = apt_sbin_dir
 
 fn nfct_installed_path() -> FilePath {
-  apt_installed_bin_path(bin_dir: nfct_bin_dir, binary: nfct_program)
+  apt_installed_bin_path(bin_dir: nfct_bin_dir, binary: nfct_program().invocation)
 }
 
 // THE BINARY IS IN /usr/sbin, AND THE ROW SAYS SO. Ubuntu noble ships nfct in its own package,
@@ -58,7 +60,7 @@ fn nfct_installed_path() -> FilePath {
 // package and not a package named conntrack-tools. A FleetSsh presence readback tests exactly
 // bin_dir + name, so a row naming /usr/bin here would refuse after a successful install.
 data nfct_cli_tool: CliTool = CliTool {
-  name: nfct_program,
+  program: nfct_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_nfct, bin_dir: nfct_bin_dir }],
 }
