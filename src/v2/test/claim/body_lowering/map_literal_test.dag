@@ -218,11 +218,18 @@ test fn ml_a_call_argument_has_no_expected_type_holds() -> Bool {
   ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_call_argument"), reason: ^resolve_anonymous_map_no_expected_type)
 }
 
-// Control 7: resolve's choice is not proof. The good literal elaborates and infers; the Int value
-// elaborates too and then infer refuses it against V = Bool.
-test fn ml_infer_still_checks_an_elaborated_map_holds() -> Bool {
+// Control 7: resolve's choice is not proof. The Int value elaborates (resolve accepts it) and
+// infer then refuses it against V = Bool.
+test fn ml_infer_refuses_an_elaborated_value_mismatch_holds() -> Bool {
   let bad = ml_resolve_subject(subject: "v2.test.ml_value_mismatch")
-  ml_infers(o: ml_resolve_subject(subject: "v2.test.ml_headless")) && ml_accepts(o: bad) && !ml_infers(o: bad)
+  ml_accepts(o: bad) && (ml_infers(o: bad) == false)
+}
+
+// Control 7's positive half: a well-typed elaborated map infers. Measured with #12760 merged: this
+// is red for the HEADED spelling too (map_from_entries(entries: [MapIntroductionEntry { .. }]) under
+// Map<String, Bool> does not infer), so the gap is infer's, not the arm's; its row says so.
+test fn ml_an_elaborated_map_infers_holds() -> Bool {
+  ml_infers(o: ml_resolve_subject(subject: "v2.test.ml_headless"))
 }
 
 fn ml_infers(o: Outcome<ResolvedTree>) -> Bool {
