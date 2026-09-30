@@ -7,7 +7,7 @@ import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import extdeps.systemd { systemd_unit_property_wire, InvocationIDProperty, ExecMainStatus }
+import extdeps.systemd { systemd_unit_property_wire, InvocationIDProperty, ExecMainStatus, ActiveState }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.build_cache_instance { runner_slot_instance_name }
@@ -109,14 +109,45 @@ fn invocation_property(unit: NonEmptyStr) -> UnitPropertyReading {
   show_property(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
 }
 
-fn wait_inactive(unit: NonEmptyStr, polls_remaining: Int) -> Bool {
-  if systemd.Systemctl.IsActive(unit: unit).active == false {
-    true
-  } else if polls_remaining <= 0 {
-    false
-  } else {
-    let _slept = sleep_delay_seconds_second_carrier_projection(duration: microvm_slot_start_poll_interval)
-    wait_inactive(unit: unit, polls_remaining: polls_remaining - 1)
+// Poll the expected invocation on both sides of the activity observation. An unread property or
+// another invocation never means this controller finished. The caller retains start exclusion.
+type MicrovmInvocationWait
+  = InvocationStillRunning
+  | InvocationTerminated
+  | InvocationWaitRefused { detail: String }
+
+fn microvm_invocation_observation(expected: NonEmptyStr, before: UnitPropertyReading,
+  active: UnitPropertyReading, after: UnitPropertyReading) -> MicrovmInvocationWait {
+  match before {
+    UnitPropertyUnread { property: _, detail } => InvocationWaitRefused { detail: detail }
+    UnitPropertyRead { value: first } => match after {
+      UnitPropertyUnread { property: _, detail } => InvocationWaitRefused { detail: detail }
+      UnitPropertyRead { value: last } => if first != (expected as String) || last != (expected as String) {
+        InvocationWaitRefused { detail: "unit invocation changed during completion observation" }
+      } else { match active {
+        UnitPropertyUnread { property: _, detail } => InvocationWaitRefused { detail: detail }
+        UnitPropertyRead { value } => if value == "inactive" || value == "failed" { InvocationTerminated }
+          else if value == "active" || value == "activating" || value == "deactivating" || value == "reloading" { InvocationStillRunning }
+          else { InvocationWaitRefused { detail: "unit activity is unknown; termination is not established" } }
+      } }
+    }
+  }
+}
+
+fn microvm_invocation_observe(unit: NonEmptyStr, invocation: NonEmptyStr) -> MicrovmInvocationWait {
+  let before = invocation_property(unit: unit)
+  let active = show_property(unit: unit, property: systemd_unit_property_wire(property: ActiveState))
+  let after = invocation_property(unit: unit)
+  microvm_invocation_observation(expected: invocation, before: before, active: active, after: after)
+}
+
+fn wait_invocation_terminated(unit: NonEmptyStr, invocation: NonEmptyStr, polls_remaining: Int) -> MicrovmInvocationWait {
+  match microvm_invocation_observe(unit: unit, invocation: invocation) {
+    InvocationStillRunning => if polls_remaining <= 0 { InvocationStillRunning } else {
+      let _slept = sleep_delay_seconds_second_carrier_projection(duration: microvm_slot_start_poll_interval)
+      wait_invocation_terminated(unit: unit, invocation: invocation, polls_remaining: polls_remaining - 1)
+    }
+    result => result
   }
 }
 
@@ -190,18 +221,19 @@ fn microvm_unit_start_on_its_host(subject: MicrovmUnitStartSubject) -> MicrovmSl
 
 fn microvm_unit_start_observed(subject: MicrovmUnitStartSubject, invocation: NonEmptyStr) -> MicrovmSlotStartRun {
   let unit = subject.unit
-  if !wait_inactive(unit: unit, polls_remaining: microvm_unit_start_polls(bound: subject.bound)) {
-    SlotStartStillActiveAtBound {
-      unit: unit,
-      invocation_id: invocation,
-      bound: subject.bound,
-    }
-  } else {
-    SlotStartCompleted {
-      unit: unit,
-      invocation_id: invocation,
-      exec_main_status: show_property(unit: unit, property: systemd_unit_property_wire(property: ExecMainStatus)),
-      controller_receipt: read_controller_receipt(subject: subject, invocation_id: invocation),
+  match wait_invocation_terminated(unit: unit, invocation: invocation, polls_remaining: microvm_unit_start_polls(bound: subject.bound)) {
+    InvocationStillRunning => SlotStartStillActiveAtBound { unit: unit, invocation_id: invocation, bound: subject.bound }
+    InvocationWaitRefused { detail } => SlotStartRefused { unit: unit, detail: detail }
+    InvocationTerminated => {
+      let status = show_property(unit: unit, property: systemd_unit_property_wire(property: ExecMainStatus))
+      let receipt = read_controller_receipt(subject: subject, invocation_id: invocation)
+      match microvm_invocation_observe(unit: unit, invocation: invocation) {
+        InvocationTerminated => SlotStartCompleted {
+          unit: unit, invocation_id: invocation, exec_main_status: status, controller_receipt: receipt,
+        }
+        InvocationStillRunning => SlotStartRefused { unit: unit, detail: "controller is active after receipt readback" }
+        InvocationWaitRefused { detail } => SlotStartRefused { unit: unit, detail: detail }
+      }
     }
   }
 }
