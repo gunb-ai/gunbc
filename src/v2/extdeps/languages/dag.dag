@@ -1920,6 +1920,49 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
 // else. The clause is consumed and then DISCARDED when the fn lowers to an Arrow: nothing on the
 // native route checks caller admission, and the stage that does adds its Arrow carrier together
 // with that consumer (gunbc.rung_drop admit_callers_discarded_on_the_native_route).
+// `uses net: Network, fs: Filesystem` after a fn's return clause declares the resources the fn
+// requires, as v1 02_parse parse_uses_clause reads it: one or more comma-separated entries, each a
+// name, a type and an optional parenthesised config. `uses` is matched as an exact-word terminal and
+// stays an ordinary identifier everywhere else. The clause PARSES; it does not lower yet: v2 has no
+// carrier for a fn's resource requirement, so v2.compiler.body_lowering_fold refuses every fn that
+// carries one, located at the clause (body_lowering_reason_uses_clause_unmodeled), rather than
+// lowering the fn and dropping the requirement.
+fn dag_grammar_uses_clause_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "uses")),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_uses_entry),
+      right: dag_grammar_repeat(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_comma),
+          right: dag_grammar_nonterminal(production: ^dag_production_uses_entry)
+        )
+      )
+    )
+  )
+}
+
+fn dag_grammar_uses_entry_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_binding_name_terminal(),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_colon),
+      right: dag_grammar_sequence(
+        left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
+        right: dag_grammar_optional(
+          element: dag_grammar_sequence(
+            left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+            right: dag_grammar_sequence(
+              left: dag_grammar_field_init_list_helper(),
+              right: dag_grammar_terminal(token_class: ^dag_token_rparen)
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
 fn dag_grammar_admit_callers_clause_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_literal_terminal(
@@ -1956,9 +1999,10 @@ fn dag_grammar_admit_callers_clause_expr() -> GrammarExpr {
 // is gunbc.recurring_failure_mode a_positional_fact_is_obtained_by_searching_for_its_shape.
 //
 // WHAT THAT READER RELIES ON, stated so it is checkable rather than folded into its own comment:
-// this production has THREE optionals, and only generic_params precedes the return clause, so
-// generic_params is the entire risk surface for the depth. The admit_callers clause is the third
-// and sits AFTER the return clause, so it does not shift the depth this reader walks.
+// this production has FOUR optionals, and only generic_params precedes the return clause, so
+// generic_params is the entire risk surface for the depth. The uses clause and the admit_callers
+// clause are the third and fourth and sit AFTER the return clause, so they do not shift the depth
+// this reader walks.
 // An elided optional still occupies
 // its slot -- v2.compiler.parse `parse_expr_optional` returns grammar_empty_node on the rejected
 // arm -- so the depth does not shift when it is absent. Both arms are held by executing claims in
@@ -1984,15 +2028,20 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
             ),
             right: dag_grammar_sequence(
               left: dag_grammar_optional(
-                element: dag_grammar_nonterminal(production: ^dag_production_admit_callers_clause)
+                element: dag_grammar_nonterminal(production: ^dag_production_uses_clause)
               ),
-              right: dag_grammar_choice(
-                left: dag_grammar_nonterminal(production: ^dag_production_fn_body),
-                right: dag_grammar_sequence(
-                  left: dag_grammar_terminal(token_class: ^dag_token_eq),
-                  right: dag_grammar_expect(
-                    element: dag_grammar_nonterminal(production: ^dag_production_expr),
-                    reason: FnExpressionBodyMissingAfterEq
+              right: dag_grammar_sequence(
+                left: dag_grammar_optional(
+                  element: dag_grammar_nonterminal(production: ^dag_production_admit_callers_clause)
+                ),
+                right: dag_grammar_choice(
+                  left: dag_grammar_nonterminal(production: ^dag_production_fn_body),
+                  right: dag_grammar_sequence(
+                    left: dag_grammar_terminal(token_class: ^dag_token_eq),
+                    right: dag_grammar_expect(
+                      element: dag_grammar_nonterminal(production: ^dag_production_expr),
+                      reason: FnExpressionBodyMissingAfterEq
+                    )
                   )
                 )
               )
@@ -2712,6 +2761,16 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_else_less_if_stmt_expr(),
     emitted: ^dag_surface_else_less_if_stmt
   )
+  let uses_clause = dag_grammar_production(
+    name: ^dag_production_uses_clause,
+    expression: dag_grammar_uses_clause_expr(),
+    emitted: ^dag_surface_uses_clause
+  )
+  let uses_entry = dag_grammar_production(
+    name: ^dag_production_uses_entry,
+    expression: dag_grammar_uses_entry_expr(),
+    emitted: ^dag_surface_uses_entry
+  )
   let admit_callers_clause = dag_grammar_production(
     name: ^dag_production_admit_callers_clause,
     expression: dag_grammar_admit_callers_clause_expr(),
@@ -2868,6 +2927,8 @@ fn dag_grammar_root() -> GrammarRoot {
       import_block,
       field_decl_block,
       positional_variant_payload,
+      uses_clause,
+      uses_entry,
       admit_callers_clause,
       else_less_if_stmt,
       fn_body,
