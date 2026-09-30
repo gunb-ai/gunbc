@@ -1,5 +1,7 @@
 module extdeps.tools.sha512sum
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.algebra { trim }
 
 import std.types { NonEmptyStr, Bool, FilePath, Unit }
@@ -17,8 +19,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn sha512sum_program() -> ProgramIdentity = cataloged_program(invocation: "sha512sum")
+
 data sha512sum_cli_tool: CliTool = CliTool {
-  name: "sha512sum",
+  program: sha512sum_program(),
   min_version: none,
   installable_via: [SourceCoreutils],
 }

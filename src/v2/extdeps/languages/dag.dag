@@ -3974,7 +3974,7 @@ fn dag_type_atom_node(identity: Symbol) -> Node {
 }
 
 // A DECLARED ARROW FOR A FIXTURE, built the way the declared-signature lowering builds one: the
-// domain and its declared order come from one mint (v2.std.compilers.body_lowering
+// domain and its declared order come from one mint (v2.std.arrow_signature
 // declared_signature), so a fixture
 // cannot build a domain and an order that disagree. `domain` is the AUTHORED parameter list, in the
 // order the fixture declares it; it is never a canonicalized node, whose label-sorted sequence is not
