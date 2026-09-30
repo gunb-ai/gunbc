@@ -140,6 +140,11 @@ import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrap
 import v2.std.node_query {
   node_positional_child_targets,
   construct_node,
+  construct_tag_elided_reference,
+  construct_tag_reading,
+  ConstructTagAuthored,
+  ConstructTagElided,
+  NotAConstruct,
   construct_tag_optional,
   field_projection_node,
   field_projection_optional,
@@ -585,7 +590,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
         || (match body_lower_string_literal_value_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
         || (match dag_symbol_literal_name_optional(node: node) { Present { value: _ } => true  Absent => false })
         || qualified_name_spine_shape_present(root: node)
-        || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
+        || (match construct_tag_reading(n: node) { ConstructTagAuthored { reference: _ } => true  ConstructTagElided => true  NotAConstruct => false })
         || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
 }
@@ -704,8 +709,11 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_field_decl_block)
     || (emitted == ^dag_surface_positional_variant_payload)
     || (emitted == ^dag_surface_admit_callers_clause)
+    || (emitted == ^dag_surface_uses_clause)
+    || (emitted == ^dag_surface_uses_entry)
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
+    || (emitted == ^dag_surface_field_init_string_key)
     || (emitted == ^dag_surface_where_refinement_clause)
     || (emitted == ^dag_surface_where_predicate)
     || (emitted == ^dag_surface_arrow_lambda)
@@ -3505,13 +3513,30 @@ fn body_lower_fn_decl_exit_refusal_optional(captured: Node) -> Optional<Outcome<
   }
 }
 
+// A FN THAT DECLARES A `uses` CLAUSE REFUSES, LOCATED AT THE CLAUSE, ON EVERY ROUTE. The clause is
+// the fn's resource (effect) requirement and v2 has no carrier for it yet
+// (gunbc.recurring_failure_mode uses_clause_has_no_carrier), so lowering the fn would drop the
+// requirement. Both arms -- the full arrow and the census arrow -- ask this first, because the
+// requirement is part of the signature both of them read.
+fn body_lower_fn_uses_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
+  match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_uses_clause) {
+    Absent => optional_absent()
+    Present { value: clause } =>
+      optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_uses_clause_unmodeled, n: clause)))
+  }
+}
+
 fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_fn_decl_exit_refusal_optional(captured: captured) {
+      match body_lower_fn_uses_refusal_optional(captured: captured) {
         Present { value: refused } => body_lowering_lowered(o: refused)
-        Absent => body_lower_fn_decl_to_arrow_admitted(shell: shell, captured: captured)
+        Absent =>
+          match body_lower_fn_decl_exit_refusal_optional(captured: captured) {
+            Present { value: refused } => body_lowering_lowered(o: refused)
+            Absent => body_lower_fn_decl_to_arrow_admitted(shell: shell, captured: captured)
+          }
       }
   }
 }
@@ -3761,16 +3786,20 @@ fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_fn_signature_optional(captured: captured) {
-        Rejected { diagnostics: r } => body_lowering_lowered(o: Rejected { diagnostics: r })
-        Accepted { value: Absent, diagnostics: _ } => body_lower_wrapper_retained_shell(shell: shell)
-        Accepted { value: Present { value: sig }, diagnostics: _ } =>
-          match body_lower_fn_signature_refusal(shell: shell, sig: sig) {
-            Present { value: refused } => body_lowering_lowered(o: refused)
-            Absent =>
-              body_lowering_lowered(
-                o: outcome_accepted(value: body_lower_fn_decl_arrow(shell: shell, sig: sig, body: Absent))
-              )
+      match body_lower_fn_uses_refusal_optional(captured: captured) {
+        Present { value: refused } => body_lowering_lowered(o: refused)
+        Absent =>
+          match body_lower_fn_signature_optional(captured: captured) {
+            Rejected { diagnostics: r } => body_lowering_lowered(o: Rejected { diagnostics: r })
+            Accepted { value: Absent, diagnostics: _ } => body_lower_wrapper_retained_shell(shell: shell)
+            Accepted { value: Present { value: sig }, diagnostics: _ } =>
+              match body_lower_fn_signature_refusal(shell: shell, sig: sig) {
+                Present { value: refused } => body_lowering_lowered(o: refused)
+                Absent =>
+                  body_lowering_lowered(
+                    o: outcome_accepted(value: body_lower_fn_decl_arrow(shell: shell, sig: sig, body: Absent))
+                  )
+              }
           }
       }
   }
@@ -7183,12 +7212,14 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
 
 
 // AN ADMITTED GUARD LOWERS TO A BRANCH WHOSE ELSE IS THE REST OF THE SPINE: `if c { ..; return e }`
-// followed by statements is Branch(c, <arm>, <rest>). The spine matches it through
-// body_lower_admitted_guard_optional itself, and refuses any other else-less `if` it meets, so the
-// lowering owns the admission rule rather than relying on the wall having run first. The arm is a statement sequence ending in a
-// return, which the statement spine lowers to its operand; the wall
-// (body_lower_exit_outside_tail_optional) admits a guard only in a tail spine, so the arm's value
-// and the rest's value are both the function's result.
+// followed by statements is Branch(c, <arm>, <rest>). Admission has two halves, owned in two places.
+// That the arm ENDS IN A RETURN is checked here, by construction: the spine matches a guard only
+// through body_lower_admitted_guard_optional and refuses any other else-less `if` it meets. That the
+// guard sits in a TAIL spine is NOT checked here; it is established only by the wall
+// (body_lower_exit_outside_tail_optional) having run first with tail: true, at the fn declaration and
+// the fn value block body. A data initializer runs the same wall with tail: false, so any exit there
+// refuses and no guard is admitted. Given both halves, the arm's value and the rest's value are each
+// the enclosing function's result.
 fn body_lower_guard_branch(guard: BodyLowerGuard, rest: Node) -> Outcome<Node> {
   bind_outcome(o: body_lower_value_read(value: guard.condition), f: fn(condition) {
     let arm_lowered = match body_lower_fn_body_stmt_seq_optional(fn_body: guard.arm) {
@@ -8093,6 +8124,19 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
 // shape v2.std.node admits and the shape a fielded pattern lowers to, so `Rec { n: 1 }` and
 // `Rec { n: x } =>` are one shape read in two directions. A dotted head (`m.R { .. }`) is a postfix
 // chain and reaches the same builder, body_lower_record_construct, through its PostfixRecord step.
+// A STRING-KEYED INIT IS NOT A RECORD FIELD, AND THE PARSE SAYS SO. The key's kind is the grammar's
+// choice, carried as the production identity ^dag_surface_field_init_string_key
+// (v2.extdeps.languages.dag dag_grammar_field_init_expr), so a record literal refuses it at the item
+// rather than reading `{ "n": true }` as field `n`. Admitting a quoted key whose decoded text names a
+// declared field is a declared frontier (gunbc#12740); a map literal's entry is the map arm's
+// (gunbc#12758), which dispatches on this same identity.
+fn body_lower_field_init_is_string_keyed(item: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+    Present { value: id } => id == ^dag_surface_field_init_string_key
+    Absent => false
+  }
+}
+
 fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   let stripped = body_lower_deep_unwrap_optional(node: item)
   let captured = match parse_production_captured_child_optional(node: stripped) {
@@ -8102,6 +8146,9 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   let refuse = outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item)
   )
+  if body_lower_field_init_is_string_keyed(item: captured) {
+    refuse
+  } else {
   match sugar_sequence_pair_optional(node: captured) {
     Absent => refuse
     Present { value: pair } =>
@@ -8121,6 +8168,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
               }
           }
       }
+  }
   }
 }
 
@@ -8216,9 +8264,32 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<RecordLite
   }
 }
 
+// AN ANONYMOUS RECORD LITERAL `{ f: v }` names no constructor, and lowering does not choose one:
+// the constructor is the EXPECTED type's, which only resolve reads from an authored annotation. So
+// it lowers through the one construct builder with its tag ELIDED
+// (v2.std.node_query construct_tag_elided_reference), and resolve's construct-tag writer either
+// writes the expected record's reference or refuses located
+// (docs/plans/anonymous-record-literal-design.md). The field set is never consulted to choose. A
+// string-keyed item (a map literal) has no field edge here and still refuses at the item; the map
+// arm gives it one (gunbc#12734).
+fn body_lower_try_headless_record_literal(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_record_brace_items_optional(brace: captured) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: items } =>
+      bind_outcome(
+        o: body_lower_record_construct(
+          reference: construct_tag_elided_reference(source: captured),
+          items: items,
+          source: captured
+        ),
+        f: fn(construct) { outcome_accepted(value: optional_present(value: construct)) }
+      )
+  }
+}
+
 fn body_lower_try_record_literal(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_record_literal_tag_optional(captured: captured) {
-    Absent => outcome_accepted(value: optional_absent())
+    Absent => body_lower_try_headless_record_literal(captured: captured)
     Present { value: read } =>
       match body_lower_record_literal_field_items_optional(captured: captured) {
         Absent => outcome_accepted(value: optional_absent())
