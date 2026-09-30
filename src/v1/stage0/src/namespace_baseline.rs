@@ -2000,11 +2000,16 @@ pub fn environment_closure_paths() -> Result<BTreeSet<String>, EnvironmentLoadRe
 }
 
 /// The repository-relative files of the live tree's resolved closure rooted at `entry_rel`.
+///
+/// The live tree's index is the PROCESS-SHARED one (`process_shared_index`): the parse environment's
+/// closure and the kernel-types closure are two demands on one name set, and building a fresh index
+/// per demand parsed every live-tree file once per closure. A floor whose diff touches
+/// `std/types.dag` asks both and was refused `MultiEntryIndexBuiltTwiceForOneNameSet`.
 fn closure_paths_of(entry_rel: &str) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
     let root = super::workspace_root();
     let entry = root.join(entry_rel);
     let dag_root = root.join(DAG_SOURCE_ROOT);
-    let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
+    let index = super::process_shared_index(&[dag_root.display().to_string()]);
     let (graph, _indices) =
         super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.display().to_string())
             .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
