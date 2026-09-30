@@ -15614,6 +15614,91 @@ fn trace_emit(channel: OutputChannel, line: &str) {
 /// the observation_emit_census roster cannot go stale.
 pub const SHELL_CENSUS_MARKER: &str = "[shell]";
 
+/// Census hygiene marker for the `[file]` emit family — the mirror of SHELL_CENSUS_MARKER,
+/// kept for the same reason: the `[file]` raw shape is gone from the seed and
+/// `gunbc.observation_emit_census`'s `[file]` row must still find its MARKER, or the
+/// bidirectional roster check goes stale without reddening.
+///
+/// IT IS NOT THE ROW'S `producer`, and an earlier draft of this comment said it was. The
+/// census keeps those as separate obligations with separate fields: `marker` feeds
+/// census_marker_present, while `producer` is the DeclarationRef of the declaration that
+/// actually EMITS the line and feeds w_every_named_producer_symbol_is_present_in_the_seed.
+/// This constant emits nothing — it is the retired spelling kept as a presence anchor — so
+/// naming it as the producer would let all seven call sites in `dispatch_file` be deleted
+/// while the census still reported the family migrated. `file_trace_site` names
+/// `dispatch_file`; this constant anchors the marker.
+pub const FILE_CENSUS_MARKER: &str = "[file]";
+
+/// Mirror of `gunbc.observation_seed_render.seed_file_effect_begin_line`.
+///
+/// The `[file]` family's seven emit sites all fire BEFORE their effect, so the subject is the
+/// named intent from `extdeps.filesystem.filesystem_io`'s operation roster and the path is the
+/// operand — never the raw verb. Keeping the path on the line is load-bearing rather than
+/// decorative: the pre-attempt trace is what made twelve failed publication writes (srv1,
+/// 2026-08-19) log exactly like successes, so a projection that dropped the operand would
+/// re-create that defect.
+///
+/// `clause` is the ALREADY-RENDERED parenthetical body, the same argument
+/// `ci_file_effect_line` takes: "" for a path-only operation, "N bytes" or "N bytes, mode M" for a
+/// write. Passing the rendered clause rather than a count-plus-flag keeps the mirror from
+/// inventing a second representation of the payload sum the authority declares.
+///
+/// ORACLE RED, AT A STATED RUNG: the seed test `file_effect_begin_mirror_matches_seed_oracle`
+/// renders this fn's .dag counterpart through the interpreter on the same inputs and asserts
+/// byte-equality, so the format authority stays in `ci_file_effect_line` (the same pairing
+/// `render_shell_effect_*_line_mirror` and `render_heartbeat_line_mirror` carry). That test is a
+/// `--lib` test and the job running that population is `continue-on-error`, NOT read by the
+/// required aggregate -- see `gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`, and review
+/// 72597 for why this comment states the rung rather than the stronger claim: a semantic drift
+/// between the two representations can land green. What the required path does buy is
+/// ATTRIBUTION: this module compiles under the required `generated` lane's clippy step, so
+/// deleting or renaming these declarations and their call sites still cannot land silently.
+pub fn render_file_effect_begin_line_mirror(
+    intent: &str,
+    path: &str,
+    clause: &str,
+    emoji: bool,
+) -> String {
+    let _ = FILE_CENSUS_MARKER;
+    let glyph = if emoji { "🔄" } else { "◐" };
+    let detail = if clause.is_empty() {
+        String::new()
+    } else {
+        format!(" ({clause})")
+    };
+    format!("{glyph} started {intent} {path}{detail}")
+}
+
+/// The payload clause a write carries: bytes, plus the mode's octal spelling when one is declared.
+/// The spelling is produced HERE for the seed mirror the same way `file_mode_octal` produces it for
+/// the authority — a write site that declared a mode passes it, and the two agree because the
+/// oracle test feeds both the same mode.
+pub fn file_payload_clause(bytes: u64, mode: Option<u32>) -> String {
+    match mode {
+        None => format!("{bytes} bytes"),
+        Some(m) => format!("{bytes} bytes, mode {}", file_mode_octal(m)),
+    }
+}
+
+/// The octal spelling of a mode, mirroring `extdeps.access.posix file_mode_octal` — four digits,
+/// most significant first (setuid/setgid/sticky, then owner, group, other).
+///
+/// THE CALLER ADMITS THE RANGE, AND `u32` IS NOT THE ADMISSION. `dispatch_file` refuses a mode
+/// outside 0..=0o7777 before dispatch ("needs an Int `mode` within 0..=0o7777"), so every value
+/// reaching here is already four octal digits wide; the mask makes that precondition explicit
+/// instead of relying on it. An earlier draft of this comment claimed the range was guaranteed by
+/// the TYPE, which is false — a u32 holds far more — and a fabricated claim beside a
+/// silently-masking body is the widening §5 forbids. The claim now names where the refusal lives,
+/// and `file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range` holds the two
+/// together by execution rather than by assertion.
+fn file_mode_octal(mode: u32) -> String {
+    let special = (mode >> 9) & 0o7;
+    let owner = (mode >> 6) & 0o7;
+    let group = (mode >> 3) & 0o7;
+    let other = mode & 0o7;
+    format!("{special}{owner}{group}{other}")
+}
+
 /// Collapse argv into one readable line — runs of whitespace become a single space —
 /// so a multiline `sh -c` script reads as one command. Used in Failed.error (uncapped:
 /// an anomaly expands fully). Ambient subjects are named intents, not argv.
@@ -17124,7 +17209,12 @@ fn dispatch_file(
             "delete" => {
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] delete {}", path),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.Delete",
+                        &path,
+                        "",
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match std::fs::remove_file(&path) {
                     Ok(()) => Ok(FileResult {
@@ -17148,7 +17238,12 @@ fn dispatch_file(
             "list" => {
                 trace_emit(
                     OutputChannel::Instrumentation,
-                    &format!("[file] list {}", path),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.List",
+                        &path,
+                        "",
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match std::fs::read_dir(&path) {
                     Ok(entries) => match collect_listing_entry_names(entries) {
@@ -17198,7 +17293,12 @@ fn dispatch_file(
                 let byte_count = content.len() as i64;
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] write_owner_only {} ({} bytes)", path, byte_count),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteOwnerOnly",
+                        &path,
+                        &file_payload_clause(byte_count as u64, None),
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match write_file_owner_only(&path, content.as_bytes()) {
                     Ok(()) => Ok(FileResult {
@@ -17234,7 +17334,12 @@ fn dispatch_file(
                 let byte_count = content.len() as i64;
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] write_create_new {} ({} bytes)", path, byte_count),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteCreateNew",
+                        &path,
+                        &file_payload_clause(byte_count as u64, None),
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match write_file_create_new(&path, content.as_bytes(), None) {
                     Ok(()) => Ok(FileResult {
@@ -17291,9 +17396,11 @@ fn dispatch_file(
                 let byte_count = content.len() as i64;
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!(
-                        "[file] write_create_new_with_mode {} ({} bytes, mode {:o})",
-                        path, byte_count, mode
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteCreateNewWithMode",
+                        &path,
+                        &file_payload_clause(byte_count as u64, Some(mode)),
+                        shell_obs_emoji(),
                     ),
                 );
                 return match write_file_create_new(&path, content.as_bytes(), Some(mode)) {
@@ -17345,7 +17452,12 @@ fn dispatch_file(
         let byte_count = content.len() as i64;
         trace_emit(
             OutputChannel::ShellTrace,
-            &format!("[file] write {} ({} bytes)", path, byte_count),
+            &render_file_effect_begin_line_mirror(
+                "Filesystem.Write",
+                &path,
+                &file_payload_clause(byte_count as u64, None),
+                shell_obs_emoji(),
+            ),
         );
         match std::fs::write(&path, content.as_bytes()) {
             Ok(()) => Ok(FileResult {
@@ -17368,7 +17480,7 @@ fn dispatch_file(
     } else {
         trace_emit(
             OutputChannel::Instrumentation,
-            &format!("[file] read {}", path),
+            &render_file_effect_begin_line_mirror("Filesystem.Read", &path, "", shell_obs_emoji()),
         );
         match std::fs::read_to_string(&path) {
             Ok(s) => Ok(FileResult {
@@ -24388,6 +24500,271 @@ mod dispatch_rest_decision_tests {
         assert!(!rest_auth_authority_conflict(true, false));
         assert!(!rest_auth_authority_conflict(false, true));
         assert!(!rest_auth_authority_conflict(false, false));
+    }
+}
+
+#[cfg(test)]
+mod file_effect_trace_tests {
+    use super::file_mode_octal;
+    use super::file_payload_clause;
+    use super::render_file_effect_begin_line_mirror;
+    use super::Value;
+
+    /// THE ORACLE RED for `render_file_effect_begin_line_mirror`: the mirror must be BYTE-EQUAL to
+    /// the .dag renderer on the same inputs, and the .dag renderer is EXECUTED here through the
+    /// interpreter rather than restated. Three specimens cover the three payload states the seed
+    /// can produce: a write with a mode, a write without one, and a path-only operation.
+    ///
+    /// THE EXPECTED STRINGS ARE ASSERTED TOO, so the three agree over one input: if the .dag
+    /// moves, this reds; if the mirror moves, this reds; and neither can pass by the other's
+    /// construction. The operand is asserted separately in every case, because that is the half
+    /// the retired raw line carried and the half whose loss gunbc.roadmap_dispatch_actuator
+    /// records as the srv1 2026-08-19 publication incident.
+    fn oracle_context() -> super::InterpContext {
+        let root = crate::cli_run::workspace_root();
+        let roots = vec![
+            root.join("dag").to_string_lossy().into_owned(),
+            root.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/gunbc/observation_seed_render.dag")
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = crate::cli_run::resolve_entry_graph_shared(&roots, &entry)
+            .expect("observation_seed_render resolves");
+        crate::cli_run::make_eval_context(&graph, indices, super::ExecutionMode::Hermetic)
+    }
+
+    fn variant(
+        ctx: &super::InterpContext,
+        name: &str,
+        fields: Vec<(super::Symbol, Value)>,
+    ) -> Value {
+        Value::Variant {
+            type_name: ctx.sym("FileEffectPayload"),
+            variant_name: ctx.sym(name),
+            fields: std::rc::Rc::new(fields),
+        }
+    }
+
+    fn byte_size(ctx: &super::InterpContext, bytes: u64) -> Value {
+        super::run_in_context_with_args(
+            ctx,
+            "byte_size",
+            &[(Some("count".to_string()), Value::Int(bytes as i64))],
+            false,
+        )
+        .expect("std.measure byte_size constructs")
+    }
+
+    /// The mode field as `FileMode?`, built by the authority itself: `extdeps.access.posix
+    /// file_mode_of_octal_text` reads a chmod spelling back into a FileMode, so the fixture never
+    /// hand-builds a `Present { value: Int }` that the authority would not accept. An unreadable
+    /// spelling yields the Absent arm — the same call, the other direction.
+    fn mode_bound(ctx: &super::InterpContext, spelling: &str) -> Value {
+        super::run_in_context_with_args(
+            ctx,
+            "file_mode_of_octal_text",
+            &[(Some("text".to_string()), Value::Str(spelling.into()))],
+            false,
+        )
+        .expect("extdeps.access.posix file_mode_of_octal_text resolves")
+    }
+
+    fn written_payload(ctx: &super::InterpContext, bytes: u64, mode: Option<&str>) -> Value {
+        let bound = match mode {
+            Some(spelling) => mode_bound(ctx, spelling),
+            None => mode_bound(ctx, "not-a-mode"),
+        };
+        variant(
+            ctx,
+            "FileEffectPayloadWritten",
+            vec![
+                (ctx.sym("bytes"), byte_size(ctx, bytes)),
+                (ctx.sym("mode"), bound),
+            ],
+        )
+    }
+
+    fn render(
+        ctx: &super::InterpContext,
+        intent: &str,
+        path: &str,
+        payload: Value,
+        emoji: bool,
+    ) -> String {
+        let out = super::run_in_context_with_args(
+            ctx,
+            "seed_file_effect_begin_line",
+            &[
+                (Some("intent".to_string()), Value::Str(intent.into())),
+                (Some("path".to_string()), Value::Str(path.into())),
+                (Some("payload".to_string()), payload),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .expect("the .dag oracle must resolve and render");
+        match out {
+            Value::Str(s) => s.to_string(),
+            other => panic!("seed_file_effect_begin_line must return a String, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn file_effect_begin_mirror_matches_seed_oracle() {
+        let ctx = oracle_context();
+
+        // The mode spelling comes back from the authority's own file_mode_of_octal_text →
+        // file_mode_octal round trip, so the expected clause below is not this test's invention.
+        let oracle = render(
+            &ctx,
+            "Filesystem.WriteCreateNewWithMode",
+            "dag/x.dag",
+            written_payload(&ctx, 12, Some("0600")),
+            true,
+        );
+        let mirror = render_file_effect_begin_line_mirror(
+            "Filesystem.WriteCreateNewWithMode",
+            "dag/x.dag",
+            &file_payload_clause(12, Some(0o600)),
+            true,
+        );
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(
+            mirror,
+            "🔄 started Filesystem.WriteCreateNewWithMode dag/x.dag (12 bytes, mode 0600)"
+        );
+
+        // 2. A write with no declared mode.
+        let oracle = render(
+            &ctx,
+            "Filesystem.Write",
+            "dag/gunbc/observation_emit_census.dag",
+            written_payload(&ctx, 166, None),
+            false,
+        );
+        let mirror = render_file_effect_begin_line_mirror(
+            "Filesystem.Write",
+            "dag/gunbc/observation_emit_census.dag",
+            &file_payload_clause(166, None),
+            false,
+        );
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(
+            mirror,
+            "◐ started Filesystem.Write dag/gunbc/observation_emit_census.dag (166 bytes)"
+        );
+
+        // 3. A path-only operation: the size clause is ABSENT rather than zero, so the line cannot
+        //    be read as "wrote 0 bytes".
+        let oracle = render(
+            &ctx,
+            "Filesystem.Read",
+            "foo.dag",
+            variant(&ctx, "FileEffectNoPayload", vec![]),
+            true,
+        );
+        let mirror = render_file_effect_begin_line_mirror("Filesystem.Read", "foo.dag", "", true);
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(mirror, "🔄 started Filesystem.Read foo.dag");
+        assert!(!mirror.contains("0 bytes"));
+        assert!(!mirror.contains("unreadable"));
+    }
+
+    /// The mirror keeps the operand in every payload state — the property the raw line supplied
+    /// and the one a "started <intent>"-only projection would silently drop.
+    #[test]
+    fn file_effect_begin_mirror_keeps_the_operand() {
+        for clause in ["", "7 bytes", "7 bytes, mode 0600"] {
+            let line = render_file_effect_begin_line_mirror(
+                "Filesystem.Write",
+                "dag/target.dag",
+                clause,
+                true,
+            );
+            assert!(
+                line.contains("dag/target.dag"),
+                "the operand must survive in {line:?}"
+            );
+        }
+    }
+    /// The doc on `file_mode_octal` claims the range comes from the caller's admission, not from
+    /// the type. That claim is only worth making if it is checked, so this holds the mirror against
+    /// `extdeps.access.posix file_mode_octal` BY EXECUTION across the range that admission admits
+    /// (0..=0o7777) — including the special-bits digit, which is where a three-digit rendering and a
+    /// four-digit one disagree. It also pins the discriminating case the reviewer raised: a value
+    /// ABOVE the admitted range would be silently masked, which is why the admission arm exists
+    /// upstream rather than here.
+    #[test]
+    fn file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range() {
+        let ctx = oracle_context();
+        // The authority's own direction: text -> FileMode -> octal spelling. A mode admitted by
+        // dispatch_file is a four-digit octal spelling, so feeding one and reading it back
+        // exercises both halves of the posix module on the same value this mirror spells.
+        let authority_octal = |spelling: &str| -> String {
+            let mode = super::run_in_context_with_args(
+                &ctx,
+                "file_mode_of_octal_text",
+                &[(Some("text".to_string()), Value::Str(spelling.into()))],
+                false,
+            )
+            .expect("file_mode_of_octal_text resolves");
+            // The parse returns FileMode?, so unwrap through the same optional shape the authority
+            // publishes rather than assuming a bare record.
+            let peeled = match mode {
+                Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } if ctx.sym_eq(variant_name, "Present") => fields
+                    .iter()
+                    .find(|(name, _)| ctx.sym_eq(*name, "value"))
+                    .map(|(_, v)| v.clone())
+                    .expect("Present carries its value"),
+                other => panic!("file_mode_of_octal_text refused {spelling}: {other:?}"),
+            };
+            super::run_in_context_with_args(
+                &ctx,
+                "file_mode_octal",
+                &[(Some("mode".to_string()), peeled)],
+                false,
+            )
+            .and_then(|v| match v {
+                Value::Str(s) => Ok(s.to_string()),
+                _ => Err(super::InterpError::NoSuchFunction {
+                    name: "file_mode_octal returned a non-string".to_string(),
+                }),
+            })
+            .expect("file_mode_octal resolves")
+        };
+        for spelling in [
+            "0000", "0600", "0644", "0755", "1777", "2755", "4755", "7777",
+        ] {
+            let value = u32::from_str_radix(spelling, 8).expect("octal literal");
+            assert!(
+                value <= 0o7777,
+                "{spelling} must be inside the range dispatch_file admits"
+            );
+            assert_eq!(
+                file_mode_octal(value),
+                authority_octal(spelling),
+                "mirror must agree with extdeps.access.posix on {spelling}"
+            );
+        }
+        // The narrowing the comment names: the mask is what makes a four-digit rendering total
+        // over the admitted range, and a value above it is the caller's to refuse (dispatch_file
+        // does, before dispatch). Asserted so the claim cannot drift back into "the type says so".
+        assert_eq!(file_mode_octal(0o100600), "0600");
     }
 }
 

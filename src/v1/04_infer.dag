@@ -1,7 +1,7 @@
 module v1.compiler.infer
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, kernel_type_set, is_kernel_type }
+import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_template_alias_algebra, is_container_type, kernel_type_set, is_kernel_type }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -9,7 +9,7 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
@@ -1483,6 +1483,15 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
   }
   else if nominal_product_inhabitance_refusal(
       declared: declared, produced: produced, scope: scope) != none {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+  else if nominal_coproduct_applied_argument_conflict(
+      declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -3000,6 +3009,13 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
     formal_name_override: "", depth: 0)
 }
 
+// The produced side is peeled to its where-refinement base exactly as the declared side is, so a
+// refinement of a kernel (`"x" as NonEmptyStr`) is judged as the kernel it is represented by, not
+// admitted because its NAME is not kernel (gunbc#12695: host text reached v2.std.text string_split
+// at a FreeSemigroup<Char> needle). The peel is withheld where the formal carries OPTIONALITY:
+// there the produced node is the payload of a `Present` introduction standing for the Optional
+// carrier -- the two-representation gap declared_type_kernel_inhabitance_mismatch excludes on the
+// same ground -- and peeling it refused correct rows (gunbc.contributor_onboarding_path, measured).
 fn kernel_value_declared_type_mismatch_bounded(
   formal: Node,
   actual: Node,
@@ -3008,11 +3024,14 @@ fn kernel_value_declared_type_mismatch_bounded(
   formal_name_override: String,
   depth: Int
 ) -> Bool {
-  if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
+  let formal_carries_optional = formal.return_cardinality == CardOptional
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: formal)) == "Optional"
+  let actual_base = if formal_carries_optional { actual } else { peel_where_refinement_base(ty: actual, type_env: type_env) }
+  if formal.connective == Arrow || actual.connective == Arrow || (actual_base.children |> count) > 0 {
     false
   } else {
     let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
-    let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+    let actual_name = authored_name_at(source_indices: source_indices, node: actual_base)
     if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
       false
     } else {
@@ -3021,7 +3040,7 @@ fn kernel_value_declared_type_mismatch_bounded(
       } else { formal_name_override }
       if formal_name == "" || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
         false
-      } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
+      } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual_base, source_indices: source_indices) {
         false
       } else {
         if is_kernel_type(name: formal_name) {
@@ -3338,6 +3357,28 @@ fn application_type_name_identity(
   }
 }
 
+// THE SAME PEEL, ANSWERED AS A DECLARATION. application_type_name_identity answers a leaf
+// SPELLING, and two declarations that share a spelling then read as one type: a module declaring its
+// own `type FreeMonoid<T> { .. }` had its record admitted at a List<Int> formal, because List peels
+// to std.algebra's FreeMonoid and both leaves read "FreeMonoid". When both sides name a declaration,
+// the declarations decide; the spelling stays the answer only where no declaration is recoverable.
+fn application_type_name_declaration(
+  type_name: String,
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> DeclarationRef? {
+  match lookup_type_by_name(env: type_env, name: type_name) {
+    Present { value: decl } =>
+      let peeled = match decl.inferred {
+        Present { value: Resolved { node: target } } => peel_nominal_alias_identity(n: target, env: type_env, module_name: module_name)
+        _ => peel_nominal_alias_identity(n: decl, env: type_env, module_name: module_name)
+      }
+      type_reference_declaration_ref(n: peeled, source_indices: source_indices, env: type_env)
+    Absent => none
+  }
+}
+
 fn structured_application_structural_type_name(
   type_name: String,
   scope: InferScope
@@ -3389,7 +3430,17 @@ fn application_type_names_compatible(
       type_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
     let lit_identity = application_type_name_identity(
       type_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
-    if formal_identity == lit_identity {
+    let same_identity = match application_type_name_declaration(
+      type_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+      Present { value: formal_decl } =>
+        match application_type_name_declaration(
+          type_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+          Present { value: lit_decl } => declaration_ref_eq(a: formal_decl, b: lit_decl)
+          Absent => formal_identity == lit_identity
+        }
+      Absent => formal_identity == lit_identity
+    }
+    if same_identity {
       true
     } else if dag_can_cast(source_type: lit_name, target_type: formal_name) {
       true
@@ -3937,6 +3988,14 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let carrier_verdict = if is_container_type(name: declared_name)
+    && !is_container_type(name: qualified_last_segment(name: produced_name))
+    && (produced.connective == Disj || produced.connective == Conj) {
+    kernel_container_carrier_verdict(
+      formal: declared,
+      owner: type_reference_declaration_ref(n: produced, source_indices: source_indices, env: scope.type_env),
+      scope: scope)
+  } else { none }
   let either_optional = declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional
   let declared_is_generic = (declared.params |> count) > 0 || match declared.inferred {
     Present { value: TypeVariable { id: _ } } => true
@@ -3952,6 +4011,10 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if carrier_verdict == Present { value: true } {
+    Inhabits
+  } else if carrier_verdict == Present { value: false } {
+    InhabitanceRefused { reason: RefusedDistinctProductConstructor }
   } else if declared_realizes_as_kernel_numeric(
       declared: declared, produced: produced, source_indices: source_indices) {
     Inhabits
@@ -4316,6 +4379,102 @@ fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope
   }
 }
 
+// THE GENERIC-COPRODUCT HALF OF THE INHABITANCE DEFECT, filed beside
+// nominal_product_inhabitance_refusal and closed here by consuming the same authorities. A fn
+// declared `-> Outcome<Node>` whose body produced `Outcome<ResolvedTree>` fell through every arm
+// above -- the product arm abstains on a coproduct head, the payload arm on a generic one -- and
+// reached the ground-only fallback, which admits every non-ground pair; so the argument was never
+// compared (gunbc#12432: ~35 helpers). The constructor test is the product arm's own
+// (nominal_product_head_names_agree), and the argument test is applied_type_arguments_conflict,
+// the same fail-open per-argument relation: a type variable, an optional, a callable or a nested
+// application argument is never read as a disagreement. Only two applications of one declared
+// coproduct constructor whose resolved arguments are both established and differ refuse.
+fn nominal_coproduct_applied_argument_conflict(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> Bool {
+  let declared_head = nominal_coproduct_application_head_name(n: declared, scope: scope)
+  let produced_head = nominal_coproduct_application_head_name(n: produced, scope: scope)
+  if declared_head == "" || produced_head == "" {
+    false
+  } else if nominal_product_head_names_agree(
+      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+    false
+  } else if (declared.children |> count) == 0 || (declared.children |> count) != (produced.children |> count) {
+    false
+  } else {
+    coproduct_applied_type_arguments_conflict_scan(
+      declared_args: declared.children, produced_args: produced.children, scope: scope)
+  }
+}
+
+// A PRODUCED `Unit` ARGUMENT IS NOT AN ESTABLISHED IDENTITY at this arm, and the whole-corpus
+// differential is what showed it. Five correct sites refused on the first cut, every one with Unit
+// or an empty name standing in the produced argument vector where the call site had no evidence
+// for that parameter: `outcome_accepted(Lossless)` read as Outcome<Unit> under a declared
+// Outcome<DecodeFidelity>, and `assess_by_deviations(.., deviations: [])` read its unconstrained
+// parameters as Unit under a declared GoalAssessment<.., RegistrationDeviation, .., Never>. The seed's
+// call-site generic solve answers Unit for a parameter it did not solve, so Unit there is the
+// absence of evidence, not a type -- the same reading kernel_value_declared_type_mismatch already
+// takes when it exits on an actual named Unit. It is judged per argument, so the other arguments
+// of the same application are still compared. The narrowing is stated: a genuinely Unit-typed
+// argument against a different declared one is admitted here until call-site generic solving
+// stops answering Unit for an unsolved parameter
+// (gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return).
+fn coproduct_applied_type_arguments_conflict_scan(
+  declared_args: List<Node>,
+  produced_args: List<Node>,
+  scope: InferScope
+) -> Bool {
+  match declared_args |> first {
+    Present { value: d } =>
+      match produced_args |> first {
+        Present { value: p } =>
+          let produced_name = authored_name_at(
+            source_indices: scope.type_env.source_indices, node: child_type_node(ch: p))
+          if produced_name != "Unit"
+            && applied_type_argument_conflicts(declared_arg: d, produced_arg: p, scope: scope) {
+            true
+          } else {
+            coproduct_applied_type_arguments_conflict_scan(
+              declared_args: declared_args |> skip(1),
+              produced_args: produced_args |> skip(1),
+              scope: scope)
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn nominal_coproduct_application_head_name(n: Node, scope: InferScope) -> String {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" || n.return_cardinality == CardOptional || type_node_is_callable(n: n)
+    || is_kernel_type(name: name)
+    || qualified_last_segment(name: name) == "Optional"
+    || (n.children |> count) == 0
+    || node_is_element_collection(n: n, source_indices: source_indices)
+    || node_is_keyed_collection(n: n, source_indices: source_indices) {
+    ""
+  } else {
+    match expected_type_head_exposure(formal: n, scope: scope) {
+      ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } =>
+        let representative = transparent_alias_representative(
+          index: scope.type_env.symbol_index, name: name)
+        match lookup_type_by_name(env: scope.type_env, name: representative) {
+          Present { value: decl } =>
+            let peeled = peel_nominal_alias_identity(
+              n: decl, env: scope.type_env, module_name: scope.module_name)
+            if peeled.connective == Disj { name } else { "" }
+          Absent => ""
+        }
+      _ => ""
+    }
+  }
+}
+
 fn nominal_product_head_names_agree(
   declared_name: String,
   produced_name: String,
@@ -4620,6 +4779,89 @@ fn structured_application_site_type_mismatch(
 // namespace and can make both compatibility operands equal by construction. `formal` retains the
 // authored declaration spelling for optional-variant structure; `formal_peeled` is the conformance
 // established while the callee TypeEnv was available.
+// ONE TYPE, ITS CONSTRUCTORS BY DECLARATION (operator ruling 2026-09-29: std.types
+// `List<element> = FreeMonoid<element>` is one type, so `Empty {}` and `Cons {..}` are values of
+// List<T>; realization is emission's, never a checker refusal). The kernel container spellings
+// List/Set/Map name the carriers std.algebra declares, and those carriers' declarations supply the
+// container's constructors. The join is by DECLARATION IDENTITY, never by spelling: a module that
+// declares its own `FreeMonoid` owns a different declaration and its values stay refused at a List
+// formal. The declaring module is written once here because std.algebra and std.types cannot
+// import std.decl_ref without a cycle; it dissolves when the resolver records a DeclarationRef on
+// every type reference (the resolver-identity item), which also retires the spelling-keyed
+// container predicates this PR's body enumerates.
+data kernel_container_carrier_module: String = "std.algebra"
+
+// The declaration a formal type denotes: a kernel container spelling's std.algebra carrier, or the
+// declaration its alias resolves to (application_type_name_declaration, the same peel the
+// application-site identity uses).
+fn structured_formal_carrier_declaration(formal_peeled: Node, scope: InferScope) -> DeclarationRef? {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: formal_peeled)
+  if is_container_type(name: name) {
+    match container_template_alias_algebra(name: name) {
+      Present { value: carrier } => Present { value: decl_ref(module_path: kernel_container_carrier_module, decl_name: carrier) }
+      Absent => none
+    }
+  } else {
+    application_type_name_declaration(
+      type_name: name, type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
+  }
+}
+
+// The declaration a record literal's constructor belongs to: its variant owner (a coproduct arm)
+// or, for a product carrier, the record declaration it names.
+fn structured_literal_owner_declaration(lit_name: String, scope: InferScope) -> DeclarationRef? {
+  let owner = match variant_owner_node(scope: scope, name: lit_name) {
+    Present { value: o } => Present { value: o }
+    Absent => lookup_type_by_name(env: scope.type_env, name: lit_name)
+  }
+  match owner {
+    Present { value: o } => declaration_ref_of_type_node(rt: o, source_indices: scope.type_env.source_indices, env: scope.type_env)
+    Absent => none
+  }
+}
+
+fn structured_literal_constructs_formal_carrier(formal_peeled: Node, lit_name: String, scope: InferScope) -> Bool {
+  match structured_formal_carrier_declaration(formal_peeled: formal_peeled, scope: scope) {
+    Present { value: formal_decl } =>
+      match structured_literal_owner_declaration(lit_name: lit_name, scope: scope) {
+        Present { value: owner_decl } => declaration_ref_eq(a: formal_decl, b: owner_decl)
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// A KERNEL CONTAINER FORMAL IS DECIDED BY IDENTITY BEFORE ANY SPELLING IS COMPARED. When the formal
+// is a kernel container spelling (List/Set/Map) and the literal's owning declaration is recoverable,
+// the literal is a value of the container exactly when that owner IS the container's std.algebra
+// carrier declaration. Equal leaf spellings never stand in: a module's own `type FreeMonoid<T> {..}`
+// owns a different declaration and is refused at List<Int>. Absent when the formal is not a kernel
+// container or the owner cannot be recovered, so the existing route decides as before.
+fn structured_kernel_container_identity_verdict(formal_peeled: Node, lit_name: String, scope: InferScope) -> Bool? {
+  kernel_container_carrier_verdict(
+    formal: formal_peeled,
+    owner: structured_literal_owner_declaration(lit_name: lit_name, scope: scope),
+    scope: scope)
+}
+
+// THE ONE DECISION BOTH SEAMS ASK (the record-literal application site and the declared-type
+// obligation): is this owning declaration the kernel container's std.algebra carrier? Present only
+// when the formal is a kernel container spelling AND the owner is recoverable; the answer is then
+// identity alone. Absent leaves the calling seam's existing route to decide.
+fn kernel_container_carrier_verdict(formal: Node, owner: DeclarationRef?, scope: InferScope) -> Bool? {
+  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
+  if !is_container_type(name: name) { return none }
+  match structured_formal_carrier_declaration(formal_peeled: formal, scope: scope) {
+    Present { value: carrier } =>
+      match owner {
+        Present { value: o } => Present { value: declaration_ref_eq(a: carrier, b: o) }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
 fn structured_application_site_type_mismatch_with_peeled(
   formal: Node,
   formal_peeled: Node,
@@ -4640,6 +4882,9 @@ fn structured_application_site_type_mismatch_with_peeled(
           let formal_structural = formal_structural_name
           match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
             Present { value: lit_name } =>
+              match structured_kernel_container_identity_verdict(formal_peeled: formal_peeled, lit_name: lit_name, scope: scope) {
+                Present { value: admitted } => !admitted
+                Absent =>
               if application_type_names_compatible(
                 formal_name: formal_name, lit_name: lit_name,
                 type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices) {
@@ -4703,7 +4948,9 @@ fn structured_application_site_type_mismatch_with_peeled(
                       _ => false
                     }
                   Absent =>
-                    if is_kernel_type(name: formal_name) {
+                    if structured_literal_constructs_formal_carrier(formal_peeled: formal_peeled, lit_name: lit_name, scope: scope) {
+                      false
+                    } else if is_kernel_type(name: formal_name) {
                       match lookup_type_by_name(env: scope.type_env, name: lit_name) {
                         Present { value: lit_decl } =>
                           lit_decl.connective == Conj || lit_decl.connective == Disj
@@ -4719,6 +4966,7 @@ fn structured_application_site_type_mismatch_with_peeled(
                       false
                     }
                 }
+              }
               }
               }
             Absent => false
