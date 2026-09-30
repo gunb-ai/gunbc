@@ -4154,6 +4154,10 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
 // fields here, where run_shell_command_capture's success convention (output present == exited
 // zero) is known. THE RENDERED PROBE BRIDGE IS GONE; THIS IS ITS RETIREMENT RECEIPT.
 //
+// EVERY NON-LOCAL TRANSPORT RIDES THE ONE TYPED DISPATCH: SshShell and FleetSsh execute the words
+// as argv; EmitArtifactThenThinRun is refused by the dispatch, and a refused leg decodes (in the
+// census module's one adapter) as a refused census -- unobserved, never an empty population.
+//
 // Until the commit before this one, the census probe's serialization lived here as a named
 // declaration (observe_slot_population_census_script_body) with a std.dissolution
 // DeclarationRetires trigger bound to it -- because a row that no declaration names cannot be
@@ -4191,10 +4195,6 @@ fn observe_slot_population_over_host_effect_transport(
           transport: LocalExec,
         ),
       )
-    // EVERY OTHER TRANSPORT RIDES THE ONE TYPED DISPATCH: SshShell and FleetSsh execute the words
-    // as argv, EmitArtifactThenThinRun is refused by the dispatch, and a refused leg decodes (in
-    // the census module's one adapter) as a refused census -- unobserved, never an empty
-    // population.
     _ =>
       slot_census_from_typed_argv_outcome(
         host: host,
