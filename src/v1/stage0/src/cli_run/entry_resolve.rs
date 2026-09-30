@@ -3559,3 +3559,40 @@ mod heads_projection_live_differential {
         );
     }
 }
+
+/// THE IDENTITY DIFFERENTIAL for the tree census upgrading the memoized raw census instead of
+/// rebuilding it: for every source root of the live `[dag, src/v2]` index, the census
+/// `tree_bare_census_for_root` now serves equals the direct
+/// `build_symbol_index_census_nodes(tree_census_nodes(root))` it replaced -- the whole
+/// `SymbolIndex` (entries, bare lookup states and candidates, services, alias reps, exposures).
+#[cfg(test)]
+mod tree_census_from_raw_differential {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn tree_census_from_memoized_raw_equals_the_direct_build_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let pool = super::super::pool_parse(&index).expect("pool parse");
+        let mut compared = 0usize;
+        for r in index.source_roots.iter() {
+            let served = super::super::tree_bare_census_for_root(&index, r).expect("served");
+            let nodes = super::super::tree_census_nodes(&index, r).expect("tree nodes");
+            let direct =
+                v1_compiler_infer::build_symbol_index_census_nodes(nodes, pool.combined_si.clone());
+            eprintln!(
+                "DIFF root={r} entries={} bare={} equal={}",
+                direct.entries.len(),
+                direct.global_bare.len(),
+                *served == *direct
+            );
+            assert!(*served == *direct, "tree census for {r} diverges");
+            compared += 1;
+        }
+        assert!(compared >= 2, "both live roots compared ({compared})");
+    }
+}
