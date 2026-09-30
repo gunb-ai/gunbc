@@ -19,13 +19,23 @@ import extdeps.units.iso8601_calendar { iso8601_utc_text }
 //
 // It answers extdeps.clock Clock.Now in `date -u +%Y-%m-%dT%H:%M:%SZ` form, and Clock.UnixSecs and
 // Clock.UnixMillis in `date +%s` and `date +%s%3N` form; the calendar is extdeps.units.iso8601_calendar's.
+// A STEP IS A JUMP THE WALL CLOCK TAKES AT A VIRTUAL INSTANT: from `at` on, readings carry `by` in
+// addition to the standing offset. Steps accumulate, so a backward jump followed by a forward one is two
+// rows. Reading is a pure function of virtual time, so a jump needs no event to fire it.
+type ModeledClockStep {
+  at: Second
+  by: SecondDisplacement
+}
+
 type ModeledWallClock {
   unix_at_origin: EpochSecs
   step: SecondDisplacement
+  jumps: List<ModeledClockStep>
 }
 
 fn wall_clock_unix(clock: ModeledWallClock, now: Second) -> Int {
-  (clock.unix_at_origin as Int) + (second_count(s: now) as Int) + second_displacement_count(d: clock.step)
+  let jumped = fold(clock.jumps, init: 0, f: fn(acc, j) { if second_count(s: j.at) <= second_count(s: now) { acc + second_displacement_count(d: j.by) } else { acc } })
+  (clock.unix_at_origin as Int) + (second_count(s: now) as Int) + second_displacement_count(d: clock.step) + jumped
 }
 
 data clock_operation_path: String = "dag/extdeps/clock/clock.dag"
