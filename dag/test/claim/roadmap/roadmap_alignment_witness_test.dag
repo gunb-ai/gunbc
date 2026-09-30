@@ -49,7 +49,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 }
 import gunbc.roadmap_model {  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, Unsized }
 import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_execution_contract { ExecutionContract, ExecutionContractUnspecified, NotAgentWork }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -760,8 +760,13 @@ test fn production_resolution_has_no_fabricated_dependency_parents() -> Bool {
 // A PRODUCTION NODE WHOSE WALK NEVER REACHES THE ADMITTED ROOT REFUSES, naming the halt (review
 // 5354823380): extended-admission-cardinality has no membership arc and is not a declared root,
 // so its alignment resolution is Unresolved with the unrooted cause -- the RED control for the
-// rooted-hierarchy rule, read off the live authority. Attaching the wider dispatch population to
-// the root is the follow-on authoring lane, not something this witness fabricates.
+// rooted-hierarchy rule, read off the live authority.
+//
+// Lane B (review 5358022153, 2026-09-30) rooted the whole dispatchable population and LEFT THIS
+// NODE UNROOTED ON PURPOSE: it is the named refusal subject for the unrooted controls in this
+// witness and in roadmap_dispatch_actuator_witness_test, and a witness whose red arm can never
+// fire is not a control. It carries ExecutionContractUnspecified, so it sits outside the
+// dispatchable population every_dispatchable_node_reaches_the_admitted_root covers.
 test fn an_unrooted_production_node_refuses_naming_where_the_walk_halted() -> Bool {
   match alignment_resolve(node_id: "extended-admission-cardinality", turns_elapsed: 1, state: alignment_base_cadence_state()) {
     AlignmentUnresolved { cause } =>
@@ -776,6 +781,33 @@ test fn an_unrooted_production_node_refuses_naming_where_the_walk_halted() -> Bo
       }
     AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
   }
+}
+
+// EVERY DISPATCHABLE NODE REACHES THE ADMITTED ROOT (review 5358022153 lane B, 2026-09-30): the
+// dispatchable population -- every node in declared_roadmap_nodes() whose execution is an
+// ExecutionContract, derived here, never transcribed -- must derive AlignmentChained, because the
+// dispatch actuator refuses to spawn on any other resolution. This claim has NO named exclusions:
+// the deliberately unrooted control subject above carries ExecutionContractUnspecified and is not
+// a member of this population, and every ExecutionContract row was attached to the hierarchy in
+// the same change (the seven program-level parents live in roadmap_authority). A future node bound
+// to a contract without a membership arc reds this claim exactly as its author needs it to.
+fn dispatchable_node_ids() -> List<String> {
+  declared_roadmap_nodes()
+    |> filter(n => match n.execution {
+      ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots: _ } => true
+      ExecutionContractUnspecified => false
+      NotAgentWork { mode: _ } => false
+    })
+    |> map(n => n.node as String)
+}
+
+test fn every_dispatchable_node_reaches_the_admitted_root() -> Bool {
+  fold(dispatchable_node_ids(), init: true, f: fn(ok, id) {
+    ok && match alignment_chain_for(node_id: id) {
+      AlignmentChained { task: _, projects: _, root: _ } => true
+      _ => false
+    }
+  })
 }
 
 // ------------------------------------------------------------------------------------------------
