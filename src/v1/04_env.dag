@@ -1859,11 +1859,15 @@ fn text_representation_is_text_arm(r: TextRepresentation) -> Bool {
 // (gunbc.rung_drop text_boundary_identity_wall) whose trigger is the resolver recording declaration
 // identity on every type reference.
 fn text_crossing_by_identity(left: Node, right: Node, env: TypeEnv) -> Bool {
-  let l = text_representation_by_identity(n: left, env: env)
-  let r = text_representation_by_identity(n: right, env: env)
-  match l {
-    HostText => match r { CodePointSequence => true  TextRepresentationUnidentified => false  HostText => false  NotText => false }
-    CodePointSequence => match r { HostText => true  TextRepresentationUnidentified => false  CodePointSequence => false  NotText => false }
+  text_representations_cross(a: text_representation_by_identity(n: left, env: env), b: text_representation_by_identity(n: right, env: env))
+}
+
+// THE ONE CROSSING RULE: host text against a code-point sequence, in either order. Every other pair,
+// including one with an unidentified side, is not a crossing.
+fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) -> Bool {
+  match a {
+    HostText => match b { CodePointSequence => true  TextRepresentationUnidentified => false  HostText => false  NotText => false }
+    CodePointSequence => match b { HostText => true  TextRepresentationUnidentified => false  CodePointSequence => false  NotText => false }
     NotText => false
     TextRepresentationUnidentified => false
   }

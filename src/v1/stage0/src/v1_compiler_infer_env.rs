@@ -3188,25 +3188,28 @@ pub fn text_representation_is_text_arm(r: TextRepresentation) -> bool {
 }
 
 pub fn text_crossing_by_identity(left: Rc<Node>, right: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    {
-        let l = text_representation_by_identity(left.clone(), env.clone());
-        let r = text_representation_by_identity(right.clone(), env.clone());
-        match l.clone() {
-            TextRepresentation::HostText => match r.clone() {
-                TextRepresentation::CodePointSequence => true,
-                TextRepresentation::TextRepresentationUnidentified => false,
-                TextRepresentation::HostText => false,
-                TextRepresentation::NotText => false,
-            },
-            TextRepresentation::CodePointSequence => match r.clone() {
-                TextRepresentation::HostText => true,
-                TextRepresentation::TextRepresentationUnidentified => false,
-                TextRepresentation::CodePointSequence => false,
-                TextRepresentation::NotText => false,
-            },
-            TextRepresentation::NotText => false,
+    text_representations_cross(
+        text_representation_by_identity(left.clone(), env.clone()),
+        text_representation_by_identity(right.clone(), env.clone()),
+    )
+}
+
+pub fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) -> bool {
+    match a.clone() {
+        TextRepresentation::HostText => match b.clone() {
+            TextRepresentation::CodePointSequence => true,
             TextRepresentation::TextRepresentationUnidentified => false,
-        }
+            TextRepresentation::HostText => false,
+            TextRepresentation::NotText => false,
+        },
+        TextRepresentation::CodePointSequence => match b.clone() {
+            TextRepresentation::HostText => true,
+            TextRepresentation::TextRepresentationUnidentified => false,
+            TextRepresentation::CodePointSequence => false,
+            TextRepresentation::NotText => false,
+        },
+        TextRepresentation::NotText => false,
+        TextRepresentation::TextRepresentationUnidentified => false,
     }
 }
 

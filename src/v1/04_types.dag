@@ -1078,8 +1078,10 @@ fn node_type_equals(left: Node, right: Node, source_indices: Map<String, Newline
 // ruling B; gunbc.rung_drop text_boundary_identity_wall; review 72252). Kernel String is host text
 // and std.algebra FreeMonoid over std.types Char is a code-point sequence; v1.compiler.infer_env
 // text_crossing_by_identity reads each side's declaration by its declaring span or qualified name,
-// never by re-resolving the spelling in this comparison's scope, and refuses the pairing (or a text
-// side against an unidentified one) before any leaf-name arm can match `String` against `String`.
+// never by re-resolving the spelling in this comparison's scope, and refuses an IDENTIFIED host-text /
+// code-point pairing before any leaf-name arm can match `String` against `String`. A side with no
+// readable identity is NOT judged here: base compatibility decides it, v1.compiler.infer
+// text_unjudged_advisories counts it, and gunbc.rung_drop text_boundary_identity_wall bounds it.
 // That is why these relations carry the TypeEnv: the corpus-wide declaration index lives there. A kernel LITERAL never reaches this
 // point at a code-point-sequence boundary -- v1.compiler.infer literal_boundary_elaboration has
 // already replaced it with its unfold image, typed as the destination -- so what this refuses is

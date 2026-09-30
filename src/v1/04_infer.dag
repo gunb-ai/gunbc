@@ -119,7 +119,7 @@ import v1.compiler.infer_method {
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
 import v1.compiler.infer_env {
-  text_representation_by_identity, text_crossing_by_identity, text_representation_is_text_arm, text_representation_is_unidentified,
+  text_representation_by_identity, text_crossing_by_identity, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
@@ -6083,17 +6083,8 @@ data direct_call_shape_wall_note: String = "WALL (DESIGN §5) — the compile se
 // A VALUE'S TEXT REPRESENTATION IS ITS RESOLVED TYPE'S DECLARATION IDENTITY
 // (v1.compiler.infer_env text_representation_by_identity). It is NOT re-read through
 // peel_nominal_alias_identity: that peel looks the spelling up by name in THIS scope, which is the
-// caller-re-resolution escape. The history below records why an earlier revision read two views.
-// A VALUE'S TEXT REPRESENTATION WAS READ FROM BOTH OF ITS TYPE VIEWS. The resolved type and its
-// alias-peeled form each lose the structure in one known case: a qualified v2.std.text.String value's
-// resolved node still reads as the spelling String (so only the peel sees the carrier), while a node
-// typed by its declaring module's alias spelling String<Char> is re-resolved by name in the caller's
-// environment by the peel (so only the resolved view sees it). Either view establishing a code-point
-// sequence establishes it; host text only when neither view does -- EXCEPT that a resolved type the
-// kernel minted is host text outright: the peel looks its spelling up by name, and a by-name lookup
-// of the kernel spelling String may find a corpus declaration, which kernel precedence says it never
-// binds to.
-fn argument_text_representation(value: Node, type_env: TypeEnv, module_name: String) -> TextRepresentation {
+// caller-re-resolution escape.
+fn argument_text_representation(value: Node, type_env: TypeEnv) -> TextRepresentation {
   text_representation_by_identity(n: expression_value_type(e: value), env: type_env)
 }
 
@@ -6117,15 +6108,6 @@ fn text_representations_both_code_point(a: TextRepresentation, b: TextRepresenta
   match a {
     CodePointSequence => match b { CodePointSequence => true  _ => false }
     _ => false
-  }
-}
-
-fn text_representations_disagree(a: TextRepresentation, b: TextRepresentation) -> Bool {
-  match a {
-    NotText => false
-    HostText => match b { CodePointSequence => true  TextRepresentationUnidentified => false  HostText => false  NotText => false }
-    CodePointSequence => match b { HostText => true  TextRepresentationUnidentified => false  CodePointSequence => false  NotText => false }
-    TextRepresentationUnidentified => false
   }
 }
 
@@ -6153,9 +6135,9 @@ fn direct_call_arg_mismatch_diags(
           let actual_raw = expression_value_type(e: actual_expr)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
           let formal_text = if formal_code_point_view(formal: app.formal, env: type_env) != none { CodePointSequence } else { text_representation_by_identity(n: formal, env: type_env) }
-          let actual_text = argument_text_representation(value: actual_expr, type_env: type_env, module_name: module_name)
+          let actual_text = argument_text_representation(value: actual_expr, type_env: type_env)
           let unjudged = text_unjudged_advisories(a: formal_text, b: actual_text, position: "a call argument", span: actual_expr.span, module_name: module_name)
-          concat(unjudged, if text_representations_disagree(a: formal_text, b: actual_text) {
+          concat(unjudged, if text_representations_cross(a: formal_text, b: actual_text) {
             [make_error_node(diagnostic: InternalError { message: concat("text representation crossing at a call argument: declared ", node_type_shape(n: formal, source_indices: source_indices), ", produced ", node_type_shape(n: actual, source_indices: source_indices), " -- host text and a code-point sequence (FreeMonoid<Char>) meet only through the Unicode scalar unfold, which is applied to a host value at a code-point formal; a code-point sequence has no declared route into host text"), span: actual_expr.span }, module_name: module_name)]
           } else if text_representations_both_code_point(a: formal_text, b: actual_text) {
             []
@@ -6232,7 +6214,7 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
         let value = arg_value(n: arg)
         match value.inferred {
           Present { value: Resolved { node: _ } } =>
-            match argument_text_representation(value: value, type_env: scope.type_env, module_name: scope.module_name) {
+            match argument_text_representation(value: value, type_env: scope.type_env) {
               CodePointSequence => [inference_error(
                 message: concat("text representation crossing: argument '", bound_name, "' of ", func_name,
                   " is host text, and the value passed is a code-point sequence (FreeMonoid<Char>); no declared route converts a non-literal between the two -- pass a host String, or use the structural operation on the sequence"),
@@ -7206,7 +7188,7 @@ fn destination_declares_scalar_sequence_unfold(destination_type: Node, scope: In
 fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node, scope: InferScope) -> Node {
   match value.inferred {
     Present { value: Resolved { node: _ } } =>
-      match argument_text_representation(value: value, type_env: scope.type_env, module_name: scope.module_name) {
+      match argument_text_representation(value: value, type_env: scope.type_env) {
         HostText =>
           if destination_declares_scalar_sequence_unfold(destination_type: destination_type, scope: scope) {
             make_named_expr_node(occurrence_identity: OccurrenceSynthetic,

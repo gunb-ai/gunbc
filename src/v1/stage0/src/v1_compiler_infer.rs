@@ -121,7 +121,7 @@ pub use crate::v1_compiler_infer_env::{
     qualify_decl_reference_positions, str_bindings_from_bindings, symbol_index_insert,
     symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
     text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
-    text_representation_is_unidentified, type_reference_declaration,
+    text_representation_is_unidentified, text_representations_cross, type_reference_declaration,
     type_reference_declaration_ref, unit_variant_index_shadow_insert,
 };
 pub use crate::v1_compiler_infer_env::{
@@ -8825,11 +8825,7 @@ pub fn direct_call_shape_wall_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn argument_text_representation(
-    value: Rc<Node>,
-    type_env: Rc<TypeEnv>,
-    module_name: String,
-) -> TextRepresentation {
+pub fn argument_text_representation(value: Rc<Node>, type_env: Rc<TypeEnv>) -> TextRepresentation {
     crate::v1_compiler_infer_env::text_representation_by_identity(
         expression_value_type(value.clone()),
         type_env.clone(),
@@ -8872,25 +8868,6 @@ pub fn text_representations_both_code_point(a: TextRepresentation, b: TextRepres
     }
 }
 
-pub fn text_representations_disagree(a: TextRepresentation, b: TextRepresentation) -> bool {
-    match a.clone() {
-        TextRepresentation::NotText => false,
-        TextRepresentation::HostText => match b.clone() {
-            TextRepresentation::CodePointSequence => true,
-            TextRepresentation::TextRepresentationUnidentified => false,
-            TextRepresentation::HostText => false,
-            TextRepresentation::NotText => false,
-        },
-        TextRepresentation::CodePointSequence => match b.clone() {
-            TextRepresentation::HostText => true,
-            TextRepresentation::TextRepresentationUnidentified => false,
-            TextRepresentation::CodePointSequence => false,
-            TextRepresentation::NotText => false,
-        },
-        TextRepresentation::TextRepresentationUnidentified => false,
-    }
-}
-
 pub fn direct_call_arg_mismatch_diags(
     plan: Rc<Vec<Rc<ResolvedCallFormal>>>,
     typed_args: Rc<Vec<Rc<Node>>>,
@@ -8922,9 +8899,9 @@ let formal_text = if (formal_code_point_view(app.formal.clone(), type_env.clone(
                         } else {
                             crate::v1_compiler_infer_env::text_representation_by_identity(formal.clone(), type_env.clone())
                         };
-let actual_text = argument_text_representation(actual_expr.clone(), type_env.clone(), module_name.clone());
+let actual_text = argument_text_representation(actual_expr.clone(), type_env.clone());
 let unjudged = text_unjudged_advisories(formal_text.clone(), actual_text.clone(), "a call argument".to_string(), actual_expr.span.clone(), module_name.clone());
-v1_rt::concat(unjudged.clone(), if text_representations_disagree(formal_text.clone(), actual_text.clone()) {
+v1_rt::concat(unjudged.clone(), if crate::v1_compiler_infer_env::text_representations_cross(formal_text.clone(), actual_text.clone()) {
                             Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("text representation crossing at a call argument: declared ".to_string(), crate::v1_compiler_infer_types::node_type_shape(formal.clone(), source_indices.clone())), ", produced ".to_string()), crate::v1_compiler_infer_types::node_type_shape(actual.clone(), source_indices.clone())), " -- host text and a code-point sequence (FreeMonoid<Char>) meet only through the Unicode scalar unfold, which is applied to a host value at a code-point formal; a code-point sequence has no declared route into host text".to_string()),
     span: actual_expr.span.clone(),
@@ -9003,7 +8980,7 @@ if !{ let mut __found = false; for n in host_params.iter().cloned() { if (n.clon
                         {
                             let value = crate::v1_std_core::arg_value(arg.clone());
 match value.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: _, .. }) => match argument_text_representation(value.clone(), scope.type_env.clone(), scope.module_name.clone()) {
+    Some(InferredNode::Resolved { node: _, .. }) => match argument_text_representation(value.clone(), scope.type_env.clone()) {
     TextRepresentation::CodePointSequence => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("text representation crossing: argument '".to_string(), bound_name.clone()), "' of ".to_string()), func_name.clone()), " is host text, and the value passed is a code-point sequence (FreeMonoid<Char>); no declared route converts a non-literal between the two -- pass a host String, or use the structural operation on the sequence".to_string()), value.span.clone(), scope.module_name.clone())]),
     TextRepresentation::HostText => Rc::new(vec![]),
     TextRepresentation::NotText => Rc::new(vec![]),
@@ -10960,37 +10937,37 @@ pub fn host_text_unfolded_at_code_point_boundary(
     scope: Rc<InferScope>,
 ) -> Rc<Node> {
     match value.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: _, .. }) => match argument_text_representation(
-            value.clone(),
-            scope.type_env.clone(),
-            scope.module_name.clone(),
-        ) {
-            TextRepresentation::HostText => {
-                if destination_declares_scalar_sequence_unfold(
-                    destination_type.clone(),
-                    scope.clone(),
-                ) {
-                    crate::v1_std_core::make_named_expr_node(
-                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                        "chars".to_string(),
-                        Rc::new(ExprData::ExprMethodCall {
-                            method_semantics: Some(Rc::new(MethodSemantics::PlainMethodSemantics)),
-                        }),
-                        Rc::new(vec![value.clone()]),
-                        Some(Rc::new(InferredNode::Resolved {
-                            node: destination_type.clone(),
-                        })),
-                        value.span.clone(),
-                        elaborated_span("chars".to_string()),
-                    )
-                } else {
-                    value.clone()
+        Some(InferredNode::Resolved { node: _, .. }) => {
+            match argument_text_representation(value.clone(), scope.type_env.clone()) {
+                TextRepresentation::HostText => {
+                    if destination_declares_scalar_sequence_unfold(
+                        destination_type.clone(),
+                        scope.clone(),
+                    ) {
+                        crate::v1_std_core::make_named_expr_node(
+                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                            "chars".to_string(),
+                            Rc::new(ExprData::ExprMethodCall {
+                                method_semantics: Some(Rc::new(
+                                    MethodSemantics::PlainMethodSemantics,
+                                )),
+                            }),
+                            Rc::new(vec![value.clone()]),
+                            Some(Rc::new(InferredNode::Resolved {
+                                node: destination_type.clone(),
+                            })),
+                            value.span.clone(),
+                            elaborated_span("chars".to_string()),
+                        )
+                    } else {
+                        value.clone()
+                    }
                 }
+                TextRepresentation::CodePointSequence => value.clone(),
+                TextRepresentation::NotText => value.clone(),
+                TextRepresentation::TextRepresentationUnidentified => value.clone(),
             }
-            TextRepresentation::CodePointSequence => value.clone(),
-            TextRepresentation::NotText => value.clone(),
-            TextRepresentation::TextRepresentationUnidentified => value.clone(),
-        },
+        }
         _ => value.clone(),
     }
 }
