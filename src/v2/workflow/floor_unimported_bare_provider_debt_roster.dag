@@ -152,6 +152,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/extdeps/cooling/dynatron.dag", name: "ampere_lga4926_cooling_mount", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/cpu/ampere_altra_memory_controller.dag", name: "any", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/cpu/ampere_altra_package.dag", name: "empty_map", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/extdeps/cpu/ampere_altra_package.dag", name: "ends_with", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/cpu/ampere_altra_package.dag", name: "map_get", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/cpu/ampere_altra_package.dag", name: "map_insert", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/cpu/ampere_altra_platform_hw_design/platform.dag", name: "any", standing: ActiveDebt },
