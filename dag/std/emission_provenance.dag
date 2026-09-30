@@ -77,7 +77,8 @@ fn emission_contribution_fold<R>(
   match contribution {
     EmissionSourceComposition { origin: _, parts } =>
       emission_contribution_fold_parts(parts: parts, acc: local, read: read)
-    _ => local
+    EmissionAuthoredFragment { origin: _, source: _ } => local
+    EmissionUnobservedFragment { producer: _, cause: _, source: _ } => local
   }
 }
 

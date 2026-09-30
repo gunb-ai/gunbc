@@ -1,0 +1,109 @@
+module test.claim.swift_rows_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, List }
+import v2.std.optional { Present }
+import v2.std.algebra { list_append }
+import v2.extdeps.languages.swift.syntax {
+  SwiftSourceFile, SwiftDecl, SwiftStaticModifier, SwiftDocLineComment,
+  SwiftVariableDecl, SwiftArrayLiteral, SwiftStringLiteral, SwiftStringText,
+  sw_t, sw_id, sw_path, sw_call, sw_callt, sw_pos, sw_arg, sw_str, sw_raw, sw_cloe, sw_not, sw_eq,
+  sw_expr, sw_ret, sw_throw, sw_let, sw_guard, sw_cond, sw_bind, sw_switch, sw_case, sw_default, sw_pexpr, sw_int,
+  sw_p_, sw_func, sw_struct, sw_enum, sw_field, sw_static_let, sw_doc, sw_import, sw_asq, sw_let_decl
+}
+import v2.extdeps.languages.swift.rows { swift_rows_emit_source_file, SwiftRowEmitted, SwiftRowEmissionRefused }
+import gunbc.auth.approval_device_redemption_fixtures { surface_vectors }
+import gunbc.approve_ios_swift_protocol_vector_tests { approve_ios_surface_spelled_decl }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SWIFT ROWS' CANONICAL LAYOUT, AT THEIR OWN INTERFACE (DESIGN §3: supplied trees, one interface).
+// Each layout choice v2.extdeps.languages.swift.rows makes (a production choice in its lowering) is
+// exercised by the smallest tree that shows it, and the whole emitted text is compared, so a choice
+// that drifts reds here by name. The whole-file route over the approve-ios programs is executed for
+// real by the generated-artifact drift gate on the committed files.
+
+fn emit(f: SwiftSourceFile) -> String {
+  match swift_rows_emit_source_file(f: f) {
+    SwiftRowEmitted { source: s } => s
+    SwiftRowEmissionRefused { reason: r } => concat("REFUSED: ", r as String)
+  }
+}
+
+// Adjacent imports share no blank line; any other top-level neighbour is separated by one.
+test fn imports_are_adjacent_and_other_declarations_are_blank_separated() -> Bool {
+  emit(f: SwiftSourceFile { declarations: [sw_import(n: "Foundation"), sw_import(n: "XCTest"), sw_struct(n: "S", i: [sw_t(n: "Equatable")], m: [sw_field(n: "a", t: sw_t(n: "String"))])] })
+    == "import Foundation\nimport XCTest\n\nstruct S: Equatable \{\n    var a: String\n\}\n"
+}
+
+// Stored members are adjacent; a member with a body is set off by a blank line; a body nests one unit.
+test fn a_member_with_a_body_is_blank_separated_and_nested() -> Bool {
+  emit(f: SwiftSourceFile { declarations: [sw_struct(n: "S", i: [], m: [
+    sw_field(n: "a", t: sw_t(n: "Int")),
+    sw_func(m: [], n: "f", p: [], th: false, r: none, b: [sw_expr(e: sw_id(n: "a"))])
+  ])] })
+    == "struct S \{\n    var a: Int\n\n    func f() \{\n        a\n    \}\n\}\n"
+}
+
+// A guard whose else is one simple statement stays on one line.
+test fn a_simple_guard_stays_inline() -> Bool {
+  emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "f", p: [], th: false, r: none, b: [
+    sw_guard(c: [sw_cond(e: sw_id(n: "c"))], e: [sw_throw(e: sw_id(n: "e"))])
+  ])] })
+    == "func f() \{\n    guard c else \{ throw e \}\n\}\n"
+}
+
+// A closure of one expression stays on one line.
+test fn a_one_expression_closure_stays_inline() -> Bool {
+  emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "f", p: [], th: false, r: none, b: [
+    sw_expr(e: sw_callt(f: sw_id(n: "g"), a: [], c: sw_cloe(e: sw_id(n: "$0"))))
+  ])] })
+    == "func f() \{\n    g \{ $0 \}\n\}\n"
+}
+
+// A switch case of one simple statement follows its label.
+test fn a_simple_switch_case_follows_its_label() -> Bool {
+  emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "g", p: [], th: false, r: none, b: [
+    sw_switch(e: sw_id(n: "x"), c: [sw_case(p: [sw_pexpr(e: sw_int(n: 1))], s: [sw_expr(e: sw_id(n: "a"))])])
+  ])] })
+    == "func g() \{\n    switch x \{\n    case 1: a\n    \}\n\}\n"
+}
+
+// A case of more than one statement nests them below its label.
+test fn a_longer_switch_case_nests_below_its_label() -> Bool {
+  emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "g", p: [], th: false, r: none, b: [
+    sw_switch(e: sw_id(n: "x"), c: [sw_default(s: [sw_expr(e: sw_id(n: "b")), sw_expr(e: sw_id(n: "c"))])])
+  ])] })
+    == "func g() \{\n    switch x \{\n    default:\n        b\n        c\n    \}\n\}\n"
+}
+
+// A static literal spells quote, backslash and newline by their short escapes and every other control
+// or non-ASCII scalar as \u\{X\}; an extended literal spells its text verbatim.
+test fn string_literals_escape_statically_and_keep_extended_text_verbatim() -> Bool {
+  emit(f: SwiftSourceFile { declarations: [sw_let_decl(n: "a", e: sw_str(s: "q\"b\\s\né\u{1F}")), sw_let_decl(n: "r", e: sw_raw(s: "\{\"k\": \"\\n\"\}"))] })
+    == "let a = \"q\\\"b\\\\s\\n\\u\{E9\}\\u\{1F\}\"\n\nlet r = #\"\{\"k\": \"\\n\"\}\"#\n"
+}
+
+// THE SURFACE SET IS THE FIXTURE'S, read at the model: the declaration testSurfaceMatchesTheFixture
+// uses (gunbc.approve_ios_swift_protocol_vector_tests approve_ios_surface_spelled_decl) holds exactly
+// the names gunbc.auth.approval_device_redemption_fixtures surface_vectors emits into vectors.json, in
+// its order, and none of the header rows #12000 removed -- the defect that left the Mac run at 18/19.
+// How a string array prints is the literal claims' subject; that the committed file carries this
+// declaration is the drift gate's.
+fn spelled_names(d: SwiftDecl) -> List<String> {
+  match d {
+    SwiftVariableDecl { attributes: _, modifiers: _, keyword: _, pattern: _, annotation: _, initializer: i } =>
+      match i {
+        Present { value: SwiftArrayLiteral { elements: es } } => fold(es, init: [], f: (acc, e) => match e {
+          SwiftStringLiteral { delimiter: _, segments: segs } => list_append(left: acc, right: [fold(segs, init: "", f: (t, g) => match g { SwiftStringText { text: x } => concat(t, x)  _ => t })])
+          _ => list_append(left: acc, right: ["<not a string literal>"])
+        })
+        _ => ["<no array initializer>"]
+      }
+    _ => ["<not a variable declaration>"]
+  }
+}
+
+test fn the_spelled_surface_set_is_the_fixtures_names() -> Bool {
+  spelled_names(d: approve_ios_surface_spelled_decl()) == map(surface_vectors, v => v.name as String)
+}
