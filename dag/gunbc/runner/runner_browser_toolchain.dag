@@ -5,7 +5,7 @@ import extdeps.shell
 import std.string_type { String }
 import extdeps.posix.test_utility { test_exists_command }
 import std.measure { ByteSize, byte_size }
-import std.algebra { trim, list_append }
+import std.algebra { Cons, Empty, list_append, trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
 import v2.std.orchestration { EnvBinding, EnvSet }
