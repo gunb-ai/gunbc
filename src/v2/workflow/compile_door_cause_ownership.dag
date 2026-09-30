@@ -275,6 +275,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "v2.compiler.04_infer infer_match_bool_arm_row reached a match arm that is not a Conj carrying match_arm_pattern and match_arm_body, i.e. a lowered arm shape infer does not read. Now observable at PREPARE because more modules clear body lowering and reach infer. Flips when every arm shape body lowering emits is the one infer reads (one arm carrier, no second shape) and the count zeroes. Observed at fatal grain on native-route member rows at main 1457bd81d00 over dag + src/v2"
+  },
+  CauseOwnership {
+    cause: ^infer_match_scrutinee_not_bool,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "v2.compiler.04_infer types a Match only through infer_match_bool, which admits a Bool or Int scrutinee and refuses every other scrutinee type here -- so a match over a declared coproduct (variant-pattern arms, e.g. `match c { Deterministic => .. NonDeterministic { source: _ } => .. }`) has no infer row at all. Same one-match-carrier frontier as infer_match_shape_invalid, observed at the scrutinee instead of the arm. Flips when infer types a Match whose scrutinee is a named sum (arms joined to its alternatives, exhaustiveness over them) and the count zeroes. Observed at fatal grain at PREPARE on native-route member rows at main 55e78f40e9a over dag + src/v2: 6 v2.test.* members, all in v2.test.claim.determinism_contract_test (det_is_deterministic's match on Determinism); not among the unowned causes gunbc#12626 measured at 1457bd81d00, so newly reachable as that module cleared resolve"
   }
 ]
 
