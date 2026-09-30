@@ -8420,12 +8420,14 @@ fn dispatch_modeled_operation(
                     .map_err(&harness_fault)
                     .map(|shell| shell_result_projection(shell, op_node, ctx))
             } else {
-                // Every file-transport operation declares its path; one dispatched without a string
-                // path is a malformed dispatch and refuses, never an empty path the projection would
-                // report as if the operation had named one.
-                match param_env.lookup(ctx.sym("path")) {
-                    Some(Value::Str(p)) => file_result_of_observation(&observation, &p, ctx),
-                    _ => Err("a file operation was dispatched without a string path".to_string()),
+                // The path is the transport's own (file_transport_path), resolved exactly as the wet
+                // dispatch resolves it; one that is missing or empty refuses, never an empty path the
+                // projection would report as if the operation had named one.
+                match file_transport_path(transport, param_env, ctx) {
+                    Ok(p) => file_result_of_observation(&observation, &p, ctx),
+                    Err(e) => Err(format!(
+                        "a file operation's transport path did not resolve: {e}"
+                    )),
                 }
                 .map_err(&harness_fault)
                 .map(|file| map_file_outputs(&file, op_node, ctx))
@@ -17314,18 +17316,20 @@ fn io_error_kind_name(e: &std::io::Error) -> String {
     .to_string()
 }
 
-fn dispatch_file(
-    op_node: &Rc<Node>,
+/// THE ONE RESOLUTION OF A FILE OPERATION'S PATH: the transport's own `path` property, evaluated and
+/// template-substituted over the operation's inputs. The wet dispatch and the modeled realization both
+/// read it here, so a modeled answer is recorded against exactly the path the real transport would
+/// touch -- including an operation whose path is a literal in its transport and not an input
+/// (linux.Procfs ReadUptime). A missing or empty path refuses.
+fn file_transport_path(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
-) -> InterpResult<FileResult> {
-    let si = ctx.si();
-
+) -> InterpResult<String> {
     let path = match find_property(
         transport.properties.clone(),
         "base_path".to_string(),
-        si.clone(),
+        ctx.si(),
     ) {
         Some(path_node) => {
             let path_val = eval_expr(&path_node, param_env, ctx)?;
@@ -17342,6 +17346,18 @@ fn dispatch_file(
             msg: "file transport resolved to an empty path".to_string(),
         });
     }
+    Ok(path)
+}
+
+fn dispatch_file(
+    op_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<FileResult> {
+    let si = ctx.si();
+
+    let path = file_transport_path(transport, param_env, ctx)?;
 
     // Optional explicit verb on the transport row (`transport file { path: ..., verb: "delete" }`).
     // Delete/List are structurally indistinguishable from Read (path-only inputs), so the

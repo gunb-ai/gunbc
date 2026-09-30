@@ -40,6 +40,42 @@ fn app_attest_verifier_enrolment_dead_band_observed_only() -> List<EnrolmentDead
   ]
 }
 
+// THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12533; side-chat ruling of eager-owl-205, 2026-09-30,
+// msg_658dcf6b): the six cases whose CI CPU lies in the band. Their declared drop is `gunbc.rung_drop`
+// `mtcollins1_boot_matrix_enrolment_dead_band_observed_only`.
+fn mtcollins1_boot_matrix_enrolment_dead_band_observed_only() -> List<EnrolmentDeadBandObservation> {
+  [
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_host_that_never_prints_a_census_refuses_at_the_deadline",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36648847499 of gunbc#12533 at bd99cbb4899 observed 396 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_healthy_census_completes_and_releases_its_collector",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36648847499 of gunbc#12533 at bd99cbb4899 observed 394 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.pinned_a_presentation_lost_after_the_handoff_is_not_the_reported_cause",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36648847499 of gunbc#12533 at bd99cbb4899 observed 378 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_already_presented_image_is_not_attached_again",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36648847499 of gunbc#12533 at bd99cbb4899 observed 361 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_two_socket_answer_is_a_truthful_topology_refusal",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36648847499 of gunbc#12533 at bd99cbb4899 observed 339 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_sol_loss_mid_boot_is_reported_before_the_deadline",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36648847499 of gunbc#12533 at bd99cbb4899 observed 332 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one",
+    reason: "the real boot entry end to end over the dry realization TWICE (the killed run up to StartMedia, then the next run over the world it left), each run's cost gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36649110326 of gunbc#12555 at b3bf1ff433 observed 366 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  ]
+}
+
 fn enrolment_dead_band_identities() -> List<String> {
-  app_attest_verifier_enrolment_dead_band_observed_only() |> map(o => o.identity)
+  concat(app_attest_verifier_enrolment_dead_band_observed_only(), mtcollins1_boot_matrix_enrolment_dead_band_observed_only()) |> map(o => o.identity)
 }
