@@ -16976,14 +16976,8 @@ fn parse_module_heads_for_pool_census(
 ) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
     note_source_hash(index, &source);
     // One acquisition, not one per walk -- see `cli_run::pool_acquire`.
-    let tokens = pool_acquire::tokens_for(&source.path, &source.content);
     let nl_index = pool_acquire::newline_index_for(&source.path, &source.content);
     let current_table = index.intern_table.borrow().clone();
-    let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
-        let mut m = HashMap::new();
-        m.insert(source.path.clone(), nl_index.clone());
-        m
-    });
     // The HEADS reading of the grammar, not the full one. Every declaration head is
     // parsed by the same productions; brace-delimited fn bodies and data initializer
     // values are skipped at token grain instead of being built, because
@@ -16999,11 +16993,16 @@ fn parse_module_heads_for_pool_census(
     // can depend on, because the normalizer overwrites it — so the heads reading cannot
     // drift from the full reading through the body slot, only through the heads, which is
     // the surface the differential receipt measures.
-    let parsed = v1_compiler_parse::parse_heads_with_table(tokens, single_si, current_table);
-    *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+    //
+    // ONE HEADS READING PER FILE: the file-local reading `module_path_index` already took is
+    // PROJECTED into this pool's threaded intern/occurrence space (`census_heads::
+    // project_heads_reading`, a total map), not parsed a second time.
+    let local = pool_acquire::heads_reading_for(&source.path, &source.content);
+    let (result, table) = census_heads::project_heads_reading(&local, &current_table)?;
+    *index.intern_table.borrow_mut() = table;
     // Pool census needs declaration heads only — do NOT install full-body ASTs into
     // `parse_cache` here. Closure resolve retains full bodies on its own cache miss.
-    if let Some(err) = &parsed.result.error {
+    if let Some(err) = &result.error {
         let span = diagnostic_to_span(err.diagnostic.clone());
         let loc = format_error_loc(&span.file, span.start, &Rc::new(HashMap::new()));
         return Err(format!(
@@ -17012,7 +17011,7 @@ fn parse_module_heads_for_pool_census(
             diagnostic_to_message(err.diagnostic.clone())
         ));
     }
-    match &parsed.result.module {
+    match &result.module {
         Some(module) => Ok((
             v1_compiler_compile::census_heads_module_node(module.clone()),
             nl_index,
@@ -21299,6 +21298,7 @@ pub fn handle_serve(
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unset".to_string()),
     );
+    let listener_attests_peer = matches!(listener, ServeListener::Unix(..));
     v1_interpreter::with_active_context(&ctx, || {
         loop {
             let (mut conn, peer_user) = match listener.accept() {
@@ -21359,30 +21359,14 @@ pub fn handle_serve(
                     )
                 }
                 Ok(Some((method, path, body, tailscale_identity))) => {
-                    let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
-                        (Some("method".to_string()), str_value(method)),
-                        (Some("path".to_string()), str_value(path)),
-                        (Some("body".to_string()), str_value(body)),
-                        // Empty when the header was absent. The `.dag` side refuses on empty
-                        // rather than treating it as an anonymous caller, so a deployment that
-                        // stopped routing through the tailscale proxy fails closed.
-                        (
-                            Some("tailscale_identity".to_string()),
-                            str_value(tailscale_identity),
-                        ),
-                        // The kernel-attested peer of a unix-socket connection (SO_PEERCRED,
-                        // resolved to its account name); empty on TCP, where the kernel attests
-                        // nothing about the caller. A handler that does not declare it is not
-                        // handed it (the same as tailscale_identity).
-                        (Some("peer_user".to_string()), str_value(peer_user.clone())),
-                        // Captured once above and cloned per request: the value
-                        // is fixed for the process lifetime, so no request can
-                        // observe a different release than any other request.
-                        (
-                            Some("release_revision".to_string()),
-                            str_value(release_revision.clone()),
-                        ),
-                    ];
+                    let args = serve_handler_args(
+                        method,
+                        path,
+                        body,
+                        tailscale_identity,
+                        release_revision.clone(),
+                        if listener_attests_peer { Some(peer_user.clone()) } else { None },
+                    );
                     // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
                     // Before this existed the serve path armed nothing, so a route evaluation
                     // that did not return also prevented the `Err` arm below from ever running:
@@ -21626,6 +21610,39 @@ impl ServeListener {
             }
         }
     }
+}
+
+// THE HANDLER'S ARGUMENTS, NAMED. The tailscale identity is empty when the header was absent (the
+// `.dag` side refuses on empty rather than treating it as anonymous); the release revision is fixed
+// for the process lifetime. THE PEER IS AN ARGUMENT ONLY WHERE THE KERNEL ATTESTS ONE: a named
+// argument the handler does not declare is a call-contract refusal, not a dropped value, so handing
+// peer_user to a TCP handler (the roadmap's) refused every request with a 500 on srv1
+// (dashboard_deploy run 36584004074). Only the --unix-socket listener passes Some.
+fn serve_handler_args(
+    method: String,
+    path: String,
+    body: String,
+    tailscale_identity: String,
+    release_revision: String,
+    attested_peer: Option<String>,
+) -> Vec<(Option<String>, v1_interpreter::Value)> {
+    let mut args = vec![
+        (Some("method".to_string()), str_value(method)),
+        (Some("path".to_string()), str_value(path)),
+        (Some("body".to_string()), str_value(body)),
+        (
+            Some("tailscale_identity".to_string()),
+            str_value(tailscale_identity),
+        ),
+        (
+            Some("release_revision".to_string()),
+            str_value(release_revision),
+        ),
+    ];
+    if let Some(peer) = attested_peer {
+        args.push((Some("peer_user".to_string()), str_value(peer)));
+    }
+    args
 }
 
 fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String> {
@@ -46447,6 +46464,44 @@ mod serve_unix_socket_door_tests {
         std::fs::write(&path, b"data").unwrap();
         assert!(serve_bind("127.0.0.1", 0, Some(&path)).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"data");
+    }
+
+    // A TCP handler is handed exactly the five arguments every existing handler declares -- never
+    // peer_user, whose presence refuses a handler that does not declare it (srv1 500, run 36584004074).
+    #[test]
+    fn a_tcp_handler_is_not_handed_peer_user() {
+        let names = |a: &Vec<(Option<String>, v1_interpreter::Value)>| -> Vec<String> {
+            a.iter()
+                .map(|(n, _)| n.clone().unwrap_or_default())
+                .collect()
+        };
+        let tcp = serve_handler_args(
+            "GET".into(),
+            "/x".into(),
+            String::new(),
+            String::new(),
+            "r".into(),
+            None,
+        );
+        assert_eq!(
+            names(&tcp),
+            vec![
+                "method",
+                "path",
+                "body",
+                "tailscale_identity",
+                "release_revision"
+            ]
+        );
+        let unix = serve_handler_args(
+            "GET".into(),
+            "/x".into(),
+            String::new(),
+            String::new(),
+            "r".into(),
+            Some("ghrunner".into()),
+        );
+        assert_eq!(names(&unix).last().map(|s| s.as_str()), Some("peer_user"));
     }
 
     // A TCP listener attests nothing: its peer is empty, which the fabric door refuses to admit.
