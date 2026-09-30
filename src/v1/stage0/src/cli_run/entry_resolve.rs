@@ -883,6 +883,29 @@ fn release_per_entry_graphs_on_live_pool_thread() {
     });
 }
 
+/// AT MOST ONE RESIDENT POOL PER SLOT, ASSERTED. The memo keeps every pool a thread demands, so a
+/// run's retention is the number of distinct root sets that entered it; the floor and the regen
+/// round each demand one per precedence, and a one-shot reader owns its own index instead. A second
+/// resident pool is a demand that should have been released, so it refuses rather than printing.
+pub(crate) fn shared_index_residency_control() -> Result<usize, String> {
+    PROCESS_RESOLVE_INDEX.with(|s| {
+        let slots = s.borrow();
+        for (slot, pools) in slots.iter().enumerate() {
+            if pools.len() > 1 {
+                let roots: Vec<Vec<&str>> =
+                    pools.keys().map(|k| k.split('\u{1f}').collect()).collect();
+                return Err(format!(
+                    "SharedIndexMoreThanOneResidentPool: slot {slot} holds {} pools {roots:?} -- \
+                     a one-shot reader of another pool must own its index, not leave it in the \
+                     shared memo",
+                    pools.len()
+                ));
+            }
+        }
+        Ok(slots.iter().map(|pools| pools.len()).sum())
+    })
+}
+
 /// The strict-pool shared index for `source_roots` IF this thread already built it; never builds
 /// one. For readers that report on a resolve after the fact (`pre_entry_phase`), where building
 /// would repeat the discovery a refused resolve just failed.

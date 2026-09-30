@@ -10451,6 +10451,18 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// The residency bound refuses a second resident pool per slot and admits one.
+    #[test]
+    fn a_second_resident_pool_in_one_slot_refuses() {
+        let a = Fixture::new(&[("m.dag", "module res_a\nfn f() -> Int { 1 }\n")]);
+        let b = Fixture::new(&[("m.dag", "module res_b\nfn f() -> Int { 1 }\n")]);
+        try_process_shared_index(&[a.0.to_string_lossy().into_owned()]).unwrap();
+        assert_eq!(entry_resolve::shared_index_residency_control(), Ok(1));
+        try_process_shared_index(&[b.0.to_string_lossy().into_owned()]).unwrap();
+        let err = entry_resolve::shared_index_residency_control().unwrap_err();
+        assert!(err.contains("SharedIndexMoreThanOneResidentPool"), "{err}");
+    }
+
     /// DISTINCT ROOTS ARE KEPT SIDE BY SIDE, NOT EVICTED. Roots A, then roots B, then A again on
     /// one thread (the regen round's shape): the third demand returns the FIRST index -- the same
     /// `Rc`, its parse and typed caches intact -- rather than rebuilding A (a one-entry slot) or
@@ -46161,12 +46173,15 @@ pub fn run_regen_round_cost(
     source_roots: &[String],
     affected_scope: bool,
 ) -> Result<RegenRoundCostOutcome, String> {
-    required_regen_host::run_regen_round_cost(
+    let outcome = required_regen_host::run_regen_round_cost(
         candidate_dir_rel,
         receipt_rel,
         source_roots,
         affected_scope,
-    )
+    )?;
+    entry_resolve::shared_index_residency_control()
+        .map_err(|e| format!("regen-round-cost refused: {e}"))?;
+    Ok(outcome)
 }
 
 /// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`
