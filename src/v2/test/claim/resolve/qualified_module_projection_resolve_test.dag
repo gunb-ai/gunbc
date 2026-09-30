@@ -116,7 +116,8 @@ test fn witness_qualified_name_node_resolves_holds() -> Bool {
       policy: NamespaceOnlyY,
       position: qualified_name_snoc(qn: qmpr_consumer_qn, segment: ^LocalAlias),
       lm: dag_language_model(),
-      under_module_root: false
+      under_module_root: false,
+      in_containment: true
     },
     n: qmpr_qualified_ref
   ) {
@@ -135,7 +136,8 @@ test fn witness_qualified_name_node_miss_red_holds() -> Bool {
       policy: NamespaceOnlyY,
       position: qmpr_consumer_qn,
       lm: dag_language_model(),
-      under_module_root: false
+      under_module_root: false,
+      in_containment: true
     },
     n: qmpr_qualified_ref
   ) {

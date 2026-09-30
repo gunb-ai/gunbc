@@ -66,7 +66,8 @@ import v2.std.qualified_name {
   qualified_name_init,
   qualified_name_last_segment,
   qualified_name_snoc,
-  declaration_reference_node
+  declaration_reference_node,
+  parameter_reference_node
 }
 import v2.std.resolution_policy {
   ImportScoped,
@@ -90,7 +91,8 @@ import v2.std.symbol_index {
   symbol_index_declared_payload_at,
   symbol_index_global_unique_lookup,
   symbol_index_declaring_path_of,
-  symbol_index_lexical_lookup
+  symbol_index_lexical_lookup,
+  symbol_index_lookup
 }
 import v2.std.node {
   named_edges,
@@ -138,10 +140,9 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
 // the Namespace.symbol_index the walk ran under, minted beside the root on the Accepted arm only, so
 // a refusal carries no index and no stage can read one for a tree that did not resolve.
 // CONSUMERS: .root is read by every stage after resolve (infer's gather reads it at its entry).
-// .symbol_index is a DECLARED FRONTIER in this change: its consumer is gunbc#12407, which stacks on
-// it -- v2.compiler.infer refinement_declaration asks symbol_index_lookup for a refinement
-// declaration a cast operand's type references (the declared-carrier widening), replacing an
-// infer-private walk over the tree.
+// .symbol_index is read by v2.compiler.infer: infer_parameter_reference_facts grounds a named fn's
+// parameter reference (minted here by resolve_frame_bound_reference) by symbol_index_lookup at its
+// path. gunbc#12407's refinement_declaration is its second, pending, reader.
 type ResolvedTree {
   root: Node
   symbol_index: SymbolIndex
@@ -164,7 +165,24 @@ type Namespace {
 
 type Scope
   = ScopeRoot { module: Namespace }
-  | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
+  | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope, kind: FrameKind }
+
+// WHAT A FRAME'S BINDERS ARE, DECIDED ONCE WHERE THE FRAME IS BUILT AND NEVER RE-READ FROM SHAPE.
+// A frame opened over the domain of an Arrow the containment walk reaches -- a declared fn, whose
+// parameters v2.compiler.symbol_index_fill indexes at <declaring path>.<label> -- is a
+// ParameterFrame carrying that declaring path, and a reference it answers is minted as a
+// path-keyed parameter reference (resolve_frame_bound_reference). Every other frame -- a `let`, a
+// match arm, a lambda's own Arrow, a type-parameter frame -- is Lexical: its binders are not
+// namespace bindings (see the match-arm frame below) and a reference they answer stays the bare
+// canonical atom.
+// DECLARED FRONTIER, ON THIS CARRIER: a lambda's parameters are Lexical because an anonymous Arrow
+// has no index path, and v2.compiler.infer keeps its frozen parameter scope search for them
+// (infer_parameter_scope_search). TRIGGER, NAMING THE CAPABILITY: anonymous Arrows carry an index
+// path (via std.occurrence_identity), so lambda parameters resolve as declaration references too;
+// then this arm opens a ParameterFrame for them and the scope search is deleted.
+type FrameKind
+  = ParameterFrame { arrow_path: QualifiedName }
+  | LexicalFrame
 
 // type_scope IS THE TYPE-ROLE FRAME: the scope a name in a TYPE position resolves in. It is the
 // enclosing Arrows' type-parameter frames over the namespace root, and it never carries a value
@@ -180,6 +198,7 @@ type ResolveContext {
   position: QualifiedName
   lm: LanguageModel
   under_module_root: Bool
+  in_containment: Bool
 }
 
 type DeclaredBinding {
@@ -347,7 +366,7 @@ fn scope_from_namespace(namespace: Namespace) -> Scope {
 
 fn scope_root_module(s: Scope) -> Namespace {
   match s {
-    ScopeFrame { outer: o, locals: _ } => scope_root_module(s: o)
+    ScopeFrame { outer: o, locals: _, kind: _ } => scope_root_module(s: o)
     ScopeRoot { module: m } => m
   }
 }
@@ -364,7 +383,8 @@ fn resolve_ctx_init(
     policy: policy,
     position: namespace.module_qn,
     lm: lm,
-    under_module_root: false
+    under_module_root: false,
+    in_containment: true
   }
 }
 
@@ -376,7 +396,8 @@ fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
     policy: ctx.policy,
     position: ctx.position,
     lm: ctx.lm,
-    under_module_root: ctx.under_module_root
+    under_module_root: ctx.under_module_root,
+    in_containment: ctx.in_containment
   }
 }
 
@@ -388,7 +409,8 @@ fn resolve_ctx_with_type_scope(ctx: ResolveContext, type_scope: Scope) -> Resolv
     policy: ctx.policy,
     position: ctx.position,
     lm: ctx.lm,
-    under_module_root: ctx.under_module_root
+    under_module_root: ctx.under_module_root,
+    in_containment: ctx.in_containment
   }
 }
 
@@ -408,7 +430,21 @@ fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveCon
     policy: ctx.policy,
     position: qualified_name_snoc(qn: ctx.position, segment: segment),
     lm: ctx.lm,
-    under_module_root: ctx.under_module_root
+    under_module_root: ctx.under_module_root,
+    in_containment: ctx.in_containment
+  }
+}
+
+fn resolve_ctx_leaving_containment(ctx: ResolveContext) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    type_scope: ctx.type_scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root,
+    in_containment: false
   }
 }
 
@@ -420,7 +456,8 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
     policy: ctx.policy,
     position: ctx.position,
     lm: ctx.lm,
-    under_module_root: under_module_root
+    under_module_root: under_module_root,
+    in_containment: ctx.in_containment
   }
 }
 
@@ -428,17 +465,17 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
 // scope, so only a ROOT hit can be a reference to a module-level declaration, and the test-code wall
 // (resolve_atom_bound) reads that distinction from here rather than re-walking the chain.
 type ScopeBinding
-  = BoundInFrame { canonical: Symbol }
+  = BoundInFrame { canonical: Symbol, kind: FrameKind }
   | BoundAtRoot { canonical: Symbol }
   | ScopeUnbound
 
 fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
   match s {
-    ScopeFrame { locals: m, outer: o } =>
+    ScopeFrame { locals: m, outer: o, kind: kind } =>
       match v2.std.collection.map_get(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
-            Accepted { value: BoundInFrame { canonical: v }, diagnostics: d_here }
+            Accepted { value: BoundInFrame { canonical: v, kind: kind }, diagnostics: d_here }
           Absent =>
             match lookup_chain(s: o, name: name) {
               Accepted { value: found, diagnostics: d_outer } =>
@@ -519,7 +556,7 @@ fn anonymous_parameter_referenced_diagnostic(n: Node) -> Diagnostic {
 // and the value scope deliberately does not. It refuses with its own reason, located at the use.
 fn type_parameter_in_value_position_optional(ctx: ResolveContext, n: Node, name: Symbol) -> Optional<Diagnostic> {
   match lookup_chain(s: ctx.type_scope, name: name) {
-    Accepted { value: BoundInFrame { canonical: _ }, diagnostics: _ } =>
+    Accepted { value: BoundInFrame { canonical: _, kind: _ }, diagnostics: _ } =>
       optional_present(
         value: Diagnostic {
           reason: ^resolve_reason_type_parameter_in_value_position,
@@ -803,7 +840,7 @@ fn qualified_head_bound_on_chain(ctx: ResolveContext, path: QualifiedName) -> Ou
         Accepted { value: found, diagnostics: d } =>
           Accepted {
             value: (match found {
-              BoundInFrame { canonical: _ } => true
+              BoundInFrame { canonical: _, kind: _ } => true
               BoundAtRoot { canonical: _ } => true
               ScopeUnbound => false
             }),
@@ -1082,6 +1119,49 @@ fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending:
   }
 }
 
+// A FRAME-BOUND REFERENCE IS MINTED BY ITS FRAME'S KIND, WHICH WAS FIXED WHEN THE FRAME WAS BUILT.
+// A Lexical frame's binder stays the bare canonical atom. A ParameterFrame's binder is the parameter
+// v2.compiler.symbol_index_fill indexed at <arrow_path>.<label>, and the reference is minted over
+// exactly that path -- after the index confirms it. A path the index does not hold means the
+// resolver's containment position and the fill's disagree about where this fn is declared; that is
+// a located refusal, never a quiet fall back to the bare atom, which would leave the parameter
+// grounded by nothing the index can key.
+fn resolve_frame_bound_reference(
+  ctx: ResolveContext,
+  n: Node,
+  canonical: Symbol,
+  kind: FrameKind,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match kind {
+    LexicalFrame =>
+      Accepted {
+        value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
+        diagnostics: pending
+      }
+    ParameterFrame { arrow_path: arrow_path } =>
+      let path = qualified_name_snoc(qn: arrow_path, segment: canonical)
+      match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+        Present { value: _ } =>
+          Accepted {
+            value: parameter_reference_node(qn: path, occurrence_id: n.occurrence_id),
+            diagnostics: pending
+          }
+        Absent =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: pending,
+              rejected: diagnostics_singleton(d: Diagnostic {
+                reason: ^resolve_reason_parameter_path_not_indexed,
+                at: node_locus(node: n),
+                correction: Unavailable { reason: UserInputBoundary }
+              })
+            )
+          }
+      }
+  }
+}
+
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: n) {
     Accepted { value: n, diagnostics: None }
@@ -1092,11 +1172,8 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
   } else {
     match lookup_chain(s: ctx.scope, name: identity) {
       Accepted { value: found, diagnostics: pending } => match found {
-        BoundInFrame { canonical: canonical } =>
-          Accepted {
-            value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
-            diagnostics: pending
-          }
+        BoundInFrame { canonical: canonical, kind: kind } =>
+          resolve_frame_bound_reference(ctx: ctx, n: n, canonical: canonical, kind: kind, pending: pending)
         BoundAtRoot { canonical: _ } =>
           resolve_atom_declared(
             ctx: ctx,
@@ -1600,7 +1677,8 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
         ctx: ctx,
         scope: ScopeFrame {
           locals: resolve_pattern_binders(ctx: ctx, pat: pat, acc: empty_map()),
-          outer: ctx.scope
+          outer: ctx.scope,
+          kind: LexicalFrame
         }
       )
       child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(), f: fn(acc, e) {
@@ -1757,7 +1835,8 @@ fn resolve_children_homogeneous_scope(
     true =>
       ScopeFrame {
         locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
-        outer: scope_type
+        outer: scope_type,
+        kind: LexicalFrame
       }
     false => scope_type
   }
@@ -1814,7 +1893,8 @@ fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
         locals: fold(type_param_names(n: n), init: empty_map(), f: fn(acc, name) {
           map_insert(acc, name, name)
         }),
-        outer: outer
+        outer: outer,
+        kind: LexicalFrame
       }
   }
 }
@@ -1872,11 +1952,19 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
 // under scope_body would resolve each against a parameter or, spelled like a free name, against the
 // enclosing scope, and a minted anonymous label against nothing. It is carried unwalked; the Arrow
 // wall (v2.std.node arrow_signature_order_conforms) is its check.
+//
+// THE FRAME'S KIND IS DECIDED HERE, ONCE. An Arrow reached while the walk is still in the
+// containment tree (in_containment) is the declaration at ctx.position -- the path
+// v2.compiler.symbol_index_fill indexes its parameters under -- so its value frame is a
+// ParameterFrame over that path. Nothing below an Arrow is containment: its body, codomain and
+// domain walk with in_containment false, so an Arrow met there (a lambda) opens a LexicalFrame.
 fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
   let value_params = add_arrow_domain_named_params(n: n, acc: empty_map())
-  let scope_codomain = ScopeFrame { locals: value_params, outer: scope_type }
-  let scope_body = ScopeFrame { locals: value_params, outer: ctx.scope }
+  let frame_kind = if ctx.in_containment { ParameterFrame { arrow_path: ctx.position } } else { LexicalFrame }
+  let scope_codomain = ScopeFrame { locals: value_params, outer: scope_type, kind: frame_kind }
+  let scope_body = ScopeFrame { locals: value_params, outer: ctx.scope, kind: frame_kind }
+  let inner_ctx = resolve_ctx_leaving_containment(ctx: ctx)
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     match e.label {
       Named { name: _ } =>
@@ -1888,7 +1976,7 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
           child_walk_step(
             w: acc,
             e: e,
-            r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_body), n: e.target)
+            r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_body), n: e.target)
           )
         }
       Positional =>
@@ -1897,7 +1985,7 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
           e: e,
           r: resolve_node_walk(
             ctx: resolve_ctx_with_scope(
-              ctx: ctx,
+              ctx: inner_ctx,
               scope: if acc.ordinal == 0 { scope_type } else { scope_codomain }
             ),
             n: e.target
@@ -1992,7 +2080,8 @@ fn resolve_bind_node(
       scope_outer: ctx.scope,
       scope_inner: ScopeFrame {
         locals: add_bind_atom_binder(n: n, acc: empty_map()),
-        outer: ctx.scope
+        outer: ctx.scope,
+        kind: LexicalFrame
       }
     ))
   } else {

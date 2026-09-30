@@ -657,6 +657,7 @@ type ArrowBodyForm
   = DirectAtomBody
   | RecordConstructBody
   | DeclarationReferenceBody
+  | ParameterReferenceBody
   | ComputationBody { behavior: Behavior }
   | FunctionValueBody
   | UnsupportedArrowBody
@@ -702,6 +703,47 @@ fn declaration_reference_marker() -> Symbol {
   declaration_reference_marker_symbol
 }
 
+// A REFERENCE TO A NAMED FN'S PARAMETER IS THE SAME CARRIER UNDER ITS OWN MARKER. v2.compiler.resolve
+// mints it from a ParameterFrame (resolve_frame_bound_reference) over the parameter's declaring path
+// <fn path>.<label> -- the path v2.compiler.symbol_index_fill indexes the parameter at, and the one
+// identity std.decl_ref DeclarationRef names for it (module_path, decl_name = the fn, the parameter
+// as the component). It is a reference to a binder of the enclosing declaration, not to a
+// declaration a module owns: v2.compiler.reference_closure never reads it as a neighbour, and a
+// target spells its leaf as a local rather than a module-scoped name. A second lexeme no dag
+// identifier can spell keeps the two apart without a shape test.
+data parameter_reference_marker_symbol: Symbol = symbol_intern_lexeme(lexeme: "<parameter-reference>")
+
+fn parameter_reference_marker() -> Symbol {
+  parameter_reference_marker_symbol
+}
+
+// WHICH REFERENCE A MARKER DENOTES, AS A CLOSED VARIANT. Every reader of a resolved reference asks
+// this, never the marker symbol, so a third marker is a new arm every reader must place.
+type ResolvedReferenceKind
+  = DeclarationReferenceKind
+  | ParameterReferenceKind
+
+fn resolved_reference_kind_marker(kind: ResolvedReferenceKind) -> Symbol {
+  match kind {
+    DeclarationReferenceKind => declaration_reference_marker()
+    ParameterReferenceKind => parameter_reference_marker()
+  }
+}
+
+type ResolvedReferenceMarking
+  = MarkedReference { kind: ResolvedReferenceKind }
+  | NotMarkedReference
+
+fn resolved_reference_kind_of_label(label: Symbol) -> ResolvedReferenceMarking {
+  if symbol_eq(a: label, b: declaration_reference_marker()) {
+    MarkedReference { kind: DeclarationReferenceKind }
+  } else if symbol_eq(a: label, b: parameter_reference_marker()) {
+    MarkedReference { kind: ParameterReferenceKind }
+  } else {
+    NotMarkedReference
+  }
+}
+
 // A RESOLVED DECLARATION REFERENCE IS NOT A RECORD CONSTRUCT. `data d: D = A` lowers to a nullary
 // Arrow whose body is the initializer, and when the initializer is a reference that body is the
 // marked Conj. Before this arm the classifier read every Conj body as a record construct, whose
@@ -711,16 +753,26 @@ fn declaration_reference_marker() -> Symbol {
 // authored one-field record over a record -- stays a record construct and is refused by its gate
 // exactly as before.
 fn declaration_reference_body_marked(target: Node) -> Bool {
+  match resolved_reference_body_kind(target: target) {
+    MarkedReference { kind: DeclarationReferenceKind } => true
+    _ => false
+  }
+}
+
+fn resolved_reference_body_kind(target: Node) -> ResolvedReferenceMarking {
   match target.kind {
     TypeNode { connective: Conj } =>
-      (count(target.children) == 1)
-        && fold(target.children, init: true, f: fn(acc, e) {
-          acc && (match e.label {
-            Named { name: label } => symbol_eq(a: label, b: declaration_reference_marker())
-            Positional => false
-          })
+      if count(target.children) == 1 {
+        fold(target.children, init: NotMarkedReference, f: fn(acc, e) {
+          match e.label {
+            Named { name: label } => resolved_reference_kind_of_label(label: label)
+            Positional => acc
+          }
         })
-    _ => false
+      } else {
+        NotMarkedReference
+      }
+    _ => NotMarkedReference
   }
 }
 
@@ -728,7 +780,11 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
     TypeNode { connective: Conj } =>
-      if declaration_reference_body_marked(target: target) { DeclarationReferenceBody } else { RecordConstructBody }
+      match resolved_reference_body_kind(target: target) {
+        MarkedReference { kind: DeclarationReferenceKind } => DeclarationReferenceBody
+        MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        NotMarkedReference => RecordConstructBody
+      }
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
     _ => UnsupportedArrowBody
@@ -741,6 +797,7 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
     DirectAtomBody => true
     RecordConstructBody => false
     DeclarationReferenceBody => false
+    ParameterReferenceBody => false
     FunctionValueBody => false
     ComputationBody { behavior: Value } => false
     ComputationBody { behavior: Transform } => true
@@ -781,6 +838,7 @@ fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
     UnsupportedArrowBody => false
     RecordConstructBody => arrow_body_record_construct_conforms(node: target)
     DeclarationReferenceBody => true
+    ParameterReferenceBody => true
     DirectAtomBody => true
     FunctionValueBody => true
     ComputationBody { behavior: _ } => true

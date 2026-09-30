@@ -79,7 +79,8 @@ fn policy_pilot_resolve(
       policy: policy,
       position: position,
       lm: dag_language_model(),
-      under_module_root: true
+      under_module_root: true,
+      in_containment: true
     },
     n: policy_pilot_atom(identity: identity),
     identity: identity
@@ -122,7 +123,8 @@ fn policy_pilot_resolve_rejects_with_reason(
       policy: policy,
       position: position,
       lm: dag_language_model(),
-      under_module_root: true
+      under_module_root: true,
+      in_containment: true
     },
     n: policy_pilot_atom(identity: identity),
     identity: identity

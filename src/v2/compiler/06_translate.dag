@@ -163,7 +163,8 @@ import v2.std.collection {
   List
 }
 import v2.std.qualified_name {
-  declaration_reference_path_optional
+  declaration_reference_path_optional,
+  parameter_reference_path_optional
 }
 import v2.std.optional {
   Absent,
@@ -595,6 +596,18 @@ fn coerce_grounded_node(
 // closure_emit_renders_an_arrow_without_its_body). The projection refuses here, located at the
 // arrow, rather than dropping the body; a bodied arrow is rendered only by the bodied-arrow route,
 // which reads the same grammar rows backward.
+// A PARAMETER REFERENCE IS A VALUE, NEVER A TYPE EXPRESSION. v2.compiler.resolve resolves type
+// positions in the type-role frame, which carries no value binder, so no resolved type expression
+// holds one; were one to arrive, reading it by connective would fold its spine as a record of its
+// own segments. It refuses at the reference instead.
+fn translate_parameter_reference_in_type_expression_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_parameter_reference_in_type_expression,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn translate_arrow_body_not_a_type_expression_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^translate_arrow_body_not_a_type_expression,
@@ -1137,6 +1150,10 @@ fn translate_algebra(
             }
           )
         Absent =>
+      match parameter_reference_path_optional(node: n) {
+        Present { value: _ } =>
+          outcome_rejected(translate_parameter_reference_in_type_expression_diagnostic(node: n))
+        Absent =>
       match n.kind {
         TypeNode { connective: connective } =>
           match connective {
@@ -1184,6 +1201,7 @@ fn translate_algebra(
           }
         ComputationNode { behavior: _ } =>
           outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n))
+      }
       }
       }
     },
