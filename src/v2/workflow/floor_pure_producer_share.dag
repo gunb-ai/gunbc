@@ -1089,6 +1089,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.block_expr_as_binary_operand_parse.ordinary_binary_parsed",
   "v2.test.parse.block_expr_as_binary_operand_parse.bare_match_body_is_match",
   "v2.test.parse.block_expr_as_binary_operand_parse.bare_if_body_is_branch",
+  "v2.test.claim.parse.uses_clause.uses_parsed",
+  "v2.test.claim.parse.uses_clause.uses_refusal",
   "v2.test.claim.occurrence_role.occurrence_role.binders_fixture_outcome",
   "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_parsed",
   "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_planted",

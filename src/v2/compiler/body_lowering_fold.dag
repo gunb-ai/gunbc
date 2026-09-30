@@ -709,6 +709,8 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_field_decl_block)
     || (emitted == ^dag_surface_positional_variant_payload)
     || (emitted == ^dag_surface_admit_callers_clause)
+    || (emitted == ^dag_surface_uses_clause)
+    || (emitted == ^dag_surface_uses_entry)
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
     || (emitted == ^dag_surface_field_init_string_key)
@@ -3511,13 +3513,30 @@ fn body_lower_fn_decl_exit_refusal_optional(captured: Node) -> Optional<Outcome<
   }
 }
 
+// A FN THAT DECLARES A `uses` CLAUSE REFUSES, LOCATED AT THE CLAUSE, ON EVERY ROUTE. The clause is
+// the fn's resource (effect) requirement and v2 has no carrier for it yet
+// (gunbc.recurring_failure_mode uses_clause_has_no_carrier), so lowering the fn would drop the
+// requirement. Both arms -- the full arrow and the census arrow -- ask this first, because the
+// requirement is part of the signature both of them read.
+fn body_lower_fn_uses_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
+  match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_uses_clause) {
+    Absent => optional_absent()
+    Present { value: clause } =>
+      optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_uses_clause_unmodeled, n: clause)))
+  }
+}
+
 fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_fn_decl_exit_refusal_optional(captured: captured) {
+      match body_lower_fn_uses_refusal_optional(captured: captured) {
         Present { value: refused } => body_lowering_lowered(o: refused)
-        Absent => body_lower_fn_decl_to_arrow_admitted(shell: shell, captured: captured)
+        Absent =>
+          match body_lower_fn_decl_exit_refusal_optional(captured: captured) {
+            Present { value: refused } => body_lowering_lowered(o: refused)
+            Absent => body_lower_fn_decl_to_arrow_admitted(shell: shell, captured: captured)
+          }
       }
   }
 }
@@ -3767,16 +3786,20 @@ fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_fn_signature_optional(captured: captured) {
-        Rejected { diagnostics: r } => body_lowering_lowered(o: Rejected { diagnostics: r })
-        Accepted { value: Absent, diagnostics: _ } => body_lower_wrapper_retained_shell(shell: shell)
-        Accepted { value: Present { value: sig }, diagnostics: _ } =>
-          match body_lower_fn_signature_refusal(shell: shell, sig: sig) {
-            Present { value: refused } => body_lowering_lowered(o: refused)
-            Absent =>
-              body_lowering_lowered(
-                o: outcome_accepted(value: body_lower_fn_decl_arrow(shell: shell, sig: sig, body: Absent))
-              )
+      match body_lower_fn_uses_refusal_optional(captured: captured) {
+        Present { value: refused } => body_lowering_lowered(o: refused)
+        Absent =>
+          match body_lower_fn_signature_optional(captured: captured) {
+            Rejected { diagnostics: r } => body_lowering_lowered(o: Rejected { diagnostics: r })
+            Accepted { value: Absent, diagnostics: _ } => body_lower_wrapper_retained_shell(shell: shell)
+            Accepted { value: Present { value: sig }, diagnostics: _ } =>
+              match body_lower_fn_signature_refusal(shell: shell, sig: sig) {
+                Present { value: refused } => body_lowering_lowered(o: refused)
+                Absent =>
+                  body_lowering_lowered(
+                    o: outcome_accepted(value: body_lower_fn_decl_arrow(shell: shell, sig: sig, body: Absent))
+                  )
+              }
           }
       }
   }
