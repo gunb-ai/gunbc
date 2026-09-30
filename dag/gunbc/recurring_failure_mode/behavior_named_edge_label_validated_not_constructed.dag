@@ -1,7 +1,5 @@
 module gunbc.recurring_failure_mode.behavior_named_edge_label_validated_not_constructed
 
-import v2.std.node { Authored, CoreEdgeLabel, CoreMarker, EdgeLabel, ProductionEdge, StructuralEdgeLabel, StructuralLabel }
-
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }

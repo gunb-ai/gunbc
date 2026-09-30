@@ -1,7 +1,5 @@
 module gunbc.recurring_failure_mode.authored_lexeme_read_as_a_grammar_marker
 
-import v2.std.node { Authored, EdgeLabel, StructuralLabel }
-
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
