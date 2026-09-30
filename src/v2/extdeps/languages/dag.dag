@@ -4258,7 +4258,7 @@ type DagCanonicalLiteral
   = DagCanonicalBoolLiteral { value: Bool }
   | DagCanonicalIntLiteral { magnitude: Int }
   | DagCanonicalSymbolLiteral { symbol: Symbol }
-  | DagCanonicalStringLiteral
+  | DagCanonicalStringLiteral { value: Symbol }
 
 fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
@@ -4274,9 +4274,8 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
 // childless true/false atoms. Int literals admit exactly one named, decodable magnitude child.
 // Symbol literals admit exactly the caret atom with one named name payload (dag_symbol_literal_node)
 // whose terminal carries an identity; the symbol is that identity. String literals admit the
-// childless string-literal atom. It carries no value today: the terminal is class-stamped, so every
-// string literal is the same node (gunbc.recurring_failure_mode
-// string_literal_lowers_to_one_class_stamped_atom). Its type does not depend on the value.
+// string-literal atom with its one named decoded-value payload (dag_string_literal_node, #12759); the
+// value is that payload's interned identity. A payload-less string-literal atom is malformed.
 // Every other shape is a typed refusal.
 
 fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
@@ -4287,8 +4286,11 @@ fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
         Absent => outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
       }
     Absent =>
-      if (node_atom_identity_optional(node: node) == optional_present(value: ^dag_token_string_literal)) && (length(xs: node.children) == 0) {
-        outcome_accepted(value: DagCanonicalStringLiteral)
+      if node_atom_identity_optional(node: node) == optional_present(value: ^dag_token_string_literal) {
+        match dag_string_literal_value_symbol_optional(node: node) {
+          Present { value: v } => outcome_accepted(value: DagCanonicalStringLiteral { value: v })
+          Absent => outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
+        }
       } else if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
         outcome_accepted(value: DagCanonicalBoolLiteral { value: true })
       } else if dag_node_is_kw_false_atom(node: node) && (length(xs: node.children) == 0) {

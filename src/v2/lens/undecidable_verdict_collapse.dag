@@ -126,7 +126,7 @@ fn body_is_decidable_literal(body: Node) -> Bool {
     Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => true
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } => true
     Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } => true
-    Accepted { value: DagCanonicalStringLiteral, diagnostics: _ } => true
+    Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }

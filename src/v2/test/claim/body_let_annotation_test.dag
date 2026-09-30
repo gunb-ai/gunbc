@@ -613,9 +613,10 @@ test fn bla_symbol_literal_ascribed_symbol_is_admitted_and_derived() -> Bool {
 // and are never refused and never kernel (neat-boar-16's ruling, decision A). A string literal is
 // typed as host text. Where FreeMonoid<Char> is declared, a host-text value refuses, literal or not.
 // The declared unfold for literals (gunbc.structural_realization_bindings literal_homomorphism_rows,
-// UnicodeScalarSequenceUnfold) is not reachable in v2 yet: the literal carries no value
-// (gunbc.recurring_failure_mode string_literal_lowers_to_one_class_stamped_atom), so it refuses
-// and is never admitted. RED BEFORE: the unimported String refused as unbound (the std.types
+// UnicodeScalarSequenceUnfold) is not reachable in v2 yet. The literal now carries its value (#12759),
+// but v2 infer does not peel an alias to its body, so it cannot recognize the destination as the
+// row's FreeMonoid over Char (gunbc.recurring_failure_mode
+// string_literal_lowers_to_one_class_stamped_atom). It refuses and is never admitted. RED BEFORE: the unimported String refused as unbound (the std.types
 // failure), and a string literal was underived, so `let y: Int = "abc"` was admitted unjudged.
 data bla_s_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -689,14 +690,28 @@ fn bla_structural_string_host_value_inferred() -> Outcome<Bool> {
 }
 
 // The literal's own recorded type, computed once (the tree carries a closure the share store refuses).
+// The literal's decoded-value payload (#12759) is typed host text by its own family, never a digit:
+// the same payload-family fix #12549 made for the Symbol name (review 5348050288).
+fn bla_string_payload_typed_host_text(t: InferredTree, literal: Node) -> Bool {
+  fold(literal.children, init: false, f: fn(acc, e) {
+    acc || (bla_resolved_type_is(t: t, n: e.target, ty: host_text_type_node())
+      && !bla_resolved_type_is(t: t, n: e.target, ty: integer_decimal_digit_type_node()))
+  })
+}
+
 fn bla_string_literal_typed_host_text_verdict() -> Bool {
   match bla_inferred_tree(o: bla_string_literal_unimported()) {
     Absent => false
     Present { value: t } =>
       fold(node_subtree_nodes(root: t.root), init: BlaPayloadCheck { seen: false, all: true }, f: fn(acc, n) {
         match dag_canonical_literal_from_node(node: n) {
-          Accepted { value: DagCanonicalStringLiteral, diagnostics: _ } =>
-            BlaPayloadCheck { seen: true, all: acc.all && bla_resolved_type_is(t: t, n: n, ty: host_text_type_node()) }
+          Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } =>
+            BlaPayloadCheck {
+              seen: true,
+              all: acc.all
+                && bla_resolved_type_is(t: t, n: n, ty: host_text_type_node())
+                && bla_string_payload_typed_host_text(t: t, literal: n)
+            }
           _ => acc
         }
       }).all
