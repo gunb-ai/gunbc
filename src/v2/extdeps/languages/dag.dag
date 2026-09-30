@@ -96,6 +96,7 @@ import v2.std.compilers.lexing {
 }
 import v2.std.node {
   symbol_lexeme,
+  construct_tag_marker,
   Arrow,
   Atom,
   Bind,
@@ -1916,6 +1917,8 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
 // declarations allowed to call it (std.integer qualified_octets). v1.compiler.parse
 // parse_optional_admit_callers reads it as a field-init on the fn node and refuses an empty list;
 // the list here requires a first element for the same reason, so `admit_callers: []` still refuses.
+// A trailing comma before `]` is admitted, as dag_grammar_comma_list_expr admits it and as v1 reads
+// the list; without it every multi-line caller list written with one refused its whole module.
 // `admit_callers` is matched as an exact-word terminal and stays an ordinary identifier everywhere
 // else. The clause is consumed and then DISCARDED when the fn lowers to an Arrow: nothing on the
 // native route checks caller admission, and the stage that does adds its Arrow carrier together
@@ -1939,7 +1942,10 @@ fn dag_grammar_admit_callers_clause_expr() -> GrammarExpr {
                 right: dag_grammar_nonterminal(production: ^dag_production_expr)
               )
             ),
-            right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
+            right: dag_grammar_sequence(
+              left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma)),
+              right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
+            )
           )
         )
       )
@@ -2043,10 +2049,21 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
 // at declaration grade in v2.compiler.body_lowering_fold body_lower_service_decl, which reads the
 // interface and sets realization (transport, config, exit, response, mock_response) and unmodeled
 // interface members aside, typed and located.
+// A STATUS PATTERN IS AN EXACT CODE (`404`), A CLASS (`5xx`) OR A NAME (`nonzero`). The lexer reads
+// `5xx` as the int literal `5` then the identifier `xx`, so the class is that pair, written as the int
+// followed by the literal terminal `xx` and tried before the bare int -- the reading v1 02_parse
+// parse_status_pattern makes. Without it every response block with a status class refused its whole
+// module as parse_g0_tokens_remain at the `xx`.
 fn dag_grammar_status_pattern_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
-    right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+    left: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
+      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "xx"))
+    ),
+    right: dag_grammar_choice(
+      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
+      right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+    )
   )
 }
 
@@ -4587,7 +4604,7 @@ fn dag_rec_construct_body_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
-        name: ^dag_binding_type_rec,
+        name: construct_tag_marker(),
         target: dag_type_atom_node(identity: ^dag_binding_type_rec)
       ),
       dag_named_edge(
@@ -4616,7 +4633,7 @@ fn dag_variant_holds_construct_node(value_lit: Symbol) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
-        name: ^dag_binding_type_variant_holds,
+        name: construct_tag_marker(),
         target: dag_type_atom_node(identity: ^dag_binding_type_variant_holds)
       ),
       dag_named_edge(

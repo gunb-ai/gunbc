@@ -14,6 +14,7 @@ import extdeps.github.workflow_runs_contracts {
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
+import std.algebra { Cons, Empty }
 
 // WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
 // settle observed architecture and provider. run_attempt is modeled here and copied onto
