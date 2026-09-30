@@ -357,6 +357,28 @@ data sol_hold_activate_held_operation: OperationRef = OperationRef {
   operation: "ActivateHeld",
 }
 
+// `hostname -s` on the worker: the entry is mtcollins1_boot_wet_on_srv1, so the worker it models is
+// srv1, printed as hostname(1) prints the short name, with one newline.
+data os_hostname_read_short_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/tools/hostname.dag",
+  service: "os.Hostname",
+  operation: "ReadShort",
+}
+
+data dry_worker_short_hostname: String = "srv1"
+
+// The runner's working directory, where the boot step runs: its checkout. Relative paths the route
+// uses (the observer's artifacts directory, the retained target files) resolve against it.
+data dry_worker_checkout: String = "/home/runner/work/gunbc/gunbc"
+
+fn hostname_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: concat(dry_worker_short_hostname, "\n"), stderr: "" } },
+    state: w,
+    elapsed: second(count: 0),
+  }
+}
+
 data sol_hold_release_held_operation: OperationRef = OperationRef {
   path: "dag/gunbc/machine_intake/sol_hold.dag",
   service: "gunbc.machine_intake.sol_hold",
@@ -365,7 +387,7 @@ data sol_hold_release_held_operation: OperationRef = OperationRef {
 
 fn mtcollins1_boot_dry_realization(identity: NonEmptyStr, initial: MtCollins1BootWorld, epoch: Second) -> OperationRealization<MtCollins1BootWorld> {
   let bmc = concat(bmc_bindings(get: fn(w) { w.bmc }, put: with_bmc), megarac_bindings(get: fn(w) { w.media }, put: with_media))
-  let files = filesystem_bindings(get: fn(w) { w.fs }, put: with_fs)
+  let files = filesystem_bindings(get: fn(w) { w.fs }, put: with_fs, cwd: fn(w) { dry_worker_checkout })
   let local_commands = exact_invocation_binding(at: shell_exec_run_argv_operation, inputs: ["program", "arguments"], table: [
     ModeledInvocation {
       words: local_command_words(command: env_prefixed_command(bindings: [EnvSet { name: "SSH_AUTH_SOCK", value: initial.agent.socket }], command: ssh_add_list_identities_command())),
@@ -379,6 +401,7 @@ fn mtcollins1_boot_dry_realization(identity: NonEmptyStr, initial: MtCollins1Boo
     OperationBinding { at: sol_hold_activate_held_operation, handler: sol_activate_held_handler },
     OperationBinding { at: sol_hold_release_held_operation, handler: sol_release_held_handler },
     OperationBinding { at: linux_procfs_read_uptime_operation, handler: uptime_handler },
+    OperationBinding { at: os_hostname_read_short_operation, handler: hostname_handler },
   ]
   OperationRealization {
     identity: identity,

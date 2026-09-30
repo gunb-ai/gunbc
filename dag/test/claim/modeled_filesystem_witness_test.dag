@@ -63,7 +63,7 @@ fn filesystem_frame(initial: ModeledFilesystem) -> WitnessEvaluationFrame<Modele
       identity: realization_identity,
       initial: initial,
       epoch: virtual_clock_origin(),
-      bindings: filesystem_bindings(get: fn(fs) { fs }, put: fn(fs, next) { next }),
+      bindings: filesystem_bindings(get: fn(fs) { fs }, put: fn(fs, next) { next }, cwd: fn(fs) { "/" }),
       advance: fn(fs, now) { fs },
     } }
   }

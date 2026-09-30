@@ -26,19 +26,27 @@ import v2.std.operation_realization {
   DispatchWorkerKilled,
 }
 import gunbc.machine_intake_mtcollins1_boot_run {
-  MtCollins1BootAttempt, mtcollins1_boot_wet_on_srv1, mtcollins1_boot_exit_reason,
+  MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason,
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_medium, mtcollins1_boot_medium_image_name, MtCollins1CensusMedium }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image, Mtcollins1CensusImageDerived }
 import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_record_path, mtcollins1_census_medium_served_path }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }
+import gunbc.runner_browser_toolchain {
+  RunnerBrowserToolchainResolution, RunnerBrowserToolchainLocation, RunnerBrowserToolchainStanding,
+  BrowserToolchainReady, BrowserToolchainNotReady, BrowserToolchainUnresolved,
+  BrowserToolchainHostAdmitted, BrowserToolchainHostRefused, runner_browser_toolchain_host_admission,
+  TreeAdmission, TreeAdmitted, TreeAbsent, VersionMatches, HostLibrariesResolved, BrowserLaunchRendered,
+  runner_browser_toolchain_node, runner_browser_toolchain_automation, browser_toolchain_probe_title, browser_toolchain_probe_width_px,
+}
 import gunbc.machine_intake_mtcollins1_maintenance_hold { boot_run_owner, unit_hold_store_root, mtcollins1_unit_hold_key }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12423, operator ruling 2026-09-27). Every case runs THE
-// REAL ENTRY -- gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1, unchanged -- over
+// REAL ENTRY -- gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_on_srv1_resolving_toolchain, which the
+// wet entry mtcollins1_boot_wet_on_srv1 is a single call into, unchanged -- over
 // a dry realization of its whole effect demand (gunbc.machine_intake_mtcollins1_boot_dry_realization):
 // the one BMC model, its virtual-media subsystem, the worker's filesystem, processes, environment and
 // clocks, the SSH agent and srv2. Nothing in the orchestrator is replaced. Each case asserts the ROUTE
@@ -66,7 +74,7 @@ fn matrix_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
 // writing. An operation of any other service refuses as uncovered.
 data matrix_services: List<String> = [
   "diagnostic.ipmi.Tool", "megarac.Media", "Filesystem", "shell.Env", "sleep.Delay",
-  "gunbc.machine_intake.sol_hold", "shell.Exec", "ssh.Session", "Clock", "linux.Procfs", "shell.Move",
+  "gunbc.machine_intake.sol_hold", "shell.Exec", "ssh.Session", "Clock", "linux.Procfs", "shell.Move", "os.Hostname", "shell.Mkdir", "shell.Path",
 ]
 
 fn matrix_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
@@ -84,8 +92,55 @@ fn matrix_frame_over(realization: OperationRealization<MtCollins1BootWorld>) -> 
   }
 }
 
+// THE RUNNER'S BROWSER TOOLCHAIN IS SUPPLIED, NOT READ BACK (ruling of eager-owl-205 on gunbc#12533).
+// The wet entry resolves it with runner_browser_toolchain_here_wet -- a full readback of the installed
+// tree against its pin, the host libraries, the versions and a launch probe -- which is a different
+// subject with its own witnesses. The matrix supplies each resolution arm the boot can meet, built from
+// the production location and probe values, and the inner entry calls it where the observer starts.
+fn srv1_toolchain_location() -> RunnerBrowserToolchainLocation? {
+  match runner_browser_toolchain_host_admission(host: "srv1" as NonEmptyStr) {
+    BrowserToolchainHostAdmitted { deploy: _, location: loc } => Present { value: loc }
+    BrowserToolchainHostRefused { host: _, cause: _ } => none
+  }
+}
+
+fn toolchain_standing(loc: RunnerBrowserToolchainLocation, tree: TreeAdmission) -> RunnerBrowserToolchainStanding {
+  RunnerBrowserToolchainStanding {
+    host: "srv1" as NonEmptyStr, location: loc, tree: tree,
+    versions: [
+      VersionMatches { subject: "node" as NonEmptyStr, observed: runner_browser_toolchain_node.version as String },
+      VersionMatches { subject: "playwright-core" as NonEmptyStr, observed: runner_browser_toolchain_automation.version as String },
+    ],
+    libraries: [HostLibrariesResolved { binary: loc.headless_shell }, HostLibrariesResolved { binary: loc.chromium }],
+    launch: BrowserLaunchRendered { title: browser_toolchain_probe_title, rendered_width: browser_toolchain_probe_width_px, resolved_module: loc.playwright_module as String },
+    after: tree,
+  }
+}
+
+fn ready_toolchain() -> RunnerBrowserToolchainResolution {
+  match srv1_toolchain_location() {
+    Present { value: loc } => BrowserToolchainReady { location: loc, standing: toolchain_standing(loc: loc, tree: TreeAdmitted) }
+    Absent => BrowserToolchainUnresolved { cause: "matrix: srv1 is not admitted to the browser-toolchain pool" }
+  }
+}
+
+fn not_ready_toolchain() -> RunnerBrowserToolchainResolution {
+  match srv1_toolchain_location() {
+    Present { value: loc } => BrowserToolchainNotReady { standing: toolchain_standing(loc: loc, tree: TreeAbsent { tree: loc.root }) }
+    Absent => BrowserToolchainUnresolved { cause: "matrix: srv1 is not admitted to the browser-toolchain pool" }
+  }
+}
+
+fn unresolved_toolchain() -> RunnerBrowserToolchainResolution {
+  BrowserToolchainUnresolved { cause: "runner_browser_toolchain: hostname -s returned empty output" }
+}
+
+fn boot_with_toolchain(toolchain: RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt {
+  mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() { toolchain })
+}
+
 fn run_attempt(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
-  evaluate_in_witness_frame(frame: matrix_frame(world: world), subject: fn(_scope) { mtcollins1_boot_wet_on_srv1() })
+  evaluate_in_witness_frame(frame: matrix_frame(world: world), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) })
 }
 
 // ─── THE HEALTHY WORLD, and the facts it is built from ───────────────────────────────────────────
@@ -121,7 +176,7 @@ fn healthy_media() -> MegaRacMediaWorld {
 
 fn worker_filesystem() -> ModeledFilesystem {
   ModeledFilesystem {
-    directories: ["target", "/", "/run", "/proc", "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String],
+    directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String],
     files: [ModeledFile { path: credential_path, content: "secret" }],
   }
 }
@@ -446,7 +501,7 @@ fn teardown_within(route: List<DispatchRecord>, bound: Int) -> Bool {
 test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
   let w = world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))
   let dropping = with_bmc(w: w, bmc: bmc_with_sol_drop_after_boot(world: w.bmc, after: second(count: 30)))
-  match evaluate_in_witness_frame(frame: matrix_frame(world: dropping), subject: fn(_scope) { mtcollins1_boot_wet_on_srv1() }) {
+  match evaluate_in_witness_frame(frame: matrix_frame(world: dropping), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
     WitnessReturned { value, route, state } =>
       string_contains(s: outcome_reason(a: value), pattern: "ObservationChannelLost while the boot was being watched")
         && string_contains(s: outcome_reason(a: value), pattern: "incident frozen to /run/sol.capture.loss")
@@ -510,12 +565,12 @@ fn as_another_run(w: MtCollins1BootWorld, run_id: String) -> MtCollins1BootWorld
 // preparation). When dead-owner reconciliation lands this case flips.
 test fn pinned_an_interrupted_attempt_locks_out_the_next_one() -> Bool {
   let realization = killed_after_start_media(realization: mtcollins1_boot_dry_realization(identity: realization_identity, initial: world_with_console(lines: []), epoch: virtual_clock_origin()))
-  match evaluate_in_witness_frame(frame: matrix_frame_over(realization: realization), subject: fn(_scope) { mtcollins1_boot_wet_on_srv1() }) {
+  match evaluate_in_witness_frame(frame: matrix_frame_over(realization: realization), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
     WitnessInterrupted { at, state, now: interrupted_clock } => {
       let next = as_another_run(w: state, run_id: "4243")
       let resumed = evaluate_in_witness_frame(
         frame: matrix_frame_over(realization: mtcollins1_boot_dry_realization(identity: realization_identity, initial: next, epoch: interrupted_clock)),
-        subject: fn(_scope) { mtcollins1_boot_wet_on_srv1() }
+        subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }
       )
       at.invocation.at.operation == "StartMedia"
         && match at.outcome { DispatchWorkerKilled { committed: c } => c _ => false }
