@@ -918,11 +918,28 @@ fn arrow_body_record_construct_conforms(node: Node) -> Bool {
   }
 }
 
-// The construct reading is a fact about the FIRST edge alone, so it is read from the head, not folded
-// over every edge.
+// The construct reading is a fact about the FIRST edge alone. This module reads a list's head the
+// way arrow_first_positional_target does -- a declared first-edge read, settled by the first element
+// and carried unchanged past it -- because it can take neither alternative: a direct `Cons` match on
+// a List<Edge> does not typecheck in the seed, and `first` answers v2.std.optional Optional, whose
+// import into this module (which nearly every module imports) moves the tree-wide unimported-bare-
+// provider census (measured: the required floor refused a roster row it silently discharged).
+type FirstEdgeRead
+  = FirstEdgeUnread
+  | FirstEdgeFound { edge: Edge }
+
+fn first_edge_read(children: List<Edge>) -> FirstEdgeRead {
+  fold(children, init: FirstEdgeUnread, f: fn(acc, e) {
+    match acc {
+      FirstEdgeFound { edge: _ } => acc
+      FirstEdgeUnread => FirstEdgeFound { edge: e }
+    }
+  })
+}
+
 fn arrow_body_construct_tag_leads(node: Node) -> Bool {
-  match first(node.children) {
-    Present { value: edge } =>
+  match first_edge_read(children: node.children) {
+    FirstEdgeFound { edge: edge } =>
       match edge.label {
         Named { name: label } =>
           symbol_eq(a: label, b: construct_tag_marker())
@@ -932,7 +949,7 @@ fn arrow_body_construct_tag_leads(node: Node) -> Bool {
             })
         Positional => false
       }
-    _ => false
+    FirstEdgeUnread => false
   }
 }
 
