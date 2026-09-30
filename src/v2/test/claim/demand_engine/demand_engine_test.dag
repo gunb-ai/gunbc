@@ -1,6 +1,6 @@
 module v2.test.demand_engine.demand_engine
 
-import v2.std.algebra { length, list_map }
+import v2.std.algebra { length, list_map, fold_list }
 import v2.std.collection { List }
 import std.algebra { Cons, Empty }
 import v2.std.dependency { DataDependsOn, DependencyRelation }
@@ -504,4 +504,64 @@ test fn a_settle_costs_the_same_in_a_wider_unrelated_graph_holds() -> Bool {
   let wide = g_settle_deltas(e: g_wide_extra(e: g_lopsided_unsealed(), n: 40, tag: "w"))
   (small.derivations == wide.derivations)
     && (small.entries_walked == wide.entries_walked)
+}
+
+// ── the keyed store's invariants, executable ─────────────────────────────────────────────────
+//
+// SPLITTING THE STORE FROM ITS ORDER BUYS LOCALITY AND OWES THESE. Two representations of one
+// population can disagree, and a keyed store with a stale order list would answer settlement
+// correctly while every whole-population pass -- seal, reevaluate, receipts -- silently skipped or
+// double-counted a demand. So the agreement is asserted rather than assumed.
+//
+// THE FIFTH INVARIANT IS NOT HERE AND ITS ABSENCE IS DECLARED. "No operational function traverses
+// entry_order" is a property of the SOURCE, not of any value a claim can read: the traversals are
+// inside demand_engine_entries_mapped and demand_engine_all_entries, and nothing in .dag can see that
+// a third one has not appeared elsewhere. Its value-level shadow IS asserted -- settlement leaves the
+// order untouched, and settlement's entry visitation is population-independent -- but calling that
+// structural would be the rung inflation DESIGN section 4b(1) names. It is diligence at the same grain
+// as std.compiler_entry's hand-authored row roster, and its next-rung trigger is the same: a lens over
+// this module's own call graph.
+fn g_order_resolves_in_store(e: DemandEngine<Int>) -> Bool {
+  fold_list(
+    xs: e.entry_order,
+    empty: true,
+    cons: fn(acc, id) {
+      acc && (match demand_engine_entry(e: e, id: id) {
+        Present { value: _ } => true
+        Absent => false
+      })
+    }
+  )
+}
+
+fn g_order_counts_each_once(e: DemandEngine<Int>) -> Bool {
+  length(xs: e.entry_order) == length(xs: demand_engine_all_entries(e: e))
+}
+
+// EVERY IDENTITY THE ORDER NAMES IS IN THE STORE, so a whole-population pass cannot read a key the
+// store has dropped and quietly skip that demand.
+test fn the_entry_order_resolves_entirely_in_the_keyed_store_holds() -> Bool {
+  let sealed = g_lopsided()
+  let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
+  g_order_resolves_in_store(e: sealed) && g_order_resolves_in_store(e: after)
+}
+
+// AND NAMES EACH EXACTLY ONCE. A duplicated identity would make seal derive one demand's readiness
+// twice and inflate every population figure derived from the order.
+test fn the_entry_order_names_each_demand_once_holds() -> Bool {
+  let sealed = g_lopsided()
+  let repeated = demand_engine_request(e: sealed, id: g_a(), nature: PureComputation)
+  g_order_counts_each_once(e: sealed)
+    && g_order_counts_each_once(e: repeated)
+    && (length(xs: repeated.entry_order) == length(xs: sealed.entry_order))
+}
+
+// SETTLEMENT NEVER TOUCHES THE ORDER, which is the value-level shadow of settlement being local: a
+// completion changes STATE, and the population it belongs to is not a function of what settled.
+test fn settlement_leaves_the_entry_order_unchanged_holds() -> Bool {
+  let sealed = g_lopsided()
+  let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
+  (length(xs: after.entry_order) == length(xs: sealed.entry_order))
+    && g_order_resolves_in_store(e: after)
+    && g_order_counts_each_once(e: after)
 }

@@ -209,9 +209,19 @@ fn demand_entry_new<V>(identity: DemandIdentity, nature: DemandNature) -> Demand
 //
 // WHAT THIS MAKES TRUE THAT WAS NOT. The law is "a completion re-evaluates its DIRECT dependents". With
 // a persistent LIST as the store, updating one entry is inherently a walk of every entry, so settling a
-// demand among N unrelated ones cost O(N) twice over -- measured at 10 entry visits in a 5-demand graph
-// and 90 in a 45-demand graph, same out-degree. The population passes that REMAIN are the ones the law
-// does not claim are local: seal validates every demand, and reevaluate recomputes every readiness.
+// demand among N unrelated ones visited O(N) entries twice over -- measured at 10 entry visits in a
+// 5-demand graph and 90 in a 45-demand graph, same out-degree. The population passes that REMAIN are
+// the ones the law does not claim are local: seal validates every demand, and reevaluate recomputes
+// every readiness.
+//
+// THE CLAIM IS AT THE ENTRY-VISITATION GRAIN AND NOT AT WALL TIME, and the distinction is not
+// pedantry. What the counter establishes is that settlement visits the settled entry and its direct
+// dependents and NOTHING ELSE -- the semantic full-population scan is gone. It does not establish
+// constant-time operations: a keyed persistent map may still carry population-dependent internal cost
+// such as tree depth, and an ordered ready set may carry logarithmic insertion. "Costs its out-degree,
+// not the graph" is sound as a statement about GRAPH WORK; "O(out-degree) wall time" would claim more
+// than this evidence supports, and stating the stronger thing is the rung inflation DESIGN section
+// 4b(1) names.
 type DemandEngine<V> {
   entries: Map<DemandIdentity, DemandEntry<V>>
   entry_order: List<DemandIdentity>
