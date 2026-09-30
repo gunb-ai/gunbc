@@ -85,7 +85,11 @@ pub(crate) fn checker_input_paths(prerequisites: &[String], workspace_root: &Pat
     let mut inputs: BTreeSet<String> = BTreeSet::new();
     let mut manifests: BTreeSet<PathBuf> = BTreeSet::new();
     for prerequisite in prerequisites {
-        let path = Path::new(prerequisite);
+        // rustc's own `deps/*.d` records spell workspace files relative to the workspace root,
+        // where cargo runs it; cargo's top-level `<bin>.d` spells them absolute. Both readings
+        // name the same file.
+        let joined = workspace_root.join(prerequisite);
+        let path = joined.as_path();
         let Ok(relative) = path.strip_prefix(workspace_root) else {
             continue;
         };
@@ -135,7 +139,32 @@ pub(crate) fn observe_checker_input_paths(workspace_root: &Path) -> Result<Vec<S
     let canonical_root = workspace_root
         .canonicalize()
         .unwrap_or_else(|_| workspace_root.to_path_buf());
-    let inputs = checker_input_paths(&parse_dep_info_prerequisites(&text), &canonical_root);
+    checker_inputs_from_record(&text, &dep_info, &canonical_root)
+}
+
+/// The checker's inputs from one record's text, or the reason the record cannot stand for them.
+///
+/// TWO RECORDS SHARE THE `.d` FORMAT AND ONLY ONE IS THE CHECKER'S. Cargo writes `<bin>.d` beside
+/// a binary it builds, listing every file of every workspace crate the binary links, and the
+/// package manifests with them. rustc writes `deps/<crate>-<hash>.d` for ONE crate and omits its
+/// dependency crates. The seed's infer lives in its own crate (`v1-stage0-v1-infer`), so a
+/// per-crate record is missing the very files gunbc#12441 edited. The two are told apart
+/// structurally: only cargo's record lists a `Cargo.toml`. A record listing none is refused.
+pub(crate) fn checker_inputs_from_record(
+    text: &str,
+    record: &Path,
+    canonical_root: &Path,
+) -> Result<Vec<String>, String> {
+    let prerequisites = parse_dep_info_prerequisites(text);
+    if !prerequisites.iter().any(|p| p.ends_with("Cargo.toml")) {
+        return Err(format!(
+            "the dependency record {} lists no Cargo.toml, so it is rustc's per-crate record and \
+             omits the checker's dependency crates; the floor must run a binary whose cargo \
+             record lists every crate it links",
+            record.display()
+        ));
+    }
+    let inputs = checker_input_paths(&prerequisites, canonical_root);
     // THE ANCHOR: this file is compiled into the checker, and `file!()` is rustc's own spelling
     // of it. A record that omits it came from another build, or was relativized against the
     // wrong root, so it is refused instead of read as "no checker input changed".
@@ -144,7 +173,7 @@ pub(crate) fn observe_checker_input_paths(workspace_root: &Path) -> Result<Vec<S
         return Err(format!(
             "the checker's dependency record {} does not list {anchor}, which this binary was \
              compiled from; it describes another build or another checkout ({} inputs under {})",
-            dep_info.display(),
+            record.display(),
             inputs.len(),
             canonical_root.display()
         ));
@@ -160,7 +189,19 @@ pub(crate) fn checker_subject_decision(
     changed_paths: &[String],
 ) -> Result<CheckerSubjectDecision, String> {
     use v1_interpreter::Value;
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, CHECKER_SUBJECT_AUTHORITY)
+    // Anchored at the workspace root rather than the process cwd, so the decision is the same
+    // from the floor (run at the root) and from a test (run in the crate directory).
+    let root = process_workspace_root();
+    let anchored = |p: &str| {
+        let path = Path::new(p);
+        if path.is_absolute() {
+            p.to_string()
+        } else {
+            root.join(path).to_string_lossy().into_owned()
+        }
+    };
+    let roots: Vec<String> = source_roots.iter().map(|r| anchored(r)).collect();
+    let (graph, indices) = resolve_entry_graph_shared(&roots, &anchored(CHECKER_SUBJECT_AUTHORITY))
         .map_err(|e| format!("checker subject authority resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     let list = |items: &[String]| {
@@ -197,7 +238,7 @@ pub(crate) fn checker_subject_decision(
         _ => Err(format!("CheckerSubjectDecision missing String `{name}`")),
     };
     let changed_checker_paths = match ctx.field(fields, "changed_checker_paths") {
-        Some(v) => string_list_from_value(v, "changed_checker_paths")?,
+        Some(v) => decoded_string_list(&ctx, v)?,
         None => return Err("CheckerSubjectDecision missing `changed_checker_paths`".to_string()),
     };
     Ok(CheckerSubjectDecision {
@@ -205,6 +246,56 @@ pub(crate) fn checker_subject_decision(
         changed_checker_paths,
         reason: text("reason")?,
     })
+}
+
+/// A `List<String>` as the frame returns it: a host list, or the structural `FreeMonoid` chain a
+/// `.dag` fold such as `filter` builds.
+fn decoded_string_list(
+    ctx: &v1_interpreter::InterpContext,
+    value: &v1_interpreter::Value,
+) -> Result<Vec<String>, String> {
+    use v1_interpreter::Value;
+    let mut out = Vec::new();
+    let mut cur = value;
+    loop {
+        match cur {
+            Value::List(_) => {
+                out.extend(string_list_from_value(cur, "changed_checker_paths")?);
+                return Ok(out);
+            }
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Empty") => {
+                let _ = fields;
+                return Ok(out);
+            }
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Cons") => {
+                match (ctx.field(fields, "head"), ctx.field(fields, "tail")) {
+                    (Some(Value::Str(s)), Some(tail)) => {
+                        out.push(s.to_string());
+                        cur = tail;
+                    }
+                    _ => {
+                        return Err(
+                            "changed_checker_paths: a Cons without a String head".to_string()
+                        )
+                    }
+                }
+            }
+            other => {
+                return Err(format!(
+                    "changed_checker_paths is not a list: `{}`",
+                    ctx.format_value(other)
+                ))
+            }
+        }
+    }
 }
 
 /// The module seeds a decision contributes: every module the corpus admits when the rule chose
@@ -246,29 +337,58 @@ mod tests {
         let a = root.join("crate/src/infer_helper.rs");
         let prerequisites = vec![
             a.to_string_lossy().to_string(),
+            "crate/src/relative_helper.rs".to_string(),
             "/registry/serde/src/lib.rs".to_string(),
         ];
         let inputs = checker_input_paths(&prerequisites, &root);
         assert!(inputs.contains(&"crate/src/infer_helper.rs".to_string()));
+        assert!(inputs.contains(&"crate/src/relative_helper.rs".to_string()));
         assert!(inputs.contains(&"crate/Cargo.toml".to_string()));
         assert!(inputs.contains(&"Cargo.lock".to_string()));
         assert!(!inputs.iter().any(|p| p.contains("serde")));
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // THE OBSERVATION RUNS FOR REAL: cargo wrote a dep-info record beside this test binary, and
-    // the infer file must be in it. A roster that dropped a file the checker compiles would drop
-    // this one, so this control goes red.
+    // THE OBSERVATION RUNS FOR REAL, over this test binary. Its record is rustc's per-crate one
+    // (`deps/v1_compiler-<hash>.d`), which lists this crate's files and not the infer crate's:
+    // measured 2026-09-30, 159 inputs and no v1_compiler_infer.rs. Read as the checker's inputs,
+    // it would have left the gunbc#12441 edit outside the roster. So the observation must refuse
+    // it, and this control is red if it ever reads such a record as complete.
     #[test]
-    fn the_running_binary_record_lists_the_checker_it_was_compiled_from() {
-        let inputs = observe_checker_input_paths(&process_workspace_root())
-            .expect("cargo writes a dep-info record beside every binary it builds");
-        assert!(
-            inputs.contains(&"src/v1/stage0/src/v1_compiler_infer.rs".to_string()),
-            "{} inputs, infer missing",
-            inputs.len()
+    fn a_per_crate_record_that_omits_the_infer_crate_is_refused() {
+        let refusal = observe_checker_input_paths(&process_workspace_root())
+            .expect_err("a test binary carries only rustc's per-crate record");
+        assert!(refusal.contains("per-crate"), "{refusal}");
+    }
+
+    // THE CARGO FORM, which the floor's claim_executor carries: manifests listed, the infer
+    // crate's files listed, and this file (the anchor) listed. Admitted, and dropping the anchor
+    // refuses it.
+    #[test]
+    fn a_cargo_record_is_admitted_only_with_its_anchor() {
+        let root = process_workspace_root();
+        let root = root.canonicalize().unwrap_or(root);
+        let abs = |p: &str| root.join(p).to_string_lossy().into_owned();
+        let with_anchor = format!(
+            "{}: {} {} {}\n",
+            abs("target/release/claim_executor"),
+            abs("src/v1/stage0/Cargo.toml"),
+            abs("src/v1/stage0/src/v1_compiler_infer.rs"),
+            abs(file!())
         );
-        assert!(inputs.contains(&"src/v1/stage0/Cargo.toml".to_string()));
+        let inputs = checker_inputs_from_record(&with_anchor, Path::new("claim_executor.d"), &root)
+            .expect("a cargo record with its anchor is the checker's inputs");
+        assert!(inputs.contains(&"src/v1/stage0/src/v1_compiler_infer.rs".to_string()));
+        let without_anchor = format!(
+            "{}: {} {}\n",
+            abs("target/release/claim_executor"),
+            abs("src/v1/stage0/Cargo.toml"),
+            abs("src/v1/stage0/src/v1_compiler_infer.rs")
+        );
+        let refusal =
+            checker_inputs_from_record(&without_anchor, Path::new("claim_executor.d"), &root)
+                .expect_err("a record that omits the running checker's own file is refused");
+        assert!(refusal.contains("does not list"), "{refusal}");
     }
 
     // THE REAL FRAME DECIDES: the rule is evaluated from v2.workflow.floor_subject_seed, not

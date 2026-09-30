@@ -13246,7 +13246,7 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
             )
         };
         let narrow = subject_under(&["edited.dag".to_string()]);
-        let wide = subject_under(&[infer.clone()]);
+        let wide = subject_under(std::slice::from_ref(&infer));
         let _ = std::fs::remove_dir_all(&fx);
         let (_, views) = narrow.expect("a non-checker diff prepares the edited closure green");
         let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
