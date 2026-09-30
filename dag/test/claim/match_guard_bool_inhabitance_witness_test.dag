@@ -1,0 +1,65 @@
+module test.claim.match_guard_bool_inhabitance_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, List, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// compile_dag_diagnostic_census walks the live checkout, as its sibling
+// test.claim.declared_type_inhabitance_direct_call_witness does.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A MATCH-ARM GUARD MUST INHABIT Bool AT ACCEPTANCE. v1.compiler.infer inferred a guard with no
+// expected type and judged nothing, so a non-Bool guard type-checked clean and was refused only at
+// run time, by v1_interpreter eval_match's MatchGuardNotBool. The guard is now a PositionMatchGuard
+// obligation of declared_type_inhabitance, declared Bool. The String-guard fixture is the
+// discriminating red (zero DeclaredTypeNotInhabited rows before the wall, measured); the Bool-guard
+// fixture is the positive control that a legitimate guard still admits.
+//
+// A guard spelled as a bare identifier (`x if s =>`) does not reach the checker at all: the parser
+// reads `s => 1` as a lambda and refuses `expected FatArrow, found Newline`. So the fixture
+// parenthesises it.
+fn violation_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data string_guard_source: String = "module probe_guard_string\nimport std.types { Int, String }\nfn pick(n: Int, s: String) -> Int {\n  match n {\n    x if (s) => 1\n    _ => 2\n  }\n}\n"
+
+data int_guard_source: String = "module probe_guard_int\nimport std.types { Int }\nfn pick(n: Int) -> Int {\n  match n {\n    x if x + 1 => 1\n    _ => 2\n  }\n}\n"
+
+data bool_guard_source: String = "module probe_guard_bool\nimport std.types { Int }\nfn pick(n: Int) -> Int {\n  match n {\n    x if x > 10 => 1\n    _ => 2\n  }\n}\n"
+
+test fn a_string_guard_is_refused_at_acceptance() -> Bool {
+  violation_count(source: string_guard_source) == 1
+}
+
+test fn a_bool_guard_is_admitted() -> Bool {
+  violation_count(source: bool_guard_source) == 0
+}
+
+data int_literal_guard_source: String = "module probe_guard_int_literal\nimport std.types { Int }\nfn pick(n: Int) -> Int {\n  match n {\n    x if 5 => 1\n    _ => 2\n  }\n}\n"
+
+// EXPECTED RED, ENROLLED IN v2.workflow.floor_expected_red floor_expected_red_chunk_int_guard_admitted_by_the_relation.
+// An Int guard -- a literal and a non-literal value -- is still ADMITTED, and the cause is not this
+// position: the shared relation's declared_realizes_as_kernel_numeric admits an Int or Float produced
+// value at ANY declared type whose provenance realizes natively, and provenance_realizes_natively
+// answers true for every KernelMinted type, Bool included. Each row asserts the refusal the floor
+// owes, so it fails today; when the relation requires the declared side to be numeric (routed to the
+// typing lane as its own item), both rows pass, the roster names them for removal, and they stay
+// enrolled as permanent regression controls (DESIGN 4b(4)). The literal and the value are separate
+// rows because the literal also passes through literal elaboration and could be repaired on its own.
+test fn an_int_literal_guard_is_refused_at_acceptance() -> Bool {
+  violation_count(source: int_literal_guard_source) == 1
+}
+
+test fn an_int_valued_guard_is_refused_at_acceptance() -> Bool {
+  violation_count(source: int_guard_source) == 1
+}

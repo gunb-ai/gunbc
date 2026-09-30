@@ -5318,6 +5318,7 @@ pub enum DeclaredTypePosition {
     PositionParameterDefault,
     PositionCallableReturn,
     PositionDirectCallArgument,
+    PositionMatchGuard,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -5393,6 +5394,7 @@ pub fn declared_type_position_label(position: DeclaredTypePosition, subject: Str
                 )
             }
         }
+        DeclaredTypePosition::PositionMatchGuard => "match guard".to_string(),
     }
 }
 
@@ -6385,6 +6387,22 @@ pub fn obligation_type_shape(
             shape.clone()
         }
     }
+}
+
+pub fn match_guard_obligation_diags(
+    guard_typed: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    declared_type_obligation_diags(
+        Rc::new(DeclaredTypeObligation {
+            position: DeclaredTypePosition::PositionMatchGuard,
+            subject: "".to_string(),
+            declared: bool_type(),
+            produced: crate::v1_compiler_infer_types::resolved_type(guard_typed.clone()),
+            span: guard_typed.span.clone(),
+        }),
+        scope.clone(),
+    )
 }
 
 pub fn declared_type_obligation_diags(
@@ -13164,7 +13182,13 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             }),
                         };
                         let guard_diags = if (guard_result.clone() != std::option::Option::None) {
-                            guard_unwrapped.diagnostics.clone()
+                            v1_rt::concat(
+                                guard_unwrapped.diagnostics.clone(),
+                                match_guard_obligation_diags(
+                                    guard_unwrapped.typed.clone(),
+                                    arm_scope.clone(),
+                                ),
+                            )
                         } else {
                             Rc::new(vec![])
                         };
@@ -13346,7 +13370,13 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                         let guard_diags = if (guard_result.clone()
                                             != std::option::Option::None)
                                         {
-                                            guard_unwrapped.diagnostics.clone()
+                                            v1_rt::concat(
+                                                guard_unwrapped.diagnostics.clone(),
+                                                match_guard_obligation_diags(
+                                                    guard_unwrapped.typed.clone(),
+                                                    arm_scope.clone(),
+                                                ),
+                                            )
                                         } else {
                                             Rc::new(vec![])
                                         };
@@ -29503,6 +29533,8 @@ pub struct PositionParameterDefault;
 pub struct PositionCallableReturn;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PositionDirectCallArgument;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionMatchGuard;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UndecidableGenericFormal;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -3697,13 +3697,13 @@ fn foreign_concrete_coproduct_where_parent_required(
 // was produced; declared_type_inhabitance is the single relation that decides; the position
 // travels with the obligation so the diagnostic can locate the refusal without the decision
 // procedure forking per position.
-// THREE OF THE TWELVE ARE WIRED. THE OTHER NINE ARE DECLARED HERE AND PRODUCE NOTHING YET, AND
+// FOUR OF THE THIRTEEN ARE WIRED. THE OTHER NINE ARE DECLARED HERE AND PRODUCE NOTHING YET, AND
 // THAT IS STATED AS A COUNT RATHER THAN LEFT TO BE DISCOVERED FROM THE ABSENCE OF CALLERS.
 // Measured by construction site, not by reading: PositionDirectCallArgument,
-// PositionListElement, and PositionGenericTypeArgument are the only three members CONSTRUCTED
+// PositionListElement, PositionGenericTypeArgument and PositionMatchGuard are the only four members CONSTRUCTED
 // anywhere -- every other member occurs solely in declared_type_position_label's match, which
 // renders a name and judges nothing. So this coproduct is today an OBLIGATION VOCABULARY, of
-// which three positions have a producer.
+// which four positions have a producer.
 //
 // WHY THAT IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: an unwired position is a
 // MISSING OBLIGATION PRODUCER, not a fact the model cannot settle. It is absent from the census
@@ -3723,7 +3723,7 @@ fn foreign_concrete_coproduct_where_parent_required(
 // PositionDataInitializer, PositionDeclaredReturn, PositionLetAnnotation, PositionVariantPayload,
 // PositionCastTarget, PositionParameterDefault, PositionCallableReturn. Wiring any of them is a
 // discriminating RED at that seam plus an accepted positive control, per 4b(1). Until then this
-// carrier's honest claim is THREE POSITIONS JUDGED, nine declared -- and any statement that it
+// carrier's honest claim is FOUR POSITIONS JUDGED, nine declared -- and any statement that it
 // judges "every grammar type position" is false.
 type DeclaredTypePosition
   = PositionRecordLiteralField
@@ -3738,6 +3738,7 @@ type DeclaredTypePosition
   | PositionParameterDefault
   | PositionCallableReturn
   | PositionDirectCallArgument
+  | PositionMatchGuard
 
 type DeclaredTypeObligation {
   position: DeclaredTypePosition
@@ -3790,6 +3791,7 @@ fn declared_type_position_label(position: DeclaredTypePosition, subject: String)
     PositionDirectCallArgument =>
       if subject == "" { "direct call argument" }
       else { concat("direct call argument for parameter '", subject, "'") }
+    PositionMatchGuard => "match guard"
   }
 }
 
@@ -4668,6 +4670,22 @@ fn obligation_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> 
   } else {
     shape
   }
+}
+
+// A match-arm guard decides whether its arm admits, so it is declared Bool at the arm: the
+// interpreter and every emitted `pat if guard =>` read it as a truth value. Judging it here is the
+// acceptance wall; v1_interpreter eval_match's MatchGuardNotBool refusal stays as defence in depth.
+fn match_guard_obligation_diags(guard_typed: Node, scope: InferScope) -> List<ErrorNode> {
+  declared_type_obligation_diags(
+    obligation: DeclaredTypeObligation {
+      position: PositionMatchGuard,
+      subject: "",
+      declared: bool_type,
+      produced: resolved_type(n: guard_typed),
+      span: guard_typed.span
+    },
+    scope: scope
+  )
 }
 
 fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
@@ -8477,7 +8495,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: gr } => gr
           Absent => InferResult { typed: arm_b, diagnostics: [] }
         }
-        let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
+        let guard_diags = if guard_result != none { concat(guard_unwrapped.diagnostics, match_guard_obligation_diags(guard_typed: guard_unwrapped.typed, scope: arm_scope)) } else { [] }
         ArmInferResult {
           typed_arm: make_arm_node(occurrence_identity: arm_node.occurrence_identity,
             pattern: typed_pattern,
@@ -8533,7 +8551,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               Present { value: gr } => gr
               Absent => InferResult { typed: arm_b, diagnostics: [] }
             }
-            let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
+            let guard_diags = if guard_result != none { concat(guard_unwrapped.diagnostics, match_guard_obligation_diags(guard_typed: guard_unwrapped.typed, scope: arm_scope)) } else { [] }
             ArmInferResult {
               typed_arm: make_arm_node(occurrence_identity: arm_node.occurrence_identity,
                 pattern: typed_pattern,

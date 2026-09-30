@@ -344,6 +344,14 @@ import v2.std.collection { List }
 // discriminating RED stays enrolled as the executing evidence that the property still holds,
 // flipping to a permanent regression control. The row that gates acceptance keeps guarding after it.
 
+// A match-arm guard is a PositionMatchGuard obligation declared Bool (v1.compiler.infer
+// match_guard_obligation_diags), and a String guard refuses. An Int guard does not, because
+// declared_realizes_as_kernel_numeric admits an Int/Float at any KernelMinted declared type; that
+// relation repair is its own typing-lane item. Both rows leave when it lands.
+fn floor_expected_red_chunk_int_guard_admitted_by_the_relation() -> List<String> {
+  Cons { head: "test.claim.match_guard_bool_inhabitance_witness_test.an_int_literal_guard_is_refused_at_acceptance", tail: Cons { head: "test.claim.match_guard_bool_inhabitance_witness_test.an_int_valued_guard_is_refused_at_acceptance", tail: Empty {} } }
+}
+
 fn floor_expected_red_chunk_00() -> List<String> {
   Cons { head: "test.claim.ci_exclusion_proof.ci_exclusion_proof_sentinel", tail:     Empty {} }
 }
@@ -1169,7 +1177,7 @@ fn floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded() -> List<String>
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_fold_seam_loop_drops_operands(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } }  }
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_fold_seam_loop_drops_operands(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_int_guard_admitted_by_the_relation(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } }  }
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in
