@@ -1069,6 +1069,7 @@ pub(crate) fn new_multi_entry_index_shell(
         schedule_retention: RefCell::new(None),
         source_roots: source_roots.to_vec(),
         pool_parse: RefCell::new(None),
+        reference_pool_names: RefCell::new(None),
         pool_qualified_fill: RefCell::new(None),
         tree_bare_census: RefCell::new(std::collections::HashMap::new()),
         #[cfg(any(test, feature = "interp_test_witness"))]
@@ -2728,9 +2729,18 @@ impl ReferencePoolNames {
 /// The name index from the POOL CENSUS'S OWN heads reading (`pool_parse`), which every resolve
 /// through this index already forces for its qualified fill and bare census. A resolve therefore
 /// reads the pool's heads once, not once for the census and again for reference edges.
+///
+/// ONE DERIVATION PER INDEX. The index is a function of `pool_parse`, which this index holds for
+/// its life, and it is demanded once per out-of-tree bare name (`pool_census_for_name`) -- so its
+/// least common ancestor is the index, and it is derived there once rather than rebuilt from the
+/// whole pool's heads on every demand (measured: ~230ms per rebuild, 3,852 demands in one
+/// whole-pool admission).
 pub(crate) fn reference_pool_names_for_index(
     index: &MultiEntryIndex,
 ) -> Result<Rc<ReferencePoolNames>, String> {
+    if let Some(names) = index.reference_pool_names.borrow().clone() {
+        return Ok(names);
+    }
     let pool = pool_parse(index)?;
     let started = std::time::Instant::now();
     let names = Rc::new(ReferencePoolNames::from_heads_modules(
@@ -2743,6 +2753,7 @@ pub(crate) fn reference_pool_names_for_index(
         super::pre_entry_phase::PhaseScale::Tree,
         started.elapsed(),
     );
+    *index.reference_pool_names.borrow_mut() = Some(names.clone());
     Ok(names)
 }
 
@@ -3836,23 +3847,11 @@ mod pool_census_for_name_differential {
         names.extend(v1_rt::sorted_map_keys(&pool.global_bare));
         names.extend(v1_rt::sorted_map_keys(&pool.services));
         names.extend(decl.decl_index.keys().cloned());
-        // One per-name census per distinct declaring-module set: names that share their declaring
-        // modules get the same census from `pool_census_for_name`, so each set is built once.
-        let mut by_set: BTreeMap<Vec<String>, Vec<String>> = BTreeMap::new();
-        for name in &names {
-            let set: Vec<String> = decl
-                .decl_index
-                .get(name)
-                .map(|m| m.iter().cloned().collect())
-                .unwrap_or_default();
-            by_set.entry(set).or_default().push(name.clone());
-        }
-        eprintln!("PERNAME distinct_declaring_sets={}", by_set.len());
         let mut divergent: Vec<String> = Vec::new();
-        for group in by_set.values() {
-            let local =
-                super::super::pool_census_for_name(&index, &group[0]).expect("per-name census");
-            for name in group {
+        {
+            for name in &names {
+                let local =
+                    super::super::pool_census_for_name(&index, name).expect("per-name census");
                 if v1_rt::map_get(&pool.global_bare, name.clone())
                     != v1_rt::map_get(&local.global_bare, name.clone())
                 {

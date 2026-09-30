@@ -9617,6 +9617,28 @@ thread_local! {
         RefCell::new(std::collections::HashSet::new());
 }
 
+/// `module` with only the items that declare `name`: an item named `name`, or a `Disj` type
+/// definition one of whose variants is named `name`.
+fn module_pruned_to_declarations_of(module: &Rc<Node>, name: &str) -> Rc<Node> {
+    use crate::v1_compiler_emit_core_support::is_type_def_item;
+    use crate::v1_std_core::Connective;
+    let children: im::Vector<Rc<Node>> = module
+        .children
+        .iter()
+        .filter(|item| {
+            item.name == name
+                || (is_type_def_item((*item).clone())
+                    && item.connective == Connective::Disj
+                    && item.children.iter().any(|v| v.name == name))
+        })
+        .cloned()
+        .collect();
+    Rc::new(Node {
+        children: Rc::new(children),
+        ..(**module).clone()
+    })
+}
+
 fn pool_census_for_name_uncounted(
     index: &MultiEntryIndex,
     name: &str,
@@ -9626,11 +9648,16 @@ fn pool_census_for_name_uncounted(
     let Some(modules) = names.decl_index.get(name) else {
         return Ok(crate::v1_compiler_infer_env::empty_symbol_index());
     };
+    // Each declaring module contributes only the items that DECLARE `name` -- an item of that
+    // name, or a `Disj` type with a variant of that name (the same declarations
+    // `collect_module_decl_names` indexes). Every entry, count and gate for `name` reads those
+    // items and no others, so the census over the pruned modules has the same entry for `name`,
+    // at a cost in the name's declarations rather than in the declaring modules' size.
     let nodes: im::Vector<Rc<Node>> = modules
         .iter()
         .filter_map(|m| index.source_files.get(m))
         .filter_map(|sf| pool.position_by_file.get(&sf.path))
-        .map(|&i| pool.nodes_by_file[i].1.clone())
+        .map(|&i| module_pruned_to_declarations_of(&pool.nodes_by_file[i].1, name))
         .collect();
     Ok(v1_compiler_infer::build_symbol_index_census_raw_nodes(
         Rc::new(nodes),
@@ -13100,6 +13127,9 @@ pub struct MultiEntryIndex {
     /// newline indexes) — the shared input of the qualified fill and the per-tree
     /// bare layers below. Entry-independent, built once per process.
     pool_parse: RefCell<Option<Rc<PoolParse>>>,
+    /// The heads name index over `pool_parse` (`entry_resolve::reference_pool_names_for_index`):
+    /// a fact of this index, demanded per out-of-tree bare name, so derived once here.
+    reference_pool_names: RefCell<Option<Rc<entry_resolve::ReferencePoolNames>>>,
     /// Whole-pool QUALIFIED-ONLY census layer (entries keyed by qualified name;
     /// empty global_bare/services), built once per process and underlaid beneath
     /// each entry's closure census (namespace-resolution-design.md §7.5: "fill =
@@ -13428,6 +13458,7 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "normalize_diag_cache" => index.normalize_diag_cache.borrow_mut().clear(),
         "ownership_diag_cache" => index.ownership_diag_cache.borrow_mut().clear(),
         "pool_parse" => *index.pool_parse.borrow_mut() = None,
+        "reference_pool_names" => *index.reference_pool_names.borrow_mut() = None,
         "pool_qualified_fill" => *index.pool_qualified_fill.borrow_mut() = None,
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
         "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
@@ -13490,6 +13521,7 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "typed_module_cache",
         "parse_cache",
         "pool_parse",
+        "reference_pool_names",
         "both_closure_edges",
         "closure_name_censuses",
         "bare_reference_admission",
@@ -15621,6 +15653,8 @@ impl ResolveStageNanos {
         self.edge_index_bare_candidates += other.edge_index_bare_candidates;
         self.edge_index_bare_name_universe += other.edge_index_bare_name_universe;
         self.edge_index_bare_resolve_loop += other.edge_index_bare_resolve_loop;
+        self.bare_per_name_census_calls += other.bare_per_name_census_calls;
+        self.bare_per_name_census += other.bare_per_name_census;
         self.edge_index_publish += other.edge_index_publish;
         self.load_pool_reference_closure += other.load_pool_reference_closure;
         self.load_fixpoint_rounds += other.load_fixpoint_rounds;
@@ -15739,6 +15773,8 @@ thread_local! {
             edge_index_bare_candidates: 0,
             edge_index_bare_name_universe: 0,
             edge_index_bare_resolve_loop: 0,
+            bare_per_name_census_calls: 0,
+            bare_per_name_census: 0,
             edge_index_publish: 0,
             load_bare_edge_index: 0,
             load_bare_path_lookup: 0,
