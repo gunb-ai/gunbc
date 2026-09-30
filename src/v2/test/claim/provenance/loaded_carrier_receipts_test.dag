@@ -2,7 +2,7 @@ module v2.test.claim.provenance.loaded_carrier_receipts
 
 import std.types { List }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
-import v2.compiler.normalized_tree { NormalizedTree, no_import_bindings }
+import v2.compiler.normalized_tree { NormalizedTree, no_import_bindings, normalized_tree_record_declarations }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.extdeps.languages.dag {
@@ -124,7 +124,7 @@ fn lcr_declaration_source_step(
     item: ModuleBindingSource {
       root: tree.root,
       import_bindings: no_import_bindings(),
-      record_declarations: tree.record_declarations
+      record_declarations: normalized_tree_record_declarations(t: tree)
     }
   )
 }

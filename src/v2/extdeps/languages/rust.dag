@@ -2084,7 +2084,10 @@ fn rust_binding_spellings() -> Map<Symbol, String> {
   let mx = map_insert(m2, ^dag_binding_param_x, "x")
   let my = map_insert(mx, ^dag_binding_param_y, "y")
   let mi = map_insert(my, ^dag_binding_type_int, "i32")
-  let m3 = map_insert(mi, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
+  let mb = map_insert(mi, ^rust_surface_spelling_bool, "bool")
+  let mc = map_insert(mb, ^rust_surface_spelling_char, "char")
+  let ms = map_insert(mc, ^rust_target_atom_type_spelling_string, "String")
+  let m3 = map_insert(ms, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
   let m4 = map_insert(m3, ^rust_collection_surface_hash_set, "std::collections::HashSet")
   let m5 = map_insert(m4, ^rust_collection_surface_vec, "Vec")
   map_insert(m5, ^target_collection_set_carrier, "Set")
@@ -2248,18 +2251,53 @@ data rust_target_function_signature_realization_catalog: List<TargetFunctionSign
   rust_target_function_signature_realization_symbol_return
 ]
 
+// HOW RUST REALIZES A WHERE-REFINEMENT DECLARATION: a TRANSPARENT ALIAS, `type Pos = i32;`. A refinement
+// restricts its carrier and adds no representation -- the predicate is discharged where a value crosses
+// into it (v2.compiler.refinement_discharge), and a crossing back to the carrier is realized as the
+// operand unchanged -- so the target names the carrier's own representation under the refinement's
+// name, and neither adds nor drops behaviour. A newtype would add construction and projection the source
+// never selected; emitting nothing would leave the refinement's uses naming a type that does not exist.
+// The row names the four token classes; the carrier's spelling is not here -- it is the carrier type's
+// own realization (v2.compiler.emit_produced produced_type_binding).
+fn rust_refinement_token_class_node(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn rust_refinement_declaration_realization_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: ^refinement_declaration_field_keyword, target: rust_refinement_token_class_node(id: ^rust_token_kw_type)),
+      rust_named_edge(name: ^refinement_declaration_field_name, target: rust_refinement_token_class_node(id: ^rust_token_ident)),
+      rust_named_edge(name: ^refinement_declaration_field_assign, target: rust_refinement_token_class_node(id: ^rust_token_equal)),
+      rust_named_edge(name: ^refinement_declaration_field_terminator, target: rust_refinement_token_class_node(id: ^rust_token_semicolon))
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn rust_target_model_node() -> Node {
 
   Node {
     kind: TypeNode { connective: Conj },
     children: list_snoc_item(
-      xs: rust_target_model_core_edges(),
-      item: rust_named_edge(
-        name: ^target_model_edge_atom_realizations,
-        target: target_atom_realization_catalog_node(
-          rows: rust_target_atom_realization_catalog,
-          host_bundle: rust_target_model_bundle_core()
+      xs: list_snoc_item(
+        xs: rust_target_model_core_edges(),
+        item: rust_named_edge(
+          name: ^target_model_edge_atom_realizations,
+          target: target_atom_realization_catalog_node(
+            rows: rust_target_atom_realization_catalog,
+            host_bundle: rust_target_model_bundle_core()
+          )
         )
+      ),
+      item: rust_named_edge(
+        name: ^target_model_edge_refinement_declaration,
+        target: rust_refinement_declaration_realization_node()
       )
     ),
     occurrence_id: OccurrenceSynthetic
@@ -2338,6 +2376,7 @@ fn rust_value_expression_family_lex_rules() -> List<LexRule> {
     rust_lex_rule(token_class: ^rust_token_closure_pipe, text: "|"),
     rust_lex_rule(token_class: ^rust_token_closure_nop, text: ""),
     rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
+    rust_lex_rule(token_class: ^rust_token_kw_type, text: "type "),
     rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
     rust_lex_rule(token_class: ^rust_token_semicolon, text: "; "),
     rust_lex_rule(token_class: ^rust_token_kw_true, text: "true"),

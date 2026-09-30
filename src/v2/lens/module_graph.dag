@@ -1,6 +1,7 @@
 module v2.lens.module_graph
 
 import std.types { List }
+import v2.compiler.normalized_tree { normalized_tree_record_declarations }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -300,7 +301,7 @@ fn located_roots_from_source_root_ingest(
               item: LocatedModuleRoot {
                 path: item.path,
                 root: item.tree.root,
-                record_declarations: item.tree.record_declarations
+                record_declarations: normalized_tree_record_declarations(t: item.tree)
               }
             )
           }
@@ -930,8 +931,8 @@ fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
   let file = strip_leading_dot_slash(closure_path)
   let target = strip_leading_dot_slash(touched_path)
   string_eq(a: file, b: target)
-    || ends_with(s: file, suffix: target)
-    || ends_with(s: target, suffix: file)
+    || file.ends_with(suffix: target)
+    || target.ends_with(suffix: file)
 }
 
 fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
