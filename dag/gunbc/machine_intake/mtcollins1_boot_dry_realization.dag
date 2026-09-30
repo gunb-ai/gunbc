@@ -3,6 +3,7 @@ module gunbc.machine_intake_mtcollins1_boot_dry_realization
 import extdeps.tools.gnu_coreutils { readlink_command }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second, second_count }
+import std.algebra { trim }
 import v2.std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep,
@@ -20,6 +21,9 @@ import extdeps.exec.command { env_prefixed_command }
 import extdeps.tools.env { EnvSet }
 import extdeps.ssh.openssh_client_commands { ssh_add_list_identities_command }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_sol_activate_preamble }
+import extdeps.bmc.ipmi { ipmitool_sol_operational_banner }
+import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_watcher_path, mtcollins1_sol_notice_token_env }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint }
 import gunbc.remote_host_model { ModeledRemoteHost, remote_host_binding }
 import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings }
@@ -60,14 +64,20 @@ fn agent_listing(agent: ModeledSshAgent) -> ShellExchangeObservation {
   }
 }
 
-// THE WORKER'S PROCESSES that the attempt starts: today, the SOL collector. A live process is visible
-// the way the production liveness check reads it -- /proc/<pid>/cmdline -- and a dead one is not. The
-// model writes cmdline with spaces between arguments where Linux writes NULs; the production reader
-// asks only whether it contains `ipmitool`, which both spellings answer the same way.
+// THE WORKER'S PROCESSES: the SOL collector the attempt starts, and the notice watcher the boot step
+// starts before the entry runs. A live process is visible the way the production observers read it
+// (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_collector_observe, sol_observer_refusal_of):
+// /proc/<pid>/stat, whose field 22 is the start time the hold publishes as "<pid> <starttime>", and
+// /proc/<pid>/cmdline. An exited process has neither. The model writes cmdline with spaces where Linux
+// writes NULs; the production reader asks only whether it contains `ipmitool`, which both answer alike.
+// diagnostic_path is where the hold sends the process's stderr and its exit record (empty: none).
 type ModeledProcess {
   pid: Int
+  start_time: Int
+  comm: String
   cmdline: String
   capture_path: String
+  diagnostic_path: String
   alive: Bool
 }
 
@@ -139,20 +149,21 @@ fn proc_stat_path(pid: Int) -> String {
   join(["/proc/", to_string(pid), "/stat"], "")
 }
 
-fn proc_stat_line(pid: Int, start_ticks: Int) -> String {
-  join([to_string(pid), " (gunbc) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ", to_string(start_ticks), " 0 0\n"], "")
+// THE BOOT WORKER'S OWN PROCESS, rendered by proc_stat_line like every other modeled process, and
+// additionally as /proc/self/stat because it is the reader.
+fn worker_process(pid: Int, start_ticks: Int) -> ModeledProcess {
+  ModeledProcess { pid: pid, start_time: start_ticks, comm: "gunbc", cmdline: "gunbc", capture_path: "", diagnostic_path: "", alive: true }
 }
 
 data proc_self_pid_namespace_link: String = "/proc/self/ns/pid"
 
 fn worker_process_started(fs: ModeledFilesystem, boot_id: String, pid_namespace: String, pid: Int, start_ticks: Int) -> ModeledFilesystem {
-  let line = proc_stat_line(pid: pid, start_ticks: start_ticks)
+  let line = proc_stat_line(p: worker_process(pid: pid, start_ticks: start_ticks))
   let with_ns = fs_with_file(fs: fs, path: proc_self_pid_namespace_link, content: pid_namespace)
   fs_with_file(fs: fs_with_file(fs: fs_with_file(fs: with_ns, path: proc_boot_id_file, content: concat(boot_id, "\n")), path: "/proc/self/stat", content: line), path: proc_stat_path(pid: pid), content: line)
 }
 
-// readlink(1): the link's target and a newline on stdout, exit 0; for a missing link, a diagnostic
-// on stderr and exit 1.
+// readlink(1): the link's target and a newline on stdout, exit 0; for a missing link, exit 1.
 fn readlink_answer(w: MtCollins1BootWorld, path: String) -> ShellExchangeObservation {
   match fs_file(fs: w.fs, path: path) {
     Present { value: f } => ShellProcessExited { exit_code: 0, stdout: concat(f.content, "\n"), stderr: "" }
@@ -160,12 +171,71 @@ fn readlink_answer(w: MtCollins1BootWorld, path: String) -> ShellExchangeObserva
   }
 }
 
+// The kernel removes a dead process's /proc directory; the killed worker was also the reader.
 fn worker_process_killed(fs: ModeledFilesystem, pid: Int) -> ModeledFilesystem {
   fs_without_file(fs: fs_without_file(fs: fs, path: proc_stat_path(pid: pid)), path: "/proc/self/stat")
 }
 
+// proc(5) stat: "<pid> (<comm>) <state> ..." with the start time at field 22, which is word 19 of what
+// follows the comm -- the position the production reader (proc_stat_after_comm) takes it from. The
+// fields the readers do not consult are zero.
+fn proc_stat_line(p: ModeledProcess) -> String {
+  join([to_string(p.pid), " (", p.comm, ") S ", join(map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18], _i => "0"), " "), " ", to_string(p.start_time), " 0\n"], "")
+}
+
+// The published identity, as gunbc.machine_intake.sol_hold's supervisor writes it: "<pid> <starttime>".
+fn process_identity(p: ModeledProcess) -> String {
+  join([to_string(p.pid), " ", to_string(p.start_time), "\n"], "")
+}
+
+// Start times in clock ticks since the worker booted (USER_HZ 100), so a later process has a later one.
+fn start_ticks(w: MtCollins1BootWorld, now: Second) -> Int {
+  (w.worker.uptime_at_origin + (second_count(s: now) as Int)) * 100
+}
+
+fn process_visible(fs: ModeledFilesystem, p: ModeledProcess) -> ModeledFilesystem {
+  fs_with_file(fs: fs_with_file(fs: fs, path: proc_stat_path(pid: p.pid), content: proc_stat_line(p: p)), path: proc_cmdline_path(pid: p.pid), content: p.cmdline)
+}
+
+// A PROCESS EXITS: its /proc entry goes, and the hold's supervisor records the exit in the process's
+// diagnostic file (sol_hold_exit_record_prefix). The one transition every way a process ends uses --
+// a deactivate, the controller dropping the session, a release.
+fn process_gone(fs: ModeledFilesystem, p: ModeledProcess) -> ModeledFilesystem {
+  let without = fs_without_file(fs: fs_without_file(fs: fs, path: proc_stat_path(pid: p.pid)), path: proc_cmdline_path(pid: p.pid))
+  if p.diagnostic_path == "" { without } else { appended(fs: without, path: p.diagnostic_path, text: concat(sol_hold_exit_record_prefix, "0\n")) }
+}
+
+fn process_dead(p: ModeledProcess) -> ModeledProcess {
+  ModeledProcess { pid: p.pid, start_time: p.start_time, comm: p.comm, cmdline: p.cmdline, capture_path: p.capture_path, diagnostic_path: p.diagnostic_path, alive: false }
+}
+
+fn exit_processes(w: MtCollins1BootWorld, ending: fn(ModeledProcess) -> Bool) -> MtCollins1BootWorld {
+  let fs = fold(filter(w.worker.processes, p => p.alive && ending(p)), init: w.fs, f: fn(acc, p) { process_gone(fs: acc, p: p) })
+  let processes = map(w.worker.processes, p => if p.alive && ending(p) { process_dead(p: p) } else { p })
+  with_worker(w: with_fs(w: w, fs: fs), worker: ModeledWorker { next_pid: w.worker.next_pid, processes: processes, uptime_at_origin: w.worker.uptime_at_origin })
+}
+
+fn is_collector(p: ModeledProcess) -> Bool {
+  p.comm == "ipmitool"
+}
+
 fn live_collectors(w: MtCollins1BootWorld) -> List<ModeledProcess> {
-  filter(w.worker.processes, p => p.alive)
+  filter(w.worker.processes, p => p.alive && is_collector(p: p))
+}
+
+fn started(w: MtCollins1BootWorld, p: ModeledProcess, fs: ModeledFilesystem) -> MtCollins1BootWorld {
+  with_worker(w: with_fs(w: w, fs: if p.alive { process_visible(fs: fs, p: p) } else { fs }), worker: ModeledWorker { next_pid: p.pid + 1, processes: list_append(w.worker.processes, p), uptime_at_origin: w.worker.uptime_at_origin })
+}
+
+// THE NOTICE WATCHER the boot step starts before the entry (gunbc.ci_spec): its token in the
+// environment, its readiness file holding that token, and its record naming a live process -- what
+// gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_await_observer requires before any BMC
+// contact. It is scenario state because the entry does not start it.
+fn with_notice_watcher(w: MtCollins1BootWorld, capture_path: String, token: String) -> MtCollins1BootWorld {
+  let p = ModeledProcess { pid: w.worker.next_pid, start_time: start_ticks(w: w, now: second(count: 0)), comm: "bash", cmdline: "bash -c gunbc-sol-notice-watch", capture_path: capture_path, diagnostic_path: "", alive: true }
+  let fs = fs_with_file(fs: fs_with_file(fs: w.fs, path: concat(capture_path, mtcollins1_sol_notice_ready_suffix), content: concat(token, "\n")), path: mtcollins1_sol_notice_watcher_path(capture_path: capture_path), content: process_identity(p: p))
+  let env = list_append(w.environment, ModeledVariable { name: mtcollins1_sol_notice_token_env as String, value: token })
+  started(w: MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }, p: p, fs: fs)
 }
 
 fn exited_step<S>(state: S, stdout: String, exit_code: Int) -> OperationStep<S> {
@@ -185,41 +255,59 @@ fn sdr_dump_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationSte
   }
 }
 
-// gunbc.machine_intake.sol_hold ActivateHeld: a shell starts `ipmitool ... sol activate` in the
-// background with its output appended to the capture, records its pid in the pid file, and exits 0 once
-// the background job exists. The collector then opens the BMC's SOL session. If the session is already
-// held by another client, the real client prints the refusal and exits at once -- but the shell has
-// already succeeded and written the pid, exactly as here.
+// gunbc.machine_intake.sol_hold ActivateHeld: the hold starts `ipmitool ... sol activate` in the
+// background with its stdout appended to the capture and its stderr to the client diagnostic file,
+// publishes "<pid> <starttime>" to the pid file, and exits 0 once the job exists. On activation the
+// client prints the grounded preamble (extdeps.bmc.ipmitool_observed_output
+// ipmitool_sol_activate_preamble): its banner line on stdout, the rest on stderr. If the controller's
+// session is already held, the client prints the refusal on stderr and exits at once, and the
+// supervisor records that exit -- but the hold has already succeeded and published the pid.
 fn sol_activate_held_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
   match operation_input_text(invocation: call.invocation, name: "capture_path") {
     Absent => OperationHarnessFault { reason: "ActivateHeld was dispatched without a capture path" as NonEmptyStr }
     Present { value: capture } => match operation_input_text(invocation: call.invocation, name: "pid_path") {
       Absent => OperationHarnessFault { reason: "ActivateHeld was dispatched without a pid path" as NonEmptyStr }
-      Present { value: pid_path } => {
-        let pid = w.worker.next_pid
-        let program = match operation_input_text(invocation: call.invocation, name: "ipmitool") { Present { value: p } => p Absent => "ipmitool" }
-        let already = w.bmc.sol_session_open
-        let process = ModeledProcess { pid: pid, cmdline: concat(program, " -H bmc -I lanplus sol activate"), capture_path: capture, alive: !already }
-        let fs1 = fs_write(fs: w.fs, path: pid_path, content: concat(to_string(pid), "\n"), create_new: false).fs
-        let fs2 = if already { appended(fs: fs1, path: capture, text: "Info: SOL payload already active on another session\n") }
-                  else { fs_with_file(fs: appended(fs: fs1, path: capture, text: ipmitool_sol_activate_preamble), path: proc_cmdline_path(pid: pid), content: process.cmdline) }
-        let worker = ModeledWorker { next_pid: pid + 1, processes: list_append(w.worker.processes, process), uptime_at_origin: w.worker.uptime_at_origin }
-        let bmc = if already { w.bmc } else { bmc_with_sol_session(world: w.bmc, open: true) }
-        exited_step(state: with_bmc(w: with_worker(w: with_fs(w: w, fs: fs2), worker: worker), bmc: bmc), stdout: "", exit_code: 0)
+      Present { value: pid_path } => match operation_input_text(invocation: call.invocation, name: "client_diagnostic_path") {
+        Absent => OperationHarnessFault { reason: "ActivateHeld was dispatched without a client diagnostic path" as NonEmptyStr }
+        Present { value: diag } => {
+          let program = match operation_input_text(invocation: call.invocation, name: "ipmitool") { Present { value: p } => p Absent => "ipmitool" }
+          let already = w.bmc.sol_session_open
+          let p = ModeledProcess { pid: w.worker.next_pid, start_time: start_ticks(w: w, now: call.now), comm: "ipmitool", cmdline: concat(program, " -H bmc -I lanplus sol activate"), capture_path: capture, diagnostic_path: diag, alive: !already }
+          let published = fs_write(fs: w.fs, path: pid_path, content: process_identity(p: p), create_new: false).fs
+          let preamble = filter(split(s: ipmitool_sol_activate_preamble, delimiter: "\n"), l => l != "")
+          let banner = join(map(filter(preamble, l => string_contains(s: l, pattern: ipmitool_sol_operational_banner)), l => concat(l, "\n")), "")
+          let stderr = join(map(filter(preamble, l => !string_contains(s: l, pattern: ipmitool_sol_operational_banner)), l => concat(l, "\n")), "")
+          let fs = if already { appended(fs: published, path: diag, text: concat("Info: SOL payload already active on another session\n", concat(sol_hold_exit_record_prefix, "1\n"))) }
+                   else { appended(fs: appended(fs: published, path: capture, text: banner), path: diag, text: stderr) }
+          let bmc = if already { w.bmc } else { bmc_with_sol_session(world: w.bmc, open: true) }
+          exited_step(state: with_bmc(w: started(w: w, p: p, fs: fs), bmc: bmc), stdout: "", exit_code: 0)
+        }
       }
     }
   }
 }
 
-// `ipmitool sol deactivate` ends the BMC's SOL session; a collector attached to it loses its session
-// and exits, so its /proc entry disappears. Its pid file is NOT removed -- nothing in the realization
-// removes it -- which is exactly what the production teardown observes afterwards.
+// `ipmitool sol deactivate` ends the controller's SOL session, and a collector attached to it loses
+// its session and exits. Its pid file and activation receipt stay: removing them is the production
+// release's retirement, not the controller's.
 fn sol_deactivate_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
-  let fs = fold(live_collectors(w: w), init: w.fs, f: fn(acc, p) {
-    fs_without_file(fs: acc, path: proc_cmdline_path(pid: p.pid))
-  })
-  let worker = ModeledWorker { next_pid: w.worker.next_pid, processes: map(w.worker.processes, p => ModeledProcess { pid: p.pid, cmdline: p.cmdline, capture_path: p.capture_path, alive: false }), uptime_at_origin: w.worker.uptime_at_origin }
-  exited_step(state: with_bmc(w: with_worker(w: with_fs(w: w, fs: fs), worker: worker), bmc: bmc_with_sol_session(world: w.bmc, open: false)), stdout: "", exit_code: 0)
+  exited_step(state: with_bmc(w: exit_processes(w: w, ending: is_collector), bmc: bmc_with_sol_session(world: w.bmc, open: false)), stdout: "", exit_code: 0)
+}
+
+// gunbc.machine_intake.sol_hold ReleaseHeld: stops the process the pid file names only while that
+// "<pid> <starttime>" is a live instance with that start time (sol_hold_owned_condition), and succeeds
+// once it is gone; a record naming no live instance has nothing to stop and also succeeds.
+fn sol_release_held_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  match operation_input_text(invocation: call.invocation, name: "pid_path") {
+    Absent => OperationHarnessFault { reason: "ReleaseHeld was dispatched without a pid path" as NonEmptyStr }
+    Present { value: pid_path } => match fs_file(fs: w.fs, path: pid_path) {
+      Absent => exited_step(state: w, stdout: "", exit_code: 0)
+      Present { value: record } => {
+        let named = trim(s: record.content)
+        exited_step(state: exit_processes(w: w, ending: fn(p) { trim(s: process_identity(p: p)) == named }), stdout: "", exit_code: 0)
+      }
+    }
+  }
 }
 
 // Master Write-Read toward the SMpro. The retained attempt of 2026-09-27 (run 36335369059,
@@ -283,12 +371,7 @@ fn concat_text(lines: List<TimedConsoleLine>) -> String {
 // or by a deactivate -- the `ipmitool sol activate` client loses its session and exits, so its /proc
 // entry disappears; its pid file stays, since nothing in the realization removes it.
 fn collectors_follow_session(w: MtCollins1BootWorld) -> MtCollins1BootWorld {
-  if w.bmc.sol_session_open || count(live_collectors(w: w)) == 0 { w } else {
-    let fs = fold(live_collectors(w: w), init: w.fs, f: fn(acc, p) {
-      fs_without_file(fs: acc, path: proc_cmdline_path(pid: p.pid))
-    })
-    with_worker(w: with_fs(w: w, fs: fs), worker: ModeledWorker { next_pid: w.worker.next_pid, processes: map(w.worker.processes, p => ModeledProcess { pid: p.pid, cmdline: p.cmdline, capture_path: p.capture_path, alive: false }), uptime_at_origin: w.worker.uptime_at_origin })
-  }
+  if w.bmc.sol_session_open || count(live_collectors(w: w)) == 0 { w } else { exit_processes(w: w, ending: is_collector) }
 }
 
 // Time only changes the world when something is scheduled -- a BMC event, a connecting or withdrawing
@@ -311,6 +394,12 @@ data sol_hold_activate_held_operation: OperationRef = OperationRef {
   operation: "ActivateHeld",
 }
 
+data sol_hold_release_held_operation: OperationRef = OperationRef {
+  path: "dag/gunbc/machine_intake/sol_hold.dag",
+  service: "gunbc.machine_intake.sol_hold",
+  operation: "ReleaseHeld",
+}
+
 fn mtcollins1_boot_dry_realization(identity: NonEmptyStr, initial: MtCollins1BootWorld, epoch: Second) -> OperationRealization<MtCollins1BootWorld> {
   let bmc = concat(bmc_bindings(get: fn(w) { w.bmc }, put: with_bmc), megarac_bindings(get: fn(w) { w.media }, put: with_media))
   let files = filesystem_bindings(get: fn(w) { w.fs }, put: with_fs)
@@ -329,6 +418,7 @@ fn mtcollins1_boot_dry_realization(identity: NonEmptyStr, initial: MtCollins1Boo
     OperationBinding { at: bmc_ipmi_operation(operation: "SolDeactivate"), handler: sol_deactivate_handler },
     OperationBinding { at: bmc_ipmi_operation(operation: "MasterWriteReadAuthenticated"), handler: smpro_refused_handler },
     OperationBinding { at: sol_hold_activate_held_operation, handler: sol_activate_held_handler },
+    OperationBinding { at: sol_hold_release_held_operation, handler: sol_release_held_handler },
     OperationBinding { at: linux_procfs_read_uptime_operation, handler: uptime_handler },
   ]
   OperationRealization {

@@ -54,3 +54,14 @@ data ipmitool_raw_two_bytes_standing: CitedFigureStanding = TranscribedUncited {
 fn ipmitool_raw_two_bytes(first_hex: String, second_hex: String) -> String {
   join([" ", first_hex, " ", second_hex, "\n"], "")
 }
+
+// `ipmitool mc info` against the Mt. Collins BMC: the two fields the corpus has read from this
+// controller -- Firmware Revision 0.32 and IPMI Version 2.0 (gunbc.machine_intake_mtcollins1_access_observation)
+// in ipmitool's `<name> : <value>` field layout. No verbatim stdout is retained, so the layout, and
+// the absence of the other fields ipmitool prints, carry this standing. The boot's reachability read
+// consumes only the exit and stderr.
+data ipmitool_mc_info_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "a retained stdout of `ipmitool mc info` against the Mt. Collins BMC, cited by digest" as NonEmptyStr
+}
+
+data ipmitool_mc_info_mt_collins: String = "Firmware Revision         : 0.32\nIPMI Version              : 2.0\n"

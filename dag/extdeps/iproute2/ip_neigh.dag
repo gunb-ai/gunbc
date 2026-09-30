@@ -1,5 +1,7 @@
 module extdeps.iproute2.ip_neigh
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -25,17 +27,17 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data ip_program: NonEmptyStr = "ip"
+fn ip_program() -> ProgramIdentity = uncataloged_program(invocation: "ip")
 
 // `flush` REMOVES NON-PERMANENT ENTRIES MATCHING THE SELECTOR, and `to <addr> dev <dev>` narrows it to
 // one neighbour on one link, so no other interface's cache is touched. The flush's exit is not the
 // evidence; the `show` that follows is.
 fn ip_neigh_flush_command(address: String, device: String) -> ArgvCommand {
-  argv_command(program: ip_program, arguments: ["neigh", "flush", "to", address, "dev", device])
+  argv_command(program: ip_program(), arguments: ["neigh", "flush", "to", address, "dev", device])
 }
 
 // `show` prints one line per entry in ANY state, including FAILED and INCOMPLETE, so an empty stdout
 // with exit zero is the absent reading and any line is residue.
 fn ip_neigh_show_command(address: String, device: String) -> ArgvCommand {
-  argv_command(program: ip_program, arguments: ["neigh", "show", "to", address, "dev", device])
+  argv_command(program: ip_program(), arguments: ["neigh", "show", "to", address, "dev", device])
 }

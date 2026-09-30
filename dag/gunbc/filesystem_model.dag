@@ -6,9 +6,10 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import v2.std.operation_argv { OperationRef, BoundOperationInvocation }
 import v2.std.operation_realization {
   OperationBinding, OperationCall, OperationStep, OperationObserved, OperationHarnessFault,
-  FileObserved, operation_input_text,
+  FileObserved, ShellObserved, operation_input_text,
 }
 import extdeps.transports.file { FileExchangeObservation, FileOperationSucceeded, FileOperationFailed }
+import extdeps.transports.shell { ShellProcessExited }
 import extdeps.filesystem.filesystem_io {
   FilesystemNotFound, FilesystemAlreadyExists, FilesystemNotDirectory, FilesystemOtherFailure, FilesystemPermissionDenied,
 }
@@ -202,6 +203,7 @@ fn filesystem_bindings<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, ModeledFil
     OperationBinding { at: filesystem_operation(operation: "WriteOwnerOnly"), handler: writing(get: get, put: put, create_new: false) },
     OperationBinding { at: filesystem_operation(operation: "WriteCreateNew"), handler: writing(get: get, put: put, create_new: true) },
     OperationBinding { at: filesystem_operation(operation: "WriteCreateNewWithMode"), handler: writing(get: get, put: put, create_new: true) },
+    OperationBinding { at: shell_move_file_operation, handler: moving(get: get, put: put) },
   ]
 }
 
@@ -214,6 +216,43 @@ fn writing<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, ModeledFilesystem) -> 
         Present { value: content } => {
           let w = fs_write(fs: get(state), path: path, content: content, create_new: create_new)
           file_step(state: put(state, w.fs), observation: w.observation)
+        }
+      }
+    }
+  }
+}
+
+// extdeps.shell shell.Move File: `mv <source> <destination>`, a rename within the one modeled
+// filesystem. It replaces an existing destination file, as mv does, and fails -- exit 1 with mv's
+// "cannot stat" -- when the source does not exist or the destination's directory does not.
+data shell_move_file_operation: OperationRef = OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Move", operation: "File" }
+
+fn fs_move(fs: ModeledFilesystem, source: String, destination: String) -> ModeledFileWrite {
+  match fs_file(fs: fs, path: source) {
+    Absent => ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemNotFound, message: concat("No such file or directory: ", source)) }
+    Present { value: f } =>
+      if !fs_is_directory(fs: fs, path: fs_parent(path: destination)) {
+        ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemNotFound, message: concat("No such file or directory: ", destination)) }
+      } else {
+        let removed = fs_without_file(fs: fs, path: source)
+        ModeledFileWrite { fs: fs_with_file(fs: removed, path: destination, content: f.content), observation: FileOperationSucceeded { byte_count: byte_size(count: 0), content: "" } }
+      }
+  }
+}
+
+fn moving<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, ModeledFilesystem) -> S) -> fn(S, OperationCall) -> OperationStep<S> {
+  fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "source") {
+      Absent => OperationHarnessFault { reason: "a move was dispatched without a source" as NonEmptyStr }
+      Present { value: source } => match operation_input_text(invocation: call.invocation, name: "destination") {
+        Absent => OperationHarnessFault { reason: "a move was dispatched without a destination" as NonEmptyStr }
+        Present { value: destination } => {
+          let m = fs_move(fs: get(state), source: source, destination: destination)
+          let exited = match m.observation {
+            FileOperationSucceeded { byte_count: _, content: _ } => ShellProcessExited { exit_code: 0, stdout: "", stderr: "" }
+            FileOperationFailed { kind: _, error: _ } => ShellProcessExited { exit_code: 1, stdout: "", stderr: join(["mv: cannot stat '", source, "': No such file or directory\n"], "") }
+          }
+          OperationObserved { observation: ShellObserved { observation: exited }, state: put(state, m.fs), elapsed: second(count: 0) }
         }
       }
     }

@@ -9,8 +9,8 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_boot_ma
 // matrix, msg_83af891b). The DECLARATION lives here; the POPULATION's authority is
 // `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_boot_matrix_rows`.
 //
-// WHAT IS LOST IS ONE WALL, AND THE CLAIMS ARE UNTOUCHED. The member identities (thirteen: eight from
-// gunbc#12533, five from gunbc#12555, enumerated in the population authority above) are planned, executed
+// WHAT IS LOST IS ONE WALL, AND THE CLAIMS ARE UNTOUCHED. The member identities (nine from
+// gunbc#12533, four from gunbc#12555, enumerated in the population authority above) are planned, executed
 // and measured on every pull request that edits them; a semantic red and a wall-clock crossing still
 // block. Only the eval-step overrun is reported as `EvalStepsOverBudgetUnderDeclaredDrop` rather than
 // refusing. The budget is not raised. Their CPU stays under the enrolment margin, so they enrol
@@ -24,9 +24,12 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_boot_ma
 // that it reaches them with the state its own earlier steps built. The route prefix up to the hold is
 // NOT one computation repeated: each case evaluates the entry over its own world, so the same code runs
 // on different inputs, and sharing it would mean resuming every case from one snapshot -- replacing the
-// route from the entry that each case exists to assert. What IS shared is the pure construction of the
-// healthy world the cases vary; hoisting it lowers the bill, is owed as a follow-up with a re-measure
-// (gunbc#12533, review 72549), and retires nothing on its own.
+// route from the entry that each case exists to assert. What IS shared is the construction of the
+// healthy world the cases vary, and it is already the section 3 remedy: a SUPPLIED value, constructed
+// directly rather than derived by executing production. MEASURED (claim_batch, 2026-09-29, review
+// 72606): building that world with its census console and the frame costs 1,687 to 3,793 eval steps,
+// against 77,801 to 167,236 for the member cases (re-measured after #12434's route was bound); with it removed even the cheapest member stays over
+// the 72,300 budget. So hoisting it neither retires this drop nor removes a member, and none is owed.
 data mtcollins1_boot_matrix_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_boot_matrix_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_boot_matrix_rows; measured by "), m.measured_by))
 
 data mtcollins1_boot_matrix_new_witness_eval_step_cost: RungDrop = RungDrop {

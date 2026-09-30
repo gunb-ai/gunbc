@@ -4,7 +4,7 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import std.algebra { trim }
 import v2.std.optional { Present }
 import extdeps.tools.gnu_coreutils { ls_long_directory_command, ls_long_directory_numeric_command }
-import gunbc.host_command_binding { CommandHost, LocalCommandHost, HostEffectDone, host_effect, host_effect_text }
+import gunbc.host_command_binding { CommandHost, LocalCommandHost, HostCommandDone, host_command, host_command_outcome_text }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.access.posix {
   FileOwnership,
@@ -293,10 +293,10 @@ fn ls_long_third_field(text: String) -> String? {
 }
 
 fn observed_export_ownership_standing(host: CommandHost, path: NonEmptyStr) -> ExportOwnershipStanding {
-  match host_effect(host: host, command: ls_long_directory_numeric_command(path: path as String)) {
-    HostEffectDone { stdout: numeric } =>
-      match host_effect(host: host, command: ls_long_directory_command(path: path as String)) {
-        HostEffectDone { stdout: named } =>
+  match host_command(host: host, command: ls_long_directory_numeric_command(path: path as String)) {
+    HostCommandDone { stdout: numeric } =>
+      match host_command(host: host, command: ls_long_directory_command(path: path as String)) {
+        HostCommandDone { stdout: named } =>
           match ls_long_third_field(text: numeric) {
             Absent => ExportOwnershipUnobservable { path: path, reason: concat("ls -ldn printed no owner uid: ", trim(s: numeric)) }
             Present { value: uid_text } =>
@@ -315,9 +315,9 @@ fn observed_export_ownership_standing(host: CommandHost, path: NonEmptyStr) -> E
                   }
               }
           }
-        other => ExportOwnershipUnobservable { path: path, reason: concat("ls -ld: ", host_effect_text(e: other)) }
+        other => ExportOwnershipUnobservable { path: path, reason: concat("ls -ld: ", host_command_outcome_text(e: other)) }
       }
-    other => ExportOwnershipUnobservable { path: path, reason: concat("ls -ldn: ", host_effect_text(e: other)) }
+    other => ExportOwnershipUnobservable { path: path, reason: concat("ls -ldn: ", host_command_outcome_text(e: other)) }
   }
 }
 
