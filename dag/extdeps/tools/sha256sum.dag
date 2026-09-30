@@ -12,6 +12,7 @@ import extdeps.crypto.hash { Digest, sha256_digest, sha256sum_program }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
+import std.algebra { trim }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -38,7 +39,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Declaring one is a modeling act on this module's own subject rather than part of removing the
 // fork, so it stays with this module's owner.
 data sha256sum_cli_tool: CliTool = CliTool {
-  name: sha256sum_program as String,
+  program: sha256sum_program(),
   min_version: none,
   installable_via: [SourceCoreutils],
 }

@@ -42,8 +42,11 @@ import v2.std.node {
   named_edge_sort_key,
   node_lowered_from,
   node_with_occurrence_id,
+  construct_tag_marker,
+  symbol_eq,
   symbol_intern_lexeme,
 }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_node, qualified_name_spine_shape_present }
 import std.constructors { Cardinality, Required, Optional }
 import v2.std.optional { Optional, optional_absent, optional_present }
 
@@ -197,9 +200,41 @@ fn positional_payload_field_name() -> Symbol {
   symbol_intern_lexeme(lexeme: "0")
 }
 
-// The wildcard pattern `_` binds nothing and names nothing (v1.compiler.parse parse_pattern).
+// THE AUTHORED SPELLING of the wildcard: the `_` a source writes in a pattern or as a parameter.
+// It binds nothing and names nothing (v1.compiler.parse parse_pattern). It is the SPELLING only:
+// lowering never leaves it in a pattern, it mints the wildcard pattern form below instead.
 fn pattern_wildcard_name() -> Symbol {
   symbol_intern_lexeme(lexeme: "_")
+}
+
+// A WILDCARD PATTERN IS ITS OWN FORM, NOT AN ATOM SPELLED `_`. A pattern atom is otherwise a
+// constructor or a binder, both names, so a `_` atom was a name to every reader that did not
+// special-case its spelling -- resolve looked it up as a reference
+// (gunbc.recurring_failure_mode a_wildcard_match_arm_resolves_as_an_unbound_name). Lowering
+// (v2.compiler.body_lowering_fold body_lower_pattern_lowered) mints this identity for an authored `_`
+// pattern, and `<` is not an identifier character, so no authored name can spell it -- the
+// anonymous-slot precedent (v2.std.anonymous_binder anonymous_param_label). It is still an Atom told
+// apart by identity, so a reader that must not treat it as a name asks is_wildcard_pattern; a typed
+// pattern carrier with a wildcard variant is the next rung (the row above). THE ONE MINT;
+// is_wildcard_pattern is the one recogniser.
+fn wildcard_pattern_identity() -> Symbol {
+  symbol_intern_lexeme(lexeme: "<wildcard-pattern>")
+}
+
+// THE ONE RECOGNISER, AT TWO GRAINS. A reader holding a Symbol (a conserved atom's identity, an
+// emitted binding) asks is_wildcard_pattern_identity; a reader holding a pattern Node asks
+// is_wildcard_pattern, which is that same question plus the form's structure (an Atom with no
+// children). No reader compares against wildcard_pattern_identity() itself.
+fn is_wildcard_pattern_identity(sym: Symbol) -> Bool {
+  sym == wildcard_pattern_identity()
+}
+
+fn is_wildcard_pattern(pattern: Node) -> Bool {
+  match pattern.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      is_wildcard_pattern_identity(sym: id) && (count(pattern.children) == 0)
+    _ => false
+  }
 }
 
 
@@ -254,62 +289,82 @@ fn declared_field_named(payload: Node, name: Symbol) -> Optional<DeclaredField> 
 }
 
 // A CONSTRUCT is the value-side twin of a payload: the same field edges, each targeting the
-// value supplied for that field, behind one leading TAG edge whose label and target both name
-// the constructor (`Rec { n: 1 }` is Conj { Rec: Atom(Rec), n: 1 }). It is the shape
-// v2.std.node RecordConstructBody admits (arrow_body_record_construct_conforms: every edge Named,
-// the first one an Atom) and the shape the language authority's fixtures build
-// (v2.extdeps.languages.dag dag_rec_construct_body_node, dag_variant_holds_construct_node). A
-// match-arm PATTERN over a fielded variant is the same construct whose field targets are the
-// binders, so construction and elimination read one shape.
-// THE TAG ATOM STANDS FOR THE TAG TOKEN, so it is lowered from that token, not from the whole
-// construct: `tag_source` is the authored terminal the constructor name was read from, and the
-// Conj keeps the construct's own occurrence. Lowering the atom from the enclosing capture gave it
-// the shell's occurrence, so the tag's locus was a coarser, different span
-// (docs/plans/lowering-occurrence-projection-design.md, rank 3).
-fn construct_tag_edge(tag: Symbol, tag_source: Node) -> Edge {
-  Edge {
-    label: Named { name: tag },
-    target: node_lowered_from(
-      kind: TypeNode { connective: Atom { identity: tag } },
-      children: [],
-      source: tag_source
-    )
-  }
+// value supplied for that field, behind one leading TAG edge. The tag edge is labelled by its ROLE,
+// v2.std.node construct_tag_marker, and targets the constructor as a REFERENCE: the authored
+// qualified-name spine before resolution (a bare `Rec` is its one-segment case, a module-qualified
+// `m.Rec` its longer one) and v2.std.qualified_name declaration_reference_node after it. So
+// `Rec { n: 1 }` is Conj { <construct-tag>: spine[Rec], n: 1 }. It is the shape v2.std.node
+// RecordConstructBody admits (arrow_body_record_construct_conforms). A match-arm PATTERN over a
+// fielded variant is the same construct whose field targets are the binders, so construction and
+// elimination read one shape.
+//
+// THE REFERENCE IS BUILT BY THE CALLER FROM THE AUTHORED SEGMENTS, never trimmed and never resolved
+// here: lowering hands in the whole path (v2.std.qualified_name qualified_name_spine_of_atoms over
+// atoms lowered from their own tokens), and resolution binds it by identity through the same doors
+// every other reference uses. Before this, the label WAS the constructor's spelling and the target an
+// Atom of the same identity; resolution rewrote the target, so the label-equals-identity read failed
+// for every resolved user construct (gunbc.recurring_failure_mode
+// construct_tag_read_by_label_equality_after_resolve_rewrote_the_target), and a qualified head had
+// no representation.
+fn construct_tag_edge(reference: Node) -> Edge {
+  Edge { label: Named { name: construct_tag_marker() }, target: reference }
 }
 
-fn construct_node(tag: Symbol, tag_source: Node, field_edges: List<Edge>, source: Node) -> Node {
+fn construct_node(reference: Node, field_edges: List<Edge>, source: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: list_append(
-      left: [construct_tag_edge(tag: tag, tag_source: tag_source)],
+      left: [construct_tag_edge(reference: reference)],
       right: field_edges
     ),
     occurrence_id: source.occurrence_id
   )
 }
 
-// The tag of a construct: its first edge, when that edge names the atom it targets. Anything
-// else -- a payload Conj, a domain Conj, a bare record with no tag -- has no constructor tag.
-fn construct_tag_optional(n: Node) -> Optional<Symbol> {
+// The tag of a construct: the reference its marked first edge targets. Anything else -- a payload
+// Conj, a domain Conj, a declaration reference, a field projection, a bare record -- has none. The
+// answer is the reference NODE, at whichever stage the tree is: a spine before resolution, a
+// declaration reference after it.
+fn construct_tag_optional(n: Node) -> Optional<Node> {
   match n.kind {
     TypeNode { connective: Conj } =>
       match first(n.children) {
         Present { value: e } =>
           match e.label {
             Named { name: label } =>
-              match e.target.kind {
-                TypeNode { connective: Atom { identity: id } } =>
-                  match id == label {
-                    true => Present { value: label }
-                    false => Absent
-                  }
-                _ => Absent
+              if symbol_eq(a: label, b: construct_tag_marker()) {
+                optional_present(value: e.target)
+              } else {
+                optional_absent()
               }
-            Positional => Absent
+            Positional => optional_absent()
           }
-        Absent => Absent
+        Absent => optional_absent()
       }
-    _ => Absent
+    _ => optional_absent()
+  }
+}
+
+// The constructor's PATH, read from the tag at either stage: the resolved declaration's path after
+// resolution, the authored path before it. Absent when the node is not a construct or its tag is
+// not a well-formed reference. A pre-resolution path is what the author wrote, not a declaration
+// identity; only a resolved tree's answer names the declaration.
+fn construct_tag_path_optional(n: Node) -> Optional<QualifiedName> {
+  match construct_tag_optional(n: n) {
+    Absent => optional_absent()
+    Present { value: reference } =>
+      match declaration_reference_path_optional(node: reference) {
+        Present { value: path } => optional_present(value: path)
+        Absent =>
+          if qualified_name_spine_shape_present(root: reference) {
+            match qualified_name_from_node(root: reference) {
+              Accepted { value: path, diagnostics: _ } => optional_present(value: path)
+              Rejected { diagnostics: _ } => optional_absent()
+            }
+          } else {
+            optional_absent()
+          }
+      }
   }
 }
 

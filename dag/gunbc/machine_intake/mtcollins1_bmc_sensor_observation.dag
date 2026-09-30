@@ -81,7 +81,7 @@ fn sensor_line_text(l: SdrTypeLine) -> String {
 
 // PER SOCKET FIRST, in the order the controller lists them, then every line as read.
 fn mtcollins1_sensor_table_text(lines: List<SdrLineResult>, sockets: List<Int>) -> String {
-  let unstructured = filter(lines, r => match r { SdrLineUnstructured { text: _ } => true _ => false })
+  let unstructured = filter(lines, r => match r { SdrLineUnstructured { text: _ } => true SdrLineDecoded { line: _ } => false })
   join([
     concat(to_string(count(lines)), " line(s), ", to_string(count(unstructured)), " without a reading field"),
     join(map(sockets, k => {

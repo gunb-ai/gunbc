@@ -516,7 +516,11 @@ import v2.std.collection { List }
 // CLAIM-FORCED, by the same ceiling arithmetic as dag_prepared_grammar: an in-fold first
 // touch of this fill dies on the lane's margin and restarts per claim. The module is under
 // src/v2/extdeps, so it resolves in every required-floor subject.
-// THE TEN declaration_graft_assemble PRODUCERS EARN THEIR ROWS ON THE FILL-THAT-CANNOT-LAND
+// THE declaration_graft_assemble PRODUCERS EARN THEIR ROWS ON THE FILL-THAT-CANNOT-LAND (ten on the
+// receipt below; an eleventh, declaration_graft_where_alias_undeclared_carrier_assembled, is the RED of
+// the resolved where-head -- one assembly, on the same ground)
+// v2.test.claim.body_cast_node bcn_refinement_of_refinement_as_its_carrier is the same ground for the
+// Widened cast's one-step row (gunbc#12407): one assembly of a two-refinement module.
 // GROUND, AND SIX OF THEM ON THE SHARING GROUND AS WELL. Receipt, re-derivable: required-floor
 // run 35467726264 (gunbc#11574 head 1797ea43bd) reported fourteen of that file's claims
 // COMPLETED-OVER-COST-REQUIREMENT at 73,857-148,646 eval steps against the 72,300 new-witness
@@ -546,6 +550,10 @@ import v2.std.collection { List }
 // admitted at 0-2ms against the 302ms margin, zero over-cost. An earlier revision of this note
 // said eight for the combined producer -- a count from before the two collided-alias sources
 // were given their own rows -- and the ledger is what corrected it.
+// THE explicit_fn_import_binds ROW IS THE native_decl_selection GROUND AGAIN: four claims read four
+// verdicts of one eight-read synthetic ingest through the native prepare route (supplied fixtures for
+// import binding and for naming an import target's file refusal), so the context and verdicts are
+// one nullary producer, WARM for the same reason. A cold fill would exceed one claim's budget.
 // THE WHOLE-TREE CENSUS PROBE ROW IS THE native_decl_selection GROUND A THIRD TIME, ON THE SAME
 // PRODUCER. v2.test.claim.native_census.whole_tree_census_resolve drives
 // v2.compiler.compile native_test_context_from_ingest over one three-specimen supplied ingest, and
@@ -613,6 +621,13 @@ import v2.std.collection { List }
 // v2.test.claim.fold_lowering flp_outcomes ingests the positional, positional-named-step,
 // non-fold and well-formed snippets once and stores four Bool verdicts; MQ-1's first floor run refused each claim
 // that paid its own ingest against the new-witness budget. Portable for the same reason.
+// THE FOLD-OPERAND ROW IS THE SAME GROUND AT TWO SPECIMENS: v2.test.claim.body_lowering
+// .fold_operand_structure fos_outcomes parses the `&&` and call-argument snippets once each and stores
+// six Bool verdicts; the first floor run of its PR judged each claim that paid its own parse and lowering
+// against the new-witness budget. Portable for the same reason.
+// THE XL-2 LET-IN CAST ROW: v2.test.claim.body_cast_node bcn_let_in_value_cast_verdict assembles one
+// inline module through the production route and stores one Bool (the lowered body carries exactly
+// one cast node with its target), portable because it holds no Node and no closure.
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
 // end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
@@ -620,6 +635,21 @@ import v2.std.collection { List }
 // mals_third_arm_malformed each tokenize and parse one inline module and call one producer
 // (body_lower_match_arms_optional) on its match capture; the stored value is the lowered arm list
 // (Nodes, no resolution context and no closure), portable for the same reason vpw_normalized is.
+// THE XL-2 RETURN-TAIL-POSITION ROW IS THE SAME GROUND AT NINE SPECIMENS:
+// v2.test.claim.namespace_xl0.return_tail_position rtp_outcomes drives one front end over nine inline
+// modules and stores one verdict arm per module, portable for the same reason cav_outcomes is.
+// THE XL-2 WILDCARD-PATTERN-FORM ROW IS THE MATCH-ARM LIST ROW'S GROUND AT ONE MORE SPECIMEN:
+// v2.test.claim.body_lowering.wildcard_pattern_form wpf_patterns tokenizes and parses one inline
+// module and calls body_lower_match_arms_optional on its match capture; the stored value is the
+// lowered arm patterns (Nodes, no resolution context and no closure). Its first floor run refused all
+// five claims over the enrolment margin at ~590ms each, every one of them paying the same ingest.
+// THE XL-2 ELSE-ARM ROW IS THE SAME GROUND AT FIVE SPECIMENS: v2.test.claim.namespace_xl0.else_arm_nested_if
+// eam_outcomes drives one front end over five inline modules and stores one verdict arm per module.
+// THE XL-2 REIFY-OPERAND ROW: v2.test.claim.body_lowering.reify_operand_refusal ror_verdicts tokenizes
+// and parses two inline modules and reifies two supplied bodies over each; the stored value is four
+// verdicts (no Node, no closure), portable for the same reason cav_outcomes is.
+// THE XL-2 PARAMETER-SLOT ROW: v2.test.claim.body_lowering.parameter_slot_refusal psr_verdicts parses one
+// inline module and lowers a supplied and an unmodified fn declaration; the stored value is two verdicts.
 // THE XL-2 MATCH-POSITION ROW: v2.test.claim.body_lowering.match_position_structure mps_normalized
 // runs the production route (module_roots_from_source_root_ingest) over three inline modules; the
 // stored value is the normalized trees (Nodes, no resolution context and no closure), portable for
@@ -694,6 +724,27 @@ import v2.std.collection { List }
 // is more than one claim's budget. ingested_classical_not_real_infer_holds, the seventh row that run
 // named, re-ingested the source ingested_classical_not_arrow_with_body already serves from this
 // roster; it now reads that producer, so it adds no row here.
+//
+// THE classical_not TARGET MODEL IS ONE DEMAND FROM EVERY EMIT ROW OF ITS THREE CONSUMER MODULES
+// (v2.test.long.emit_host_classical_not_ingested_equals_eval, v2.test.long.emit_host_native_only_verdict,
+// v2.test.execution.emit_on_demand_classical_not_ingested_family_witness). Each emit row builds
+// rust_classical_not_ingested_target_model_staging from nothing -- a nullary pure producer whose value
+// is the same TargetModel in every frame -- so the least common ancestor of those demands is the floor
+// process and the per-claim rebuild is duplicated demand (DESIGN section 2), not a recurrence a cache
+// excuses. Re-derive the cost with claim_batch per-fn inclusive steps over an emit row: the build is a
+// fixed setup that does not move with the emitted module's size (flat classical_not and a four-leaf
+// nested match pay the same construction), and its first touch of std.integer's interval-spec data rows
+// alone exceeds one claim's new-witness budget, so it is WARM, NEVER CLAIM-FORCED by the arithmetic above.
+// The value is a TargetModel record of Nodes, symbol/string Maps and data variants -- the shape the
+// three withdrawn rust rows below stored without refusal -- so portability is not what is at risk.
+// WHAT IS AT RISK IS THOSE ROWS' MEASURED FINDING: serving a rust TargetModel cost its produced-decl
+// consumers more than recomputing it, for a cause this file leaves unidentified. This producer reaches
+// none of those consumers, and it stays here only on a measured serve below recompute on its OWN
+// consumer rows (required_floor_claim_cost.tsv, present against absent, normalised on rows outside its
+// consumer modules); a regression there moves it to floor_cross_claim_refused_candidates. The emit rows
+// read the arrow this roster already serves (ingested_emit_shape_frontier_tree_from_arrow) rather than
+// re-ingesting, so with this row served they fit the new-witness budget; gunbc#12639's floor runs
+// measure present against absent.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_loaded_roots",
@@ -724,19 +775,47 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.list_literal_value_lowering.llv_self_missing_outcome",
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
   "v2.test.claim.normalize.authored_marker_spelling.ams_verdicts",
-  "v2.test.claim.body_lowering.caret_symbol_value_refusal.csv_verdicts",
+  "v2.test.claim.body_lowering.caret_symbol_value_lowering.csv_verdicts",
+  "v2.test.parse.type_decl_modifier_g0_parse_probe.caret_tree_atom_identities",
+  "v2.test.claim.body_lowering.string_literal_value_lowering.slv_verdicts",
+  "v2.test.claim.body_cast_node.bcn_let_in_value_cast_verdict",
   "v2.test.claim.namespace_xl0.value_read_refusal.vrr_outcomes",
   "v2.test.claim.fold_lowering.flp_outcomes",
+  "v2.test.claim.body_lowering.fold_operand_structure.fos_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_lowered",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_third_arm_malformed",
+  "v2.test.claim.body_lowering.reify_operand_refusal.ror_verdicts",
+  "v2.test.claim.body_lowering.parameter_slot_refusal.psr_verdicts",
+  "v2.test.claim.namespace_xl0.return_tail_position.rtp_outcomes",
+  "v2.test.claim.body_lowering.wildcard_pattern_form.wpf_patterns",
   "v2.test.claim.body_lowering.match_position_structure.mps_normalized",
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
+  "v2.test.claim.namespace_xl0.else_arm_nested_if.eam_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_mixed_probe_verdict",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_empty_probe_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_coproduct_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_record_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_refinement_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_alias_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_opaque_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_generic_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_payload_variant_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_label_spelled_record_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_bool_signature_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_declared_type_signature_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_bare_parameter_body_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_bare_literal_body_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_supplied_refinement",
+  "v2.test.execution.infer_declaration_formation.formation_coproduct_verdict",
+  "v2.test.execution.infer_declaration_formation.formation_payload_coproduct_verdict",
+  "v2.test.execution.infer_declaration_formation.formation_plain_alias_verdict",
+  "v2.test.execution.infer_declaration_formation.formation_bodyless_verdict",
+  "v2.test.execution.infer_declaration_formation.formation_generic_binder_alias_verdict",
+  "v2.test.execution.infer_declaration_formation.formation_empty_record_verdict",
   "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_coproduct_verdict",
   "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_alias_used_verdict",
   "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_alias_of_alias_verdict",
@@ -748,6 +827,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
   "v2.test.native_decl_selection.collision_resolved",
+  "v2.test.name_resolve.explicit_fn_import_binds.efib_verdicts",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
   "v2.compiler.program_assembly.dag_prepared_grammar",
@@ -756,6 +836,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.long.emit_host_produced_module_equals_eval.produced_add_module_source",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_with_body",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_arrow_with_body",
+  "v2.extdeps.languages.rust_test.rust_classical_not_ingested_target_model_staging",
   "v2.test.long.pick_ingested_structural_lowering.pick_ingested_true_arrow",
   "v2.test.long.pick_ingested_structural_lowering.pick_ingested_false_arrow",
   "v2.test.long.pick_ingested_structural_lowering.pick_ingested_swapped_arrow",
@@ -860,6 +941,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.declared_parameter_order.dpo_a_then_b",
   "v2.test.claim.declared_parameter_order.dpo_eleven_anonymous",
   "v2.test.claim.declared_parameter_order.dpo_label_shadows_a_declaration",
+  "v2.test.claim.named_argument_binding.nab_reordered",
+  "v2.test.claim.named_argument_binding.nab_in_order",
+  "v2.test.claim.named_argument_binding.nab_positional_after_named",
+  "v2.test.claim.named_argument_binding.nab_label_repeated",
   "v2.test.claim.body_type_annotation_refusal.btar_let_annotated",
   "v2.test.claim.body_type_annotation_refusal.btar_let_plain",
   "v2.test.claim.body_type_annotation_refusal.btar_fn_literal_annotated",
@@ -921,6 +1006,18 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_let_annotation.bla_int_literal_as_bool",
   "v2.test.claim.body_let_annotation.bla_int_literal_as_int_inferred",
   "v2.test.claim.body_let_annotation.bla_int_literal_as_bool_inferred",
+  "v2.test.claim.body_let_annotation.bla_declared_int_literal",
+  "v2.test.claim.body_let_annotation.bla_declared_bool_literal",
+  "v2.test.claim.body_let_annotation.bla_declared_int_literal_inferred",
+  "v2.test.claim.body_let_annotation.bla_declared_bool_literal_inferred",
+  "v2.test.claim.body_let_annotation.bla_imported_int_literal",
+  "v2.test.claim.body_let_annotation.bla_ambiguous_imported_int_literal",
+  "v2.test.claim.body_let_annotation.bla_ambiguous_kernel_int_literal",
+  "v2.test.claim.body_let_annotation.bla_single_tree_declared_int",
+  "v2.test.claim.body_let_annotation.bla_single_tree_declared_bool",
+  "v2.test.claim.body_let_annotation.bla_single_tree_undeclared_int",
+  "v2.test.claim.body_let_annotation.bla_symbol_literal_as_int",
+  "v2.test.claim.body_let_annotation.bla_symbol_literal_as_int_inferred",
   "v2.test.claim.body_let_annotation.bla_annotated_bind_emitted",
   "v2.test.claim.body_let_annotation.bla_reordered_self_reference",
   "v2.test.claim.body_let_annotation.bla_reordered_outer_reference",
@@ -955,9 +1052,11 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation.block_second_statement_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.if_arm_call_argument_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.infix_right_operand_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.caret_symbol_payload_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.repeated_spelling_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.named_argument_label_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.list_literal_argument_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.string_literal_value_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.where_refinement_predicate_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.match_later_arm_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.construct_tags_subject",
@@ -967,6 +1066,12 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation_census.under_floor_fixture_files",
   "v2.test.claim.namespace_xl0.reference_conservation_census.half_share_fixture_files",
   "v2.test.claim.occurrence_role.occurrence_role.roles_fixture_outcome",
+  "v2.test.claim.parse.admit_callers_trailing_comma.trailing_comma_parsed",
+  "v2.test.claim.parse.admit_callers_trailing_comma.no_trailing_comma_parsed",
+  "v2.test.claim.parse.admit_callers_trailing_comma.only_a_comma_parsed",
+  "v2.test.claim.occurrence_role.occurrence_role.binders_fixture_outcome",
+  "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_parsed",
+  "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_planted",
   "v2.test.claim.namespace_xl0.reference_conservation.statement_let_binder_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.binary_operand_beside_match_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.binary_operand_beside_if_subject",
@@ -978,12 +1083,13 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.data_initializer_match_scrutinee_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.fn_body_match_scrutinee_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.anonymous_slots_subject",
-  "v2.test.claim.namespace_xl0.reference_conservation_admission.two_same_spelled_labels_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.two_same_spelled_predicates_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_call_argument_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_if_arm_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_member_dropping_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_outsider_dropping_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_member_clean_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.call_projection_operand_subject",
   "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_alias_subject",
   "v2.test.claim.body_lowering.single_arm_match.three_arm_subject",
   "v2.test.claim.body_lowering.single_arm_match.zero_arm_subject",
@@ -996,6 +1102,26 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_subject",
   "v2.test.claim.machine_shape_construction_wall.machine_shape_record_literal_subject",
   "v2.test.claim.machine_shape_construction_wall.machine_shape_record_literal_home_subject",
+  "v2.test.claim.body_lowering.qualified_construct.qc_fixture_normalized",
+  "v2.test.claim.body_lowering.qualified_construct.qc_resolved_bare",
+  "v2.test.claim.body_lowering.qualified_construct.qc_resolved_qualified",
+  "v2.test.claim.body_lowering.qualified_construct.qc_resolved_twins",
+  "v2.test.claim.body_lowering.qualified_construct.qc_resolved_type_tag",
+  "v2.test.claim.body_lowering.qualified_construct.qc_resolved_unimported",
+  "v2.test.claim.body_lowering.qualified_construct.qc_resolved_bodyless",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_fixture_normalized",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_bad",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_good",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_generic_good",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_nested_good",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_missing",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_unknown",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_generic_bad",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_other",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_far_value",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_far_missing",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_bool_field",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_pattern",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_local_consumer",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_declared_consumer",
@@ -1034,7 +1160,9 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.declaration_graft_assemble.declaration_graft_where_alias_only_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_record_construct_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_record_type_only_assembled",
-  "v2.test.claim.declaration_graft_assemble.declaration_graft_flag_and_rec_assembled"
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_flag_and_rec_assembled",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_where_alias_undeclared_carrier_assembled",
+  "v2.test.claim.body_cast_node.bcn_refinement_of_refinement_as_its_carrier"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.

@@ -102,6 +102,8 @@ import v2.std.compilers.target_model {
   target_text_is_empty,
   render_target_text,
   token_text_from_decoded,
+  LexLiteralIndex,
+  lex_literal_index,
   target_text_nested,
   concrete_syntax_token_from_node,
   target_binding_spelling_lookup,
@@ -768,6 +770,18 @@ fn target_serialize_relation_row_from_model_bounded(
   target: TargetModel,
   emitted: Node
 ) -> Outcome<TargetText> {
+  target_serialize_relation_row_with_lex_bounded(remaining, target, lex_literal_index(rules: target.lex), emitted)
+}
+
+// ONE ROW'S SERIALIZATION, GIVEN THE TARGET'S SPELLING INDEX. The index is a fact about the target, the
+// same for every row of one serialization, so it is built once at the entry and carried down: a
+// nonterminal inside a row re-enters here with the index it was handed, never rebuilding it (DESIGN §2).
+fn target_serialize_relation_row_with_lex_bounded(
+  remaining: Int,
+  target: TargetModel,
+  lex: LexLiteralIndex,
+  emitted: Node
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -787,7 +801,7 @@ fn target_serialize_relation_row_from_model_bounded(
                 bind_outcome(
                   o: grammar_tokens_node_targets(tokens_node: tokens_root),
                   f: fn(tokens) {
-                    serialize_relation_row_tokens_bounded(remaining: remaining, target: target, tokens: tokens)
+                    serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens)
                   }
                 )
               }
@@ -813,7 +827,7 @@ fn target_serialize_derived_row_bounded(remaining: Int, target: TargetModel, row
         bind_outcome(
           o: grammar_tokens_node_targets(tokens_node: tokens_root),
           f: fn(tokens) {
-            serialize_relation_row_tokens_bounded(remaining: remaining, target: target, tokens: tokens)
+            serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex_literal_index(rules: target.lex), tokens: tokens)
           }
         )
       }
@@ -824,7 +838,7 @@ fn target_serialize_derived_row_bounded(remaining: Int, target: TargetModel, row
 // THE ROW'S TOKEN ITEMS IN ORDER, as one TargetText. A nested block renders its own items through
 // this same fold and is wrapped whole in one nest, spelled by the target (binding_spellings), so a
 // block's contents are indented exactly once and can never be left open.
-fn serialize_relation_row_tokens_bounded(remaining: Int, target: TargetModel, tokens: List<Node>) -> Outcome<TargetText> {
+fn serialize_relation_row_tokens_bounded(remaining: Int, target: TargetModel, lex: LexLiteralIndex, tokens: List<Node>) -> Outcome<TargetText> {
   fold_list(
     xs: tokens,
     empty: Accepted { value: target_text_empty, diagnostics: None },
@@ -832,7 +846,7 @@ fn serialize_relation_row_tokens_bounded(remaining: Int, target: TargetModel, to
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: partial, diagnostics: ad } =>
-          match token_item_to_source_bounded(remaining, token_node, target) {
+          match token_item_to_source_bounded(remaining, token_node, target, lex) {
             Accepted { value: source, diagnostics: td } =>
               Accepted {
                 value: target_text_seq(acc: partial, next: source),
@@ -849,13 +863,14 @@ fn serialize_relation_row_tokens_bounded(remaining: Int, target: TargetModel, to
 fn serialize_relation_row_nested_bounded(
   remaining: Int,
   target: TargetModel,
+  lex: LexLiteralIndex,
   unit: Symbol,
   tokens: List<Node>
 ) -> Outcome<TargetText> {
   match map_get(target.binding_spellings, unit) {
     Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
       bind_outcome(
-        o: serialize_relation_row_tokens_bounded(remaining: remaining, target: target, tokens: tokens),
+        o: serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens),
         f: fn(body) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: body)) }
       )
     Accepted { value: Absent, diagnostics: _ } =>
@@ -889,18 +904,19 @@ fn node_atom_identity(node: Node) -> Outcome<Symbol> {
 fn token_item_to_source_bounded(
   remaining: Int,
   item: Node,
-  target: TargetModel
+  target: TargetModel,
+  lex: LexLiteralIndex
 ) -> Outcome<TargetText> {
   bind_outcome(
     o: token_sequence_item_kind(item: item),
     f: fn(item_kind) {
       match item_kind {
         TokenSequenceConcreteToken { token: decoded } =>
-          token_text_from_decoded(target: target, decoded: decoded)
+          token_text_from_decoded(target: target, lex: lex, decoded: decoded)
         TokenSequenceNestedBlock { unit: unit, tokens: inner } =>
-          serialize_relation_row_nested_bounded(remaining - 1, target, unit, inner)
+          serialize_relation_row_nested_bounded(remaining - 1, target, lex, unit, inner)
         TokenSequenceNonterminal =>
-          target_serialize_relation_row_from_model_bounded(remaining - 1, target, item)
+          target_serialize_relation_row_with_lex_bounded(remaining - 1, target, lex, item)
       }
     }
   )
@@ -1007,7 +1023,7 @@ fn target_serialize_source_from_selected_row(
           o: grammar_tokens_node_targets(tokens_node: tokens_root),
           f: fn(tokens) {
             bind_outcome(
-              o: serialize_relation_row_tokens_bounded(remaining: measure - 1, target: target, tokens: tokens),
+              o: serialize_relation_row_tokens_bounded(remaining: measure - 1, target: target, lex: lex_literal_index(rules: target.lex), tokens: tokens),
               f: fn(text) {
                 target_source_medium(text: render_target_text(t: text), target: target)
               }

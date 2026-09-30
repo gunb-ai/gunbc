@@ -229,6 +229,7 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
             match_pattern: None,
             module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: Rc::new(ExprData::NoExprData),
         })]),
         connective: Connective::NoConnective,
@@ -245,6 +246,7 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
+        declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -281,7 +283,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, expr_data: Rc::new(ExprData::NoExprData),
+                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, declaration: None, expr_data: Rc::new(ExprData::NoExprData),
             }),
             Rc::new(Node {
                 occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -302,7 +304,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, expr_data: Rc::new(ExprData::NoExprData),
+                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, declaration: None, expr_data: Rc::new(ExprData::NoExprData),
             }),
         ]),
         connective: Connective::NoConnective,
@@ -317,7 +319,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, expr_data: Rc::new(ExprData::NoExprData),
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, declaration: None, expr_data: Rc::new(ExprData::NoExprData),
     })
 }
 
@@ -399,6 +401,7 @@ fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
+        declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -846,6 +849,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
             match_pattern: None,
             module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: Rc::new(ExprData::NoExprData),
         })]),
         connective: Connective::Conj,
@@ -862,6 +866,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
+        declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let optional_inner_sum = Rc::new(Node {
@@ -887,6 +892,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
+        declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_inner_sum);
@@ -971,6 +977,7 @@ fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
+        declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -1277,6 +1284,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
+        declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let user_intern = v1_compiler::v1_std_core::intern(
@@ -1427,7 +1435,7 @@ fn structural_method_first_on_list_returns_optional_element() {
     );
 }
 
-fn structural_method_count_on_list_returns_int() {
+fn structural_method_count_on_list_returns_nat() {
     let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
     let result = v1_compiler_infer_lookup::lookup_structural_method(
         list_string,
@@ -1438,7 +1446,12 @@ fn structural_method_count_on_list_returns_int() {
     .as_ref()
     .expect("count must resolve on List<String>")
     .clone();
-    assert_eq!(result.result_type.name, "Int", "count should return Int");
+    // A count is never negative, so it returns std.nat.Nat by its declarer (#12227); an Int
+    // here would mean the refinement regressed to the unrefined carrier.
+    assert_eq!(
+        result.result_type.name, "std.nat.Nat",
+        "count should return std.nat.Nat"
+    );
 }
 
 fn structural_method_lookup_resolves_all_int_ring_methods() {
@@ -1988,6 +2001,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
+        declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let box_decl = Rc::new(Node {
@@ -2013,6 +2027,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
+        declaration: None,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let box_intern = intern(empty_intern_table(), "Box".to_string());
@@ -2276,8 +2291,8 @@ fn main() -> ExitCode {
             structural_method_first_on_list_returns_optional_element,
         ),
         (
-            "structural_method_count_on_list_returns_int",
-            structural_method_count_on_list_returns_int,
+            "structural_method_count_on_list_returns_nat",
+            structural_method_count_on_list_returns_nat,
         ),
         (
             "structural_method_lookup_resolves_all_int_ring_methods",

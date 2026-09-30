@@ -1,5 +1,7 @@
 module extdeps.tools.mosquitto_pub
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { String, NonEmptyStr, Bool, Port, FilePath, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.version { VersionConstraint }
@@ -51,12 +53,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 data mosquitto_pub_pinned_version: VersionConstraint = ">= 2.0"
 
 data mosquitto_pub_cli_tool: CliTool = CliTool {
-  name: "mosquitto_pub",
+  program: mosquitto_pub_program(),
   min_version: Present { value: mosquitto_pub_pinned_version },
   installable_via: [SourceApt { package: package_mosquitto_clients, bin_dir: apt_bin_dir }],
 }
 
-data mosquitto_pub_program: NonEmptyStr = "mosquitto_pub"
+fn mosquitto_pub_program() -> ProgramIdentity = cataloged_program(invocation: "mosquitto_pub")
 
 // THE OPTIONS FILE'S NAME IS FIXED BY THE TOOL, WHICH IS WHY THE CALLER BINDS A DIRECTORY.
 // mosquitto_pub reads $XDG_CONFIG_HOME/mosquitto_pub -- the basename is the program's own name and
@@ -109,7 +111,7 @@ fn mosquitto_publish_command(
   ca_bundle: FilePath,
 ) -> ArgvCommand {
   argv_command(
-    program: mosquitto_pub_program,
+    program: mosquitto_pub_program(),
     arguments: [
       "-h", endpoint.host as String,
       "-p", to_string(n: endpoint.port),

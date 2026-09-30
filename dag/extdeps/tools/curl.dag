@@ -1,5 +1,7 @@
 module extdeps.tools.curl
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
@@ -20,7 +22,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data curl_pinned_version: VersionConstraint = ">= 7.68"
 
 data curl_cli_tool: CliTool = CliTool {
-  name: "curl",
+  program: curl_program(),
   min_version: Present { value: curl_pinned_version },
   installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
 }
@@ -56,13 +58,13 @@ fn curl_localhost_bounded_get_argv_prefix() -> String {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data curl_program: NonEmptyStr = "curl"
+fn curl_program() -> ProgramIdentity = cataloged_program(invocation: "curl")
 
 // A bounded GET as argv words: -f makes an HTTP error a non-zero exit instead of a body, -sS keeps
 // the error text on stderr while suppressing the progress meter.
 fn curl_bounded_get_argv(url: String, connect_timeout: Second, max_time: Second) -> List<String> {
   [
-    curl_program as String, "-fsS",
+    curl_program().invocation as String, "-fsS",
     "--connect-timeout", to_string(second_count(s: connect_timeout)),
     "--max-time", to_string(second_count(s: max_time)),
     url,
@@ -70,7 +72,37 @@ fn curl_bounded_get_argv(url: String, connect_timeout: Second, max_time: Second)
 }
 
 fn curl_download_command(url: String, destination: String) -> ArgvCommand {
-  argv_command(program: curl_program, arguments: ["-fsL", "-o", destination, url])
+  argv_command(program: curl_program(), arguments: ["-fsL", "-o", destination, url])
+}
+
+// THE BMCWEB SESSION LOGIN the srv3 install path runs (gunbc.host_effect_realize
+// Srv3BmcwebSessionLogin): POST the JSON login body FROM A FILE (--data @file) and write the
+// response to a file. The credential never reaches argv: the body path does, the password bytes
+// stay in the file the caller's materialization bracket owns (the same bracket/argv split
+// curl_ftps_upload_command below records). The word list is byte-identical to the raw flag list
+// this builder replaces (extdeps.bmc.webui.nbd_proxy_serve bmcweb_session_login_curl_args,
+// deleted with it); no behavior change is intended or made by this builder.
+// NOT CHANGED HERE, DELIBERATELY, AND NOW VISIBLE AT THE TOOL: the list carries no --fail, so an
+// HTTP error status is still exit 0 with the error body written to the response file -- the
+// fail-open shape curl_download_command's comment names. Whether the login should fail closed on
+// a status is the caller's convergence law (the token extract step reads the file), so the
+// question moves with the carrier instead of being re-decided silently in a rename.
+fn curl_bmcweb_session_login_command(
+  bmc_host: NonEmptyStr,
+  request_body_file: NonEmptyStr,
+  response_path: NonEmptyStr,
+) -> ArgvCommand {
+  argv_command(
+    program: curl_program(),
+    arguments: [
+      "-sk",
+      "-X", "POST",
+      concat("https://", concat(bmc_host as String, "/login")),
+      "-H", "Content-Type: application/json",
+      "--data", concat("@", request_body_file as String),
+      "-o", response_path as String,
+    ],
+  )
 }
 
 // THE FTPS UPLOAD, WHOSE FLAGS ARE DERIVED FROM THE MODELED ENDPOINT RATHER THAN CHOSEN HERE.
@@ -106,7 +138,7 @@ fn curl_ftps_upload_command(
   skip_verification: Bool,
 ) -> ArgvCommand {
   argv_command(
-    program: curl_program,
+    program: curl_program(),
     arguments: concat(
       ["-fsS", "--ssl-reqd", "--netrc-file", netrc_path as String, "-T", local_path],
       concat(if skip_verification { ["-k"] } else { [] }, [url]),
@@ -119,12 +151,12 @@ fn curl_ftps_upload_command(
 // SECOND CliTool whose min_version is this constraint rather than silently raising curl_pinned_version:
 // the download and FTPS builders above genuinely need no more than 7.68, and a fleet host that
 // carries 7.68 still runs them correctly. curl_cli_tool stays the 7.68 pin; the SigV4 builders
-// emit curl_aws_sigv4_cli_tool.name so a 7.68 host that satisfies curl_cli_tool still owes 7.75
+// emit curl_aws_sigv4_cli_tool.program so a 7.68 host that satisfies curl_cli_tool still owes 7.75
 // on the path that spells --aws-sigv4.
 data curl_aws_sigv4_min_version: VersionConstraint = ">= 7.75"
 
 data curl_aws_sigv4_cli_tool: CliTool = CliTool {
-  name: curl_program,
+  program: curl_program(),
   min_version: Present { value: curl_aws_sigv4_min_version },
   installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
 }
@@ -217,7 +249,7 @@ fn curl_sigv4_s3_upload_command(
   create_only: Bool,
 ) -> ArgvCommand {
   argv_command(
-    program: curl_aws_sigv4_cli_tool.name,
+    program: curl_program(),
     arguments: concat(
       [
         "-fsS",
@@ -241,7 +273,7 @@ fn curl_sigv4_s3_download_command(
   sigv4_region: NonEmptyStr,
 ) -> ArgvCommand {
   argv_command(
-    program: curl_aws_sigv4_cli_tool.name,
+    program: curl_program(),
     arguments: [
       "-fsS",
       "--netrc-file", netrc_path as String,
