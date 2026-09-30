@@ -504,6 +504,43 @@ fn dag_string_escape_char_pattern() -> LexPattern {
   }
 }
 
+// THE TEXT A STRING LITERAL DENOTES, read against the escape table above and nowhere else: each
+// escape pair collapses to the one scalar it stands for (`\n` and a raw line feed are the same
+// scalar, `\"` is `"`), every other scalar stands for itself. Two literals denote the same text
+// exactly when their decoded texts are equal, which is what a spelling comparison gets wrong. The
+// lexeme is decoded whole, delimiters included; they are identical on every literal, so they cannot
+// separate two keys. Consumed by v2.compiler.resolve's map arm (duplicate keys,
+// docs/plans/map-literal-introduction-design.md). Linear: scalars are pushed on the persistent
+// list and joined once.
+type DagStringLiteralDecode {
+  escaped: Bool
+  scalars: List<String>
+}
+
+fn dag_string_escape_decoded(c: String) -> String {
+  if c == "n" { "\n" } else if c == "t" { "\t" } else { c }
+}
+
+// A lexeme of the string-literal class: it opens with the class's delimiter (char 34, the open of
+// dag_string_literal_lex_rule). No other token class of this language admits that scalar outside a
+// string, so the first scalar decides the class.
+fn dag_string_literal_lexeme(lexeme: String) -> Bool {
+  starts_with(lexeme, "\"")
+}
+
+fn dag_string_literal_decoded_text(lexeme: String) -> String {
+  let decoded = fold(chars(s: lexeme), init: DagStringLiteralDecode { escaped: false, scalars: [] }, f: fn(acc, c) {
+    if acc.escaped {
+      DagStringLiteralDecode { escaped: false, scalars: list_snoc_item(xs: acc.scalars, item: dag_string_escape_decoded(c: c)) }
+    } else if c == "\\" {
+      DagStringLiteralDecode { escaped: true, scalars: acc.scalars }
+    } else {
+      DagStringLiteralDecode { escaped: false, scalars: list_snoc_item(xs: acc.scalars, item: c) }
+    }
+  })
+  join(decoded.scalars, "")
+}
+
 fn dag_string_escape_sequence_pattern() -> LexPattern {
   SequencePattern {
     left: CharPattern { char: 92 },
@@ -3641,6 +3678,15 @@ fn dag_kernel_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
   } else {
     optional_absent()
   }
+}
+
+// THE KERNEL SPELLING OF THE TYPE A STRING LITERAL DENOTES: host text, the kernel `String`
+// (DESIGN section 4, Ruling 3). It has no declaration and no canonical binding in the table above,
+// so an unbound `String` is judged by this spelling and nowhere else; a `String` that resolves to a
+// declaration (the structural v2.std.text String) is a different type, reached from a literal only
+// through the declared unfold. Consumed by v2.compiler.resolve's map arm (the key-kind rule).
+fn dag_kernel_string_type_spelling(sym: Symbol) -> Bool {
+  symbol_lexeme(sym: sym) == "String"
 }
 
 // THE DECLARATIONS A KERNEL TYPE SPELLING DENOTES. A kernel spelling that resolves, through an

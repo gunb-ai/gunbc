@@ -27,6 +27,7 @@ import v2.compiler.body_producer_forward {
 }
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
+  dag_string_literal_lexeme,
   ParseSubtreeFind,
   ParseSubtreeFound,
   dag_binding_branded_atom_identity,
@@ -74,6 +75,7 @@ import v2.std.compilers.body_lowering {
   lower_unary_prefix
 }
 import v2.std.list_introduction { lower_list_introduction }
+import v2.std.map_introduction { edge_is_map_literal_entry, map_literal_entry_label }
 import v2.std.arrow_signature { declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
@@ -133,7 +135,9 @@ import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrap
 import v2.std.node_query {
   node_positional_child_targets,
   construct_node,
+  construct_node_elided,
   construct_tag_elided_reference,
+  construct_tag_target_is_elided,
   construct_tag_optional,
   field_projection_node,
   field_projection_optional,
@@ -7714,6 +7718,9 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   match sugar_sequence_pair_optional(node: captured) {
     Absent => refuse
     Present { value: pair } =>
+      match body_lower_string_key_atom_optional(node: pair.left) {
+        Present { value: key } => body_lower_map_literal_entry_edge(key: key, after_key: pair.right, item: item, refuse: refuse)
+        Absent =>
       match body_lower_param_binding_optional(node: pair.left) {
         Absent => refuse
         Present { value: field_name } =>
@@ -7729,6 +7736,78 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
                   )
               }
           }
+      }
+      }
+  }
+}
+
+// A STRING-KEYED ITEM `"k": v` (a map literal's entry). The key is the item's sole atom when that
+// atom's lexeme is of the string-literal class (v2.extdeps.languages.dag dag_string_literal_lexeme);
+// it is kept as the value the literal lowers to, never read as a field name, so the key's kind
+// survives to resolve (docs/plans/map-literal-introduction-design.md).
+fn body_lower_string_key_atom_optional(node: Node) -> Optional<Node> {
+  match body_lower_value_sole_atom_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: atom } =>
+      match node_atom_identity_optional(node: atom) {
+        Present { value: id } =>
+          if dag_string_literal_lexeme(lexeme: symbol_lexeme(sym: id)) { optional_present(value: atom) } else { optional_absent() }
+        Absent => optional_absent()
+      }
+  }
+}
+
+// The entry edge: v2.std.map_introduction map_literal_entry_label, targeting a tag-elided construct
+// carrying `key` and `value`. Only resolve's map arm reads it.
+fn body_lower_map_literal_entry_edge(key: Node, after_key: Node, item: Node, refuse: Outcome<Edge>) -> Outcome<Edge> {
+  match sugar_sequence_pair_optional(node: after_key) {
+    Absent => refuse
+    Present { value: after_colon } =>
+      match body_lower_value_read(value: after_colon.right) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: value, diagnostics: d } =>
+          outcome_with_diagnostics(
+            value: Edge {
+              label: Named { name: map_literal_entry_label() },
+              target: construct_node_elided(
+                field_edges: [
+                  Edge { label: Named { name: ^key }, target: key },
+                  Edge { label: Named { name: ^value }, target: value }
+                ],
+                source: item
+              )
+            },
+            diagnostics: d
+          )
+      }
+  }
+}
+
+// ONE KIND OF KEY PER BRACE, AND STRING KEYS ONLY WITHOUT A HEAD. Lowering does not choose record or
+// map, but it can see a brace no choice could type: a constructor head over string keys
+// (`R { "k": v }`), or a headless brace mixing name keys and string keys. Each refuses at the first
+// item of the offending kind.
+fn body_lower_brace_key_kinds_refusal_optional(reference: Node, edges: List<Edge>) -> Optional<Edge> {
+  let headless = construct_tag_target_is_elided(target: reference)
+  let first_entry = fold(edges, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if edge_is_map_literal_entry(e: e) { optional_present(value: e) } else { optional_absent() }
+    }
+  })
+  let first_field = fold(edges, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if edge_is_map_literal_entry(e: e) { optional_absent() } else { optional_present(value: e) }
+    }
+  })
+  match first_entry {
+    Absent => optional_absent()
+    Present { value: entry } =>
+      if headless {
+        first_field
+      } else {
+        optional_present(value: entry)
       }
   }
 }
@@ -7786,9 +7865,14 @@ fn body_lower_record_construct(reference: Node, items: List<Node>, source: Node)
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: edges, diagnostics: d } =>
+      match body_lower_brace_key_kinds_refusal_optional(reference: reference, edges: edges) {
+        Present { value: offending } =>
+          outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_brace_key_kind_mismatch, n: offending.target))
+        Absent =>
       Accepted {
         value: construct_node(reference: reference, field_edges: edges, source: source),
         diagnostics: d
+      }
       }
   }
 }
@@ -7831,8 +7915,8 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<RecordLite
 // (v2.std.node_query construct_tag_elided_reference), and resolve's construct-tag writer either
 // writes the expected record's reference or refuses located
 // (docs/plans/anonymous-record-literal-design.md). The field set is never consulted to choose. A
-// string-keyed item (a map literal) has no field edge here and still refuses at the item; the map
-// arm gives it one (gunbc#12734).
+// string-keyed item (a map literal) lowers to a map_literal_entry edge, and resolve's map arm reads
+// it (docs/plans/map-literal-introduction-design.md).
 fn body_lower_try_headless_record_literal(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_record_brace_items_optional(brace: captured) {
     Absent => outcome_accepted(value: optional_absent())
