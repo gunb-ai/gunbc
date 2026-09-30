@@ -60,6 +60,13 @@ import v2.std.demand_engine {
   DemandLeaseOffer,
   DemandNotAdmitted,
   DemandRefused,
+  DemandWaiting,
+  DemandReady,
+  DemandLeasePending,
+  DemandRunning,
+  DemandSuspended,
+  DemandCommitPending,
+  DemandBlocked,
   DemandState,
   DemandAdmission,
   demand_engine_completion_keys,
@@ -4007,7 +4014,13 @@ fn native_demand_settled_label(state: DemandState<NativeDemandValue>) -> String 
         NativeEvalValue { row: _ } => "eval_available"
       }
     DemandRefused => "refused"
-    _ => "unsettled"
+    DemandWaiting => "unsettled"
+    DemandReady => "unsettled"
+    DemandLeasePending => "unsettled"
+    DemandRunning => "unsettled"
+    DemandSuspended => "unsettled"
+    DemandCommitPending => "unsettled"
+    DemandBlocked { cause: _ } => "unsettled"
   }
 }
 
@@ -4315,7 +4328,14 @@ fn native_demand_collect_rows(
           }
         NativeEvalValue { row: row } => list_snoc_item(xs: rows, item: row)
       }
-    _ => rows
+    DemandWaiting => rows
+    DemandReady => rows
+    DemandLeasePending => rows
+    DemandRunning => rows
+    DemandSuspended => rows
+    DemandCommitPending => rows
+    DemandRefused => rows
+    DemandBlocked { cause: _ } => rows
   }
 }
 
