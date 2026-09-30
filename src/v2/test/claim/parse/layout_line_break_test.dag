@@ -1,6 +1,6 @@
 module v2.test.parse.layout_line_break
 
-import v2.compiler.parse { ParseArtifact, parse_module, parse_module_prepared, parse_token_stream_digest, parse_token_stream_source_digest }
+import v2.compiler.parse { ParseArtifact, parse_module, parse_module_prepared, parse_token_stream_digest, parse_token_stream_layout_digest }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
@@ -275,7 +275,7 @@ test fn a_layout_question_without_source_refuses_holds() -> Bool {
 // THE MEMO CANNOT SERVE ONE LAYOUT'S ANSWER TO THE OTHER. `x - 1` and `x` newline `- 1` lex to the
 // same tokens at the same octets, so a stream digest over tokens alone would key them together and a
 // warm memo entry could replay a same-line acceptance for a next-line refusal. The source is part of
-// the stream's digest (v2.compiler.parse parse_token_stream_source_digest): same tokens, different
+// the stream's digest (v2.compiler.parse parse_token_stream_layout_digest): same tokens, different
 // digest; and the token-only digest, which is what a sourceless stream keys by, is unchanged.
 test fn same_tokens_different_layout_have_different_stream_digests_holds() -> Bool {
   match lexed(text: same_line_text, file: ^layout_digest) {
@@ -285,8 +285,8 @@ test fn same_tokens_different_layout_have_different_stream_digests_holds() -> Bo
         Rejected { diagnostics: _ } => false
         Accepted { value: next, diagnostics: _ } =>
           (parse_token_stream_digest(all_tokens: token_stream_all(stream: same)) == parse_token_stream_digest(all_tokens: token_stream_all(stream: next)))
-            && (parse_token_stream_source_digest(all_tokens: token_stream_all(stream: same), layout: token_stream_layout(stream: same))
-              != parse_token_stream_source_digest(all_tokens: token_stream_all(stream: next), layout: token_stream_layout(stream: next)))
+            && (parse_token_stream_layout_digest(all_tokens: token_stream_all(stream: same), layout: token_stream_layout(stream: same))
+              != parse_token_stream_layout_digest(all_tokens: token_stream_all(stream: next), layout: token_stream_layout(stream: next)))
       }
   }
 }

@@ -151,20 +151,20 @@ type Token {
   end: Int
 }
 
-// THE STREAM CARRIES THE SOURCE ITS TOKENS INDEX, AND LAYOUT IS DERIVED FROM IT. A token's
+// THE STREAM CARRIES ITS LAYOUT, DERIVED FROM THE SOURCE ITS TOKENS WERE LEXED FROM. A token's
 // `start`/`end` say THAT two tokens have a gap between them, not what the gap holds, and the grammar
 // sometimes needs to know (a `-` that begins a new line after a complete operand is ambiguous
 // between infix and prefix, and the seed refuses it: v1.compiler.parse
 // is_ambiguous_prefix_infix_newline_boundary). The source text stays the ONE authority for that
-// fact: nothing about layout is stored on a Token or as a token of its own. `StreamLayout` pairs the
-// source with the starts of the tokens that have a line break in the gap before them, DERIVED from
-// that source and those tokens in one walk by its only constructor (`stream_layout_of`), so the two
-// cannot disagree and a layout question is a lookup rather than a rescan of the file. Only the
-// line-break-preceded starts are kept (a line is many tokens), in source order as well as keyed, so
-// the stream digest can cover layout by folding over them rather than over every character. A stream built from tokens alone (fixtures) carries no layout, and a layout
-// question on it answers `LineBreakUnknownWithoutSource` -- never an assumed single line.
+// fact: nothing about layout is stored on a Token or as a token of its own. `StreamLayout` is the
+// starts of the tokens that have a line break in the gap before them, DERIVED from the source and the
+// tokens in one walk by its only constructor (`stream_layout_of`, called by the tokenizer, the one
+// place the source is read), so a layout question is a lookup rather than a rescan of the file. Only
+// the line-break-preceded starts are kept (a line is many tokens), in source order as well as keyed,
+// so the stream digest can cover layout by folding over them rather than over every character. A
+// stream built from tokens alone (fixtures) carries no layout, and a layout question on it answers
+// `LineBreakUnknownWithoutSource` -- never an assumed single line.
 type StreamLayout {
-  source: String
   line_break_starts: List<Int>
   line_break_before: Map<Int, Bool>
 }
@@ -218,7 +218,7 @@ fn stream_layout_of(tokens: List<Token>, source: String) -> StreamLayout {
     empty: StreamLayoutWalk { octet: 0, ahead: tokens, last_end: 0, seen: false, starts: Empty, answers: empty_map() },
     cons: fn(acc, c) { stream_layout_step(acc: acc, c: c) }
   )
-  StreamLayout { source: source, line_break_starts: walked.starts, line_break_before: walked.answers }
+  StreamLayout { line_break_starts: walked.starts, line_break_before: walked.answers }
 }
 
 fn stream_layout_step(acc: StreamLayoutWalk, c: Char) -> StreamLayoutWalk {
