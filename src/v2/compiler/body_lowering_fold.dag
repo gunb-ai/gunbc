@@ -591,6 +591,121 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
   }
 }
 
+// MQ-5 CENSUS INSTRUMENT (scratch branch, never merged). A node the allowlist does not recognise
+// and that carries no parse-projection edge is lowered output a reader is about to re-read; each
+// wrapped site refuses it under a site-named reason so the native route's [native-verdict] locates it.
+fn body_lower_census_parse_label(n: Symbol) -> Bool {
+  (n == ^grammar_production_identity_node_projection)
+    || (n == ^grammar_production_captured_node_projection)
+    || (n == ^grammar_sequence_left_node_projection)
+    || (n == ^grammar_sequence_right_node_projection)
+    || (n == ^grammar_optional_element_node_projection)
+    || (n == ^grammar_repeat_element_node_projection)
+    || (n == ^grammar_terminal_token_class_node_projection)
+    || (n == ^grammar_terminal_stamp_lexeme_node_projection)
+    || (n == ^grammar_terminal_literal_lexeme_node_projection)
+    || (n == ^grammar_terminal_binding_node_projection)
+}
+
+fn body_lower_census_has_parse_edge(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(acc, e) {
+    acc || (match e.label { Named { name: n } => body_lower_census_parse_label(n: n)  Positional => false })
+  })
+}
+
+fn body_lower_census_unrecognised_lowered(node: Node) -> Bool {
+  if body_lower_is_core_substrate(node: node) {
+    false
+  } else {
+    match node.kind {
+      TypeNode { connective: Atom { identity: _ } } => false
+      _ => (length(xs: node.children) > 0) && !body_lower_census_has_parse_edge(node: node)
+    }
+  }
+}
+
+fn body_lower_census_diagnostics(site: Symbol, node: Node) -> NonEmptyDiagnostics {
+  diagnostics_singleton(d: body_lower_diagnostic(reason: site, n: node))
+}
+
+fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
+  if body_lower_census_unrecognised_lowered(node: node) {
+    OperandRefRefused { diagnostics: body_lower_census_diagnostics(site: ^mq5_census_operand_ref_read, node: node) }
+  } else {
+    body_lower_operand_ref_read_mq5_inner(node: node)
+  }
+}
+
+fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
+  if body_lower_census_unrecognised_lowered(node: node) {
+    Rejected { diagnostics: body_lower_census_diagnostics(site: ^mq5_census_try_body_lowered, node: node) }
+  } else {
+    body_lower_try_body_lowered_mq5_inner(node: node)
+  }
+}
+
+fn body_lower_reduce(folded: Node) -> Outcome<Node> {
+  if body_lower_census_unrecognised_lowered(node: folded) && !dag_resolve_preserve_module_metadata_subtree(node: folded) {
+    Rejected { diagnostics: body_lower_census_diagnostics(site: ^mq5_census_reduce, node: folded) }
+  } else {
+    body_lower_reduce_mq5_inner(folded: folded)
+  }
+}
+
+fn body_lower_fold(node: Node) -> Outcome<Node> {
+  if body_lower_census_unrecognised_lowered(node: node) {
+    Rejected { diagnostics: body_lower_census_diagnostics(site: ^mq5_census_fold, node: node) }
+  } else {
+    body_lower_fold_mq5_inner(node: node)
+  }
+}
+
+fn body_lower_data_initializer_body(expr: Node) -> Outcome<Optional<Node>> {
+  if body_lower_census_unrecognised_lowered(node: expr) {
+    Rejected { diagnostics: body_lower_census_diagnostics(site: ^mq5_census_data_initializer_body, node: expr) }
+  } else {
+    body_lower_data_initializer_body_mq5_inner(expr: expr)
+  }
+}
+
+fn body_lower_lowered_behind_shells_read(node: Node) -> OperandRefRead {
+  let stripped = body_lower_deep_unwrap_optional(node: node)
+  if body_lower_census_unrecognised_lowered(node: stripped) {
+    OperandRefRefused { diagnostics: body_lower_census_diagnostics(site: ^mq5_census_lowered_behind_shells_read, node: stripped) }
+  } else {
+    body_lower_lowered_behind_shells_read_mq5_inner(node: node)
+  }
+}
+
+fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
+  let captured = match body_lower_unwrap_captured(shell: shell) {
+    Present { value: inner } => inner
+    Absent => shell
+  }
+  if body_lower_census_unrecognised_lowered(node: captured) {
+    Rejected { diagnostics: body_lower_census_diagnostics(site: ^mq5_census_primary_expr, node: captured) }
+  } else {
+    body_lower_primary_expr_mq5_inner(shell: shell)
+  }
+}
+
+fn body_lower_after_children(folded: Node, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
+  if body_lower_census_unrecognised_lowered(node: folded) && !dag_resolve_preserve_module_metadata_subtree(node: folded) {
+    body_lowering_lowered(o: Rejected { diagnostics: body_lower_census_diagnostics(site: ^mq5_census_after_children, node: folded) })
+  } else {
+    body_lower_after_children_mq5_inner(folded: folded, fn_body_pass_through: fn_body_pass_through)
+  }
+}
+
+fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
+  let operand = body_lower_strip_operator_free_levels(node: node)
+  if body_lower_census_unrecognised_lowered(node: operand) {
+    Rejected { diagnostics: body_lower_census_diagnostics(site: ^mq5_census_operator_operand, node: operand) }
+  } else {
+    body_lower_operator_operand_mq5_inner(node: node)
+  }
+}
+
 fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_expr)
     || (emitted == ^dag_surface_binary_expr)
@@ -1239,7 +1354,7 @@ fn body_lower_operand_read_outcome(read: OperandRefRead, diagnostics: Diagnostic
 // reads it whole before the branded-atom arm rebuilds an atom with no children -- which is what
 // happened to every literal argument (`f(1)` carried a bare dag_token_int_literal) until that
 // arm was ordered first.
-fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
+fn body_lower_operand_ref_read_mq5_inner(node: Node) -> OperandRefRead {
   match body_lower_is_core_substrate(node: node) {
     true => OperandRefLowered { lowered: node }
     false =>
@@ -1525,7 +1640,7 @@ fn body_lower_operator_refusal(reason: Symbol, at: Node) -> OperatorExpressionRe
 }
 
 // One operand of an operator expression, lowered whole or refused at the operand.
-fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
+fn body_lower_operator_operand_mq5_inner(node: Node) -> Outcome<Node> {
   let operand = body_lower_strip_operator_free_levels(node: node)
   match body_lower_read_operator_expression(node: operand) {
     OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: lowered)
@@ -2581,7 +2696,7 @@ fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> 
 // as operator and drop the interior. Absent here means not this strategy;
 // every call site then walks the interior. `{` is also unwritable as an
 // infix operator in body_lower_operator_atom_optional.
-fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_body_lowered_mq5_inner(node: Node) -> Outcome<Optional<Node>> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: optional_present(value: node))
   } else if body_lower_sequence_left_is_lbrace(captured: node) {
@@ -2700,7 +2815,7 @@ fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
   }
 }
 
-fn body_lower_reduce(folded: Node) -> Outcome<Node> {
+fn body_lower_reduce_mq5_inner(folded: Node) -> Outcome<Node> {
   if body_lower_is_core_substrate(node: folded) {
     outcome_accepted(value: folded)
   } else if dag_resolve_preserve_module_metadata_subtree(node: folded) {
@@ -2759,7 +2874,7 @@ fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
 // the fold now lowers function values, a fold-family call is tried on its RAW node first, while its
 // step argument is still the literal fold_lowering reads; a call that is not a fold, or whose step
 // is not an inline literal, folds as any other expression.
-fn body_lower_fold(node: Node) -> Outcome<Node> {
+fn body_lower_fold_mq5_inner(node: Node) -> Outcome<Node> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: node)
   } else {
@@ -3453,7 +3568,7 @@ fn body_lower_repeated_param_binding_diagnostic(edge: Edge) -> Diagnostic {
 // body_lower_eq_expr_to_body would walk an already-lowered tree with the deep first-match searches,
 // which retain on shapes they do not recognize (a record literal whose field is a fn literal).
 // Only an initializer that is not yet substrate goes through that reader.
-fn body_lower_data_initializer_body(expr: Node) -> Outcome<Optional<Node>> {
+fn body_lower_data_initializer_body_mq5_inner(expr: Node) -> Outcome<Optional<Node>> {
   if body_lower_is_core_substrate(node: expr) {
     outcome_accepted(value: optional_present(value: expr))
   } else {
@@ -3935,7 +4050,7 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
 // lowered operand at its leftmost leaf (body_lower_reduce_passthrough strips the shells and keeps
 // the spine). Both are peeled to the lowered node first; a spine with a non-empty right
 // projection is an unlowered operator tail and is not peeled.
-fn body_lower_lowered_behind_shells_read(node: Node) -> OperandRefRead {
+fn body_lower_lowered_behind_shells_read_mq5_inner(node: Node) -> OperandRefRead {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   if body_lower_is_core_substrate(node: stripped) {
     OperandRefLowered { lowered: stripped }
@@ -8231,7 +8346,7 @@ fn body_lower_list_literal(literal: Node, items_capture: Node) -> Outcome<Node> 
 // with every arm dropped (the value reader on the match_expr node itself was correct; on its primary
 // parent it was not). The postfix reducer already passes a lowered primary through
 // (body_lower_postfix_lowered_primary_optional); this is the same rule one level down.
-fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
+fn body_lower_primary_expr_mq5_inner(shell: Node) -> Outcome<Node> {
   let captured = match body_lower_unwrap_captured(shell: shell) {
     Present { value: inner } => inner
     Absent => shell
@@ -9497,7 +9612,7 @@ fn body_lower_tail_statement_read(stmt: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_after_children(folded: Node, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
+fn body_lower_after_children_mq5_inner(folded: Node, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
   if body_lower_is_core_substrate(node: folded) {
     body_lowering_lowered(o: outcome_accepted(value: folded))
   } else if dag_resolve_preserve_module_metadata_subtree(node: folded) {
