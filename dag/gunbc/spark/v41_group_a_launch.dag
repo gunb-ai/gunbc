@@ -67,7 +67,9 @@ import gunbc.spark.vllm_runtime_image_build {
   with_spark_build_host, SparkBuildHostWork, SparkBuildHostRefused, SparkBuildHostRan,
 }
 import gunbc.spark.runtime_architecture_registry_reading { vllm_registry_instrument }
-import gunbc.spark.host_occupancy_admission { spark_host_occupancy_admission, spark_ctx_argv_run }
+import gunbc.spark.host_occupancy_admission { spark_host_occupancy_admission, spark_ctx_argv_run, spark_serving_units, unit_leg_failure }
+import gunbc.compute.host_occupancy { host_operation_leg }
+import gunbc.host_operation_exec { SystemctlStop }
 import gunbc.spark.v41_engram_row_store { v41_row_store_spec, v41_live_head_sizes, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused, v41_published_store_readings }
 import gunbc.spark.v41_engram_store_manifest { V41EngramStoreManifest, V41StoreManifestDerived, V41StoreManifestRefused, v41_engram_store_manifest }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries }
@@ -829,16 +831,20 @@ fn v41_group_a_launch_session(now_word: String, context: FleetSshExecutionContex
   }
   let registry = v41_registry_reading_of(probe: probe, image: image, host: ctx.host, observed_at: now_word)
   let plan = v41_group_a_launch_plan(inputs: V41GroupALaunchInputs { held: held, registry_reading: registry, manifest: v41_group_a_manifest() })
-  let occupancy = map(hosts, h => V41HostOccupancy {
+  // DEV-ONLY (operator ruling 2026-09-30, never merged): stop the V4 pair units on every Group A host
+  // before occupancy is read, so the V4.1 launch is not refused by a stale V4 unit. Not restored.
+  let dev_vacate_failures = flat_map(hosts, h => flat_map(spark_serving_units(), u => unit_leg_failure(leg: host_operation_leg(run: spark_ctx_argv_run(ctx: vllm_image_target_ctx(source_ctx: ctx, host: h)), operation: SystemctlStop { unit: u }, accepted_exits: [0, 5]))))
+  let occupancy = if length(dev_vacate_failures) == 0 { map(hosts, h => V41HostOccupancy {
     host: h,
     admission: spark_host_occupancy_admission(run: spark_ctx_argv_run(ctx: vllm_image_target_ctx(source_ctx: ctx, host: h)), need: v41_group_a_memory_need()),
-  })
+  }) } else { [] as List<V41HostOccupancy> }
   let admission = v41_group_a_launch_admission_live(plan: plan, occupancy: occupancy)
   let reads_receipt = join([
     join(["image receipt run=", image.receipt_run as String, " tag=", subject.tag as String, " config_digest=", render_oci_content_digest_wire(d: image.config), "\n"], ""),
     join(map(reads, r => v41_host_image_read_line(r: r)), ""),
     v41_registry_line(probe: probe, image: image, reading: registry),
     v41_group_a_dry_run_report(plan: plan, admission: admission),
+    join(["dev vacate failures: ", join(dev_vacate_failures, "; "), "\n"], ""),
   ], "")
   match admission {
     V41LaunchAdmissionRefused { causes: _ } => SparkBuildHostWork { receipt: join([reads_receipt, "NOT LAUNCHED: admission refused; no host was staged and no serving unit was touched\n"], ""), converged: false }
