@@ -20257,10 +20257,7 @@ pub fn handle_serve(
                         // Empty when the request carried no Cookie header; the
                         // request-security context builds AuthAbsent from empty,
                         // never an anonymous caller.
-                        (
-                            Some("cookie_header".to_string()),
-                            str_value(cookie_header),
-                        ),
+                        (Some("cookie_header".to_string()), str_value(cookie_header)),
                     ];
                     // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
                     // Before this existed the serve path armed nothing, so a route evaluation
