@@ -40,6 +40,11 @@ enum ProposedDecision: String {
     case approve, deny
 }
 
+/// gunbc.auth.approval_device_wire EnrolmentRefusalWire, spelled by enrolment_refusal_wire_label.
+enum EnrolmentRefusalKind: String {
+    case code_not_issued, code_already_used, code_expired, store_unreadable, attestation_refused, attestation_for_other_bytes, android_unrealized
+}
+
 /// extdeps.crypto.signature VerifyingKey. The suite and encoding travel explicitly
 /// (signature_suite_wire, public_key_encoding_wire) and are the enclave's only values
 /// (extdeps.apple.secure_enclave secure_enclave_signing_suite / secure_enclave_public_key_encoding).

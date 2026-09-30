@@ -63,6 +63,9 @@ import gunbc.auth.approval_device_wire {
   EnrolmentRequest, decode_enrolment_request, IosAppAttestAttestation, AndroidKeyAttestationChain,
   SignedRedemption, decode_signed_redemption, IosAppAttestAssertion, AndroidDecisionKeyOnly, device_redemption_signing_input,
   WireDecoded, WireRefused,
+  EnrolmentRefusalWire, EnrolmentRefusalCodeNotIssued, EnrolmentRefusalCodeAlreadyUsed, EnrolmentRefusalCodeExpired,
+  EnrolmentRefusalStoreUnreadable, EnrolmentRefusalAttestationRefused, EnrolmentRefusalAttestationForOtherBytes,
+  EnrolmentRefusalAndroidUnrealized, enrolment_refusal_json,
   EnrolmentGrant, enrolment_grant_json, PendingApproval, pending_list_json, VerbCapability, FetchedRequest, fetched_request_json,
   RedemptionChallenge, redemption_challenge_message, enrolment_readback_json, redemption_response_json,
   approval_device_pending_path, device_request_path, device_enrollment_path, approval_device_push_path,
@@ -273,6 +276,25 @@ fn enrolment_refusal_reason(r: EnrolmentRefusal) -> String {
   }
 }
 
+fn enrolment_refusal_wire(r: EnrolmentRefusal) -> EnrolmentRefusalWire {
+  match r {
+    EnrolmentCodeNotIssued => EnrolmentRefusalCodeNotIssued
+    EnrolmentCodeAlreadyUsed => EnrolmentRefusalCodeAlreadyUsed
+    EnrolmentCodeExpired { expires_at: _, observed_at: _ } => EnrolmentRefusalCodeExpired
+    EnrolmentStoreUnreadable { detail: _ } => EnrolmentRefusalStoreUnreadable
+    EnrolmentAttestationRefused { cause: _ } => EnrolmentRefusalAttestationRefused
+    EnrolmentAttestationForOtherBytes => EnrolmentRefusalAttestationForOtherBytes
+    EnrolmentAndroidUnrealized => EnrolmentRefusalAndroidUnrealized
+  }
+}
+
+fn enrolment_refused(r: EnrolmentRefusal) -> DeviceRouteResponse {
+  DeviceRouteResponse {
+    status: enrolment_refusal_status(r: r),
+    body: enrolment_refusal_json(reason: enrolment_refusal_reason(r: r), kind: enrolment_refusal_wire(r: r)),
+  }
+}
+
 fn attestation_for_request(r: EnrolmentRequest, app_id: NonEmptyStr, config: AppAttestVerifierConfig, observed_at: Timestamp) -> AttestationVerification {
   match r.evidence {
     AndroidKeyAttestationChain { chain: _ } => AttestationRefused { cause: AttestationUndecodable { cause: "no attestation verifier for Android" } }
@@ -338,7 +360,7 @@ fn device_enrol_response_at(realization: DeviceCryptoRealization, body: String, 
                   let slot = observe_enrolment_slot(root: approval_device_store_root, code: r.code)
                   let attestation = attestation_for_request(r: r, app_id: app_id, config: config, observed_at: observed_at)
                   match enrolment_admission(slot: slot, platform: r.platform, decision_key: r.decision_key, attestation: attestation, observed_at: observed_at) {
-                    EnrolmentRefused { cause: c } => device_refused(status: enrolment_refusal_status(r: c), reason: enrolment_refusal_reason(r: c))
+                    EnrolmentRefused { cause: c } => enrolment_refused(r: c)
                     EnrolmentAdmitted { enrollment: e } =>
                       match commit_enrolment(root: approval_device_store_root, admitted: EnrolmentAdmitted { enrollment: e }) {
                         DeviceStoreSlotOccupied => device_refused(status: 409, reason: "the code was consumed concurrently")

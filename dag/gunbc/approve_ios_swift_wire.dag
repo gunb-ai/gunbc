@@ -432,6 +432,12 @@ fn aw_wire_decode() -> SwiftDecl {
     sw_cmt(c: ["Responses."], d: aw_decode_fn(n: "enrolmentGrant", p: aw_pdata(), r: sw_t(n: "EnrolmentGrant"), b: [
       sw_expr(e: sw_calln(f: "EnrolmentGrant", a: [sw_arg(l: "enrollment_id", v: sw_try(e: sw_call(f: sw_mem(b: sw_call(f: sw_path(b: "WireObject", m: "document"), a: [sw_pos(v: sw_id(n: "data")), sw_arg(l: "allowed", v: sw_strs(e: ["enrollment_id"]))]), m: "string"), a: [sw_pos(v: sw_str(s: "enrollment_id"))])))])),
     ])),
+    sw_cmt(c: ["The enrol route's typed refusal (gunbc.auth.approval_device_wire enrolment_refusal_json): the", "prose is kept for the human, the kind is what the app may act on."], d: aw_decode_fn(n: "enrolmentRefusal", p: aw_pdata(), r: sw_t(n: "EnrolmentRefusalKind"), b: [
+      sw_let(n: "o", e: sw_try(e: sw_call(f: sw_path(b: "WireObject", m: "document"), a: [sw_pos(v: sw_id(n: "data")), sw_arg(l: "allowed", v: sw_strs(e: ["refused", "enrolment_refusal"]))]))),
+      sw_let(n: "k", e: aw_ostr(o: "o", key: "enrolment_refusal")),
+      sw_guard(c: [sw_bind(n: "kind", e: sw_calln(f: "EnrolmentRefusalKind", a: [sw_arg(l: "rawValue", v: sw_id(n: "k"))]))], e: [aw_refuse(at: sw_str(s: "enrolment_refusal"), cause: sw_str(s: "not an admitted enrolment refusal"))]),
+      sw_ret(e: sw_id(n: "kind")),
+    ])),
     aw_decode_fn(n: "pendingList", p: aw_pdata(), r: sw_tarr(e: sw_t(n: "PendingApproval")), b: [
       sw_let(n: "o", e: aw_document(allowed: ["pending"])),
       sw_ret(e: sw_try(e: sw_callt(

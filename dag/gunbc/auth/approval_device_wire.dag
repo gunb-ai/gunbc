@@ -165,6 +165,47 @@ data approval_device_pending_path: NonEmptyStr = "/approve/device/pending" as No
 data approval_device_request_path_prefix: NonEmptyStr = "/approve/device/requests/" as NonEmptyStr
 data approval_device_redeem_path: NonEmptyStr = "/approve/device/redeem" as NonEmptyStr
 
+// ── The enrolment refusal ────────────────────────────────────────────────────────────────────
+// WHY THE ENROL ROUTE'S REFUSAL CARRIES A TYPED KIND, not only prose. A phone whose enrolment POST
+// got no decodable answer holds SubmissionUnknown, and the readback route cannot resolve it for an
+// enrolment that never existed: that read authenticates under the ENROLLED App Attest key, so for a
+// never-minted enrolment it can only refuse, and a bare refusal is not proof of absence. The enrol
+// route CAN answer authoritatively, because the request carries the code itself (the bearer secret):
+// gunbc.auth.approval_device_redemption enrolment_admission observes the code's slot before anything
+// else, and code-expired / code-not-issued are reachable only when that code minted no enrolment.
+// Carried as prose, the phone could show that answer but not act on it (2026-09-30: an operator's
+// app stuck in SubmissionUnknown after the pre-front-door 404, with an expired unspent code). The
+// kind is the wire's; the reason stays for the human.
+type EnrolmentRefusalWire
+  = EnrolmentRefusalCodeNotIssued
+  | EnrolmentRefusalCodeAlreadyUsed
+  | EnrolmentRefusalCodeExpired
+  | EnrolmentRefusalStoreUnreadable
+  | EnrolmentRefusalAttestationRefused
+  | EnrolmentRefusalAttestationForOtherBytes
+  | EnrolmentRefusalAndroidUnrealized
+
+fn enrolment_refusal_wire_label(k: EnrolmentRefusalWire) -> NonEmptyStr {
+  match k {
+    EnrolmentRefusalCodeNotIssued => "code_not_issued" as NonEmptyStr
+    EnrolmentRefusalCodeAlreadyUsed => "code_already_used" as NonEmptyStr
+    EnrolmentRefusalCodeExpired => "code_expired" as NonEmptyStr
+    EnrolmentRefusalStoreUnreadable => "store_unreadable" as NonEmptyStr
+    EnrolmentRefusalAttestationRefused => "attestation_refused" as NonEmptyStr
+    EnrolmentRefusalAttestationForOtherBytes => "attestation_for_other_bytes" as NonEmptyStr
+    EnrolmentRefusalAndroidUnrealized => "android_unrealized" as NonEmptyStr
+  }
+}
+
+data approval_device_enrolment_refusal_key: NonEmptyStr = "enrolment_refusal" as NonEmptyStr
+
+fn enrolment_refusal_json(reason: String, kind: EnrolmentRefusalWire) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "refused", value: json_string(s: reason)),
+    json_kv(key: approval_device_enrolment_refusal_key as String, value: json_string(s: enrolment_refusal_wire_label(k: kind) as String)),
+  ]))
+}
+
 // ── Request bodies ───────────────────────────────────────────────────────────────────────────
 // The JSON bodies of the device routes. Their encoders and strict decoders are in "The HTTP wire"
 // below; the server's route handlers (approval_device_routes_frontier) are the decoders' consumer

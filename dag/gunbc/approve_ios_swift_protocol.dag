@@ -54,6 +54,7 @@ fn approve_ios_protocol_carriers() -> List<SwiftDecl> {
   [
     sw_doc(c: ["gunbc.auth.approval_device_wire MobilePlatform, spelled by platform_wire."], d: sw_enum(n: "MobilePlatform", i: [sw_t(n: "String")], m: [sw_cases(n: ["ios", "android"])])),
     sw_doc(c: ["gunbc.auth.approval_capability ProposedDecision, spelled by proposed_decision_name."], d: sw_enum(n: "ProposedDecision", i: [sw_t(n: "String")], m: [sw_cases(n: ["approve", "deny"])])),
+    sw_doc(c: ["gunbc.auth.approval_device_wire EnrolmentRefusalWire, spelled by enrolment_refusal_wire_label."], d: sw_enum(n: "EnrolmentRefusalKind", i: [sw_t(n: "String")], m: [sw_cases(n: ["code_not_issued", "code_already_used", "code_expired", "store_unreadable", "attestation_refused", "attestation_for_other_bytes", "android_unrealized"])])),
     SwiftCommentedDecl {
       comments: [
         SwiftDocLineComment { text: "extdeps.crypto.signature VerifyingKey. The suite and encoding travel explicitly" },

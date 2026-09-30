@@ -183,10 +183,34 @@ final class AppState: ObservableObject {
             try adopt(EnrolledDevice(
                 enrollment_id: grant.enrollment_id, decision_key_blob: p.decision_key_blob,
                 attest_key_id: p.attest_key_id, forwarded_apns_token: token))
+        } catch let WireError.status(status, body) where Self.codeMintedNothing(body) != nil {
+            // The enrol route answered, for THIS code, that it was never spent and never will be
+            // (code_expired / code_not_issued are reachable only from an unspent or unknown slot;
+            // gunbc.auth.approval_device_redemption enrolment_admission). The request carried the
+            // code itself, so the answer speaks for the enrolment this device was waiting on: none
+            // exists and none can. That is the authenticated absence SubmissionUnknown waits for, so
+            // the prepared keys are discarded and the phone returns to Unenrolled for a fresh code.
+            let kind = Self.codeMintedNothing(body)!.rawValue
+            do {
+                try transition(.unenrolled)
+                lastError = "The server says this code minted no enrolment (\(kind), HTTP \(status)). Enter a new code."
+            } catch {
+                lastError = error.localizedDescription
+            }
         } catch {
-            // Whatever failed — transport, decode, a refusal, persisting Enrolled — the durable
-            // state stays SubmissionUnknown; readback is the only way forward.
+            // Whatever else failed — transport, decode, any other refusal, persisting Enrolled — the
+            // durable state stays SubmissionUnknown; readback is the only way forward.
             lastError = error.localizedDescription
+        }
+    }
+
+    /// The typed enrol refusals that prove the submitted code minted no enrolment. Every other kind
+    /// (code_already_used above all) and every undecodable body answer nil and change nothing.
+    private static func codeMintedNothing(_ body: String) -> EnrolmentRefusalKind? {
+        guard let kind = try? WireDecode.enrolmentRefusal(Data(body.utf8)) else { return nil }
+        switch kind {
+        case .code_expired, .code_not_issued: return kind
+        default: return nil
         }
     }
 
