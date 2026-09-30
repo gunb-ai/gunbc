@@ -63,11 +63,13 @@ fn fe_is_arrow(n: Node) -> Bool {
   }
 }
 
+// The lookup's third arm shares its name with Optional's Absent; it is matched by the wildcard rather
+// than a qualified pattern, which the native route's parser does not admit (parse_g0_tokens_remain).
 fn fe_lookup_target(l: NamedEdgeTargetLookup) -> Optional<Node> {
   match l {
     Found { target: t } => Present { value: t }
     Ambiguous => Absent
-    v2.std.node.Absent => Absent
+    _ => Absent
   }
 }
 
