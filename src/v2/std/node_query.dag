@@ -299,7 +299,7 @@ fn declared_field_named(payload: Node, name: Symbol) -> Optional<DeclaredField> 
 
 // A CONSTRUCT is the value-side twin of a payload: the same field edges, each targeting the
 // value supplied for that field, behind one leading TAG edge. The tag edge is labelled by its ROLE,
-// v2.std.node construct_tag_marker, and targets the constructor as a REFERENCE: the authored
+// v2.std.node CoreEdgeLabel ConstructTagEdge, and targets the constructor as a REFERENCE: the authored
 // qualified-name spine before resolution (a bare `Rec` is its one-segment case, a module-qualified
 // `m.Rec` its longer one) and v2.std.qualified_name declaration_reference_node after it. So
 // `Rec { n: 1 }` is Conj { <construct-tag>: spine[Rec], n: 1 }. It is the shape v2.std.node

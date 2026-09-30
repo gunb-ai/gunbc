@@ -1000,7 +1000,7 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
 
 // A Conj body that is not a marked declaration reference is admitted on one of two readings.
 //
-// A CONSTRUCT: the tag edge is FIRST and carries v2.std.node construct_tag_marker, and its target is a
+// A CONSTRUCT: the tag edge is FIRST and carries v2.std.node CoreEdgeLabel ConstructTagEdge, and its target is a
 // reference, which is a Conj in both of its forms (an authored spine, a marked declaration
 // reference); every edge is Named. Which Conj is a well-formed reference is v2.std.qualified_name's to
 // read (v2.std.node_query construct_tag_path_optional), not repeated here.

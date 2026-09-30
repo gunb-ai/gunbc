@@ -1643,7 +1643,7 @@ fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk 
 }
 
 // A CONSTRUCT RESOLVES ITS TAG AS A REFERENCE AND ITS FIELDS AS THEIR ROLE DEMANDS. The tag edge
-// (v2.std.node construct_tag_marker) targets the constructor's authored path; it is resolved here,
+// (v2.std.node CoreEdgeLabel ConstructTagEdge) targets the constructor's authored path; it is resolved here,
 // once, for a construction and a pattern alike, and the field edges are walked by the caller's
 // own rule (a value field as an ordinary child, a pattern field as a sub-pattern). The marker label
 // is a role, not a declaration segment, so it never extends the lookup position.
