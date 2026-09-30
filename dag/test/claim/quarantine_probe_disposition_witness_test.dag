@@ -16,6 +16,7 @@ import gunbc.quarantine_probe_disposition {
   QuarantineProbeHeldByMoreThanOne,
   quarantine_probe_disposition,
   quarantine_probe_disposition_holds,
+  quarantine_probe_dispositions,
   quarantine_probe_dispositions_all_hold,
   quarantine_probe_admissions,
   quarantine_probe_identity,
@@ -132,20 +133,40 @@ test fn every_quarantine_probe_derives_exactly_one_disposition() -> Bool {
   )
 }
 
-// THE LIVE CLAIM IS NOT VACUOUS, PROVEN BY MUTATION RATHER THAN ASSERTED. Each of the three
-// supplied live populations is dropped in turn and the live claim must go RED, then the unmutated
-// fold must go green. Without this, a fold that answered "held" for everything -- or a join that
-// silently matched nothing -- would pass the live claim exactly as it does now. Measured on
-// 967b5bc1b92: dropping the expected-red roster unholds 5 probes, the route-gap roster 6, the
-// home prefixes 7. The live-tree and path-exclusion axes are not mutated here because the
-// required floor no longer has a live-tree decline and neither arm holds a live row.
+// THE LIVE CLAIM IS NOT VACUOUS: every supplied live population holds at least one live probe.
+// Under exactly-one holding, dropping a population turns every probe it solely holds into
+// NowPassing, so "removing P reds the live claim" IS "some live probe's one holder is P". That
+// equivalence is read off ONE live evaluation rather than re-folding the whole join once per
+// dropped population: the earlier mutation form paid the live join five times and was refused at
+// 808,294 eval steps (CI run 36656467027), cost that bought no discrimination the single reading
+// lacks (DESIGN section 3, a witness discriminates at one interface). The mutation half of the
+// equivalence -- that a dropped population really does unhold -- is asserted on supplied facts by
+// the fixture claims below (a_probe_held_by_nothing_is_an_alarm_and_does_not_hold, and the
+// outside-gate pair), where it costs nothing. The live-tree and path-exclusion axes are not
+// required here because the required floor no longer has a live-tree decline and neither arm
+// holds a live row.
+fn live_dispositions() -> List<QuarantineProbeDisposition> {
+  quarantine_probe_dispositions(subjects: live_quarantine_probe_subjects(), facts: live_quarantine_probe_facts())
+}
+
+fn disposition_holds_by(d: QuarantineProbeDisposition, kind: fn(QuarantineProbeHolder) -> Bool) -> Bool {
+  match d {
+    HeldByExactlyOne { identity: _, holder: h } => kind(h)
+    _ => false
+  }
+}
+
+fn some_disposition_holds_by(ds: List<QuarantineProbeDisposition>, kind: fn(QuarantineProbeHolder) -> Bool) -> Bool {
+  fold_list(xs: ds, empty: false, cons: fn(acc, d) { acc || disposition_holds_by(d: d, kind: kind) })
+}
+
 test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> Bool {
-  let subjects = live_quarantine_probe_subjects()
-  !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_expected_red())
-    && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_route_gap())
-    && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_home_prefixes())
-    && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_outside_gate())
-    && quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_quarantine_probe_facts())
+  let ds = live_dispositions()
+  fold_list(xs: ds, empty: true, cons: fn(acc, d) { acc && quarantine_probe_disposition_holds(disposition: d) })
+    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { FloorExpectedRedHeld => true  _ => false } })
+    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { RouteGapHeldNoVerdict => true  _ => false } })
+    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { NeverRunDeclinedByHomePolicy { matched_prefix: _ } => true  _ => false } })
+    && some_disposition_holds_by(ds: ds, kind: fn(h) { match h { NeverRunDeclinedOutsideGate { module: _, trigger: _ } => true  _ => false } })
 }
 
 fn probe_no_strings() -> List<String> {
@@ -154,58 +175,6 @@ fn probe_no_strings() -> List<String> {
 
 fn probe_no_declines() -> List<QuarantineOutsideGateDecline> {
   Empty {}
-}
-
-fn live_facts_without_outside_gate() -> QuarantineProbeHoldingFacts {
-  let f = live_quarantine_probe_facts()
-  QuarantineProbeHoldingFacts {
-    expected_red_roster: f.expected_red_roster,
-    route_gap_roster: f.route_gap_roster,
-    home_prefixes: f.home_prefixes,
-    live_tree_declined_entries: f.live_tree_declined_entries,
-    path_exclusion_substrings: f.path_exclusion_substrings,
-    outside_gate_declines: probe_no_declines(),
-    gate_admits: f.gate_admits
-  }
-}
-
-fn live_facts_without_expected_red() -> QuarantineProbeHoldingFacts {
-  let f = live_quarantine_probe_facts()
-  QuarantineProbeHoldingFacts {
-    expected_red_roster: probe_no_strings(),
-    route_gap_roster: f.route_gap_roster,
-    home_prefixes: f.home_prefixes,
-    live_tree_declined_entries: f.live_tree_declined_entries,
-    path_exclusion_substrings: f.path_exclusion_substrings,
-    outside_gate_declines: f.outside_gate_declines,
-    gate_admits: f.gate_admits
-  }
-}
-
-fn live_facts_without_route_gap() -> QuarantineProbeHoldingFacts {
-  let f = live_quarantine_probe_facts()
-  QuarantineProbeHoldingFacts {
-    expected_red_roster: f.expected_red_roster,
-    route_gap_roster: probe_no_strings(),
-    home_prefixes: f.home_prefixes,
-    live_tree_declined_entries: f.live_tree_declined_entries,
-    path_exclusion_substrings: f.path_exclusion_substrings,
-    outside_gate_declines: f.outside_gate_declines,
-    gate_admits: f.gate_admits
-  }
-}
-
-fn live_facts_without_home_prefixes() -> QuarantineProbeHoldingFacts {
-  let f = live_quarantine_probe_facts()
-  QuarantineProbeHoldingFacts {
-    expected_red_roster: f.expected_red_roster,
-    route_gap_roster: f.route_gap_roster,
-    home_prefixes: probe_no_strings(),
-    live_tree_declined_entries: f.live_tree_declined_entries,
-    path_exclusion_substrings: f.path_exclusion_substrings,
-    outside_gate_declines: f.outside_gate_declines,
-    gate_admits: f.gate_admits
-  }
 }
 
 data probe_fixture_module: String = "test.claim.synthetic_quarantine_probe_witness"
