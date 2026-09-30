@@ -18,6 +18,7 @@ import gunbc.live_deploy.spec {
   tailscale_default_https_port,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
 
 // THE BROKER'S TAILNET EXPOSURE IS A DEPLOYMENT MEMBER WHOSE PRESENCE IS THE ROUTING ROW. The
 // enrolment 404 (2026-09-30) was a cutover that declared its front-door argv and had no deploy
@@ -76,18 +77,15 @@ test fn the_device_enrolment_path_is_under_an_installed_mount() -> Bool {
 
 // APPLY INSTALLS BOTH MAPPINGS AND TEARDOWN REMOVES BOTH, through the same endpoints -- the `off`
 // form must restate every flag the mapping was made with, so a teardown built from anything else
-// would leave a mount behind.
+// would leave a mount behind. The expected commands are rendered by the privileged-command renderer
+// from the cutover plan's endpoints (the same derivation test.claim.live_deploy.emit_test uses for
+// the dashboard's own mapping), so the claim compares bytes rather than guessing at quoting.
 test fn apply_and_teardown_realize_both_mappings() -> Bool {
   let spec = deployment_spec_srv1()
   let art = DeploymentArtifactStep { kind: ApprovalBrokerFrontDoor, path: "/approve" as NonEmptyStr }
   let up = step_commands(steps: emit_artifact_upsert(art: art, spec: spec, revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha }))
   let down = step_commands(steps: emit_artifact_teardown(art: art, spec: spec))
-  let port = to_string(approval_broker_listen_port)
-  count(up) == 2 && count(down) == 2
-    && count(filter(up, c => string_contains(s: c, pattern: "--set-path=/approvals"))) == 1
-    && count(filter(up, c => string_contains(s: c, pattern: "--set-path=/approve"))) == 2
-    && count(filter(up, c => string_contains(s: c, pattern: port))) == 2
-    && count(filter(down, c => string_contains(s: c, pattern: "--set-path=/approvals"))) == 1
-    && count(filter(down, c => string_contains(s: c, pattern: "--set-path=/approve"))) == 2
-    && count(filter(down, c => string_contains(s: c, pattern: "off"))) == 2
+  let plan = approval_broker_front_door_endpoints(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)
+  up == map(plan, e => shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: e))))
+    && down == map(plan, e => shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e))))
 }
