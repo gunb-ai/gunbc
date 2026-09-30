@@ -6997,9 +6997,10 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
 // That the arm ENDS IN A RETURN is checked here, by construction: the spine matches a guard only
 // through body_lower_admitted_guard_optional and refuses any other else-less `if` it meets. That the
 // guard sits in a TAIL spine is NOT checked here; it is established only by the wall
-// (body_lower_exit_outside_tail_optional) having run first, at the fn declaration, the fn value block
-// body and the data initializer. Given both, the arm's value and the rest's value are each the
-// function's result.
+// (body_lower_exit_outside_tail_optional) having run first with tail: true, at the fn declaration and
+// the fn value block body. A data initializer runs the same wall with tail: false, so any exit there
+// refuses and no guard is admitted. Given both halves, the arm's value and the rest's value are each
+// the enclosing function's result.
 fn body_lower_guard_branch(guard: BodyLowerGuard, rest: Node) -> Outcome<Node> {
   bind_outcome(o: body_lower_value_read(value: guard.condition), f: fn(condition) {
     let arm_lowered = match body_lower_fn_body_stmt_seq_optional(fn_body: guard.arm) {
