@@ -27,7 +27,7 @@ fn install_media_remaster_toolchain_includes_xorriso(
   fold(
     requirement.required_tools,
     init: false,
-    f: (acc, tool) => acc || tool.name == xorriso_cli_tool.name
+    f: (acc, tool) => acc || tool.program.invocation == xorriso_cli_tool.program.invocation
   )
 }
 
