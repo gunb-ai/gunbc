@@ -376,10 +376,11 @@ test fn rcf_a_construct_is_its_declared_record_at_a_declared_type_holds() -> Boo
 }
 
 // THE BOOL-DECLARED FORM, PINNED AS IT IS. `m: Bool` holding `3` is accepted with a counted
-// UndecidableFormalUnresolved: v2.extdeps.languages.dag dag_binding_spellings binds the spelling Int
-// and no other kernel type, so a declared Bool reaches the judge as an atom the binding->denotation
-// join does not denote. This claim goes red when that spelling binds on the resolve route, and is
-// then rewritten to assert the refusal.
+// UndecidableFormalUnresolved: resolve binds a declared Bool to bool_node_symbol
+// (v2.extdeps.languages.dag dag_kernel_type_binding_optional) and the binding->denotation join
+// denotes dag_binding_type_bool (dag_binding_denotation), so a resolved Bool reaches the judge as an
+// atom the join does not denote. This claim goes red when the two agree, and is then rewritten to
+// assert the refusal.
 test fn rcf_a_bool_declared_field_value_is_counted_not_judged_holds() -> Bool {
   match rcf_verdict(resolved: rcf_resolved_bool_field()) {
     RcfInferAccepted { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
