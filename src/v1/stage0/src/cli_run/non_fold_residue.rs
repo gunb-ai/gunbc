@@ -482,26 +482,76 @@ fn typed_collect_wildcard_arms(
     }
 }
 
-/// (unrostered live sites, stale roster rows) over one typed walk. Only roster rows whose path
-/// the walk COVERED can be stale, so a scoped floor graph judges exactly the modules it typed.
+/// (unrostered live sites, stale roster rows) over one typed walk, against the live roster.
 pub(crate) fn non_fold_residue_roster_diff(
     walk: &TypedFallbackArmWalk,
 ) -> (Vec<String>, Vec<String>) {
+    let root = process_workspace_root();
+    non_fold_residue_roster_diff_with(walk, non_fold_residue_roster_entries(), &|path: &str| {
+        root.join(path).is_file()
+    })
+}
+
+/// The pure core. A roster row is STALE when its site's module was typed by this walk and no
+/// longer carries the site, OR when its subject file does not exist at all -- a deleted module
+/// never enters `covered_paths`, so without the existence arm its row would outlive it silently.
+pub(crate) fn non_fold_residue_roster_diff_with(
+    walk: &TypedFallbackArmWalk,
+    roster_rows: &[String],
+    path_exists: &dyn Fn(&str) -> bool,
+) -> (Vec<String>, Vec<String>) {
     let live = walk.non_fold_residue_sites();
+    let rostered: BTreeSet<&str> = roster_rows.iter().map(|r| r.as_str()).collect();
     let unrostered = live
         .iter()
-        .filter(|s| !non_fold_residue_site_is_rostered(s))
+        .filter(|s| !rostered.contains(s.as_str()))
         .cloned()
         .collect();
-    let stale = non_fold_residue_roster_entries()
+    let stale = roster_rows
         .iter()
         .filter(|e| {
             let path = e.split("::").next().unwrap_or("");
-            walk.covered_paths.contains(path) && !live.contains(e.as_str())
+            !path_exists(path) || (walk.covered_paths.contains(path) && !live.contains(e.as_str()))
         })
         .cloned()
         .collect();
     (unrostered, stale)
+}
+
+/// Subject paths of every roster row the diff ADDED or DELETED (base vs head). A row-only edit
+/// touches the roster module and not the subject, so without these the typed scope never reaches
+/// the site the row claims about.
+pub(crate) fn non_fold_residue_changed_row_paths(
+    base_rows: &[String],
+    head_rows: &[String],
+) -> BTreeSet<String> {
+    let base: BTreeSet<&String> = base_rows.iter().collect();
+    let head: BTreeSet<&String> = head_rows.iter().collect();
+    base.symmetric_difference(&head)
+        .map(|row| row.split("::").next().unwrap_or("").to_string())
+        .collect()
+}
+
+/// Module paths of the subjects named by roster rows the diff added or deleted, read at the floor's
+/// resolved diff base. A deleted subject file contributes no module (its row is judged stale by the
+/// existence arm instead). Refuses when the base roster cannot be read.
+pub(crate) fn non_fold_residue_changed_row_subject_modules() -> Result<BTreeSet<String>, String> {
+    let base_rows = match floor_base_file_read(NON_FOLD_RESIDUE_AUTHORITY_REL)? {
+        None => Vec::new(),
+        Some(content) => {
+            non_fold_residue_units_from_module_source(NON_FOLD_RESIDUE_AUTHORITY_REL, &content)
+        }
+    };
+    let root = process_workspace_root();
+    let mut modules = BTreeSet::new();
+    for path in non_fold_residue_changed_row_paths(&base_rows, non_fold_residue_roster_entries()) {
+        if let Ok(content) = std::fs::read_to_string(root.join(&path)) {
+            if let Some(module) = extract_module_path(&content) {
+                modules.insert(module);
+            }
+        }
+    }
+    Ok(modules)
 }
 
 /// The required floor's DIFF-SCOPED non-fold-residue verdict over the graph its strict preparation
@@ -519,12 +569,16 @@ pub(crate) struct NonFoldResidueDiffVerdict {
     /// Scoped sites whose wildcard scrutinee carries no resolved inferred type and no roster row
     /// of their own: closedness is undecided, so they refuse rather than pass as open.
     pub undetermined_unrostered: Vec<String>,
+    /// Subject modules of changed roster rows that the prepared graph did not type: a row edit
+    /// that cannot be judged REFUSES rather than passing unexamined.
+    pub row_subjects_untyped: Vec<String>,
 }
 
 pub(crate) fn non_fold_residue_diff_verdict(
     graph: &ResolvedGraph,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     scoped_modules: &BTreeSet<String>,
+    row_subject_modules: &BTreeSet<String>,
 ) -> NonFoldResidueDiffVerdict {
     let walk = typed_fallback_arm_walk(graph, si, Some(scoped_modules));
     let typed: BTreeSet<String> = graph
@@ -533,6 +587,11 @@ pub(crate) fn non_fold_residue_diff_verdict(
         .map(|tm| authored_name_at(si.clone(), tm.module.clone()))
         .collect();
     let scoped_but_untyped = scoped_modules
+        .iter()
+        .filter(|m| !typed.contains(*m))
+        .cloned()
+        .collect();
+    let row_subjects_untyped = row_subject_modules
         .iter()
         .filter(|m| !typed.contains(*m))
         .cloned()
@@ -551,6 +610,7 @@ pub(crate) fn non_fold_residue_diff_verdict(
         unrostered,
         stale,
         undetermined_unrostered,
+        row_subjects_untyped,
     }
 }
 
@@ -661,6 +721,89 @@ mod nfr_typed_tests {
         );
     }
 
+    const WILDCARD_MODULE: &str = "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n";
+    const TOTAL_MODULE: &str = "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n  }\n}\n";
+
+    fn rows(xs: &[&str]) -> Vec<String> {
+        xs.iter().map(|x| x.to_string()).collect()
+    }
+
+    // RED CONTROL 1 -- row-only ADDITION of a stale site: the diff adds a row for a site the
+    // module does not carry. The changed-row set names the module, and once it is typed the row
+    // is stale.
+    #[test]
+    fn red_control_row_only_addition_of_a_stale_site_is_judged() {
+        let changed = non_fold_residue_changed_row_paths(&rows(&[]), &rows(&["a.dag::f"]));
+        assert_eq!(changed, ["a.dag".to_string()].into_iter().collect());
+        let walk = typed_fallback_arm_walk_for_fixture(&[("a.dag", TOTAL_MODULE)])
+            .unwrap_or_else(|c| panic!("{c}"));
+        let (unrostered, stale) =
+            non_fold_residue_roster_diff_with(&walk, &rows(&["a.dag::f"]), &|_| true);
+        assert!(unrostered.is_empty());
+        assert_eq!(
+            stale,
+            rows(&["a.dag::f"]),
+            "an added row for a non-site must be stale"
+        );
+    }
+
+    // RED CONTROL 2 -- row-only DELETION of a live site: the changed-row set names the module, and
+    // the live wildcard is then unrostered.
+    #[test]
+    fn red_control_row_only_deletion_of_a_live_site_is_judged() {
+        let changed = non_fold_residue_changed_row_paths(&rows(&["a.dag::f"]), &rows(&[]));
+        assert_eq!(changed, ["a.dag".to_string()].into_iter().collect());
+        let walk = typed_fallback_arm_walk_for_fixture(&[("a.dag", WILDCARD_MODULE)])
+            .unwrap_or_else(|c| panic!("{c}"));
+        let (unrostered, stale) = non_fold_residue_roster_diff_with(&walk, &rows(&[]), &|_| true);
+        assert_eq!(
+            unrostered,
+            rows(&["a.dag::f"]),
+            "deleting a live site's row must refuse"
+        );
+        assert!(stale.is_empty());
+    }
+
+    // RED CONTROL 3 -- subject MODULE deleted, row retained: the deleted path never enters
+    // covered_paths, so only the existence arm can judge it.
+    #[test]
+    fn red_control_deleted_subject_module_with_retained_row_is_stale() {
+        let walk = TypedFallbackArmWalk::default();
+        let (_, stale) =
+            non_fold_residue_roster_diff_with(&walk, &rows(&["gone.dag::f"]), &|p| p != "gone.dag");
+        assert_eq!(stale, rows(&["gone.dag::f"]));
+        let (_, kept) =
+            non_fold_residue_roster_diff_with(&walk, &rows(&["here.dag::f"]), &|_| true);
+        assert!(
+            kept.is_empty(),
+            "an existing, unscoped row is not judged stale (positive control)"
+        );
+    }
+
+    // RED CONTROL 4 -- a changed row's subject module that the graph did not type refuses.
+    #[test]
+    fn red_control_untyped_row_subject_refuses() {
+        let sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+            [("b.dag", "module b\nfn g(n: Int) -> Int { n }\n")]
+                .iter()
+                .map(|(p, c)| {
+                    Rc::new(v1_compiler_compile::SourceFile {
+                        path: p.to_string(),
+                        content: c.to_string(),
+                    })
+                })
+                .collect();
+        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+        let graph = resolved.graph.clone().expect("graph");
+        let subjects: BTreeSet<String> = ["absent.module".to_string()].into_iter().collect();
+        let verdict =
+            non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &subjects, &subjects);
+        assert_eq!(
+            verdict.row_subjects_untyped,
+            vec!["absent.module".to_string()]
+        );
+    }
+
     #[test]
     fn diff_scope_judges_only_scoped_modules() {
         let walk = typed_fallback_arm_walk_for_fixture(&[
@@ -681,7 +824,12 @@ mod nfr_typed_tests {
         let scope: BTreeSet<String> = ["b".to_string(), "absent.module".to_string()]
             .into_iter()
             .collect();
-        let verdict = non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &scope);
+        let verdict = non_fold_residue_diff_verdict(
+            &graph,
+            &resolved.source_indices,
+            &scope,
+            &BTreeSet::new(),
+        );
         assert!(
             verdict.unrostered.is_empty(),
             "module a is out of scope; got {:?}",
@@ -692,7 +840,12 @@ mod nfr_typed_tests {
             vec!["absent.module".to_string()]
         );
         let scope_a: BTreeSet<String> = ["a".to_string()].into_iter().collect();
-        let verdict_a = non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &scope_a);
+        let verdict_a = non_fold_residue_diff_verdict(
+            &graph,
+            &resolved.source_indices,
+            &scope_a,
+            &BTreeSet::new(),
+        );
         assert_eq!(
             verdict_a.unrostered,
             vec!["a.dag::f".to_string()],
