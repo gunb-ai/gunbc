@@ -21220,6 +21220,14 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
             },
 
+            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (std.primitives
+            // sha256_hex_of_text_contract).
+            arm "free_call.sha256_hex_of_text" { "sha256_hex_of_text" } => {
+                Ok(Some(str_value(sha256_hex_of_text_digest(
+                    expect_value_str($positional.first().copied(), "sha256_hex_of_text text")?.as_str(),
+                ))))
+            },
+
             // ISSUANCE, THE KEY HOLDER'S OWN OPERATION, and a second primitive rather than a
             // widening of verify: the verify arm above deliberately yields one bit, so a verifier
             // is never handed a computed tag to compare in variable time. Minting is the only
@@ -21230,11 +21238,6 @@ macro_rules! v1_builtin_arms {
             // hex answers ABSENT (the optional's null), never a tag: there is no key to have
             // signed with, and a fabricated tag would be a plausible output standing where a
             // refusal belongs. extdeps.crypto.mac mac_sign turns that absence into its typed arm.
-            arm "free_call.sha256_hex_of_text" { "sha256_hex_of_text" } => {
-                Ok(Some(str_value(sha256_hex_of_text_digest(
-                    expect_value_str($positional.first().copied(), "sha256_hex_of_text text")?.as_str(),
-                ))))
-            },
             arm "free_call.hmac_sha256_hex" { "hmac_sha256_hex" } => {
                 Ok(Some(match hmac_sha256_hex_tag(
                     expect_value_str($positional.first().copied(), "hmac_sha256_hex key")?.as_str(),
@@ -23982,9 +23985,9 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
     }
 }
 
-// SHA-256 of the text's UTF-8 bytes, lowercase hex: the host realization of extdeps.crypto.hash
-// sha256_hex_of_text, the same RustCrypto sha2 the HMAC seam below uses. The pure fold
-// (extdeps.crypto.sha2 sha256_hex) is its differential oracle.
+// SHA-256 of the text's UTF-8 bytes, lowercase hex: the host realization of the builtin
+// sha256_hex_of_text (std.primitives sha256_hex_of_text_contract), the same RustCrypto sha2 the HMAC
+// seam below uses. The pure fold extdeps.crypto.sha2 sha256_hex shares its known answers.
 fn sha256_hex_of_text_digest(text: &str) -> String {
     use sha2::{Digest, Sha256};
     hex::encode(Sha256::digest(text.as_bytes()))
