@@ -139,12 +139,6 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "a return lowers only in tail position -- a function body's tail, an arm of a tail if or match, an admitted guard's arm -- read top-down from the raw parse; every other return refuses here, located at it, rather than lowering to its operand as the value of whatever block held it (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). A return out of a non-tail position (a let value, an operand, a loop body) is early exit through a continuation, which v2 core does not model; flips only if that is modeled. Count on the PR"
   },
   CauseOwnership {
-    cause: ^body_lowering_reason_return_not_in_tail_position,
-    grain: FatalGrain,
-    lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a return lowers only as the tail statement of a function's own body; every other return refuses here, located at it, rather than lowering to its operand as the value of whatever block held it (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). Flips when the value readers carry the tail position, so a structured tail return in an if or match arm, and the else-less guard, lower to Branch(c, arm, rest); count on the PR"
-  },
-  CauseOwnership {
     cause: ^body_lowering_reason_caret_symbol_not_lowered,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
