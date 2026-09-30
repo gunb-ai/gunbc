@@ -29,15 +29,14 @@ data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..4446
 
 // THE ROWS CUT (c) RETAINED, at the row identity USES-0 defined: the module, the declaration,
 // the alias the row binds, and the authored type. The grain matters because the earlier partition
-// here was by MODULE and was wrong in both directions: `gunbc.auth.patterns` holds two ordinary fns
-// AND a pattern, and `gunbc.assimilate.bmc_bootstrap_provision`'s row is a pattern rather than a
+// here was by MODULE and was wrong in both directions: `gunbc.auth.patterns` held two ordinary fns
+// AND a pattern (the module has since been deleted, see below), and `gunbc.assimilate.bmc_bootstrap_provision`'s row is a pattern rather than a
 // module-resolution casualty. Partitioning by module therefore attached a trigger to rows it is
 // false for -- "when the module resolves, the criterion types its rows" does not hold for a pattern,
 // because resolution only reveals the next blocker, which is that the criterion never ranged over
 // pattern declarations at all. Each row carries its own trigger instead.
 type RetainedRowTrigger
-  = ModuleResolutionBlocked
-  | CriterionDoesNotRangeOverPatterns
+  = CriterionDoesNotRangeOverPatterns
   | ProbeLeavesCorpus
   | EditedWitnessHasNoHermeticRoute
 
@@ -50,10 +49,9 @@ type DemandRestatementRetainedRow {
 }
 
 // THE ORDINARY FUNCTIONS THE CRITERION CANNOT TYPE, because their module refuses to resolve, so there
-// is no registry entry and no derived demand to compare against. Two causes, and they carry different
-// triggers. `gunbc.auth.patterns` (a pre-existing type error, expected String got Secret, measured at
-// 4446f2e990f) is a DEFECT this cut neither introduced nor repairs: TRIGGER, per row, the module
-// resolves and the criterion executes on it like any other fn row. `test.probe.census_app_acquisition_forged_probe` refuses BY DESIGN -- forging the
+// is no registry entry and no derived demand to compare against. `gunbc.auth.patterns` used to carry
+// three rows here under a ModuleResolutionBlocked trigger; the module was deleted as dead (no importer,
+// no caller, refused per-entry), and its rows and that trigger left with it. `test.probe.census_app_acquisition_forged_probe` refuses BY DESIGN -- forging the
 // sole_constructor receipt is the probe's whole point -- so resolution is not coming; its one row
 // (two resources) is carried at each alias, and it leaves with the probe.
 //
@@ -67,8 +65,6 @@ type DemandRestatementRetainedRow {
 // each carrying the capability that makes the deletion landable.
 
 data demand_restatement_retained_fn_rows: List<DemandRestatementRetainedRow> = [
-  DemandRestatementRetainedRow { module_path: "gunbc.auth.patterns" as NonEmptyStr, declaration: "github_oidc" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleResolutionBlocked },
-  DemandRestatementRetainedRow { module_path: "gunbc.auth.patterns" as NonEmptyStr, declaration: "metadata_oidc" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleResolutionBlocked },
   DemandRestatementRetainedRow { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ProbeLeavesCorpus },
   DemandRestatementRetainedRow { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "fs" as NonEmptyStr, authored_type: "std.resources.Filesystem" as NonEmptyStr, trigger: ProbeLeavesCorpus },
   DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "start_payload" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
@@ -96,7 +92,6 @@ data demand_restatement_retained_fn_rows: List<DemandRestatementRetainedRow> = [
 // TRIGGER, per row: derived demand ranges over pattern declarations.
 
 data demand_restatement_retained_pattern_rows: List<DemandRestatementRetainedRow> = [
-  DemandRestatementRetainedRow { module_path: "gunbc.auth.patterns" as NonEmptyStr, declaration: "credential_chain" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
   DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_secret_credential" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
   DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_oauth_access_token_via_adc_refresh" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
   DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_adc_token_from_credentials" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
@@ -111,7 +106,6 @@ data demand_restatement_retained_pattern_rows: List<DemandRestatementRetainedRow
 
 fn retained_row_trigger_text(t: RetainedRowTrigger) -> String {
   match t {
-    ModuleResolutionBlocked => "trigger: its module resolves, and the criterion executes on it"
     CriterionDoesNotRangeOverPatterns => "trigger: derived demand ranges over pattern declarations"
     EditedWitnessHasNoHermeticRoute => "trigger: extdeps.linux.cgroup_v2 ReadInterfaceFile gains a mock_response, so an edited witness in this module reaches a verdict on the floor's hermetic route instead of a route gap"
     ProbeLeavesCorpus => "trigger: the probe declaration is deleted from the corpus -- its module refuses by design, so resolution will never type the row, and its identities leave with the probe"
