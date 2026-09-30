@@ -117,7 +117,8 @@ fn memory_configuration_admission_refusal(a: MemoryConfigurationAssessment, purp
   } else if any(a.results, r => match r.assessment {
     GoalDiverged { deviations: _ } => true
     GoalIndeterminate { known_deviations, unknowns: _ } => count(known_deviations) > 0
-    _ => false
+    GoalSatisfied { evidence: _ } => false
+    GoalAssessmentRefused { cause: _ } => false
   }) {
     Present { value: "mandatory memory requirement violated; see configuration counterexample" as NonEmptyStr }
   } else {
