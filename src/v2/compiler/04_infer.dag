@@ -896,6 +896,17 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
   }
 }
 
+// A PARAMETER REFERENCE'S SPINE IS ITS PATH, NOT A SUBTERM. The reference is grounded whole
+// (infer_parameter_reference_facts); the qualified-name cells under its marker name where the
+// parameter is declared and have no type of their own, so none of them is entered as a fact -- one
+// entered underived would refuse every consumer that gates a subtree on derived grounding.
+fn infer_parameter_reference_path_edge(parent: Node) -> Bool {
+  match parameter_reference_path_optional(node: parent) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn infer_parameter_reference_facts(n: Node, path: QualifiedName, index: SymbolIndex) -> Outcome<InferredFacts> {
   match infer_descent_witness_for_node(n: n) {
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -3478,7 +3489,7 @@ fn infer_gather_fold_step(
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
-  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge) || infer_declaration_binder_edge(parent: acc.node, edge: edge) {
+  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge) || infer_declaration_binder_edge(parent: acc.node, edge: edge) || infer_parameter_reference_path_edge(parent: acc.node) {
     infer_gather_fold_step_merged(
       acc: acc,
       merged_entries: acc.entries,

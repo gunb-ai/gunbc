@@ -436,7 +436,7 @@ fn resolve_ctx_init(
     position: namespace.module_qn,
     lm: lm,
     under_module_root: false,
-    declaring: DeclaringAt { path: namespace.declared_in }
+    declaring: resolve_declaring_root(namespace: namespace)
   }
 }
 
@@ -497,6 +497,18 @@ fn resolve_ctx_leaving_containment(ctx: ResolveContext) -> ResolveContext {
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
     declaring: NotDeclaring
+  }
+}
+
+// THE WALK STARTS DECLARING ONLY WHERE THE FILL STARTS INDEXING: at a root whose module name reads
+// (v2.compiler.symbol_index_fill symbol_index_fill_module_declarations indexes nothing otherwise),
+// which the namespace records as a non-empty declared_in. A tree with no module -- a bare Arrow
+// handed to resolve -- declares nothing, so its Arrow's frame is Lexical, never a ParameterFrame over
+// a path no index can hold.
+fn resolve_declaring_root(namespace: Namespace) -> DeclaringPosition {
+  match namespace.declared_in {
+    Empty => NotDeclaring
+    Cons { head: _, tail: _ } => DeclaringAt { path: namespace.declared_in }
   }
 }
 
