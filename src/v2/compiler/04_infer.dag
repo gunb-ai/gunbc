@@ -1094,7 +1094,7 @@ fn canonical_grounding_from_inferred_facts(
 }
 
 fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
-  match inferred_facts_witness_for_node(tree: tree, index: index, node: node) {
+  match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
       canonical_grounding_from_inferred_facts(node: node, facts: facts)
     Violates { diagnostic: d } =>
@@ -3684,7 +3684,7 @@ fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry
 // producer is the literal-into-refinement cast arm, which lands once where-predicates bind to their
 // declarations (node adhoc-46630399-82b); until then every tree discharges with nothing to evaluate.
 fn infer(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
-  match infer_entries_for_tree(tree: tree, index: index) {
+  match infer_entries_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: entries, diagnostics: d } =>
       match facts_map_from_entries(entries: entries) {

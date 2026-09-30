@@ -458,9 +458,10 @@ fn bcn_refused_with_mismatch(o: Outcome<Bool>) -> Bool {
   }
 }
 
-// (15) THE CAST OUT OF A REFINEMENT REFUSES, STATED. A parameter is now bound by its ENCLOSING
-// Arrow (v2.compiler.infer infer_parameter_type_in_scope), so `x` in `fn f(x: Pos)` grounds as the
-// Pos declaration-reference, and Pos is not structurally Int: coercion_cast_crossing refuses with
+// (15) THE CAST OUT OF A REFINEMENT REFUSES, STATED. A named fn's parameter is a path-keyed
+// reference minted by resolve (v2.std.qualified_name parameter_reference_node, p.f.x) and grounded
+// through the resolved declarations (v2.compiler.infer infer_parameter_reference_facts), so `x` in
+// `fn f(x: Pos)` grounds as the Pos declaration-reference, and Pos is not structurally Int: coercion_cast_crossing refuses with
 // its typed mismatch. RED BEFORE: on main at 21f4d0c this row ADMITTED, by the wrong route -- the
 // unscoped parameter walk bound f's `x` to the unrelated `fn positive(x: Int)`, and the crossing was
 // Int to Int. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v2.std.coercion admitting a cast from a

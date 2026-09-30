@@ -3,6 +3,7 @@ module v2.test.resolve.namespace_only_policy
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
+  NotDeclaring,
   ResolveContext,
   Namespace,
   empty_canonical_symbol_set,
@@ -80,7 +81,7 @@ fn policy_pilot_resolve(
       position: position,
       lm: dag_language_model(),
       under_module_root: true,
-      in_containment: true
+      declaring: NotDeclaring
     },
     n: policy_pilot_atom(identity: identity),
     identity: identity
@@ -124,7 +125,7 @@ fn policy_pilot_resolve_rejects_with_reason(
       position: position,
       lm: dag_language_model(),
       under_module_root: true,
-      in_containment: true
+      declaring: NotDeclaring
     },
     n: policy_pilot_atom(identity: identity),
     identity: identity
