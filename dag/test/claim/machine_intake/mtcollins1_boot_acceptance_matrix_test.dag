@@ -19,7 +19,7 @@ import gunbc.wall_clock_model { ModeledWallClock }
 import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage, MegaRacCdRow, megarac_cleared_cd }
 import gunbc.machine_intake_mtcollins1_boot_dry_realization {
   MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
-  mtcollins1_boot_dry_realization, with_media, with_bmc,
+  mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher,
 }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, OperationObserved, OperationWorkerKilled,
@@ -66,7 +66,7 @@ fn matrix_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
 // writing. An operation of any other service refuses as uncovered.
 data matrix_services: List<String> = [
   "diagnostic.ipmi.Tool", "megarac.Media", "Filesystem", "shell.Env", "sleep.Delay",
-  "gunbc.machine_intake.sol_hold", "shell.Exec", "ssh.Session", "Clock", "linux.Procfs",
+  "gunbc.machine_intake.sol_hold", "shell.Exec", "ssh.Session", "Clock", "linux.Procfs", "shell.Move",
 ]
 
 fn matrix_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
@@ -127,7 +127,7 @@ fn worker_filesystem() -> ModeledFilesystem {
 }
 
 fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
-  MtCollins1BootWorld {
+  with_notice_watcher(capture_path: sol_capture_path, token: "matrix-notice-token", w: MtCollins1BootWorld {
     bmc: bmc_world(power: BmcPowerOff),
     fs: worker_filesystem(),
     environment: [
@@ -144,7 +144,7 @@ fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
     worker: ModeledWorker { next_pid: 4000, processes: [], uptime_at_origin: 86400 },
     console: ModeledHostConsole { lines: lines, emitted: 0, boot: none },
     media: healthy_media(),
-  }
+  })
 }
 
 // A census image that boots one socket and completes: the capture test.claim.machine_intake.mtcollins1_boot_run_witness_test
@@ -243,18 +243,21 @@ test fn a_host_that_never_prints_a_census_refuses_at_the_deadline() -> Bool {
   }
 }
 
-// A HEALTHY HOST CANNOT CURRENTLY REPORT SUCCESS. PINNED DEFECT, found by this matrix: the census
-// closes and is accepted (the stage is ActuationCensusEnded), and the attempt still refuses at the SOL
-// teardown, because after `sol deactivate` the collector exits and nothing removes its pid file, which
-// the re-observation then reads as stale (gunbc.machine_intake_mtcollins1_boot_run
-// mtcollins1_boot_release_sol). This case asserts TODAY'S behaviour so the defect stays visible; when
-// the teardown is repaired it must FLIP to ExitSuccess, and that flip is the repair landing.
-test fn pinned_a_healthy_census_is_refused_at_the_sol_teardown() -> Bool {
+// A HEALTHY HOST REPORTS SUCCESS, AND THE TEARDOWN RELEASES ONLY WHAT IT OWNS. The census closes and
+// is accepted, and the attempt completes. This case was pinned as a defect -- the collector's pid file
+// read as stale after the deactivate -- until #12434 made the release identity-checked and retiring; it
+// is now the control that the repair holds. Route: the SOL deactivate, then the hold's ReleaseHeld
+// of the recorded instance, then the retirement of its pid file and activation receipt; every
+// controller write under the unit hold.
+test fn a_healthy_census_completes_and_releases_its_collector() -> Bool {
   match run_attempt(world: world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))) {
     WitnessReturned { value, route } =>
       census_ended(a: value)
-        && outcome_reason(a: value) == "refused: mtcollins1 boot: SOL pid file stale after deactivate"
+        && outcome_reason(a: value) == "ok"
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") < first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ReleaseHeld")
+        && first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ReleaseHeld") < first_ordinal(route: route, name: "Filesystem.Delete")
+        && count_named(route: route, name: "Filesystem.Delete") == 2
         && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
@@ -398,14 +401,17 @@ test fn pinned_a_presentation_lost_after_the_handoff_is_not_the_reported_cause()
 
 // ─── OBSERVATION FAILURES ─────────────────────────────────────────────────────────────────────────
 
-// ANOTHER CLIENT ALREADY HOLDS THE SOL SESSION. The collector starts and exits at once, so it is not
-// held after the settle; the attempt refuses before any other controller write.
+// ANOTHER CLIENT ALREADY HOLDS THE SOL SESSION. The collector starts and exits at once with the
+// controller's refusal on its stderr, and the attempt refuses with that typed cause -- read from the
+// client diagnostics, never the host capture -- before any other controller write, and without
+// deactivating a session this hold did not establish.
 test fn a_sol_session_held_elsewhere_refuses_before_the_attach() -> Bool {
   let w = world_with_console(lines: [])
   match run_attempt(world: with_bmc(w: w, bmc: bmc_with_sol_session(world: w.bmc, open: true))) {
     WitnessReturned { value, route } =>
-      string_contains(s: outcome_reason(a: value), pattern: "SOL collector is not held after acquire")
+      string_contains(s: outcome_reason(a: value), pattern: "SOL collector not established: the SOL payload is already active on another session")
         && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 0
         && reached_no_power_action(route: route)
     _ => false
   }
@@ -413,22 +419,29 @@ test fn a_sol_session_held_elsewhere_refuses_before_the_attach() -> Bool {
 
 // SOL IS LOST THIRTY SECONDS AFTER THE HOST STARTS BOOTING WHILE MANAGEMENT KEEPS ANSWERING, and the
 // census would have printed at sixty. The drop is armed by the host's own boot in the model, so it
-// follows the route's real power-on. PINNED: the attempt learns of the loss only at the terminal
-// deadline -- the capture stops growing and the watch polls to its bound -- so the first loss is not
-// reported before the deadline (#12423 asks that it is). The final world shows the drop fired, so the
-// case is not green on a run where the loss never happened. When loss detection lands it must flip to
-// an early, typed refusal.
+// follows the route's real power-on. The loss is reported when it is observed, not at the terminal
+// deadline (#12423): a typed ObservationChannelLost, the incident frozen, the BMC shown answering, and
+// the teardown within sixty seconds of the power action -- before the census could have printed. This
+// case was pinned as reporting the loss only at the deadline until #12434's watch detected it. The final
+// world shows the drop fired, so the case is not green on a run where the loss never happened.
 fn sol_drop_fired_in(w: MtCollins1BootWorld) -> Bool {
   bmc_sol_drop_fired(world: w.bmc)
 }
 
-test fn pinned_a_sol_loss_mid_boot_is_reported_only_at_the_deadline() -> Bool {
+fn first_dispatch_second(route: List<DispatchRecord>, name: String) -> Int {
+  match filter(route, r => operation_name(r: r) == name).first() { Present { value: r } => std.measure.second_count(s: r.dispatched_at) as Int Absent => 0 - 1 }
+}
+
+test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
   let w = world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))
   let dropping = with_bmc(w: w, bmc: bmc_with_sol_drop_after_boot(world: w.bmc, after: second(count: 30)))
   match evaluate_in_witness_frame(frame: matrix_frame(world: dropping), subject: fn(_scope) { mtcollins1_boot_wet_on_srv1() }) {
     WitnessReturned { value, route, state } =>
-      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+      string_contains(s: outcome_reason(a: value), pattern: "ObservationChannelLost while the boot was being watched")
+        && string_contains(s: outcome_reason(a: value), pattern: "incident frozen to /run/sol.capture.loss")
+        && string_contains(s: outcome_reason(a: value), pattern: "BMC answered mc info")
         && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
+        && first_dispatch_second(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") - first_dispatch_second(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") <= 60
         && match state { Present { value: end } => sol_drop_fired_in(w: end) Absent => false }
     _ => false
   }
