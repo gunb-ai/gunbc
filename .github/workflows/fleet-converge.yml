@@ -1771,7 +1771,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: mtcollins1-boot
-    timeout-minutes: 127
+    timeout-minutes: 129
     if: github.event.inputs.mode == 'mtcollins1_boot'
     permissions:
       contents: read
@@ -1958,14 +1958,16 @@ jobs:
           if '\''['\'' '\''-n'\'' "$SOL_WORKFLOW" '\'']'\''; then '\''echo'\'' '\''gunbc-workflow: collector release requested by the step exit trap at='\''$('\''date'\'' '\''-u'\'' '\''+%Y-%m-%dT%H:%M:%SZ'\'') | '\''dd'\'' '\''of='\''"$SOL_WORKFLOW" '\''oflag=append'\'' '\''conv=notrunc'\'' '\''status=none'\'' || '\''true'\''; fi
           col='\''absent'\''
           if '\''['\'' '\''-e'\'' "$SOL_PID_FILE" '\'']'\''; then if crec=$('\''cat'\'' "$SOL_PID_FILE" 2>/dev/null) && crcpt=$('\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f1,2'\'' "$SOL_PID_FILE"'\''.activated'\'' 2>/dev/null) && '\''['\'' '\''-n'\'' "$crec" '\'']'\'' && '\''['\'' "$crcpt" '\''='\'' "$crec" '\'']'\''; then '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''sol-release'\'' "$SOL_PID_FILE" || '\''true'\''; if '\''bash'\'' '\''-c'\'' "$SOL_OWNED" '\''sol-owned'\'' "$SOL_PID_FILE"; then co='\''0'\''; else co="$?"; fi; if '\''['\'' "$co" '\''='\'' '\''1'\'' '\'']'\''; then if '\''rm'\'' '\''-f'\'' "$SOL_PID_FILE" "$SOL_PID_FILE"'\''.activated'\''; then col='\''released'\''; else col='\''ended-but-record-not-retired'\''; fi; else col='\''unresolved-owned-check-'\''"$co"; fi; else col='\''foreign-record-kept'\''; fi; fi
+          if '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''kvm-release'\'' "$GITHUB_WORKSPACE"'\''/artifacts/mtcollins1-boot-kvm-'\''"$GITHUB_RUN_ID"'\''/observer.pid'\''; then kvm='\''released'\''; else kvm='\''unresolved-release-exit-'\''"$?"; fi
           obs='\''unstarted'\''
           wclean='\''none'\''
           if '\''['\'' '\''-n'\'' "$SOL_NOTICE_WATCH" '\'']'\''; then '\'':'\'' > "$SOL_OUT"'\''.notice.stop'\'' || '\''true'\''; '\''timeout'\'' '\''10'\'' '\''tail'\'' '\''--pid='\''"$SOL_NOTICE_WATCH" '\''-f'\'' '\''/dev/null'\'' || '\''true'\''; if '\''bash'\'' '\''-c'\'' "$SOL_OWNED" '\''sol-owned'\'' "$SOL_OUT"'\''.notice.watcher'\''; then wo='\''0'\''; else wo="$?"; fi; if '\''jobs'\'' '\''-rp'\'' | '\''grep'\'' '\''-qx'\'' "$SOL_NOTICE_WATCH"; then obs='\''unfinished'\''; if '\''['\'' "$wo" '\''='\'' '\''0'\'' '\'']'\''; then if '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''sol-release'\'' "$SOL_OUT"'\''.notice.watcher'\''; then wclean='\''stopped'\''; else wclean='\''unresolved-survived-KILL'\''; fi; else wclean='\''unresolved-identity-not-confirmed-'\''"$wo"; fi; else if '\''wait'\'' "$SOL_NOTICE_WATCH"; then obs='\''0'\''; else obs="$?"; fi; fi; fi
           if '\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$DEST_FILE"; then clean='\''ok'\''; else clean='\''failed'\''; fi
-          if '\''['\'' "$obs" '\''!='\'' '\''0'\'' '\'']'\'' && '\''['\'' "$obs" '\''!='\'' '\''unstarted'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL notice watcher did not succeed '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
-          if '\''['\'' "$col" '\''!='\'' '\''absent'\'' '\'']'\'' && '\''['\'' "$col" '\''!='\'' '\''released'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL collector not released at step exit '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
-          if '\''['\'' "$wclean" '\''!='\'' '\''none'\'' '\'']'\'' && '\''['\'' "$wclean" '\''!='\'' '\''stopped'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL notice watcher cleanup unresolved '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
-          if '\''['\'' "$clean" '\''!='\'' '\''ok'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 boot credential cleanup failed '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$obs" '\''!='\'' '\''0'\'' '\'']'\'' && '\''['\'' "$obs" '\''!='\'' '\''unstarted'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL notice watcher did not succeed '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$col" '\''!='\'' '\''absent'\'' '\'']'\'' && '\''['\'' "$col" '\''!='\'' '\''released'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL collector not released at step exit '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$wclean" '\''!='\'' '\''none'\'' '\'']'\'' && '\''['\'' "$wclean" '\''!='\'' '\''stopped'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL notice watcher cleanup unresolved '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$kvm" '\''!='\'' '\''released'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 KVM observer release did not resolve at step exit (release exit 1 = survived KILL, 2 = unobservable) '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$clean" '\''!='\'' '\''ok'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 boot credential cleanup failed '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
           if '\''['\'' "$rc" '\''='\'' '\''0'\'' '\'']'\'' && '\''['\'' "$fail" '\''='\'' '\''1'\'' '\'']'\''; then rc='\''1'\''; fi
           '\''exit'\'' "$rc"
           ' 'EXIT'
@@ -1999,7 +2001,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'mtcollins1_boot'
-        timeout-minutes: 77
+        timeout-minutes: 79
       - name: Upload Mt. Collins unit 1 boot SOL capture and receipts
         id: mtcollins1_boot_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
