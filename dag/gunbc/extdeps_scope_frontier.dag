@@ -223,6 +223,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/games/animal_crossing/font.dag",
   "dag/extdeps/games/animal_crossing/dialogue_catalog.dag",
   "dag/extdeps/games/animal_crossing/disc_messages.dag",
+  "dag/extdeps/games/animal_crossing/expression.dag",
   "dag/extdeps/games/animal_crossing_deluxe/control_codes.dag",
   "dag/extdeps/apple/property_list.dag",
   "dag/extdeps/apple/info_plist.dag",

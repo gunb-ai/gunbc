@@ -94,6 +94,14 @@ fn ssh_add_list_identities_command() -> ArgvCommand {
   argv_command(program: ssh_add_program, arguments: ["-l"])
 }
 
+// ssh-add FILE ADDS the identity in FILE to the agent named by SSH_AUTH_SOCK (ssh-add(1): "ssh-add
+// adds private key identities to the authentication agent"); the file must be readable by the
+// caller and, for OpenSSH's own check, not readable by others. As with -l, the agent socket is the
+// caller's environment, never argv; and the key material never appears on the command line.
+fn ssh_add_identity_command(identity_file: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: ssh_add_program, arguments: [identity_file as String])
+}
+
 // scp, IN THE ANCHORED POSTURE. extdeps.exec.command scp_command predates the fleet trust anchor
 // and disables host-key checking outright; these two take the rendered trust options of a
 // materialized known-hosts anchor (extdeps.ssh.client_options serialize_ssh_client_options over

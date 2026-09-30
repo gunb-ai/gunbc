@@ -177,21 +177,33 @@ data vanilla_control_codes: List<ControlCode> = [
   ControlCode { code: 122, name: "SET_SELECT_STRING_6", size: 14 }
 ]
 
-// Codes that only change how the current message looks or sounds: pacing, the speaking villagers'
-// expressions and gestures, colour, scale, voice, and inserted strings (names, the catchphrase,
-// dates, items). Every other code steers the conversation -- choices, the next message, item
-// hand-offs, events -- and a rewrite must keep it exactly. A code with no upstream name steers,
-// since nothing says otherwise.
+// Codes that only change how the current message looks or sounds: pacing, colour, scale, voice
+// on or off, and the operations on inserted strings (names, the catchphrase, dates, items). Every
+// other code steers the conversation -- choices, the next message, item hand-offs, events, the
+// voice cue a line is spoken with (SET_MESSAGE_CONTENTS_*, m_msg_cursol.c_inc
+// mMsg_sound_MessageStatus at the cursor) -- and a rewrite must keep it exactly. A code with no
+// upstream name steers, since nothing says otherwise. The one code whose class depends on its
+// arguments is the speaker's demo order (see token_steers).
 data presentation_control_names: List<String> = [
-  "CLEAR", "CURSOR_SET_TIME", "BUTTON", "BUTTON2", "COLOR", "SET_COLOR_CHAR",
-  "SET_DEMO_ORDER_NPC0", "SET_DEMO_ORDER_NPC1", "SET_DEMO_ORDER_NPC2", "SOUND_CUT",
+  "CLEAR", "CURSOR_SET_TIME", "BUTTON", "BUTTON2", "COLOR", "SET_COLOR_CHAR", "SOUND_CUT",
   "SET_LINE_OFFSET", "SET_LINE_TYPE", "SET_CHAR_SCALE", "SET_LINE_SCALE", "SOUND_NO_PAGE",
   "SOUND_TRG_SYS", "VOICE_TRUE", "VOICE_FALSE", "SPACE", "SET_CURSOR_JUST", "CLR_CURSOR_JUST",
   "CUT_ARTICLE", "CAPITAL_LETTER",
 ]
 
 fn control_code_steers(code: ControlCode) -> Bool {
-  !(code.name.starts_with(prefix: "PUT_STRING_") || code.name.starts_with(prefix: "SET_MESSAGE_CONTENTS_") || (presentation_control_names |> any(n => n == code.name)))
+  !(code.name.starts_with(prefix: "PUT_STRING_") || (presentation_control_names |> any(n => n == code.name)))
+}
+
+// SET_DEMO_ORDER_NPC0 writes (slot, u16) into the speaking villager's order row
+// (extdeps.games.animal_crossing.expression): slot 0 is the expression it makes, which a rewrite
+// may re-cue; every other slot is an action or a mood change and steers. The other rows (player,
+// the other villagers, the quest manager) always steer.
+data speaker_order_name: String = "SET_DEMO_ORDER_NPC0"
+data speaker_expression_order_slot: Int = 0
+
+fn speaker_expression_order(code: ControlCode, arguments: List<Int>) -> Bool {
+  code.name == speaker_order_name && (get(arguments, 0) ?? -1) == speaker_expression_order_slot
 }
 
 type MessageToken
@@ -332,7 +344,7 @@ fn token_octets(token: MessageToken) -> List<Int> {
 fn token_steers(token: MessageToken) -> Bool {
   match token {
     Glyph { octet: _ } => false
-    Control { code: c, arguments: _ } => control_code_steers(code: c)
+    Control { code: c, arguments: a } => control_code_steers(code: c) && !speaker_expression_order(code: c, arguments: a)
   }
 }
 

@@ -2,6 +2,7 @@ module test.claim.animal_crossing_dialogue_witness
 
 import std.types { Bool, Int, List, String }
 import v2.std.algebra { any }
+import extdeps.games.animal_crossing.expression { Expression, MoodChange, MoodTimer, TimedAction, expression_name, expression_named, mood_name, speaker_order }
 import extdeps.games.animal_crossing.message {
   BufferOctetsRange, BufferOctetsUnbounded, message_buffer_occupancy,
   LineWidthRange, LineUnbounded, TextLine, message_lines,
@@ -434,4 +435,45 @@ test fn buffer_occupancy_grows_by_each_inserted_string_less_its_code() -> Bool {
     && occupancy_of(text: "\{PUT_STRING_DETERMINATION}\{LAST}", determination_max_octets: Present { value: 19 }) == [4, 21]
     && occupancy_of(text: "\{PUT_STRING_DETERMINATION}\{LAST}", determination_max_octets: none) == [-2]
     && occupancy_of(text: "plain\{LAST}", determination_max_octets: none) == [7, 7]
+}
+
+// ---- what a villager does while it talks ----
+
+fn steering_names(text: String) -> List<String> {
+  match text_message(codes: vanilla_control_codes(), text: text) {
+    MessageRefused { reason: _ } => ["(unparsed)"]
+    MessageAccepted { value: octets } =>
+      match message_tokens(codes: vanilla_control_codes(), message: octets) {
+        MessageRefused { reason: _ } => ["(untokenized)"]
+        MessageAccepted { value: t } => steering_tokens(tokens: t) |> map(s => match message_tokens(codes: vanilla_control_codes(), message: s) { MessageAccepted { value: one } => message_text(tokens: one)  MessageRefused { reason: r } => r })
+      }
+  }
+}
+
+// Only the speaker's expression (slot 0) is free to move: a mood change with its timer, a timed
+// action, another villager's order and the voice cue all steer.
+test fn only_the_speakers_expression_is_free_to_move() -> Bool {
+  return steering_names(text: "\{SET_DEMO_ORDER_NPC0:00 00 15}Hi\{SET_DEMO_ORDER_NPC0:00 00 ff}") == []
+    && steering_names(text: "\{SET_DEMO_ORDER_NPC0:02 00 03}\{SET_DEMO_ORDER_NPC0:08 00 03}") == ["\{SET_DEMO_ORDER_NPC0:02 00 03}", "\{SET_DEMO_ORDER_NPC0:08 00 03}"]
+    && steering_names(text: "\{SET_DEMO_ORDER_NPC0:01 00 02}\{SET_DEMO_ORDER_NPC1:00 00 05}\{SET_DEMO_ORDER_QUEST:09 00 01}") == ["\{SET_DEMO_ORDER_NPC0:01 00 02}", "\{SET_DEMO_ORDER_NPC1:00 00 05}", "\{SET_DEMO_ORDER_QUEST:09 00 01}"]
+    && steering_names(text: "\{SET_MESSAGE_CONTENTS_ANGRY}Hmph.") == ["\{SET_MESSAGE_CONTENTS_ANGRY}"]
+}
+
+test fn a_speakers_order_reads_by_slot() -> Bool {
+  return speaker_order(arguments: [0, 0, 21]) == Expression { code: 21 }
+    && speaker_order(arguments: [0, 0, 255]) == Expression { code: 255 }
+    && speaker_order(arguments: [2, 0, 3]) == MoodChange { feel: 3 }
+    && speaker_order(arguments: [8, 1, 0]) == MoodTimer { frames: 256 }
+    && speaker_order(arguments: [3, 0, 15]) == TimedAction { slot: 3, value: 15 }
+}
+
+test fn expressions_and_moods_have_names_both_ways() -> Bool {
+  return expression_named(name: "grin") == Present { value: 21 }
+    && expression_name(code: 21) == Present { value: "grin" }
+    && expression_name(code: 255) == Present { value: "neutral" }
+    && expression_named(name: "neutral") == Present { value: 255 }
+    && expression_named(name: "smirk") == none
+    && expression_name(code: 43) == none
+    && mood_name(feel: 3) == Present { value: "sad" }
+    && mood_name(feel: 9) == none
 }
