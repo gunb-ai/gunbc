@@ -63,6 +63,7 @@ import gunbc.econ.scm_serving_model {
 import extdeps.pricing.object_storage { ByteBasisUnstated, DecimalGigabyte }
 import std.measure { byte_size }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.nat { Nat }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
