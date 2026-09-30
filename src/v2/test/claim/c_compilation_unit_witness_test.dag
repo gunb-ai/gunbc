@@ -1,6 +1,7 @@
 module v2.test.claim.c_compilation_unit_witness
 
 import std.algebra { Empty }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import std.types { NonEmptyStr, List, String }
 import v2.extdeps.languages.c {
   c_include_directive_for_dep,
@@ -100,18 +101,10 @@ fn witness_struct_field_by_pointer(sym: Symbol) -> Node {
     children: [
       Edge {
         label: Named { name: ^next },
-        target: node_synthetic(
-          kind: TypeNode { connective: Arrow },
-          children: [
-            Edge {
-              label: Named { name: ^domain },
-              target: witness_type_atom(sym: sym),
-            },
-            Edge {
-              label: Named { name: ^codomain },
-              target: witness_type_atom(sym: witness_type_int),
-            }
-          ]
+        target: anonymous_signature_arrow(
+          domain_types: [witness_type_atom(sym: sym)],
+          codomain: witness_type_atom(sym: witness_type_int),
+          source: witness_type_atom(sym: sym)
         ),
       }
     ]
@@ -131,20 +124,10 @@ fn witness_point_struct_conj_body() -> Node {
 }
 
 fn witness_fn_taking_point_by_value() -> Node {
-  node_synthetic(
-    kind: TypeNode {
-      connective: Arrow,
-    },
-    children: [
-      Edge {
-        label: Named { name: ^domain },
-        target: witness_type_atom(sym: witness_type_point),
-      },
-      Edge {
-        label: Named { name: ^codomain },
-        target: witness_type_atom(sym: witness_type_int),
-      }
-    ]
+  anonymous_signature_arrow(
+    domain_types: [witness_type_atom(sym: witness_type_point)],
+    codomain: witness_type_atom(sym: witness_type_int),
+    source: witness_type_atom(sym: witness_type_point)
   )
 }
 

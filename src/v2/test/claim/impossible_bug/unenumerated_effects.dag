@@ -31,6 +31,7 @@ fn atom_node(s: Symbol) -> Node {
 }
 }
 
+// Arrow used as a generic node shape; not a function signature (Program P).
 fn effect_subject(signature: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },

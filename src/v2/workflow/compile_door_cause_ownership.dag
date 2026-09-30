@@ -133,10 +133,10 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "flips when a v2 stage lowers early exit (an else-less `if` statement) to control flow, a model-first package staffed once the workload shows it on its critical path; until then the statement refuses here rather than being dropped or rewritten (gunbc#11998 batch 2, ruling via neat-boar-16)"
   },
   CauseOwnership {
-    cause: ^body_lowering_reason_caret_symbol_not_lowered,
+    cause: ^body_lowering_reason_return_not_in_tail_position,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "caret lowers to LitSymbol: owned by the MQ-1 symbol-literal slice (the grammar stamps the caret's name with its lexeme, and body lowering produces a std.syntax LitSymbol atom the resolver accepts without lookup). Until then every caret symbol in value position refuses here, located at the `^` token, rather than lowering to that token with its symbol dropped, as it did in all ten value positions on main b1b7aea9aa7 (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form)"
+    flip_trigger: "a return lowers only as the tail statement of a function's own body; every other return refuses here, located at it, rather than lowering to its operand as the value of whatever block held it (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). Flips when the value readers carry the tail position, so a structured tail return in an if or match arm, and the else-less guard, lower to Branch(c, arm, rest); count on the PR"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_service_realization_unreachable,
@@ -275,6 +275,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "v2.compiler.04_infer infer_match_bool_arm_row reached a match arm that is not a Conj carrying match_arm_pattern and match_arm_body, i.e. a lowered arm shape infer does not read. Now observable at PREPARE because more modules clear body lowering and reach infer. Flips when every arm shape body lowering emits is the one infer reads (one arm carrier, no second shape) and the count zeroes. Observed at fatal grain on native-route member rows at main 1457bd81d00 over dag + src/v2"
+  },
+  CauseOwnership {
+    cause: ^infer_match_scrutinee_not_bool,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "v2.compiler.04_infer types a Match only through infer_match_bool, which admits a Bool or Int scrutinee and refuses every other scrutinee type here -- so a match over a declared coproduct (variant-pattern arms, e.g. `match c { Deterministic => .. NonDeterministic { source: _ } => .. }`) has no infer row at all. Same one-match-carrier frontier as infer_match_shape_invalid, observed at the scrutinee instead of the arm. Flips when infer types a Match whose scrutinee is a named sum (arms joined to its alternatives, exhaustiveness over them) and the count zeroes. That capability is built and in flight: gunbc#12641 (v2 infer types a match over a declared, generic coproduct and its arm binders) merged onto lane/reference-evidence-consumer and reaches main with gunbc#12506; its landing is the expected flip, confirmed only by a native-route run whose count for this cause is zero. Observed at fatal grain at PREPARE on native-route member rows at main 55e78f40e9a over dag + src/v2: 6 v2.test.* members, all in v2.test.claim.determinism_contract_test (det_is_deterministic's match on Determinism); not among the unowned causes gunbc#12626 measured at 1457bd81d00, so newly reachable as that module cleared resolve"
   }
 ]
 

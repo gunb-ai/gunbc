@@ -67,7 +67,7 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStageEval,
   NativeTestFileRefusal
 }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.optional { Absent, Optional, Present, optional_present, optional_absent }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
@@ -130,7 +130,7 @@ fn refused_row(
 }
 
 fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
-  NativeTestFileRefusal { path: path, head_reason: head, fatal_reason: fatal }
+  NativeTestFileRefusal { path: path, module: optional_absent(), head_reason: head, fatal_reason: fatal }
 }
 
 // The emitted build as the lane records it on a clean run: cargo's argv, the denial set by the
@@ -944,6 +944,24 @@ test fn an_unknown_fatal_cause_beside_the_owned_ones_still_refuses_unowned() -> 
       tail: body_lowering_frontier_refusals()
     }
   ))
+}
+
+// THE PREPARE-STAGE INFER CAUSE OF THE RUN AT main 55e78f40e9a IS OWNED. That run refused its own
+// admission on unattributed_exclusions_present with exactly six exclusions, every one a PREPARE
+// refusal whose fatal cause was infer_match_scrutinee_not_bool (all in
+// v2.test.claim.determinism_contract_test). Supplied member rows in that shape: the owned cause
+// lands on the compiler-frontier count, and the paired unowned row beside it still lands on the
+// unattributed count, so the new row did not turn the census into a catch-all.
+test fn the_infer_match_scrutinee_cause_is_owned_and_an_unowned_one_still_counts() -> Bool {
+  let census = native_route_census(
+    rows: [
+      refused_row(module: "v2.test.a", declaration: "one", stage: NativeTestStagePrepare, reason: ^infer_match_scrutinee_not_bool),
+      refused_row(module: "v2.test.b", declaration: "two", stage: NativeTestStagePrepare, reason: ^some_unowned_cause)
+    ],
+    expected_red: [],
+    route_gap: []
+  )
+  census.excluded_compiler_frontier == 1 && census.excluded_unattributed == 1
 }
 
 test fn an_unattributed_head_advisory_is_refused() -> Bool {

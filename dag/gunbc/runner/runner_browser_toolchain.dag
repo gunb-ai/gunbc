@@ -539,7 +539,12 @@ fn tree_admission_of(tree: NonEmptyStr, present: Bool, pinned: NonEmptyStr, obse
 }
 
 fn tree_admitted(a: TreeAdmission) -> Bool {
-  match a { TreeAdmitted => true  _ => false }
+  match a {
+    TreeAdmitted => true
+    TreeAbsent { tree: _ } => false
+    TreeContentMismatch { tree: _, expected: _, observed: _ } => false
+    TreeUnobservable { tree: _, reason: _ } => false
+  }
 }
 
 fn tree_admission_text(a: TreeAdmission) -> String {
@@ -644,9 +649,9 @@ fn runner_browser_toolchain_apt_requirements() -> List<BrowserToolchainAptRequir
   list_append(
     left: [
       BrowserToolchainAptRequirement {
-        label: unzip_cli_tool.name,
+        label: unzip_cli_tool.program.invocation,
         subject: AptBinaryOnPath { tool: unzip_cli_tool },
-        package: match apt_package_of(tool: unzip_cli_tool) { Present { value: p } => p  Absent => unzip_cli_tool.name },
+        package: match apt_package_of(tool: unzip_cli_tool) { Present { value: p } => p  Absent => unzip_cli_tool.program.invocation },
       },
       BrowserToolchainAptRequirement {
         label: package_xz_utils,
