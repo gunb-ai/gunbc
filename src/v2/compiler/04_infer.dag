@@ -3034,19 +3034,18 @@ fn infer_literal_payload_entries(family: InferLiteralPayload, payload: Node) -> 
   )
 }
 
-fn infer_gather_acc_awaits_product_row(node: Node, known: Map<Node, InferredFacts>) -> Bool {
+// A SETTLED PRODUCT, ARROW OR SUM TAKES THE PRODUCT ROW, decided by its kind. The list gather asked
+// whether the node already had an entry in its OWN subtree, which a node never does, so the row always
+// ran. Asked of the threaded map, the same question saw a structurally equal node entered elsewhere and
+// skipped the row -- and with it that occurrence's frontier diagnostic -- so the gather reported fewer
+// frontier advisories than it derived nodes. A repeated node re-derives here: equal facts merge and
+// different facts refuse (inferred_facts_map_enter).
+fn infer_gather_acc_awaits_product_row(node: Node) -> Bool {
   match node.kind {
-    TypeNode { connective: Conj } => infer_gather_known_absent(node: node, known: known)
-    TypeNode { connective: Arrow } => infer_gather_known_absent(node: node, known: known)
-    TypeNode { connective: Disj } => infer_gather_known_absent(node: node, known: known)
+    TypeNode { connective: Conj } => true
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: Disj } => true
     _ => false
-  }
-}
-
-fn infer_gather_known_absent(node: Node, known: Map<Node, InferredFacts>) -> Bool {
-  match infer_known_facts(known: known, key: node) {
-    Absent => true
-    Present { value: _ } => false
   }
 }
 
@@ -3250,7 +3249,7 @@ fn infer_gather_settled_row(
     Present { value: _ } =>
       infer_gather_bind_annotation_row(node: node, state: state, partials: partials, kinds: kinds, tree: tree)
     Absent =>
-      if infer_gather_acc_awaits_product_row(node: node, known: state.facts) {
+      if infer_gather_acc_awaits_product_row(node: node) {
         infer_gather_product_row(node: node, state: state, partials: partials)
       } else {
         state
