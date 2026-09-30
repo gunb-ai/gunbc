@@ -88,7 +88,7 @@ fn conntrack_installed_path() -> FilePath {
 }
 
 data conntrack_cli_tool: CliTool = CliTool {
-  name: conntrack_program().invocation,
+  program: conntrack_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_conntrack, bin_dir: conntrack_bin_dir }],
 }

@@ -3524,3 +3524,38 @@ mod closure_parse_acquisition_differential {
         );
     }
 }
+
+/// THE LIVE IDENTITY DIFFERENTIAL for the census projecting rather than re-parsing: every file
+/// of the `[dag, src/v2]` shared index, in `pool_parse`'s order, through both readings, compared
+/// by `heads_projection_divergences`.
+#[cfg(test)]
+mod heads_projection_live_differential {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn projected_heads_equal_the_threaded_parse_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let mut keys: Vec<String> = index.source_files.keys().cloned().collect();
+        keys.sort();
+        let files: Vec<(String, String)> = keys
+            .iter()
+            .map(|k| {
+                let sf = &index.source_files[k];
+                (sf.path.clone(), sf.content.clone())
+            })
+            .collect();
+        let (n, divergent) = super::super::census_heads::heads_projection_divergences(&files);
+        eprintln!("DIFF compared={n} divergent={}", divergent.len());
+        assert!(n > 1000, "the live pool was read ({n} files)");
+        assert!(
+            divergent.is_empty(),
+            "divergent: {:?}",
+            &divergent[..divergent.len().min(20)]
+        );
+    }
+}
