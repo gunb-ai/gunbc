@@ -10451,27 +10451,41 @@ mod closure_edge_demand_tests {
         );
     }
 
-    /// AN EVICTED SHARED INDEX IS NOT REBUILT. Roots A, then roots B (which evicts A from the
-    /// thread's slot), then A again: the third demand refuses where it happens, naming both root
-    /// sets, instead of indexing A a second time. The positive control: asking for A twice with
-    /// nothing in between returns the same index.
+    /// The residency bound refuses a second resident pool per slot and admits one.
     #[test]
-    fn a_shared_index_evicted_by_other_roots_refuses_to_rebuild() {
-        let a = Fixture::new(&[("m.dag", "module evict_a\nfn f() -> Int { 1 }\n")]);
-        let b = Fixture::new(&[("m.dag", "module evict_b\nfn f() -> Int { 1 }\n")]);
+    fn a_second_resident_pool_in_one_slot_refuses() {
+        let a = Fixture::new(&[("m.dag", "module res_a\nfn f() -> Int { 1 }\n")]);
+        let b = Fixture::new(&[("m.dag", "module res_b\nfn f() -> Int { 1 }\n")]);
+        try_process_shared_index(&[a.0.to_string_lossy().into_owned()]).unwrap();
+        assert_eq!(entry_resolve::shared_index_residency_control(), Ok(1));
+        try_process_shared_index(&[b.0.to_string_lossy().into_owned()]).unwrap();
+        let err = entry_resolve::shared_index_residency_control().unwrap_err();
+        assert!(err.contains("SharedIndexMoreThanOneResidentPool"), "{err}");
+    }
+
+    /// DISTINCT ROOTS ARE KEPT SIDE BY SIDE, NOT EVICTED. Roots A, then roots B, then A again on
+    /// one thread (the regen round's shape): the third demand returns the FIRST index -- the same
+    /// `Rc`, its parse and typed caches intact -- rather than rebuilding A (a one-entry slot) or
+    /// refusing it (the #12765 refusal that broke the regen round).
+    #[test]
+    fn alternating_roots_on_one_thread_reuse_each_index() {
+        let a = Fixture::new(&[("m.dag", "module alt_a\nfn f() -> Int { 1 }\n")]);
+        let b = Fixture::new(&[("m.dag", "module alt_b\nfn f() -> Int { 1 }\n")]);
         let roots_a = vec![a.0.to_string_lossy().into_owned()];
         let roots_b = vec![b.0.to_string_lossy().into_owned()];
-        let first = try_process_shared_index(&roots_a).unwrap();
-        let again = try_process_shared_index(&roots_a).unwrap();
+        let first_a = try_process_shared_index(&roots_a).unwrap();
+        let first_b = try_process_shared_index(&roots_b).unwrap();
+        let again_a = try_process_shared_index(&roots_a).unwrap();
+        let again_b = try_process_shared_index(&roots_b).unwrap();
         assert!(
-            Rc::ptr_eq(&first, &again),
-            "same roots, nothing between: one index"
+            Rc::ptr_eq(&first_a, &again_a),
+            "A is reused after B, not rebuilt"
         );
-        try_process_shared_index(&roots_b).unwrap();
-        let Err(err) = try_process_shared_index(&roots_a) else {
-            panic!("rebuilding evicted roots must refuse");
-        };
-        assert!(err.contains("SharedIndexRebuiltAfterEviction"), "{err}");
+        assert!(Rc::ptr_eq(&first_b, &again_b), "B is reused after A");
+        assert!(
+            !Rc::ptr_eq(&first_a, &first_b),
+            "distinct roots are distinct indexes"
+        );
     }
 
     /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
@@ -12339,7 +12353,7 @@ where
 #[cfg(test)]
 pub(crate) fn reset_process_shared_index_for_test() {
     PROCESS_RESOLVE_INDEX.with(|s| {
-        *s.borrow_mut() = [None, None];
+        *s.borrow_mut() = Default::default();
     });
     PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
 }
@@ -44087,6 +44101,16 @@ pub enum RequiredFloorDisposition {
     /// ONE range; a green floor over these rows means the mismatch is HANDLED, never that the two
     /// denominators have been reconciled.
     DeclinedChangedWitnessOutsideDiscovery { module_path: String },
+    /// Selected by the changed-witness sublane, and its file is a `BinWitnessWet`
+    /// `WitnessExclusionRow` (`gunbc.ci_layer_roots` `witness_exclusion_frontier`): its claims
+    /// drive compiled seed witness binaries on host effects the floor's hermetic route refuses,
+    /// and NO CI LANE EXECUTES THAT CLASS -- its per-PR batch died with the floor cut, and
+    /// falsifier.yml with gunbc#8283. The name says exactly that and names no owner, because no
+    /// lane owns it; claiming one would be the §3 meaning fork. The loss is declared as
+    /// `gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci`, and a PR that edits such
+    /// a witness carries a real bin_wet receipt instead. Reachable ONLY from that classification,
+    /// counted, and printed per row with the pattern that matched.
+    DeclinedNoCiWetLane { pattern: String },
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -45413,6 +45437,7 @@ fn write_required_floor_disposition_tsv(
     let mut declined_gate_closure = 0usize;
     let mut declined_discovery_excluded = 0usize;
     let mut declined_changed_witness_outside_discovery = 0usize;
+    let mut declined_no_ci_wet_lane = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
@@ -45428,6 +45453,7 @@ fn write_required_floor_disposition_tsv(
             RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
                 declined_changed_witness_outside_discovery += 1
             }
+            RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => declined_no_ci_wet_lane += 1,
         }
     }
     writeln!(
@@ -45435,7 +45461,7 @@ fn write_required_floor_disposition_tsv(
         "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
          \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\
-         \tdeclined_changed_witness_outside_discovery={}",
+         \tdeclined_changed_witness_outside_discovery={}\tdeclined_no_ci_wet_lane={}",
         rows.len(),
         planned,
         planned_as_changed_witness,
@@ -45445,7 +45471,8 @@ fn write_required_floor_disposition_tsv(
         declined_gate_closure,
         declined_discovery_excluded,
         declined_cost_debt,
-        declined_changed_witness_outside_discovery
+        declined_changed_witness_outside_discovery,
+        declined_no_ci_wet_lane
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")
@@ -46159,12 +46186,15 @@ pub fn run_regen_round_cost(
     source_roots: &[String],
     affected_scope: bool,
 ) -> Result<RegenRoundCostOutcome, String> {
-    required_regen_host::run_regen_round_cost(
+    let outcome = required_regen_host::run_regen_round_cost(
         candidate_dir_rel,
         receipt_rel,
         source_roots,
         affected_scope,
-    )
+    )?;
+    entry_resolve::shared_index_residency_control()
+        .map_err(|e| format!("regen-round-cost refused: {e}"))?;
+    Ok(outcome)
 }
 
 /// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`
