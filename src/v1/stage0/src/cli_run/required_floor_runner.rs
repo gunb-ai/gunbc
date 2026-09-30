@@ -7394,9 +7394,8 @@ pub fn run_required_floor(
         warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
     ));
     shared_build_warms.extend(pure_producer_warms);
-    // ONE FULL PARSE PER (INDEX, FILE), ASSERTED; the number of indexes, reported. The first
-    // bounds a file's reference reading to one parse on each index; the second is what bounds the
-    // total, and it is measured here before any expected value is pinned.
+    // ONE FULL PARSE PER (INDEX, FILE), ASSERTED, and ONE INDEX PER RUN, ASSERTED below: the first
+    // bounds a file's reference reading to one parse on each index, the second bounds the total.
     for (which, roots) in [
         ("source-roots", source_roots.to_vec()),
         ("witness-layer-roots", witness_layer_roots()),
@@ -7410,10 +7409,25 @@ pub fn run_required_floor(
             index.generation
         );
     }
+    // ONE MODULE-NAME SET, ONE DEMAND, ONE INDEX. Every root set this floor asks for names the
+    // same pool, so the design admits exactly one `MultiEntryIndex` per run; a second is the same
+    // demand built twice, whose files would each be parsed again. Asserted, not pinned from a
+    // measurement: a larger count is a sharing defect to derive, never a new expected value.
+    const EXPECTED_MULTI_ENTRY_INDEXES: u64 = 1;
+    let built = super::multi_entry_indexes_built();
     eprintln!(
-        "[floor-phase] phase=multi-entry-index-builds count={}",
-        super::multi_entry_indexes_built()
+        "[floor-phase] phase=multi-entry-index-builds count={built} expected={EXPECTED_MULTI_ENTRY_INDEXES} \
+         source_roots_generation={} witness_layer_roots_generation={}",
+        process_shared_index(source_roots).generation,
+        process_shared_index(&witness_layer_roots()).generation,
     );
+    if built != EXPECTED_MULTI_ENTRY_INDEXES {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=MultiEntryIndexBuiltMoreThanOnce count={built} \
+             expected={EXPECTED_MULTI_ENTRY_INDEXES} -- one module-name set was indexed more than \
+             once in this run, so its files' reference readings were parsed again per index"
+        ));
+    }
     // The two earlier phases already printed their own lines at the point they ran; only the
     // edge-index entries are reported here, so a phase is reported exactly once and under its own
     // name. Every entry — all three phases — is adjudicated together further down.
