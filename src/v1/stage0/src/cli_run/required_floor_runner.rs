@@ -2112,7 +2112,12 @@ impl UnimportedBareProviderRosterReading {
         function: &str,
         decode_host_rows: bool,
     ) -> Result<Self, String> {
-        let (graph, indices) = resolve_entry_graph_shared(roots, entry)
+        // ITS OWN INDEX, NOT THE SHARED SLOT. The only reader is the base roster in a one-file
+        // scratch root; resolving it through `resolve_entry_graph_shared` put that pool in the
+        // thread's shared slot, evicting the head tree's index, which the floor then rebuilt
+        // from scratch (neat-boar-16, #12761 subject: gen1 evicted at the base read, rebuilt as
+        // gen5). A scratch pool is a separate demand; its index lives for this read and drops.
+        let (graph, indices) = resolve_entry_with_index(&build_multi_entry_index(roots), entry)
             .map_err(|e| format!("unimported-bare-provider roster resolve ({entry}): {e}"))?;
         let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
         let rows_value = Self::call(&ctx, function, &[])?;

@@ -13568,14 +13568,19 @@ pub(crate) fn record_multi_entry_index_site(
     source_files: &ModuleSourceIndex,
 ) {
     use std::hash::{Hash, Hasher};
-    let mut names: Vec<&String> = source_files.keys().collect();
-    names.sort();
+    // The POOL, not only its names: two scratch pools declaring one module path at different
+    // sources are different demands, while one set of roots indexed twice is the same one.
+    let mut pool: Vec<(&String, &String)> = source_files
+        .iter()
+        .map(|(name, sf)| (name, &sf.path))
+        .collect();
+    pool.sort();
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    names.hash(&mut hasher);
+    pool.hash(&mut hasher);
     if let Ok(mut builds) = MULTI_ENTRY_INDEX_BUILDS.lock() {
         builds.push(MultiEntryIndexBuild {
             name_set_digest: hasher.finish(),
-            modules: names.len(),
+            modules: pool.len(),
             site: format!("{}:{}", site.file(), site.line()),
         });
     }
