@@ -1,0 +1,31 @@
+module v2.test.probe_ctag.runner
+
+import v2.test.claim.body_lowering.qualified_construct {
+  qc_qualified_constructs_equal_their_unqualified_form_holds,
+  qc_a_resolved_user_construct_reads_its_tag_holds,
+  qc_qualified_nullary_binds_the_variant_holds,
+  qc_same_leaf_in_two_modules_binds_two_declarations_holds,
+  qc_a_type_tag_refuses_as_not_a_constructor_holds,
+  qc_dropping_the_qualifier_unbinds_the_constructor_holds,
+  qc_dropping_the_record_body_is_not_a_construct_holds,
+  qc_the_sevens_form_lowers_to_a_construct_holds,
+  qc_the_emission_gate_admits_a_resolved_construct_and_refuses_an_unresolved_one_holds
+}
+import v2.std.text { String }
+import v2.std.logic { Bool }
+
+fn b(name: String, v: Bool) -> String {
+  name + "=" + (if v { "T" } else { "F" }) + "; "
+}
+
+fn probe() -> String {
+  b(name: "equal", v: qc_qualified_constructs_equal_their_unqualified_form_holds())
+    + b(name: "reads_tag", v: qc_a_resolved_user_construct_reads_its_tag_holds())
+    + b(name: "nullary", v: qc_qualified_nullary_binds_the_variant_holds())
+    + b(name: "same_leaf", v: qc_same_leaf_in_two_modules_binds_two_declarations_holds())
+    + b(name: "type_tag", v: qc_a_type_tag_refuses_as_not_a_constructor_holds())
+    + b(name: "drop_qual", v: qc_dropping_the_qualifier_unbinds_the_constructor_holds())
+    + b(name: "drop_body", v: qc_dropping_the_record_body_is_not_a_construct_holds())
+    + b(name: "seven", v: qc_the_sevens_form_lowers_to_a_construct_holds())
+    + b(name: "gate", v: qc_the_emission_gate_admits_a_resolved_construct_and_refuses_an_unresolved_one_holds())
+}

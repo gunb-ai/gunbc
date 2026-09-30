@@ -1,0 +1,18 @@
+module v2.test.probe_ctag.diag
+
+import v2.test.claim.body_lowering.qualified_construct { qc_fixture_normalized, qc_resolved_qualified, qc_resolved_bare }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.text { String }
+
+fn probe() -> String {
+  (match qc_fixture_normalized() {
+    Rejected { diagnostics: d } => "NORMALIZE REFUSED " + to_string(value: d)
+    Accepted { value: _, diagnostics: _ } => "normalized ok; "
+  }) + (match qc_resolved_bare() {
+    Rejected { diagnostics: d } => "BARE REFUSED " + to_string(value: d)
+    Accepted { value: _, diagnostics: _ } => "bare ok; "
+  }) + (match qc_resolved_qualified() {
+    Rejected { diagnostics: d } => "QUAL REFUSED " + to_string(value: d)
+    Accepted { value: _, diagnostics: _ } => "qual ok"
+  })
+}

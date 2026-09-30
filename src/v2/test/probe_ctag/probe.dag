@@ -1,0 +1,84 @@
+module v2.test.probe_ctag.probe
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_with_admission_context_policy }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Node, Symbol, Conj, TypeNode, Named, node_subtree_nodes }
+import v2.std.node_query { construct_tag_optional }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name { qualified_name_from_dotted_string, declaration_reference_path_optional, qualified_name_to_dotted_string }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list }
+import extdeps.communication.medium { Lossless, Medium }
+
+data pc_provider: String = "module v2.test.pc_provider\n\nimport v2.std.logic { Bool }\n\ntype Pcr\n  = PcrA { n: Bool }\n  | PcrB\n"
+data pc_consumer: String = "module v2.test.pc_consumer\n\nimport v2.std.logic { Bool }\nimport v2.test.pc_provider { Pcr, PcrA }\n\nfn pc_make() -> Pcr { PcrA { n: true } }\n"
+
+fn pc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness { source: Medium { carried: source, fidelity: Lossless }, artifact: Artifact { kind: SourceFile, id: id, file_path: path }, compilation_unit: unit, source_root: DagTree }
+}
+
+data pc_ingest: SourceRootIngest = Cons {
+  head: pc_read(source: pc_provider, id: ^pc_provider_read, unit: ^pc_provider_cu, path: "src/v2/test/fixture/pc/provider.dag"),
+  tail: Cons { head: pc_read(source: pc_consumer, id: ^pc_consumer_read, unit: ^pc_consumer_cu, path: "src/v2/test/fixture/pc/consumer.dag"), tail: Empty }
+}
+
+fn pc_describe(n: Node) -> String {
+  fold(n.children, init: "", f: fn(acc, e) {
+    match e.label {
+      Named { name: l } =>
+        match e.target.kind {
+          TypeNode { connective: c } =>
+            acc + " [" + to_string(value: l) + " -> " + (match declaration_reference_path_optional(node: e.target) {
+              Present { value: p } => "DECLREF " + qualified_name_to_dotted_string(qn: p)
+              Absent => to_string(value: c)
+            }) + "]"
+          _ => acc + " [" + to_string(value: l) + " -> computation]"
+        }
+      _ => acc + " [positional]"
+    }
+  })
+}
+
+fn pc_first_label_is(n: Node, want: Symbol) -> Bool {
+  match first(n.children) {
+    Present { value: e } =>
+      match e.label {
+        Named { name: l } => l == want
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn probe() -> String {
+  match module_roots_from_source_root_ingest(ingest: pc_ingest, lm: dag_language_model()) {
+    Rejected { diagnostics: d } => "INGEST REFUSED " + to_string(value: d)
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.pc_consumer") }, imports: Empty },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      ) {
+        Rejected { diagnostics: d } => "RESOLVE REFUSED " + to_string(value: d)
+        Accepted { value: t, diagnostics: _ } =>
+          fold(node_subtree_nodes(root: t.root), init: "RESOLVED;", f: fn(acc, n) {
+            let d = pc_describe(n: n)
+            if pc_first_label_is(n: n, want: ^PcrA) {
+              acc + " CONJ{" + d + " } construct_tag_optional=" + (match construct_tag_optional(n: n) { Present { value: s } => to_string(value: s)  Absent => "ABSENT" }) + ";"
+            } else { acc }
+          })
+      }
+  }
+}
