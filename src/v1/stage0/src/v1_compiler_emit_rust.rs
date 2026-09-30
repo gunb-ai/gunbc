@@ -64,7 +64,7 @@ pub use crate::gunbc_stage0_emitted_population_manifest::{
 pub use crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_partition_dependencies;
 pub use crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package;
 pub use crate::gunbc_structural_realization_bindings::{
-    structural_connective_rows, structural_ordering_rows,
+    kernel_grounding_rows, structural_connective_rows, structural_ordering_rows,
 };
 pub use crate::std_algebra::AlgebraFieldTemplate;
 pub use crate::std_algebra::{is_collection_filter_template, trim};
@@ -78,6 +78,12 @@ use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+pub use crate::std_literal_elaboration::kernel_grounding_for;
+use crate::std_literal_elaboration::KernelGroundingLookup::{
+    KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
+};
+use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
+pub use crate::std_literal_elaboration::{KernelGroundingLookup, LiteralSourceKind};
 pub use crate::std_measure::millisecond_count;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -132,7 +138,7 @@ pub use crate::v1_compiler_coercion::{
     coerce_primitive_type, declaration_realization, declaration_realizes_natively_on_rust, is_copy,
     provenance_declares_structurally, realization_host_numeric_spelling,
     realization_is_host_numeric, realized_checkpoint, rust_lookup_exact_binding, target_callable,
-    type_realization_decision, type_reference_realization,
+    target_checkpoints, type_realization_decision, type_reference_realization,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_dag_collect_support::connective_name;
@@ -11083,7 +11089,7 @@ pub fn emit_module_full(
             for item in Rc::new({
                 let mut __result = Vec::new();
                 for item in typed_module.items.clone().iter().cloned() {
-                    if ((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                    if (((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
                         && crate::v1_compiler_infer_types::is_coproduct_type(item.clone()))
                         && !is_grounded_coproduct_native_alias(
                             crate::v1_compiler_infer_env::authored_name(
@@ -11091,6 +11097,13 @@ pub fn emit_module_full(
                                 item.clone(),
                             ),
                         ))
+                        && (rust_kernel_grounded_type_decl(
+                            scope.module_name.clone(),
+                            crate::v1_compiler_infer_env::authored_name(
+                                scope.type_env.clone(),
+                                item.clone(),
+                            ),
+                        ) == std::option::Option::None))
                     {
                         __result.push(item);
                     }
@@ -13868,6 +13881,28 @@ pub fn emit_specific_import_block(
     ))
 }
 
+pub fn import_name_is_kernel_grounded_constructor(
+    name: String,
+    import_module: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> bool {
+    match find_variant_parent_in_module(
+        name.clone(),
+        import_module.clone(),
+        typed_modules.clone(),
+        source_indices.clone(),
+        module_index.clone(),
+    ) {
+        Some(parent) => {
+            (rust_kernel_grounded_type_decl(import_module.clone(), parent.clone())
+                != std::option::Option::None)
+        }
+        std::option::Option::None => false,
+    }
+}
+
 pub fn emit_specific_import_use_lines(
     import_module: String,
     mod_name: String,
@@ -13888,17 +13923,31 @@ pub fn emit_specific_import_use_lines(
             let mut __result = Vec::new();
             for n in Rc::new({
                 let mut __result = Vec::new();
-                for n in filtered_names.iter().cloned() {
-                    if {
-                        let mut __all = true;
-                        for ln in local_names.iter().cloned() {
-                            if !(ln.clone() != n.clone()) {
-                                __all = false;
-                                break;
+                for n in Rc::new({
+                    let mut __result = Vec::new();
+                    for n in filtered_names.iter().cloned() {
+                        if {
+                            let mut __all = true;
+                            for ln in local_names.iter().cloned() {
+                                if !(ln.clone() != n.clone()) {
+                                    __all = false;
+                                    break;
+                                }
                             }
+                            __all
+                        } {
+                            __result.push(n);
                         }
-                        __all
-                    } {
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    if !import_name_resolves_to_host_realized_kernel_scalar(
+                        n.clone(),
+                        module_env.clone(),
+                    ) {
                         __result.push(n);
                     }
                 }
@@ -13907,9 +13956,12 @@ pub fn emit_specific_import_use_lines(
             .iter()
             .cloned()
             {
-                if !import_name_resolves_to_host_realized_kernel_scalar(
+                if !import_name_is_kernel_grounded_constructor(
                     n.clone(),
-                    module_env.clone(),
+                    import_module.clone(),
+                    typed_modules.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
                 ) {
                     __result.push(n);
                 }
@@ -14553,7 +14605,7 @@ Rc::new(vec![Rc::new(RustUseLine {
                     for en in Rc::new({
                         let mut __result = Vec::new();
                         for en in final_imported_enums.iter().cloned() {
-                            if (({
+                            if ((({
                                 let mut __found = false;
                                 for p in parent_list.iter().cloned() {
                                     if (p.clone() == en.clone()) {
@@ -14564,6 +14616,10 @@ Rc::new(vec![Rc::new(RustUseLine {
                                 __found
                             } == false)
                                 && !is_grounded_coproduct_native_alias(en.clone()))
+                                && (rust_kernel_grounded_type_decl(
+                                    import_module.clone(),
+                                    en.clone(),
+                                ) == std::option::Option::None))
                             {
                                 __result.push(en);
                             }
@@ -15533,6 +15589,17 @@ pub fn emit_non_empty_wrappers() -> String {
     }
 }
 
+pub fn rust_kernel_grounded_type_decl(module_name: String, item_text: String) -> Option<String> {
+    match (*crate::std_literal_elaboration::kernel_grounding_for(kernel_grounding_rows(), LiteralSourceKind::KernelIntLiteral, crate::std_decl_ref::decl_ref(module_name.clone(), item_text.clone()))).clone() {
+    KernelGroundingLookup::KernelGroundingAbsent => std::option::Option::None,
+    KernelGroundingLookup::KernelGroundingAmbiguous { row_count: _, .. } => Some(emit_rust_compile_error_item(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("kernel grounding: ".to_string(), module_name.clone()), ".".to_string()), item_text.clone()), " has more than one gunbc.structural_realization_bindings kernel_grounding_rows row".to_string()))),
+    KernelGroundingLookup::KernelGroundingFound { row: _, .. } => match Rc::new({ let mut __result = Vec::new(); for cp in crate::v1_compiler_coercion::target_checkpoints(RenderTarget::Rust).iter().cloned() { if (cp.dag_name.clone() == "Int".to_string()) { __result.push(cp); } } __result }).first().cloned() {
+    Some(cp) => Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), "type ".to_string()), item_text.clone()), " = ".to_string()), cp.grounding_type.clone()), ";".to_string())),
+    std::option::Option::None => Some(emit_rust_compile_error_item(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("kernel grounding: the Rust target declares no Int checkpoint to realize ".to_string(), module_name.clone()), ".".to_string()), item_text.clone()), " as".to_string()))),
+},
+}
+}
+
 pub fn emit_typed_item(
     item: Rc<Node>,
     module_name: String,
@@ -15558,17 +15625,20 @@ pub fn emit_typed_item(
         match item.module_item_kind.clone() {
             ParsedModuleItemKind::ModuleItemTypeDeclaration => {
                 if crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
-                    emit_type_def_from_connective(
-                        item.clone(),
-                        emit_info.recursive_type_set.clone(),
-                        shared_types.clone(),
-                        env.clone(),
-                        emit_info.clone(),
-                        wire_contract_item.clone(),
-                        data_items.clone(),
-                        module_items.clone(),
-                        imports.clone(),
-                    )
+                    match rust_kernel_grounded_type_decl(module_name.clone(), item_text.clone()) {
+                        Some(grounded_decl) => grounded_decl.clone(),
+                        std::option::Option::None => emit_type_def_from_connective(
+                            item.clone(),
+                            emit_info.recursive_type_set.clone(),
+                            shared_types.clone(),
+                            env.clone(),
+                            emit_info.clone(),
+                            wire_contract_item.clone(),
+                            data_items.clone(),
+                            module_items.clone(),
+                            imports.clone(),
+                        ),
+                    }
                 } else {
                     if crate::v1_compiler_emit_core_support::is_type_alias_item(
                         item.clone(),
