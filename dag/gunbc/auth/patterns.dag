@@ -31,7 +31,7 @@ pattern acquire_subject_token(
   return { token: token.token }
 }
 
-fn build_token(payload: Secret, scheme: AuthScheme, header_name: String, source_id: String, required_scopes: List<String>) -> AccessToken {
+fn build_token(payload: Secret, scheme: AuthScheme, header_name: String?, source_id: String, required_scopes: List<String>) -> AccessToken {
   { token: payload, scheme: scheme, expires_at: none }
 }
 
