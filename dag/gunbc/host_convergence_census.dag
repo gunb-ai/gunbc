@@ -245,7 +245,8 @@ fn row_is_well_formed(row: HostConvergenceCensusRow) -> HostConvergenceCensusRef
           Absent => none
         }
       }
-    _ => none
+    RetainAuthority => none
+    OutsideHostConvergence { protocol: _ } => none
   }
 }
 

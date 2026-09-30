@@ -364,6 +364,55 @@ fn megarac_served_ui_surface_standing(
   }
 }
 
+// SCREEN CAPTURE SURFACES AT 0.32. Read-only probe 2026-09-27 of the bundles served at
+// https://192.168.1.228/source.min.js (gzip, sha256 5029fae278f7fc8f4dd4ad5eb8e4457e49fa25d4d0158d4bf9fbab09f57d4bf3)
+// and /viewer.min.js (sha256 8bdfbb72c6449eaf64ab232a413abe257c2eec5af5d46fbe960c14534fab3e17).
+// THERE IS NO SERVER-SIDE ON-DEMAND STILL. The H5 viewer's "Capture Screen" is captureScreen():
+// document.getElementById("kvm").toDataURL("image/jpeg") saved as CaptureScreen.jpeg. That is a canvas
+// the browser painted by decoding the AST2100 stream from wss://<bmc>/kvm (session token from
+// /api/kvm/token), so a still exists only where a KVM client is running. The firmware itself
+// keeps two retained screens: the last BSOD JPEG (feature CAPTURE_BSOD_JPEG, GET
+// /api/settings/download_image), and framebuffer recordings made by FramebufferRecorder when an
+// armed /api/settings/video/triggers event fires (chassis power on/off/reset, lpc reset, watchdog,
+// critical/non-critical/non-recoverable, fan state, or a date_time schedule), listed at
+// /api/logs/video with bytes at /api/logs/video-data?file=. No IPMI OEM capture command appears
+// in either bundle.
+type MegaRacScreenCaptureRoute
+  = KvmClientCanvasJpeg
+  | LastBsodJpeg
+  | TriggeredFramebufferRecording
+  | ServerSideOnDemandStill
+
+type MegaRacScreenCaptureStanding
+  = ScreenCaptureServedOnDemand
+  | ScreenCaptureEventRetainedOnly
+  | ScreenCaptureClientSideOnly
+  | ScreenCaptureAbsent
+
+fn megarac_screen_capture_standing_at_0_32(route: MegaRacScreenCaptureRoute) -> MegaRacScreenCaptureStanding {
+  match route {
+    KvmClientCanvasJpeg => ScreenCaptureClientSideOnly
+    LastBsodJpeg => ScreenCaptureEventRetainedOnly
+    TriggeredFramebufferRecording => ScreenCaptureEventRetainedOnly
+    ServerSideOnDemandStill => ScreenCaptureAbsent
+  }
+}
+
+type MegaRacScreenCaptureLookup
+  = ScreenCaptureFactKnown { firmware: BmcFirmwareReleaseIdentity, standing: MegaRacScreenCaptureStanding }
+  | ScreenCaptureFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity }
+
+fn megarac_screen_capture_standing(
+  firmware: BmcFirmwareReleaseIdentity,
+  route: MegaRacScreenCaptureRoute,
+) -> MegaRacScreenCaptureLookup {
+  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) {
+    ScreenCaptureFactKnown { firmware: firmware, standing: megarac_screen_capture_standing_at_0_32(route: route) }
+  } else {
+    ScreenCaptureFirmwareUncatalogued { firmware: firmware }
+  }
+}
+
 // EVENT LOG SHAPE. The web log and ipmitool are two layouts. GenID1/GenID2 on the standard-event
 // template are manufacturer bytes; they have no Sender constructor. Ampere's published producer
 // layout for those manufacturer bytes is extdeps.ampere.oem_sel.

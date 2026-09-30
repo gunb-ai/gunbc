@@ -1,6 +1,7 @@
 module v2.extdeps.languages.c
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -939,15 +940,7 @@ fn c_int_inhabitant_node() -> Node {
 }
 
 fn c_emitted_add_fn_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: c_int_inhabitant_node() },
-      Edge { label: Positional, target: c_int_inhabitant_node() },
-      Edge { label: Positional, target: c_int_inhabitant_node() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-  }
+  anonymous_signature_arrow(domain_types: [c_int_inhabitant_node(), c_int_inhabitant_node()], codomain: c_int_inhabitant_node(), source: c_int_inhabitant_node())
 }
 
 fn c_concrete_token_node(token: ConcreteSyntaxToken) -> Node {

@@ -87,6 +87,10 @@ fn log_annotation_message_line(annotation: LogAnnotation) -> String? {
     AnnotationError { message: m, file: f, line: l, col: c } => Present { value: gha_message_command_line(command: gha_log_command_error, message: m, file: f, line: l, col: c) }
     AnnotationWarning { message: m, file: f, line: l, col: c } => Present { value: gha_message_command_line(command: gha_log_command_warning, message: m, file: f, line: l, col: c) }
     AnnotationNotice { message: m, file: f, line: l, col: c } => Present { value: gha_message_command_line(command: gha_log_command_notice, message: m, file: f, line: l, col: c) }
-    _ => Absent
+    AnnotationGroup { title: _ } => Absent
+    AnnotationEndGroup => Absent
+    SetOutput { name: _, value: _ } => Absent
+    AddMask { value: _ } => Absent
+    StopCommands { token: _ } => Absent
   }
 }

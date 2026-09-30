@@ -4157,15 +4157,25 @@ pub fn kernel_value_declared_type_mismatch_bounded(
         let mut formal_name_override = __tco_loop_formal_name_override;
         #[allow(unused_mut)]
         let mut depth = __tco_loop_depth;
+        let formal_carries_optional =
+            ((formal.return_cardinality.clone() == Cardinality::CardOptional)
+                || (crate::v1_std_core::qualified_last_segment(
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), formal.clone()),
+                ) == "Optional".to_string()));
+        let actual_base = if formal_carries_optional.clone() {
+            actual.clone()
+        } else {
+            peel_where_refinement_base(actual.clone(), type_env.clone())
+        };
         if (((formal.connective.clone() == Connective::Arrow)
             || (actual.connective.clone() == Connective::Arrow))
-            || ((actual.children.clone().len() as i64) > 0))
+            || ((actual_base.children.clone().len() as i64) > 0))
         {
             break false;
         } else {
             let formal_base = peel_where_refinement_base(formal.clone(), type_env.clone());
             let actual_name =
-                crate::v1_std_core::authored_name_at(source_indices.clone(), actual.clone());
+                crate::v1_std_core::authored_name_at(source_indices.clone(), actual_base.clone());
             if ((crate::std_types::is_kernel_type(actual_name.clone()) == false)
                 || (actual_name.clone() == "Unit".to_string()))
             {
@@ -4190,7 +4200,7 @@ pub fn kernel_value_declared_type_mismatch_bounded(
                         formal_base.clone(),
                         source_indices.clone(),
                     ) == crate::v1_compiler_infer_types::structural_carrier_template_name(
-                        actual.clone(),
+                        actual_base.clone(),
                         source_indices.clone(),
                     )) {
                         break false;
@@ -25001,38 +25011,11 @@ pub fn census_upgrade_service_item(
     }
 }
 
-pub fn census_with_resolved_fn_sigs(
+pub fn census_bare_fill_with_resolved_fn_sigs(
     index: Rc<SymbolIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
     {
-        let entry_keys = Rc::new(v1_rt::sorted_map_keys(&index.entries.clone()));
-        let entries2 = entry_keys.iter().cloned().fold(
-            index.entries.clone(),
-            |acc: Rc<HashMap<String, Rc<Node>>>, k: String| match v1_rt::map_get(
-                &index.entries.clone(),
-                k.clone(),
-            ) {
-                Some(node) => {
-                    let upgraded = census_upgrade_binding(
-                        Rc::new(TypeBinding {
-                            name: crate::v1_std_core::qualified_last_segment(k.clone()),
-                            resolved: node.clone(),
-                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                        }),
-                        crate::v1_compiler_infer_env::qualified_all_but_last(k.clone()),
-                        index.clone(),
-                        source_indices.clone(),
-                    );
-                    if (upgraded.resolved.clone() == node.clone()) {
-                        acc.clone()
-                    } else {
-                        v1_rt::rc_map_insert(acc.clone(), k.clone(), upgraded.resolved.clone())
-                    }
-                }
-                std::option::Option::None => acc.clone(),
-            },
-        );
         let bare_keys = Rc::new(v1_rt::sorted_map_keys(&index.global_bare.clone()));
         let global2 = bare_keys.iter().cloned().fold(
             index.global_bare.clone(),
@@ -25128,11 +25111,54 @@ pub fn census_with_resolved_fn_sigs(
             },
         );
         Rc::new(SymbolIndex {
-            entries: entries2.clone(),
+            entries: index.entries.clone(),
             global_bare: global2.clone(),
             services: services2.clone(),
             transparent_alias_rep: index.transparent_alias_rep.clone(),
             type_head_exposures: index.type_head_exposures.clone(),
+        })
+    }
+}
+
+pub fn census_with_resolved_fn_sigs(
+    index: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SymbolIndex> {
+    {
+        let entry_keys = Rc::new(v1_rt::sorted_map_keys(&index.entries.clone()));
+        let entries2 = entry_keys.iter().cloned().fold(
+            index.entries.clone(),
+            |acc: Rc<HashMap<String, Rc<Node>>>, k: String| match v1_rt::map_get(
+                &index.entries.clone(),
+                k.clone(),
+            ) {
+                Some(node) => {
+                    let upgraded = census_upgrade_binding(
+                        Rc::new(TypeBinding {
+                            name: crate::v1_std_core::qualified_last_segment(k.clone()),
+                            resolved: node.clone(),
+                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                        }),
+                        crate::v1_compiler_infer_env::qualified_all_but_last(k.clone()),
+                        index.clone(),
+                        source_indices.clone(),
+                    );
+                    if (upgraded.resolved.clone() == node.clone()) {
+                        acc.clone()
+                    } else {
+                        v1_rt::rc_map_insert(acc.clone(), k.clone(), upgraded.resolved.clone())
+                    }
+                }
+                std::option::Option::None => acc.clone(),
+            },
+        );
+        let fill = census_bare_fill_with_resolved_fn_sigs(index.clone(), source_indices.clone());
+        Rc::new(SymbolIndex {
+            entries: entries2.clone(),
+            global_bare: fill.global_bare.clone(),
+            services: fill.services.clone(),
+            transparent_alias_rep: fill.transparent_alias_rep.clone(),
+            type_head_exposures: fill.type_head_exposures.clone(),
         })
     }
 }

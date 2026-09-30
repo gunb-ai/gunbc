@@ -813,9 +813,12 @@ fn canonical_probe_row_resolution_refuses_duplicate_population() -> Bool {
             wanted: call_mislabel_red_probe,
           ) {
             ProbeRowDuplicate { wanted: _, matches: 2 } => true
-            _ => false
+            ProbeRowResolved { row: _ } => false
+            ProbeRowUnknown { wanted: _ } => false
+            ProbeRowDuplicate { wanted: _, matches: _ } => false
           }
-        _ => false
+        ProbeRowUnknown { wanted: _ } => false
+        ProbeRowDuplicate { wanted: _, matches: _ } => false
       }
     Absent => false
   }

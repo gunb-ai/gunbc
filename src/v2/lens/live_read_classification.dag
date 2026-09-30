@@ -547,7 +547,8 @@ fn live_read_selection_of(classification: LiveReadClassification) -> LiveReadSel
           integer_int_to_decimal_string(value: length(xs: r))
         )
       }
-    _ => LiveReadSelectionClassified { classification: classification }
+    LocalRead => LiveReadSelectionClassified { classification: classification }
+    RuntimeRead { carriers: _ } => LiveReadSelectionClassified { classification: classification }
   }
 }
 
