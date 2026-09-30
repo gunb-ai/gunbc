@@ -31,7 +31,9 @@ import v2.std.node {
   Symbol,
   TypeNode,
   arrow_first_positional_target,
-  node_subtree_nodes
+  node_subtree_nodes,
+  StructuralLabel,
+  label_sort_key,
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 import v2.std.symbol_index {
@@ -98,42 +100,51 @@ fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
   }
 }
 
+// A labeled child declares a binding at path.segment and its members below it.
+fn symbol_index_fill_declared_child(index: SymbolIndex, path: QualifiedName, segment: Symbol, edge: Edge) -> SymbolIndex {
+  let child_path = qualified_name_snoc(qn: path, segment: segment)
+  let declared = symbol_index_declared(target: edge.target)
+  let with_binding = symbol_index_insert(
+    index: index,
+    qualified_path: child_path,
+    resolved: declared.bound
+  )
+  match declared.members {
+    Present { value: member } =>
+      symbol_index_fill_containment_node(
+        index: with_binding,
+        path: child_path,
+        node: member
+      )
+    Absent => with_binding
+  }
+}
+
 fn symbol_index_fill_containment_edge(
   index: SymbolIndex,
   path: QualifiedName,
   edge: Edge
 ) -> SymbolIndex {
   match edge.label {
-    Authored { name: sym } =>
-      if dag_surface_module_header_metadata_edge(name: sym) {
-        symbol_index_fill_containment_node(
-          index: index,
-          path: path,
-          node: edge.target
-        )
-      } else if parse_tree_projection_edge(name: sym) {
+    StructuralLabel { label: _ } =>
+      if dag_surface_module_header_metadata_edge(e: edge) {
         symbol_index_fill_containment_node(
           index: index,
           path: path,
           node: edge.target
         )
       } else {
-        let child_path = qualified_name_snoc(qn: path, segment: sym)
-        let declared = symbol_index_declared(target: edge.target)
-        let with_binding = symbol_index_insert(
+        symbol_index_fill_declared_child(index: index, path: path, segment: label_sort_key(label: edge.label), edge: edge)
+      }
+    Authored { name: sym } =>
+      if parse_tree_projection_edge(name: sym) {
+        symbol_index_fill_containment_node(
           index: index,
-          qualified_path: child_path,
-          resolved: declared.bound
+          path: path,
+          node: edge.target
         )
-        match declared.members {
-          Present { value: member } =>
-            symbol_index_fill_containment_node(
-              index: with_binding,
-              path: child_path,
-              node: member
-            )
-          Absent => with_binding
-        }
+      } else {
+        symbol_index_fill_declared_child(index: index, path: path, segment: sym, edge: edge)
       }
     Positional =>
       symbol_index_fill_containment_node(

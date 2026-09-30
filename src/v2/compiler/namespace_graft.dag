@@ -27,6 +27,9 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  StructuralLabel,
+  edge_label_of,
+  labeled_named_is,
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.compiler.parse { parse_tree_projection_edge }
@@ -80,20 +83,20 @@ type ModuleRootEdgeDisposition
 // an export subset). import_decl units DISSOLVE at the unit partition
 // (NamespaceGraftUnitDisposition UnitDissolved): admitted upstream as Admission.imports.
 
-fn namespace_graft_module_root_edge_disposition(name: Symbol) -> ModuleRootEdgeDisposition {
-  if dag_surface_module_header_metadata_edge(name: name) {
+fn namespace_graft_module_root_edge_disposition(e: Edge) -> ModuleRootEdgeDisposition {
+  if dag_surface_module_header_metadata_edge(e: e) {
     ModuleRootEdgeDissolve
-  } else if name == ^grammar_production_identity_node_projection {
+  } else if labeled_named_is(x: e, label_of: edge_label_of, wanted: ^grammar_production_identity_node_projection) {
     ModuleRootEdgeRehomeProvenance
-  } else if name == ^grammar_production_captured_node_projection {
+  } else if labeled_named_is(x: e, label_of: edge_label_of, wanted: ^grammar_production_captured_node_projection) {
     ModuleRootEdgeDissolve
   } else {
     ModuleRootEdgeGraftBody
   }
 }
 
-fn namespace_graft_is_metadata_edge(name: Symbol) -> Bool {
-  dag_surface_module_header_metadata_edge(name: name)
+fn namespace_graft_is_metadata_edge(e: Edge) -> Bool {
+  dag_surface_module_header_metadata_edge(e: e)
 }
 
 fn namespace_graft_is_module_shell(root: Node) -> Bool {
@@ -133,10 +136,10 @@ fn namespace_graft_collect_body_edge(
     acc
   } else {
   match edge.label {
+    StructuralLabel { label: _ } =>
+      if namespace_graft_is_metadata_edge(e: edge) { acc } else { list_snoc_item(xs: acc, item: edge) }
     Authored { name: sym } =>
-      if namespace_graft_is_metadata_edge(name: sym) {
-        acc
-      } else if parse_tree_projection_edge(name: sym) {
+      if parse_tree_projection_edge(name: sym) {
         concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target, unit_ids: unit_ids))
       } else if dag_resolve_preserve_module_metadata_subtree(node: edge.target) {
         acc
@@ -440,10 +443,9 @@ fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDecl
 // two Named atoms.
 fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
   match edge.label {
+    StructuralLabel { label: _ } => false
     Authored { name: sym } =>
       if parse_tree_projection_edge(name: sym) {
-        false
-      } else if namespace_graft_is_metadata_edge(name: sym) {
         false
       } else if namespace_graft_target_is_production_shell(edge: edge) {
         false
@@ -658,10 +660,9 @@ fn namespace_graft_has_explicit_braced_container(root: Node, first_segment: Symb
         true
       } else {
         match edge.label {
+          StructuralLabel { label: _ } => false
           Authored { name: sym } =>
-            if namespace_graft_is_metadata_edge(name: sym) {
-              false
-            } else if sym == first_segment {
+            if sym == first_segment {
               match edge.target.kind {
                 TypeNode { connective: Conj } => true
                 _ => false

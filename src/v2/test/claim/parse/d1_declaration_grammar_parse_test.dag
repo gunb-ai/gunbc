@@ -8,7 +8,8 @@ import v2.extdeps.languages.dag {
   dag_lex,
   parse_subtree_find_production_captured,
   ParseSubtreeAbsent,
-  ParseSubtreeFound
+  ParseSubtreeFound,
+  dag_surface_edge_is,
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
@@ -62,10 +63,7 @@ fn d1_tree_carries_where_clause(root: Node) -> Bool {
 }
 
 fn d1_edge_names_where_clause(e: Edge) -> Bool {
-  match e.label {
-    Authored { name: n } => n == ^dag_surface_where_refinement_clause
-    _ => false
-  }
+  dag_surface_edge_is(e: e, edge: ^dag_surface_where_refinement_clause)
 }
 
 fn d1_find_where_host_conj(root: Node) -> Optional<Node> {

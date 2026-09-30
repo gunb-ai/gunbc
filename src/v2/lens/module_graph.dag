@@ -63,7 +63,8 @@ import v2.compiler.source_authority_read { source_root_ingest_from_source_refs }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag {
   dag_language_model,
-  qualified_name_from_module_node
+  qualified_name_from_module_node,
+  dag_surface_edge_label,
 }
 
 type ModuleDeclarationFact {
@@ -310,14 +311,16 @@ fn located_roots_from_source_root_ingest(
   )
 }
 
+// Whether the mention sits under an import production. Each position label is compared WHOLE with
+// the dag surface production's label, so an authored name spelled like an import production is a
+// different label and never makes an ordinary mention read as import syntax.
 fn site_is_import_syntax_mention(site: ReferenceSite) -> Bool {
-  contains(xs: site.position, item: ^dag_surface_import_decl, eq: symbol_eq)
-    || contains(xs: site.position, item: ^dag_surface_import_block, eq: symbol_eq)
-    || contains(
-      xs: site.position,
-      item: ^dag_surface_import_decl_qualified_name,
-      eq: symbol_eq
-    )
+  fold(site.position, init: false, f: fn(found, label) {
+    found
+      || (label == dag_surface_edge_label(edge: ^dag_surface_import_decl))
+      || (label == dag_surface_edge_label(edge: ^dag_surface_import_block))
+      || (label == dag_surface_edge_label(edge: ^dag_surface_import_decl_qualified_name))
+  })
 }
 
 fn reference_sites_excluding_import_syntax(

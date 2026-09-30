@@ -49,6 +49,8 @@ import v2.extdeps.languages.dag {
   parse_qualified_name_segment_atoms_from_capture,
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
+  dag_surface_edge_label,
+  dag_surface_edge_is,
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_return_type_variable, fresh_type_variable }
 import v2.std.algebra { fold_list, list_map, length, zip_eq }
@@ -795,7 +797,7 @@ fn body_lower_kept_where_clause(where_clause: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Authored { name: ^dag_surface_where_refinement_clause },
+        label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause),
         target: production
       }
     ],
@@ -811,7 +813,7 @@ fn body_lower_type_variant_children_with_where(
   let with_clause = [
     Edge { label: Authored { name: ^dag_surface_type_expr }, target: base },
     Edge {
-      label: Authored { name: ^dag_surface_where_refinement_clause },
+      label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause),
       target: body_lower_kept_where_clause(where_clause: where_clause)
     }
   ]
@@ -8133,10 +8135,7 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<BodyLow
 }
 
 fn body_lower_edge_names_where_clause(e: Edge) -> Bool {
-  match e.label {
-    Authored { name: n } => n == ^dag_surface_where_refinement_clause
-    Positional => false
-  }
+  dag_surface_edge_is(e: e, edge: ^dag_surface_where_refinement_clause)
 }
 
 fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {

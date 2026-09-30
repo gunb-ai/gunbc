@@ -4,7 +4,7 @@ import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalized_tree { admit_normalized_tree, no_import_bindings, no_record_declarations }
 import v2.compiler.resolve { build_program_namespace }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag { dag_language_model, dag_surface_edge }
 import v2.std.collection { map_lookup }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.diagnostic { Accepted, None, Rejected }
@@ -49,8 +49,8 @@ fn stmb_emit_shaped_root(module_qn: QualifiedName) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      stmb_named(name: ^dag_surface_module_header, target: stmb_atom(id: ^dag_surface_module)),
-      stmb_named(name: ^dag_surface_module_header_qualified_name, target: qualified_name_spine_node(qn: module_qn, occurrence_id: OccurrenceSynthetic)),
+      dag_surface_edge(edge: ^dag_surface_module_header, target: stmb_atom(id: ^dag_surface_module)),
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name, target: qualified_name_spine_node(qn: module_qn, occurrence_id: OccurrenceSynthetic)),
       stmb_named(name: ^t, target: stmb_record_t())
     ],
     occurrence_id: OccurrenceSynthetic

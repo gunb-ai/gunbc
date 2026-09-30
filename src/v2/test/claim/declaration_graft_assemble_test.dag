@@ -2,7 +2,7 @@ module v2.test.claim.declaration_graft_assemble
 
 import v2.compiler.resolve { ResolvedTree }
 import v2.std.symbol_index { symbol_index_lookup }
-import v2.std.node_query { find_named_child }
+import v2.std.node_query { find_named_child, find_labeled_child }
 import v2.std.optional { Absent, Present }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
@@ -14,7 +14,7 @@ import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest
 }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag { dag_language_model, dag_surface_edge_label }
 import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
@@ -208,7 +208,7 @@ test fn declaration_graft_where_alias_carrier_is_resolved_in_resolved_declaratio
       match symbol_index_lookup(index: tree.resolved_declarations, qualified_path: Cons { head: ^p, tail: Cons { head: ^Name, tail: Empty } }) {
         Absent => false
         Present { value: decl } =>
-          match find_named_child(root: decl, name: ^dag_surface_type_expr) {
+          match find_labeled_child(root: decl, label: dag_surface_edge_label(edge: ^dag_surface_type_expr)) {
             Accepted { value: carrier, diagnostics: _ } =>
               match carrier.kind {
                 TypeNode { connective: Atom { identity: id } } => id == ^dag_binding_type_int

@@ -1,5 +1,9 @@
 module v2.test.claim.namespace_xl0.repair_input_origin_denominator
 
+import v2.compiler.resolution_provenance { reference_site_scope_path }
+
+import v2.extdeps.languages.dag { dag_surface_edge }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // NAMESPACE-XL XL-0's executing evidence. Two subjects, and they fail for different reasons:
@@ -25,12 +29,10 @@ fn xl0_module_root(qn_spine: Node, exports: List<Edge>) -> Node {
     kind: TypeNode { connective: Conj },
     children: concat(
       [
-        dag_named_edge(
-          name: ^dag_surface_module_header,
+        dag_surface_edge(edge: ^dag_surface_module_header,
           target: dag_grammar_atom(id: ^dag_surface_module_header)
         ),
-        dag_named_edge(
-          name: ^dag_surface_module_header_qualified_name,
+        dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
           target: qn_spine
         )
       ],
@@ -97,7 +99,7 @@ fn xl0_site_spelling(site: ReferenceSite) -> String {
 }
 
 fn xl0_site_position(site: ReferenceSite) -> String {
-  qualified_name_to_dotted_string(qn: site.position)
+  qualified_name_to_dotted_string(qn: reference_site_scope_path(site: site))
 }
 
 fn xl0_any_site(sites: FreeMonoid<ReferenceSite>, f: fn(ReferenceSite) -> Bool) -> Bool {

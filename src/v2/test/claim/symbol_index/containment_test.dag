@@ -1,5 +1,7 @@
 module v2.test.claim.symbol_index.containment
 
+import v2.extdeps.languages.dag { dag_surface_edge }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn si_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
@@ -23,12 +25,10 @@ fn si_module_root(
     kind: TypeNode { connective: Conj },
     children: concat(
       [
-        dag_named_edge(
-          name: ^dag_surface_module_header,
+        dag_surface_edge(edge: ^dag_surface_module_header,
           target: dag_grammar_atom(id: ^dag_surface_module_header)
         ),
-        dag_named_edge(
-          name: ^dag_surface_module_header_qualified_name,
+        dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
           target: qn_spine
         )
       ],

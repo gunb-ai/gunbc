@@ -5,7 +5,8 @@ import std.occurrence_identity {
 }
 import v2.extdeps.languages.dag {
   dag_surface_operator_canonicalization_member,
-  dag_value_expression_projection
+  dag_value_expression_projection,
+  dag_surface_edge_label,
 }
 import extdeps.communication.medium {
   Medium
@@ -66,7 +67,8 @@ import v2.std.type_binder {
 }
 import v2.std.node_query {
   find_named_child,
-  node_positional_child_targets
+  node_positional_child_targets,
+  find_labeled_child,
 }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
@@ -2132,7 +2134,7 @@ fn serialize_type_expr_boundary_bounded(
 }
 
 fn is_dag_import_carrier(emitted: Node) -> Bool {
-  match find_named_child(root: emitted, name: ^dag_surface_import_decl) {
+  match find_labeled_child(root: emitted, label: dag_surface_edge_label(edge: ^dag_surface_import_decl)) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }

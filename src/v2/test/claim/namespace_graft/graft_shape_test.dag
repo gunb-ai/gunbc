@@ -7,7 +7,8 @@ import v2.extdeps.languages.dag {
   dag_named_edge,
   emit_module_header_emitted_node,
   namespace_graft_node_is_module_body,
-  qualified_name_from_graft_spine
+  qualified_name_from_graft_spine,
+  dag_surface_edge,
 }
 import v2.std.algebra { fold_list_node }
 import v2.std.collection { Absent, Present, list_at_optional }
@@ -59,12 +60,10 @@ fn ng_pre_graft_module_root(
     kind: TypeNode { connective: Conj },
     children: concat(
       [
-        dag_named_edge(
-          name: ^dag_surface_module_header,
+        dag_surface_edge(edge: ^dag_surface_module_header,
           target: dag_grammar_atom(id: ^dag_surface_module_header)
         ),
-        dag_named_edge(
-          name: ^dag_surface_module_header_qualified_name,
+        dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
           target: ng_qn_spine(segments: qn)
         )
       ],
@@ -184,16 +183,7 @@ fn namespace_graft_grafted_tree_has_no_metadata_edges(node: Node) -> Bool {
           if !ok {
             false
           } else {
-            match edge.label {
-              Authored { name: sym } =>
-                if namespace_graft_is_metadata_edge(name: sym) {
-                  false
-                } else {
-                  namespace_graft_grafted_tree_has_no_metadata_edges(node: edge.target)
-                }
-              Positional =>
-                namespace_graft_grafted_tree_has_no_metadata_edges(node: edge.target)
-            }
+            if namespace_graft_is_metadata_edge(e: edge) { false } else { namespace_graft_grafted_tree_has_no_metadata_edges(node: edge.target) }
           }
         }
       )

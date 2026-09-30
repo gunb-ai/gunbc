@@ -124,6 +124,9 @@ import v2.std.node {
   well_formed,
   MatchArmPatternEdge,
   edge_is_core,
+  StructuralLabel,
+  label_sort_key,
+  labeled_named_is,
 }
 import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
@@ -238,6 +241,7 @@ fn empty_canonical_symbol_set() -> PointwisePower<Symbol> {
 fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
   match e.label {
     Authored { name: sym } => optional_present(value: DeclaredBinding { name: sym })
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }
@@ -1710,16 +1714,10 @@ fn resolve_node_walk(
   }
 }
 
-fn resolve_preserve_module_root_named_edge(name: Symbol, target: Node) -> Bool {
-  if dag_surface_module_header_metadata_edge(name: name) {
-    true
-  } else if dag_resolve_preserve_module_metadata_subtree(node: target) {
-    true
-  } else if name == ^grammar_production_identity_node_projection {
-    true
-  } else {
-    false
-  }
+fn resolve_preserve_module_root_named_edge(e: Edge) -> Bool {
+  dag_surface_module_header_metadata_edge(e: e)
+    || dag_resolve_preserve_module_metadata_subtree(node: e.target)
+    || labeled_named_is(x: e, label_of: edge_label_of, wanted: ^grammar_production_identity_node_projection)
 }
 
 
@@ -1730,19 +1728,8 @@ fn resolve_child_edge(
   e: Edge
 ) -> ResolveNodeWalk {
   match e.label {
-    Authored { name: sym } =>
-      if ctx.under_module_root
-        && resolve_preserve_module_root_named_edge(name: sym, target: e.target) {
-        ResolveWalkAccepted { value: e.target, diagnostics: None }
-      } else {
-        let child_ctx = if ctx.under_module_root
-          && !dag_surface_module_header_metadata_edge(name: sym) {
-          resolve_ctx_snoc_position(ctx: ctx, segment: sym)
-        } else {
-          ctx
-        }
-        resolve_node_walk(ctx: child_ctx, n: e.target)
-      }
+    Authored { name: _ } => resolve_labeled_child_edge(ctx: ctx, e: e)
+    StructuralLabel { label: _ } => resolve_labeled_child_edge(ctx: ctx, e: e)
     Positional =>
       if ctx.under_module_root
         && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
@@ -1750,6 +1737,21 @@ fn resolve_child_edge(
       } else {
         resolve_node_walk(ctx: ctx, n: e.target)
       }
+  }
+}
+
+// A labeled edge under the module root extends the lexical position by the label's scope segment
+// (label_sort_key), except a preserved metadata edge, which is accepted as its own target.
+fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
+  if ctx.under_module_root && resolve_preserve_module_root_named_edge(e: e) {
+    ResolveWalkAccepted { value: e.target, diagnostics: None }
+  } else {
+    let child_ctx = if ctx.under_module_root && !dag_surface_module_header_metadata_edge(e: e) {
+      resolve_ctx_snoc_position(ctx: ctx, segment: label_sort_key(label: e.label))
+    } else {
+      ctx
+    }
+    resolve_node_walk(ctx: child_ctx, n: e.target)
   }
 }
 
