@@ -1,12 +1,12 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
 import gunbc.machine_intake_mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
-import gunbc.machine_intake_mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused }
+import gunbc.machine_intake_mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused, sol_establishment_deadline_ms, sol_establishment_expired }
 import extdeps.github.log_annotations { log_annotation_message_line }
 import gunbc.machine_intake_megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value }
+import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
 import v2.std.optional { Present }
 import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_run {
@@ -997,4 +997,18 @@ test fn the_boot_requires_the_recorded_live_watcher() -> Bool {
   let empty = sol_observer_refusal_of(record: ProcRead { content: "" }, stat: ProcRead { content: "" })
   (match ok { Present { value: _ } => false  _ => true })
     && [gone, reused, zombie, unread_stat, unread_record, empty].all(r => match r { Present { value: why } => string_contains(s: why, pattern: "the SOL notice watcher is required before a further BMC effect")  _ => false })
+}
+
+// THE ESTABLISHMENT ALLOWANCE IS ELAPSED TIME, NOT A POLL COUNT, in both directions, over supplied uptime
+// instants. Twenty fast polls 100 ms apart -- twice a ten-poll count -- are all inside a ten-second
+// allowance, so none has expired; three slow polls four seconds apart pass the deadline at the third
+// though a ten-poll count would still have seven to go. The start is an arbitrary uptime reading.
+test fn the_establishment_allowance_is_elapsed_time_not_a_poll_count() -> Bool {
+  let start = 350735470
+  let deadline = sol_establishment_deadline_ms(start: millisecond(count: start), allowance: second(count: 10))
+  let fast = map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], i => sol_establishment_expired(now: millisecond(count: start + i * 100), deadline_ms: deadline))
+  let slow = map([1, 2, 3], i => sol_establishment_expired(now: millisecond(count: start + i * 4000), deadline_ms: deadline))
+  deadline == start + 10000
+    && fast.all(e => !e)
+    && slow == [false, false, true]
 }

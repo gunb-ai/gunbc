@@ -14,7 +14,7 @@ import std.temporal_effect {
   held_lease_observed_verdict,
 }
 import std.algebra { trim }
-import std.measure { Second, second, second_count, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
+import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.machine_intake_mtcollins1_census_medium_readback {
@@ -39,7 +39,7 @@ import gunbc.machine_intake_mtcollins1_boot_phase_timing {
   MtCollins1PhaseRunResult, PhaseVerified, PhaseRefused, MtCollins1PhaseStep, PhaseStepRan, PhaseStepSkipped, MtCollins1BootRoute,
   mtcollins1_boot_phase_timing_of, mtcollins1_boot_route_sol_refused, mtcollins1_smpro_pass_result,
 }
-import extdeps.linux.proc_uptime { proc_uptime_read }
+import extdeps.linux.proc_uptime { proc_uptime_read, UptimeObserved, UptimeRefused }
 import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_milestone {
   MtCollins1BootTopologyExpectation, mtcollins1_boot_topology_expectation,
@@ -110,10 +110,10 @@ data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.t
 
 data mtcollins1_boot_poll_cadence: Second = second(count: 15)
 
-// The acquisition's establishment allowance (mtcollins1_sol_await_establishment), counted in POLLS: that
-// many observations one second apart, each also paying its own reads and scheduling, so it is not a
-// strict wall-clock deadline. The RMCP+ session setup and Activate Payload exchange take a few seconds.
-// Paid inside the prelude allowance, which covers the acquisition.
+// The acquisition's establishment allowance (mtcollins1_sol_await_establishment): a monotonic deadline
+// measured on /proc/uptime from the start of the wait, polled about once a second. The RMCP+ session
+// setup and Activate Payload exchange take a few seconds. Paid inside the prelude allowance, which
+// covers the acquisition.
 data mtcollins1_boot_sol_establish_allowance: Second = second(count: 15)
 
 data mtcollins1_boot_prelude_allowance: Second = second(count: 120)
@@ -512,6 +512,7 @@ type SolEstablishmentFailure
   | SolCollectorLeftUnexplained { collector: SolCollectorObservation, last_line: String }
   | SolActivationUnconfirmed { collector: SolCollectorObservation, allowance: Second }
   | SolActivationUnrecorded { detail: String }
+  | SolEstablishmentClockUnread { detail: String }
   | SolAdoptedActivationUnproven { collector: SolCollectorObservation, receipt: String }
 
 fn last_nonempty_line(s: String) -> String {
@@ -547,6 +548,7 @@ fn sol_establishment_failure_text(failure: SolEstablishmentFailure) -> String {
     SolSessionRefused { cause: c } => bmc_read_cause_text(cause: c)
     SolCollectorLeftUnexplained { collector: o, last_line: l } => concat(sol_collector_observation_text(observation: o), "; its last line: ", if l == "" { "(none)" } else { l })
     SolActivationUnconfirmed { collector: o, allowance: a } => concat(sol_collector_observation_text(observation: o), concat(", but the session did not print its operational banner within ", concat(to_string(second_count(s: a)), " s, so activation is unconfirmed")))
+    SolEstablishmentClockUnread { detail: d } => concat("the establishment deadline could not be measured, so activation is unconfirmed: ", d)
     SolActivationUnrecorded { detail: d } => concat("the banner was seen but the activation receipt could not be recorded: ", d)
     SolAdoptedActivationUnproven { collector: o, receipt: r } => concat(sol_collector_observation_text(observation: o), concat("; no activation receipt names this instance, so an adopted collector is not taken as established (receipt: ", concat(if r == "" { "(none)" } else { r }, ")")))
   })
@@ -597,7 +599,7 @@ fn mtcollins1_sol_activate_held(
   if !spawned.success {
     return exit_failure(reason: concat(dissolution_description(condition: mtcollins1_sol_hold_shell_emit_dissolution_trigger), concat(" ", sol_establishment_failure_text(failure: SolSpawnRefused { detail: concat(trim(s: spawned.transport_stderr), concat(" ", trim(s: spawned.stdout))) }))))
   }
-  match mtcollins1_sol_await_establishment(pid_path: pid_path, capture_path: capture_path, remaining: second_count(s: mtcollins1_boot_sol_establish_allowance) as Int) {
+  match mtcollins1_sol_await_establishment(pid_path: pid_path, capture_path: capture_path, allowance: mtcollins1_boot_sol_establish_allowance) {
     SolEstablished { at: _ } => ExitSuccess
     SolNotEstablished { failure: f } =>
       exit_failure(reason: concat(sol_establishment_failure_text(failure: f), concat("; not deactivating a session this hold did not establish; client diagnostics: ", client_diagnostic_path)))
@@ -631,7 +633,27 @@ fn sol_capture_opens_with_banner(capture: String) -> Bool {
 // publication pending, not a failure. The hold's own words end the wait early: its "pid not published"
 // line is SolPidNotPublished, and an exit record with nothing published is a collector that left. At
 // the deadline an unpublished collector is SolActivationUnconfirmed with that observation.
-fn mtcollins1_sol_await_establishment(pid_path: String, capture_path: String, remaining: Int) -> SolEstablishment {
+// THE ALLOWANCE IS A MONOTONIC DEADLINE, not a count of polls. The deadline is the /proc/uptime reading
+// at the start of the wait plus the allowance, and each poll compares a fresh reading against it
+// (sol_establishment_expired), so the time the wait grants does not depend on how long a poll takes:
+// fast polls do not exhaust it early and slow polls do not stretch it. An unreadable clock refuses
+// with its cause (SolEstablishmentClockUnread) rather than falling back to counting.
+fn sol_establishment_deadline_ms(start: Millisecond, allowance: Second) -> Nat {
+  millisecond_count(m: start) + second_count(s: allowance) * 1000
+}
+
+fn sol_establishment_expired(now: Millisecond, deadline_ms: Nat) -> Bool {
+  millisecond_count(m: now) >= deadline_ms
+}
+
+fn mtcollins1_sol_await_establishment(pid_path: String, capture_path: String, allowance: Second) -> SolEstablishment {
+  match proc_uptime_read() {
+    UptimeRefused { detail: d } => SolNotEstablished { failure: SolEstablishmentClockUnread { detail: d } }
+    UptimeObserved { uptime: u } => sol_await_establishment_until(pid_path: pid_path, capture_path: capture_path, allowance: allowance, deadline_ms: sol_establishment_deadline_ms(start: u, allowance: allowance))
+  }
+}
+
+fn sol_await_establishment_until(pid_path: String, capture_path: String, allowance: Second, deadline_ms: Nat) -> SolEstablishment {
   let at = clock_now_probed_at_or_unknown()
   let collector = mtcollins1_sol_collector_observe(pid_path: pid_path)
   let pending = match collector {
@@ -657,11 +679,15 @@ fn mtcollins1_sol_await_establishment(pid_path: String, capture_path: String, re
     let client = Filesystem.Read(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path))
     return SolNotEstablished { failure: sol_establishment_failure(collector: collector, client_diagnostics: if client.success { client.content } else { "" }, at: at) }
   }
-  if remaining <= 0 {
-    return SolNotEstablished { failure: SolActivationUnconfirmed { collector: collector, allowance: mtcollins1_boot_sol_establish_allowance } }
+  let expired = match proc_uptime_read() {
+    UptimeRefused { detail: d } => return SolNotEstablished { failure: SolEstablishmentClockUnread { detail: d } }
+    UptimeObserved { uptime: n } => sol_establishment_expired(now: n, deadline_ms: deadline_ms)
+  }
+  if expired {
+    return SolNotEstablished { failure: SolActivationUnconfirmed { collector: collector, allowance: allowance } }
   }
   let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
-  mtcollins1_sol_await_establishment(pid_path: pid_path, capture_path: capture_path, remaining: remaining - 1)
+  sol_await_establishment_until(pid_path: pid_path, capture_path: capture_path, allowance: allowance, deadline_ms: deadline_ms)
 }
 
 // THE ACTIVATION RECEIPT IS BOUND TO THE INSTANCE. Once the banner is seen for the held collector, its
