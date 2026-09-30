@@ -10,7 +10,7 @@ import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, system
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -277,8 +277,26 @@ fn systemctl_show_properties_argv(units: List<NonEmptyStr>, properties: List<Sys
 // Every service unit the manager holds, loaded or not, as plain rows whose first field is the unit
 // name. No pattern: a glob is a shell word the fleet's far-side re-parse refuses, so the caller filters
 // by name in the model instead.
+//
+// THE COMMAND IS THE SPELLING; THE WORDS ARE DERIVED FROM IT. The census that reads this list ran for
+// its whole life as a RENDERED SCRIPT -- argv words serialized to shell text by the caller -- and the
+// serialization is exactly what made it unreachable over the fleet transport, whose wall admits
+// portable remote words and refuses a script BODY before any word is examined (the fleet path's own
+// refusal, quoted in host_effect_realize run_shell_transport). Holding the probe as an ArgvCommand
+// and deriving the word list here means the rendered form and the typed form cannot drift apart:
+// there is one spelling, and argv_words is the only thing that flattens it. The program is the
+// PATH-resolved identity, not the absolute one, for the reason that identity row records: the runner
+// hosts these units live on have not been observed by this repository, and the words the census has
+// always executed begin with the bare name.
+fn systemctl_list_all_service_units_command() -> ArgvCommand {
+  argv_command(
+    program: systemctl_path_resolved_program(),
+    arguments: ["list-units", "--type=service", "--all", "--no-legend", "--plain"],
+  )
+}
+
 fn systemctl_list_all_service_units_argv() -> List<String> {
-  ["systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain"]
+  argv_words(command: systemctl_list_all_service_units_command())
 }
 
 // LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit.
