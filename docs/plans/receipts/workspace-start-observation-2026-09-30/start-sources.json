@@ -1,0 +1,776 @@
+[
+  {
+    "module": "extdeps.abi",
+    "source": "dag/extdeps/abi.dag",
+    "copy": "target/commissioning-start-observe/extdeps.abi.dag",
+    "sha256": "598bcdd3af7fc0f9a68e494347571155cdd22a6fbb42fe8c2b88e59802ea751f"
+  },
+  {
+    "module": "extdeps.assurance.claim_evidence",
+    "source": "dag/extdeps/assurance/claim_evidence.dag",
+    "copy": "target/commissioning-start-observe/extdeps.assurance.claim_evidence.dag",
+    "sha256": "d0700ef31aaba2b7775b672b035f7d83555146f97c4a498f912d4ff1a03b645c"
+  },
+  {
+    "module": "extdeps.currency.currency",
+    "source": "dag/extdeps/currency/currency.dag",
+    "copy": "target/commissioning-start-observe/extdeps.currency.currency.dag",
+    "sha256": "3016615f96e07bea627ba31aca76c1b6bbf0a95979928f9038e7c6c1143eede8"
+  },
+  {
+    "module": "extdeps.dhcp.v4",
+    "source": "dag/extdeps/dhcp/v4.dag",
+    "copy": "target/commissioning-start-observe/extdeps.dhcp.v4.dag",
+    "sha256": "7345654bdfaced990fd42629af87fa715fb3abc146cd275b10e40e49befc1fa5"
+  },
+  {
+    "module": "extdeps.dns.domain_name",
+    "source": "dag/extdeps/dns/domain_name.dag",
+    "copy": "target/commissioning-start-observe/extdeps.dns.domain_name.dag",
+    "sha256": "75c7f92dbd2b358b7a22a4b730fc2d459bac5358a26c2af1415985faae18da3d"
+  },
+  {
+    "module": "extdeps.exec.command",
+    "source": "dag/extdeps/exec/command.dag",
+    "copy": "target/commissioning-start-observe/extdeps.exec.command.dag",
+    "sha256": "226fdee25b18bdb3ce7a272e01ce2ef43de39db63b9beb9e39d44a6bc96c6c1d"
+  },
+  {
+    "module": "extdeps.exec.exec_arg_limit",
+    "source": "dag/extdeps/exec/exec_arg_limit.dag",
+    "copy": "target/commissioning-start-observe/extdeps.exec.exec_arg_limit.dag",
+    "sha256": "e8298e58a6d4f70fce35245c4f3b7ff2b5d06cfe48a0a9f6804533f9454b4541"
+  },
+  {
+    "module": "extdeps.exec.program",
+    "source": "dag/extdeps/exec/program.dag",
+    "copy": "target/commissioning-start-observe/extdeps.exec.program.dag",
+    "sha256": "e4fcdbb20babccb6a4c987755c4d4a508f35635ed91a203fcbd95c78ee20ea46"
+  },
+  {
+    "module": "extdeps.external_authority",
+    "source": "dag/extdeps/external_authority.dag",
+    "copy": "target/commissioning-start-observe/extdeps.external_authority.dag",
+    "sha256": "88e4aeb78428f3cbd583016c8e4dea926b6a9ff0a9d81b613e22d736e5fba1b4"
+  },
+  {
+    "module": "extdeps.http.server",
+    "source": "dag/extdeps/http/server.dag",
+    "copy": "target/commissioning-start-observe/extdeps.http.server.dag",
+    "sha256": "8fd70566a68ce44721e6945072ab636dcf4a4e907af7fcc77a027897c9151fb1"
+  },
+  {
+    "module": "extdeps.ietf.http_semantics",
+    "source": "dag/extdeps/ietf/http_semantics.dag",
+    "copy": "target/commissioning-start-observe/extdeps.ietf.http_semantics.dag",
+    "sha256": "606fc53707bbf45632049ea67659287eb25b95291f9138e68fbbe803553054ab"
+  },
+  {
+    "module": "extdeps.languages.json.emit",
+    "source": "dag/extdeps/languages/json/emit.dag",
+    "copy": "target/commissioning-start-observe/extdeps.languages.json.emit.dag",
+    "sha256": "a40f075c87c09dd9f0dc8819e746cb0a2bf613abe54f4eba0579963149f16d58"
+  },
+  {
+    "module": "extdeps.languages.json.grammar",
+    "source": "dag/extdeps/languages/json/grammar.dag",
+    "copy": "target/commissioning-start-observe/extdeps.languages.json.grammar.dag",
+    "sha256": "5a5114ac942b635a21490bda26b8d896aba9358af7a16ec708f31909f9affe2a"
+  },
+  {
+    "module": "extdeps.languages.json.parse",
+    "source": "dag/extdeps/languages/json/parse.dag",
+    "copy": "target/commissioning-start-observe/extdeps.languages.json.parse.dag",
+    "sha256": "44b89df89e7610ef9d978992d434a4b9fc46ed6b34f37d0b23bddc147e7053cf"
+  },
+  {
+    "module": "extdeps.numeric.base16",
+    "source": "dag/extdeps/numeric/base16.dag",
+    "copy": "target/commissioning-start-observe/extdeps.numeric.base16.dag",
+    "sha256": "3623dd73f3681a6e292b627cb9b456818effd393624626683b954e7d146c0e64"
+  },
+  {
+    "module": "extdeps.pin",
+    "source": "dag/extdeps/pin.dag",
+    "copy": "target/commissioning-start-observe/extdeps.pin.dag",
+    "sha256": "1a70829a71b6657b2a74d5543cdc6a5c53f617a43413f4dd5cf02343867c9dca"
+  },
+  {
+    "module": "extdeps.posix.shell_command_language",
+    "source": "dag/extdeps/posix/shell_command_language.dag",
+    "copy": "target/commissioning-start-observe/extdeps.posix.shell_command_language.dag",
+    "sha256": "6e7268a08bd58cb9d5a70fc074adbcdcb61f1beeb3cea1221953a50d19c18d5c"
+  },
+  {
+    "module": "extdeps.process.gnu_bash_exit",
+    "source": "dag/extdeps/process/gnu_bash_exit.dag",
+    "copy": "target/commissioning-start-observe/extdeps.process.gnu_bash_exit.dag",
+    "sha256": "a15a59808e4c996318f62f68db463b836fc6203421fe1214d2969d499c025c42"
+  },
+  {
+    "module": "extdeps.process.posix_exit",
+    "source": "dag/extdeps/process/posix_exit.dag",
+    "copy": "target/commissioning-start-observe/extdeps.process.posix_exit.dag",
+    "sha256": "57b76d62b3ca996426e6f669c55e3e82a849225c59824613458d4dc813c6d8f5"
+  },
+  {
+    "module": "extdeps.runtime.abi.aapcs64",
+    "source": "dag/extdeps/runtime/abi/aapcs64.dag",
+    "copy": "target/commissioning-start-observe/extdeps.runtime.abi.aapcs64.dag",
+    "sha256": "44fad81b1ecbbf31b378ef80416cf55992ea0944cc121f318ea1360844774dee"
+  },
+  {
+    "module": "extdeps.runtime.abi.sysv_amd64",
+    "source": "dag/extdeps/runtime/abi/sysv_amd64.dag",
+    "copy": "target/commissioning-start-observe/extdeps.runtime.abi.sysv_amd64.dag",
+    "sha256": "dec8e88108d5098c1810ebe1bcff882af480c1c47bf3906ec1fb4572d2eab16a"
+  },
+  {
+    "module": "extdeps.runtime.architecture.x86_64_linux",
+    "source": "dag/extdeps/runtime/architecture/x86_64_linux.dag",
+    "copy": "target/commissioning-start-observe/extdeps.runtime.architecture.x86_64_linux.dag",
+    "sha256": "c742e341ea507b7ea5b067b5bc2fd7bb3910e8ce12841b30da710f8b788bfcf2"
+  },
+  {
+    "module": "extdeps.runtime.syscalls.linux",
+    "source": "dag/extdeps/runtime/syscalls/linux.dag",
+    "copy": "target/commissioning-start-observe/extdeps.runtime.syscalls.linux.dag",
+    "sha256": "53fd24ad1f02950ea687285043699f732973cde905108a5b946ed30648a50041"
+  },
+  {
+    "module": "extdeps.shell",
+    "source": "dag/extdeps/shell.dag",
+    "copy": "target/commissioning-start-observe/extdeps.shell.dag",
+    "sha256": "3bdcaca3dc02bcf50c6d1e9d415825ac27aaa6187b4cee5386e7decdc04b5696"
+  },
+  {
+    "module": "extdeps.shell.exec",
+    "source": "dag/extdeps/shell/exec.dag",
+    "copy": "target/commissioning-start-observe/extdeps.shell.exec.dag",
+    "sha256": "8d23901294b092c1bb97d19db6d0b4992d1636e2442b25742ea9ecc071d20e2f"
+  },
+  {
+    "module": "extdeps.sudo.elevation",
+    "source": "dag/extdeps/sudo/elevation.dag",
+    "copy": "target/commissioning-start-observe/extdeps.sudo.elevation.dag",
+    "sha256": "262f4a96a1de712c5493599edfd5d292ad65fb3e76cdb5cd25467b5df9c02e9d"
+  },
+  {
+    "module": "extdeps.systemd",
+    "source": "dag/extdeps/systemd/systemd.dag",
+    "copy": "target/commissioning-start-observe/extdeps.systemd.dag",
+    "sha256": "cb2792a0f14092bf8d129712b5a5d93ddbca6614ce8ebca8e7ae35b79184e9f3"
+  },
+  {
+    "module": "extdeps.systemd.systemctl",
+    "source": "dag/extdeps/systemd/systemctl.dag",
+    "copy": "target/commissioning-start-observe/extdeps.systemd.systemctl.dag",
+    "sha256": "69c6114d66ff04189a0c80f4703eb139664b0ae3d21d127669480a3c55be348c"
+  },
+  {
+    "module": "extdeps.systemd.systemd_contracts",
+    "source": "dag/extdeps/systemd/systemd_contracts.dag",
+    "copy": "target/commissioning-start-observe/extdeps.systemd.systemd_contracts.dag",
+    "sha256": "722527b719ffb710a286668f06ce3e07287e4d7997261d55fd889f6746596008"
+  },
+  {
+    "module": "extdeps.tailscale.identity",
+    "source": "dag/extdeps/tailscale/identity.dag",
+    "copy": "target/commissioning-start-observe/extdeps.tailscale.identity.dag",
+    "sha256": "4dd7dfdde01e2f59b772435f1859eda375a4c4bfa88ef9a4e9e3e32f71a47c76"
+  },
+  {
+    "module": "extdeps.tailscale.serve",
+    "source": "dag/extdeps/tailscale/serve.dag",
+    "copy": "target/commissioning-start-observe/extdeps.tailscale.serve.dag",
+    "sha256": "f6e30594b3c69ef79b471e81886b82e056350dc924d966d0121c6922752518e2"
+  },
+  {
+    "module": "extdeps.toolchain.architecture_profile",
+    "source": "dag/extdeps/toolchain/architecture_profile.dag",
+    "copy": "target/commissioning-start-observe/extdeps.toolchain.architecture_profile.dag",
+    "sha256": "f52f7b937d8a2090abc1622669544d8f80501f1189967ab9b7183fbd83f47ae8"
+  },
+  {
+    "module": "extdeps.toolchain.types",
+    "source": "dag/extdeps/toolchain/types.dag",
+    "copy": "target/commissioning-start-observe/extdeps.toolchain.types.dag",
+    "sha256": "cedf999e801ef28b73105996d0b591dea8c14722d05f88745ef41a34fd54c81f"
+  },
+  {
+    "module": "extdeps.tools.env",
+    "source": "dag/extdeps/tools/env.dag",
+    "copy": "target/commissioning-start-observe/extdeps.tools.env.dag",
+    "sha256": "5a6e868a9693e27881ca5433f463a8e0a12421f0dafb2a173fa94f230721765a"
+  },
+  {
+    "module": "extdeps.tools.stat",
+    "source": "dag/extdeps/tools/stat.dag",
+    "copy": "target/commissioning-start-observe/extdeps.tools.stat.dag",
+    "sha256": "b2970d48a1ab5c0c94097f14b7ba33880b925603c335e6116f79776b6642c5e4"
+  },
+  {
+    "module": "extdeps.transports.shell",
+    "source": "dag/extdeps/transports/shell.dag",
+    "copy": "target/commissioning-start-observe/extdeps.transports.shell.dag",
+    "sha256": "93cab3f3bfbe424c74a28d13e52cab3efcba91efa0af9f5fb323b8163d29c5e6"
+  },
+  {
+    "module": "extdeps.units.dimensionless",
+    "source": "dag/extdeps/units/dimensionless.dag",
+    "copy": "target/commissioning-start-observe/extdeps.units.dimensionless.dag",
+    "sha256": "4ce0c3cf4268976852663dc5faec7c4a8555ad232f8bebe1a6240ebe920f2f99"
+  },
+  {
+    "module": "extdeps.units.iec_80000_13",
+    "source": "dag/extdeps/units/iec_80000_13.dag",
+    "copy": "target/commissioning-start-observe/extdeps.units.iec_80000_13.dag",
+    "sha256": "81b1def06b779d7df8985e96aed48d3843c1d229f913821f0e7b73d7c204d1e9"
+  },
+  {
+    "module": "extdeps.units.iso8601",
+    "source": "dag/extdeps/units/iso8601.dag",
+    "copy": "target/commissioning-start-observe/extdeps.units.iso8601.dag",
+    "sha256": "3c65b8483141ebdf694baca379b0fab620f4a53d6df10d0adc7958dbb16a7c6f"
+  },
+  {
+    "module": "extdeps.units.iso_80000_3",
+    "source": "dag/extdeps/units/iso_80000_3.dag",
+    "copy": "target/commissioning-start-observe/extdeps.units.iso_80000_3.dag",
+    "sha256": "9b2b5204077998805292431b096a121f0ad16b8e272064012a8d455928e23eef"
+  },
+  {
+    "module": "extdeps.uri",
+    "source": "dag/extdeps/uri.dag",
+    "copy": "target/commissioning-start-observe/extdeps.uri.dag",
+    "sha256": "97d3c7fcbadb72d3d1ca0875fb0af711bce9edd290ebaa8597a5176a944f80a9"
+  },
+  {
+    "module": "extdeps.uri_path",
+    "source": "dag/extdeps/uri_path.dag",
+    "copy": "target/commissioning-start-observe/extdeps.uri_path.dag",
+    "sha256": "bdc372c881a09577849b46690cd019e825fb6dd34d03c3ac18f1f17f2425e2df"
+  },
+  {
+    "module": "extdeps.version",
+    "source": "dag/extdeps/version.dag",
+    "copy": "target/commissioning-start-observe/extdeps.version.dag",
+    "sha256": "4760c88ff448447d176e49c0417e0541298573d566e56f78af9605e70aa8d90b"
+  },
+  {
+    "module": "extdeps.version.semver",
+    "source": "dag/extdeps/version/semver.dag",
+    "copy": "target/commissioning-start-observe/extdeps.version.semver.dag",
+    "sha256": "9e7fed48b0f0fc4163cc406d41f7ed079bd37dc270dd3854dad0ae02bd9eac02"
+  },
+  {
+    "module": "gunbc.command_runner",
+    "source": "dag/gunbc/command_runner.dag",
+    "copy": "target/commissioning-start-observe/gunbc.command_runner.dag",
+    "sha256": "d117008c0f8a4d7a8144bda0055b65b9da73faa277866358097f8fbcfd06d31d"
+  },
+  {
+    "module": "gunbc.remote_shell_command",
+    "source": "dag/gunbc/remote_shell_command.dag",
+    "copy": "target/commissioning-start-observe/gunbc.remote_shell_command.dag",
+    "sha256": "fff7b91c77c02034f7454f9908dda590d69472b3139cfd9bf345800e696ad699"
+  },
+  {
+    "module": "gunbc.workspace_commissioning_start_observe",
+    "source": "dag/gunbc/workspace_commissioning_start_observe.dag",
+    "copy": "target/commissioning-start-observe/gunbc.workspace_commissioning_start_observe.dag",
+    "sha256": "2e46568a687b6a8190eef63c483895e9ae23d79518ca1fca47bfcef5f23c2fa0"
+  },
+  {
+    "module": "product.network_topology",
+    "source": "dag/gunbc/product/network_topology.dag",
+    "copy": "target/commissioning-start-observe/product.network_topology.dag",
+    "sha256": "b1e643d5ae05dfe283a002c2c7a6e2fec897a1d9f1d8bd6881a1434ed5001264"
+  },
+  {
+    "module": "product.placement_supply",
+    "source": "dag/gunbc/product/placement_supply.dag",
+    "copy": "target/commissioning-start-observe/product.placement_supply.dag",
+    "sha256": "48559ce2a18f6cfda6319dd331413c01387f7b9ba15077612a19d08c5d7545aa"
+  },
+  {
+    "module": "std.algebra",
+    "source": "dag/std/algebra.dag",
+    "copy": "target/commissioning-start-observe/std.algebra.dag",
+    "sha256": "33a01d4e6bc16487014cd4a651f135973c4951d9fc5aedba436dce9dfd7e3adb"
+  },
+  {
+    "module": "std.bit",
+    "source": "dag/std/bit.dag",
+    "copy": "target/commissioning-start-observe/std.bit.dag",
+    "sha256": "bd7780103bc8adde799202cd33f0a75c51554a51f1caab051975193b9af2150f"
+  },
+  {
+    "module": "std.cache_identity",
+    "source": "dag/std/cache_identity.dag",
+    "copy": "target/commissioning-start-observe/std.cache_identity.dag",
+    "sha256": "c45c49d869cb817d1164d91cc93497c6dee7939be3dcb3a906888cfefe40fe12"
+  },
+  {
+    "module": "std.cache_interface",
+    "source": "dag/std/cache_interface.dag",
+    "copy": "target/commissioning-start-observe/std.cache_interface.dag",
+    "sha256": "cb7731b075f7dc2ec9703f48fb391c5f9b05cdabf968e6f92f66efb313e3f51e"
+  },
+  {
+    "module": "std.checked_arithmetic",
+    "source": "dag/std/checked_arithmetic.dag",
+    "copy": "target/commissioning-start-observe/std.checked_arithmetic.dag",
+    "sha256": "f7217d0f7f2151c185bbf35035039e52292ddd5f5df2665119673268eff7ea3d"
+  },
+  {
+    "module": "std.citation",
+    "source": "dag/std/citation.dag",
+    "copy": "target/commissioning-start-observe/std.citation.dag",
+    "sha256": "2a8aa865da1504e2f289eeb004434611aec96c1153f6923bdf2d8ee748ffa7d8"
+  },
+  {
+    "module": "std.claim_evidence",
+    "source": "dag/std/claim_evidence.dag",
+    "copy": "target/commissioning-start-observe/std.claim_evidence.dag",
+    "sha256": "5e13abee888b03b0eae5ece847b2a1e87a5bb7ca351b958d0147e041ae3edf46"
+  },
+  {
+    "module": "std.computation",
+    "source": "dag/std/computation.dag",
+    "copy": "target/commissioning-start-observe/std.computation.dag",
+    "sha256": "9398241ad9a76f7eef90c26306d662c6622d8951ee238fe0ea26380ac2a2c095"
+  },
+  {
+    "module": "std.constructors",
+    "source": "dag/std/constructors.dag",
+    "copy": "target/commissioning-start-observe/std.constructors.dag",
+    "sha256": "2402a8a41df34a71e6c03bc82fc9d58215e7de558d4160277f4b0acc0bbf576c"
+  },
+  {
+    "module": "std.content_hash",
+    "source": "dag/std/content_hash.dag",
+    "copy": "target/commissioning-start-observe/std.content_hash.dag",
+    "sha256": "8ba1a2f1bdcd8a0fb1699a7a637d5d37c908f17072ca5ed6cef6d6d147375c85"
+  },
+  {
+    "module": "std.decl_ref",
+    "source": "dag/std/decl_ref.dag",
+    "copy": "target/commissioning-start-observe/std.decl_ref.dag",
+    "sha256": "26082e2d3b20e94c666088be09a38af7004dd0a3585a23d001819eae838c097c"
+  },
+  {
+    "module": "std.disposition",
+    "source": "dag/std/disposition.dag",
+    "copy": "target/commissioning-start-observe/std.disposition.dag",
+    "sha256": "40cd746f00554945e53e85d17c3d0e2728652ca991927f95db731cfc2eaa5902"
+  },
+  {
+    "module": "std.dissolution",
+    "source": "dag/std/dissolution.dag",
+    "copy": "target/commissioning-start-observe/std.dissolution.dag",
+    "sha256": "16bac1ef13d250b8e8e5b119fb50b8b9bdd8b85ca1b4b255a91b29c6ecba3fa4"
+  },
+  {
+    "module": "std.error_primitives",
+    "source": "dag/std/error_primitives.dag",
+    "copy": "target/commissioning-start-observe/std.error_primitives.dag",
+    "sha256": "9dafc12f20fa0592a0cc74159a8ec11462308e577d28bb80a74d3166a670c69d"
+  },
+  {
+    "module": "std.execution_mode",
+    "source": "dag/std/execution_mode.dag",
+    "copy": "target/commissioning-start-observe/std.execution_mode.dag",
+    "sha256": "c0f66cc1914de3bbf40b49dd9a5bb533bf1f3ec96b854a2eff35b53d95f35ddb"
+  },
+  {
+    "module": "std.fermi",
+    "source": "dag/std/fermi.dag",
+    "copy": "target/commissioning-start-observe/std.fermi.dag",
+    "sha256": "e3e1762717457e08f185b8ee5328893806e3812f9c14976f1b5f19da885b329f"
+  },
+  {
+    "module": "std.fidelity",
+    "source": "dag/std/fidelity.dag",
+    "copy": "target/commissioning-start-observe/std.fidelity.dag",
+    "sha256": "7f15f69ef1e14b04ebc93b32ea77cf2c5b99b2cee99621389cd3555995d0ee37"
+  },
+  {
+    "module": "std.induction",
+    "source": "dag/std/induction.dag",
+    "copy": "target/commissioning-start-observe/std.induction.dag",
+    "sha256": "452e0389b6fddea7b2bd4af3c8d21469afd61cb95b31661e7b88d3d9809b3bbe"
+  },
+  {
+    "module": "std.integer",
+    "source": "dag/std/integer.dag",
+    "copy": "target/commissioning-start-observe/std.integer.dag",
+    "sha256": "da2e701838e23ce32db6c1ceb1a509370a743e38bac31d1ea4166daaebae4861"
+  },
+  {
+    "module": "std.interval",
+    "source": "dag/std/interval.dag",
+    "copy": "target/commissioning-start-observe/std.interval.dag",
+    "sha256": "27bf64e0b74bb1a10176d5d3bb88b6d45e80a53777027a714b3a52bb27a70c24"
+  },
+  {
+    "module": "std.key_relation",
+    "source": "dag/std/key_relation.dag",
+    "copy": "target/commissioning-start-observe/std.key_relation.dag",
+    "sha256": "22d2cc609e47bd49d0e8fef86aaa23497dc75caec192929962d6e89f2b603160"
+  },
+  {
+    "module": "std.keyed_roster",
+    "source": "dag/std/keyed_roster.dag",
+    "copy": "target/commissioning-start-observe/std.keyed_roster.dag",
+    "sha256": "41f346765f15aed3ecf28ff990ebb111864d524ab9bf95e03131638717abe584"
+  },
+  {
+    "module": "std.keyed_row",
+    "source": "dag/std/keyed_row.dag",
+    "copy": "target/commissioning-start-observe/std.keyed_row.dag",
+    "sha256": "e5bce67aea16eabf826cf18ccd4a542142c42bf6950da0b1b977edaa02fba1dc"
+  },
+  {
+    "module": "std.layout",
+    "source": "dag/std/layout.dag",
+    "copy": "target/commissioning-start-observe/std.layout.dag",
+    "sha256": "e7b769e93c44d34d70d4c821588f7fcda4108c4403a2db24cc5abbd9e0080043"
+  },
+  {
+    "module": "std.logic",
+    "source": "dag/std/logic.dag",
+    "copy": "target/commissioning-start-observe/std.logic.dag",
+    "sha256": "f508ba9750df53d5d3021119a1ec7870b9f10671a1882d1cf9224c7319fd0689"
+  },
+  {
+    "module": "std.machine_constraints",
+    "source": "dag/std/machine_constraints.dag",
+    "copy": "target/commissioning-start-observe/std.machine_constraints.dag",
+    "sha256": "dcf59511c69d268cedf9fd403741253850bd741badd20b5ea6bd0c5b4f9db78b"
+  },
+  {
+    "module": "std.magnitude",
+    "source": "dag/std/magnitude.dag",
+    "copy": "target/commissioning-start-observe/std.magnitude.dag",
+    "sha256": "76bf8826e9986a021a6baa5abd18dd9958fda4d8178ccbe8112d1551be273b9b"
+  },
+  {
+    "module": "std.measure",
+    "source": "dag/std/measure.dag",
+    "copy": "target/commissioning-start-observe/std.measure.dag",
+    "sha256": "7c9f67965114ed1b12cf22d885a7b7d555becde93be32d866892ca09e96d998b"
+  },
+  {
+    "module": "std.nat",
+    "source": "dag/std/nat.dag",
+    "copy": "target/commissioning-start-observe/std.nat.dag",
+    "sha256": "70f854bda16ffc0e5ae6e2b46c155cd8fc05f894133a8c18155924752aa613c0"
+  },
+  {
+    "module": "std.occurrence_identity",
+    "source": "dag/std/occurrence_identity.dag",
+    "copy": "target/commissioning-start-observe/std.occurrence_identity.dag",
+    "sha256": "2c8934d5c379a18f2d8fae4372fd7be5025b6d3bf46da9d9f105c5e12ed3116e"
+  },
+  {
+    "module": "std.os.invocation",
+    "source": "dag/std/os/invocation.dag",
+    "copy": "target/commissioning-start-observe/std.os.invocation.dag",
+    "sha256": "727b46a158a9ff2e39a32bbc868e4e7efd42cc8bcc918dbacf85a36b28acb58c"
+  },
+  {
+    "module": "std.pareto",
+    "source": "dag/std/pareto.dag",
+    "copy": "target/commissioning-start-observe/std.pareto.dag",
+    "sha256": "df8cb6b3943d9fea248d323bb14af15bd746c4fda63363d3bb4904d3f52354a0"
+  },
+  {
+    "module": "std.primitives",
+    "source": "dag/std/primitives.dag",
+    "copy": "target/commissioning-start-observe/std.primitives.dag",
+    "sha256": "b34cfff5738abdcab80b584efd8c6b09054b1bdb84ccafca2afc257b8f2b34f1"
+  },
+  {
+    "module": "std.process",
+    "source": "dag/std/process.dag",
+    "copy": "target/commissioning-start-observe/std.process.dag",
+    "sha256": "718c0e29480409fddb47bc3ad7d18fc588288aab9188dc5f82efafae105259b3"
+  },
+  {
+    "module": "std.process_termination",
+    "source": "dag/std/process_termination.dag",
+    "copy": "target/commissioning-start-observe/std.process_termination.dag",
+    "sha256": "ec4a657d62b7f208e2267008cef187313cee090cffca5eb7823929b9520b1f3c"
+  },
+  {
+    "module": "std.realization_schedule",
+    "source": "dag/std/realization_schedule.dag",
+    "copy": "target/commissioning-start-observe/std.realization_schedule.dag",
+    "sha256": "60a2d0b8354ad341b04baf3a493302c98afaa82f11907e7018765cc8af38c82f"
+  },
+  {
+    "module": "std.render_repeat_string_bootstrap",
+    "source": "dag/std/render_repeat_string_bootstrap.dag",
+    "copy": "target/commissioning-start-observe/std.render_repeat_string_bootstrap.dag",
+    "sha256": "006044620a11c6c78ac51173d3a24c06f0492138df798ad46235938d19966e8a"
+  },
+  {
+    "module": "std.roster_frontier",
+    "source": "dag/std/roster_frontier.dag",
+    "copy": "target/commissioning-start-observe/std.roster_frontier.dag",
+    "sha256": "1254294a5d4be2a8312c2ab563786dde1f6b022570fba8a78041b292774e9998"
+  },
+  {
+    "module": "std.serialization",
+    "source": "dag/std/serialization.dag",
+    "copy": "target/commissioning-start-observe/std.serialization.dag",
+    "sha256": "c3093200fcd2d53ddb95cb5cae63f06cb00bc72191240d41de1eba1f3aa0e6c2"
+  },
+  {
+    "module": "std.source_annotation",
+    "source": "dag/std/source_annotation.dag",
+    "copy": "target/commissioning-start-observe/std.source_annotation.dag",
+    "sha256": "096f7cd4233564cb72722cf9694b5d7154a7d087d57e4e30fe070bdcff5b0f62"
+  },
+  {
+    "module": "std.string_type",
+    "source": "dag/std/string_type.dag",
+    "copy": "target/commissioning-start-observe/std.string_type.dag",
+    "sha256": "54300558500e6c0d8988d1dc5dbe679c3b5fce52db229b1282fe5f163ad1cd18"
+  },
+  {
+    "module": "std.termination",
+    "source": "dag/std/termination.dag",
+    "copy": "target/commissioning-start-observe/std.termination.dag",
+    "sha256": "ae22e516e67037d9a4f916ea70f98e1d625e55a8c510ea70c21e3a9900104d54"
+  },
+  {
+    "module": "std.types",
+    "source": "dag/std/types.dag",
+    "copy": "target/commissioning-start-observe/std.types.dag",
+    "sha256": "2abfc53c499aa0063202944fc7321c02d194ab26006ea35cf32433d1b4187c4e"
+  },
+  {
+    "module": "std.unicode.types",
+    "source": "dag/std/unicode/types.dag",
+    "copy": "target/commissioning-start-observe/std.unicode.types.dag",
+    "sha256": "d9729ed6cd4156e21ec64eb7ba0a6bc5cc52bc1b525bb370a131d25c85e2dede"
+  },
+  {
+    "module": "std.witness_admission",
+    "source": "dag/std/witness_admission.dag",
+    "copy": "target/commissioning-start-observe/std.witness_admission.dag",
+    "sha256": "ef3bf6354631729f2da05b633a16934f6b6c3f281b935b12cf9b20e845fac967"
+  },
+  {
+    "module": "test.claim.workspace_commissioning_start_observe_witness",
+    "source": "dag/test/claim/workspace_commissioning_start_observe_witness_test.dag",
+    "copy": "target/commissioning-start-observe/test.claim.workspace_commissioning_start_observe_witness.dag",
+    "sha256": "21073f8f824c787f2d097d734c7d54dc944c2a8707b0b0f88766e4fbd145a525"
+  },
+  {
+    "module": "v2.std.algebra",
+    "source": "src/v2/std/algebra.dag",
+    "copy": "target/commissioning-start-observe/v2.std.algebra.dag",
+    "sha256": "5be90c2411ad93003bb3b020766ddbb587684cda3f7deb3b72d8bcd51cf02387"
+  },
+  {
+    "module": "v2.std.anonymous_binder",
+    "source": "src/v2/std/anonymous_binder.dag",
+    "copy": "target/commissioning-start-observe/v2.std.anonymous_binder.dag",
+    "sha256": "3990e713a899b905f9f41093ec0520f5edb2adfebb819a3c52cf32b1c2075df9"
+  },
+  {
+    "module": "v2.std.anti_unification",
+    "source": "src/v2/std/anti_unification.dag",
+    "copy": "target/commissioning-start-observe/v2.std.anti_unification.dag",
+    "sha256": "7b0fb7082df5e1d38d62500f1b9fdf86eb5353eb2fe09bcb5f9f05ecaedc4689"
+  },
+  {
+    "module": "v2.std.arrow_signature",
+    "source": "src/v2/std/arrow_signature.dag",
+    "copy": "target/commissioning-start-observe/v2.std.arrow_signature.dag",
+    "sha256": "b5e4cdb68ee3e7508c3d9714c4ad174416738937e5e77a384406715305dc4177"
+  },
+  {
+    "module": "v2.std.collection",
+    "source": "src/v2/std/collection.dag",
+    "copy": "target/commissioning-start-observe/v2.std.collection.dag",
+    "sha256": "f160775b65f55c663418ec482d53cafc612f95aed905fe449f35f433f865abb4"
+  },
+  {
+    "module": "v2.std.compilers.cli_surface",
+    "source": "src/v2/std/compilers/cli_surface.dag",
+    "copy": "target/commissioning-start-observe/v2.std.compilers.cli_surface.dag",
+    "sha256": "bf7dfe36956eef72e1803401b7f9e839a6fb0404954ab375d8a087590f271cf3"
+  },
+  {
+    "module": "v2.std.compilers.lexing",
+    "source": "src/v2/std/compilers/lexing.dag",
+    "copy": "target/commissioning-start-observe/v2.std.compilers.lexing.dag",
+    "sha256": "901598991078a8e035d017d988c1240f614b9c4e22410c47543979aff6daf04e"
+  },
+  {
+    "module": "v2.std.compilers.target_model",
+    "source": "src/v2/std/compilers/target_model.dag",
+    "copy": "target/commissioning-start-observe/v2.std.compilers.target_model.dag",
+    "sha256": "16d67acf1c862aa2b2cba9ad61e19cc69a14a3898c1831e6845dd35490c9e3e2"
+  },
+  {
+    "module": "v2.std.constraint_satisfaction_predicate",
+    "source": "src/v2/std/constraint_satisfaction_predicate.dag",
+    "copy": "target/commissioning-start-observe/v2.std.constraint_satisfaction_predicate.dag",
+    "sha256": "360768b2ed38cdd33c5b80e1cc37d6dac54ae0ec2d2765f5f8cd9efef3627b2d"
+  },
+  {
+    "module": "v2.std.diagnostic",
+    "source": "src/v2/std/diagnostic.dag",
+    "copy": "target/commissioning-start-observe/v2.std.diagnostic.dag",
+    "sha256": "42e23757590aa65c08c8ebcdf18267c32c2eddfb3ca1921b74c930d32417a8cb"
+  },
+  {
+    "module": "v2.std.exact_structural_equality_zip_fold_predicate",
+    "source": "src/v2/std/exact_structural_equality_zip_fold_predicate.dag",
+    "copy": "target/commissioning-start-observe/v2.std.exact_structural_equality_zip_fold_predicate.dag",
+    "sha256": "d574b778c094b0d9fb1345c9555fe4034e10ad81dce1a5f2bade5f2917c741cf"
+  },
+  {
+    "module": "v2.std.find_witness",
+    "source": "src/v2/std/find_witness.dag",
+    "copy": "target/commissioning-start-observe/v2.std.find_witness.dag",
+    "sha256": "7787623f8d31015e4036adcc034eb0a8dc68ae142eff70d048a6ad5c64e3b149"
+  },
+  {
+    "module": "v2.std.fold_assembly",
+    "source": "src/v2/std/fold_assembly.dag",
+    "copy": "target/commissioning-start-observe/v2.std.fold_assembly.dag",
+    "sha256": "d38c67aa005a8ff4e8f81c89e5808b6911cc00ed8ee5a04152ca3d72ccf3cacf"
+  },
+  {
+    "module": "v2.std.host_transport",
+    "source": "src/v2/std/host_transport.dag",
+    "copy": "target/commissioning-start-observe/v2.std.host_transport.dag",
+    "sha256": "0908d1bc00ad9a556854033c5e290cfe8a8d449c7e98263c832b55c39197b52a"
+  },
+  {
+    "module": "v2.std.integer",
+    "source": "src/v2/std/integer.dag",
+    "copy": "target/commissioning-start-observe/v2.std.integer.dag",
+    "sha256": "5a21823025d21ea197ed1f3089d1d0e52210ee93a050523bd565f1d1fa2a5dbb"
+  },
+  {
+    "module": "v2.std.integer_value_set",
+    "source": "src/v2/std/integer_value_set.dag",
+    "copy": "target/commissioning-start-observe/v2.std.integer_value_set.dag",
+    "sha256": "8eaad2efc01ba052691f5cea5baf6863b6d11e196853ab03cbecd5494e634e26"
+  },
+  {
+    "module": "v2.std.list_introduction",
+    "source": "src/v2/std/list_introduction.dag",
+    "copy": "target/commissioning-start-observe/v2.std.list_introduction.dag",
+    "sha256": "82eb489e302a7d0b92d0f088a3d96e7c08b6c0ddc544e537baaf59b04b517fe4"
+  },
+  {
+    "module": "v2.std.logic",
+    "source": "src/v2/std/logic.dag",
+    "copy": "target/commissioning-start-observe/v2.std.logic.dag",
+    "sha256": "367d6fb4ed51c8bf83e32faad414c5fed094c16483cb115b2868d89016df53dd"
+  },
+  {
+    "module": "v2.std.machine",
+    "source": "src/v2/std/machine.dag",
+    "copy": "target/commissioning-start-observe/v2.std.machine.dag",
+    "sha256": "294512f1f4d45c55d06fee6dc1911e3bd51ec1d1c4dcb1f5e6afc657ab478fad"
+  },
+  {
+    "module": "v2.std.model_core",
+    "source": "src/v2/std/model_core.dag",
+    "copy": "target/commissioning-start-observe/v2.std.model_core.dag",
+    "sha256": "d71cece1bcb3ee10faaa1f3376b32521ef5947df0807810b78600027ea5f54e1"
+  },
+  {
+    "module": "v2.std.nat",
+    "source": "src/v2/std/nat.dag",
+    "copy": "target/commissioning-start-observe/v2.std.nat.dag",
+    "sha256": "143bdb9e0ba746ffb3342b93b1131175a1fd4b5919467a85d422025a3111ebd5"
+  },
+  {
+    "module": "v2.std.node",
+    "source": "src/v2/std/node.dag",
+    "copy": "target/commissioning-start-observe/v2.std.node.dag",
+    "sha256": "a608d91ed1d2d9c382ed0d90d4aa8360f3f3cb236d3eb03d87b9fb6abcb47b4e"
+  },
+  {
+    "module": "v2.std.node_query",
+    "source": "src/v2/std/node_query.dag",
+    "copy": "target/commissioning-start-observe/v2.std.node_query.dag",
+    "sha256": "cb3a9c3436e59eb25268a90d41a1f94c9ecc5e102c2d69ac1a97320014edf183"
+  },
+  {
+    "module": "v2.std.node_shape",
+    "source": "src/v2/std/node_shape.dag",
+    "copy": "target/commissioning-start-observe/v2.std.node_shape.dag",
+    "sha256": "a1bfb36024f7c0cba48489c0b1ca3c285ebb4eb304a7bec38093b20370937c38"
+  },
+  {
+    "module": "v2.std.optional",
+    "source": "src/v2/std/optional.dag",
+    "copy": "target/commissioning-start-observe/v2.std.optional.dag",
+    "sha256": "6a686cbc761854f5bbbd83c07e21ff87b8154fe4f466be8b4d46f2fd85d3347b"
+  },
+  {
+    "module": "v2.std.orchestration",
+    "source": "src/v2/std/orchestration.dag",
+    "copy": "target/commissioning-start-observe/v2.std.orchestration.dag",
+    "sha256": "d03035c4421c3dcb9b2cd836ea8f1575fbae9dbccb0beba768df257a898d0449"
+  },
+  {
+    "module": "v2.std.passing_candidate_fold",
+    "source": "src/v2/std/passing_candidate_fold.dag",
+    "copy": "target/commissioning-start-observe/v2.std.passing_candidate_fold.dag",
+    "sha256": "3a9ace8eadb4cf10584e9839dbf529cac090847e57e6a22ada30e422992d6336"
+  },
+  {
+    "module": "v2.std.project_to_core_predicate",
+    "source": "src/v2/std/project_to_core_predicate.dag",
+    "copy": "target/commissioning-start-observe/v2.std.project_to_core_predicate.dag",
+    "sha256": "a444055743bfd137c4e4b69a316c2f6210aeb853667221c6f5d2ace51b8fd394"
+  },
+  {
+    "module": "v2.std.qualified_name",
+    "source": "src/v2/std/qualified_name.dag",
+    "copy": "target/commissioning-start-observe/v2.std.qualified_name.dag",
+    "sha256": "30e8ff017e3fd2960b29f1b8e81986fde54caedb5b95b1d0044581ea4b4919c5"
+  },
+  {
+    "module": "v2.std.refinement_widening_predicate",
+    "source": "src/v2/std/refinement_widening_predicate.dag",
+    "copy": "target/commissioning-start-observe/v2.std.refinement_widening_predicate.dag",
+    "sha256": "6a53373234541898a66f8093b231aaf6a551abdb8e425f5e160c6ebf48102c79"
+  },
+  {
+    "module": "v2.std.runtime",
+    "source": "src/v2/std/runtime.dag",
+    "copy": "target/commissioning-start-observe/v2.std.runtime.dag",
+    "sha256": "3da9b7391a0a789aba535d0792b1c9aa7c292d1afdaa733bb8ea8e17c4b7559d"
+  },
+  {
+    "module": "v2.std.text",
+    "source": "src/v2/std/text.dag",
+    "copy": "target/commissioning-start-observe/v2.std.text.dag",
+    "sha256": "35fcf688ef21518acc1fbc932f3043e58fc1c954a2da38d29be6fdd9945b88bd"
+  },
+  {
+    "module": "v2.std.type_binder",
+    "source": "src/v2/std/type_binder.dag",
+    "copy": "target/commissioning-start-observe/v2.std.type_binder.dag",
+    "sha256": "10081b2a03d39ff24b9e1062313384cb8921d8d11881f5ba2f15c8ddcc1f8165"
+  },
+  {
+    "module": "v2.std.witness",
+    "source": "src/v2/std/witness.dag",
+    "copy": "target/commissioning-start-observe/v2.std.witness.dag",
+    "sha256": "d01351415ee75b59f060b1916b150e9263f0c401c0872851ee578b7c8f868377"
+  }
+]

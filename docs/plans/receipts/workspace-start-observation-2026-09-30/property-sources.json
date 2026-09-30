@@ -1,0 +1,164 @@
+[
+  {
+    "module": "extdeps.currency.currency",
+    "source": "dag/extdeps/currency/currency.dag",
+    "copy": "target/commissioning-job-property-overlap/extdeps.currency.currency.dag",
+    "sha256": "3016615f96e07bea627ba31aca76c1b6bbf0a95979928f9038e7c6c1143eede8"
+  },
+  {
+    "module": "extdeps.external_authority",
+    "source": "dag/extdeps/external_authority.dag",
+    "copy": "target/commissioning-job-property-overlap/extdeps.external_authority.dag",
+    "sha256": "88e4aeb78428f3cbd583016c8e4dea926b6a9ff0a9d81b613e22d736e5fba1b4"
+  },
+  {
+    "module": "extdeps.systemd",
+    "source": "dag/extdeps/systemd/systemd.dag",
+    "copy": "target/commissioning-job-property-overlap/extdeps.systemd.dag",
+    "sha256": "cb2792a0f14092bf8d129712b5a5d93ddbca6614ce8ebca8e7ae35b79184e9f3"
+  },
+  {
+    "module": "extdeps.systemd.systemd_contracts",
+    "source": "dag/extdeps/systemd/systemd_contracts.dag",
+    "copy": "target/commissioning-job-property-overlap/extdeps.systemd.systemd_contracts.dag",
+    "sha256": "722527b719ffb710a286668f06ce3e07287e4d7997261d55fd889f6746596008"
+  },
+  {
+    "module": "extdeps.units.dimensionless",
+    "source": "dag/extdeps/units/dimensionless.dag",
+    "copy": "target/commissioning-job-property-overlap/extdeps.units.dimensionless.dag",
+    "sha256": "4ce0c3cf4268976852663dc5faec7c4a8555ad232f8bebe1a6240ebe920f2f99"
+  },
+  {
+    "module": "extdeps.units.iec_80000_13",
+    "source": "dag/extdeps/units/iec_80000_13.dag",
+    "copy": "target/commissioning-job-property-overlap/extdeps.units.iec_80000_13.dag",
+    "sha256": "81b1def06b779d7df8985e96aed48d3843c1d229f913821f0e7b73d7c204d1e9"
+  },
+  {
+    "module": "extdeps.units.iso8601",
+    "source": "dag/extdeps/units/iso8601.dag",
+    "copy": "target/commissioning-job-property-overlap/extdeps.units.iso8601.dag",
+    "sha256": "3c65b8483141ebdf694baca379b0fab620f4a53d6df10d0adc7958dbb16a7c6f"
+  },
+  {
+    "module": "extdeps.units.iso_80000_3",
+    "source": "dag/extdeps/units/iso_80000_3.dag",
+    "copy": "target/commissioning-job-property-overlap/extdeps.units.iso_80000_3.dag",
+    "sha256": "9b2b5204077998805292431b096a121f0ad16b8e272064012a8d455928e23eef"
+  },
+  {
+    "module": "extdeps.uri",
+    "source": "dag/extdeps/uri.dag",
+    "copy": "target/commissioning-job-property-overlap/extdeps.uri.dag",
+    "sha256": "97d3c7fcbadb72d3d1ca0875fb0af711bce9edd290ebaa8597a5176a944f80a9"
+  },
+  {
+    "module": "gunbc.systemd_property_directive_overlap",
+    "source": "dag/gunbc/systemd_property_directive_overlap.dag",
+    "copy": "target/commissioning-job-property-overlap/gunbc.systemd_property_directive_overlap.dag",
+    "sha256": "5f1004cc8fdd72ed1d2ea42affeea54f01e1b0835b53c39c32f42023be371174"
+  },
+  {
+    "module": "std.algebra",
+    "source": "dag/std/algebra.dag",
+    "copy": "target/commissioning-job-property-overlap/std.algebra.dag",
+    "sha256": "33a01d4e6bc16487014cd4a651f135973c4951d9fc5aedba436dce9dfd7e3adb"
+  },
+  {
+    "module": "std.checked_arithmetic",
+    "source": "dag/std/checked_arithmetic.dag",
+    "copy": "target/commissioning-job-property-overlap/std.checked_arithmetic.dag",
+    "sha256": "f7217d0f7f2151c185bbf35035039e52292ddd5f5df2665119673268eff7ea3d"
+  },
+  {
+    "module": "std.decl_ref",
+    "source": "dag/std/decl_ref.dag",
+    "copy": "target/commissioning-job-property-overlap/std.decl_ref.dag",
+    "sha256": "26082e2d3b20e94c666088be09a38af7004dd0a3585a23d001819eae838c097c"
+  },
+  {
+    "module": "std.disposition",
+    "source": "dag/std/disposition.dag",
+    "copy": "target/commissioning-job-property-overlap/std.disposition.dag",
+    "sha256": "40cd746f00554945e53e85d17c3d0e2728652ca991927f95db731cfc2eaa5902"
+  },
+  {
+    "module": "std.dissolution",
+    "source": "dag/std/dissolution.dag",
+    "copy": "target/commissioning-job-property-overlap/std.dissolution.dag",
+    "sha256": "16bac1ef13d250b8e8e5b119fb50b8b9bdd8b85ca1b4b255a91b29c6ecba3fa4"
+  },
+  {
+    "module": "std.error_primitives",
+    "source": "dag/std/error_primitives.dag",
+    "copy": "target/commissioning-job-property-overlap/std.error_primitives.dag",
+    "sha256": "9dafc12f20fa0592a0cc74159a8ec11462308e577d28bb80a74d3166a670c69d"
+  },
+  {
+    "module": "std.keyed_roster",
+    "source": "dag/std/keyed_roster.dag",
+    "copy": "target/commissioning-job-property-overlap/std.keyed_roster.dag",
+    "sha256": "41f346765f15aed3ecf28ff990ebb111864d524ab9bf95e03131638717abe584"
+  },
+  {
+    "module": "std.keyed_row",
+    "source": "dag/std/keyed_row.dag",
+    "copy": "target/commissioning-job-property-overlap/std.keyed_row.dag",
+    "sha256": "e5bce67aea16eabf826cf18ccd4a542142c42bf6950da0b1b977edaa02fba1dc"
+  },
+  {
+    "module": "std.magnitude",
+    "source": "dag/std/magnitude.dag",
+    "copy": "target/commissioning-job-property-overlap/std.magnitude.dag",
+    "sha256": "76bf8826e9986a021a6baa5abd18dd9958fda4d8178ccbe8112d1551be273b9b"
+  },
+  {
+    "module": "std.measure",
+    "source": "dag/std/measure.dag",
+    "copy": "target/commissioning-job-property-overlap/std.measure.dag",
+    "sha256": "7c9f67965114ed1b12cf22d885a7b7d555becde93be32d866892ca09e96d998b"
+  },
+  {
+    "module": "std.nat",
+    "source": "dag/std/nat.dag",
+    "copy": "target/commissioning-job-property-overlap/std.nat.dag",
+    "sha256": "70f854bda16ffc0e5ae6e2b46c155cd8fc05f894133a8c18155924752aa613c0"
+  },
+  {
+    "module": "std.roster_frontier",
+    "source": "dag/std/roster_frontier.dag",
+    "copy": "target/commissioning-job-property-overlap/std.roster_frontier.dag",
+    "sha256": "1254294a5d4be2a8312c2ab563786dde1f6b022570fba8a78041b292774e9998"
+  },
+  {
+    "module": "std.serialization",
+    "source": "dag/std/serialization.dag",
+    "copy": "target/commissioning-job-property-overlap/std.serialization.dag",
+    "sha256": "c3093200fcd2d53ddb95cb5cae63f06cb00bc72191240d41de1eba1f3aa0e6c2"
+  },
+  {
+    "module": "std.types",
+    "source": "dag/std/types.dag",
+    "copy": "target/commissioning-job-property-overlap/std.types.dag",
+    "sha256": "2abfc53c499aa0063202944fc7321c02d194ab26006ea35cf32433d1b4187c4e"
+  },
+  {
+    "module": "std.unicode.types",
+    "source": "dag/std/unicode/types.dag",
+    "copy": "target/commissioning-job-property-overlap/std.unicode.types.dag",
+    "sha256": "d9729ed6cd4156e21ec64eb7ba0a6bc5cc52bc1b525bb370a131d25c85e2dede"
+  },
+  {
+    "module": "test.claim.systemd_property_directive_overlap",
+    "source": "dag/test/claim/systemd_property_directive_overlap_test.dag",
+    "copy": "target/commissioning-job-property-overlap/test.claim.systemd_property_directive_overlap.dag",
+    "sha256": "d03df9615fb5b0cf27f125ab21e81b35f55bc03070317884c6b5e7e044ca87a4"
+  },
+  {
+    "module": "v2.std.live_tree",
+    "source": "src/v2/std/live_tree.dag",
+    "copy": "target/commissioning-job-property-overlap/v2.std.live_tree.dag",
+    "sha256": "df342eaf1b7f295c201eda1db180308cc69604c63202f032db22b71972661355"
+  }
+]

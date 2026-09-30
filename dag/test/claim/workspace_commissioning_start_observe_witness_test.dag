@@ -1,0 +1,42 @@
+module test.claim.workspace_commissioning_start_observe_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.workspace_commissioning_start_observe {
+  workspace_commissioning_start_decode, workspace_commissioning_start_quiescent,
+  WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartUnreadable,
+}
+
+data observed_unit: NonEmptyStr = "gunbc-microvm-slot@srv1-13.service"
+
+fn start_properties(tail: String) -> String {
+  concat("Id=gunbc-microvm-slot@srv1-13.service\nLoadState=loaded\nActiveState=inactive\nMainPID=0\nInvocationID=old\n", tail)
+}
+
+fn start_quiescent(text: String) -> Bool {
+  match workspace_commissioning_start_decode(unit: observed_unit, text: text) {
+    WorkspaceCommissioningStartObserved { snapshot } => workspace_commissioning_start_quiescent(snapshot: snapshot)
+    _ => false
+  }
+}
+
+test fn absent_job_field_is_not_an_empty_queue() -> Bool {
+  start_quiescent(text: start_properties(tail: "Job=\n"))
+    && !start_quiescent(text: start_properties(tail: ""))
+    && !start_quiescent(text: start_properties(tail: "Job=\nJob=9\n"))
+}
+
+test fn inactive_unit_with_pending_job_is_not_quiescent() -> Bool {
+  !start_quiescent(text: start_properties(tail: "Job=193\n"))
+}
+
+test fn another_unit_cannot_supply_start_history() -> Bool {
+  match workspace_commissioning_start_decode(unit: "gunbc-microvm-slot@srv1-12.service", text: start_properties(tail: "Job=\n")) {
+    WorkspaceCommissioningStartUnreadable { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn live_process_or_unloaded_unit_cannot_be_retried() -> Bool {
+  !start_quiescent(text: "Id=gunbc-microvm-slot@srv1-13.service\nLoadState=loaded\nActiveState=inactive\nMainPID=123\nInvocationID=old\nJob=\n")
+    && !start_quiescent(text: "Id=gunbc-microvm-slot@srv1-13.service\nLoadState=not-found\nActiveState=inactive\nMainPID=0\nInvocationID=\nJob=\n")
+}
