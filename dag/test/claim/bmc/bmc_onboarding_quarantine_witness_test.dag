@@ -6,6 +6,7 @@ import v2.std.decl_index { DeclFact, decl_facts }
 import v2.std.node { Node }
 import v2.std.algebra { any, list_map }
 import v2.lens.effect_reach { atom_identities_in_node }
+import gunbc.rust_item_scan { ends_with }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

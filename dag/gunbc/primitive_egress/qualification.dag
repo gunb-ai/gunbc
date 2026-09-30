@@ -24,6 +24,7 @@ import gunbc.primitive_egress.disposition {
   QualifiedRealization, NoRealizationClaim, RealizationVerified, RealizationUnqualified,
   QualifiedConflict, NoConflictDerived, ConflictDerived,
 }
+import gunbc.rust_item_scan { ends_with }
 
 // THE PREMISE JOIN. An authored evidence row is a set of CLAIMS; nothing in it reaches the
 // classifier until each claim has joined the fact that owns it. A declaration reference resolves
