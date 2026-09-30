@@ -1,6 +1,7 @@
 module v2.test.claim.compilation_unit_witness
 
 import std.algebra { Empty }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.compilers.compilation_unit {
@@ -82,20 +83,10 @@ fn witness_point_struct_conj_body() -> Node {
 }
 
 fn witness_fn_taking_point_by_value() -> Node {
-  node_synthetic(
-    kind: TypeNode {
-      connective: Arrow,
-    },
-    children: [
-      Edge {
-        label: Named { name: ^domain },
-        target: witness_type_atom(sym: witness_type_point),
-      },
-      Edge {
-        label: Named { name: ^codomain },
-        target: witness_type_atom(sym: witness_type_int),
-      }
-    ]
+  anonymous_signature_arrow(
+    domain_types: [witness_type_atom(sym: witness_type_point)],
+    codomain: witness_type_atom(sym: witness_type_int),
+    source: witness_type_atom(sym: witness_type_point)
   )
 }
 

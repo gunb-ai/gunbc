@@ -1,5 +1,11 @@
 module test.claim.tool_pin_witness
 
+import extdeps.tools.curl { curl_program }
+
+import extdeps.tools.jq { jq_program }
+
+import extdeps.cargo_build { cargo_program }
+
 import std.types { NonEmptyStr, String, Bool, Int }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.version { VersionIdentity, VersionConstraint }
@@ -34,13 +40,13 @@ data cargo_identity: ContentHash = content_hash_of_value(value: "sha256-cargo-19
 data other_identity: ContentHash = content_hash_of_value(value: "sha256-cargo-1920-aarch64" as NonEmptyStr)
 
 data cargo_tool: CliTool = CliTool {
-  name: "cargo",
+  program: cargo_program(),
   min_version: Absent,
   installable_via: [SourceApt { package: package_cargo, bin_dir: apt_bin_dir }],
 }
 
 data jq_tool: CliTool = CliTool {
-  name: "jq",
+  program: jq_program(),
   min_version: Absent,
   installable_via: [SourceApt { package: package_jq, bin_dir: apt_bin_dir }],
 }
@@ -69,6 +75,14 @@ data tracked_pin: Pin<CliTool> = Pin {
 // CONTROLS are the two below: each fails if its variant ever reports anything other than a named
 // gap, which is exactly the 'pinned and never updated' silence the refresh axis exists to break.
 
+// WORKAROUND, not a modeling choice: reading `subj.program.invocation` directly through a binder of
+// a generic call's inferred result typechecks and then fails at evaluation ("error type cascade").
+// Reading through this CliTool-typed helper evaluates. Delete it when
+// gunbc.recurring_failure_mode nested_field_read_through_a_binder_of_an_inferred_generic_result climbs.
+fn tool_invocation(tool: CliTool) -> String {
+  tool.program.invocation as String
+}
+
 test fn exact_pin_currency_is_an_unfilled_gap() -> Bool {
   match pin_currency_gap(pin: authored_pin) {
     AuthoredPinHasNoReviewDate => true
@@ -94,7 +108,7 @@ test fn tracked_pin_currency_is_an_unfilled_gap() -> Bool {
 
 test fn matching_identity_admits_integrity() -> Bool {
   match admit_pin_integrity(pin: authored_pin, observed_identity: cargo_identity) {
-    PinIntegrityAdmitted { pin: p } => (p.subject.name as String) == "cargo"
+    PinIntegrityAdmitted { pin: p } => tool_invocation(tool: p.subject) == "cargo"
     PinRefused { subject: _, cause: _ } => false
   }
 }
@@ -102,7 +116,7 @@ test fn matching_identity_admits_integrity() -> Bool {
 test fn mismatched_identity_refuses() -> Bool {
   match admit_pin_integrity(pin: authored_pin, observed_identity: other_identity) {
     PinRefused { subject: subj, cause: c } =>
-      ((subj.name as String) == "cargo") && match c {
+      (tool_invocation(tool: subj) == "cargo") && match c {
         ObservedIdentityMismatch { expected: e, observed: o } =>
           (e == cargo_identity) && (o == other_identity)
         CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
@@ -118,7 +132,7 @@ test fn mismatched_identity_refuses() -> Bool {
 test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
   match admit_pin_integrity(pin: tracked_pin, observed_identity: cargo_identity) {
     PinRefused { subject: subj, cause: c } =>
-      ((subj.name as String) == "jq") && match c {
+      (tool_invocation(tool: subj) == "jq") && match c {
         TrackedResolutionUnrecorded { channel: ch } => (ch as String) == "latest"
         ObservedIdentityMismatch { expected: _, observed: _ } => false
         CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
@@ -131,13 +145,13 @@ test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
 }
 
 data legacy_ranged_tool: CliTool = CliTool {
-  name: "curl",
+  program: curl_program(),
   min_version: Present { value: ">= 7.68" as VersionConstraint },
   installable_via: [SourceApt { package: "curl", bin_dir: apt_bin_dir }],
 }
 
 data legacy_unversioned_tool: CliTool = CliTool {
-  name: "jq",
+  program: jq_program(),
   min_version: Absent,
   installable_via: [SourceApt { package: "jq", bin_dir: apt_bin_dir }],
 }
@@ -154,7 +168,7 @@ data legacy_unversioned_tool: CliTool = CliTool {
 test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
   match admit_legacy_cli_tool(tool: legacy_ranged_tool) {
     PinRefused { subject: subj, cause: c } =>
-      ((subj.name as String) == "curl") && match c {
+      (tool_invocation(tool: subj) == "curl") && match c {
         ConstraintIsNotIdentity { constraint: k } => (k as String) == ">= 7.68"
         PinAbsent => false
         TrackedResolutionUnrecorded { channel: _ } => false
@@ -169,7 +183,7 @@ test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
 test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
   match admit_legacy_cli_tool(tool: legacy_unversioned_tool) {
     PinRefused { subject: subj, cause: c } =>
-      ((subj.name as String) == "jq") && match c {
+      (tool_invocation(tool: subj) == "jq") && match c {
         PinAbsent => true
         ConstraintIsNotIdentity { constraint: _ } => false
         TrackedResolutionUnrecorded { channel: _ } => false

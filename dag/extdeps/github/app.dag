@@ -705,7 +705,26 @@ fn permission_axis_admitted_accesses(axis: GitHubPermissionAxis) -> AxisAccessAd
       AxisAdmitsExactly { set: GitHubAccessReadOnly, authority: app_permissions_citation }
     WorkflowsAxis =>
       AxisAdmitsExactly { set: GitHubAccessWriteOnly, authority: app_permissions_citation }
-    _ => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ActionsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ArtifactMetadataAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    AttestationsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ChecksAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    CodeQualityAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ContentsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    DeploymentsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    DiscussionsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    IdTokenAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    IssuesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ModelsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    PackagesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    PagesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    PullRequestsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    RepositoryProjectsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    SecurityEventsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    StatusesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    VulnerabilityAlertsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    AdministrationAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    OrganizationSelfHostedRunnersAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
   }
 }
 

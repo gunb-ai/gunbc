@@ -16,7 +16,7 @@ import std.measure {
   millisecond_count,
   millisecond_to_nanosecond,
 }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter }
 import std.symbols {
   SymbolId,
   NodeRunning,
@@ -84,6 +84,7 @@ fn observation_decl_field_key(field: DeclField) -> String {
   match field {
     WholeDeclaration => "whole"
     NamedField { field_name: f } => concat("field=", f)
+    TypeParameter { name: t } => concat("type_parameter=", t)
   }
 }
 

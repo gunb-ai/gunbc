@@ -79,7 +79,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // another test fn (owner ruling 2026-09-16/17: no code may reference a test fn), so it asserted
 // nothing its target did not already assert. The targets keep the facts:
 // v2.test.manual.body_lowering_projection_call (3), v2.test.long.emit_host_classical_not_ingested_equals_eval
-// ingested_classical_not_arrow_has_match_holds / ingested_classical_not_resolves_holds,
+// ingested_classical_not_arrow_has_match_holds (which implies the since-deleted resolves claim),
 // door_real_module_probe quad_namespace_only_resolve_accepts_holds /
 // quad_import_scoped_admission_reds_ambiguous_export_holds, and
 // v2.test.long.pick_ingested_structural_lowering (4). The file whose every row was a wrapper
@@ -525,7 +525,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/bind_round_trip_test.dag",
     functions: [
-      "bind_emit_matches_serialize_holds", "bind_grammar_inverse_holds",
+      "bind_emit_matches_serialize_holds",
       "bind_ingest_via_coerce_matches_canonical"
     ]
   },
@@ -542,7 +542,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/execution/branch_if_then_else_round_trip_test.dag",
     functions: [
       "branch_if_then_else_emit_matches_serialize_holds",
-      "branch_if_then_else_grammar_inverse_holds",
       "branch_if_then_else_ingest_via_coerce_matches_canonical"
     ]
   },
@@ -563,7 +562,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag",
     functions: [
-      "dag_add_emit_matches_serialize_holds", "dag_add_grammar_inverse_holds",
+      "dag_add_emit_matches_serialize_holds",
       "dag_add_ingest_via_coerce_matches_canonical",
       "dag_add_translate_accepts_holds"
     ]
@@ -696,14 +695,14 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/loop_round_trip_test.dag",
     functions: [
-      "loop_emit_matches_serialize_holds", "loop_grammar_inverse_holds",
+      "loop_emit_matches_serialize_holds",
       "loop_ingest_via_coerce_matches_canonical"
     ]
   },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/match_bool_round_trip_test.dag",
     functions: [
-      "match_bool_emit_matches_serialize_holds", "match_bool_grammar_inverse_holds",
+      "match_bool_emit_matches_serialize_holds",
       "match_bool_ingest_via_coerce_matches_canonical"
     ]
   },

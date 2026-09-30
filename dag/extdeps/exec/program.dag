@@ -45,13 +45,16 @@ type ProgramCatalogStanding
   = CatalogCarried
   | UncatalogedDebt
 
-// THE CATALOGED MINT. Every admitted caller is either a program-identity row whose program a
-// CliTool row catalogs -- that CliTool's `name` is derived from the same row, so the two cannot
-// spell the program differently -- or a builder of a cataloged tool whose placement is still
-// caller-supplied (busybox). An identity cannot be classified as cataloged without an edit to this
-// list, and review of that edit is where carriage is checked: nothing here forces the CliTool row
-// to exist. That is a stated residue, not a wall; it closes when CliTool carries a ProgramIdentity
-// instead of a name, so a cataloged identity is born only inside the row that catalogs it.
+// THE CATALOGED MINT. Every admitted caller is either the identity row of a program a CliTool row
+// catalogs -- the CliTool's `program` field IS that row, so the tool that is probed and the program
+// that is run are one declaration -- or a builder of a cataloged tool whose placement is still
+// caller-supplied (busybox, node). An identity cannot be classified as cataloged without an edit to
+// this list, and review of that edit is where carriage is checked: nothing here forces the CliTool
+// row to exist. That residue would close by admitting the CliTool rows themselves, so an identity is
+// born only inside the row that catalogs it, and that waits on two things: a CliTool row is a data
+// declaration, which admission cannot name
+// (gunbc.recurring_failure_mode admit_callers_names_no_caller_for_a_data_declaration), and the argv
+// builders of extdeps.exec.command sit below extdeps.tools and could not then reach the identity.
 fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
   admit_callers: [
     decl_ref(module_path: "extdeps.exec.command", decl_name: "sshpass_program"),
@@ -68,6 +71,24 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_program"),
     decl_ref(module_path: "extdeps.nftables.ruleset", decl_name: "nft_program"),
     decl_ref(module_path: "extdeps.crypto.hash", decl_name: "sha256sum_program"),
+    decl_ref(module_path: "extdeps.tools.grep", decl_name: "grep_program"),
+    decl_ref(module_path: "extdeps.tools.wc", decl_name: "wc_program"),
+    decl_ref(module_path: "extdeps.tools.nbdkit", decl_name: "nbdkit_program"),
+    decl_ref(module_path: "extdeps.tools.sha512sum", decl_name: "sha512sum_program"),
+    decl_ref(module_path: "extdeps.tools.rustfmt", decl_name: "rustfmt_program"),
+    decl_ref(module_path: "extdeps.tools.npm", decl_name: "npm_program"),
+    decl_ref(module_path: "extdeps.tools.node", decl_name: "node_program"),
+    decl_ref(module_path: "extdeps.tools.socat", decl_name: "socat_program"),
+    decl_ref(module_path: "extdeps.tools.sleep", decl_name: "sleep_program"),
+    decl_ref(module_path: "extdeps.tools.jq", decl_name: "jq_program"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_program"),
+    decl_ref(module_path: "extdeps.tools.websocat", decl_name: "websocat_program"),
+    decl_ref(module_path: "extdeps.tools.websocat", decl_name: "websocat_nbd_proxy_bridge_command"),
+    decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_program"),
+    decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_program"),
+    decl_ref(module_path: "extdeps.tools.openssl", decl_name: "openssl_program"),
+    decl_ref(module_path: "extdeps.netfilter.nfct", decl_name: "nfct_program"),
+    decl_ref(module_path: "extdeps.netfilter.iptables_legacy", decl_name: "iptables_legacy_save_program"),
   ]
   = ProgramIdentity { invocation: invocation, catalog: CatalogCarried }
 
