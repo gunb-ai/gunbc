@@ -223,7 +223,8 @@ fn host_identity_unprivileged_refusal_has_no_marker(
       !string_contains(s: why, pattern: marker)
         && match intent.privilege_denial {
           Present { value: Deny { refusal: _ } } => true
-          _ => false
+          Present { value: Permit } => false
+          Absent => false
         }
     Converged { evidence: _, applied: _ } => false
   }
