@@ -246,7 +246,7 @@ fn grammar_expr_refuse_on_match(element: GrammarExpr, reason: ParseRefusalReason
 
 // A LAYOUT-CONDITIONED MATCH. `AfterLineBreak { element }` matches what `element` matches only when
 // the source holds a line break between the token before the match and its first token
-// (v2.std.compilers.lexing token_stream_line_break_between); otherwise it fails. On a stream that
+// (v2.std.compilers.lexing token_stream_line_break_before); otherwise it fails. On a stream that
 // carries no source the question has no answer, and the parse refuses with
 // LayoutUnknownWithoutSource rather than assuming one line.
 fn grammar_expr_after_line_break(element: GrammarExpr) -> GrammarExpr {
