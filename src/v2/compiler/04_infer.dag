@@ -908,7 +908,7 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
                           descent: Holds { value: descent_proof }
                         )
                       Absent =>
-                      match infer_established_return_type_optional(ret: n) {
+                      match infer_established_value_type_optional(ret: n) {
                         Present { value: _ } =>
                           inferred_facts_from_derived_type(
                             node: n,
@@ -1412,7 +1412,7 @@ fn infer_binding_value_type_witness(binding: Symbol, at: Node) -> Witness<Node> 
 // ORDERED DENOTATION-FIRST so the Int path is byte-identical: only a return the binding lookup cannot
 // denote reaches the established-type question. ONE reader, so introduction and elimination cannot
 // disagree about the same signature.
-fn infer_established_return_type_optional(ret: Node) -> Optional<Node> {
+fn infer_established_value_type_optional(ret: Node) -> Optional<Node> {
   if infer_type_equal_ignoring_provenance(a: ret, b: bool_node()) {
     optional_present(value: bool_node())
   } else {
@@ -1425,11 +1425,11 @@ fn infer_arrow_declared_return_type(arrow: Node) -> Optional<Node> {
     Absent => Absent
     Present { value: ret } =>
       match infer_atom_binding_sym(node: ret) {
-        Absent => infer_established_return_type_optional(ret: ret)
+        Absent => infer_established_value_type_optional(ret: ret)
         Present { value: binding } =>
           match dag_binding_denotation(sym: binding) {
             Present { value: denoted } => Present { value: denoted }
-            Absent => infer_established_return_type_optional(ret: ret)
+            Absent => infer_established_value_type_optional(ret: ret)
           }
       }
   }
@@ -2994,6 +2994,22 @@ fn infer_judge_application_argument(
 // that is a bare atom the join does not denote, and not one of the type variables, is not a type
 // this relation can compare: it is counted UndecidableFormalUnresolved, never refused for the
 // spelling and never admitted silently.
+//
+// A DECLARED POSITION THAT ALREADY CARRIES ITS VALUE TYPE IS DECIDABLE, AND THE JOIN CANNOT SAY SO.
+// dag_binding_denotation is strictly BINDING->value-type, and `Bool` does not reach this reader as a
+// binding: it arrives as the DENOTED node already (v2.std.logic bool_node), so the join answers Absent
+// and the position was counted rather than compared. `Int` masked it, because its canonical type
+// constructor retains the historical spelling ^dag_binding_type_int and its binding and type identities
+// coincide -- so a declared-Int mismatch refused while the identical declared-Bool mismatch was
+// accepted at the frontier. MEASURED, not inferred: for `fn wrong(only_arg: Int) -> Bool { only_arg }`
+// the Arrow's declared return is structurally bool_node(), and for the converse fixture it is
+// ^dag_binding_type_int.
+//
+// SO THE RECOGNITION IS ASKED BY AUTHORITY, NOT BY SPELLING: infer_established_value_type_optional
+// compares against v2.std.logic's own bool_node() through the existing structural equality. That is one
+// authority consumed by both this gate and infer_declared_type_denotation, rather than a second
+// recognition here or a widening of dag_binding_denotation to accept a denoted symbol -- the join stays
+// strictly binding-to-type. An arbitrary atom is still not a resolved value type and is still counted.
 fn infer_declared_position_undecidable_reason(
   declared: Node,
   type_params: List<Symbol>
@@ -3005,7 +3021,11 @@ fn infer_declared_position_undecidable_reason(
         TypeNode { connective: Atom { identity: id } } =>
           match dag_binding_denotation(sym: id) {
             Present { value: _ } => Absent
-            Absent => optional_present(value: undecidable_formal_unresolved())
+            Absent =>
+              match infer_established_value_type_optional(ret: declared) {
+                Present { value: _ } => Absent
+                Absent => optional_present(value: undecidable_formal_unresolved())
+              }
           }
         _ => Absent
       }
@@ -3021,7 +3041,11 @@ fn infer_declared_type_denotation(declared: Node) -> Node {
           TypeNode { connective: Atom { identity: id } } =>
             match dag_binding_denotation(sym: id) {
               Present { value: denoted } => denoted
-              Absent => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+              Absent =>
+                match infer_established_value_type_optional(ret: self) {
+                  Present { value: established } => established
+                  Absent => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+                }
             }
           _ => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
         }
@@ -4672,7 +4696,8 @@ fn infer_gather_settled_row(
             acc: acc,
             merged_entries: merged_entries,
             merged_pending: diagnostics_merge(outer: merged_pending, inner: rd),
-            partials: partials
+            partials: partials,
+            resolved: resolved
           )
       }
   }
@@ -4719,11 +4744,18 @@ fn infer_arrow_declared_return_shape_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
+// THE RESOLVED CARRIER REACHES THIS ROW BECAUSE THE PRODUCT ROW BENEATH IT ANSWERS A FIELD
+// PROJECTION FIRST, and a projection needs the receiver's DECLARATION, which only the index in
+// ResolvedTree supplies (infer_formation_facts_from_entries). Main introduced this row when it split
+// the declared-return check out of infer_gather_settled_row; this lane had widened the product row it
+// delegates to. The two are compatible -- the enclosing row already holds `resolved` -- and the
+// parameter is threaded rather than reconstructed, so there is one carrier for the whole fold.
 fn infer_gather_settled_unannotated_row(
   acc: InferGatherFoldAcc,
   merged_entries: List<InferredFactsEntry>,
   merged_pending: Diagnostics,
   partials: List<Node>,
+  resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
       if infer_gather_acc_awaits_product_row(node: acc.node, entries: merged_entries) {
         infer_gather_product_row_on_entries(

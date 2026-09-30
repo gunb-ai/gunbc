@@ -2,7 +2,8 @@ module v2.test.claim.reference_evidence.declaration_reference_evidence
 
 import v2.compiler.resolve { ResolvedTree }
 import v2.std.symbol_index { symbol_index_lookup }
-import v2.compiler.infer { infer, inferred_facts_grounding_derived }
+import v2.compiler.infer { infer, inferred_facts_grounding_derived, infer_type_equal_ignoring_provenance }
+import v2.std.logic { bool_node }
 import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived, InferredFacts }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -16,7 +17,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Node, NodeFold, TypeNode, Atom, ComputationNode, Transform, fold_node }
+import v2.std.node { Node, NodeFold, TypeNode, Atom, Arrow, ComputationNode, Transform, fold_node }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.collection { list_at_optional }
@@ -478,4 +479,56 @@ fn dre_imported_reference_source() -> Outcome<ResolvedTree> {
 // broken everywhere.
 test fn dre_an_imported_reference_does_not_yet_ground_holds() -> Bool {
   dre_call_is_grounded_for(o: dre_imported_reference_source(), wanted: ^helper) == false
+}
+
+// THE ASYMMETRY THE TWO REFUSAL ROWS ABOVE DEPEND ON, MEASURED RATHER THAN ASSERTED. A declared `Int`
+// return reaches infer as the canonical BINDING ^dag_binding_type_int, while a declared `Bool` return
+// reaches it as the DENOTED value type (v2.std.logic bool_node) -- so the binding->value-type join
+// v2.extdeps.languages.dag dag_binding_denotation answers for one and not the other. That is why
+// v2.compiler.infer asks infer_established_value_type_optional beside the join at both declared-position
+// readers, and why declared-Int mismatches refused for a while where the identical declared-Bool
+// mismatch was accepted at the frontier.
+//
+// THESE TWO ROWS ARE THE STRUCTURAL CONTROL FOR THAT REPAIR, not a restatement of it: if lowering ever
+// canonicalizes Bool to a binding, or stops canonicalizing Int, one of them goes red and the reader that
+// depends on the current shape is the thing to re-read. A refusal row alone could not say which.
+fn dre_arrow_of(o: Outcome<ResolvedTree>) -> Optional<Node> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: r, diagnostics: _ } =>
+      fold_node(
+        n: r.root,
+        algebra: NodeFold {
+          init: fn(n0) {
+            match n0.kind { TypeNode { connective: Arrow } => optional_present(value: n0)  _ => optional_absent() }
+          },
+          step: fn(acc, _e, child) { match acc { Present { value: _ } => acc  Absent => child } }
+        }
+      )
+  }
+}
+
+fn dre_declared_return_of(o: Outcome<ResolvedTree>) -> Optional<Node> {
+  match dre_arrow_of(o: o) {
+    Absent => optional_absent()
+    Present { value: a } => list_at_optional(xs: node_positional_child_targets(node: a), index: 1)
+  }
+}
+
+test fn dre_a_declared_bool_return_is_already_the_bool_value_type_holds() -> Bool {
+  match dre_declared_return_of(o: dre_bool_declared_int_body()) {
+    Absent => false
+    Present { value: ret } => infer_type_equal_ignoring_provenance(a: ret, b: bool_node())
+  }
+}
+
+test fn dre_a_declared_int_return_is_the_int_binding_holds() -> Bool {
+  match dre_declared_return_of(o: dre_int_declared_bool_body()) {
+    Absent => false
+    Present { value: ret } =>
+      match ret.kind {
+        TypeNode { connective: Atom { identity: s } } => s == ^dag_binding_type_int
+        _ => false
+      }
+  }
 }
