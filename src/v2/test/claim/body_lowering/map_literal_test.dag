@@ -275,90 +275,141 @@ test fn ml_probe_ingest_reason_key_kind_holds() -> Bool {
   }
 }
 
-test fn ml_probe_headed_resolve_reason_unbound_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_unbound_symbol)
+
+data mlp_int_only_source: String = "module v2.test.mlp_int_only\n\ndata y: Int = 1\n"
+
+test fn ml_probe_v_int_only_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: [
+    ml_read(source: ml_types_source, id: ^mlp_types_read_int_only, unit: ^mlp_types_cu_int_only, path: "src/v2/test/fixture/map_literal/p_types_int_only.dag"),
+    ml_read(source: ml_algebra_source, id: ^mlp_algebra_read_int_only, unit: ^mlp_algebra_cu_int_only, path: "src/v2/test/fixture/map_literal/p_algebra_int_only.dag"),
+    ml_read(source: mlp_int_only_source, id: ^mlp_int_only_read, unit: ^mlp_int_only_cu, path: "src/v2/test/fixture/map_literal/p_int_only.dag")
+  ], lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.mlp_int_only") }, imports: Empty },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
 }
 
-test fn ml_probe_headless_resolve_reason_unbound_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_unbound_symbol)
+data mlp_str_only_source: String = "module v2.test.mlp_str_only\n\ndata z: String = \"a\"\n"
+
+test fn ml_probe_v_str_only_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: [
+    ml_read(source: ml_types_source, id: ^mlp_types_read_str_only, unit: ^mlp_types_cu_str_only, path: "src/v2/test/fixture/map_literal/p_types_str_only.dag"),
+    ml_read(source: ml_algebra_source, id: ^mlp_algebra_read_str_only, unit: ^mlp_algebra_cu_str_only, path: "src/v2/test/fixture/map_literal/p_algebra_str_only.dag"),
+    ml_read(source: mlp_str_only_source, id: ^mlp_str_only_read, unit: ^mlp_str_only_cu, path: "src/v2/test/fixture/map_literal/p_str_only.dag")
+  ], lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.mlp_str_only") }, imports: Empty },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
 }
 
-test fn ml_probe_headed_resolve_reason_ambiguous_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_ambiguous_symbol)
+data mlp_bool_import_source: String = "module v2.test.mlp_bool_import\n\nimport v2.std.logic { Bool }\n\ndata b: Bool = true\n"
+
+test fn ml_probe_v_bool_import_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: [
+    ml_read(source: ml_types_source, id: ^mlp_types_read_bool_import, unit: ^mlp_types_cu_bool_import, path: "src/v2/test/fixture/map_literal/p_types_bool_import.dag"),
+    ml_read(source: ml_algebra_source, id: ^mlp_algebra_read_bool_import, unit: ^mlp_algebra_cu_bool_import, path: "src/v2/test/fixture/map_literal/p_algebra_bool_import.dag"),
+    ml_read(source: mlp_bool_import_source, id: ^mlp_bool_import_read, unit: ^mlp_bool_import_cu, path: "src/v2/test/fixture/map_literal/p_bool_import.dag")
+  ], lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.mlp_bool_import") }, imports: Empty },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
 }
 
-test fn ml_probe_headless_resolve_reason_ambiguous_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_ambiguous_symbol)
+data mlp_bool_bare_source: String = "module v2.test.mlp_bool_bare\n\ndata b: Bool = true\n"
+
+test fn ml_probe_v_bool_bare_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: [
+    ml_read(source: ml_types_source, id: ^mlp_types_read_bool_bare, unit: ^mlp_types_cu_bool_bare, path: "src/v2/test/fixture/map_literal/p_types_bool_bare.dag"),
+    ml_read(source: ml_algebra_source, id: ^mlp_algebra_read_bool_bare, unit: ^mlp_algebra_cu_bool_bare, path: "src/v2/test/fixture/map_literal/p_algebra_bool_bare.dag"),
+    ml_read(source: mlp_bool_bare_source, id: ^mlp_bool_bare_read, unit: ^mlp_bool_bare_cu, path: "src/v2/test/fixture/map_literal/p_bool_bare.dag")
+  ], lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.mlp_bool_bare") }, imports: Empty },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
 }
 
-test fn ml_probe_headed_resolve_reason_malformed_tree_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_malformed_tree)
+data mlp_map_int_source: String = "module v2.test.mlp_map_int\n\nimport std.types { Map }\n\ndata m: Map<String, Int> = { \"a\": 1 }\n"
+
+test fn ml_probe_v_map_int_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: [
+    ml_read(source: ml_types_source, id: ^mlp_types_read_map_int, unit: ^mlp_types_cu_map_int, path: "src/v2/test/fixture/map_literal/p_types_map_int.dag"),
+    ml_read(source: ml_algebra_source, id: ^mlp_algebra_read_map_int, unit: ^mlp_algebra_cu_map_int, path: "src/v2/test/fixture/map_literal/p_algebra_map_int.dag"),
+    ml_read(source: mlp_map_int_source, id: ^mlp_map_int_read, unit: ^mlp_map_int_cu, path: "src/v2/test/fixture/map_literal/p_map_int.dag")
+  ], lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.mlp_map_int") }, imports: Empty },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
 }
 
-test fn ml_probe_headless_resolve_reason_malformed_tree_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_malformed_tree)
-}
+data mlp_map_type_only_source: String = "module v2.test.mlp_map_type_only\n\nimport std.types { Map }\n\nfn f(m: Map<Int, Int>) -> Int { 1 }\n"
 
-test fn ml_probe_headed_resolve_reason_kernel_type_spelling_names_a_foreign_declaration_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration)
-}
-
-test fn ml_probe_headless_resolve_reason_kernel_type_spelling_names_a_foreign_declaration_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration)
-}
-
-test fn ml_probe_headed_resolve_reason_construct_tag_not_a_constructor_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_construct_tag_not_a_constructor)
-}
-
-test fn ml_probe_headless_resolve_reason_construct_tag_not_a_constructor_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_construct_tag_not_a_constructor)
-}
-
-test fn ml_probe_headed_resolve_reason_type_parameter_in_value_position_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_type_parameter_in_value_position)
-}
-
-test fn ml_probe_headless_resolve_reason_type_parameter_in_value_position_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_type_parameter_in_value_position)
-}
-
-test fn ml_probe_headed_resolve_reason_observation_incomplete_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_observation_incomplete)
-}
-
-test fn ml_probe_headless_resolve_reason_observation_incomplete_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_observation_incomplete)
-}
-
-test fn ml_probe_headed_resolve_anonymous_map_expected_type_not_map_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_expected_type_not_map)
-}
-
-test fn ml_probe_headless_resolve_anonymous_map_expected_type_not_map_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_expected_type_not_map)
-}
-
-test fn ml_probe_headed_resolve_anonymous_record_expected_type_not_record_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_record_expected_type_not_record)
-}
-
-test fn ml_probe_headless_resolve_anonymous_record_expected_type_not_record_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_record_expected_type_not_record)
-}
-
-test fn ml_probe_headed_resolve_anonymous_map_key_kind_mismatch_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_key_kind_mismatch)
-}
-
-test fn ml_probe_headless_resolve_anonymous_map_key_kind_mismatch_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_key_kind_mismatch)
-}
-
-test fn ml_probe_headed_resolve_anonymous_map_expected_type_not_closed_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_expected_type_not_closed)
-}
-
-test fn ml_probe_headless_resolve_anonymous_map_expected_type_not_closed_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_expected_type_not_closed)
+test fn ml_probe_v_map_type_only_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: [
+    ml_read(source: ml_types_source, id: ^mlp_types_read_map_type_only, unit: ^mlp_types_cu_map_type_only, path: "src/v2/test/fixture/map_literal/p_types_map_type_only.dag"),
+    ml_read(source: ml_algebra_source, id: ^mlp_algebra_read_map_type_only, unit: ^mlp_algebra_cu_map_type_only, path: "src/v2/test/fixture/map_literal/p_algebra_map_type_only.dag"),
+    ml_read(source: mlp_map_type_only_source, id: ^mlp_map_type_only_read, unit: ^mlp_map_type_only_cu, path: "src/v2/test/fixture/map_literal/p_map_type_only.dag")
+  ], lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.mlp_map_type_only") }, imports: Empty },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
 }
