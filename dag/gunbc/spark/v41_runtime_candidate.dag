@@ -2,7 +2,7 @@ module gunbc.spark.v41_runtime_candidate
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq, TypeParameter }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_atom, serialize_content_hash, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.measure { hardware_thread_count_value, byte_size_count }
@@ -514,6 +514,7 @@ fn v41_decl_field_wire(f: DeclField) -> String {
   match f {
     WholeDeclaration => "*"
     NamedField { field_name: n } => n as String
+    TypeParameter { name: t } => concat("<", concat(t as String, ">"))
   }
 }
 
@@ -683,9 +684,11 @@ fn v41_candidate_standing(c: V41CandidateInputs, readback: V41StoreReadback) -> 
     standing: match readback {
       V41StoreReadbackRefused { defects: rd } => match standing {
         V41CandidateRefused { defects: d } => V41CandidateRefused { defects: concat(d, rd) }
-        _ => V41CandidateRefused { defects: rd }
+        V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => V41CandidateRefused { defects: rd }
+        V41CandidateUnestablished { obligations: _ } => V41CandidateRefused { defects: rd }
       }
-      _ => standing
+      V41StoreReadbackVerified { host: _, observed_at: _, samples: _ } => standing
+      V41StoreReadbackUnread { obligation: _ } => standing
     },
     derivation: V41DerivationEvidence { row_store_readback: readback },
   }

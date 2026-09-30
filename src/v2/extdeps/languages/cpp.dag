@@ -1,5 +1,6 @@
 module v2.extdeps.languages.cpp
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport {
@@ -39,7 +40,8 @@ import v2.std.compilers.target_model {
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import std.algebra { Empty, list_append, list_snoc_item }
-import v2.std.algebra { BooleanAlgebra, boolean_algebra_node, commutative_semiring_node, fold_list, ordered_ring_node }
+import v2.std.algebra { BooleanAlgebra, fold_list }
+import v2.std.algebra_structure_signature { boolean_algebra_node, commutative_semiring_node, ordered_ring_node }
 import v2.std.collection { Absent, List, Map, PointwisePower, Present, empty_map, map_insert }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
@@ -1017,44 +1019,12 @@ fn cpp_selection_policy_node(target_profile: Node) -> Node {
 }
 
 fn cpp_emitted_add_fn_node(target_profile: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
-      Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
-      Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [cpp_int_inhabitant_node(target_profile: target_profile), cpp_int_inhabitant_node(target_profile: target_profile)], codomain: cpp_int_inhabitant_node(target_profile: target_profile), source: cpp_int_inhabitant_node(target_profile: target_profile))
 }
 
 fn cpp_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
-}
-
-fn cpp_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: [
-      cpp_named_edge(name: ^serialize_source_field_source_text, target: cpp_atom(id: ^cpp_source_literal)),
-      cpp_named_edge(name: ^serialize_source_field_source_grammar, target: cpp_atom(id: ^cpp_production_fn_add))
-    ],
-    right: [
-      cpp_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: cpp_concrete_tokens(),
-          token_to_node: cpp_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn cpp_serialize_source_node() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: cpp_serialize_source_children(),
- occurrence_id: OccurrenceSynthetic
-}
 }
 
 fn cpp_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
@@ -1165,8 +1135,7 @@ fn cpp_target_model_node(target_profile: Node) -> Node {
     children: [
       cpp_named_edge(name: ^target_model_edge_selection_policy, target: cpp_selection_policy_node(target_profile: target_profile)),
       cpp_named_edge(name: ^target_model_edge_declared_inhabitants, target: cpp_add_declared_inhabitants_root(target_profile: target_profile)),
-      cpp_named_edge(name: ^target_model_edge_translation_rules, target: cpp_translation_rules_node(target_profile: target_profile)),
-      cpp_named_edge(name: ^target_model_edge_serialize_source, target: cpp_serialize_source_node())
+      cpp_named_edge(name: ^target_model_edge_translation_rules, target: cpp_translation_rules_node(target_profile: target_profile))
     ],
     occurrence_id: OccurrenceSynthetic
 }

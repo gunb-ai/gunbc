@@ -48,6 +48,7 @@ pub fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: kind.clone(),
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -74,6 +75,7 @@ pub fn structured_item(kind: ParsedModuleItemKind) -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: kind.clone(),
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }

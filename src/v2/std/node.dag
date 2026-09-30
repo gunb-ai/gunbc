@@ -210,22 +210,6 @@ fn node_subtree_nodes(root: Node) -> List<Node> {
   )
 }
 
-// THE NODES INFER DERIVES FACTS FOR: every node of the subtree except those under an Arrow's
-// declared-order edge (arrow_signature_order_label). That edge carries parameter LABELS, not values;
-// v2.compiler.infer declines its subtree (infer_arrow_signature_order_edge) and carries the order as
-// the Arrow's own evidence. Every stage that asks infer for a node's facts -- v2.compiler.program_partition's
-// closure, a census over derived products -- walks THIS set, so none of them demands facts infer was
-// never asked to produce.
-fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
-  fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(self) { [self] },
-      step: fn(acc, edge, sub) { if edge.label == arrow_signature_order_label { acc } else { concat(acc, sub) } }
-    }
-  )
-}
-
 fn node_subtree_count(n: Node) -> Int {
   fold_node(
     n: n,
@@ -254,9 +238,11 @@ type EdgeDiscipline
 
   | LoopBoundEdges
 
-  | PositionalPlusOneNamedEdges
-
   | ArrowBodyEdges
+
+  | PositionalPrefixThenLabeledEdges
+
+  | PositionalPlusOneNamedEdges
 
 // 🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on
 // ^dag_token_int_literal via ^integer_literal_magnitude_field) —
@@ -353,19 +339,47 @@ fn positional_child_count(children: List<Edge>) -> Int {
   })
 }
 
-fn named_child_count(children: List<Edge>) -> Int {
-  count(children) - positional_child_count(children: children)
-}
-
 fn loop_positional_child_count(children: List<Edge>) -> Int {
   positional_child_count(children: children)
 }
 
+// WHAT EACH EDGE OF A LOOP MEANS, read in exactly one place (gunbc.plans.for_while_loop_sugar §2.2).
+// The positional children are the iterated body. ^loop_domain_edge targets the value iterated, which
+// is evaluated ONCE and outside the iteration. ^loop_bound_edge targets the termination measure.
+// ^loop_carrier_edge targets the loop-carried state's BINDER, never a value; the carried state's
+// initial value lives on an enclosing Bind. Any other named label is LoopEdgeUnrecognized, which no
+// conforming Loop holds, so a consumer that matches every role is exhaustive over a conforming Loop.
+type LoopEdgeRole
+  = LoopIteratedBody
+  | LoopDomainValue
+  | LoopBoundMeasure
+  | LoopCarrierBinder
+  | LoopEdgeUnrecognized
+
+fn loop_edge_role(e: Edge) -> LoopEdgeRole {
+  match e.label {
+    Positional => LoopIteratedBody
+    Named { name: sym } =>
+      if sym == ^loop_domain_edge {
+        LoopDomainValue
+      } else if sym == ^loop_bound_edge {
+        LoopBoundMeasure
+      } else if sym == ^loop_carrier_edge {
+        LoopCarrierBinder
+      } else {
+        LoopEdgeUnrecognized
+      }
+  }
+}
+
 fn loop_body_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
-    match e.label {
-      Positional => acc
-      Named { name: sym } => acc && ((sym == ^loop_bound_edge) || (sym == ^loop_carrier_edge))
+    match loop_edge_role(e: e) {
+      LoopIteratedBody => acc
+      LoopDomainValue => acc
+      LoopBoundMeasure => acc
+      LoopCarrierBinder => acc
+      LoopEdgeUnrecognized => false
     }
   })
 }
@@ -373,8 +387,10 @@ fn loop_body_edges_conform(children: List<Edge>) -> Bool {
 fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
   let carrier_edges = name_occurrences(name: ^loop_carrier_edge, children: children)
+  let domain_edges = name_occurrences(name: ^loop_domain_edge, children: children)
   (bound_edges == 1)
   && (carrier_edges <= 1)
+  && (domain_edges <= 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
@@ -585,8 +601,7 @@ fn type_binder_conforms(e: Edge) -> Bool {
 fn type_binder_conj_conforms(t: Node) -> Bool {
   match t.kind {
     TypeNode { connective: Conj } =>
-      (count(t.children) >= 1)
-        && all_names_distinct(children: t.children)
+      all_names_distinct(children: t.children)
         && fold(t.children, init: true, f: fn(acc, e) { acc && type_binder_conforms(e: e) })
     _ => false
   }
@@ -795,12 +810,17 @@ fn loop_carrier_binder_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_carrier_edge)
 }
 
+// Of a Loop's edges only the iterated body repeats: the domain is evaluated once, the bound is a
+// measure and the carrier is a binder. Each consumer matches loop_edge_role itself.
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
-      match e.label {
-        Positional => true
-        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
+      match loop_edge_role(e: e) {
+        LoopIteratedBody => true
+        LoopDomainValue => false
+        LoopBoundMeasure => false
+        LoopCarrierBinder => false
+        LoopEdgeUnrecognized => false
       }
     _ =>
       match e.label {
@@ -810,31 +830,37 @@ fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   }
 }
 
-// Wave 1 Gate 1 C1: the symbolic cost fold prices only runtime work. Arrow signature/type
-// positional children and domain Named edges are NOT runtime cost — only ^arrow_body_edge carries
-// the body the fold must price (general-body-producer-design Stage C prerequisite). Loop keeps the
-// iteration-fold edge discipline from loop_edge_contributes_to_iteration_fold; infer continues to
-// use that function directly.
+// HOW THE SYMBOLIC COST FOLD PRICES ONE EDGE, answered in one place (Wave 1 Gate 1 C1: the fold
+// prices only runtime work). CostEdgeComposed children compose under the parent's mode;
+// CostEdgePricedOnce is work evaluated once beside that composition (a Loop's domain, never multiplied
+// into its iteration and never dropped); CostEdgeNotPriced is not runtime work. An Arrow's signature
+// and type edges are not priced -- only ^arrow_body_edge carries the body (general-body-producer-design
+// Stage C prerequisite). A Loop's edges are priced by their role (loop_edge_role). Every other edge
+// of every other node composes.
+type CostEdgeRole
+  = CostEdgeComposed
+  | CostEdgePricedOnce
+  | CostEdgeNotPriced
 
-fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
+fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
-      match e.label {
-        Positional => true
-        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
+      match loop_edge_role(e: e) {
+        LoopIteratedBody => CostEdgeComposed
+        LoopDomainValue => CostEdgePricedOnce
+        LoopBoundMeasure => CostEdgeNotPriced
+        LoopCarrierBinder => CostEdgeNotPriced
+        LoopEdgeUnrecognized => CostEdgeNotPriced
       }
     TypeNode { connective: Arrow } =>
       match e.label {
-        Positional => false
-        Named { name: sym } => sym == ^arrow_body_edge
+        Positional => CostEdgeNotPriced
+        Named { name: sym } => if sym == ^arrow_body_edge { CostEdgeComposed } else { CostEdgeNotPriced }
       }
-    _ =>
-      match e.label {
-        Positional => true
-        Named { name: _ } => true
-      }
+    _ => CostEdgeComposed
   }
 }
+
 fn all_names_distinct(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
@@ -850,9 +876,33 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
       all_edges_named(children: children) && all_names_distinct(children: children)
     PositionalEdges => all_edges_positional(children: children)
     LoopBoundEdges => loop_behavior_edges_conform(children: children)
-    PositionalPlusOneNamedEdges => named_child_count(children: children) <= 1
     ArrowBodyEdges => arrow_body_edges_conform(children: children)
+    PositionalPrefixThenLabeledEdges => positional_prefix_then_labeled_conform(children: children)
+    PositionalPlusOneNamedEdges => (count(children) - positional_child_count(children: children)) <= 1
   }
+}
+
+// AN APPLICATION'S ACTUALS: a positional prefix -- the callee first, then positional actuals in
+// order -- followed by named actuals, each label at most once. A positional edge after a named one
+// has no slot independent of which names preceded it, so it has no constructor
+// (v2.compiler.body_lowering_fold body_lower_call_arg_edges refuses it located) and is ill formed
+// here. Named actuals bind by name against the callee's name-keyed domain (gunbc#12054), so their
+// authored order carries no meaning: the content hash sorts them
+// (canonicalize_positional_then_named), while the stored node keeps authored order for the
+// occurrence layer.
+fn positional_prefix_then_labeled_conform(children: List<Edge>) -> Bool {
+  let walk = fold(children, init: TransformActualsWalk { seen_named: false, ok: true }, f: fn(acc, e) {
+    match e.label {
+      Positional => TransformActualsWalk { seen_named: acc.seen_named, ok: acc.ok && !acc.seen_named }
+      Named { name: _ } => TransformActualsWalk { seen_named: true, ok: acc.ok }
+    }
+  })
+  walk.ok && all_names_distinct(children: children)
+}
+
+type TransformActualsWalk {
+  seen_named: Bool
+  ok: Bool
 }
 
 fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
@@ -915,7 +965,8 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
   match b {
     Value => count(children) == 0
     Transform =>
-      edges_conform(children: children, d: PositionalPlusOneNamedEdges) && (positional_child_count(children: children) >= 1)
+      edges_conform(children: children, d: PositionalPrefixThenLabeledEdges)
+        && (positional_child_count(children: children) >= 1)
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind =>
@@ -956,7 +1007,7 @@ fn is_empty_conj_root(n: Node) -> Bool {
 fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
   match b {
     Value => NoEdges
-    Transform => PositionalPlusOneNamedEdges
+    Transform => PositionalPrefixThenLabeledEdges
     Branch => PositionalEdges
     Loop => LoopBoundEdges
     Bind => PositionalPlusOneNamedEdges
@@ -1043,13 +1094,23 @@ fn canonicalize_loop_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) ->
   )
 }
 
-// A TRANSFORM OR BIND CARRIES ITS POSITIONAL CHILDREN IN ORDER AND AT MOST ONE NAMED EDGE BESIDE
-// THEM. The named edge is a v2.std.type_binder marker (a cast's target, a let's annotation). This module states
-// the SHAPE only, because it cannot intern the marker lexemes (v2.std.compilers.lexing imports it),
-// and type_binder_labels_conform states which label a behavior admits -- the split
-// arrow_signature_edges_conform already makes. Positional order is
-// identity-bearing, so it is kept; the named edge sorts after it, so where a producer placed it
-// cannot move the content hash.
+// A TRANSFORM'S OR BIND'S CANONICAL ORDER: its positional children in order, then its named edges
+// sorted by label. Their SHAPES differ, because their contracts do. A Transform's named edges are
+// either one v2.std.type_binder marker (a cast's target) or an application's named actuals, and an
+// application's positional order carries meaning, so no positional edge may follow a named one
+// (positional_prefix_then_labeled_conform). A Bind carries at most one named edge, its let
+// annotation, and where it stands is free (PositionalPlusOneNamedEdges): a marker has no slot to
+// misplace. v2.std.type_binder type_binder_labels_conform states which labels each admits.
+// Positional order is identity-bearing, so it is kept; named edges bind by label, so where a producer
+// placed them cannot move the content hash: f(a: 1, b: 2) and f(b: 2, a: 1) are one node, and
+// f(1, 2) and f(2, 1) stay two.
+//
+// EVALUATION ORDER IS NEVER READ FROM A CANONICALIZED NODE. Actuals are evaluated in the stored
+// node's authored order (v2.compiler.eval eval_edge_is_runtime_argument); this ordering exists for
+// identity only. The identity claim rests on purity: for effectful actuals two hash-equal
+// applications perform their effects in different orders, so no consumer may reuse or dedupe a
+// result across hash-equal applications when an actual may be effectful
+// (gunbc.recurring_failure_mode argument_order_silently_orders_two_effects).
 fn canonicalize_positional_then_named<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
   concat(
     filter(items, fn(x) { labeled_is_positional(x: x, label_of: label_of) }),
@@ -1081,6 +1142,7 @@ fn canonicalize_labeled_for_content_hash<T>(
     PositionalEdges => items
     ArrowBodyEdges => canonicalize_arrow_labeled(items: items, label_of: label_of)
     LoopBoundEdges => canonicalize_loop_labeled(items: items, label_of: label_of)
+    PositionalPrefixThenLabeledEdges => canonicalize_positional_then_named(items: items, label_of: label_of)
     PositionalPlusOneNamedEdges => canonicalize_positional_then_named(items: items, label_of: label_of)
   }
 }

@@ -1,5 +1,6 @@
 module gunbc.live_deploy.emit
 
+import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -27,6 +28,7 @@ import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha, Port }
 import gunbc.managed_directory {
   ManagedDirectory,
+  managed_directory_admit,
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
   managed_directory_mode_octal,
   attempt_state_directory_at,
@@ -100,7 +102,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.exec.command { argv_words }
-import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name, release_locus_tree_receipt_name }
 import gunbc.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_owner, microvm_controller_firecracker_release,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
@@ -108,6 +110,7 @@ import gunbc.runner_microvm_slot_unit {
   microvm_slot_unit_timeout_stop_sec,
   microvm_controller_slice_unit_name, microvm_controller_slice_unit_path, microvm_controller_slice_unit_file,
   microvm_slot_controller_receipt_dir,
+  microvm_slot_reserve_unit_name, microvm_slot_reserve_unit_path, microvm_slot_reserve_unit_file,
 }
 import extdeps.tools.findutils { find_program, xargs_program, find_owned_regular_files_exec_argv }
 import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
@@ -117,10 +120,10 @@ import gunbc.live_deploy.slice_bounds {
   repository_convergence_slice_memory_max, repository_convergence_slice_memory_high,
   repository_convergence_slice_memory_swap_max,
 }
-import gunbc.fabric_storage_placement { fabric_storage_listen_port }
+import gunbc.fabric_storage_placement { fabric_storage_door_socket }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
-  deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint,
+  deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
   deployment_owns_the_host_approval_broker,
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
@@ -131,7 +134,7 @@ import gunbc.live_deploy.spec {
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, EnsuredManagedHostDirectory, ensured_subject_identity,
   deployment_provider_state_step,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
@@ -548,7 +551,7 @@ fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseR
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
         " --entry dag/gunbc/fabric/fabric_storage_serve.dag --function fabric_storage_serve_handle",
-        " --host 127.0.0.1 --port ", to_string(fabric_storage_listen_port),
+        " --unix-socket ", fabric_storage_door_socket() as String,
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
@@ -1672,9 +1675,21 @@ fn deploy_memory_cap_apply_steps(
 // apply overwrote the host's broker unit to point at the lab tree and restarted it, killing
 // production's broker. The steps are now CONSTRUCTED from the ownership predicate rather than
 // guarded after the fact: a non-owner produces an empty list, so there is no write to skip.
+//
+// THE UNIT AND ITS RELEASE ARE ONE FACT, SO THEY ARE ONE STEP LIST. The unit's ExecStart names the
+// per-candidate release locus (gunbc.live_deploy.release_locus approval_broker_release_binary_path),
+// and only approval_broker_dark_install_release_steps populates it. When the ordinary apply wrote
+// the unit without them, a dashboard_deploy at a revision the dark install never ran (the 2026-09-29
+// rollback to 361db90) pointed the broker at a directory that did not exist: status=203/EXEC on
+// every restart, and the device routes unreachable with nothing but a crashed unit to say so. So
+// the release install is constructed INTO the unit write rather than left for a second pipeline to
+// remember.
 fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   if deployment_owns_the_host_approval_broker(spec: spec) {
-    approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)
+    concat(
+      approval_broker_dark_install_release_steps(spec: spec, revision: revision),
+      approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port),
+    )
   } else {
     []
   }
@@ -1800,10 +1815,10 @@ fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServi
 // see it: one "$( ... )" at the caller rather than parentheses buried in a join.
 fn approval_broker_tree_digest_expr(root: String) -> String {
   join([
-    "cd ", root, " && ", find_program as String, " ", join(approval_broker_tree_subdirs, " "),
-    " -type f -print0 | ", sort_program as String, " -z | ",
-    xargs_program as String, " -0 ", sha256sum_program as String, " | ",
-    sha256sum_program as String, " | ", cut_program as String, " -d' ' -f1",
+    "cd ", root, " && ", find_program().invocation as String, " ", join(approval_broker_tree_subdirs, " "),
+    " -type f -print0 | ", sort_program().invocation as String, " -z | ",
+    xargs_program as String, " -0 ", sha256sum_program().invocation as String, " | ",
+    sha256sum_program().invocation as String, " | ", cut_program as String, " -d' ' -f1",
   ], "")
 }
 
@@ -1865,18 +1880,18 @@ fn release_locus_tree_copy_steps(owner: NonEmptyStr, root: String) -> List<Pipel
 // medium-as-string shape approval_broker_tree_digest_expr names, and dissolve with it.
 fn privileged_tree_directories_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
   join([
-    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type d -print0) | ",
+    "(cd \"$PWD\" && ", find_program().invocation as String, " ", src_sub, " -type d -print0) | ",
     xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
-      install_program as String, "-d", "-m", "0755", "-o", owner as String, "-g", owner as String,
+      install_program().invocation as String, "-d", "-m", "0755", "-o", owner as String, "-g", owner as String,
     ]), " "), " ", root, "/{}",
   ], "")
 }
 
 fn privileged_tree_files_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
   join([
-    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type f -print0 | ", sort_program as String, " -z) | ",
+    "(cd \"$PWD\" && ", find_program().invocation as String, " ", src_sub, " -type f -print0 | ", sort_program().invocation as String, " -z) | ",
     xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
-      install_program as String, "-m", "0644", "-o", owner as String, "-g", owner as String,
+      install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String,
     ]), " "), " \"$PWD\"/{} ", root, "/{}",
   ], "")
 }
@@ -1987,12 +2002,21 @@ fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: 
 // THE RECEIPT IS WRITTEN BY THE PRINCIPAL THAT OWNS THE LOCUS: `install -m 0644 /dev/stdin`
 // into a root-owned directory needs root, and the digest pipeline feeding it is the same either way.
 fn release_locus_tree_receipt_step(owner: NonEmptyStr, base_root: String, revision: ReleaseRevisionBinding) -> PipelineStep {
+  locus_tree_receipt_step_at(owner: owner, dir: approval_broker_release_dir(root: base_root, revision: revision), revision: revision)
+}
+
+// ONE RECEIPT SHAPE FOR EVERY LOCUS A gunbc BINARY IS SPAWNED FROM. The seed admits a spawn root
+// (gunbc.cli_run_workspace_root_scaffold gunbc_workspace_root_env_name) only when it holds dag/ and
+// the tree receipt, so a locus without one cannot be run from at all. The approval broker's release
+// locus and the root-owned helper snapshot both write it, with the same content: the candidate
+// revision and the digest of the installed sources.
+fn locus_tree_receipt_step_at(owner: NonEmptyStr, dir: String, revision: ReleaseRevisionBinding) -> PipelineStep {
   deploy_raw(command: join([
-    printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
+    printf_program().invocation as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
     "\\ninstalled_digest=%s\\n' ",
-    "\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\"",
-    " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
-      approval_broker_tree_receipt_path_for(root: base_root, revision: revision)]), " "),
+    "\"$(", approval_broker_tree_digest_expr(root: dir), ")\"",
+    " | ", join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
+      join([dir, "/", release_locus_tree_receipt_name], "")]), " "),
   ], ""))
 }
 
@@ -2059,10 +2083,10 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
       dest: microvm_controller_jailer_binary(release_dir: dir),
     )),
     deploy_raw(command: join([
-      sha256sum_program as String, " ",
+      sha256sum_program().invocation as String, " ",
       microvm_controller_vmm_binary(release_dir: dir), " ",
       microvm_controller_jailer_binary(release_dir: dir),
-      " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", microvm_controller_owner as String, "-g", microvm_controller_owner as String, "/dev/stdin",
+      " | ", join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", microvm_controller_owner as String, "-g", microvm_controller_owner as String, "/dev/stdin",
         microvm_controller_vmm_receipt_path(revision: revision)]), " "),
     ], "")),
   ]
@@ -2071,8 +2095,10 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
 // THE SLOT UNIT IS RENDERED HERE WITH THE SPAWN ROOT ADDED, because the env row and the locus
 // belong to this module while the unit's shape belongs to gunbc.runner_microvm_slot_unit: the
 // service section is that module's list plus one directive, inserted rather than re-authored.
-fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
-  match microvm_slot_unit_file(release_dir: release_dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()) {
+// EVERY UNIT THAT RUNS `gunbc run` FROM THE LOCUS NEEDS THE SAME ROW, so the insertion is one function
+// over any such unit: the slot controller and the shakedown broker both exec from this locus.
+fn microvm_locus_unit_with_workspace_root(file: SystemdUnitFile, release_dir: String) -> SystemdUnitFile {
+  match file {
     ServiceUnitFile { unit: u, service: s, install: i } =>
       ServiceUnitFile {
         unit: u,
@@ -2081,6 +2107,13 @@ fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUni
       }
     other => other
   }
+}
+
+fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
+  microvm_locus_unit_with_workspace_root(
+    file: microvm_slot_unit_file(release_dir: release_dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()),
+    release_dir: release_dir,
+  )
 }
 
 fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
@@ -2104,6 +2137,18 @@ fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<Pipel
       stage_name: microvm_slot_unit_template_name as String,
       mode: install_file_shared_mode,
       dest: microvm_slot_unit_path() as String,
+    )),
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: microvm_slot_reserve_unit_name as String,
+      content: serialize_systemd_unit_file(file: microvm_locus_unit_with_workspace_root(
+        file: microvm_slot_reserve_unit_file(release_dir: microvm_controller_release_dir(revision: revision)),
+        release_dir: microvm_controller_release_dir(revision: revision),
+      )),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: microvm_slot_reserve_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: microvm_slot_reserve_unit_path() as String,
     )),
   ]
 }
@@ -2219,13 +2264,19 @@ fn approval_broker_helper_sudoers_content(revision: ReleaseRevisionBinding) -> S
 }
 
 // THE GRANT'S WORDS MUST BE PLAIN, OR THE GRANT IS NOT EMITTED. A sudoers Cmnd_Spec treats these
-// characters specially: `,` and `:` separate list items, `=`, `!`, `(` and `)` are grammar, `\`
+// characters specially: `,` and `:` separate list items, `!`, `(` and `)` are grammar, `\`
 // escapes, whitespace splits arguments, `#` starts a comment, and `*` `?` `[` `]` are glob
 // metacharacters that would turn an exact match into a pattern. The poisoned RevisionNotInstalled
 // path contains spaces, so an unbound revision is refused here too. The rest are shell quoting and
 // expansion characters, which no path this module names verbatim contains.
+//
+// `=` IS NOT REFUSED, because it is escaped rather than forbidden. The sudoers renderer
+// (gunbc.executor_privileged_operation sudoers_argument_word) spells it `\=`, as sudoers(5) requires,
+// and the helper's argv carries one legitimately: the env(1) binding that gives the helper its
+// checkout root. `,` `:` and `\` are escaped by that same renderer but stay refused here, since
+// no helper word needs them and refusing is the narrower grant.
 data sudoers_command_word_refused_characters: List<String> = [
-  ",", ":", "=", "!", "(", ")", "\\", " ", "\t", "\n", "#", "*", "?", "[", "]", "\"", "'", "$", "`",
+  ",", ":", "!", "(", ")", "\\", " ", "\t", "\n", "#", "*", "?", "[", "]", "\"", "'", "$", "`",
 ]
 
 type HelperGrantAdmission
@@ -2309,7 +2360,7 @@ fn path_ancestors_inclusive(path: String) -> List<String> {
 fn helper_snapshot_find_intent(roots: List<String>, top_only: Bool, owner: Node) -> Node {
   bash_build_command_with_words(words: concat(
     concat(
-      [bash_build_word_lit(text: find_program as String)],
+      [bash_build_word_lit(text: find_program().invocation as String)],
       map(roots, r => bash_build_word_lit(text: r)),
     ),
     concat(
@@ -2383,7 +2434,7 @@ fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
 fn approval_broker_helper_snapshot_retire_command(revision: ReleaseRevisionBinding) -> String {
   shell_command_text_of_argv(argv: concat(
     [
-      find_program as String, approval_broker_helper_snapshot_base,
+      find_program().invocation as String, approval_broker_helper_snapshot_base,
       "-mindepth", "1", "-maxdepth", "1", "!", "-name", release_revision_execstart_text(binding: revision),
       "-exec",
     ],
@@ -2411,6 +2462,7 @@ fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> Li
           group: approval_broker_helper_root_principal,
           dest: join([dir, "/", gunbc_release_bin_name], ""),
         )),
+        locus_tree_receipt_step_at(owner: approval_broker_helper_root_principal, dir: dir, revision: revision),
         deploy_raw(command: approval_broker_helper_snapshot_readback_command(dir: dir)),
       ],
     ),
@@ -2737,6 +2789,10 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
     ]
+    ApprovalBrokerFrontDoor => map(
+      deployment_approval_broker_front_door_endpoints(),
+      e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: e)))),
+    )
     DeployedTreeRemoteUnit => [
       apply_tree_remote_unit_write_step(spec: spec),
       deploy_raw(command: deploy_stage_install_command(
@@ -2785,6 +2841,10 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
     ]
+    ApprovalBrokerFrontDoor => map(
+      deployment_approval_broker_front_door_endpoints(),
+      e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))),
+    )
     FabricStorageServeUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
       [
@@ -3117,8 +3177,11 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
 // rather than rendering the whole orchestrated script (DESIGN section 3).
 fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   concat(
-    approval_broker_tree_copy_steps(spec: spec, revision: revision),
-    approval_broker_helper_grant_steps(spec: spec, revision: revision),
+    [deploy_raw(command: ensure_managed_directory_command(admission: managed_directory_admit(d: approval_device_store_directory())))],
+    concat(
+      approval_broker_tree_copy_steps(spec: spec, revision: revision),
+      approval_broker_helper_grant_steps(spec: spec, revision: revision),
+    ),
   )
 }
 
@@ -3154,10 +3217,7 @@ fn approval_broker_dark_install_intent(
     steps: concat(
       concat(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
-        concat(
-          approval_broker_dark_install_release_steps(spec: spec, revision: revision),
-          apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
-        ),
+        apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
       ),
       concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
     ),

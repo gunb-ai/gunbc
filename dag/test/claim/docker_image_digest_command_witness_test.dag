@@ -6,7 +6,7 @@ import extdeps.languages.json.emit {
 }
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli {
-  docker_binary_path,
+  docker_program,
   docker_image_digest_command, docker_image_inspect_command,
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_names_no_such_image,
@@ -42,7 +42,7 @@ fn inspect_argv_is_portable(image: NonEmptyStr) -> Bool {
 test fn a_digest_pinned_identity_readback_inspects_the_digest_reference() -> Bool {
   let image = digest_pinned_fixture
   let words = inspect_words(image: image)
-  words == [docker_binary_path as String, "image", "inspect", image as String]
+  words == [docker_program().invocation as String, "image", "inspect", image as String]
     && inspect_argv_is_portable(image: image)
     && string_contains(s: image as String, pattern: "@sha256:")
 }
@@ -51,7 +51,7 @@ test fn a_digest_pinned_identity_readback_inspects_the_digest_reference() -> Boo
 test fn a_tagged_identity_readback_still_lists() -> Bool {
   let tag = tagged_fixture
   let words = digest_listing_words(image: tag)
-  words == [docker_binary_path as String, "images", "--no-trunc", "--quiet", tag as String]
+  words == [docker_program().invocation as String, "images", "--no-trunc", "--quiet", tag as String]
     && !string_contains(s: tag as String, pattern: "@sha256:")
     && match typed_argv_shell_safe_refusal_argv(argv: words) {
       Absent => true

@@ -1,5 +1,7 @@
 module extdeps.tools.squashfs_tools
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -32,7 +34,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // caller is an unconsumed surface (DESIGN section 5).
 // PATH-resolved program name, for the reason recorded once at extdeps.exec.command
 // program_spelling_is_an_observation_claim: no filesystem observation of the host has been made here.
-data unsquashfs_program: NonEmptyStr = "unsquashfs"
+fn unsquashfs_program() -> ProgramIdentity = uncataloged_program(invocation: "unsquashfs")
 
 // EXTRACT NAMES ITS DESTINATION, AND `-f` IS PART OF THE OPERATION RATHER THAN A CONVENIENCE.
 //
@@ -43,7 +45,7 @@ data unsquashfs_program: NonEmptyStr = "unsquashfs"
 // destination is a parameter and every caller pins it, so `-f` overwrites a path the caller named.
 fn unsquashfs_extract_command(archive: String, into_directory: String) -> ArgvCommand {
   argv_command(
-    program: unsquashfs_program,
+    program: unsquashfs_program(),
     arguments: ["-f", "-d", into_directory, archive],
   )
 }

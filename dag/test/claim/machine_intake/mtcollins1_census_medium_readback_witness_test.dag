@@ -57,14 +57,14 @@ test fn the_served_path_and_the_record_path_derive_from_the_census_input() -> Bo
     Mtcollins1CensusImageDerived { input: input } =>
       (mtcollins1_census_medium_served_path(medium: census) as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso"
         && (mtcollins1_census_record_path(input: input) as String) == concat("/srv/bmc/.gunbc-mtcollins1-census-ubuntu-24.04.3-arm64.", mtcollins1_census_build_key(input: input) as String, ".built")
-        && (mtcollins1_census_build_key(input: input) as String) == "5828991ca3dcace9"
+        && (mtcollins1_census_build_key(input: input) as String) == "c001ac127d718e72"
   }
 }
 
 test fn a_record_and_a_file_that_both_repeat_the_selected_digest_agree_and_retain_every_value() -> Bool {
   match mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: record_ok(), measure: measure_ok()) {
     CensusMediumReadbackAgreed { host: h, build_key: k, recorded_digest: r, image_name: n, served_path: p, measured_digest: m } =>
-      (h as String) == "srv2" && (k as String) == "5828991ca3dcace9" && (r as String) == (recorded as String) && (m as String) == (recorded as String)
+      (h as String) == "srv2" && (k as String) == "c001ac127d718e72" && (r as String) == (recorded as String) && (m as String) == (recorded as String)
         && (n as String) == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso"
         && (p as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso"
     _ => false

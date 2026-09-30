@@ -1,5 +1,6 @@
 module v2.extdeps.languages.rust
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import extdeps.languages.rust.capabilities {
   RustCapability,
   RustDebug,
@@ -324,17 +325,11 @@ import std.algebra {
   list_snoc_item
 }
 import v2.std.algebra {
-  algebra_binary_fn_node,
-  approximate_field_node,
-  approximate_field_type_node,
-  boolean_algebra_node,
-  boolean_algebra_type_node,
   fold_list,
   fold_list_node,
-  fold_list_right,
-  ordered_ring_node,
-  ordered_ring_type_node
+  fold_list_right
 }
+import v2.std.algebra_structure_signature { algebra_binary_fn_node, approximate_field_node, approximate_field_type_node, boolean_algebra_node, boolean_algebra_type_node, ordered_ring_node, ordered_ring_type_node }
 import v2.std.cardinality {
   Never
 }
@@ -1011,15 +1006,7 @@ fn rust_selection_policy_node() -> Node {
 
 data rust_fixture_i32_inhabitant: Node = rust_inhabitant_i32_node()
 
-data rust_fixture_emitted_add_fn: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: rust_fixture_i32_inhabitant },
-    Edge { label: Positional, target: rust_fixture_i32_inhabitant },
-    Edge { label: Positional, target: rust_fixture_i32_inhabitant }
-  ],
-  occurrence_id: OccurrenceSynthetic
-}
+data rust_fixture_emitted_add_fn: Node = anonymous_signature_arrow(domain_types: [rust_fixture_i32_inhabitant, rust_fixture_i32_inhabitant], codomain: rust_fixture_i32_inhabitant, source: rust_fixture_i32_inhabitant)
 
 fn rust_i32_overflow_disposition_node() -> Node {
   rust_overflow_disposition_node(
@@ -1110,45 +1097,6 @@ fn rust_source_text_authority() -> String {
 fn rust_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
-}
-
-fn rust_add_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_add)
-    )
-  ]
-}
-
-fn rust_serialize_source_children() -> List<Edge> {
-
-  list_append(
-    left: rust_add_serialize_source_prefix_edges(),
-    right: [
-      rust_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: rust_concrete_tokens(),
-          token_to_node: rust_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn rust_add_serialize_source_node() -> Node {
-
-  let _authority = rust_source_text_authority()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: rust_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-}
 }
 
 fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -2053,10 +2001,6 @@ fn rust_target_model_core_edges_full(operator_catalog: Node, rules: Node) -> Lis
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rules
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_add_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -4672,10 +4616,6 @@ fn rust_sg2_type_expr_bundle_core_base() -> List<Edge> {
       target: rust_type_expression_projection_bundle_node()
     ),
     rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_sg2_serialize_source_node()
-    ),
-    rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: Node {
         kind: TypeNode { connective: Conj },
@@ -4747,19 +4687,6 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
 
 fn rust_type_expression_projection_bundle_node() -> Node {
   type_expr_projection_step_algebra(projection: rust_type_expression_projection())
-}
-
-fn rust_sg2_serialize_source_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^serialize_source_field_source_text,
-        target: rust_inhabitant_atom(id: ^rust_sg2_type_alias_literal)
-      )
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
 }
 
 fn rust_sg2_type_expr_target_model() -> TargetModel {
@@ -4933,14 +4860,11 @@ fn rust_sg2_arrow_xy_emitted() -> Node {
 }
 
 fn rust_sg2_arrow_source_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) },
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(
+    domain_types: [rust_sg2_atom_node(binding: ^rust_binding_sg2_x)],
+    codomain: rust_sg2_atom_node(binding: ^rust_binding_sg2_y),
+    source: rust_sg2_atom_node(binding: ^rust_binding_sg2_x)
+  )
 }
 
 fn rust_sg2_binary_fn_source_type_node() -> Node {
@@ -4950,11 +4874,14 @@ fn rust_sg2_binary_fn_source_type_node() -> Node {
   )
 }
 
+// THE RETIRED POSITIONAL-TYPES ARROW [x, y], built by hand because it has no producer: no domain
+// binders and no order edge. Program P's control that such an Arrow refuses at projection.
 fn rust_sg2_arrow_malformed_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) }
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) },
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
     ],
     occurrence_id: OccurrenceSynthetic
 }

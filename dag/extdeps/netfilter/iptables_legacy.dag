@@ -1,5 +1,7 @@
 module extdeps.netfilter.iptables_legacy
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { String, NonEmptyStr, List, FilePath }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { apt_sbin_dir, apt_installed_bin_path, package_iptables }
@@ -31,7 +33,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // than the nf_tables backend `iptables-nft` uses, so it reads rules that `nft list ruleset` cannot
 // see. A host carrying legacy rules alongside an nft ruleset has two rule sets in two kernel
 // subsystems, and only reading both says what is actually installed.
-data iptables_legacy_save_program: NonEmptyStr = "iptables-legacy-save"
+fn iptables_legacy_save_program() -> ProgramIdentity = cataloged_program(invocation: "iptables-legacy-save")
 
 // NO ArgvCommand BUILDER HERE, DELIBERATELY. The only consumer in this repository reaches this
 // program through a privileged read projection that prepends its own sudo binary path, so it needs
@@ -50,11 +52,11 @@ data iptables_legacy_save_arguments: List<NonEmptyStr> = []
 data iptables_legacy_save_bin_dir: FilePath = apt_sbin_dir
 
 fn iptables_legacy_save_installed_path() -> FilePath {
-  apt_installed_bin_path(bin_dir: iptables_legacy_save_bin_dir, binary: iptables_legacy_save_program)
+  apt_installed_bin_path(bin_dir: iptables_legacy_save_bin_dir, binary: iptables_legacy_save_program().invocation)
 }
 
 data iptables_legacy_save_cli_tool: CliTool = CliTool {
-  name: iptables_legacy_save_program,
+  program: iptables_legacy_save_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_iptables, bin_dir: iptables_legacy_save_bin_dir }],
 }
