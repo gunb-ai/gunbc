@@ -147,8 +147,25 @@ fn read_kw_then_ident(captured: Node) -> NameRead {
 }
 
 // `name: value` in a record literal: the field label.
+// A STRING-KEYED INIT NAMES NO FIELD: its key is a literal, not a FieldOccurrence, and the choice's
+// string alternative is its own production (^dag_surface_field_init_string_key), whose value's names
+// are read as references by that production's own row. So that alternative lawfully has no name here,
+// as a positional argument has none below.
 fn read_field_init_label(captured: Node) -> NameRead {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+  let item = body_lower_deep_unwrap_optional(node: captured)
+  match parse_production_emitted_identity_optional(node: item) {
+    Present { value: id } =>
+      if id == ^dag_surface_field_init_string_key {
+        NoNameHere
+      } else {
+        read_field_init_name_label(item: item)
+      }
+    Absent => read_field_init_name_label(item: item)
+  }
+}
+
+fn read_field_init_name_label(item: Node) -> NameRead {
+  match sugar_sequence_pair_optional(node: item) {
     Absent => NameReadRefused
     Present { value: pair } => one_name(atom: body_lower_param_binding_atom_optional(node: pair.left))
   }
@@ -217,6 +234,7 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_type_decl, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadKwThenIdent }),
     name_row(production: ^dag_production_alias_decl, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadKwThenIdent }),
     name_row(production: ^dag_production_field_init, disposition: NameRoleRead { role: ReferenceRole, category: FieldOccurrence, reader: ReadFieldInitLabel }),
+    name_row(production: ^dag_production_field_init_string_key, disposition: NamesAreReferences),
     name_row(production: ^dag_production_arg, disposition: NameRoleRead { role: ReferenceRole, category: LexicalValueOccurrence, reader: ReadNamedArgLabel }),
     name_row(production: ^dag_production_field_pattern, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadFieldPatternName }),
     name_row(production: ^dag_production_test_fn_decl, disposition: NamesAreMarkers),

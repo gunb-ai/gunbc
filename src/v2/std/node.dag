@@ -1,6 +1,7 @@
 module v2.std.node
 
 import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.optional { Present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceAllocatorSnapshot,
@@ -147,6 +148,7 @@ type CoreEdgeLabel
   | FieldProjectionBaseEdge
   | FieldProjectionFieldEdge
   | ConstructTagEdge
+  | ConstructTagElidedEdge
 
 fn core_edge_label(marker: CoreEdgeLabel) -> EdgeLabel {
   StructuralLabel { label: CoreMarker { marker: marker } }
@@ -199,6 +201,7 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     FieldProjectionBaseEdge,
     FieldProjectionFieldEdge,
     ConstructTagEdge,
+    ConstructTagElidedEdge,
   ]
 }
 
@@ -222,6 +225,7 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     FieldProjectionBaseEdge => ^core_field_projection_base_edge
     FieldProjectionFieldEdge => ^core_field_projection_field_edge
     ConstructTagEdge => ^core_construct_tag_edge
+    ConstructTagElidedEdge => ^core_construct_tag_elided_edge
   }
 }
 type Edge {
@@ -964,6 +968,15 @@ fn symbol_lexeme(sym: Symbol) -> String {
 // EdgeLabel coproduct planned in gunbc#12473 (arm ConstructTag), declared here in the form of its
 // sibling until that cut converts both.
 
+
+// AN ANONYMOUS RECORD LITERAL'S TAG IS ELIDED, NOT GUESSED. `data x: T = { f: v }` names no
+// constructor; the constructor is chosen by the EXPECTED type, which lowering (before resolve) cannot
+// know. So lowering writes the ONE construct shape with its tag edge present and targeting this
+// marker, and resolve's construct-tag writer replaces it with the declaration reference of the
+// expected type's record, or refuses (docs/plans/anonymous-record-literal-design.md). Keeping the
+// tag edge rather than omitting it keeps a headless literal distinct from a bare Conj of Named edges,
+// which is the anonymous record TYPE. The marker is CoreEdgeLabel ConstructTagElidedEdge, beside
+// ConstructTagEdge (the EdgeLabel cut).
 
 // A RESOLVED DECLARATION REFERENCE IS NOT A RECORD CONSTRUCT. `data d: D = A` lowers to a nullary
 // Arrow whose body is the initializer, and when the initializer is a reference that body is the

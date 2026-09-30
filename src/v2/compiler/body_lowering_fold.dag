@@ -142,6 +142,11 @@ import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrap
 import v2.std.node_query {
   node_positional_child_targets,
   construct_node,
+  construct_tag_elided_reference,
+  construct_tag_reading,
+  ConstructTagAuthored,
+  ConstructTagElided,
+  NotAConstruct,
   construct_tag_optional,
   field_projection_node,
   field_projection_optional,
@@ -589,7 +594,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
         || (match body_lower_string_literal_value_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
         || (match dag_symbol_literal_name_optional(node: node) { Present { value: _ } => true  Absent => false })
         || qualified_name_spine_shape_present(root: node)
-        || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
+        || (match construct_tag_reading(n: node) { ConstructTagAuthored { reference: _ } => true  ConstructTagElided => true  NotAConstruct => false })
         || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
 }
@@ -711,6 +716,7 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_admit_callers_clause)
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
+    || (emitted == ^dag_surface_field_init_string_key)
     || (emitted == ^dag_surface_where_refinement_clause)
     || (emitted == ^dag_surface_where_predicate)
     || (emitted == ^dag_surface_arrow_lambda)
@@ -7917,6 +7923,19 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
 // shape v2.std.node admits and the shape a fielded pattern lowers to, so `Rec { n: 1 }` and
 // `Rec { n: x } =>` are one shape read in two directions. A dotted head (`m.R { .. }`) is a postfix
 // chain and reaches the same builder, body_lower_record_construct, through its PostfixRecord step.
+// A STRING-KEYED INIT IS NOT A RECORD FIELD, AND THE PARSE SAYS SO. The key's kind is the grammar's
+// choice, carried as the production identity ^dag_surface_field_init_string_key
+// (v2.extdeps.languages.dag dag_grammar_field_init_expr), so a record literal refuses it at the item
+// rather than reading `{ "n": true }` as field `n`. Admitting a quoted key whose decoded text names a
+// declared field is a declared frontier (gunbc#12740); a map literal's entry is the map arm's
+// (gunbc#12758), which dispatches on this same identity.
+fn body_lower_field_init_is_string_keyed(item: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+    Present { value: id } => id == ^dag_surface_field_init_string_key
+    Absent => false
+  }
+}
+
 fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   let stripped = body_lower_deep_unwrap_optional(node: item)
   let captured = match parse_production_captured_child_optional(node: stripped) {
@@ -7926,6 +7945,9 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   let refuse = outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item)
   )
+  if body_lower_field_init_is_string_keyed(item: captured) {
+    refuse
+  } else {
   match sugar_sequence_pair_optional(node: captured) {
     Absent => refuse
     Present { value: pair } =>
@@ -7945,6 +7967,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
               }
           }
       }
+  }
   }
 }
 
@@ -8040,9 +8063,32 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<RecordLite
   }
 }
 
+// AN ANONYMOUS RECORD LITERAL `{ f: v }` names no constructor, and lowering does not choose one:
+// the constructor is the EXPECTED type's, which only resolve reads from an authored annotation. So
+// it lowers through the one construct builder with its tag ELIDED
+// (v2.std.node_query construct_tag_elided_reference), and resolve's construct-tag writer either
+// writes the expected record's reference or refuses located
+// (docs/plans/anonymous-record-literal-design.md). The field set is never consulted to choose. A
+// string-keyed item (a map literal) has no field edge here and still refuses at the item; the map
+// arm gives it one (gunbc#12734).
+fn body_lower_try_headless_record_literal(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_record_brace_items_optional(brace: captured) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: items } =>
+      bind_outcome(
+        o: body_lower_record_construct(
+          reference: construct_tag_elided_reference(source: captured),
+          items: items,
+          source: captured
+        ),
+        f: fn(construct) { outcome_accepted(value: optional_present(value: construct)) }
+      )
+  }
+}
+
 fn body_lower_try_record_literal(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_record_literal_tag_optional(captured: captured) {
-    Absent => outcome_accepted(value: optional_absent())
+    Absent => body_lower_try_headless_record_literal(captured: captured)
     Present { value: read } =>
       match body_lower_record_literal_field_items_optional(captured: captured) {
         Absent => outcome_accepted(value: optional_absent())

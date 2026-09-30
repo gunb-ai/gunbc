@@ -243,14 +243,19 @@ test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
   }
 }
 
-test fn infer_optional_formal_is_refused_for_unproven_cardinality_descent_holds() -> Bool {
+// A formal declared `Int?` owes no descent: the Cardinality type connective is Bounded
+// (v2.std.cardinality connective_multiplicity). The application reaches its ordinary inhabitance
+// judgment and is counted as the OptionalCarrier frontier on the Accepted path, not Rejected for
+// infer_descent_not_derived.
+test fn infer_optional_formal_reaches_optional_carrier_frontier_holds() -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_optional_formal_tree())) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: nds } =>
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(
-        d: Some { diagnostics: nds },
-        reason: ^infer_descent_not_derived
+        d: d,
+        reason: ^inhabitance_undecidable_optional_carrier
       )
+        && !diagnostics_has_reason(d: d, reason: ^infer_descent_not_derived)
   }
 }
 
