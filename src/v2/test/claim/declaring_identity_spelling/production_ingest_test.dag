@@ -494,15 +494,22 @@ test fn a_qualified_type_position_mention_reaches_the_census_holds() -> Bool {
   }
 }
 
-// QUALIFIED field type. Still absent, and now for ONE reason rather than two:
-// qualification no longer hides a mention (the two rows above reach), so what is
-// left is field position -- the record declaration is not grafted into the
-// containment tree at all. The discriminator is field_vs_parameter.
-test fn a_qualified_field_type_mention_is_absent_from_the_census_today() -> Bool {
+// QUALIFIED field type, no call. THIS ROW WAS ENROLLED AS "IS ABSENT TODAY" AND WAS FOUND RED ON
+// MAIN (14d58480c9, 2026-09-29) WITH NOTHING HAVING RE-STATED IT: the mention reaches the census as
+// one authored spelling, the way the parameter-type row beside it does. Attributed by stage on these
+// fixtures: the parse holds the token, the normalized tree holds the whole qualified spine, and
+// v2.compiler.reference_site_collector collect_reference_sites emits exactly one site for it. The
+// gap the row recorded -- a record declaration not grafted -- closed when
+// v2.compiler.namespace_graft began Naming every type_decl unit and body lowering declared record
+// fields through body_lower_field_decl_block_payload, whose field type is read by the same
+// body_lower_type_expr_lowered_optional a parameter type is. So this is now a conserved control:
+// deleting that route makes it red. LocalParam is the positive control, as above; whether the
+// mention BINDS is the second fact the rows above leave to their own trigger.
+test fn a_qualified_field_type_mention_reaches_the_census_holds() -> Bool {
   match two_module_census() {
     Present { value: census } =>
       two_module_usable_class_probe(census: census)
-        && !authored_is(census: census, spelling: qualified_field_type_spelling)
+        && authored_is(census: census, spelling: qualified_field_type_spelling)
     Absent => false
   }
 }

@@ -17,7 +17,16 @@ import std.occurrence_identity {
   TypeOccurrence
 }
 import v2.compiler.parse { ParseArtifact }
-import v2.compiler.body_lowering_fold { body_lower_deep_unwrap_optional, body_lower_param_binding_atom_optional }
+import v2.compiler.body_lowering_fold {
+  body_lower_deep_unwrap_optional,
+  body_lower_field_decl_block_binder_atoms,
+  body_lower_generic_params_binder_atoms,
+  body_lower_io_block_binder_atoms,
+  body_lower_let_in_key_binding_atom_optional,
+  body_lower_param_binding_atom_optional,
+  body_lower_param_list_binder_atoms
+}
+import v2.compiler.fold_lowering { ArrowLambdaValue, FnLiteralValue, FunctionValueKind, function_value_parts_optional }
 import v2.extdeps.languages.dag {
   dag_grammar_root,
   dag_named_arg_name_node_optional,
@@ -25,7 +34,7 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
 }
-import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.algebra { fold_list, length, list_map, list_snoc_item }
 import v2.std.integer { Int }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
@@ -88,6 +97,12 @@ type NameReader
   | ReadFieldInitLabel
   | ReadNamedArgLabel
   | ReadFieldPatternName
+  | ReadParamListBinders
+  | ReadFieldDeclBinders
+  | ReadGenericParamBinders
+  | ReadLetBinder
+  | ReadFunctionValueBinders { kind: FunctionValueKind }
+  | ReadIoFieldBinders
 
 type NameProductionDisposition
   = NamesAreReferences
@@ -160,15 +175,48 @@ fn read_field_pattern_name(captured: Node) -> NameRead {
   }
 }
 
+// A binder LIST: every binder of the production, or a refusal where the lowering reader refuses the
+// list. An empty list (`()`) is a lawful read of no names.
+fn many_names(atoms: Optional<List<Node>>) -> NameRead {
+  match atoms {
+    Present { value: xs } => NamesFound { atoms: xs }
+    Absent => NameReadRefused
+  }
+}
+
+// `fn(a, b) { .. }` and `p => ..` / `(a, b) => ..`: the binders v2.compiler.fold_lowering
+// function_value_parts_optional reads, which body lowering's function-value producer lowers through.
+// Each binder carries the token it was read from.
+fn read_function_value_binders(captured: Node, kind: FunctionValueKind) -> NameRead {
+  match function_value_parts_optional(captured: captured, kind: kind) {
+    Absent => NameReadRefused
+    Present { value: parts } => NamesFound { atoms: list_map(xs: parts.binders, f: fn(b) { b.at }) }
+  }
+}
+
 fn read_names(reader: NameReader, captured: Node) -> NameRead {
   match reader {
     ReadKwThenIdent => read_kw_then_ident(captured: captured)
     ReadFieldInitLabel => read_field_init_label(captured: captured)
     ReadNamedArgLabel => read_named_arg_label(captured: captured)
     ReadFieldPatternName => read_field_pattern_name(captured: captured)
+    ReadParamListBinders => many_names(atoms: body_lower_param_list_binder_atoms(param_list: captured))
+    ReadFieldDeclBinders => many_names(atoms: body_lower_field_decl_block_binder_atoms(captured: captured))
+    ReadGenericParamBinders => many_names(atoms: body_lower_generic_params_binder_atoms(generic_params: captured))
+    ReadLetBinder => one_name(atom: body_lower_let_in_key_binding_atom_optional(captured: captured))
+    ReadFunctionValueBinders { kind: kind } => read_function_value_binders(captured: captured, kind: kind)
+    ReadIoFieldBinders => many_names(atoms: body_lower_io_block_binder_atoms(captured: captured))
   }
 }
 
+// `operation name { .. }`: body lowering reads the name with the kw-then-ident decoder
+// (body_lower_operation), and lowers it to a callable edge of the service.
+// `transport shell { .. }`: STILL NOT READ, AND NOT BECAUSE A READER IS MISSING. The name is not a
+// binder and not a module-scope reference: it selects one of the closed set of transport kinds
+// (v1 00_core TransportKind: rest, shell, file, local), and body lowering sets the member aside
+// as a realization member without reading it. No disposition above describes that honestly
+// (NamesAreMarkers claims a channel the census counts, and no OccurrenceCategory is a
+// closed-vocabulary selector), so the row stays loud until that category is decided.
 fn dag_name_production_rows() -> List<NameProductionRow> {
   [
     name_row(production: ^dag_production_fn_decl, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
@@ -185,16 +233,16 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_postfix_expr, disposition: NamesAreReferences),
     name_row(production: ^dag_production_where_predicate, disposition: NamesAreReferences),
     name_row(production: ^dag_production_status_pattern, disposition: NamesAreReferences),
-    name_row(production: ^dag_production_param_list, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_field_decl_block, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_generic_params, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_let_expr, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_fn_literal, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_arrow_lambda, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_operation, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_transport, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_input_block, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_output_block, disposition: NameRoleNotYetRead)
+    name_row(production: ^dag_production_param_list, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadParamListBinders }),
+    name_row(production: ^dag_production_field_decl_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadFieldDeclBinders }),
+    name_row(production: ^dag_production_generic_params, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadGenericParamBinders }),
+    name_row(production: ^dag_production_let_expr, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadLetBinder }),
+    name_row(production: ^dag_production_fn_literal, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadFunctionValueBinders { kind: FnLiteralValue } }),
+    name_row(production: ^dag_production_arrow_lambda, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadFunctionValueBinders { kind: ArrowLambdaValue } }),
+    name_row(production: ^dag_production_operation, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
+    name_row(production: ^dag_production_input_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadIoFieldBinders }),
+    name_row(production: ^dag_production_output_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadIoFieldBinders }),
+    name_row(production: ^dag_production_transport, disposition: NameRoleNotYetRead)
   ]
 }
 
