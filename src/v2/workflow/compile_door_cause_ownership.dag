@@ -127,16 +127,22 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (2 modules)"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_parameter_unlowered,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a parameter slot the typed-parameter reader cannot read refuses the declaration here, located at the slot, rather than being filtered out of the domain (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand). No parameter shape found parses and then fails to read, so this is a wall with no measured population; it flips only if a parameter form the grammar admits gains no reading"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_else_less_if_unlowered,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "flips when a v2 stage lowers early exit (an else-less `if` statement) to control flow, a model-first package staffed once the workload shows it on its critical path; until then the statement refuses here rather than being dropped or rewritten (gunbc#11998 batch 2, ruling via neat-boar-16)"
+    flip_trigger: "a guard -- an else-less `if` heading a tail spine with a following statement, whose arm ends in a return -- lowers to Branch(c, arm, rest of the spine) (v2.compiler.body_lowering_fold body_lower_guard_branch). What still refuses here is an else-less `if` whose arm falls through with no return: it is a statement run for effect with no value, which v2 core does not model as a statement; flips if that is modeled (gunbc.recurring_failure_mode else_less_if_statement_has_no_lowered_form)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_return_not_in_tail_position,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a return lowers only as the tail statement of a function's own body; every other return refuses here, located at it, rather than lowering to its operand as the value of whatever block held it (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). Flips when the value readers carry the tail position, so a structured tail return in an if or match arm, and the else-less guard, lower to Branch(c, arm, rest); count on the PR"
+    flip_trigger: "a return lowers only in tail position -- a function body's tail, an arm of a tail if or match, an admitted guard's arm -- read top-down from the raw parse; every other return refuses here, located at it, rather than lowering to its operand as the value of whatever block held it (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). A return out of a non-tail position (a let value, an operand, a loop body) is early exit through a continuation, which v2 core does not model; flips only if that is modeled. Count on the PR"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_service_realization_unreachable,
