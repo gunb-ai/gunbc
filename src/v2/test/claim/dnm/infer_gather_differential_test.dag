@@ -45,321 +45,885 @@ fn dnm_split(src: String) -> DnmSplit {
   }
 }
 
+fn dnm_ig_000() -> DnmSplit {
+  dnm_split(src: "module p\n")
+}
+
+test fn dnm_ig_000_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_000()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_001() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(a: Bool, b: Int) -> Int { 1 }\n")
+}
+
+test fn dnm_ig_001_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_001()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_002() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  if b { x as Int } else { x }\n}\n")
+}
+
+test fn dnm_ig_002_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_002()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_003() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Int\n    false => x\n  }\n}\n")
+}
+
+test fn dnm_ig_003_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_003()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_004() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Q\n    false => x\n  }\n}\n")
+}
+
+test fn dnm_ig_004_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_004()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_005() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(b: Int, a: Bool) -> Int { 1 }\n")
+}
+
+test fn dnm_ig_005_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_005()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_006() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(_: Int, _: Bool) -> Int { 1 }\n")
+}
+
+test fn dnm_ig_006_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_006()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_007() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(_: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int) -> Int { 1 }\n")
+}
+
+test fn dnm_ig_007_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_007()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_008() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(_: Int, _: Int) -> Int { 1 }\n\nfn g(_: Int, _: Int) -> Int { 2 }\n")
+}
+
+test fn dnm_ig_008_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_008()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_009() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(_: Int, _: Int) -> Int { _ }\n")
+}
+
+test fn dnm_ig_009_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_009()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_010() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn first<A, B>(a: A, b: B) -> A { a }\n")
+}
+
+test fn dnm_ig_010_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_010()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_011() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(Q: Int) -> Int {\n  let y: Q = Q\n  y\n}\n")
+}
+
+test fn dnm_ig_011_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_011()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_012() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(Q: Int) -> Int {\n  Q as Q\n}\n")
+}
+
+test fn dnm_ig_012_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_012()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_013() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f<T>(x: T) -> T {\n  let y: T = T\n  y\n}\n")
+}
+
+test fn dnm_ig_013_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_013()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_014() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f<T>(x: T) -> T {\n  let y: T = x\n  y\n}\n")
+}
+
+test fn dnm_ig_014_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_014()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_015() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f<T>(x: T) -> T {\n  x as T\n}\n")
+}
+
+test fn dnm_ig_015_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_015()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_016() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f<T>(x: T) -> T { T }\n")
+}
+
+test fn dnm_ig_016_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_016()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_017() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f<T>(x: T) -> T { x }\n")
+}
+
+test fn dnm_ig_017_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_017()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_018() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn g<T>(y: T) -> T { y }\n")
+}
+
+test fn dnm_ig_018_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_018()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_019() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn g<U>(y: T) -> U { y }\n")
+}
+
+test fn dnm_ig_019_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_019()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_020() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn h(y: T) -> Int { 1 }\n")
+}
+
+test fn dnm_ig_020_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_020()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_021() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f<T>(x: V) -> T { x }\n")
+}
+
+test fn dnm_ig_021_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_021()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_022() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Bool) -> Int { if x { fn(y) { zz } } else { 1 } }\n")
+}
+
+test fn dnm_ig_022_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_022()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_023() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Bool {\n  (x + x) as Bool\n}\n")
+}
+
+test fn dnm_ig_023_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_023()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_024() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(y) -> Q { y }\n  x\n}\n")
+}
+
+test fn dnm_ig_024_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_024()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_025() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(y) { y }\n  x\n}\n")
+}
+
+test fn dnm_ig_025_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_025()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_026() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = 1\n  x\n}\n")
+}
+
+test fn dnm_ig_026_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_026()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_027() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = x + x\n  x\n}\n")
+}
+
+test fn dnm_ig_027_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_027()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_028() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = 1\n  x\n}\n")
+}
+
+test fn dnm_ig_028_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_028()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_029() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x\n  y\n}\n")
+}
+
+test fn dnm_ig_029_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_029()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_030() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x + x\n  y\n}\n")
+}
+
+test fn dnm_ig_030_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_030()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_031() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Q = x\n  y\n}\n")
+}
+
+test fn dnm_ig_031_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_031()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_032() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Int\n  y\n}\n")
+}
+
+test fn dnm_ig_032_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_032()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_033() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x\n  y\n}\n")
+}
+
+test fn dnm_ig_033_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_033()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_034() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Int\n}\n")
+}
+
+test fn dnm_ig_034_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_034()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_035() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Q\n}\n")
+}
+
+test fn dnm_ig_035_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_035()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_036() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int {\n  (x + x) as Int\n}\n")
+}
+
+test fn dnm_ig_036_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_036()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_037() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn f(x: Int) -> Int { x }\n")
+}
+
+test fn dnm_ig_037_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_037()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_038() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x as Int)\n}\n")
+}
+
+test fn dnm_ig_038_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_038()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_039() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x) as Int\n}\n")
+}
+
+test fn dnm_ig_039_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_039()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_040() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn h(x: Int, _: Int) -> Int { x }\n")
+}
+
+test fn dnm_ig_040_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_040()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_041() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn lower_hex_64(v: Int) -> Bool { true }\n\ntype V = Int where lower_hex_64\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(W) => W\n    B => 0\n  }\n}\n")
+}
+
+test fn dnm_ig_041_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_041()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_042() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn lower_hex_64(v: Int) -> Bool { true }\n\ntype W = Int where lower_hex_64\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(W) => W\n    B => 0\n  }\n}\n")
+}
+
+test fn dnm_ig_042_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_042()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
 fn dnm_ig_043() -> DnmSplit {
   dnm_split(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ndata d: Pos = 1 as Pos\n")
 }
 
-test fn dnm_ig_043_verdict_agrees_holds() -> Bool {
-  dnm_ig_043().verdict
+test fn dnm_ig_043_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_043()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_043_diagnostics_agrees_holds() -> Bool {
-  dnm_ig_043().diagnostics
+fn dnm_ig_044() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Bool {\n  x as Bool\n}\n")
 }
 
-test fn dnm_ig_043_facts_agrees_holds() -> Bool {
-  dnm_ig_043().facts
+test fn dnm_ig_044_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_044()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_043_root_agrees_holds() -> Bool {
-  dnm_ig_043().root
+fn dnm_ig_045() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Int {\n  x as Int\n}\n")
+}
+
+test fn dnm_ig_045_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_045()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
 fn dnm_ig_046() -> DnmSplit {
   dnm_split(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x as Pos\n}\n")
 }
 
-test fn dnm_ig_046_verdict_agrees_holds() -> Bool {
-  dnm_ig_046().verdict
+test fn dnm_ig_046_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_046()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_046_diagnostics_agrees_holds() -> Bool {
-  dnm_ig_046().diagnostics
+fn dnm_ig_047() -> DnmSplit {
+  dnm_split(src: "module p\n\nfn y() -> Int { 1 }\n\nfn f(y: Int) -> Int { 2 }\n")
 }
 
-test fn dnm_ig_046_facts_agrees_holds() -> Bool {
-  dnm_ig_046().facts
+test fn dnm_ig_047_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_047()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_046_root_agrees_holds() -> Bool {
-  dnm_ig_046().root
+fn dnm_ig_048() -> DnmSplit {
+  dnm_split(src: "module p\n\nimport q { Int }\nimport r { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n")
+}
+
+test fn dnm_ig_048_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_048()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_049() -> DnmSplit {
+  dnm_split(src: "module p\n\nimport q { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n")
+}
+
+test fn dnm_ig_049_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_049()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_050() -> DnmSplit {
+  dnm_split(src: "module p\n\nimport v2.std.integer { Int }\nimport std.integer { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n")
+}
+
+test fn dnm_ig_050_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_050()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
 fn dnm_ig_051() -> DnmSplit {
   dnm_split(src: "module p\n\nimport v2.std.logic { Bool }\n\ntype Flag = On | Off\ntype Name = String where brand(\"Name\")\nfn f(x: Int) -> Int { x }\nfn dag_user(x: Int) -> Int { x }\nfn g(q: Flag) -> Flag { q }\nfn h() -> Flag { On }\nfn flip(q: Flag) -> Flag { match q { On => Off } }\nfn b() -> Bool { true }\n")
 }
 
-test fn dnm_ig_051_verdict_agrees_holds() -> Bool {
-  dnm_ig_051().verdict
+test fn dnm_ig_051_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_051()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_051_diagnostics_agrees_holds() -> Bool {
-  dnm_ig_051().diagnostics
+fn dnm_ig_052() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype B = Full { value: Int } | Empty\n")
 }
 
-test fn dnm_ig_051_facts_agrees_holds() -> Bool {
-  dnm_ig_051().facts
+test fn dnm_ig_052_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_052()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_051_root_agrees_holds() -> Bool {
-  dnm_ig_051().root
+fn dnm_ig_053() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Bool = | Mine\n\nfn f(x: Int) -> Int {\n  let y: Bool = true\n  x\n}\n")
+}
+
+test fn dnm_ig_053_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_053()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_054() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Box<T> = Full { value: T } | Empty\n")
+}
+
+test fn dnm_ig_054_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_054()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_055() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Box<T> = Full { value: T } | Empty\n\ntype S { g: T }\n")
+}
+
+test fn dnm_ig_055_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_055()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_056() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    Aa(y) => y\n    B => 0\n  }\n}\n")
+}
+
+test fn dnm_ig_056_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_056()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_057() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => 0\n  }\n}\n")
+}
+
+test fn dnm_ig_057_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_057()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_058() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => y\n  }\n}\n")
+}
+
+test fn dnm_ig_058_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_058()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_059() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => z\n    B => 0\n  }\n}\n")
+}
+
+test fn dnm_ig_059_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_059()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_060() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n")
+}
+
+test fn dnm_ig_060_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_060()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_061() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(_) => x\n    B => 0\n  }\n}\n")
+}
+
+test fn dnm_ig_061_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_061()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_062() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n")
+}
+
+test fn dnm_ig_062_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_062()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_063() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype dag_production_type_decl = String where brand(\"N\")\nfn f(x: Int) -> Int { x }\n")
+}
+
+test fn dnm_ig_063_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_063()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_064() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype dag_surface_type_expr = String where brand(\"N\")\nfn f(x: Int) -> Int { x }\n")
+}
+
+test fn dnm_ig_064_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_064()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_065() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Decision = Allowed | Blocked\n")
+}
+
+test fn dnm_ig_065_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_065()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_066() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Empty {}\n")
+}
+
+test fn dnm_ig_066_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_066()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_067() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Flag = On | Off\n")
+}
+
+test fn dnm_ig_067_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_067()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_068() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Flag = On | Off\ntype Rec { n: Int }\n")
+}
+
+test fn dnm_ig_068_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_068()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_069() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Id = Int\n")
+}
+
+test fn dnm_ig_069_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_069()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
 fn dnm_ig_070() -> DnmSplit {
   dnm_split(src: "module p\n\ntype Id = Int\n\nfn keep(x: Id) -> Id { x }\n")
 }
 
-test fn dnm_ig_070_verdict_agrees_holds() -> Bool {
-  dnm_ig_070().verdict
+test fn dnm_ig_070_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_070()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_070_diagnostics_agrees_holds() -> Bool {
-  dnm_ig_070().diagnostics
+fn dnm_ig_071() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Id = Int\n\ntype Ref = Id\n")
 }
 
-test fn dnm_ig_070_facts_agrees_holds() -> Bool {
-  dnm_ig_070().facts
+test fn dnm_ig_071_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_071()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_070_root_agrees_holds() -> Bool {
-  dnm_ig_070().root
+fn dnm_ig_072() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Id<T> = Q\n")
+}
+
+test fn dnm_ig_072_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_072()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_073() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Id<T> = T\n")
+}
+
+test fn dnm_ig_073_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_073()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_074() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Int = | Mine\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n")
+}
+
+test fn dnm_ig_074_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_074()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_075() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Maybe<A> = Some { v: A } | None\n\ntype Box<T> = Maybe<T>\n")
+}
+
+test fn dnm_ig_075_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_075()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_076() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Name = String where brand(\"Name\")\n")
+}
+
+test fn dnm_ig_076_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_076()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_077() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value } => value\n    Absent => 0\n  }\n}\n")
+}
+
+test fn dnm_ig_077_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_077()
+  v.verdict && v.diagnostics && v.facts && v.root
+}
+
+fn dnm_ig_078() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n")
+}
+
+test fn dnm_ig_078_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_078()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
 fn dnm_ig_079() -> DnmSplit {
   dnm_split(src: "module p\n\ntype Opt = Present { value: Int } | Absent\ntype C = A(Opt) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(Present { value: y }) => y\n    A(Absent) => 0\n    B => 1\n  }\n}\n")
 }
 
-test fn dnm_ig_079_verdict_agrees_holds() -> Bool {
-  dnm_ig_079().verdict
+test fn dnm_ig_079_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_079()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_079_diagnostics_agrees_holds() -> Bool {
-  dnm_ig_079().diagnostics
+fn dnm_ig_080() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Pair<A, B> { left: A, right: B }\n")
 }
 
-test fn dnm_ig_079_facts_agrees_holds() -> Bool {
-  dnm_ig_079().facts
+test fn dnm_ig_080_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_080()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_079_root_agrees_holds() -> Bool {
-  dnm_ig_079().root
+fn dnm_ig_081() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype PointerWidth\n")
+}
+
+test fn dnm_ig_081_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_081()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
 fn dnm_ig_082() -> DnmSplit {
   dnm_split(src: "module p\n\ntype Rec { f: Int }\ndata d: Rec = Rec { f: 1 }\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(d) => 0\n    B => 0\n  }\n}\n")
 }
 
-test fn dnm_ig_082_verdict_agrees_holds() -> Bool {
-  dnm_ig_082().verdict
+test fn dnm_ig_082_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_082()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_082_diagnostics_agrees_holds() -> Bool {
-  dnm_ig_082().diagnostics
+fn dnm_ig_083() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Rec { n: Int }\n")
 }
 
-test fn dnm_ig_082_facts_agrees_holds() -> Bool {
-  dnm_ig_082().facts
-}
-
-test fn dnm_ig_082_root_agrees_holds() -> Bool {
-  dnm_ig_082().root
+test fn dnm_ig_083_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_083()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
 fn dnm_ig_084() -> DnmSplit {
   dnm_split(src: "module p\n\ntype Rec { n: Int }\nfn mk() -> Rec { Rec { n: 1 } }\n")
 }
 
-test fn dnm_ig_084_verdict_agrees_holds() -> Bool {
-  dnm_ig_084().verdict
+test fn dnm_ig_084_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_084()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_084_diagnostics_agrees_holds() -> Bool {
-  dnm_ig_084().diagnostics
+fn dnm_ig_085() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype R { f: Int }\ntype W = Int where non_empty\ntype C = A { v: Int } | B\ntype U {}\n")
 }
 
-test fn dnm_ig_084_facts_agrees_holds() -> Bool {
-  dnm_ig_084().facts
+test fn dnm_ig_085_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_085()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_084_root_agrees_holds() -> Bool {
-  dnm_ig_084().root
+fn dnm_ig_086() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype R<T> { f: T }\n")
 }
 
-test fn dnm_ig_043_new_refuses_with_key_conflict_holds() -> Bool {
-  dnm_ig_043().new_key_conflict
+test fn dnm_ig_086_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_086()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_046_new_refuses_with_key_conflict_holds() -> Bool {
-  dnm_ig_046().new_key_conflict
+fn dnm_ig_087() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Same<T> = T\n")
 }
 
-test fn dnm_ig_051_new_refuses_with_key_conflict_holds() -> Bool {
-  dnm_ig_051().new_key_conflict
+test fn dnm_ig_087_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_087()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_070_new_refuses_with_key_conflict_holds() -> Bool {
-  dnm_ig_070().new_key_conflict
+fn dnm_ig_088() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Shape = Dot | Box { w: Int }\n")
 }
 
-test fn dnm_ig_079_new_refuses_with_key_conflict_holds() -> Bool {
-  dnm_ig_079().new_key_conflict
+test fn dnm_ig_088_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_088()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_ig_082_new_refuses_with_key_conflict_holds() -> Bool {
-  dnm_ig_082().new_key_conflict
+fn dnm_ig_089() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype S = Int\n")
 }
 
-test fn dnm_ig_084_new_refuses_with_key_conflict_holds() -> Bool {
-  dnm_ig_084().new_key_conflict
+test fn dnm_ig_089_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_089()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-// ROUND 3 (DO NOT MERGE): for 046/051/070, pin WHAT differs in the diagnostics chain.
-type DnmDiag { new_accepted: Bool, old_accepted: Bool, count_equal: Bool, new_reasons_in_old: Bool, old_reasons_in_new: Bool, frontier_count_equal: Bool, other_count_equal: Bool }
-
-fn dnm_diag_list(d: Diagnostics) -> List<Diagnostic> {
-  match d {
-    None => []
-    Some { diagnostics: nds } => Cons { head: nds.head, tail: nds.tail }
-  }
+fn dnm_ig_090() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype S =\n  | Only\n")
 }
 
-fn dnm_nds_list(nds: NonEmptyDiagnostics) -> List<Diagnostic> {
-  Cons { head: nds.head, tail: nds.tail }
+test fn dnm_ig_090_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_090()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-fn dnm_count_reason(xs: List<Diagnostic>, reason: Symbol) -> Int {
-  fold(xs, init: 0, f: fn(acc, d) { if d.reason == reason { acc + 1 } else { acc } })
+fn dnm_ig_091() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Tag<T> = A | B\n")
 }
 
-fn dnm_all_reasons_in(xs: List<Diagnostic>, ys: List<Diagnostic>) -> Bool {
-  fold(xs, init: true, f: fn(acc, d) { acc && (dnm_count_reason(xs: ys, reason: d.reason) > 0) })
+test fn dnm_ig_091_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_091()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-fn dnm_diag_compare(new_accepted: Bool, old_accepted: Bool, n: List<Diagnostic>, o: List<Diagnostic>) -> DnmDiag {
-  let nf = dnm_count_reason(xs: n, reason: ^infer_grounding_not_derived)
-  let of = dnm_count_reason(xs: o, reason: ^infer_grounding_not_derived)
-  DnmDiag {
-    new_accepted: new_accepted,
-    old_accepted: old_accepted,
-    count_equal: length(xs: n) == length(xs: o),
-    new_reasons_in_old: dnm_all_reasons_in(xs: n, ys: o),
-    old_reasons_in_new: dnm_all_reasons_in(xs: o, ys: n),
-    frontier_count_equal: nf == of,
-    other_count_equal: (length(xs: n) - nf) == (length(xs: o) - of)
-  }
+fn dnm_ig_092() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype T = Int\n\nfn f<T>(x: T) -> T { x }\n")
 }
 
-fn dnm_diag(src: String) -> DnmDiag {
-  match tpb_assemble(src: src) {
-    Rejected { diagnostics: _ } => dnm_diag_compare(new_accepted: false, old_accepted: false, n: [], o: [])
-    Accepted { value: tree, diagnostics: _ } =>
-      match infer(tree: tree) {
-        Rejected { diagnostics: rn } =>
-          match infer_old(tree: tree) {
-            Rejected { diagnostics: ro } => dnm_diag_compare(new_accepted: false, old_accepted: false, n: dnm_nds_list(nds: rn), o: dnm_nds_list(nds: ro))
-            Accepted { value: _, diagnostics: dold } => dnm_diag_compare(new_accepted: false, old_accepted: true, n: dnm_nds_list(nds: rn), o: dnm_diag_list(d: dold))
-          }
-        Accepted { value: _, diagnostics: dn } =>
-          match infer_old(tree: tree) {
-            Rejected { diagnostics: ro } => dnm_diag_compare(new_accepted: true, old_accepted: false, n: dnm_diag_list(d: dn), o: dnm_nds_list(nds: ro))
-            Accepted { value: _, diagnostics: dold } => dnm_diag_compare(new_accepted: true, old_accepted: true, n: dnm_diag_list(d: dn), o: dnm_diag_list(d: dold))
-          }
-      }
-  }
+test fn dnm_ig_092_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_092()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-fn dnm_diag_046() -> DnmDiag {
-  dnm_diag(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x as Pos\n}\n")
+fn dnm_ig_093() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype T = Int\n\ntype Box<T> = Full { value: T } | Empty\n")
 }
 
-test fn dnm_diag_046_new_accepted_holds() -> Bool {
-  dnm_diag_046().new_accepted
+test fn dnm_ig_093_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_093()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_diag_046_old_accepted_holds() -> Bool {
-  dnm_diag_046().old_accepted
+fn dnm_ig_094() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype T = Int\n\ntype Id<T> = T\n")
 }
 
-test fn dnm_diag_046_count_equal_holds() -> Bool {
-  dnm_diag_046().count_equal
+test fn dnm_ig_094_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_094()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_diag_046_new_reasons_in_old_holds() -> Bool {
-  dnm_diag_046().new_reasons_in_old
+fn dnm_ig_095() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype W<bits>\n")
 }
 
-test fn dnm_diag_046_old_reasons_in_new_holds() -> Bool {
-  dnm_diag_046().old_reasons_in_new
+test fn dnm_ig_095_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_095()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_diag_046_frontier_count_equal_holds() -> Bool {
-  dnm_diag_046().frontier_count_equal
+fn dnm_ig_096() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype Wrapped = Only { a: Int }\n")
 }
 
-test fn dnm_diag_046_other_count_equal_holds() -> Bool {
-  dnm_diag_046().other_count_equal
+test fn dnm_ig_096_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_096()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-fn dnm_diag_051() -> DnmDiag {
-  dnm_diag(src: "module p\n\nimport v2.std.logic { Bool }\n\ntype Flag = On | Off\ntype Name = String where brand(\"Name\")\nfn f(x: Int) -> Int { x }\nfn dag_user(x: Int) -> Int { x }\nfn g(q: Flag) -> Flag { q }\nfn h() -> Flag { On }\nfn flip(q: Flag) -> Flag { match q { On => Off } }\nfn b() -> Bool { true }\n")
+fn dnm_ig_097() -> DnmSplit {
+  dnm_split(src: "module p\n\ntype X<T> =\n  | Only\n")
 }
 
-test fn dnm_diag_051_new_accepted_holds() -> Bool {
-  dnm_diag_051().new_accepted
+test fn dnm_ig_097_old_and_new_gather_agree_holds() -> Bool {
+  let v = dnm_ig_097()
+  v.verdict && v.diagnostics && v.facts && v.root
 }
 
-test fn dnm_diag_051_old_accepted_holds() -> Bool {
-  dnm_diag_051().old_accepted
-}
-
-test fn dnm_diag_051_count_equal_holds() -> Bool {
-  dnm_diag_051().count_equal
-}
-
-test fn dnm_diag_051_new_reasons_in_old_holds() -> Bool {
-  dnm_diag_051().new_reasons_in_old
-}
-
-test fn dnm_diag_051_old_reasons_in_new_holds() -> Bool {
-  dnm_diag_051().old_reasons_in_new
-}
-
-test fn dnm_diag_051_frontier_count_equal_holds() -> Bool {
-  dnm_diag_051().frontier_count_equal
-}
-
-test fn dnm_diag_051_other_count_equal_holds() -> Bool {
-  dnm_diag_051().other_count_equal
-}
-
-fn dnm_diag_070() -> DnmDiag {
-  dnm_diag(src: "module p\n\ntype Id = Int\n\nfn keep(x: Id) -> Id { x }\n")
-}
-
-test fn dnm_diag_070_new_accepted_holds() -> Bool {
-  dnm_diag_070().new_accepted
-}
-
-test fn dnm_diag_070_old_accepted_holds() -> Bool {
-  dnm_diag_070().old_accepted
-}
-
-test fn dnm_diag_070_count_equal_holds() -> Bool {
-  dnm_diag_070().count_equal
-}
-
-test fn dnm_diag_070_new_reasons_in_old_holds() -> Bool {
-  dnm_diag_070().new_reasons_in_old
-}
-
-test fn dnm_diag_070_old_reasons_in_new_holds() -> Bool {
-  dnm_diag_070().old_reasons_in_new
-}
-
-test fn dnm_diag_070_frontier_count_equal_holds() -> Bool {
-  dnm_diag_070().frontier_count_equal
-}
-
-test fn dnm_diag_070_other_count_equal_holds() -> Bool {
-  dnm_diag_070().other_count_equal
-}
