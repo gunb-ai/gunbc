@@ -3360,7 +3360,7 @@ fn native_lane_occurrence_census_row(entry: NativeLaneUniverseModule, resolved: 
   NativeLaneOccurrenceCensusRow {
     module: entry.module,
     collisions: fold_list(
-      xs: authored_occurrence_collisions(root: resolved),
+      xs: authored_occurrence_collisions(root: resolved.root),
       empty: Empty,
       cons: fn(acc, c) { list_snoc_item(xs: acc, item: native_lane_occurrence_collision(c: c)) }
     )
