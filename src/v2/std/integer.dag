@@ -33,6 +33,7 @@ import v2.std.machine {
 }
 import v2.std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
+import std.bit { Word64 }
 type Int = GroupCompletion<Nat>
 type UInt = Nat
 type Compose<carrier, dimension>

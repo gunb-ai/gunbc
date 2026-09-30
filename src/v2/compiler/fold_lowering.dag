@@ -25,7 +25,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import std.algebra { collection_fold_shape, template_step_position }
+import std.algebra { Cons, Empty, collection_fold_shape, template_step_position }
 import v2.std.grammar { node_atom_identity_optional }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List }
