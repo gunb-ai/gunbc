@@ -3265,14 +3265,17 @@ fn body_lower_test_fn_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
 // parse subtree by this function's own navigation, so its statements never pass through
 // body_lower_after_children one by one; body_lower_body_subtree_lower_from_primary would instead
 // find the first primary expression inside an else-less `if` -- its condition -- and return THAT as
-// the body, silently discarding the guard and every statement after it. So the fn refuses the whole
-// declaration when its subtree holds one, with the same typed cause the statement arm raises.
-// The fn declaration's own fn_body is the first fn_body shell in its captured sequence (the same
-// search body_lower_body_from_fn_captured makes); its tail statement is the one return it may hold.
-fn body_lower_fn_decl_tail_statement_optional(captured: Node) -> Optional<Node> {
+// the body, silently discarding the guard and every statement after it. So the fn reads its exits
+// first, from the raw parse: an else-less `if` or a return that its tail reading does not admit
+// refuses the whole declaration, located at it (body_lower_exit_outside_tail_optional); an admitted
+// guard reaches the statement spine, which lowers it to a Branch.
+// A fn declaration's exits: its own fn_body (the first fn_body shell in its captured sequence, the
+// search body_lower_body_from_fn_captured makes) is walked as the function's tail; a declaration
+// with no fn_body is walked with no tail.
+fn body_lower_fn_decl_exit_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
   match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_fn_body) {
-    Present { value: fn_body } => body_lower_fn_body_tail_statement_optional(fn_body: fn_body)
-    Absent => optional_absent()
+    Present { value: fn_body } => body_lower_exit_outside_tail_optional(node: fn_body, tail: true)
+    Absent => body_lower_exit_outside_tail_optional(node: captured, tail: false)
   }
 }
 
@@ -3280,13 +3283,9 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_find_captured(root: captured, emitted: ^dag_surface_else_less_if_stmt) {
-        ParseSubtreeFound { captured: guard } => body_lowering_lowered(o: body_lower_else_less_if_reject(shell: guard))
-        ParseSubtreeAbsent =>
-          match body_lower_return_outside_tail_optional(root: captured, tail: body_lower_fn_decl_tail_statement_optional(captured: captured)) {
-            Present { value: refused } => body_lowering_lowered(o: refused)
-            Absent => body_lower_fn_decl_to_arrow_admitted(shell: shell, captured: captured)
-          }
+      match body_lower_fn_decl_exit_refusal_optional(captured: captured) {
+        Present { value: refused } => body_lowering_lowered(o: refused)
+        Absent => body_lower_fn_decl_to_arrow_admitted(shell: shell, captured: captured)
       }
   }
 }
@@ -3426,7 +3425,7 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
               match body_lower_body_after_eq_token(captured: captured) {
                 Absent => body_lower_wrapper_retained_shell(shell: shell)
                 Present { value: expr } =>
-                  match body_lower_return_outside_tail_optional(root: expr, tail: optional_absent()) {
+                  match body_lower_exit_outside_tail_optional(node: expr, tail: false) {
                     Present { value: refused } => body_lowering_lowered(o: refused)
                     Absent =>
                   match body_lower_data_initializer_body(expr: expr) {
@@ -4025,7 +4024,7 @@ fn body_lower_function_value_body(body: FunctionLiteralBody) -> Outcome<Optional
   match body {
     FunctionLiteralExprBody { expr: e } => body_lower_function_value_lowered_whole(o: body_lower_fold(node: body_lower_deep_unwrap_optional(node: e)))
     FunctionLiteralBlockBody { fn_body: b } =>
-      match body_lower_return_outside_tail_optional(root: b, tail: body_lower_fn_body_tail_statement_optional(fn_body: b)) {
+      match body_lower_exit_outside_tail_optional(node: b, tail: true) {
         Present { value: refused } => body_lower_function_value_lowered_whole(o: refused)
         Absent =>
           match body_lower_fn_body_stmt_seq_optional(fn_body: b) {
@@ -5937,7 +5936,7 @@ fn body_lower_match_arm_statement_spine_optional(body_capture: Node) -> Optional
 fn body_lower_match_arm_body_lowered(body_capture: Node) -> Outcome<Node> {
   match body_lower_match_arm_statement_spine_optional(body_capture: body_capture) {
     Present { value: spine } => body_lower_stmt_spine(spine: spine)
-    Absent => body_lower_value_read(value: body_capture)
+    Absent => body_lower_tail_statement_read(stmt: body_capture)
   }
 }
 
@@ -6948,6 +6947,27 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
 }
 
 
+// AN ADMITTED GUARD LOWERS TO A BRANCH WHOSE ELSE IS THE REST OF THE SPINE: `if c { ..; return e }`
+// followed by statements is Branch(c, <arm>, <rest>). The spine matches it through
+// body_lower_admitted_guard_optional itself, and refuses any other else-less `if` it meets, so the
+// lowering owns the admission rule rather than relying on the wall having run first. The arm is a statement sequence ending in a
+// return, which the statement spine lowers to its operand; the wall
+// (body_lower_exit_outside_tail_optional) admits a guard only in a tail spine, so the arm's value
+// and the rest's value are both the function's result.
+fn body_lower_guard_branch(guard: BodyLowerGuard, rest: Node) -> Outcome<Node> {
+  bind_outcome(o: body_lower_value_read(value: guard.condition), f: fn(condition) {
+    let arm_lowered = match body_lower_fn_body_stmt_seq_optional(fn_body: guard.arm) {
+      Present { value: stmt_seq } => body_lower_stmt_seq(shell: stmt_seq)
+      Absent => body_lower_else_less_if_reject(shell: guard.shell)
+    }
+    bind_outcome(o: arm_lowered, f: fn(then_arm) {
+      bind_outcome(o: body_lower_stmt_spine(spine: rest), f: fn(else_arm) {
+        outcome_accepted(value: lower_branch(condition: condition, then_arm: then_arm, else_arm: else_arm))
+      })
+    })
+  })
+}
+
 fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
   match body_lower_stmt_spine_head_optional(spine: spine) {
     Absent =>
@@ -6964,6 +6984,12 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
           match body_lower_stmt_spine_head_optional(spine: rest) {
             Absent => body_lower_tail_statement_read(stmt: head)
             Present { value: _ } =>
+              match body_lower_admitted_guard_optional(stmt: head) {
+                Present { value: guard } => body_lower_guard_branch(guard: guard, rest: rest)
+                Absent =>
+              match body_lower_guard_optional(stmt: head) {
+                Present { value: unadmitted } => body_lower_else_less_if_reject(shell: unadmitted.shell)
+                Absent =>
               match body_lower_statement_let_captured_optional(stmt: head) {
                 Absent =>
                   outcome_rejected(
@@ -7019,6 +7045,8 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                           )
                       }
                   }
+              }
+              }
               }
           }
       }
@@ -9027,10 +9055,11 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_thro
   }
 }
 
-// AN ELSE-LESS `if` IS REFUSED, NEVER DROPPED OR REWRITTEN. It is an early exit
-// (v2.extdeps.languages.dag dag_grammar_else_less_if_stmt_expr), and the v2 core has no lowering for
-// early exit yet; lowering it to Branch(cond, then, rest-of-block) is a separate control-flow model.
-// Until that lands the statement is a typed, located, counted refusal.
+// AN ELSE-LESS `if` IS LOWERED ONLY AS A GUARD, AND REFUSED EVERYWHERE ELSE, NEVER DROPPED. A guard
+// -- `if c { ..; return e }` heading a tail spine with a following statement -- lowers to
+// Branch(c, arm, rest of the spine) (body_lower_guard_branch); body_lower_exit_outside_tail_optional
+// admits it. An else-less `if` whose arm falls through, or that has no following statement, or that
+// sits outside a tail spine, is a typed, located, counted refusal.
 fn body_lower_else_less_if_reject(shell: Node) -> Outcome<Node> {
   outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_else_less_if_unlowered, n: shell)
@@ -9044,11 +9073,11 @@ fn body_lower_else_less_if_reject(shell: Node) -> Outcome<Node> {
 // return j } else { k }` lowered to x = Branch(c, j, k), the function continuing where it should
 // have exited (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail).
 //
-// So a return lowers in exactly ONE position, the tail statement of a function's own body (a fn
-// declaration's, or a fn value's block body), where "exit with e" and "the body's value is e" are
-// the same fact. Every other return refuses, located at it, as return_not_in_tail_position: a
-// structured tail-return in an if or match arm, and the else-less guard, need the tail position
-// carried through the value readers, which this lowering does not have yet (the same row's trigger).
+// So a return lowers only in TAIL POSITION, where "exit with e" and "the block's value is e" are the
+// same fact: the tail statement of a function's own body (a fn declaration's, or a fn value's block
+// body), of an arm of a tail if or match, and of an admitted guard's arm (body_lower_exit_outside_tail_optional,
+// read top-down from the raw parse before any reader runs). Every other return refuses, located at
+// it, as return_not_in_tail_position.
 // Answers the returned expression when `stmt` -- a stmt shell or its captured sequence -- is one.
 fn body_lower_return_statement_expr_optional(stmt: Node) -> Optional<Node> {
   let captured = match parse_production_captured_child_optional(node: stmt) {
@@ -9066,29 +9095,65 @@ fn body_lower_return_statement_expr_optional(stmt: Node) -> Optional<Node> {
   }
 }
 
-// Every return statement under `root`, in pre-order, up to a function value's boundary: a nested
-// function value owns its own returns (body_lower_find_captured_prunable).
-fn body_lower_return_statement_sites(root: Node) -> FreeMonoid<Node> {
-  match parse_production_emitted_identity_optional(node: root) {
+// A GUARD'S PARTS, read positionally: dag_grammar_else_less_if_stmt_expr is
+// seq(`if`, seq(expr, fn_body)). It is admitted only when its arm's last statement is a return, so
+// the guard exits exactly when it is taken; an arm that falls through (`if c { log() }`) is not a
+// guard and keeps refusing else_less_if_unlowered.
+type BodyLowerGuard {
+  shell: Node
+  condition: Node
+  arm: Node
+}
+
+fn body_lower_guard_optional(stmt: Node) -> Optional<BodyLowerGuard> {
+  let inner = match parse_production_captured_child_optional(node: stmt) {
+    Present { value: c } => c
+    Absent => stmt
+  }
+  match parse_production_emitted_identity_optional(node: inner) {
     Present { value: id } =>
-      if body_lower_find_captured_prunable(id: id) {
-        Empty
-      } else if id == ^dag_surface_stmt {
-        match body_lower_return_statement_expr_optional(stmt: root) {
-          Present { value: _ } => Cons { head: root, tail: body_lower_return_statement_sites_under(root: root) }
-          Absent => body_lower_return_statement_sites_under(root: root)
+      if id == ^dag_surface_else_less_if_stmt {
+        match body_lower_unwrap_captured(shell: inner) {
+          Absent => optional_absent()
+          Present { value: captured } =>
+            match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: captured)) {
+              Absent => optional_absent()
+              Present { value: if_rest } =>
+                match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: if_rest.right)) {
+                  Absent => optional_absent()
+                  Present { value: cond_arm } =>
+                    optional_present(value: BodyLowerGuard { shell: inner, condition: cond_arm.left, arm: cond_arm.right })
+                }
+            }
         }
       } else {
-        body_lower_return_statement_sites_under(root: root)
+        optional_absent()
       }
-    Absent => body_lower_return_statement_sites_under(root: root)
+    Absent => optional_absent()
   }
 }
 
-fn body_lower_return_statement_sites_under(root: Node) -> FreeMonoid<Node> {
-  fold(root.children, init: Empty, f: fn(acc, e) {
-    list_append(left: acc, right: body_lower_return_statement_sites(root: e.target))
-  })
+fn body_lower_admitted_guard_optional(stmt: Node) -> Optional<BodyLowerGuard> {
+  match body_lower_guard_optional(stmt: stmt) {
+    Absent => optional_absent()
+    Present { value: guard } =>
+      match body_lower_fn_body_stmt_seq_optional(fn_body: guard.arm) {
+        Absent => optional_absent()
+        Present { value: stmt_seq } =>
+          match body_lower_unwrap_captured(shell: stmt_seq) {
+            Absent => optional_absent()
+            Present { value: spine } =>
+              match body_lower_stmt_spine_last_optional(spine: spine) {
+                Present { value: last } =>
+                  match body_lower_return_statement_expr_optional(stmt: last) {
+                    Present { value: _ } => optional_present(value: guard)
+                    Absent => optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+          }
+      }
+  }
 }
 
 // The last statement of a statement spine (body_lower_stmt_spine's shape).
@@ -9107,36 +9172,182 @@ fn body_lower_stmt_spine_last_optional(spine: Node) -> Optional<Node> {
   }
 }
 
-// The one return a function body may hold: its tail statement, read positionally from the fn_body
-// (seq(`{`, seq(stmt_seq, `}`)), body_lower_fn_body_stmt_seq_optional).
-fn body_lower_fn_body_tail_statement_optional(fn_body: Node) -> Optional<Node> {
-  match body_lower_fn_body_stmt_seq_optional(fn_body: fn_body) {
-    Absent => optional_absent()
-    Present { value: stmt_seq } =>
-      match body_lower_unwrap_captured(shell: stmt_seq) {
-        Absent => optional_absent()
-        Present { value: spine } => body_lower_stmt_spine_last_optional(spine: spine)
+// THE EXITS OF A FUNCTION BODY ARE ADMITTED BY ONE TOP-DOWN WALK OF ITS RAW PARSE, carrying whether
+// the node's value is the function's result (`tail`). Two exits are admitted, only in tail position:
+// a `return e`, which then lowers to `e` (the block's value IS the function's result), and a guard
+// -- a statement-form else-less `if c { ..; return e }` heading a tail spine with a following
+// statement -- which lowers to Branch(c, arm, rest of the spine). The tail passes to a fn_body's
+// statements, a spine's LAST statement, each arm of an `if` or `match`, an admitted guard's arm, and
+// through a shell whose value is its one child; everything else -- a condition, a scrutinee, a let
+// value, an operand, a statement followed by another -- is not a tail, and neither is anything under
+// it. The walk answers the FIRST exit in pre-order that is not admitted, as a located refusal
+// (return_not_in_tail_position, or else_less_if_unlowered), and it runs before any reader, so the
+// readers that lower a return to its operand, or a guard to a Branch, only ever meet admitted exits.
+// A nested function value owns its own exits. A shape the walk does not recognise passes no tail,
+// so an unrecognised position refuses -- it never widens
+// (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). One pass,
+// no site lists and no membership scans: each node is visited once.
+fn body_lower_exit_outside_tail_optional(node: Node, tail: Bool) -> Optional<Outcome<Node>> {
+  body_lower_exit_walk(node: node, tail: tail, arm_tail: false)
+}
+
+fn body_lower_exit_refused(reason: Symbol, at: Node) -> Optional<Outcome<Node>> {
+  optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: reason, n: at)))
+}
+
+// The first refusal among `children`, each walked with the same flags.
+fn body_lower_exit_walk_children(node: Node, tail: Bool, arm_tail: Bool) -> Optional<Outcome<Node>> {
+  fold(node.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => body_lower_exit_walk(node: e.target, tail: tail, arm_tail: arm_tail)
+    }
+  })
+}
+
+fn body_lower_exit_first(first: Optional<Outcome<Node>>, then: Node, tail: Bool) -> Optional<Outcome<Node>> {
+  match first {
+    Present { value: _ } => first
+    Absent => body_lower_exit_walk(node: then, tail: tail, arm_tail: false)
+  }
+}
+
+// `arm_tail` is the tail a `match` hands to the match_arm shells below it; it crosses only the
+// unnamed sequence nodes between the match and its arms, and any other production resets it.
+fn body_lower_exit_walk(node: Node, tail: Bool, arm_tail: Bool) -> Optional<Outcome<Node>> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if body_lower_find_captured_prunable(id: id) {
+        optional_absent()
+      } else if id == ^dag_surface_stmt {
+        match body_lower_return_statement_expr_optional(stmt: node) {
+          Present { value: operand } =>
+            if tail {
+              body_lower_exit_walk(node: operand, tail: false, arm_tail: false)
+            } else {
+              body_lower_exit_refused(reason: ^body_lowering_reason_return_not_in_tail_position, at: node)
+            }
+          Absent => body_lower_exit_walk_children(node: node, tail: tail, arm_tail: false)
+        }
+      } else if id == ^dag_surface_else_less_if_stmt {
+        body_lower_exit_refused(reason: ^body_lowering_reason_else_less_if_unlowered, at: node)
+      } else if id == ^dag_surface_stmt_seq {
+        match body_lower_unwrap_captured(shell: node) {
+          Present { value: spine } => body_lower_exit_walk_spine(spine: spine, tail: tail)
+          Absent => optional_absent()
+        }
+      } else if id == ^dag_surface_fn_body {
+        match body_lower_fn_body_stmt_seq_optional(fn_body: node) {
+          Present { value: stmt_seq } => body_lower_exit_walk(node: stmt_seq, tail: tail, arm_tail: false)
+          Absent => body_lower_exit_walk_children(node: node, tail: false, arm_tail: false)
+        }
+      } else if id == ^dag_surface_if_expr {
+        body_lower_exit_walk_if(shell: node, tail: tail)
+      } else if id == ^dag_surface_match_expr {
+        body_lower_exit_walk_children(node: node, tail: false, arm_tail: tail)
+      } else if id == ^dag_surface_match_arm {
+        match body_lower_match_arm_body_capture_optional(stripped: body_lower_match_arm_stripped(arm: node)) {
+          Present { value: body } => body_lower_exit_walk(node: body, tail: arm_tail, arm_tail: false)
+          Absent => body_lower_exit_walk_children(node: node, tail: false, arm_tail: false)
+        }
+      } else if body_lower_is_pass_through_emitted(emitted: id) || (id == ^dag_surface_primary_expr) {
+        body_lower_exit_walk_children(node: node, tail: tail, arm_tail: false)
+      } else {
+        body_lower_exit_walk_children(node: node, tail: false, arm_tail: false)
+      }
+    Absent =>
+      let peeled = body_lower_deep_unwrap_optional(node: node)
+      if peeled != node {
+        body_lower_exit_walk(node: peeled, tail: tail, arm_tail: arm_tail)
+      } else {
+        match sugar_sequence_pair_optional(node: node) {
+          Present { value: pair } =>
+            if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+              body_lower_exit_walk(node: pair.left, tail: tail, arm_tail: arm_tail)
+            } else {
+              body_lower_exit_walk_children(node: node, tail: false, arm_tail: arm_tail)
+            }
+          Absent => body_lower_exit_walk_children(node: node, tail: false, arm_tail: arm_tail)
+        }
       }
   }
 }
 
-// THE WALL: the first return under `root` that is not `tail` refuses, located at it.
-fn body_lower_return_outside_tail_optional(root: Node, tail: Optional<Node>) -> Optional<Outcome<Node>> {
-  fold_list(xs: body_lower_return_statement_sites(root: root), empty: optional_absent(), cons: fn(acc, site) {
-    let is_tail = match tail {
-      Present { value: t } => t == site
-      Absent => false
-    }
-    if is_tail {
-      acc
-    } else {
-      optional_present(
-        value: outcome_rejected(
-          d: body_lower_diagnostic(reason: ^body_lowering_reason_return_not_in_tail_position, n: site)
-        )
-      )
-    }
-  })
+// A match_arm shell's own sequence, peeled as body_lower_wire_match_arm_capture peels it.
+fn body_lower_match_arm_stripped(arm: Node) -> Node {
+  match parse_production_captured_child_optional(node: arm) {
+    Present { value: captured } => body_lower_deep_unwrap_optional(node: captured)
+    Absent => body_lower_deep_unwrap_optional(node: arm)
+  }
+}
+
+// An `if`: its condition is not a tail; each arm is the if's own tail. The three reads cover the
+// whole if -- the rest of it is keywords -- and an if they cannot read is walked with no tail.
+fn body_lower_exit_walk_if(shell: Node, tail: Bool) -> Optional<Outcome<Node>> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent => body_lower_exit_walk_children(node: shell, tail: false, arm_tail: false)
+    Present { value: captured } =>
+      match body_lower_if_condition_optional(captured: captured) {
+        Absent => body_lower_exit_walk_children(node: shell, tail: false, arm_tail: false)
+        Present { value: condition } =>
+          let after_condition = match body_lower_if_then_arm_optional(captured: captured) {
+            Present { value: arm } => body_lower_exit_first(first: body_lower_exit_walk(node: condition, tail: false, arm_tail: false), then: body_lower_if_arm_as_node(arm: arm), tail: tail)
+            Absent => body_lower_exit_walk_children(node: shell, tail: false, arm_tail: false)
+          }
+          match body_lower_if_else_capture_optional(captured: captured) {
+            Present { value: arm } => body_lower_exit_first(first: after_condition, then: body_lower_if_arm_as_node(arm: arm), tail: tail)
+            Absent => after_condition
+          }
+      }
+  }
+}
+
+// An if arm reader answers either a production shell (an `else if`'s if_expr) or a fn_body's
+// captured sequence seq(`{`, seq(stmt_seq, `}`)); the second is read to its stmt_seq, positionally,
+// as body_lower_fn_body_stmt_seq_optional reads it below its shell.
+fn body_lower_if_arm_as_node(arm: Node) -> Node {
+  match parse_production_emitted_identity_optional(node: arm) {
+    Present { value: _ } => arm
+    Absent =>
+      match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: arm)) {
+        Absent => arm
+        Present { value: brace_rest } =>
+          match sugar_sequence_pair_optional(node: brace_rest.right) {
+            Absent => arm
+            Present { value: seq_close } => body_lower_deep_unwrap_optional(node: seq_close.left)
+          }
+      }
+  }
+}
+
+// A spine: a statement followed by another is not a tail, except an admitted guard heading a tail
+// spine, whose condition is not a tail and whose arm is; the last statement is the spine's tail.
+fn body_lower_exit_walk_spine(spine: Node, tail: Bool) -> Optional<Outcome<Node>> {
+  match body_lower_stmt_spine_head_optional(spine: spine) {
+    Absent => optional_absent()
+    Present { value: head } =>
+      if body_lower_stmt_spine_has_successor(spine: spine) {
+        let here = match body_lower_admitted_guard_optional(stmt: head) {
+          Present { value: guard } =>
+            if tail {
+              body_lower_exit_first(first: body_lower_exit_walk(node: guard.condition, tail: false, arm_tail: false), then: guard.arm, tail: true)
+            } else {
+              body_lower_exit_walk(node: head, tail: false, arm_tail: false)
+            }
+          Absent => body_lower_exit_walk(node: head, tail: false, arm_tail: false)
+        }
+        match here {
+          Present { value: _ } => here
+          Absent =>
+            match body_lower_stmt_spine_rest_optional(spine: spine) {
+              Present { value: rest } => body_lower_exit_walk_spine(spine: rest, tail: tail)
+              Absent => optional_absent()
+            }
+        }
+      } else {
+        body_lower_exit_walk(node: head, tail: tail, arm_tail: false)
+      }
+  }
 }
 
 // A statement read as a value in the tail of a function body: a return lowers to what it returns.
