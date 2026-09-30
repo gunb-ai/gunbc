@@ -124,6 +124,7 @@ import v2.std.node {
   EdgeLabel,
   edge_is_production,
   production_edge_label,
+  ConstructTagEdge,
 }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup, find_labeled_child }
 import v2.std.compilers.target_model {
@@ -4612,8 +4613,7 @@ fn dag_rec_construct_body_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_binding_type_rec,
+      core_edge(marker: ConstructTagEdge,
         target: dag_type_atom_node(identity: ^dag_binding_type_rec)
       ),
       dag_named_edge(
@@ -4641,8 +4641,7 @@ fn dag_variant_holds_construct_node(value_lit: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_binding_type_variant_holds,
+      core_edge(marker: ConstructTagEdge,
         target: dag_type_atom_node(identity: ^dag_binding_type_variant_holds)
       ),
       dag_named_edge(
