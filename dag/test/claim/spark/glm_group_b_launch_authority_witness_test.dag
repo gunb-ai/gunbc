@@ -23,6 +23,7 @@ import gunbc.spark.native_serving_realization {
   GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
   glm_native_launch_lines, glm_native_unit_exec_words, glm_native_all_unit_renders,
 }
+import std.algebra { Cons, Empty }
 
 // ── ONE GROUP-B LAUNCH SPECIFICATION, AND THE PROJECTIONS THAT MAY NOT DRIFT FROM IT ──────────
 //

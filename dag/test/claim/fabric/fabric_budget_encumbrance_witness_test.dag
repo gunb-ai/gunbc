@@ -7,6 +7,8 @@ import std.nat { Nat }
 import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance { EncumbranceLedger, ExceedsAppropriation, UnknownEncumbrance, ExpenditureExceedsEncumbrance, AlreadyTerminal, DuplicateReference }
 import product.fabric.budget { MoneyAccount, MoneyReservationRequest, MoneySettlementRequest, MoneyOutcome, AccountAdvanced, MoneyRefused, CurrencyMismatch, LedgerRefused, StaleLeaseGeneration, reserve_money, settle_money, release_money, account_committed }
+import std.algebra { Cons, Empty }
+import v2.std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
