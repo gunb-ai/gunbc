@@ -1,8 +1,9 @@
 module v2.test.parse.layout_line_break
 
-import v2.compiler.parse { ParseArtifact, parse_module, parse_token_stream_digest, parse_token_stream_source_digest }
+import v2.compiler.parse { ParseArtifact, parse_module, parse_module_prepared, parse_token_stream_digest, parse_token_stream_source_digest }
+import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex, dag_grammar }
+import v2.extdeps.languages.dag { dag_lex }
 import v2.std.algebra { length }
 import v2.std.collection { List, list_at_optional }
 import v2.std.compilers.lexing {
@@ -150,14 +151,24 @@ test fn a_stream_without_source_answers_unknown_holds() -> Bool {
 // source attached and with it absent.
 data identity_module_text: String = "module probe.layout_identity\n\nfn f(x: Int) -> Int {\n  x - 1\n}\n"
 
+// Against the prepared dag grammar the floor warms once (v2.compiler.program_assembly
+// dag_prepared_grammar), so the claim pays two parses and no grammar preparation.
+fn identity_parse(stream: TokenStream) -> Outcome<ParseArtifact> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue)
+  }
+}
+
 test fn carrying_the_source_changes_no_parse_tree_holds() -> Bool {
   match lexed(text: identity_module_text, file: ^layout_identity) {
     Rejected { diagnostics: _ } => false
     Accepted { value: with_source, diagnostics: _ } =>
-      match parse_module(tokens: with_source, grammar: dag_grammar()) {
+      match identity_parse(stream: with_source) {
         Rejected { diagnostics: _ } => false
         Accepted { value: a, diagnostics: _ } =>
-          match parse_module(tokens: token_stream_new(all: token_stream_all(stream: with_source)), grammar: dag_grammar()) {
+          match identity_parse(stream: token_stream_new(all: token_stream_all(stream: with_source))) {
             Rejected { diagnostics: _ } => false
             Accepted { value: b, diagnostics: _ } => content_hash(n: a.tree) == content_hash(n: b.tree)
           }
