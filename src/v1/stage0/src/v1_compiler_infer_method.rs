@@ -339,6 +339,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: crate::v1_std_core::with_optional_cardinality(string_type()),
     }));
+                __m.insert("sha256_hex_of_text".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "text".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: string_type(),
+    }));
                 __m.insert("string_length".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "s".to_string(),

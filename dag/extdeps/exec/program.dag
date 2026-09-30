@@ -83,6 +83,7 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.jq", decl_name: "jq_program"),
     decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_program"),
     decl_ref(module_path: "extdeps.tools.websocat", decl_name: "websocat_program"),
+    decl_ref(module_path: "extdeps.tools.websocat", decl_name: "websocat_nbd_proxy_bridge_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_program"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_program"),
     decl_ref(module_path: "extdeps.tools.openssl", decl_name: "openssl_program"),
