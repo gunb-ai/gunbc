@@ -1,5 +1,7 @@
 module extdeps.tools.rustfmt
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceRustup }
@@ -13,8 +15,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn rustfmt_program() -> ProgramIdentity = cataloged_program(invocation: "rustfmt")
+
 data rustfmt_cli_tool: CliTool = CliTool {
-  name: "rustfmt",
+  program: rustfmt_program(),
   min_version: Absent,
   installable_via: [SourceRustup],
 }
