@@ -145,6 +145,22 @@ test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> B
     && string_contains(s: log, pattern: "stream closed by the model")
 }
 
+// THE LOGIN DOES NOT RUN IN A DOCUMENT THAT CAN NAVIGATE AWAY (fleet-converge run 36721915217). The
+// transport's root page replaces itself on DOMContentLoaded. The observer that loaded "/" and logged in
+// by evaluating a fetch inside it journalled "failed ... Execution context was destroyed" against this
+// transport, the hardware journal line for line, and was never established. The ROUTE is asserted, not
+// only the answer: the controller saw the login and never served its root page.
+test fn a_root_page_that_navigates_cannot_destroy_the_login() -> Bool {
+  let r = rig(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: true))
+  let admitted = match kvm_handoff_admission(start: r.start) { KvmHandoffAdmitted { session: s } => s == "7"  _ => false }
+  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let log = transport_log(r: r)
+  let closed = close_rig(r: r)
+  admitted && released(rec: rec) && closed
+    && string_contains(s: log, pattern: "transition request=[\"login\",\"admin\",\"pw\"] status=200")
+    && !string_contains(s: log, pattern: "spa-root served")
+}
+
 // VIEWER SLOT BUSY: the model's other viewer makes viewer_count 1; the observer refuses with that count,
 // never connects, releases its session -- and the handoff is refused with that standing.
 test fn a_busy_viewer_slot_refuses_the_observer_and_the_handoff() -> Bool {
