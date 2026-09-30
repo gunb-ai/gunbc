@@ -2884,21 +2884,21 @@ fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenti
         ProfileStoreUnread { step: _, reason: _ } => none
       }
       let name = match found {
-        Present { value: profile } => match profile.name {
+        Present { value: stored } => match stored.name {
           Present { value: n } => Present { value: n }
           Absent => session.profile.name
         }
         Absent => session.profile.name
       }
       let email = match found {
-        Present { value: profile } => match profile.email {
+        Present { value: stored } => match stored.email {
           Present { value: e } => Present { value: e }
           Absent => session.profile.email
         }
         Absent => session.profile.email
       }
       let picture = match found {
-        Present { value: profile } => match profile.picture {
+        Present { value: stored } => match stored.picture {
           Present { value: u } => Present { value: u }
           Absent => session.profile.picture
         }
