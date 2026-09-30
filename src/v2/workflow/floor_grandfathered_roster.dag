@@ -8,6 +8,7 @@ import v2.std.integer { Int }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { EvalStepCount }
 import std.types { NonEmptyStr, List }
+import std.algebra { Cons, Empty }
 
 // THE CLOSED ROSTER OF WITNESS IDENTITIES GRANDFATHERED AT THE CUT COMMIT (operator ruling via
 // fierce-lark-661, 2026-09-13). It exists so the required floor can carry TWO ceilings without

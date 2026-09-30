@@ -45,6 +45,7 @@ import std.measure {
 import std.types { NonEmptyStr, List }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
 import extdeps.languages.yaml.types { yaml_entry_count }
+import std.algebra { Cons, Empty }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //

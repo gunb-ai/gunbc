@@ -14,6 +14,7 @@ import v2.std.logic { Bool }
 import v2.std.integer { integer_int_to_decimal_string, integer_u8_from_byte }
 import v2.std.runtime { RuntimePrimitive, RuntimePrimitiveValue, RuntimeValue }
 import v2.std.text { String }
+import std.algebra { Cons, Empty }
 
 type NativeAgreementDivergence {
   member_id: String
