@@ -27,6 +27,8 @@ import v2.compiler.inferred_tree {
 import v2.extdeps.languages.dag {
   DagCanonicalBoolLiteral,
   DagCanonicalIntLiteral,
+  DagCanonicalSymbolLiteral,
+  dag_node_is_symbol_literal_atom,
   DagCanonicalLiteral,
   dag_binding_denotation,
   dag_canonical_literal_from_node,
@@ -60,7 +62,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
-import v2.std.node { arrow_signature_order_label, edge_label_of }
+import v2.std.node { arrow_signature_order_label, edge_label_of, symbol_type_node }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -1090,6 +1092,7 @@ fn infer_literal_type_binding(literal: DagCanonicalLiteral) -> Symbol {
   match literal {
     DagCanonicalBoolLiteral { value: _ } => ^dag_binding_type_bool
     DagCanonicalIntLiteral { magnitude: _ } => ^dag_binding_type_int
+    DagCanonicalSymbolLiteral { value: _ } => ^dag_binding_type_symbol
   }
 }
 
@@ -1325,6 +1328,8 @@ fn infer_match_bool_arm_body_type(
       }
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
+    Accepted { value: DagCanonicalSymbolLiteral { value: _ }, diagnostics: _ } =>
+      infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
     Rejected { diagnostics: _ } =>
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
   }
@@ -1519,6 +1524,8 @@ fn infer_bool_literal_pattern_classify(pattern: Node) -> InferBoolLiteralPattern
     Accepted { value: DagCanonicalBoolLiteral { value: false }, diagnostics: _ } =>
       InferBoolLiteralPatternFalse
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
+      InferBoolLiteralPatternOther
+    Accepted { value: DagCanonicalSymbolLiteral { value: _ }, diagnostics: _ } =>
       InferBoolLiteralPatternOther
     Rejected { diagnostics: _ } => InferBoolLiteralPatternOther
   }
@@ -3177,7 +3184,8 @@ fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics
 // An integer literal's modeled type derives from its canonical representation, including its sole
 // named magnitude subtree. Its derivation discharges only that edge's local type frontier;
 // propagating it past the literal would report GroundingNotDerived after Int was derived. Boolean
-// literals are canonical only with no children, so no boolean payload can be discharged. Malformed
+// literals are canonical only with no children, so no boolean payload can be discharged. A symbol
+// literal's sole named name payload is discharged the same way as the magnitude. Malformed
 // literals remain GroundingNotDerived and retain every child diagnostic.
 
 fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
@@ -3188,6 +3196,11 @@ fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
         Positional => false
       }
     Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => false
+    Accepted { value: DagCanonicalSymbolLiteral { value: _ }, diagnostics: _ } =>
+      match edge.label {
+        Named { name: field } => field == ^symbol_literal_name_field
+        Positional => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
@@ -3249,7 +3262,14 @@ fn infer_empty_product_entry(domain: Node) -> Outcome<InferredFactsEntry> {
 // first cut of this rule had). A payload node of any other shape stays on the frontier. Only the
 // edge infer_literal_edge_diagnostics_derived admits reaches here, so a malformed literal keeps
 // every child on the frontier.
-fn infer_literal_payload_member_type(member: Node) -> Optional<Node> {
+fn infer_literal_payload_member_type(literal: Node, member: Node) -> Optional<Node> {
+  if dag_node_is_symbol_literal_atom(node: literal) {
+    // A symbol literal's payload is its one name atom, and that atom IS the symbol value.
+    match member.kind {
+      TypeNode { connective: Atom { identity: _ } } => optional_present(value: symbol_type_node())
+      _ => optional_absent()
+    }
+  } else {
   match member.kind {
     TypeNode { connective: Atom { identity: _ } } =>
       optional_present(value: integer_decimal_digit_type_node())
@@ -3257,10 +3277,11 @@ fn infer_literal_payload_member_type(member: Node) -> Optional<Node> {
       optional_present(value: integer_decimal_digits_type_node())
     _ => optional_absent()
   }
+  }
 }
 
-fn infer_literal_payload_member_facts(member: Node) -> Outcome<InferredFacts> {
-  match infer_literal_payload_member_type(member: member) {
+fn infer_literal_payload_member_facts(literal: Node, member: Node) -> Outcome<InferredFacts> {
+  match infer_literal_payload_member_type(literal: literal, member: member) {
     Present { value: member_type } =>
       inferred_facts_from_derived_type(
         node: member,
@@ -3272,7 +3293,7 @@ fn infer_literal_payload_member_facts(member: Node) -> Outcome<InferredFacts> {
   }
 }
 
-fn infer_literal_payload_entries(payload: Node) -> Outcome<List<InferredFactsEntry>> {
+fn infer_literal_payload_entries(literal: Node, payload: Node) -> Outcome<List<InferredFactsEntry>> {
   fold(
     node_subtree_nodes(root: payload),
     init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None },
@@ -3281,7 +3302,7 @@ fn infer_literal_payload_entries(payload: Node) -> Outcome<List<InferredFactsEnt
         o: acc,
         f: fn(entries) {
           bind_outcome(
-            o: infer_literal_payload_member_facts(member: member),
+            o: infer_literal_payload_member_facts(literal: literal, member: member),
             f: fn(facts) {
               bind_outcome(
                 o: admitted_inferred_facts_entry(node: member, facts: facts),
@@ -3481,7 +3502,7 @@ fn infer_gather_fold_step(
         )
     }
   } else if infer_literal_edge_diagnostics_derived(parent: acc.node, edge: edge) {
-    match infer_literal_payload_entries(payload: edge.target) {
+    match infer_literal_payload_entries(literal: acc.node, payload: edge.target) {
       Rejected { diagnostics: r } =>
         infer_gather_fold_acc_failed(
           node: acc.node,

@@ -26,6 +26,7 @@ import v2.compiler.body_producer_forward {
   body_producer_forward_surface_identities
 }
 import v2.extdeps.languages.dag {
+  dag_symbol_literal_node_from_name,
   ParseSubtreeAbsent,
   ParseSubtreeFind,
   ParseSubtreeFound,
@@ -1281,31 +1282,41 @@ fn body_lower_is_block_delimiter_token(id: Symbol) -> Bool {
   (id == ^dag_token_lbrace) || (id == ^dag_token_rbrace)
 }
 
-// A CARET SYMBOL (`^name`) IS dag_grammar_caret_symbol_expr: seq(`^`, name), and body lowering has
-// no lowered form for it yet (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form). Every
-// value position -- argument, let value, body, data and field initializer, arm body, scrutinee,
-// if-branch, list item, condition operand -- reached body_lower_primary_expr's first-atom fallback,
-// which answered the caret with its `^` token: `if id == ^a {..} else if id == ^b {..}` accepted
-// with both conditions lowered to `id == ^`, two symbols made one node. The fallback now refuses a
-// caret shape, located at the `^` token, with its own cause, so the refused population is exactly
-// what the symbol-literal lowering must take over. Answers the `^` token node when the capture is one.
-fn body_lower_caret_symbol_token_optional(captured: Node) -> Optional<Node> {
+// A CARET SYMBOL (`^name`) IS dag_grammar_caret_symbol_expr: seq(`^`, name), whose name terminal
+// the grammar stamps with its lexeme. Every value position -- argument, let value, body, data and
+// field initializer, arm body, scrutinee, if-branch, list item, condition operand -- reaches
+// body_lower_primary_expr's first-atom fallback, which lowers it here to the symbol literal
+// (v2.extdeps.languages.dag dag_symbol_literal_node_from_name, std.syntax LitSymbol): the `^` atom
+// carrying the name terminal whole as its payload, occurrence id kept. Before this, the fallback
+// answered the caret with its bare `^` token, so `if id == ^a {..} else if id == ^b {..}` accepted
+// with both conditions lowered to `id == ^`, two symbols made one node
+// (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form). Absent when the capture is not
+// a caret shape; a caret whose name is not one atom is not a shape the grammar produces, and is
+// left to the fallback's own refusal rather than lowered without its payload.
+fn body_lower_caret_symbol_literal_optional(captured: Node) -> Optional<Node> {
   match sugar_sequence_pair_optional(
     node: body_lower_unwrap_surface_shell(node: captured)
   ) {
     Absent => Absent
-    Present { value: pair } =>
-      match node_atom_identity_optional(
-        node: body_lower_deep_unwrap_optional(node: pair.left)
-      ) {
+    Present { value: pair } => {
+      let caret = body_lower_deep_unwrap_optional(node: pair.left)
+      let name = body_lower_deep_unwrap_optional(node: pair.right)
+      match node_atom_identity_optional(node: caret) {
         Present { value: id } =>
           if id == ^dag_token_caret {
-            optional_present(value: body_lower_deep_unwrap_optional(node: pair.left))
+            match node_atom_identity_optional(node: name) {
+              Present { value: _ } =>
+                optional_present(
+                  value: dag_symbol_literal_node_from_name(name: name, occurrence_id: caret.occurrence_id)
+                )
+              Absent => optional_absent()
+            }
           } else {
             optional_absent()
           }
         Absent => Absent
       }
+    }
   }
 }
 
@@ -6477,8 +6488,8 @@ fn body_lower_let_in_key_binding_atom_optional(captured: Node) -> Optional<Node>
 // THE `in` FORM'S VALUE IS A VALUE, READ BY THE ONE VALUE READER. `let NAME = value in body` reads
 // `value` (positionally before `in`, body_lower_let_in_value_capture_optional) through
 // body_lower_value_read, as every other value position does since gunbc#12299, so a value the
-// reader refuses is refused at the value with its own cause (a caret symbol refuses
-// caret_symbol_not_lowered) and a value it lowers is lowered whole (a cast lowers to the typed cast
+// reader refuses is refused at the value with its own cause, a caret symbol lowers to its symbol
+// literal, and a value it lowers is lowered whole (a cast lowers to the typed cast
 // node). It was read by the operand readers -- an int-literal materialiser, then
 // body_lower_arm_operand_resolved_read, which opens with a deep search for the first postfix
 // expression -- so `let x = ^s in b` resolved with the symbol silently lost and `let x = i as Int in x`
@@ -7975,11 +7986,8 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
       match body_lower_paren_group_inner_optional(node: captured) {
         Present { value: inner } => body_lower_paren_group_lowered(group: captured, inner: inner)
         Absent =>
-      match body_lower_caret_symbol_token_optional(captured: captured) {
-        Present { value: caret } =>
-          outcome_rejected(
-            d: body_lower_diagnostic(reason: ^body_lowering_reason_caret_symbol_not_lowered, n: caret)
-          )
+      match body_lower_caret_symbol_literal_optional(captured: captured) {
+        Present { value: literal } => outcome_accepted(value: literal)
         Absent =>
       match body_lower_value_sole_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)

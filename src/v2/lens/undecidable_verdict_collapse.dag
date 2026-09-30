@@ -6,6 +6,7 @@ import v2.std.witness { Holds, Witness }
 import v2.extdeps.languages.dag {
   DagCanonicalBoolLiteral,
   DagCanonicalIntLiteral,
+  DagCanonicalSymbolLiteral,
   dag_canonical_literal_from_node,
   parse_production_emitted_identity_optional,
   qualified_name_from_module_node
@@ -123,6 +124,7 @@ fn body_is_decidable_literal(body: Node) -> Bool {
   match dag_canonical_literal_from_node(node: body) {
     Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => true
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } => true
+    Accepted { value: DagCanonicalSymbolLiteral { value: _ }, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }

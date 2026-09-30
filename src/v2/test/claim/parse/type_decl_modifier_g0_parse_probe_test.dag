@@ -70,18 +70,20 @@ test fn sole_constructor_as_a_caret_symbol_still_parses_holds() -> Bool {
 
 // THE ARRANGEMENT THESE CLAIMS MEASURE. Ordinary identifier tokens are StampClass, whose
 // published identity is the token class ^dag_token_ident. The two promoted keyword classes
-// are a FIXED StampBinding of ^dag_token_ident. So BOTH publish the same generic identifier
-// identity and NEITHER publishes authored text, by two different mechanisms -- which is the
-// property the class-stamped sites had before promotion. A lexeme stamp is the third
-// outcome: it publishes the authored text itself (v2.compiler.02_parse
-// symbol_intern_lexeme), which would change the identity every caret literal carries
-// corpus-wide (generic parameter names are binders and ARE lexeme-stamped: v2.test.claim.type_param_binder_frame) and falsify
-// v2.lens.identity_captured_navigation.analyze node_source_symbol_note.
+// are a FIXED StampBinding of ^dag_token_ident at the sites that must keep that generic identity
+// (dag_grammar_ident_or_type_decl_modifier_generic_ident_identity). A lexeme stamp is the third
+// outcome: it publishes the authored text itself (v2.compiler.02_parse symbol_intern_lexeme).
 //
-// The pair below discriminates on ONE spelling, in both directions: the word is absent from
-// the caret tree's atom identities and present in the data-decl tree's, the latter being
-// genuinely lexeme-stamped. Routing the caret site through the lexeme helper turns the
-// first red.
+// THE CARET SITE IS NOW LEXEME-STAMPED, A DECLARED true->false (MQ-1 caret-symbol PR-2). Its
+// referenced identifier goes through dag_grammar_ident_or_type_decl_modifier_name, so a caret
+// literal carries its own text, which is what body lowering needs to lower it to a symbol literal
+// (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form). The claim that stood here,
+// caret_referenced_ident_does_not_publish_the_lexeme_holds, measured the recorded grammar
+// limitation and went false by design; it is inverted in place below, and
+// caret_referenced_ident_publishes_the_generic_ident_class_holds, the positive half of the same
+// limitation, is withdrawn with it. The keyword-class claim stays: a lexeme stamp publishes the
+// text, never ^dag_token_kw_sole_constructor. The data-decl pair still discriminates on ONE
+// spelling: the word is present in both trees now, each genuinely lexeme-stamped.
 
 fn parsed_tree_carries_atom(src: String, identity: Symbol) -> Bool {
   let lm = probe_cached_lm
@@ -105,11 +107,11 @@ fn parsed_tree_carries_atom(src: String, identity: Symbol) -> Bool {
   }
 }
 
-test fn caret_referenced_ident_does_not_publish_the_lexeme_holds() -> Bool {
+test fn caret_referenced_ident_publishes_the_lexeme_holds() -> Bool {
   parsed_tree_carries_atom(
     src: modifier_spelling_as_caret_source,
     identity: ^sole_constructor
-  ) == false
+  )
 }
 
 test fn data_decl_name_is_lexeme_stamped_holds() -> Bool {
@@ -126,15 +128,9 @@ test fn data_decl_name_is_lexeme_stamped_holds() -> Bool {
 // to ^dag_token_kw_sole_constructor WITHOUT ever touching the stamp mode. A membership claim
 // that only says the interned lexeme is absent passes under both implementations, because
 // neither tree contains it. The claims below therefore assert the identity POSITIVELY --
-// what the site publishes, not merely what it does not -- at both class-stamped sites,
-// including the generic-parameter site, which carried no identity measurement at all.
-
-test fn caret_referenced_ident_publishes_the_generic_ident_class_holds() -> Bool {
-  parsed_tree_carries_atom(
-    src: modifier_spelling_as_caret_source,
-    identity: ^dag_token_ident
-  )
-}
+// what the site publishes, not merely what it does not -- at the generic-parameter site, which
+// carried no identity measurement at all. The caret site, lexeme-stamped now, keeps only the
+// keyword-class half: a lexeme stamp must never publish the keyword class either.
 
 test fn caret_referenced_ident_does_not_publish_the_keyword_class_holds() -> Bool {
   parsed_tree_carries_atom(

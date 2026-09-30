@@ -13,6 +13,18 @@ import std.content_hash {
 }
 
 type Symbol
+
+// THE VALUE TYPE A SYMBOL LITERAL DENOTES, as a node, owned here beside the declaration it names
+// (as v2.std.logic bool_node is for Bool and v2.std.integer integer_int_type_node for Int).
+// v2.extdeps.languages.dag dag_binding_denotation points its Symbol row at it; it mints nothing else.
+fn symbol_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^symbol_type_node_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 type Hash = Fnv1a64Structural
 
 type Connective

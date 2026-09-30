@@ -1,0 +1,258 @@
+module v2.test.claim.body_lowering.caret_symbol_value_lowering
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, dag_node_is_symbol_literal_atom, dag_symbol_literal_value_optional }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.grammar { node_atom_identity_optional }
+import std.algebra { list_snoc_item }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+// A CARET SYMBOL IN VALUE POSITION LOWERS TO ITS SYMBOL LITERAL, WITH ITS OWN NAME AS THE PAYLOAD.
+//
+// THE SUBJECT IS normalize over one declaration's source, the producers called directly
+// (tokenize -> parse -> normalize). On main b1b7aea9aa7 all ten value positions below normalized
+// ACCEPTED with the caret lowered to a bare `^dag_token_caret` and its symbol gone; MQ-1 PR-1
+// (gunbc#12392) made each refuse at the caret with body_lowering_reason_caret_symbol_not_lowered.
+// This module was that refusal's pin, INVERTED IN PLACE by PR-2: the grammar stamps the caret's name
+// with its lexeme and v2.compiler.body_lowering_fold lowers the caret to
+// v2.extdeps.languages.dag dag_symbol_literal_node_from_name (std.syntax LitSymbol). Each position
+// must now normalize ACCEPTED and carry exactly its own symbol literals, payloads in source order --
+// the payload, not the atom, so a lowering that keeps the `^` atom and drops its name reds.
+//
+// THE if-CONDITION SPECIMEN is v2.std.compilers.target_model ordering_predicate_from_wire_symbol,
+// trimmed to its first two arms: the declaration whose two conditions lowered to one node. Its two
+// conditions must carry two DIFFERENT payloads. The bare operand (v2.std.grammar
+// formal_binding_is_free_name_slot) and the `||` scrutinee (v2.std.compilers.target_model
+// target_model_bundle_core_keep_edge) must keep every operand in order: the left operand directly
+// before the caret literal.
+
+data caret_if_condition_source: String = "module chunk\n\nfn ordering_predicate_from_wire_symbol(id: Symbol) -> Optional<OrderingPredicate> {\n  if id == ^ordering_predicate_is_less {\n    optional_present(value: IsLess)\n  } else {\n    if id == ^ordering_predicate_is_less_or_equal {\n      optional_present(value: IsLessOrEqual)\n    } else {\n      optional_absent()\n    }\n  }\n}\n"
+
+data int_if_condition_control_source: String = "module chunk\n\nfn ordering_predicate_from_wire_int(id: Int) -> Optional<OrderingPredicate> {\n  if id == 1 {\n    optional_present(value: IsLess)\n  } else {\n    if id == 2 {\n      optional_present(value: IsLessOrEqual)\n    } else {\n      optional_absent()\n    }\n  }\n}\n"
+
+data caret_bare_operand_source: String = "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"
+
+data caret_named_argument_source: String = "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^pos_named_argument)\n}\n"
+
+data caret_positional_argument_source: String = "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(^pos_positional_argument)\n}\n"
+
+data caret_let_value_source: String = "module chunk\n\nfn f() -> Symbol {\n  let s = ^pos_let_value\n  s\n}\n"
+
+data caret_let_in_value_source: String = "module chunk\n\nfn f() -> Symbol {\n  let s = ^pos_let_in_value in s\n}\n"
+
+data caret_whole_body_source: String = "module chunk\n\nfn f() -> Symbol {\n  ^pos_whole_body\n}\n"
+
+data caret_data_initializer_source: String = "module chunk\n\ndata d: Symbol = ^pos_data_initializer\n"
+
+data caret_field_initializer_source: String = "module chunk\n\ntype R { s: Symbol }\n\nfn f() -> R {\n  R { s: ^pos_field_initializer }\n}\n"
+
+data caret_match_arm_body_source: String = "module chunk\n\nfn f(b: Bool) -> Symbol {\n  match b {\n    true => ^pos_match_arm_body\n    false => ^pos_match_arm_body_two\n  }\n}\n"
+
+data caret_match_scrutinee_source: String = "module chunk\n\nfn f() -> Bool {\n  match ^pos_match_scrutinee {\n    _ => true\n  }\n}\n"
+
+data caret_if_branch_value_source: String = "module chunk\n\nfn f(b: Bool) -> Symbol {\n  if b { ^pos_if_branch_value } else { ^pos_if_branch_value_two }\n}\n"
+
+data caret_list_item_source: String = "module chunk\n\nfn f() -> List<Symbol> {\n  [^pos_list_item]\n}\n"
+
+data caret_keep_edge_scrutinee_source: String = "module chunk\n\nfn keep(n: Symbol) -> Bool {\n  match n == ^target_model_edge_atom_realizations\n    || n == ^target_model_edge_signature_realizations {\n    true => false\n    false => true\n  }\n}\n"
+
+// The normalize verdict: an acceptance's symbol-literal payloads and its atom identities in preorder
+// (a symbol literal contributes its `^` atom, then its name). A tokenize, parse or normalize refusal
+// answers its own marker as the cause, so none of them can be read as the expected lowering.
+type CaretLoweringVerdict {
+  cause: Symbol
+  literals: List<Symbol>
+  atoms: List<Symbol>
+}
+
+fn csl_marker(marker: Symbol) -> CaretLoweringVerdict {
+  CaretLoweringVerdict { cause: marker, literals: [], atoms: [] }
+}
+
+fn csl_literal_payloads(nodes: List<Node>) -> List<Symbol> {
+  fold_list(xs: nodes, empty: [], cons: fn(acc, n) {
+    if dag_node_is_symbol_literal_atom(node: n) {
+      match dag_symbol_literal_value_optional(node: n) {
+        Present { value: sym } => list_snoc_item(xs: acc, item: sym)
+        Absent => list_snoc_item(xs: acc, item: ^csl_payload_missing)
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn csl_atom_identities(nodes: List<Node>) -> List<Symbol> {
+  fold_list(xs: nodes, empty: [], cons: fn(acc, n) {
+    match node_atom_identity_optional(node: n) {
+      Present { value: id } => list_snoc_item(xs: acc, item: id)
+      Absent => acc
+    }
+  })
+}
+
+fn caret_lowering_normalize_verdict(src: String) -> CaretLoweringVerdict {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: ^caret_symbol_value_lowering_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => csl_marker(marker: ^csl_tokenize_refused)
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => csl_marker(marker: ^csl_parse_refused)
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } => csl_marker(marker: diagnostics_fatal_reason(d: d))
+            Accepted { value: normalized, diagnostics: _ } => {
+              let nodes = node_subtree_nodes(root: normalized.root)
+              CaretLoweringVerdict {
+                cause: ^csl_accepted,
+                literals: csl_literal_payloads(nodes: nodes),
+                atoms: csl_atom_identities(nodes: nodes)
+              }
+            }
+          }
+      }
+  }
+}
+
+// ONE PRODUCER, EVERY VERDICT. Each fixture's normalize is a full front-end run, so the verdicts
+// are computed once here and each claim reads its own field; the producer is pure over this
+// module's data and is enrolled warm in v2.workflow.floor_pure_producer_share.
+type CaretLoweringVerdicts {
+  if_condition: CaretLoweringVerdict
+  int_control: CaretLoweringVerdict
+  bare_operand: CaretLoweringVerdict
+  keep_edge_scrutinee: CaretLoweringVerdict
+  named_argument: CaretLoweringVerdict
+  positional_argument: CaretLoweringVerdict
+  let_value: CaretLoweringVerdict
+  let_in_value: CaretLoweringVerdict
+  whole_body: CaretLoweringVerdict
+  data_initializer: CaretLoweringVerdict
+  field_initializer: CaretLoweringVerdict
+  match_arm_body: CaretLoweringVerdict
+  match_scrutinee: CaretLoweringVerdict
+  if_branch_value: CaretLoweringVerdict
+  list_item: CaretLoweringVerdict
+}
+
+fn csl_verdicts() -> CaretLoweringVerdicts {
+  CaretLoweringVerdicts {
+    if_condition: caret_lowering_normalize_verdict(src: caret_if_condition_source),
+    int_control: caret_lowering_normalize_verdict(src: int_if_condition_control_source),
+    bare_operand: caret_lowering_normalize_verdict(src: caret_bare_operand_source),
+    keep_edge_scrutinee: caret_lowering_normalize_verdict(src: caret_keep_edge_scrutinee_source),
+    named_argument: caret_lowering_normalize_verdict(src: caret_named_argument_source),
+    positional_argument: caret_lowering_normalize_verdict(src: caret_positional_argument_source),
+    let_value: caret_lowering_normalize_verdict(src: caret_let_value_source),
+    let_in_value: caret_lowering_normalize_verdict(src: caret_let_in_value_source),
+    whole_body: caret_lowering_normalize_verdict(src: caret_whole_body_source),
+    data_initializer: caret_lowering_normalize_verdict(src: caret_data_initializer_source),
+    field_initializer: caret_lowering_normalize_verdict(src: caret_field_initializer_source),
+    match_arm_body: caret_lowering_normalize_verdict(src: caret_match_arm_body_source),
+    match_scrutinee: caret_lowering_normalize_verdict(src: caret_match_scrutinee_source),
+    if_branch_value: caret_lowering_normalize_verdict(src: caret_if_branch_value_source),
+    list_item: caret_lowering_normalize_verdict(src: caret_list_item_source)
+  }
+}
+
+fn lowers_to(v: CaretLoweringVerdict, literals: List<Symbol>) -> Bool {
+  v.cause == ^csl_accepted && v.literals == literals
+}
+
+// The left operand immediately precedes the caret literal, whose name immediately follows its `^`.
+type CslWindow {
+  prev2: Symbol
+  prev1: Symbol
+  found: Bool
+}
+
+fn operand_precedes_literal(v: CaretLoweringVerdict, operand: Symbol, literal: Symbol) -> Bool {
+  fold_list(
+    xs: v.atoms,
+    empty: CslWindow { prev2: ^csl_none, prev1: ^csl_none, found: false },
+    cons: fn(w, id) {
+      CslWindow {
+        prev2: w.prev1,
+        prev1: id,
+        found: w.found || (w.prev2 == operand && w.prev1 == ^dag_token_caret && id == literal)
+      }
+    }
+  ).found
+}
+
+test fn a_caret_symbol_if_condition_lowers_each_condition_to_its_own_payload() -> Bool {
+  lowers_to(
+    v: csl_verdicts().if_condition,
+    literals: [^ordering_predicate_is_less, ^ordering_predicate_is_less_or_equal]
+  )
+}
+
+test fn an_int_literal_if_condition_still_normalizes() -> Bool {
+  lowers_to(v: csl_verdicts().int_control, literals: [])
+}
+
+test fn a_bare_caret_operand_lowers_with_its_left_operand_in_order() -> Bool {
+  let v = csl_verdicts().bare_operand
+  lowers_to(v: v, literals: [^grammar_free_name_slot])
+    && operand_precedes_literal(v: v, operand: ^binding, literal: ^grammar_free_name_slot)
+}
+
+test fn a_disjunction_of_caret_comparisons_lowers_every_operand_in_order() -> Bool {
+  let v = csl_verdicts().keep_edge_scrutinee
+  lowers_to(
+    v: v,
+    literals: [^target_model_edge_atom_realizations, ^target_model_edge_signature_realizations]
+  )
+    && operand_precedes_literal(v: v, operand: ^n, literal: ^target_model_edge_atom_realizations)
+    && operand_precedes_literal(v: v, operand: ^n, literal: ^target_model_edge_signature_realizations)
+}
+
+test fn a_caret_symbol_named_argument_lowers_to_its_literal() -> Bool {
+  lowers_to(v: csl_verdicts().named_argument, literals: [^pos_named_argument])
+}
+
+test fn a_caret_symbol_positional_argument_lowers_to_its_literal() -> Bool {
+  lowers_to(v: csl_verdicts().positional_argument, literals: [^pos_positional_argument])
+}
+
+test fn a_caret_symbol_let_value_lowers_to_its_literal() -> Bool {
+  lowers_to(v: csl_verdicts().let_value, literals: [^pos_let_value])
+}
+
+test fn a_caret_symbol_let_in_value_lowers_to_its_literal() -> Bool {
+  lowers_to(v: csl_verdicts().let_in_value, literals: [^pos_let_in_value])
+}
+
+test fn a_caret_symbol_whole_body_lowers_to_its_literal() -> Bool {
+  lowers_to(v: csl_verdicts().whole_body, literals: [^pos_whole_body])
+}
+
+test fn a_caret_symbol_data_initializer_lowers_to_its_literal() -> Bool {
+  lowers_to(v: csl_verdicts().data_initializer, literals: [^pos_data_initializer])
+}
+
+test fn a_caret_symbol_field_initializer_lowers_to_its_literal() -> Bool {
+  lowers_to(v: csl_verdicts().field_initializer, literals: [^pos_field_initializer])
+}
+
+test fn caret_symbol_match_arm_bodies_lower_to_their_own_literals() -> Bool {
+  lowers_to(v: csl_verdicts().match_arm_body, literals: [^pos_match_arm_body, ^pos_match_arm_body_two])
+}
+
+test fn a_caret_symbol_match_scrutinee_lowers_to_its_literal() -> Bool {
+  lowers_to(v: csl_verdicts().match_scrutinee, literals: [^pos_match_scrutinee])
+}
+
+test fn caret_symbol_if_branch_values_lower_to_their_own_literals() -> Bool {
+  lowers_to(v: csl_verdicts().if_branch_value, literals: [^pos_if_branch_value, ^pos_if_branch_value_two])
+}
+
+test fn a_caret_symbol_list_item_lowers_to_its_literal() -> Bool {
+  lowers_to(v: csl_verdicts().list_item, literals: [^pos_list_item])
+}

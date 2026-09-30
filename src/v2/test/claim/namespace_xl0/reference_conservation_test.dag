@@ -461,3 +461,24 @@ test fn an_unadmitted_role_table_surfaces_beside_a_normalization_refusal_holds()
       }
     })
 }
+
+// ---- conserved: two caret symbols in two if-conditions (MQ-1 caret-symbol PR-2) ----------------
+//
+// The caret's name terminal was class-stamped, so it never entered the authored population and its
+// drop went unreported (gunbc.recurring_failure_mode reference_conservation_population_omits_class_stamped_terminals):
+// both conditions lowered to `id == ^` and this check stayed green. The name is lexeme-stamped now
+// and the symbol literal keeps the terminal whole as its payload, occurrence id included, so both
+// names are in the population and both must be conserved.
+data caret_if_conditions_source: String = "module v2.test.reference_conservation_caret\n\nfn rc_from_wire(id: Symbol) -> Int {\n  if id == ^rc_caret_first {\n    1\n  } else {\n    if id == ^rc_caret_second {\n      2\n    } else {\n      3\n    }\n  }\n}\n"
+
+fn caret_if_conditions_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "caret_if_conditions", source: caret_if_conditions_source)
+}
+
+test fn both_caret_symbol_conditions_are_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: caret_if_conditions_subject())
+  reference_conservation_admitted(report: r)
+    && report_drop_count(report: r, wanted: ^rc_caret_first) == 0
+    && report_drop_count(report: r, wanted: ^rc_caret_second) == 0
+    && r.conserved > 0
+}

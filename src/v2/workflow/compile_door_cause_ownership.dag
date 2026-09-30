@@ -139,12 +139,6 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "a return lowers only as the tail statement of a function's own body; every other return refuses here, located at it, rather than lowering to its operand as the value of whatever block held it (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). Flips when the value readers carry the tail position, so a structured tail return in an if or match arm, and the else-less guard, lower to Branch(c, arm, rest); count on the PR"
   },
   CauseOwnership {
-    cause: ^body_lowering_reason_caret_symbol_not_lowered,
-    grain: FatalGrain,
-    lane: SharedSelfHostCriticalPath,
-    flip_trigger: "caret lowers to LitSymbol: owned by the MQ-1 symbol-literal slice (the grammar stamps the caret's name with its lexeme, and body lowering produces a std.syntax LitSymbol atom the resolver accepts without lookup). Until then every caret symbol in value position refuses here, located at the `^` token, rather than lowering to that token with its symbol dropped, as it did in all ten value positions on main b1b7aea9aa7 (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form)"
-  },
-  CauseOwnership {
     cause: ^body_lowering_reason_service_realization_unreachable,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
@@ -190,7 +184,7 @@ data known_frontier_causes: List<CauseOwnership> = [
     cause: ^body_lowering_reason_operator_operand_unread,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "body-lowering modeling pass (gentle-koi-724's lane): an operator operand body_lower_read_operator_expression cannot lower -- a caret symbol (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form) or a parenthesised `as` cast (as_cast_has_no_lowered_form, whose typed cast node is gunbc#12315). Flips to Blocking when every operand shape lowers and the count zeroes. Measured at fatal grain by the gunbc.witness_v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
+    flip_trigger: "body-lowering modeling pass (gentle-koi-724's lane): an operator operand body_lower_read_operator_expression cannot lower -- a caret symbol until it lowered to its symbol literal (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form, MQ-1 PR-2) or a parenthesised `as` cast (as_cast_has_no_lowered_form, whose typed cast node is gunbc#12315). Flips to Blocking when every operand shape lowers and the count zeroes. Measured at fatal grain by the gunbc.witness_v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_type_annotation_not_carried,
