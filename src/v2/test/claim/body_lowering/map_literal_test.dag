@@ -194,14 +194,21 @@ test fn ml_distinct_keys_are_accepted_holds() -> Bool {
 // discriminates is a law that always answers Distinct -- the fold's last-wins absorbing the repeat --
 // under which this and control 2 go red together.
 test fn ml_the_key_law_names_both_occurrences_holds() -> Bool {
-  match map_introduction_duplicate_key(keys: ["a", "b", "a", "b"]) {
-    MapIntroductionKeyRepeated { first_index: f, second_index: s } => (f == 0) && (s == 2)
+  ml_key_law_repeat_is(keys: ["a", "b", "a", "b"], first: 0, second: 2) && ml_key_law_distinct(keys: ["a", "b"])
+}
+
+fn ml_key_law_repeat_is(keys: List<String>, first: Int, second: Int) -> Bool {
+  match map_introduction_duplicate_key(keys: keys) {
+    MapIntroductionKeyRepeated { first_index: f, second_index: s } => (f == first) && (s == second)
     MapIntroductionKeysDistinct => false
   }
-    && match map_introduction_duplicate_key(keys: ["a", "b"]) {
-      MapIntroductionKeysDistinct => true
-      MapIntroductionKeyRepeated { first_index: _, second_index: _ } => false
-    }
+}
+
+fn ml_key_law_distinct(keys: List<String>) -> Bool {
+  match map_introduction_duplicate_key(keys: keys) {
+    MapIntroductionKeysDistinct => true
+    MapIntroductionKeyRepeated { first_index: _, second_index: _ } => false
+  }
 }
 
 // Control 5: K is not the type a string literal denotes, so the key refuses where it is written.
@@ -222,7 +229,7 @@ test fn ml_a_call_argument_has_no_expected_type_holds() -> Bool {
 // elaborates too and then infer refuses it against V = Bool.
 test fn ml_infer_still_checks_an_elaborated_map_holds() -> Bool {
   let bad = ml_resolve_subject(subject: "v2.test.ml_value_mismatch")
-  ml_infers(o: ml_resolve_subject(subject: "v2.test.ml_headless")) && ml_accepts(o: bad) && !ml_infers(o: bad)
+  ml_infers(o: ml_resolve_subject(subject: "v2.test.ml_headless")) && ml_accepts(o: bad) && (ml_infers(o: bad) == false)
 }
 
 fn ml_infers(o: Outcome<ResolvedTree>) -> Bool {
