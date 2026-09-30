@@ -238,8 +238,16 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     f: "ml_an_elaborated_map_infers_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
-    reason: "map arm control: a well-typed elaborated map infers. RED beyond the map arm, measured with gunbc#12760 and gunbc#12759 merged: the HEADED spelling, map_from_entries(entries: [MapIntroductionEntry { key: .., value: .. }, ..]) under Map<String, Bool>, does not infer either -- executed first refusal infer_grounding_not_derived, identically under Map<String, Int>, so the v2 Bool symbol fork is not what fires first. It is located (NodeLocus) at the authored MapIntroductionEntry { .. } construct, and a same-module control (entry record and introduction declared beside the data decl) refuses identically, so it is not cross-module reading: v2 infer cannot ground a construct of a GENERIC record whose type arguments come only from context (the list element / the callee parameter type). Owner: the v2 infer lane; the elaboration itself is proven by ml_headless_literal_equals_the_headed_introduction_holds.",
-    dissolution: unbound_dissolution(description: "v2 infer accepts the headed spelling map_from_entries(entries: [MapIntroductionEntry { key: \"a\", value: true }]) as a data initializer of declared type Map<String, Bool> (it does not today, measured with #12760 merged); this witness greens with it and the row deletes in that change")
+    reason: "map arm control: a well-typed elaborated map infers. RED beyond the map arm: measured with gunbc#12760 merged, infer refuses infer_grounding_not_derived located (NodeLocus) at the MapIntroductionEntry { .. } construct, identically for the HEADED spelling and under Map<String, Int>. The discriminating specimen ml_a_same_module_generic_entry_construct_infers_holds (generic record declared in the same module) refuses the same way, so this is neither cross-module declaration reading (#12726 PR2) nor the v2 Bool fork. Owner: smart-newt-725 (record construct typing, #12763 lineage), per quiet-gull-780.",
+    dissolution: unbound_dissolution(description: "infer grounds a construct of a generic record whose type arguments come only from its expected type (callee parameter or list element): this witness greens and the row deletes in that change")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/body_lowering/map_literal_test.dag",
+    f: "ml_a_same_module_generic_entry_construct_infers_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "the discriminating specimen for ml_an_elaborated_map_infers_holds: LocalEntry<K, V> and local_from_entries declared beside the data decl, so no cross-module declaration is read; infer refuses infer_grounding_not_derived at the LocalEntry { .. } construct (measured with gunbc#12760 merged; without it, unbound String refuses first). Owner: smart-newt-725.",
+    dissolution: unbound_dissolution(description: "infer grounds a construct of a generic record whose type arguments come only from its expected type (callee parameter or list element): this witness greens and the row deletes in that change")
   ),
   known_red_probe(
     entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",

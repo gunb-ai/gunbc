@@ -74,6 +74,11 @@ data ml_name_key_source: String = "module v2.test.ml_name_key\n\nimport std.type
 
 data ml_call_argument_source: String = "module v2.test.ml_call_argument\n\nimport std.types { Map }\n\nfn ml_take(m: Map<Int, Bool>) -> Bool { true }\n\nfn ml_call() -> Bool { ml_take(m: { \"a\": true }) }\n"
 
+// The discriminating specimen for the infer gap: a generic record and its introduction declared in
+// the data declaration's OWN module, so no cross-module declaration is read. It refuses exactly as
+// the map introduction does, which places the gap in grounding a generic record construct.
+data ml_samemod_source: String = "module v2.test.ml_samemod\n\nimport std.types { Map }\nimport std.algebra { FreeMonoid, FinitelySupportedFunction }\n\ntype LocalEntry<K, V> {\n  key: K\n  value: V\n}\n\nfn local_from_entries<K, V>(entries: FreeMonoid<LocalEntry<K, V>>) -> FinitelySupportedFunction<K, V> {\n  FinitelySupportedFunction { size: 0 }\n}\n\ndata ml_x: Map<String, Int> = local_from_entries(entries: [LocalEntry { key: \"a\", value: 1 }])\n"
+
 data ml_value_mismatch_source: String = "module v2.test.ml_value_mismatch\n\nimport std.types { Map }\n\ndata ml_bad: Map<String, Bool> = { \"a\": 3 }\n"
 
 // An Int key where K = String: never a map entry, so never admitted.
@@ -108,6 +113,7 @@ data ml_ingest: SourceRootIngest = [
   ml_read(source: ml_key_kind_source, id: ^ml_key_kind_read, unit: ^ml_key_kind_cu, path: "src/v2/test/fixture/map_literal/key_kind.dag"),
   ml_read(source: ml_name_key_source, id: ^ml_name_key_read, unit: ^ml_name_key_cu, path: "src/v2/test/fixture/map_literal/name_key.dag"),
   ml_read(source: ml_call_argument_source, id: ^ml_call_argument_read, unit: ^ml_call_argument_cu, path: "src/v2/test/fixture/map_literal/call_argument.dag"),
+  ml_read(source: ml_samemod_source, id: ^ml_samemod_read, unit: ^ml_samemod_cu, path: "src/v2/test/fixture/map_literal/samemod.dag"),
   ml_read(source: ml_value_mismatch_source, id: ^ml_value_mismatch_read, unit: ^ml_value_mismatch_cu, path: "src/v2/test/fixture/map_literal/value_mismatch.dag")
 ]
 
@@ -230,6 +236,11 @@ test fn ml_infer_refuses_an_elaborated_value_mismatch_holds() -> Bool {
 // Map<String, Bool> does not infer), so the gap is infer's, not the arm's; its row says so.
 test fn ml_an_elaborated_map_infers_holds() -> Bool {
   ml_infers(o: ml_resolve_subject(subject: "v2.test.ml_headless"))
+}
+
+// The same-module specimen infers (see ml_samemod_source).
+test fn ml_a_same_module_generic_entry_construct_infers_holds() -> Bool {
+  ml_infers(o: ml_resolve_subject(subject: "v2.test.ml_samemod"))
 }
 
 fn ml_infers(o: Outcome<ResolvedTree>) -> Bool {
