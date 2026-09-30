@@ -413,3 +413,49 @@ test fn ml_probe_v_map_type_only_holds() -> Bool {
       }
   }
 }
+
+data mlp_str_type_source: String = "module v2.test.mlp_str_type\n\ndata y: Int = 1\n"
+
+test fn ml_probe_v_str_type_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: [
+    ml_read(source: ml_types_source, id: ^mlp_types_read_str_type, unit: ^mlp_types_cu_str_type, path: "src/v2/test/fixture/map_literal/p_types_str_type.dag"),
+    ml_read(source: ml_algebra_source, id: ^mlp_algebra_read_str_type, unit: ^mlp_algebra_cu_str_type, path: "src/v2/test/fixture/map_literal/p_algebra_str_type.dag"),
+    ml_read(source: mlp_str_type_source, id: ^mlp_str_type_read, unit: ^mlp_str_type_cu, path: "src/v2/test/fixture/map_literal/p_str_type.dag")
+  ], lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.mlp_str_type") }, imports: Empty },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+data mlp_str_lit_source: String = "module v2.test.mlp_str_lit\n\ndata y: Int = 1\n"
+
+test fn ml_probe_v_str_lit_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: [
+    ml_read(source: ml_types_source, id: ^mlp_types_read_str_lit, unit: ^mlp_types_cu_str_lit, path: "src/v2/test/fixture/map_literal/p_types_str_lit.dag"),
+    ml_read(source: ml_algebra_source, id: ^mlp_algebra_read_str_lit, unit: ^mlp_algebra_cu_str_lit, path: "src/v2/test/fixture/map_literal/p_algebra_str_lit.dag"),
+    ml_read(source: mlp_str_lit_source, id: ^mlp_str_lit_read, unit: ^mlp_str_lit_cu, path: "src/v2/test/fixture/map_literal/p_str_lit.dag")
+  ], lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.mlp_str_lit") }, imports: Empty },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
