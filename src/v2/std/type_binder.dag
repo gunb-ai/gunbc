@@ -20,6 +20,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  match_arm_pattern_edge,
   arrow_signature_order_label,
   node_subtree_nodes,
   node_synthetic,
@@ -203,8 +204,9 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
 }
 
 // THE NODES INFER DERIVES FACTS FOR: every node of the subtree except those under an Arrow's declared
-// order edge (arrow_signature_order_label, parameter LABELS) and under a declaration's binder edge
-// (declaration_binder_edge, binder NAMES). v2.compiler.infer declines both subtrees and carries each as
+// order edge (arrow_signature_order_label, parameter LABELS), under a declaration's binder edge
+// (declaration_binder_edge, binder NAMES) and under a match arm's pattern edge
+// (v2.std.node match_arm_pattern_edge, a binding form). v2.compiler.infer declines both subtrees and carries each as
 // its parent's own evidence. Every stage that asks infer for a node's facts --
 // v2.compiler.program_partition's closure, a census over derived products -- walks THIS set, so none
 // demands facts infer was never asked to produce. It lives here, not in v2.std.node, because the binder
@@ -216,7 +218,7 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
 // not subterms. v2.compiler.infer's gather skips the same cells by the same accessor.
 fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
   fold(root.children, init: [root], f: fn(acc, e) {
-    if (e.label == arrow_signature_order_label) || declaration_binder_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) == MarkedReference { kind: ParameterReferenceKind }) {
+    if (e.label == arrow_signature_order_label) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) == MarkedReference { kind: ParameterReferenceKind }) {
       acc
     } else {
       concat(acc, node_inferred_subtree_nodes(root: e.target))
