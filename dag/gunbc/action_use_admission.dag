@@ -296,6 +296,107 @@ fn workflow_action_uses_refusal_reason(workflow_module: String, refusals: List<W
   ], "")
 }
 
+// A CHECKOUT NAMES A COMMIT, NEVER A MOVING REF. A job that checks out `github.ref` gets whatever the
+// branch points at WHEN ITS RUNNER PICKS IT UP, so two jobs of one run can build two trees; the
+// release-bins ConsumerSourceTreeMismatch refusal caught exactly that on fleet-converge (runs
+// 36764203649, 36766990321). The rule is an ALLOWLIST, not a list of known-bad spellings: every
+// VALUE term of a `${{ }}` ref -- each `||` operand outside parentheses, read after its last `&&` --
+// must be a commit context or a dispatch input DECLARED as a revision. A branch-valued term in front
+// of a sha tail (`github.head_ref || github.sha`, `inputs.branch || github.sha`) therefore refuses,
+// because `||` picks the first non-empty operand. A literal must be a full commit sha. An absent `ref`
+// is admitted: for the triggering repository actions/checkout then fetches the event's own sha.
+// Residue, outside the model: a revision input is caller-supplied text, and a caller who types a
+// branch name into it gets that branch.
+data checkout_commit_contexts: List<String> = ["github.sha", "github.event.pull_request.head.sha"]
+data checkout_revision_inputs: List<String> = ["expected_revision", "head_sha"]
+
+type WorkflowCheckoutRefRefusal {
+  job_id: String
+  ref_text: String
+}
+
+type WorkflowCheckoutRefsAdmission
+  = WorkflowCheckoutRefsAdmitted
+  | WorkflowCheckoutRefsRefused { refusals: List<WorkflowCheckoutRefRefusal> }
+
+fn checkout_value_term_names_a_commit(term: String) -> Bool {
+  fold(checkout_commit_contexts, init: false, f: fn(acc, c) { acc || term == c })
+    || fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || term == concat("inputs.", n) || term == concat("github.event.inputs.", n) })
+}
+
+// Parenthesized groups are CONDITIONS (the `(mode == 'a' || mode == 'b') && github.sha` arm), so
+// they are removed before the `||` split. Only one level is read; a nested group refuses.
+type ParenStrip = ParenStripped { text: String } | ParenNested
+
+fn strip_condition_groups(body: String) -> ParenStrip {
+  let pieces = split(s: body, delimiter: "(")
+  fold(pieces, init: ParenStripped { text: "" }, f: fn(acc, p) {
+    match acc {
+      ParenNested => ParenNested
+      ParenStripped { text: t } =>
+        if t == "" && !string_contains(s: p, pattern: ")") { ParenStripped { text: concat(t, p) } }
+        else {
+          let closes = split(s: p, delimiter: ")")
+          if (closes |> count) == 2 { ParenStripped { text: concat(t, fold(closes, init: "", f: fn(a, c) { c })) } } else { ParenNested }
+        }
+    }
+  })
+}
+
+fn checkout_expression_names_a_commit(body: String) -> Bool {
+  match strip_condition_groups(body: body) {
+    ParenNested => false
+    ParenStripped { text: t } =>
+      fold(split(s: t, delimiter: "||"), init: true, f: fn(acc, term) {
+        acc && checkout_value_term_names_a_commit(term: trim(fold(split(s: term, delimiter: "&&"), init: "", f: fn(a, x) { x })))
+      })
+  }
+}
+
+fn checkout_ref_names_a_commit(ref_text: String) -> Bool {
+  if starts_with(s: ref_text, prefix: "${{") && ends_with(s: ref_text, suffix: "}}") {
+    checkout_expression_names_a_commit(body: join(split(s: join(split(s: ref_text, delimiter: "${{"), ""), delimiter: "}}"), ""))
+  } else {
+    commit_sha_text_holds(head: ref_text)
+  }
+}
+
+fn checkout_with_ref_refusals(job_id: String, with: List<YamlKeyValue>) -> List<WorkflowCheckoutRefRefusal> {
+  fold(with, init: [], f: fn(acc, e) {
+    if e.key == "ref" {
+      match e.value {
+        YamlString { value: t } =>
+          if checkout_ref_names_a_commit(ref_text: t) { acc } else { concat(acc, [WorkflowCheckoutRefRefusal { job_id: job_id, ref_text: t }]) }
+        _ => concat(acc, [WorkflowCheckoutRefRefusal { job_id: job_id, ref_text: "<a non-string ref>" }])
+      }
+    } else { acc }
+  })
+}
+
+fn step_checkout_ref_refusals(job_id: String, step: Step) -> List<WorkflowCheckoutRefRefusal> {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => []
+    UsesStep { name: _, id: _, uses: u, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      if u.owner == checkout_action.owner && u.repo == checkout_action.repo {
+        match w { Present { value: ws } => checkout_with_ref_refusals(job_id: job_id, with: ws)  _ => [] }
+      } else { [] }
+  }
+}
+
+fn admit_workflow_checkout_refs(workflow: Workflow) -> WorkflowCheckoutRefsAdmission {
+  let refusals = fold(workflow.jobs, init: [], f: fn(acc, job) {
+    fold(job.steps, init: acc, f: fn(acc2, step) { concat(acc2, step_checkout_ref_refusals(job_id: job.id, step: step)) })
+  })
+  if (refusals |> count) == 0 { WorkflowCheckoutRefsAdmitted } else { WorkflowCheckoutRefsRefused { refusals: refusals } }
+}
+
+fn workflow_checkout_refs_refusal_reason(workflow_module: String, refusals: List<WorkflowCheckoutRefRefusal>) -> String {
+  join([
+    "REFUSED ", workflow_module, ": a checkout ref can resolve to a moving branch, so a job that waits in the runner queue builds a different tree than its siblings (gunbc.action_use_admission admit_workflow_checkout_refs). No workflow yaml was emitted. ",
+    join(fold(refusals, init: [], f: fn(acc, r) { concat(acc, [join(["job ", r.job_id, ": ref ", r.ref_text], "")]) }), "; "),
+  ], "")
+}
+
 // ---------------------------------------------------------------------------------------------
 // ROUTE 2: A REALIZED WORKFLOW FILE, whoever wrote it
 // ---------------------------------------------------------------------------------------------

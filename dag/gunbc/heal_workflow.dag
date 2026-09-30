@@ -1,5 +1,6 @@
 module gunbc.heal_workflow
 
+
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { list_map }
@@ -12,7 +13,8 @@ import extdeps.github.actions {
   WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool
 }
-import gunbc.action_use_admission { checkout_action, upload_artifact_action, google_auth_action }
+import gunbc.action_use_admission {
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason, checkout_action, upload_artifact_action, google_auth_action }
 import extdeps.github.action_release { ActionRelease, action_release_same_producer }
 import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
 import gunbc.workflow_capability_closure {
@@ -424,7 +426,11 @@ data heal_workflow_credential_refusal_reason: String = "REFUSED gunbc.heal_workf
 data heal_workflow_capability_refusal_reason: String = "REFUSED gunbc.heal_workflow: the job's capability closure does not hold. No workflow yaml was emitted. Fix the step roles in the job's annotations, or the order of the steps themselves."
 
 fn expected_heal_workflow_yml() -> HealWorkflowGenerationOutcome {
-  match admit_workflow_toolchain_homes(workflow: heal_workflow) {
+  match admit_workflow_checkout_refs(workflow: heal_workflow) {
+    WorkflowCheckoutRefsRefused { refusals: crs } =>
+      HealWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.heal_workflow", refusals: crs) }
+    WorkflowCheckoutRefsAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: heal_workflow) {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       HealWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
@@ -438,5 +444,6 @@ fn expected_heal_workflow_yml() -> HealWorkflowGenerationOutcome {
           YamlEmitRefused { path: p, reason: r } => HealWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.heal_workflow", path: p, reason: r) }
         }
       }
+  }
   }
 }

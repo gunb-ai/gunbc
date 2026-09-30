@@ -1,22 +1,71 @@
 module test.claim.fleet.fleet_converge_checkout_pin_witness_test
 
 import std.types { Bool, String, List }
-import gunbc.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_unpinned_checkout_jobs, checkout_ref_is_pinned, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr }
+import v2.std.optional { Present, Absent }
+import extdeps.languages.yaml.types { kv, yaml_string }
+import extdeps.github.actions { Workflow, Job, UsesStep, WorkflowDispatch, HostedRunner, UbuntuLatest }
+import extdeps.github.action.upload_artifact { upload_artifact_v6_0_0 }
+import gunbc.action_use_admission { checkout_action, admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused }
 
-// THE RED IS THE EXPRESSION main EMITTED BEFORE THIS CHANGE: with no expected_revision it fell back to
-// github.ref, so a consumer job that queued behind a merge checked out a later main than the build job
-// and release-bins refused it (ConsumerSourceTreeMismatch, runs 36764203649 and 36766990321).
-data branch_fallback_ref_expr: String = "${{ (github.event.inputs.mode == 'mtcollins1_boot') && github.sha || github.event.inputs.expected_revision || github.ref }}"
-
-test fn a_branch_fallback_checkout_ref_is_refused() -> Bool {
-  !checkout_ref_is_pinned(expr: branch_fallback_ref_expr)
-    && !checkout_ref_is_pinned(expr: "${{ github.ref }}")
-    && !checkout_ref_is_pinned(expr: "main")
+// THE SUBJECT IS gunbc.action_use_admission admit_workflow_checkout_refs, at its own interface: each
+// claim SUPPLIES a one-job, one-step workflow. The real path is not re-walked here -- every generated
+// workflow's expected_*_yml calls the admission and refuses emission, and the generated lane executes
+// that on every run, so deleting the call leaves the RED below as the only wall and deleting the
+// admission fails emission (DESIGN s3, a witness discriminates at one interface).
+fn one_step_workflow(uses_checkout: Bool, ref_text: String) -> Workflow {
+  Workflow {
+    name: "fixture", run_name: none, on: [WorkflowDispatch { inputs: [] }], concurrency: none,
+    jobs: [Job {
+      id: "j", name: none, runner: HostedRunner { label: UbuntuLatest }, environment: none,
+      steps: [UsesStep {
+        name: none, id: none,
+        uses: if uses_checkout { checkout_action } else { upload_artifact_v6_0_0 },
+        with: Present { value: [kv(key: "ref", value: yaml_string(s: ref_text))] },
+        env: none, if_condition: none, continue_on_error: none, timeout_minutes: none,
+      }],
+      needs: [], env: none, outputs: none, if_condition: none, timeout_minutes: none, continue_on_error: none, concurrency: none, permissions: none,
+    }],
+    env: none, permissions: none,
+  }
 }
 
-// THE ROUTE: the real emitted workflow is walked job by job, and emission refuses on a non-empty list.
-test fn every_emitted_checkout_ref_is_pinned_to_the_dispatched_commit() -> Bool {
-  checkout_ref_is_pinned(expr: fleet_converge_checkout_ref_expr)
-    && checkout_ref_is_pinned(expr: fleet_converge_event_sha_checkout_ref_expr)
-    && list_length(fleet_converge_unpinned_checkout_jobs(workflow: fleet_converge_workflow)) == 0
+fn checkout_refused(ref_text: String) -> Bool {
+  match admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: true, ref_text: ref_text)) {
+    WorkflowCheckoutRefsAdmitted => false
+    WorkflowCheckoutRefsRefused { refusals: rs } => (rs |> count) == 1
+  }
+}
+
+// RED: THE EXPRESSION main EMITTED BEFORE THIS CHANGE. With no expected_revision it fell back to
+// github.ref, so a consumer job that queued behind a merge checked out a later main than the build
+// job and release-bins refused it (ConsumerSourceTreeMismatch, runs 36764203649 and 36766990321).
+test fn red_the_pre_fix_branch_fallback_is_refused() -> Bool {
+  checkout_refused(ref_text: "${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge') && github.sha || github.event.inputs.expected_revision || github.ref }}")
+    && checkout_refused(ref_text: "${{ github.ref }}")
+    && checkout_refused(ref_text: "main")
+}
+
+// RED: A BRANCH-VALUED TERM IN FRONT OF A SHA TAIL. `||` takes the first non-empty operand, so the
+// sha tail is never reached when the branch term is set; the ends-with-github.sha test admitted all three.
+test fn red_a_branch_term_before_the_sha_tail_is_refused() -> Bool {
+  checkout_refused(ref_text: "${{ github.head_ref || github.sha }}")
+    && checkout_refused(ref_text: "${{ github.event.pull_request.head.ref || github.sha }}")
+    && checkout_refused(ref_text: "${{ inputs.branch || github.sha }}")
+}
+
+// POSITIVE: every commit-valued form the generated workflows emit, including the conditioned arm.
+test fn commit_valued_checkout_refs_are_admitted() -> Bool {
+  !checkout_refused(ref_text: "${{ github.sha }}")
+    && !checkout_refused(ref_text: "${{ github.event.pull_request.head.sha }}")
+    && !checkout_refused(ref_text: "${{ inputs.head_sha }}")
+    && !checkout_refused(ref_text: "${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge') && github.sha || github.event.inputs.expected_revision || github.sha }}")
+    && !checkout_refused(ref_text: "0123456789abcdef0123456789abcdef01234567")
+}
+
+// THE ADMISSION READS actions/checkout ONLY: another action's `ref` input is not a checkout.
+test fn a_ref_input_on_another_action_is_not_read() -> Bool {
+  match admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: false, ref_text: "main")) {
+    WorkflowCheckoutRefsAdmitted => true
+    WorkflowCheckoutRefsRefused { refusals: _ } => false
+  }
 }

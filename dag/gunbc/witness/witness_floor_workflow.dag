@@ -1,5 +1,6 @@
 module gunbc.witness_floor_workflow
 
+
 import std.measure { Minute, minute, minute_count }
 import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
@@ -55,6 +56,7 @@ import extdeps.github.actions {
   github_event_name_workflow_dispatch
 }
 import gunbc.action_use_admission {
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
   checkout_action, setup_rust_action, upload_artifact_action,
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
@@ -2792,6 +2794,10 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
     WorkflowActionUsesRefused { refusals: rs } =>
       WitnessFloorGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.witness_floor_workflow", refusals: rs) }
     WorkflowActionUsesAdmitted =>
+      match admit_workflow_checkout_refs(workflow: witness_floor_workflow) {
+    WorkflowCheckoutRefsRefused { refusals: crs } =>
+      WitnessFloorGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.witness_floor_workflow", refusals: crs) }
+    WorkflowCheckoutRefsAdmitted =>
       match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
@@ -2805,5 +2811,6 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
             WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
           }
       }
+  }
   }
 }
