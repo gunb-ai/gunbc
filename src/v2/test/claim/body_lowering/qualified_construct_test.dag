@@ -51,7 +51,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // gunbc.recurring_failure_mode construct_tag_read_by_label_equality_after_resolve_rewrote_the_target:
 // on the base this lane started from, construct_tag_optional answered Absent for a resolved user
 // construct (measured 2026-09-29, the resolved PcrA specimen in that row), so this claim was red there.
-data qc_provider_source: String = "module v2.test.qcp\n\nimport v2.std.logic { Bool }\n\ntype QcShape\n  = QcRow { n: Bool }\n  | QcNone\n"
+// The provider also carries a FIELD PROJECTION body (qcp_read). It is not about constructs: it is the
+// unmarked Conj body v2.std.node arrow_body_record_construct_conforms must keep admitting beside the
+// construct marker. Narrowing that admission refused v2.std.diagnostic on the native route, and every
+// claim below shares this ingest, so the narrowing reddens all of them.
+data qc_provider_source: String = "module v2.test.qcp\n\nimport v2.std.logic { Bool }\n\ntype QcShape\n  = QcRow { n: Bool }\n  | QcNone\n\ntype QcBox {\n  n: Bool\n}\n\nfn qcp_box() -> QcBox { QcBox { n: true } }\n\nfn qcp_read() -> Bool { qcp_box().n }\n"
 
 data qc_provider_b_source: String = "module v2.test.qcp_b\n\nimport v2.std.logic { Bool }\n\ntype QcOther\n  = QcRow { n: Bool }\n  | QcElse\n"
 
