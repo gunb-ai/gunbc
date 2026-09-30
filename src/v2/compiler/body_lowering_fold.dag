@@ -135,6 +135,7 @@ import v2.std.node_query {
   node_positional_child_targets,
   construct_node,
   construct_tag_elided_reference,
+  construct_tag_is_elided,
   construct_tag_optional,
   field_projection_node,
   field_projection_optional,
@@ -562,6 +563,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
       (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
         || qualified_name_spine_shape_present(root: node)
         || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
+        || construct_tag_is_elided(n: node)
         || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
 }
