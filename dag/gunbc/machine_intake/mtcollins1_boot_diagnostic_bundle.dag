@@ -56,6 +56,7 @@ import gunbc.machine_intake_ampere_socket_console_observation {
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_slots, mtcollins1_census_sol_artifact_path }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_kvm_still { KvmObserverRecord, kvm_observer_record_text }
 import gunbc.machine_intake_mount_establishment { RemoteMediaMountStanding }
 import gunbc.machine_intake_megarac_media_attach {
   AttachReadiness,
@@ -772,7 +773,10 @@ fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
 fn boot_override_pending(readback: String, selection: IpmiBootSelection) -> Bool {
   match boot_readback_verdict(readback: readback, selection: selection) {
     BootReadbackConfirmed => true
-    _ => false
+    BootReadbackFlagInvalid => false
+    BootReadbackNotOneShot => false
+    BootReadbackFirmwareMismatch => false
+    BootReadbackSelectorAbsent => false
   }
 }
 
@@ -897,6 +901,10 @@ fn run_record_text(r: MtCollins1BootRunRecord) -> String {
   ], "\n")
 }
 
+// `screen` is the attempt's KVM screen: the held observer's establishment, its journal of boundary
+// and lifecycle events, every still with its instant and sha256 (or why it is not hash-bound), the
+// gaps between stills, and the separately timestamped teardown. Evidence only: no finding and no
+// verdict reads it (gunbc.machine_intake_mtcollins1_kvm_still).
 type MtCollins1BootDiagnosticBundle {
   attempt: AttemptIdentityReading
   outcome: String
@@ -908,6 +916,7 @@ type MtCollins1BootDiagnosticBundle {
   inventory: InventoryReading
   console: ConsoleReading
   run: MtCollins1BootRunRecord
+  screen: KvmObserverRecord
 }
 
 fn inventory_not_taken(reason: NonEmptyStr) -> InventoryReading {
@@ -955,7 +964,7 @@ fn sel_event_kind_text(event: SelWindowEvent) -> String {
 }
 
 fn sel_event_is_oem(event: SelWindowEvent) -> Bool {
-  match event.kind { OemTimestamped { payload: _ } => true _ => false }
+  match event.kind { OemTimestamped { payload: _ } => true BootRestart { offset: _ } => false FirmwareProgressRecord { offset: _ } => false OtherStandardEvent { rendering: _ } => false }
 }
 
 fn sel_event_text(event: SelWindowEvent) -> String {
@@ -972,8 +981,9 @@ fn sel_event_is_memory_or_processor(event: SelWindowEvent) -> Bool {
       let sensor = sel_field(fields: map(split(s: r as String, delimiter: "|"), f => trim(f)), index: 3)
       starts_with(s: sensor, prefix: "Memory") || starts_with(s: sensor, prefix: "Processor")
     }
-    FirmwareProgressRecord { offset: o } => match o { FirmwareProgress { progress_rendering: _ } => false _ => true }
-    _ => false
+    FirmwareProgressRecord { offset: o } => match o { FirmwareProgress { progress_rendering: _ } => false FirmwareError => true FirmwareHang => true }
+    BootRestart { offset: _ } => false
+    OemTimestamped { payload: _ } => false
   }
 }
 
@@ -1201,9 +1211,9 @@ fn smpro_channel(s: SmproReading) -> BmcChannelRead {
   BmcChannelRead { channel: "ipmi master write-read (smpro)", standing: match s {
     SmproNotTaken { reason: _ } => BmcChannelNotAttempted
     SmproProbed { outcomes: os } =>
-      if any(os, o => match o { SmproWordRead { raw: _, word: _ } => true SmproControllerRefused { raw: _, completion: _ } => true SmproResponseMalformed { raw: _, detail: _ } => true _ => false }) { BmcChannelAnswered }
+      if any(os, o => match o { SmproWordRead { raw: _, word: _ } => true SmproControllerRefused { raw: _, completion: _ } => true SmproResponseMalformed { raw: _, detail: _ } => true SmproTransportFailed { raw: _, timed_out: _ } => false SmproNotSent { socket: _, register: _, reason: _ } => false SmproRequestUnencodable { socket: _, register: _, detail: _ } => false }) { BmcChannelAnswered }
       else {
-        match flat_map(os, o => match o { SmproTransportFailed { raw: r, timed_out: _ } => [r] _ => [] }).first() {
+        match flat_map(os, o => match o { SmproTransportFailed { raw: r, timed_out: _ } => [r] SmproWordRead { raw: _, word: _ } => [] SmproControllerRefused { raw: _, completion: _ } => [] SmproResponseMalformed { raw: _, detail: _ } => [] SmproNotSent { socket: _, register: _, reason: _ } => [] SmproRequestUnencodable { socket: _, register: _, detail: _ } => [] }).first() {
           Absent => BmcChannelNotAttempted
           Present { value: r } => BmcChannelFailed { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: r.at, exit_code: r.exit_code, stderr: r.stderr) }
         }
@@ -1234,11 +1244,11 @@ fn bmc_channel_reads(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChannelR
 }
 
 fn channel_answered(r: BmcChannelRead) -> Bool {
-  match r.standing { BmcChannelAnswered => true _ => false }
+  match r.standing { BmcChannelAnswered => true BmcChannelFailed { cause: _ } => false BmcChannelNotAttempted => false }
 }
 
 fn channel_cause(r: BmcChannelRead) -> BmcReadCause? {
-  match r.standing { BmcChannelFailed { cause: c } => Present { value: c } _ => none }
+  match r.standing { BmcChannelFailed { cause: c } => Present { value: c } BmcChannelAnswered => none BmcChannelNotAttempted => none }
 }
 
 // EVERY BMC READ THAT WAS ATTEMPTED FAILED, AND NONE ANSWERED: the failed channels, in read order.
@@ -1412,6 +1422,8 @@ fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String
     memory_members_text(m: bundle.inventory.memory),
     "== pre-os console ==",
     console_text(c: bundle.console),
+    "== bmc kvm screen (held observer; stills retained, not interpreted) ==",
+    kvm_observer_record_text(rec: bundle.screen),
     "",
   ], "\n")
 }
@@ -1642,7 +1654,7 @@ fn redfish_collection_assembly(pages: List<RedfishCollectionPage>, member_bound:
         Present { value: total } => {
           let links = fold(pages, init: [], f: (acc, p) => concat(acc, p.member_links))
           let last_has_next = match reverse(pages).first() { Absent => false Present { value: p } => p.next_link != none }
-          let refused_links = filter(links, l => match redfish_same_origin_link(link: l) { RedfishLinkRefused { cause: _ } => true _ => false })
+          let refused_links = filter(links, l => match redfish_same_origin_link(link: l) { RedfishLinkRefused { cause: _ } => true RedfishLinkSameOrigin { path: _ } => false })
           let disagreeing = filter(pages, p => p.member_count != Present { value: total })
           let duplicated = first_duplicate(xs: links)
           if count(disagreeing) > 0 {
