@@ -519,11 +519,11 @@ fn tpb_box_member_mixed() -> Node {
   )
 }
 
-fn tpb_type_decl_emit_twin() -> Outcome<ResolvedTree> {
+fn tpb_type_decl_emit_twin() -> Outcome<Node> {
   translate_type_expression_project(node: tpb_box_member(with_params: false), target: rust_target_model(), projection: rust_type_expression_projection())
 }
 
-fn tpb_type_decl_emit_generic() -> Outcome<ResolvedTree> {
+fn tpb_type_decl_emit_generic() -> Outcome<Node> {
   translate_type_expression_project(node: tpb_box_member(with_params: true), target: rust_target_model(), projection: rust_type_expression_projection())
 }
 
