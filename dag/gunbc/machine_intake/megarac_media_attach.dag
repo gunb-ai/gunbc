@@ -574,6 +574,7 @@ fn megarac_attach_remote_image(
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_observe_presentation"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_stale_power_off"),
   ]
 {
   session = megarac.Media.OpenSession(
