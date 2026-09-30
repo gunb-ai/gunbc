@@ -67,6 +67,8 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
+  ArrowBodyEdge,
+  core_edge_label,
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -324,7 +326,7 @@ fn bind_eval_arrow_with_body(body: Node) -> Node {
       Edge { label: Positional, target: bind_eval_i64() },
       Edge { label: Positional, target: bind_eval_i64() },
       signature.order,
-      Edge { label: Authored { name: ^arrow_body_edge }, target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ]
   }
 }

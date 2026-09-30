@@ -121,8 +121,6 @@ import v2.std.node {
   LabeledEdges,
   LoopBoundEdges,
   Match,
-  match_arm_body,
-  match_arm_pattern,
   Authored,
   NoEdges,
   Node,
@@ -142,6 +140,11 @@ import v2.std.node {
   node_rebuild,
   symbol_intern_lexeme,
   symbol_lexeme,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  core_edge,
+  core_occurrences,
+  edge_is_core,
 }
 import v2.std.witness {
   StructuralPropertyWitness
@@ -159,7 +162,8 @@ import v2.std.node_query {
   node_positional_child_targets,
   nullary_inhabitant_by_discriminant,
   is_wildcard_pattern_identity,
-  pattern_wildcard_name
+  pattern_wildcard_name,
+  find_core_child,
 }
 import v2.std.qualified_name {
   QualifiedName,
@@ -5528,8 +5532,8 @@ fn target_value_expr_match_arm_wire(arm: TargetValueExprMatchArmSlot) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      target_model_named_edge(name: match_arm_pattern, target: arm.pattern.node),
-      target_model_named_edge(name: match_arm_body, target: arm.body.node)
+      core_edge(marker: MatchArmPatternEdge, target: arm.pattern.node),
+      core_edge(marker: MatchArmBodyEdge, target: arm.body.node)
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -7368,11 +7372,11 @@ fn target_value_expression_field_access_to_concrete_tokens(
 fn target_value_expr_match_arm_wire_schema_valid(arm_wire: Node) -> Outcome<Bool> {
   match arm_wire.kind {
     TypeNode { connective: Conj } =>
-      if name_occurrences(name: match_arm_pattern, children: arm_wire.children) != 1 {
+      if core_occurrences(marker: MatchArmPatternEdge, children: arm_wire.children) != 1 {
         outcome_rejected(
           target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
         )
-      } else if name_occurrences(name: match_arm_body, children: arm_wire.children) != 1 {
+      } else if core_occurrences(marker: MatchArmBodyEdge, children: arm_wire.children) != 1 {
         outcome_rejected(
           target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
         )
@@ -7382,11 +7386,7 @@ fn target_value_expr_match_arm_wire_schema_valid(arm_wire: Node) -> Outcome<Bool
           init: true,
           f: fn(acc, edge) {
             if acc {
-              match edge.label {
-                Authored { name: n } =>
-                  n == match_arm_pattern || n == match_arm_body
-                Positional => false
-              }
+              edge_is_core(e: edge, marker: MatchArmPatternEdge) || edge_is_core(e: edge, marker: MatchArmBodyEdge)
             } else {
               false
             }
@@ -7479,10 +7479,10 @@ fn target_value_expr_match_arm_slot_from_wire(arm_wire: Node) -> Outcome<TargetV
     o: target_value_expr_match_arm_wire_schema_valid(arm_wire: arm_wire),
     f: fn(_) {
       bind_outcome(
-        o: find_named_child(root: arm_wire, name: match_arm_pattern),
+        o: find_core_child(root: arm_wire, marker: MatchArmPatternEdge),
         f: fn(pattern_wire) {
           bind_outcome(
-            o: find_named_child(root: arm_wire, name: match_arm_body),
+            o: find_core_child(root: arm_wire, marker: MatchArmBodyEdge),
             f: fn(body_wire) {
               bind_outcome(
                 o: target_value_expression_reify_from_wire(wire: pattern_wire),
@@ -14804,10 +14804,10 @@ fn target_value_expr_match_arm_slot_from_arm_edge(
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExprMatchArmSlot> {
   bind_outcome(
-    o: find_named_child(root: arm_edge.target, name: match_arm_pattern),
+    o: find_core_child(root: arm_edge.target, marker: MatchArmPatternEdge),
     f: fn(pattern_node) {
       bind_outcome(
-        o: find_named_child(root: arm_edge.target, name: match_arm_body),
+        o: find_core_child(root: arm_edge.target, marker: MatchArmBodyEdge),
         f: fn(body_node) {
           bind_outcome(
             o: target_value_expr_project_body_subexpression(

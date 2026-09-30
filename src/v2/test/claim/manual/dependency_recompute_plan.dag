@@ -81,7 +81,7 @@ data dependency_projection_subgraph: Node = Node {
 }
 
 data refinement_change_path: Path = Path {
-  steps: [^refinement_change_path_symbol]
+  steps: [Authored { name: ^refinement_change_path_symbol }]
 }
 
 data refinement_change: Change = Change {

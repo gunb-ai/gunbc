@@ -36,7 +36,9 @@ import v2.std.node {
   Node,
   Positional,
   TypeNode,
-  node_subtree_nodes
+  node_subtree_nodes,
+  ArrowBodyEdge,
+  edge_is_core,
 }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.algebra { fold_list }
@@ -191,10 +193,7 @@ fn ddl_edge_target_is_int_literal(e: Edge) -> Bool {
 }
 
 fn ddl_edge_is_body(e: Edge) -> Bool {
-  match e.label {
-    Authored { name: n } => n == ^arrow_body_edge
-    Positional => false
-  }
+  edge_is_core(e: e, marker: ArrowBodyEdge)
 }
 
 // An Arrow shaped the way a lowered nullary fn is: a childless domain, the declared type twice, the

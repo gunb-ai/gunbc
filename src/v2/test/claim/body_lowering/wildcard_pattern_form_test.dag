@@ -10,7 +10,7 @@ import v2.std.grammar { node_atom_identity_optional }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Authored, Node, Symbol }
+import v2.std.node { Authored, Node, Symbol, CoreEdgeLabel, MatchArmPatternEdge, edge_is_core }
 import v2.std.node_query { construct_tag_optional, is_wildcard_pattern, pattern_wildcard_name }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -54,6 +54,15 @@ fn wpf_emitted(root: Node, production: Symbol) -> FreeMonoid<Node> {
   fold(root.children, init: own, f: fn(acc, e) { list_append(left: acc, right: wpf_emitted(root: e.target, production: production)) })
 }
 
+fn wpf_core_child(n: Node, marker: CoreEdgeLabel) -> Optional<Node> {
+  fold(n.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if edge_is_core(e: e, marker: marker) { optional_present(value: e.target) } else { acc }
+    }
+  })
+}
+
 fn wpf_named_child(n: Node, name: Symbol) -> Optional<Node> {
   fold(n.children, init: optional_absent(), f: fn(acc, e) {
     match acc {
@@ -82,7 +91,7 @@ fn wpf_patterns() -> FreeMonoid<Node> {
               match body_lower_match_arms_optional(captured: captured) {
                 Accepted { value: Present { value: arms }, diagnostics: _ } =>
                   fold(arms, init: Empty, f: fn(acc, arm) {
-                    match wpf_named_child(n: arm, name: ^match_arm_pattern) {
+                    match wpf_core_child(n: arm, marker: MatchArmPatternEdge) {
                       Present { value: p } => list_append(left: acc, right: Cons { head: p, tail: Empty })
                       Absent => acc
                     }

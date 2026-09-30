@@ -17,7 +17,11 @@ import v2.std.node {
   Symbol,
   TypeNode,
   canonicalize_node_for_content_hash,
-  node_synthetic
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge_label,
+  ArrowSignatureOrderEdge,
+  edge_is_core,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -53,7 +57,7 @@ fn rcp_closure() -> Node {
       Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
       Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
       sig.order,
-      Edge { label: Authored { name: ^arrow_body_edge }, target: rcp_atom(id: ^rcp_z) }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: rcp_atom(id: ^rcp_z) }
     ]
   )
 }
@@ -82,10 +86,7 @@ fn rcp_without_order(arrow: Node) -> Node {
   Node {
     kind: arrow.kind,
     children: fold(arrow.children, init: [], f: fn(acc, e) {
-      match e.label {
-        Authored { name: sym } => if sym == ^arrow_signature_order_edge { acc } else { concat(acc, [e]) }
-        Positional => concat(acc, [e])
-      }
+      if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) { acc } else { concat(acc, [e]) }
     }),
     occurrence_id: arrow.occurrence_id
   }

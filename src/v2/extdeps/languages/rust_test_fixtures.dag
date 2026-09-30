@@ -1,5 +1,7 @@
 module v2.extdeps.languages.rust_test
 
+import v2.std.node { ArrowBodyEdge, core_edge_label }
+
 import std.algebra { Cons, Empty }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -3474,7 +3476,7 @@ fn rust_arrow_with_body_node(
         label: Positional,
         target: rust_type_atom_node(identity: return_type_binding)
       },
-      Edge { label: Authored { name: ^arrow_body_edge }, target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ],
     occurrence_id: OccurrenceSynthetic
   }

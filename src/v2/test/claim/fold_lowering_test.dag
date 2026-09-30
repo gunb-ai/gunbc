@@ -1,5 +1,7 @@
 module v2.test.claim.fold_lowering
 
+import v2.std.node { LoopCarrierEdge, core_edge_label }
+
 // NO IMPORT BLOCK, AND THAT IS LOAD-BEARING RATHER THAN AN OMISSION.
 //
 // This module is the merge of the one-claim unit entry that already lived here
@@ -183,7 +185,7 @@ fn with_duplicate_carrier_edge(n: Node, binder: Node) -> Node {
     n: n,
     children: list_snoc_item(
       xs: n.children,
-      item: Edge { label: Authored { name: ^loop_carrier_edge }, target: binder }
+      item: Edge { label: core_edge_label(marker: LoopCarrierEdge), target: binder }
     )
   )
 }

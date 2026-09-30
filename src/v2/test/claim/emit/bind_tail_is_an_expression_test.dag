@@ -17,7 +17,9 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  node_synthetic
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge,
 }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
@@ -76,7 +78,7 @@ fn probe_fn(param: Symbol, body: Node) -> Node {
         )
       ),
       probe_positional(target: probe_atom(id: ^fold_call_type_int)),
-      probe_named(name: ^arrow_body_edge, target: body)
+      core_edge(marker: ArrowBodyEdge, target: body)
     ]
   )
 }

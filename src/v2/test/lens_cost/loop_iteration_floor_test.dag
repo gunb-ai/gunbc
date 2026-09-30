@@ -1,5 +1,7 @@
 module v2.test.lens_cost.loop_iteration_floor
 
+import v2.std.node { LoopBoundEdge, core_edge_label }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data loop_iteration_floor_body: Node = Node {
@@ -18,7 +20,7 @@ data loop_iteration_floor_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_iteration_floor_body },
-    Edge { label: Authored { name: ^loop_bound_edge }, target: loop_iteration_floor_measure }
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_iteration_floor_measure }
   ],
   occurrence_id: OccurrenceSynthetic
 }

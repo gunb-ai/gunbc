@@ -12,7 +12,7 @@ import v2.std.compilers.target_model {
   canonical_operation_op_add,
   canonical_operation_op_coerce,
   canonical_operation_wire_matches_operation,
-  target_model_canonical_operation_member_declared_type
+  target_model_canonical_operation_member_declared_type,
 }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.inferred_tree {
@@ -60,7 +60,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
-import v2.std.node { arrow_signature_order_label, edge_label_of }
+import v2.std.node { arrow_signature_order_label, edge_label_of, MatchArmBodyEdge, MatchArmPatternEdge }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -151,14 +151,12 @@ import v2.std.node {
   canonicalize_node_strip_provenance,
   fold_node,
   loop_edge_contributes_to_iteration_fold,
-  match_arm_body,
-  match_arm_pattern,
   node_subtree_nodes,
   well_formed,
 }
 import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, cast_target_optional, declaration_binder_edge, edge_is_type_params, type_annotation_optional, type_decl_view, type_param_names }
 import v2.std.coercion { coercion_cast_crossing }
-import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.node_query { node_positional_child_targets, find_core_child }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
 
 type AlgebraRef {
@@ -1565,11 +1563,11 @@ fn infer_match_bool_arm_row(
 ) -> Outcome<InferMatchArmRow> {
   match arm.kind {
     TypeNode { connective: Conj } =>
-      match find_named_child(root: arm, name: match_arm_pattern) {
+      match find_core_child(root: arm, marker: MatchArmPatternEdge) {
         Rejected { diagnostics: _ } =>
           outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
         Accepted { value: pat, diagnostics: pd } =>
-          match find_named_child(root: arm, name: match_arm_body) {
+          match find_core_child(root: arm, marker: MatchArmBodyEdge) {
             Rejected { diagnostics: _ } =>
               outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
             Accepted { value: body_target, diagnostics: bd } =>

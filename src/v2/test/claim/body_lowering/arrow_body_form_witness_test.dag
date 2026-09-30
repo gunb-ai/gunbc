@@ -44,6 +44,8 @@ import v2.std.node {
   classify_arrow_body_form,
   node_synthetic,
   well_formed,
+  ArrowBodyEdge,
+  core_edge_label,
 }
 import v2.std.qualified_name { declaration_reference_node }
 import v2.std.optional { Absent, Optional, Present, optional_present }
@@ -89,7 +91,7 @@ fn arrow_body_form_fixture_arrow_with_body(body: Node) -> Node {
       Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
       Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
       signature.order,
-      Edge { label: Authored { name: ^arrow_body_edge }, target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ]
   )
 }

@@ -123,14 +123,17 @@ import v2.std.node {
   Transform,
   TypeNode,
   is_empty_conj_root,
-  match_arm_body,
-  match_arm_pattern,
   node_lowered_from,
   node_rebuild,
   node_synthetic,
   node_with_occurrence_id,
   symbol_intern_lexeme,
   symbol_lexeme,
+  ArrowBodyEdge,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  core_edge_label,
+  edge_is_core,
 }
 import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.node_query {
@@ -3454,7 +3457,7 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                       Edge { label: Positional, target: declared_type },
                                       signature.order,
                                       Edge {
-                                        label: Authored { name: ^arrow_body_edge },
+                                        label: core_edge_label(marker: ArrowBodyEdge),
                                         target: body_lower_position_function_values(node: reified_body, path: body_lower_unpositioned_path())
                                       }
                                     ]
@@ -3506,7 +3509,7 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
         Present { value: b } =>
           list_append(
             left: signature,
-            right: [Edge { label: Authored { name: ^arrow_body_edge }, target: body_lower_position_function_values(node: b, path: body_lower_unpositioned_path()) }]
+            right: [Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body_lower_position_function_values(node: b, path: body_lower_unpositioned_path()) }]
           )
       }
     ),
@@ -4234,10 +4237,7 @@ fn body_lower_arrow_declares_a_renamed_type_param(arrow: Node, renames: Map<Symb
 }
 
 fn body_lower_edge_is_arrow_body(e: Edge) -> Bool {
-  match e.label {
-    Authored { name: n } => n == ^arrow_body_edge
-    Positional => false
-  }
+  edge_is_core(e: e, marker: ArrowBodyEdge)
 }
 
 fn body_lower_fresh_type_variable_renames(arrow: Node, path: List<Int>) -> Map<Symbol, Symbol> {
@@ -4341,7 +4341,7 @@ fn body_lower_function_value_arrow(
               ],
               right: type_param_edges
             ),
-            right: [Edge { label: Authored { name: ^arrow_body_edge }, target: reified }]
+            right: [Edge { label: core_edge_label(marker: ArrowBodyEdge), target: reified }]
           )
         ),
         diagnostics: bd
@@ -5480,8 +5480,8 @@ fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: match_arm_pattern }, target: pat_node },
-      Edge { label: Authored { name: match_arm_body }, target: body }
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pat_node },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body }
     ]
   )
 }

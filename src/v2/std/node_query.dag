@@ -43,6 +43,14 @@ import v2.std.node {
   node_lowered_from,
   node_with_occurrence_id,
   symbol_intern_lexeme,
+  StructuralLabel,
+  CoreEdgeLabel,
+  FieldProjectionBaseEdge,
+  FieldProjectionFieldEdge,
+  core_edge_label,
+  edge_is_core,
+  EdgeLabel,
+  is_positional,
 }
 import std.constructors { Cardinality, Required, Optional }
 import v2.std.optional { Optional, optional_absent, optional_present }
@@ -386,22 +394,14 @@ fn construct_field_edges(n: Node) -> List<Edge> {
 // typecheck stage's, over this node, and it is the declared frontier this shape exists to give a
 // subject. Until it lands, a misspelled field is a resolve/typecheck-stage question and NOT
 // silently answered here.
-fn field_projection_base_name() -> Symbol {
-  ^field_projection_base
-}
-
-fn field_projection_field_name() -> Symbol {
-  ^field_projection_field
-}
-
 // `field` is the field-name atom the caller already lowered from its own token, so the projection
 // keeps that token's occurrence rather than the whole chain's.
 fn field_projection_node(base: Node, field: Node, source: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: field_projection_base_name() }, target: base },
-      Edge { label: Authored { name: field_projection_field_name() }, target: field }
+      Edge { label: core_edge_label(marker: FieldProjectionBaseEdge), target: base },
+      Edge { label: core_edge_label(marker: FieldProjectionFieldEdge), target: field }
     ],
     occurrence_id: source.occurrence_id
   )
@@ -413,29 +413,17 @@ type FieldProjection {
 }
 
 fn field_projection_edge_base_optional(e: Edge) -> Optional<Node> {
-  match e.label {
-    Authored { name: n } =>
-      if n == field_projection_base_name() {
-        optional_present(value: e.target)
-      } else {
-        optional_absent()
-      }
-    Positional => optional_absent()
-  }
+  if edge_is_core(e: e, marker: FieldProjectionBaseEdge) { optional_present(value: e.target) } else { optional_absent() }
 }
 
 fn field_projection_edge_field_optional(e: Edge) -> Optional<Symbol> {
-  match e.label {
-    Authored { name: n } =>
-      if n == field_projection_field_name() {
-        match e.target.kind {
-          TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-          _ => optional_absent()
-        }
-      } else {
-        optional_absent()
-      }
-    Positional => optional_absent()
+  if edge_is_core(e: e, marker: FieldProjectionFieldEdge) {
+    match e.target.kind {
+      TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+      _ => optional_absent()
+    }
+  } else {
+    optional_absent()
   }
 }
 
@@ -666,30 +654,69 @@ type NamedChildLookup
   | NamedChildMissing
   | NamedChildAmbiguous
 
+fn child_lookup_step(acc: NamedChildLookup, hit: Bool, target: Node) -> NamedChildLookup {
+  if hit {
+    match acc {
+      NamedChildMissing => NamedChildFound { target: target }
+      NamedChildFound { target: _ } => NamedChildAmbiguous
+      NamedChildAmbiguous => NamedChildAmbiguous
+    }
+  } else {
+    acc
+  }
+}
+
+// The Conj child carrying this AUTHORED name. A structural label is never found by its spelling:
+// a core marker is looked up by core_child_lookup, which matches the arm.
 fn named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
         match e.label {
           Positional => acc
-          Authored { name: edge_name } =>
-            if edge_name == name {
-              match acc {
-                NamedChildMissing => NamedChildFound { target: e.target }
-                NamedChildFound { target: _ } => NamedChildAmbiguous
-                NamedChildAmbiguous => NamedChildAmbiguous
-              }
-            } else {
-              acc
-            }
+          StructuralLabel { label: _ } => acc
+          Authored { name: edge_name } => child_lookup_step(acc: acc, hit: edge_name == name, target: e.target)
         }
       })
     _ => NamedChildMissing
   }
 }
 
+fn core_child_lookup(root: Node, marker: CoreEdgeLabel) -> NamedChildLookup {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
+        child_lookup_step(acc: acc, hit: edge_is_core(e: e, marker: marker), target: e.target)
+      })
+    _ => NamedChildMissing
+  }
+}
+
+// The Conj child carrying exactly this label, compared whole (arm and payload).
+fn labeled_child_lookup(root: Node, label: EdgeLabel) -> NamedChildLookup {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
+        child_lookup_step(acc: acc, hit: (e.label == label) && !is_positional(e: e), target: e.target)
+      })
+    _ => NamedChildMissing
+  }
+}
+
+fn find_labeled_child(root: Node, label: EdgeLabel) -> Outcome<Node> {
+  child_lookup_outcome(root: root, lookup: labeled_child_lookup(root: root, label: label))
+}
+
+fn find_core_child(root: Node, marker: CoreEdgeLabel) -> Outcome<Node> {
+  child_lookup_outcome(root: root, lookup: core_child_lookup(root: root, marker: marker))
+}
+
 fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
-  match named_child_lookup(root: root, name: name) {
+  child_lookup_outcome(root: root, lookup: named_child_lookup(root: root, name: name))
+}
+
+fn child_lookup_outcome(root: Node, lookup: NamedChildLookup) -> Outcome<Node> {
+  match lookup {
     NamedChildFound { target: target } => outcome_accepted(value: target)
     NamedChildMissing =>
       outcome_rejected(d: Diagnostic {

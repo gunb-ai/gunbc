@@ -39,7 +39,12 @@ import v2.std.node {
   positional_prefix_then_labeled_conform,
   is_empty_conj_root,
   node_synthetic,
-  symbol_eq
+  symbol_eq,
+  LoopBoundEdge,
+  core_edge_label,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  edge_is_core,
 }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.list_introduction { list_introduction_elements_optional }
@@ -92,7 +97,7 @@ fn lower_loop(value: Node, bound: Node) -> Node {
     kind: ComputationNode { behavior: Loop },
     children: [
       Edge { label: Positional, target: value },
-      Edge { label: Authored { name: ^loop_bound_edge }, target: bound }
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: bound }
     ]
   )
 }
@@ -543,21 +548,13 @@ fn match_arm_view(arm: Node) -> Outcome<MatchArmView> {
           Present { value: p } =>
             match list_at_optional(xs: arm.children, index: 1) {
               Present { value: b } =>
-                match p.label {
-                  Authored { name: pn } =>
-                    match b.label {
-                      Authored { name: bn } =>
-                        if (pn == ^match_arm_pattern) && (bn == ^match_arm_body) {
-                          match operand_slot_of(n: b.target) {
-                            ResidueOperand { node: r } => view_refusal(reason: ^body_view_operand_residue, at: r)
-                            WholeOperand { node: body } => outcome_accepted(value: MatchArmView { arm: arm, pattern: p.target, body: body })
-                          }
-                        } else {
-                          view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
-                        }
-                      Positional => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
-                    }
-                  Positional => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+                if edge_is_core(e: p, marker: MatchArmPatternEdge) && edge_is_core(e: b, marker: MatchArmBodyEdge) {
+                  match operand_slot_of(n: b.target) {
+                    ResidueOperand { node: r } => view_refusal(reason: ^body_view_operand_residue, at: r)
+                    WholeOperand { node: body } => outcome_accepted(value: MatchArmView { arm: arm, pattern: p.target, body: body })
+                  }
+                } else {
+                  view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
                 }
               Absent => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
             }

@@ -33,6 +33,9 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  ArrowBodyEdge,
+  LoopBoundEdge,
+  core_edge_label,
 }
 
 // Cited combiner Arrow bodies for per-op derivation (Wave 1 Gate 1 C1). Each row pairs a combiner
@@ -148,7 +151,7 @@ fn citation_loop_body_linear_in(measure: Node) -> Node {
           occurrence_id: OccurrenceSynthetic
         }
       },
-      Edge { label: Authored { name: ^loop_bound_edge }, target: measure }
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -179,7 +182,7 @@ fn citation_arrow_two_param_loop(
       },
       signature.order,
       Edge {
-        label: Authored { name: ^arrow_body_edge },
+        label: core_edge_label(marker: ArrowBodyEdge),
         target: citation_loop_body_linear_in(measure: measure)
       }
     ],

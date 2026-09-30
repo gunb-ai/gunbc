@@ -27,7 +27,7 @@ import v2.std.optional {
 }
 import v2.std.logic { Bool }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Authored, Node, NodeFold, Positional, Symbol, TypeNode, declaration_reference_marker, fold_node, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Atom, Conj, Edge, EdgeLabel, Authored, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, DeclarationReferenceEdge, core_edge_label, edge_is_core }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -326,7 +326,7 @@ fn declaration_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceId
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Authored { name: declaration_reference_marker() },
+        label: core_edge_label(marker: DeclarationReferenceEdge),
         target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic)
       },
     ],
@@ -343,15 +343,7 @@ fn declaration_reference_spine_optional(node: Node) -> Optional<Node> {
     TypeNode { connective: Conj } =>
       if count(node.children) == 1 {
         fold(node.children, init: optional_absent(), f: fn(acc, edge) {
-          match edge.label {
-            Authored { name: label } =>
-              if symbol_eq(a: label, b: declaration_reference_marker()) {
-                optional_present(value: edge.target)
-              } else {
-                acc
-              }
-            _ => acc
-          }
+          if edge_is_core(e: edge, marker: DeclarationReferenceEdge) { optional_present(value: edge.target) } else { acc }
         })
       } else {
         optional_absent()

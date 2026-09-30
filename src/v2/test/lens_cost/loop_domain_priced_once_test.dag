@@ -15,6 +15,9 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
+  LoopBoundEdge,
+  LoopDomainEdge,
+  core_edge_label,
 }
 import v2.std.witness { Holds }
 
@@ -47,8 +50,8 @@ data loop_domain_last: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_domain_unit_work },
-    Edge { label: Authored { name: ^loop_bound_edge }, target: loop_domain_measure },
-    Edge { label: Authored { name: ^loop_domain_edge }, target: loop_domain_unit_work }
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure },
+    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -56,9 +59,9 @@ data loop_domain_last: Node = Node {
 data loop_domain_first: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Authored { name: ^loop_domain_edge }, target: loop_domain_unit_work },
+    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work },
     Edge { label: Positional, target: loop_domain_unit_work },
-    Edge { label: Authored { name: ^loop_bound_edge }, target: loop_domain_measure }
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure }
   ],
   occurrence_id: OccurrenceSynthetic
 }

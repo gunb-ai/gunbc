@@ -84,8 +84,6 @@ fn behavior_coproduct_variants() -> List<Behavior> {
   [Value, Transform, Branch, Loop, Bind, Match]
 }
 
-data match_arm_pattern: Symbol = ^match_arm_pattern
-data match_arm_body: Symbol = ^match_arm_body
 
 type NodeKind
   = TypeNode { connective: Connective }
@@ -120,7 +118,6 @@ type CoreEdgeLabel
   | TypeBodyEdge
   | TypeAliasEdge
   | DeclarationReferenceEdge
-  | PositionalPayloadFieldEdge
   | FieldProjectionBaseEdge
   | FieldProjectionFieldEdge
 
@@ -173,7 +170,6 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     TypeBodyEdge => ^core_type_body_edge
     TypeAliasEdge => ^core_type_alias_edge
     DeclarationReferenceEdge => ^core_declaration_reference_edge
-    PositionalPayloadFieldEdge => ^core_positional_payload_field_edge
     FieldProjectionBaseEdge => ^core_field_projection_base_edge
     FieldProjectionFieldEdge => ^core_field_projection_field_edge
   }
@@ -798,15 +794,8 @@ fn symbol_lexeme(sym: Symbol) -> String {
 // qualified-name spine (v2.std.qualified_name declaration_reference_node). A spine is a cons list,
 // and a cons list is not only a path -- an integer literal and a list literal lower to the same
 // shape (gunbc.recurring_failure_mode declaration_reference_recognised_by_a_shape_a_literal_also_has)
-// -- so every reader keys on this label. Its lexeme is not an identifier in the dag grammar, so no
-// authored record field, binder or name can carry it.
-// Interned ONCE, as a value: well_formed compares every candidate arrow body against it, so a
-// function that re-interned per call would pay an interning per node over every tree it walks.
-data declaration_reference_marker_symbol: Symbol = symbol_intern_lexeme(lexeme: "<declaration-reference>")
-
-fn declaration_reference_marker() -> Symbol {
-  declaration_reference_marker_symbol
-}
+// -- so every reader keys on this label: the core marker DeclarationReferenceEdge, which no authored
+// record field, binder or name can carry because an authored name is an Authored label.
 
 // A RESOLVED DECLARATION REFERENCE IS NOT A RECORD CONSTRUCT. `data d: D = A` lowers to a nullary
 // Arrow whose body is the initializer, and when the initializer is a reference that body is the
@@ -2220,7 +2209,7 @@ type NodeQuery
   | NodeQueryByPath { at: Path }
 
 type Path {
-  steps: List<Symbol>
+  steps: List<EdgeLabel>
 }
 type Edit {
   at: Path

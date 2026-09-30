@@ -23,7 +23,9 @@ import v2.std.node {
   arrow_signature_order_label,
   arrow_signature_order_read,
   edge_label_of,
-  node_with_occurrence_id
+  node_with_occurrence_id,
+  ArrowSignatureOrderEdge,
+  core_edge_label,
 }
 import v2.std.node_query { node_positional_child_targets, pattern_wildcard_name }
 
@@ -35,7 +37,7 @@ import v2.std.node_query { node_positional_child_targets, pattern_wildcard_name 
 // (v2.extdeps.languages.dag dag_arrow_with_body_node).
 fn signature_order_edge(order: List<Symbol>, source: Node) -> Edge {
   Edge {
-    label: Authored { name: ^arrow_signature_order_edge },
+    label: core_edge_label(marker: ArrowSignatureOrderEdge),
     target: lower_list_introduction(
       elements: fold(order, init: Empty, f: fn(acc, sym) {
         list_snoc_item(xs: acc, item: node_with_occurrence_id(

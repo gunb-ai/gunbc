@@ -13,6 +13,8 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
+  LoopBoundEdge,
+  core_edge_label,
 }
 import v2.std.witness { Holds }
 
@@ -40,7 +42,7 @@ data loop_linear_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_linear_body },
-    Edge { label: Authored { name: ^loop_bound_edge }, target: loop_linear_measure_leaf }
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_linear_measure_leaf }
   ],
   occurrence_id: OccurrenceSynthetic
 }

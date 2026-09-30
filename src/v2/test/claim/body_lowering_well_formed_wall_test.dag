@@ -16,7 +16,9 @@ import v2.std.node {
   TypeNode,
   Value,
   node_synthetic,
-  well_formed
+  well_formed,
+  ArrowBodyEdge,
+  core_edge_label,
 }
 
 // Discriminating RED control for body-lowering-is-TOTAL: malformed arrow bodies
@@ -48,7 +50,7 @@ fn well_formed_wall_malformed_arrow() -> Node {
       Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       signature.order,
       Edge {
-        label: Authored { name: ^arrow_body_edge },
+        label: core_edge_label(marker: ArrowBodyEdge),
         target: node_synthetic(kind: TypeNode { connective: Disj }, children: [])
       }
     ]
@@ -65,7 +67,7 @@ fn well_formed_wall_atom_body_arrow() -> Node {
       Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       signature.order,
       Edge {
-        label: Authored { name: ^arrow_body_edge },
+        label: core_edge_label(marker: ArrowBodyEdge),
         target: well_formed_wall_atom(identity: ^well_formed_wall_bare_body)
       }
     ]
@@ -82,7 +84,7 @@ fn well_formed_wall_valid_arrow() -> Node {
       Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       signature.order,
       Edge {
-        label: Authored { name: ^arrow_body_edge },
+        label: core_edge_label(marker: ArrowBodyEdge),
         target: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
       }
     ]

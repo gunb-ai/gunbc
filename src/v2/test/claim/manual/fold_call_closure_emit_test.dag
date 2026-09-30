@@ -31,7 +31,9 @@ import v2.std.node {
   TypeNode,
   content_hash,
   node_synthetic,
-  well_formed
+  well_formed,
+  ArrowBodyEdge,
+  core_edge,
 }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
@@ -98,8 +100,7 @@ fn fold_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node 
       signature.domain,
       fold_call_positional(target: fold_call_atom(id: ^fold_call_type_int)),
       signature.order,
-      fold_call_named_edge(
-        name: ^arrow_body_edge,
+      core_edge(marker: ArrowBodyEdge,
         target: node_synthetic(
           kind: ComputationNode { behavior: Transform },
           children: [
@@ -133,8 +134,7 @@ fn fold_call_arrow(closure: Node) -> Node {
       signature.domain,
       fold_call_positional(target: fold_call_atom(id: ^fold_call_type_int)),
       signature.order,
-      fold_call_named_edge(
-        name: ^arrow_body_edge,
+      core_edge(marker: ArrowBodyEdge,
         target: fold_call_body(closure: closure)
       )
     ]

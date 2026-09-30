@@ -13,6 +13,8 @@ import v2.std.node {
   Transform,
   TypeNode,
   content_hash,
+  LoopBoundEdge,
+  core_edge_label,
 }
 fn content_hash_loop_body_leaf() -> Node {
   Node {
@@ -57,7 +59,7 @@ fn content_hash_loop_bound_last() -> Node {
     children: [
       Edge { label: Positional, target: content_hash_loop_body() },
       Edge {
-        label: Authored { name: ^loop_bound_edge },
+        label: core_edge_label(marker: LoopBoundEdge),
         target: content_hash_loop_measure_leaf()
       }
     ],
@@ -70,7 +72,7 @@ fn content_hash_loop_bound_first() -> Node {
     kind: ComputationNode { behavior: Loop },
     children: [
       Edge {
-        label: Authored { name: ^loop_bound_edge },
+        label: core_edge_label(marker: LoopBoundEdge),
         target: content_hash_loop_measure_leaf()
       },
       Edge { label: Positional, target: content_hash_loop_body() }
@@ -85,7 +87,7 @@ fn content_hash_loop_bound_middle() -> Node {
     children: [
       Edge { label: Positional, target: content_hash_loop_body_two() },
       Edge {
-        label: Authored { name: ^loop_bound_edge },
+        label: core_edge_label(marker: LoopBoundEdge),
         target: content_hash_loop_measure_leaf()
       },
       Edge { label: Positional, target: content_hash_loop_body_two() }
@@ -101,7 +103,7 @@ fn content_hash_loop_bound_last_two_body() -> Node {
       Edge { label: Positional, target: content_hash_loop_body_two() },
       Edge { label: Positional, target: content_hash_loop_body_two() },
       Edge {
-        label: Authored { name: ^loop_bound_edge },
+        label: core_edge_label(marker: LoopBoundEdge),
         target: content_hash_loop_measure_leaf()
       }
     ],
@@ -115,7 +117,7 @@ fn content_hash_loop_with_extra_named() -> Node {
     children: [
       Edge { label: Positional, target: content_hash_loop_body() },
       Edge {
-        label: Authored { name: ^loop_bound_edge },
+        label: core_edge_label(marker: LoopBoundEdge),
         target: content_hash_loop_measure_leaf()
       },
       Edge {

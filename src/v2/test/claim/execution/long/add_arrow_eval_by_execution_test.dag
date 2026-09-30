@@ -87,6 +87,9 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  ArrowBodyEdge,
+  LoopBoundEdge,
+  core_edge_label,
 }
 import v2.std.node_query { node_positional_child_targets, pattern_wildcard_name }
 import v2.std.runtime {
@@ -539,7 +542,7 @@ fn add_arrow_swapped_add_arrow() -> Node {
       signature.domain,
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
       signature.order,
-      Edge { label: Authored { name: ^arrow_body_edge }, target: add_arrow_swapped_operand_body() }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_swapped_operand_body() }
     ]
   }
 }
@@ -553,7 +556,7 @@ fn add_arrow_excess_signature_arrow() -> Node {
       signature.domain,
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
       signature.order,
-      Edge { label: Authored { name: ^arrow_body_edge }, target: add_arrow_eval_canonical_body() }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_eval_canonical_body() }
     ]
   }
 }
@@ -579,7 +582,7 @@ fn add_arrow_excess_body_arrow() -> Node {
       signature.domain,
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
       signature.order,
-      Edge { label: Authored { name: ^arrow_body_edge }, target: add_arrow_excess_body() }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_excess_body() }
     ]
   }
 }
@@ -839,7 +842,7 @@ fn add_arrow_eval_lazy_arm_loop_node() -> Node {
     children: [
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal) },
       Edge {
-        label: Authored { name: ^loop_bound_edge },
+        label: core_edge_label(marker: LoopBoundEdge),
         target: add_arrow_eval_atom(s: ^add_arrow_eval_loop_measure_literal)
       }
     ]

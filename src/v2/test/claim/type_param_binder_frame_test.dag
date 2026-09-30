@@ -40,7 +40,10 @@ import v2.std.node {
   TypeNode,
   node_subtree_nodes,
   node_synthetic,
-  well_formed
+  well_formed,
+  ArrowBodyEdge,
+  TypeParamsEdge,
+  core_edge_label,
 }
 import v2.std.text { String }
 import v2.std.optional { Absent, Present }
@@ -55,7 +58,6 @@ import v2.std.type_binder {
   type_decl_wrapper,
   type_opaque_wrapper,
   type_param_names,
-  type_params_marker
 }
 import v2.compiler.symbol_index_fill { symbol_index_declared }
 
@@ -260,13 +262,13 @@ fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
       Edge {
-        label: Authored { name: type_params_marker() },
+        label: core_edge_label(marker: TypeParamsEdge),
         target: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: fold(type_params, init: [], f: fn(acc, p) { concat(acc, [tpb_binder_edge(name: p)]) })
         )
       },
-      Edge { label: Authored { name: ^arrow_body_edge }, target: dag_int_literal_fixture_one() }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: dag_int_literal_fixture_one() }
     ]
   )
 }
@@ -357,7 +359,7 @@ fn tpb_with_type_param(decl: Node) -> Node {
         target: node_synthetic(
           kind: e.target.kind,
           children: concat(e.target.children, [Edge {
-            label: Authored { name: type_params_marker() },
+            label: core_edge_label(marker: TypeParamsEdge),
             target: node_synthetic(kind: TypeNode { connective: Conj }, children: [tpb_binder_edge(name: ^T)])
           }])
         )
@@ -515,7 +517,7 @@ fn tpb_box_member(with_params: Bool) -> Node {
 fn tpb_box_member_mixed() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Disj },
-    children: concat(tpb_box_disj().children, [Edge { label: Authored { name: type_params_marker() }, target: tpb_t_binders() }])
+    children: concat(tpb_box_disj().children, [Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders() }])
   )
 }
 
@@ -788,7 +790,7 @@ test fn tpb_wrapper_with_no_view_arm_is_refused() -> Bool {
   let stray = node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: type_params_marker() }, target: tpb_t_binders() },
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders() },
       Edge { label: Authored { name: ^stray }, target: dag_type_atom_node(identity: ^Int) }
     ]
   )

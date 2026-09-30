@@ -16,7 +16,11 @@ import v2.std.node {
   Symbol,
   TypeNode,
   canonicalize_node_for_content_hash,
-  node_synthetic
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge_label,
+  ArrowSignatureOrderEdge,
+  edge_is_core,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -55,7 +59,7 @@ fn ipo_item() -> Node {
       sig.domain,
       Edge { label: Positional, target: ipo_atom(id: ^ipo_int) },
       sig.order,
-      Edge { label: Authored { name: ^arrow_body_edge }, target: ipo_atom(id: ^ipo_z) }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: ipo_atom(id: ^ipo_z) }
     ]
   )
 }
@@ -84,10 +88,7 @@ fn ipo_without_order(arrow: Node) -> Node {
   Node {
     kind: arrow.kind,
     children: fold(arrow.children, init: [], f: fn(acc, e) {
-      match e.label {
-        Authored { name: sym } => if sym == ^arrow_signature_order_edge { acc } else { concat(acc, [e]) }
-        Positional => concat(acc, [e])
-      }
+      if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) { acc } else { concat(acc, [e]) }
     }),
     occurrence_id: arrow.occurrence_id
   }

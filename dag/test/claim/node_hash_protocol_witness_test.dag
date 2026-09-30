@@ -30,6 +30,9 @@ import v2.std.node {
   node_synthetic,
   node_with_occurrence_id,
   content_hash,
+  ArrowBodyEdge,
+  LoopBoundEdge,
+  core_edge,
 }
 
 // FNV1A64-STRUCTURAL-NODE-PROTOCOL-0 -- the conformance corpus for the node identity rule.
@@ -183,7 +186,7 @@ test fn positional_edges_discipline_matches_its_vector() -> Bool {
 // canonical order at once.
 test fn arrow_body_discipline_matches_its_vector() -> Bool {
   digest_of(n: ty(c: Arrow, children: [
-    named(name: ^arrow_body_edge, target: atom_node(identity: ^body)),
+    core_edge(marker: ArrowBodyEdge, target: atom_node(identity: ^body)),
     named(name: ^g, target: atom_node(identity: ^beta)),
     positional(target: atom_node(identity: ^sig)),
     named(name: ^f, target: atom_node(identity: ^alpha)),
@@ -192,7 +195,7 @@ test fn arrow_body_discipline_matches_its_vector() -> Bool {
 
 test fn loop_bound_discipline_matches_its_vector() -> Bool {
   digest_of(n: comp(b: Loop, children: [
-    named(name: ^loop_bound_edge, target: atom_node(identity: ^bound)),
+    core_edge(marker: LoopBoundEdge, target: atom_node(identity: ^bound)),
     named(name: ^g, target: atom_node(identity: ^beta)),
     positional(target: atom_node(identity: ^body)),
     named(name: ^f, target: atom_node(identity: ^alpha)),
@@ -320,10 +323,10 @@ test fn child_content_is_not_erased() -> Bool {
 // is the quotient), while the body edge carrying different content must change the digest.
 test fn arrow_body_content_is_not_erased() -> Bool {
   digest_of(n: ty(c: Arrow, children: [
-    named(name: ^arrow_body_edge, target: atom_node(identity: ^body)),
+    core_edge(marker: ArrowBodyEdge, target: atom_node(identity: ^body)),
     positional(target: atom_node(identity: ^sig)),
   ])) != digest_of(n: ty(c: Arrow, children: [
-    named(name: ^arrow_body_edge, target: atom_node(identity: ^other_body)),
+    core_edge(marker: ArrowBodyEdge, target: atom_node(identity: ^other_body)),
     positional(target: atom_node(identity: ^sig)),
   ]))
 }

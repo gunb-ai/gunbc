@@ -1,7 +1,7 @@
 module v2.test.emit.fold_call_closure_fixture
 
 import v2.std.arrow_signature { declared_signature }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, ArrowBodyEdge, core_edge }
 
 fn fold_fixture_atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
@@ -46,8 +46,7 @@ fn fold_fixture_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> No
       signature.domain,
       fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_type_int)),
       signature.order,
-      fold_fixture_named_edge(
-        name: ^arrow_body_edge,
+      core_edge(marker: ArrowBodyEdge,
         target: node_synthetic(
           kind: ComputationNode { behavior: Transform },
           children: [
@@ -75,8 +74,7 @@ fn fold_fixture_closure_arrow_sub(left_operand: Symbol, right_operand: Symbol) -
       signature.domain,
       fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_type_int)),
       signature.order,
-      fold_fixture_named_edge(
-        name: ^arrow_body_edge,
+      core_edge(marker: ArrowBodyEdge,
         target: node_synthetic(
           kind: ComputationNode { behavior: Transform },
           children: [
@@ -111,7 +109,7 @@ fn fold_fixture_arrow_with_body(params: List<Edge>, body: Node) -> Node {
       fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_type_int)),
       fold_fixture_positional(target: fold_fixture_atom(id: ^dag_binding_type_int)),
       signature.order,
-      fold_fixture_named_edge(name: ^arrow_body_edge, target: body)
+      core_edge(marker: ArrowBodyEdge, target: body)
     ]
   )
 }

@@ -115,8 +115,6 @@ import v2.std.node {
   Transform,
   TypeNode,
   fold_node,
-  match_arm_body,
-  match_arm_pattern,
   arrow_first_positional_target,
   arrow_signature_order_label,
   FirstPositionalAbsent,
@@ -124,14 +122,16 @@ import v2.std.node {
   edge_label_of,
   node_with_occurrence_id,
   well_formed,
+  MatchArmPatternEdge,
+  edge_is_core,
 }
 import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
-  find_named_child,
   is_wildcard_pattern,
-  pattern_wildcard_name
+  pattern_wildcard_name,
+  find_core_child,
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
 
@@ -1634,7 +1634,7 @@ fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk 
 }
 
 fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
-  match find_named_child(root: arm, name: match_arm_pattern) {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
     Accepted { value: pat, diagnostics: _ } =>
       let arm_ctx = resolve_ctx_with_scope(
@@ -1648,14 +1648,10 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
         child_walk_step(
           w: acc,
           e: e,
-          r: match e.label {
-            Authored { name: label } =>
-              if label == match_arm_pattern {
-                resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
-              } else {
-                resolve_node_walk(ctx: arm_ctx, n: e.target)
-              }
-            Positional => resolve_node_walk(ctx: arm_ctx, n: e.target)
+          r: if edge_is_core(e: e, marker: MatchArmPatternEdge) {
+            resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
+          } else {
+            resolve_node_walk(ctx: arm_ctx, n: e.target)
           }
         )
       }))
