@@ -95,22 +95,36 @@ use crate::v1_std_core::{
 use serde::Serialize;
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
+    with_module_path_index(source_roots, |index| index.clone())
+}
+
+/// THE CACHED MODULE-PATH INDEX, BORROWED. A keyed question -- is this module declared, where does
+/// it live -- reads one entry, so it must not pay a copy of every entry to ask. `build_module_path_index`
+/// hands its caller an owned index and therefore clones the cached one on every call; a keyed read
+/// made once per visited module or per edge target turned that into corpus-sized work per step.
+/// This is the same cache, the same fill and the same hit accounting, lent for the duration of `f`.
+pub fn with_module_path_index<R>(
+    source_roots: &[String],
+    f: impl FnOnce(&HashMap<String, String>) -> R,
+) -> R {
     let key = source_roots
         .iter()
         .map(|r| anchor_source_root(r))
         .collect::<Vec<_>>()
         .join("\u{1f}");
-    MODULE_PATH_INDEX_CACHE.with(|cache| {
-        if let Some(index) = cache.borrow().get(&key) {
-            shared_fill::record_hit("module_path_index", &key);
-            return index.clone();
-        }
+    let cached = MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow().contains_key(&key));
+    if cached {
+        shared_fill::record_hit("module_path_index", &key);
+    } else {
         shared_fill::begin_fill();
         let start = std::time::Instant::now();
         let index = build_module_path_index_uncached(source_roots);
         shared_fill::record_fill("module_path_index", &key, start.elapsed().as_nanos() as u64);
-        cache.borrow_mut().insert(key, index.clone());
-        index
+        MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().insert(key.clone(), index));
+    }
+    MODULE_PATH_INDEX_CACHE.with(|cache| {
+        let cache = cache.borrow();
+        f(cache.get(&key).expect("module path index inserted above"))
     })
 }
 
@@ -2628,7 +2642,9 @@ pub(crate) fn import_resolution_facts_with_observation(
                     continue;
                 }
             };
-            out.extend(import_facts_for_file(&rel, &content, &declared));
+            out.extend(import_facts_for_file(&rel, &content, |m| {
+                declared.contains(m)
+            }));
         }
     }
     ImportResolutionObservation {
@@ -2645,13 +2661,13 @@ pub(crate) fn import_resolution_facts_with_observation(
 pub(crate) fn import_facts_for_file(
     rel: &str,
     content: &str,
-    declared: &HashSet<String>,
+    is_declared: impl Fn(&str) -> bool,
 ) -> Vec<ImportResolutionFactRaw> {
     extract_import_paths(content)
         .into_iter()
         .map(|import_module| ImportResolutionFactRaw {
             path: rel.to_string(),
-            target_declared: declared.contains(&import_module),
+            target_declared: is_declared(&import_module),
             import_module,
         })
         .collect()
@@ -2693,12 +2709,12 @@ pub fn module_declaration_fact_at(
     module_path: &str,
 ) -> Option<ModuleDeclarationFactRaw> {
     let abs_pool_roots = pool_roots_abs(pool_roots);
-    build_module_path_index(&abs_pool_roots)
-        .get(module_path)
-        .map(|path| ModuleDeclarationFactRaw {
+    with_module_path_index(&abs_pool_roots, |index| {
+        index.get(module_path).map(|path| ModuleDeclarationFactRaw {
             module: module_path.to_string(),
             path: path.clone(),
         })
+    })
 }
 
 /// Project reference edges into the `ImportResolutionFactRaw` channel the module-graph adjacency and
@@ -2827,8 +2843,14 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let key = abs_pool_roots.join("\u{1e}");
     if let Some(hit) = REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        shared_fill::record_hit("reference_pool_names", &key);
         return hit;
     }
+    // A PROCESS-WIDE POOL FILL, ACCOUNTED AS ONE. The heads index is built once per pool per
+    // process and then served to every consumer -- the same class as module_path_index and
+    // reference_edges, which already report through shared_fill. Unrecorded, it was billed as the
+    // own CPU of whichever claim first reached an import-less file.
+    shared_fill::begin_fill();
     let started = std::time::Instant::now();
     let mut heads: Vec<(String, Rc<crate::v1_std_core::Node>)> = Vec::new();
     for root in &abs_pool_roots {
@@ -2860,6 +2882,11 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
         "reference_pool_names_heads",
         super::pre_entry_phase::PhaseScale::Tree,
         started.elapsed(),
+    );
+    shared_fill::record_fill(
+        "reference_pool_names",
+        &key,
+        started.elapsed().as_nanos() as u64,
     );
     REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow_mut().insert(key, names.clone()));
     names
