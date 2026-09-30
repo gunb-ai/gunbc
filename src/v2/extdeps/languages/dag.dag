@@ -1150,23 +1150,26 @@ fn dag_grammar_let_expr() -> GrammarExpr {
   )
 }
 
+// A BLOCK-HEADED EXPRESSION IS AN OPERAND, NOT A SIBLING OF ONE. `match`, `if` and `loop` are
+// primaries (dag_grammar_primary_expr_core offers match_expr, if_expr and loop_expr), so binary_expr
+// already derives a bare block form and a block form followed by operators. They were ALSO offered
+// here, ahead of binary_expr, and an ordered choice commits to the first alternative that accepts:
+// `match w {..} && t` took match_expr, which accepted the match alone, and `&& t` was left over as
+// parse_g0_tokens_remain. The seed reads every block form as an ordinary operand (v1.compiler.parse
+// parse_expr_bp: a prefix, then the infix/postfix loop), so v2 now does the same by construction:
+// the three alternatives are removed rather than reordered, because below binary_expr they could
+// only ever be reached where binary_expr had already failed on the same prefix.
+// fn_literal, block_expr and arrow_lambda stay AHEAD of binary_expr: a primary admits a braced
+// field-init list and a parenthesised expression, so offered below binary_expr a block body could
+// read as a record literal and a lambda's parameter list as a parenthesised operand.
 fn dag_grammar_expr_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_match_expr),
+    left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
     right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
+      left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
       right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_loop_expr),
-        right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
-          right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
-            right: dag_grammar_choice(
-              left: dag_grammar_nonterminal(production: ^dag_production_arrow_lambda),
-              right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
-            )
-          )
-        )
+        left: dag_grammar_nonterminal(production: ^dag_production_arrow_lambda),
+        right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
       )
     )
   )

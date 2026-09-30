@@ -1,0 +1,148 @@
+module v2.test.parse.block_headed_left_operand_parse
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BLOCK-HEADED EXPRESSION AS THE LEFT OPERAND OF A BINARY OPERATOR. `match`, `if` and `loop` are
+// primaries, so `match w {..} && t` is one binary expression whose left operand is the match. The
+// seed reads it that way (v1.compiler.parse parse_expr_bp); v2 refused it with
+// parse_g0_tokens_remain because the expr production offered match_expr/if_expr/loop_expr as
+// alternatives AHEAD of binary_expr, and the ordered choice committed to the block alone
+// (v2.extdeps.languages.dag dag_grammar_expr_expr). One control per binary operator class, each
+// with the block as the LEFT operand, through the live prepared grammar; each also normalizes, so
+// the block reaches body lowering as an operand rather than stopping at parse.
+// The mutation that reds every control -- the expr production with the three block alternatives
+// restored ahead of binary_expr -- is test.claim.long.block_headed_left_operand_mutation_witness.
+
+fn b_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+// Parsed AND normalized: the operand is read by body lowering, not only admitted by the parser.
+fn b_parses_and_normalizes(text: String, file: Symbol) -> Bool {
+  match b_tokenize_parse(text: text, file: file) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+// multiplicative `*`
+data match_mul_left_source: String = "module probe.match_mul\n\nfn f(w: Bool, t: Bool, n: Int) -> Int {\n  match w {\n    true => n\n    false => 0\n  } * n\n}\n"
+
+// additive `+`
+data match_add_left_source: String = "module probe.match_add\n\nfn f(w: Bool, t: Bool, n: Int) -> Int {\n  match w {\n    true => n\n    false => 0\n  } + n\n}\n"
+
+// additive `-`
+data match_sub_left_source: String = "module probe.match_sub\n\nfn f(w: Bool, t: Bool, n: Int) -> Int {\n  match w {\n    true => n\n    false => 0\n  } - n\n}\n"
+
+// comparison `<`
+data match_cmp_left_source: String = "module probe.match_cmp\n\nfn f(w: Bool, t: Bool, n: Int) -> Bool {\n  match w {\n    true => n\n    false => 0\n  } < n\n}\n"
+
+// equality `==`
+data match_eq_left_source: String = "module probe.match_eq\n\nfn f(w: Bool, t: Bool, n: Int) -> Bool {\n  match w {\n    true => n\n    false => 0\n  } == n\n}\n"
+
+// logical `&&`
+data match_and_left_source: String = "module probe.match_and\n\nfn f(w: Bool, t: Bool, n: Int) -> Bool {\n  match w {\n    true => t\n    false => false\n  } && t\n}\n"
+
+// logical `||`
+data match_or_left_source: String = "module probe.match_or\n\nfn f(w: Bool, t: Bool, n: Int) -> Bool {\n  match w {\n    true => t\n    false => false\n  } || t\n}\n"
+
+// pipe `|>`
+data match_pipe_left_source: String = "module probe.match_pipe\n\nfn f(w: Bool, t: Bool, n: Int) -> Int {\n  match w {\n    true => n\n    false => 0\n  } |> g\n}\n"
+
+// additive `+` (if-headed)
+data if_add_left_source: String = "module probe.if_add\n\nfn f(w: Bool, t: Bool, n: Int) -> Int {\n  if w { n } else { 0 } + n\n}\n"
+
+// logical `&&` (if-headed)
+data if_and_left_source: String = "module probe.if_and\n\nfn f(w: Bool, t: Bool, n: Int) -> Bool {\n  if w { t } else { false } && t\n}\n"
+
+test fn match_mul_left_operand_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: match_mul_left_source, file: ^probe_match_mul)
+}
+
+test fn match_add_left_operand_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: match_add_left_source, file: ^probe_match_add)
+}
+
+test fn match_sub_left_operand_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: match_sub_left_source, file: ^probe_match_sub)
+}
+
+test fn match_cmp_left_operand_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: match_cmp_left_source, file: ^probe_match_cmp)
+}
+
+test fn match_eq_left_operand_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: match_eq_left_source, file: ^probe_match_eq)
+}
+
+test fn match_and_left_operand_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: match_and_left_source, file: ^probe_match_and)
+}
+
+test fn match_or_left_operand_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: match_or_left_source, file: ^probe_match_or)
+}
+
+test fn match_pipe_left_operand_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: match_pipe_left_source, file: ^probe_match_pipe)
+}
+
+test fn if_add_left_operand_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: if_add_left_source, file: ^probe_if_add)
+}
+
+test fn if_and_left_operand_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: if_and_left_source, file: ^probe_if_and)
+}
+
+// NEIGHBOURS THE CHANGE MUST NOT MOVE: a bare block form, and a block as the RIGHT operand. Both now
+// reach match_expr/if_expr through binary_expr's primary instead of directly from expr.
+data bare_match_source: String = "module probe.bare_match\n\nfn f(w: Bool, n: Int) -> Int {\n  match w {\n    true => n\n    false => 0\n  }\n}\n"
+
+data right_operand_match_source: String = "module probe.right_match\n\nfn f(w: Bool, t: Bool) -> Bool {\n  t && match w {\n    true => t\n    false => false\n  }\n}\n"
+
+data bare_if_source: String = "module probe.bare_if\n\nfn f(w: Bool, n: Int) -> Int {\n  if w { n } else { 0 }\n}\n"
+
+test fn bare_match_still_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: bare_match_source, file: ^probe_bare_match)
+}
+
+test fn right_operand_match_still_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: right_operand_match_source, file: ^probe_right_match)
+}
+
+test fn bare_if_still_parses_holds() -> Bool {
+  b_parses_and_normalizes(text: bare_if_source, file: ^probe_bare_if)
+}
