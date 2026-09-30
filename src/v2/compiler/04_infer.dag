@@ -3641,7 +3641,8 @@ fn infer_gather_fold_step(
         )
     }
   } else {
-    match infer_literal_edge_payload(parent: acc.node, edge: edge) {
+    let family = infer_literal_edge_payload(parent: acc.node, edge: edge)
+    match family {
       InferNotALiteralPayload =>
         infer_gather_fold_step_merged(
           acc: acc,
@@ -3651,10 +3652,8 @@ fn infer_gather_fold_step(
           kinds: kinds,
           resolved: resolved
         )
-      InferIntMagnitudePayload =>
-        infer_gather_literal_payload_step(acc: acc, edge: edge, family: InferIntMagnitudePayload, partials: partials, kinds: kinds, resolved: resolved)
-      InferSymbolNamePayload =>
-        infer_gather_literal_payload_step(acc: acc, edge: edge, family: InferSymbolNamePayload, partials: partials, kinds: kinds, resolved: resolved)
+      _ =>
+        infer_gather_literal_payload_step(acc: acc, edge: edge, family: family, partials: partials, kinds: kinds, resolved: resolved)
     }
   }
 }
