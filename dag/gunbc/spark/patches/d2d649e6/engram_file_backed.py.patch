@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..ed3e6e0
 --- /dev/null
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
-@@ -0,0 +1,774 @@
+@@ -0,0 +1,792 @@
 +# File-backed Engram storage for vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8.
 +#
 +# THIS IS A BACKING SWAP, NOT NEW PREFETCH MACHINERY. Upstream
@@ -744,6 +744,24 @@ index 0000000..ed3e6e0
 +        geometry = True
 +    m.check_checkpoint_geometry(torch.empty((100, 256), dtype=torch.float8_e4m3fn), False, 256, 32, 50)
 +    check("checkpoint geometry refuses a table the stores were not encoded from", geometry)
++
++    # vLLM builds the model under a CUDA default device (torch.utils._device), so a staging
++    # allocation that names no device lands on CUDA and pin_memory refuses. Allocate the way the
++    # launch does; without CUDA the control cannot run and reports FAIL rather than skipping.
++    if not torch.cuda.is_available():
++        check("staging under a CUDA default device is pinned host memory", False, "CUDA unavailable")
++    else:
++        with tempfile.TemporaryDirectory(dir=directory) as d3:
++            p3 = os.path.join(d3, "rank.bin")
++            with open(p3, "wb") as f:
++                f.write(data)
++            try:
++                with torch.device("cuda"):
++                    s3, st3 = m.allocate_file_backed(p3, m.ExpectedRowStoreIdentity(_h.sha256(data).hexdigest(), magic, record), 2, record, torch.device("cuda"))
++                s3.close()
++                check("staging under a CUDA default device is pinned host memory", st3.device.type == "cpu" and st3.is_pinned(), str(st3.device))
++            except RuntimeError as err:
++                check("staging under a CUDA default device is pinned host memory", False, str(err))
 +
 +    return 0 if all(results) else 1
 +
