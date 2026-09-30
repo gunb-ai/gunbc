@@ -1,5 +1,6 @@
 module test.claim.native_driver_cost_partition
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { nanosecond }
 import std.compiler_entry {
   NativeDriverExclusiveRows,
