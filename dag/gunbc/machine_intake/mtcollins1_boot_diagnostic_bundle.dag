@@ -117,7 +117,6 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacMediaStateUnestablishedBeforeWrite,
   MegaRacReadinessClockIncoherent,
   PresentationReadyButSessionHeld,
-  PresentationStateUnestablished,
   PresentationUnobserved,
   MegaRacNotEnumeratedAfterRefresh,
   ReadinessStarted,
@@ -588,7 +587,7 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
     MegaRacRefreshClockUnreadable { detail: d, detach: x } => Present { value: join(["the clock could not be read, so the re-enumeration window could not be declared or judged: ", d, " (the detach had been executed: ", detach_evidence_text(detach: x), ")"], "") }
     MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
     MegaRacMediaStateUnestablished { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_ready: ca, general_at_ready: g } =>
-      Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code before any write was ", cd_reading_text(r: cb), " and at readiness ", cd_reading_text(r: ca), " (general settings ", raw_read_text(r: g), "). Its meaning is unresolved, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
+      Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code at readiness could not be read (", cd_reading_text(r: ca), "; before any write ", cd_reading_text(r: cb), "; general settings ", raw_read_text(r: g), "). An unread code is not a reading, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
     MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: cb, reason: why } =>
       Present { value: join(["this attempt cannot establish the media state, and nothing was written: cd_error_code before any write was ", cd_reading_text(r: cb), "; ", why as String], "") }
     MegaRacReadinessClockIncoherent { image_name: n, route: rt, opened_at: o, previous: p, look: l, looks: k } =>
@@ -686,7 +685,6 @@ fn recheck_text(v: PresentationStillServed) -> String {
     PresentationStillReady => "served"
     PresentationReadyButSessionHeld { held: r } => concat("served, but the look's own session was ", session_release_text(standing: r))
     PresentationNoLongerReady { reason: why } => concat("AFFIRMED not served: ", why as String)
-    PresentationStateUnestablished { cd_error: c } => concat("UNESTABLISHED: cd_error_code ", cd_reading_text(r: c))
     PresentationUnobserved { reason: why } => concat("UNOBSERVED (indeterminate, not a withdrawal): ", why as String)
   }
 }
@@ -705,7 +703,6 @@ fn handoff_media_findings(h: MtCollins1HandoffMedia) -> List<String> {
         PresentationStillReady => []
         PresentationNoLongerReady { reason: why } => [concat("the presentation was LOST at or after the boot-device and power handoff (", concat(why as String, concat("): ", observation_text(r: a))))]
         PresentationUnobserved { reason: why } => [concat("the post-handoff look was UNOBSERVED, so whether the presentation survived the handoff is INDETERMINATE (", concat(why as String, concat("): ", observation_text(r: a))))]
-        PresentationStateUnestablished { cd_error: c } => [concat("after the handoff the presentation read Started but cd_error_code was ", concat(cd_reading_text(r: c), concat(", so its state is unestablished: ", observation_text(r: a))))]
         PresentationReadyButSessionHeld { held: r } => [concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))]
       }
       )

@@ -30,7 +30,7 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   mtcollins1_boot_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal, mtcollins1_unit_hold_key,
 }
-import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_attach_diskless_image, mtcollins1_stale_power_off_allowance, mtcollins1_media_gate, mtcollins1_observe_presentation }
+import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, MediaNotDelivered, mtcollins1_media_delivery, mtcollins1_attach_diskless_image, mtcollins1_stale_power_off_allowance, mtcollins1_media_gate, mtcollins1_observe_presentation }
 import gunbc.machine_intake_megarac_media_attach { PresentationStillReady, presentation_still_served }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff, MtCollins1HandoffResult, handoff_not_issued }
@@ -2153,7 +2153,6 @@ fn mtcollins1_boot_handoff_when_media_ready(
         }
         PresentationReadyButSessionHeld { held: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
         PresentationNoLongerReady { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
-        PresentationStateUnestablished { cd_error: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
         PresentationUnobserved { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
       }
     }
@@ -2277,7 +2276,10 @@ fn mtcollins1_boot_actuate(
           )
           let terminal_read = proc_uptime_read()
           ActuationWatch {
-            outcome: watch.outcome,
+            outcome: match mtcollins1_media_delivery(record: media, census_ended: watch.census_ended) {
+              MediaNotDelivered { reason: nd } => exit_failure(reason: concat(nd as String, match watch.outcome { ExitSuccess => ""  ExitFailure { code: _, reason: w } => concat("; the watch ended: ", w) }))
+              _ => watch.outcome
+            },
             stage: if watch.census_ended {
               ActuationCensusEnded { selection: subject.selection, smpro_power_on: at_power_on, smpro_census: watch.smpro_census }
             } else {

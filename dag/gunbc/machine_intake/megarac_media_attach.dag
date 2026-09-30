@@ -282,22 +282,24 @@ type ShareBindingStanding
   | ShareMismatch { observed: MegaRacObservedShare }
   | ShareUnreadable { detail: String }
 
-// THE CD ERROR CODE IS ITS OWN OBSERVATION, AND WHILE ITS MEANING IS UNRESOLVED A NONZERO VALUE
-// WITHHOLDS (operator decision on gunbc#12425, option A). settings/media/general carries
+// THE CD ERROR CODE IS ITS OWN OBSERVATION, RECORDED AND NEVER A GATE ON ITS OWN (operator decision
+// msg_abc42f62-159b-4c4d-8417-d5fffd2fa512, 2026-09-30, option A: "admit handoff; census END marker
+// decides delivery", superseding the gunbc#12425 option A policy that a nonzero value withholds).
+// settings/media/general carries
 // cd_error_code beside the presentation rows. On 2026-09-27 it read 0 at ~15:40Z, 16 after boot run
 // 36330382023, and STILL 16 at 18:37Z although the re-attached image then read redirection_status 1
 // with session_index 0. Whether it is a latched last error, a live fault, or both, is not known: its
-// producer, what sets it, what clears it and its scope are unestablished. So a nonzero or unread
-// code is a KNOWLEDGE refusal -- this attempt cannot establish the media state -- not a verdict that
-// the controller is broken, and nothing here writes merely to make it read 0.
-//
-// THE NEXT ATTEMPT IS THE EXPERIMENT, and every step keeps its receipt. With a nonzero code before
-// any write and a detach admitted (live hold, power observed off), the recovery action is a fresh
-// presentation: the presented image -- the desired one included -- is stopped and read back, the
-// code is re-read, the image is attached fresh, and the code is read again at readiness. The
-// baseline (MegaRacMediaBaseline), the code after the stop and at readiness, and the boot's own data-
-// delivery evidence (the census markers of the actuation) are what later decide the permanent
-// policy. Whether the settings' 16 and the row's redirection_status 16 are one fact is NOT asserted.
+// producer, what sets it, what clears it and its scope are unestablished. The fresh-presentation
+// experiment (#12425) answered the one question it could: run 36721915217 attached the desired image
+// fresh -- row Started, session_index 0, share bound, session released -- and the code read 16 before
+// any write, after the stop and at readiness alike. A fresh presentation does not move it, so a
+// nonzero code is no evidence about THIS presentation. It is therefore recorded (baseline, after-stop,
+// readiness; all kept in the bundle) and decides nothing here: delivery is judged by the boot's own
+// census END marker (gunbc.machine_intake_mtcollins1_media_attach mtcollins1_media_delivery), and a
+// boot without it refuses as media-not-delivered naming these readings. An UNREAD code still
+// withholds: an unread fact is not a reading, whatever its value would have been. Nothing here writes
+// merely to make the code read 0, and whether the settings' 16 and the row's redirection_status 16
+// are one fact is NOT asserted.
 type MegaRacCdErrorCode
   = CdErrorNone
   | CdErrorUncatalogued { wire: Int }
@@ -1486,11 +1488,11 @@ type ConvergenceStep
   | ConvergeStepAttachFromListing
 
 // THE DECISION, PURE, so every control is a supplied configurations reading rather than a
-// controller. THE CODE'S DISPOSITION IS EXPLICIT ON EVERY ROUTE (side-chat review 5331991982): only
-// an OBSERVED nonzero code enters the fresh-presentation experiment, and only under the admission; an
-// UNREAD code is a knowledge refusal that never withdraws a presentation (the desired one goes to the
-// no-write readiness fold, which re-reads the code and withholds if it is still unread); a clean code
-// is the ordinary route. The admission is read only on the arm that would write destructively: a host that is
+// controller. THE CODE'S DISPOSITION IS EXPLICIT ON EVERY ROUTE (side-chat review 5331991982): an
+// OBSERVED code, zero or not, takes the ordinary route (operator decision msg_abc42f62: a nonzero code
+// no longer withholds, and the fresh-presentation experiment it drove is concluded, so it licenses no
+// write); an UNREAD code is a knowledge refusal that never withdraws a presentation (the desired one
+// goes to the no-write readiness fold, which re-reads the code and withholds if it is still unread). The admission is read only on the arm that would write destructively: a host that is
 // on with the desired image presented makes no write, and goes to the readiness fold like any other
 // presentation.
 fn megarac_convergence_step(
@@ -1506,13 +1508,8 @@ fn megarac_convergence_step(
     ConvergeSeveralPresented => ConvergeStepRefuse { outcome: MegaRacSeveralImagesPresented { configurations: configurations } }
     ConvergeDesiredPresented { row: r } =>
       match cd_before {
-        CdErrorRead { code: CdErrorNone } => ConvergeStepAwaitReadiness
+        CdErrorRead { code: _ } => ConvergeStepAwaitReadiness
         CdErrorUnread { detail: _ } => ConvergeStepAwaitReadiness
-        CdErrorRead { code: CdErrorUncatalogued { wire: _ } } =>
-          match detach {
-            MegaRacDetachAdmitted => ConvergeStepDetachStale { row: r }
-            MegaRacDetachNotAdmitted { reason: why } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: concat("the desired image is presented with a nonzero cd_error_code and the fresh-presentation recovery was not admitted: ", why as String)) }
-          }
       }
     ConvergeStalePresented { row: r } =>
       match cd_before {
@@ -1525,13 +1522,8 @@ fn megarac_convergence_step(
       }
     ConvergeNothingPresented =>
       match cd_before {
-        CdErrorRead { code: CdErrorNone } => ConvergeStepAttachFromListing
+        CdErrorRead { code: _ } => ConvergeStepAttachFromListing
         CdErrorUnread { detail: _ } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: "cd_error_code could not be read, so this attempt cannot establish the media state it would attach into") }
-        CdErrorRead { code: CdErrorUncatalogued { wire: _ } } =>
-          match detach {
-            MegaRacDetachAdmitted => ConvergeStepAttachFromListing
-            MegaRacDetachNotAdmitted { reason: why } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: concat("nothing is presented, cd_error_code is nonzero, and the fresh-presentation experiment was not admitted: ", why as String)) }
-          }
       }
   }
 }
@@ -1870,7 +1862,7 @@ fn readiness_wait_outcome(
       match l.reading {
         ReadinessStarted { row: r } =>
           match cd_at_end {
-            CdErrorRead { code: CdErrorNone } =>
+            CdErrorRead { code: _ } =>
           MegaRacPresentationReady {
             route: route,
             evidence: MegaRacPresentationEvidence {
@@ -1886,7 +1878,6 @@ fn readiness_wait_outcome(
               general_at_ready: general_at_end,
             },
           }
-            CdErrorRead { code: CdErrorUncatalogued { wire: _ } } => state_unestablished
             CdErrorUnread { detail: _ } => state_unestablished
           }
         ReadinessConnecting { row: _ } => not_ready
@@ -1934,20 +1925,18 @@ fn megarac_observe_with_token(
   }
 }
 
-// FOUR ANSWERS, BECAUSE THEY ARE FOUR DIFFERENT FACTS (side-chat review 5331738657). Affirmed:
+// THREE ANSWERS AND A HELD SESSION, BECAUSE THEY ARE FOUR DIFFERENT FACTS (side-chat review 5331738657). Affirmed:
 // the look was taken and the medium is not being served (a withdrawn or non-Started row, a share
 // mismatch). Unobserved: the look itself failed (session, transport, an unread member), which says
-// nothing about the medium. Unestablished: the look was taken and the medium looked healthy, but the
-// general settings carry a nonzero cd_error_code whose meaning is unresolved, so this attempt cannot
-// establish the media state (operator decision, option A: a knowledge refusal, not a BMC verdict).
-// And the look's own session must be released: a ready medium observed through a session the
+// nothing about the medium; an UNREAD cd_error_code is one of these. A READ code, zero or not, is
+// recorded in the look and decides nothing here (operator decision msg_abc42f62: the census END marker
+// decides delivery). And the look's own session must be released: a ready medium observed through a session the
 // controller still holds is a cleanup obligation unmet, exactly as at the initial gate. Only
 // PresentationStillReady admits a handoff; each other answer withholds and says which it was.
 type PresentationStillServed
   = PresentationStillReady
   | PresentationReadyButSessionHeld { held: SessionRelease }
   | PresentationNoLongerReady { reason: NonEmptyStr }
-  | PresentationStateUnestablished { cd_error: CdErrorReading }
   | PresentationUnobserved { reason: NonEmptyStr }
 
 fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillServed {
@@ -1964,13 +1953,12 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
             ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => PresentationUnobserved { reason: "a configurations row carries an uncatalogued status" }
             ReadinessStarted { row: _ } =>
               match cd {
-                CdErrorRead { code: CdErrorNone } =>
+                CdErrorRead { code: _ } =>
                   match result.session_release {
                     SessionReleased => PresentationStillReady
                     other => PresentationReadyButSessionHeld { held: other }
                   }
                 CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
-                other => PresentationStateUnestablished { cd_error: other }
               }
             ReadinessConnecting { row: _ } => no_longer_ready
             ReadinessStartedUnbound { row: _ } => no_longer_ready

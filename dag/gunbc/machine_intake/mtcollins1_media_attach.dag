@@ -24,6 +24,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   mtcollins1_boot_ipmi_read_deadline,
   mtcollins1_boot_ipmi_kill_after,
   session_release_text,
+  cd_reading_text,
   StaleMediumPowerOff,
   StalePowerOffNotNeeded,
   StalePowerOffObserved,
@@ -37,6 +38,10 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacDetachNotAdmitted,
   MegaRacPresentationEvidence,
   MegaRacPresentationReady,
+  MegaRacAttachRoute,
+  RouteAlreadyPresented,
+  RouteAttached,
+  RouteReplaced,
   MegaRacReplacementPolicy,
   MegaRacConverge,
   MegaRacObserve,
@@ -386,6 +391,48 @@ fn mtcollins1_media_gate(record: MtCollins1MediaAttachRecord) -> MtCollins1Media
             Present { value: why } => MediaGateWithheld { reason: concat("mtcollins1 media attach: ", why) as NonEmptyStr }
             Absent => MediaGateWithheld { reason: "mtcollins1 media attach: the outcome carries no ready presentation" }
           }
+      }
+  }
+}
+
+// DELIVERY IS JUDGED BY THE BOOT, NOT BY THE CONTROLLER'S CODE (operator decision
+// msg_abc42f62-159b-4c4d-8417-d5fffd2fa512, 2026-09-30, option A: "admit handoff; census END marker
+// decides delivery"). The gate above admits a ready presentation whatever cd_error_code read, so the
+// code's readings travel with the evidence to the one observation that can say whether the medium
+// was actually served: the census image's END marker, which it prints only after its last stage has
+// read from the medium (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_census_phase). A boot that
+// ends or times out without it refuses as media-not-delivered and names every reading it had, so the
+// next reader of a failed boot sees the code beside the verdict rather than re-deriving it.
+// The watch already refuses such a boot (its deadline, refusal or channel-loss reason); what it did
+// not do is name the verdict as delivery or carry the code, and that is all this adds -- it never
+// turns an accepted watch into a refusal on the code, and an END marker is delivered whatever the code.
+type MtCollins1MediaDelivery
+  = MediaDelivered { evidence: MegaRacPresentationEvidence }
+  | MediaNotDelivered { reason: NonEmptyStr }
+  | MediaDeliveryNotJudged { reason: NonEmptyStr }
+
+fn mtcollins1_cd_readings_text(route: MegaRacAttachRoute, evidence: MegaRacPresentationEvidence) -> String {
+  join([
+    "cd_error_code before any write ", cd_reading_text(r: evidence.cd_before_any_write),
+    ", after the stop ", match route {
+      RouteReplaced { image_list_index: _, detach: d, start: _ } => cd_reading_text(r: d.cd_after_stop)
+      RouteAttached { image_list_index: _, start: _ } => "(no stop was sent)"
+      RouteAlreadyPresented => "(no stop was sent)"
+    },
+    ", at readiness ", cd_reading_text(r: evidence.cd_at_ready),
+  ], "")
+}
+
+fn mtcollins1_media_delivery(record: MtCollins1MediaAttachRecord, census_ended: Bool) -> MtCollins1MediaDelivery {
+  match record {
+    MediaAttachNotAttempted { reason: r } => MediaDeliveryNotJudged { reason: concat("the media attach was not attempted: ", r as String) as NonEmptyStr }
+    MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
+      match res.outcome {
+        MegaRacPresentationReady { route: rt, evidence: e } =>
+          if census_ended { MediaDelivered { evidence: e } } else {
+            MediaNotDelivered { reason: join(["mtcollins1 boot: media not delivered: the boot ended without the census END marker although '", e.image_name as String, "' was presented ready; ", mtcollins1_cd_readings_text(route: rt, evidence: e)], "") as NonEmptyStr }
+          }
+        _ => MediaDeliveryNotJudged { reason: "the attach outcome carries no ready presentation" }
       }
   }
 }

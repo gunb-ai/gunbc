@@ -88,7 +88,6 @@ import gunbc.machine_intake_megarac_media_attach {
   ReadinessMalformed,
   PresentationUnobserved,
   PresentationReadyButSessionHeld,
-  PresentationStateUnestablished,
   CdErrorUncatalogued,
   share_binding_standing,
   ShareBound,
@@ -107,7 +106,7 @@ import gunbc.machine_intake_megarac_media_attach {
 }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { media_attach_text, media_attach_outcome_reason, MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, MediaAttachNotAttempted, StalePowerOffNotNeeded, end_media_is_owed, HandoffMediaWithheldAtRecheck, handoff_media_findings }
-import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_media_gate, mtcollins1_media_share }
+import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_media_gate, mtcollins1_media_share, MediaDelivered, MediaNotDelivered, MediaDeliveryNotJudged, mtcollins1_media_delivery }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -492,22 +491,68 @@ fn raw_at(body: String) -> MegaRacRawRead {
   MegaRacRawRead { answered: true, body: body, observed_at: Present { value: 13100 } }
 }
 
-// OPTION A (operator decision on #12425): a nonzero or unread code withholds as a knowledge refusal.
-test fn a_nonzero_code_beside_a_started_presentation_withholds_as_unestablished() -> Bool {
-  match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27)) {
-    MegaRacMediaStateUnestablished { image_name: _, route: _, look: _, looks: n, cd_before_any_write: _, cd_at_ready: CdErrorRead { code: CdErrorUncatalogued { wire: w } }, general_at_ready: _ } =>
-      n == 4 && w == 16
-        && (match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult { outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27)), session_release: SessionReleased, baseline: none })) {
-          MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "knowledge refusal")
-          MediaGateReady { evidence: _ } => false
-        })
+// OPERATOR DECISION msg_abc42f62 (2026-09-30, option A, superseding #12425 option A): a READ nonzero
+// code is recorded and opens the gate; the census END marker decides delivery. Run 36721915217's
+// shape: the desired image attached fresh and the code read 16 before any write, after the stop and
+// at readiness.
+fn run_36721915217_detach() -> MegaRacDetachEvidence {
+  MegaRacDetachEvidence { stale_image: desired_census as String, media_index: "0", command: WriteAccepted { body: "{}" }, readback_read: true, readback: cleared_rows, cd_after_stop: cd_16, general_after_stop: raw_at(body: mtcollins1_media_general_2026_09_27) }
+}
+
+fn fresh_with_16() -> MtCollins1MediaAttachRecord {
+  attempted(result: MegaRacAttachResult {
+    outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteReplaced { image_list_index: "5", detach: run_36721915217_detach(), start: WriteAccepted { body: "{}" } }, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27)),
+    session_release: SessionReleased,
+    baseline: none,
+  })
+}
+
+test fn a_nonzero_code_beside_a_started_presentation_opens_the_gate_and_is_recorded() -> Bool {
+  match mtcollins1_media_gate(record: fresh_with_16()) {
+    MediaGateReady { evidence: e } =>
+      e.looks == 4
+        && (match e.cd_before_any_write { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 16 _ => false })
+        && (match e.cd_at_ready { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 16 _ => false })
+    MediaGateWithheld { reason: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED: code 16 and a boot that ended without the census END marker refuses as
+// media-not-delivered, naming all three readings.
+test fn code_16_without_the_census_end_marker_is_not_delivered_naming_the_readings() -> Bool {
+  match mtcollins1_media_delivery(record: fresh_with_16(), census_ended: false) {
+    MediaNotDelivered { reason: r } =>
+      string_contains(s: r as String, pattern: "media not delivered")
+        && string_contains(s: r as String, pattern: "cd_error_code before any write 16")
+        && string_contains(s: r as String, pattern: "after the stop 16")
+        && string_contains(s: r as String, pattern: "at readiness 16")
+    _ => false
+  }
+}
+
+// THE POSITIVE: the same presentation with the END marker is delivered, whatever the code read.
+test fn code_16_with_the_census_end_marker_is_delivered() -> Bool {
+  match mtcollins1_media_delivery(record: fresh_with_16(), census_ended: true) {
+    MediaDelivered { evidence: e } => (match e.cd_at_ready { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 16 _ => false })
+    _ => false
+  }
+}
+
+test fn an_attempt_without_a_ready_presentation_is_not_judged_for_delivery() -> Bool {
+  match mtcollins1_media_delivery(record: MediaAttachNotAttempted { reason: "the SOL lease was lost" }, census_ended: false) {
+    MediaDeliveryNotJudged { reason: _ } => true
     _ => false
   }
 }
 
 test fn an_unread_code_at_readiness_withholds_as_unestablished() -> Bool {
   match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAlreadyPresented, cd_before: cd_clean, general_at_end: MegaRacRawRead { answered: false, body: "curl: (28)", observed_at: none }) {
-    MegaRacMediaStateUnestablished { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_ready: CdErrorUnread { detail: d }, general_at_ready: _ } => d == "curl: (28)"
+    MegaRacMediaStateUnestablished { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_ready: CdErrorUnread { detail: d }, general_at_ready: _ } =>
+      d == "curl: (28)"
+        && (match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult { outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAlreadyPresented, cd_before: cd_16, general_at_end: MegaRacRawRead { answered: false, body: "curl: (28)", observed_at: none }), session_release: SessionReleased, baseline: none })) {
+          MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "could not be read")
+          MediaGateReady { evidence: _ } => false
+        })
     _ => false
   }
 }
@@ -519,20 +564,11 @@ test fn a_clean_code_at_readiness_is_ready() -> Bool {
   }
 }
 
-// THE EXPERIMENT ARM: the desired image presented with code 16 before any write. Held and off, the
-// fresh-presentation recovery stops it (the detach route); not admitted, it refuses before any write.
-test fn desired_presented_with_code_16_and_the_host_off_takes_the_recovery_arm() -> Bool {
-  match step_with_cd(configurations: presenting(name: desired_census as String, status: "1"), detach: host_off, cd_before: cd_16) {
-    ConvergeStepDetachStale { row: r } => r.image_name == (desired_census as String)
-    _ => false
-  }
-}
-
-test fn desired_presented_with_code_16_and_the_host_on_refuses_before_any_write() -> Bool {
-  match step_with_cd(configurations: presenting(name: desired_census as String, status: "1"), detach: host_on, cd_before: cd_16) {
-    ConvergeStepRefuse { outcome: MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: CdErrorRead { code: CdErrorUncatalogued { wire: w } }, reason: _ } } => w == 16
-    _ => false
-  }
+// THE EXPERIMENT IS CONCLUDED (decision msg_abc42f62): the desired image presented with code 16
+// before any write makes no write on either admission and goes to the readiness fold.
+test fn desired_presented_with_code_16_writes_nothing_on_either_admission() -> Bool {
+  (match step_with_cd(configurations: presenting(name: desired_census as String, status: "1"), detach: host_off, cd_before: cd_16) { ConvergeStepAwaitReadiness => true _ => false })
+    && (match step_with_cd(configurations: presenting(name: desired_census as String, status: "1"), detach: host_on, cd_before: cd_16) { ConvergeStepAwaitReadiness => true _ => false })
 }
 
 fn observed(general: String, configurations: String) -> MegaRacAttachResult {
@@ -588,9 +624,9 @@ test fn the_recheck_withholds_when_its_own_session_was_not_released() -> Bool {
     && (match presentation_still_served(result: served_look) { PresentationStillReady => true _ => false })
 }
 
-test fn a_started_look_with_code_16_is_unestablished_at_the_recheck() -> Bool {
+test fn a_started_look_with_code_16_is_still_served_at_the_recheck() -> Bool {
   match presentation_still_served(result: observed(general: mtcollins1_media_general_2026_09_27, configurations: presenting_in(name: desired_census as String, status: "1", session: "0"))) {
-    PresentationStateUnestablished { cd_error: CdErrorRead { code: CdErrorUncatalogued { wire: w } } } => w == 16
+    PresentationStillReady => true
     _ => false
   }
 }
@@ -725,9 +761,9 @@ test fn an_unread_code_never_withdraws_a_presentation() -> Bool {
     && (match step_with_cd(configurations: "[]", detach: host_off, cd_before: cd_unread) { ConvergeStepRefuse { outcome: MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: _, reason: _ } } => true _ => false })
 }
 
-test fn nothing_presented_with_a_nonzero_code_attaches_only_under_admission() -> Bool {
+test fn nothing_presented_with_a_nonzero_code_attaches_on_either_admission() -> Bool {
   (match step_with_cd(configurations: "[]", detach: host_off, cd_before: cd_16) { ConvergeStepAttachFromListing => true _ => false })
-    && (match step_with_cd(configurations: "[]", detach: host_on, cd_before: cd_16) { ConvergeStepRefuse { outcome: MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: _, reason: _ } } => true _ => false })
+    && (match step_with_cd(configurations: "[]", detach: host_on, cd_before: cd_16) { ConvergeStepAttachFromListing => true _ => false })
     && (match step_with_cd(configurations: "[]", detach: host_on, cd_before: cd_clean) { ConvergeStepAttachFromListing => true _ => false })
 }
 
