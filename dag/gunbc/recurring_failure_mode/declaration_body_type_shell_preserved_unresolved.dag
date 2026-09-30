@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.declaration_body_type_shell_preserved_unresolved
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data declaration_body_type_shell_preserved_unresolved: RecurringFailureMode = RecurringFailureMode {
+  identity: "declaration_body_type_shell_preserved_unresolved" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a type reference inside a type DECLARATION's body reaches v2 resolve as an unlowered dag_surface_qualified_name parse shell, and resolve preserves that shell UNCHANGED as module metadata (`v2.extdeps.languages.dag` `dag_resolve_preserve_module_metadata_subtree`), so the declaration names its type in a vocabulary no stage resolved. HARM: a carrier nothing declares is accepted silently, and a consumer comparing the declaration's type with a resolved type sees two vocabularies for one type: the Widened refinement-to-carrier cast (gunbc#12407) refused `x as Int` from `x: Pos` once main lowered kernel spellings by declaration.",
+    "DISTINGUISHING FACT, MEASURED: on the resolved tree, a where-refined head that body lowering hands resolve as a plain type atom IS resolved (`Int` becomes the kernel binding); the same head left as the parse shell is not. So the boundary is LOWERING, not resolve: every declaration-body type position must be lowered before resolve, and resolve then binds it through its one producer, `v2.compiler.resolve` `resolved_reference_node` (a `std.decl_ref` `DeclarationRef`-carrying declaration reference for a corpus type, the kernel atom for a kernel spelling).",
+    "RUNG FOUND AT: silent on every declaration-body type position. RUNG NOW: structurally guaranteed for the where-refined head only: `v2.compiler.body_lowering_fold` `body_lower_type_variant` lowers it through `body_lower_type_expr_lowered_optional`, an unreadable head refuses at the head, and resolve binds it (RED: `v2.test.claim.declaration_graft_assemble` `declaration_graft_where_alias_over_an_undeclared_carrier_refuses`; control: `declaration_graft_where_alias_carrier_is_resolved_in_resolved_declarations`, read through `v2.compiler.resolve` `ResolvedTree` `resolved_declarations`). Step-0 census before the change: every where-refined head in the corpus is a plain type name, so none regressed. DECLARED FRONTIER: the alias right-hand side, record field types and variant payload types are the same defect and remain unresolved. CEILING: structurally guaranteed (a decidable, fully modeled class). NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: every declaration-body type position is lowered before resolve, so resolve binds each one and `resolved_declarations` carries it resolved. SIBLING: quiet-hawk-702's v1 cause 1b (gunbc#12612: v1 `Node.declaration`, written by v1 resolve for declaration-field references), the same identity type on the frozen v1 layer, not a second mechanism."
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.declaration_graft_assemble", decl_name: "declaration_graft_where_alias_over_an_undeclared_carrier_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.declaration_graft_assemble", decl_name: "declaration_graft_where_alias_carrier_is_resolved_in_resolved_declarations", field: WholeDeclaration },
+  ],
+}
