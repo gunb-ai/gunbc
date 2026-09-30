@@ -1,0 +1,41 @@
+module gunbc.recurring_failure_mode.an_enumeration_capped_by_its_reading_tool
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_enumeration_capped_by_its_reading_tool: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_enumeration_capped_by_its_reading_tool" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a census whose denominator was silently reduced by the READING TOOL, and then used as the justification for a deletion or a re-signature. The author enumerates the consumers -- correctly -- and pipes the enumeration through a display cap (`head -n`, a `take`, a paged view, a truncating summary). Every line that survives is true. Nothing in the output says a line did not survive. The edit is then made against the survivors and is complete with respect to a population that was never the population.",
+
+    "HARM, AND THE SHARP EDGE IS THAT IT DOES NOT FAIL RANDOMLY. The cap fails TOWARD THE CONSUMERS NOTHING ELSE WOULD CATCH. A module with few mentions of the symbol sorts to the bottom of the enumeration and is cut first -- and having few mentions is exactly what makes it unlikely to be caught by any other route. So the arms the cap hides are CORRELATED with the arms that matter, and the correlation is positive: the less a consumer is referenced, the more likely both that the cap hides it and that no gate compiles it.",
+
+    "WHY IT SURVIVES REVIEW, WHICH IS WHAT MAKES IT A CLASS RATHER THAN A SLIP: incompleteness is a property of the READING, not of the diff. The diff is internally consistent, every migrated site is correct, the typechecker is silent because the missed consumers are outside whatever closure the gate compiles, and the enumeration itself is not an artifact anybody reviews -- it happened in a shell and left no trace. A reviewer re-running the enumeration UNCAPPED is the only thing that finds it.",
+
+    "SPECIMEN (gunbc#11962, review 69769, 2026-09-21). product.capacity.pool_events SeatRequest was re-signatured to SeatRequest<Q, S>. The consumers WERE enumerated before the change -- and the enumeration was piped through `head -12`. Six construction sites exist; the cap showed the first four files and hid gunbc.instruments.fabric_seat_probe and gunbc.instruments.fabric_event_log_probe, which are operator-invoked entry points that NO required lane compiles. The breakage would have surfaced the next time an operator ran a probe, with a type error in a module the author had never opened. The re-run, unfiltered and uncapped, found all six.",
+
+    "THE PLACE IT LANDED IS THE PLACE DESIGN 3 SAYS ENUMERATION IS LOAD-BEARING: 'Outside the required gate the substrate still refuses and nothing asks it to ... so for a root outside the gate, enumerate the consumers by name before you delete.' The rule exists precisely because the compiler is not the backstop there. A capped enumeration removes the only backstop that remained.",
+
+    "THIS IS NOT truncated_local_diagnostics_indistinguishable_from_the_complete_set, and the boundary is worth stating because the two look alike. There, an ORACLE DIED mid-measure and its partial output read as a verdict -- nobody chose the truncation, and the discriminators are out of band (the abort line, the missing receipt, the stack limit). Here the truncation is CHOSEN, by the reader, as a display convenience, on a population the reader is about to act on; there is no abort to notice and no receipt to be missing. Same silence, different cause, different discriminator, different remedy.",
+
+    "THE RULE, SHARPER THAN EITHER STATEMENT THAT PRODUCED IT (reviewer on gunbc#11962, endorsed by the owning manager): PRESERVE THE COMPLETE CONSUMER SET AS THE MIGRATION INPUT, AND CHECK EVERY AFFECTED OUT-OF-GATE ROOT FROM THAT SET; TRUNCATE ONLY ITS DISPLAY. That splits the legitimate use of a cap from the illegitimate one cleanly, which neither `never truncate` nor `do not use head` manages: a cap on what you LOOK AT is fine and is how anyone reads a long list, and a cap on what you ACT FROM is the defect. The input and the view are two things, and the failure is using one as the other.",
+
+    "DISCRIMINATOR, and it is a question about the ENUMERATION rather than about the diff: was the enumeration that justified this deletion or re-signature itself UNBOUNDED? Not 'did you check the consumers' -- the author of this specimen did check them. Whether the check could have shown all of them.",
+
+    "RUNG FOUND AT: mitigatable, by the discipline of not capping a census and by a reviewer re-running it. Nothing refuses a capped enumeration because nothing sees one.",
+
+    "CEILING: mechanically preventable. A re-signature or deletion of a declaration can have its consumer set computed from the namespace tree -- the same Node-tree read DESIGN 3 already relies on for citation checking -- and compared against what the change touched, so an unmigrated consumer outside the gate is a refusal rather than a surprise. DESIGN 3c names the same climb for dangling declarations: the consumer set is a fact the tree carries, not one a shell has to be trusted to report.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a change that alters a declaration's signature or removes it is checked against the declaration's full consumer set as derived from the namespace tree, with consumers outside the required gate included by construction. Not 'do not use head' -- a habit is not a wall, and the class would stay exactly as alive under a different paging tool.",
+
+    "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "product.capacity.pool_events", decl_name: "SeatRequest"),
+    decl_ref(module_path: "gunbc.instruments.fabric_seat_probe", decl_name: "fabric_seat_probe"),
+    decl_ref(module_path: "gunbc.instruments.fabric_event_log_probe", decl_name: "probe_root_pool"),
+  ],
+}

@@ -99,7 +99,7 @@ fn observations_with(
   PublisherObservations {
     repository_full_name: "gunb-ai/gunbc",
     default_branch: "main",
-    heal_workflow_path: ".github/workflows/heal.yml",
+    candidate_producer_workflow_path: ".github/workflows/witnesses.yml",
     run: run,
     pull_request: pull,
     branch_head_sha: branch_head,
@@ -244,15 +244,35 @@ test fn witness_a_run_of_another_workflow_is_refused() -> Bool {
   admit_with(c: good_candidate(), o: observations_with(
     run: TriggeringRunFacts { workflow_path: ".github/workflows/evil.yml", originating_event: run.originating_event, conclusion: run.conclusion, head_sha: run.head_sha, head_branch: run.head_branch, head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
     pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
-  )) == "TriggeringRunNotTheHealWorkflow"
+  )) == "TriggeringRunNotTheCandidateProducer"
 }
 
-test fn witness_an_unsuccessful_heal_run_is_refused() -> Bool {
+// THE PRODUCING RUN FAILS WHENEVER IT HAS A REPAIR TO CARRY, because the drift gate it fails is the
+// merge block (2026-09-19). So Failure is admitted and the rule discriminates ABANDONMENT instead: a
+// cancelled run never reached a verdict about this head, and its artifacts describe nothing finished.
+test fn witness_an_abandoned_producing_run_is_refused() -> Bool {
   let run = good_run()
   admit_with(c: good_candidate(), o: observations_with(
-    run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: Failure, head_sha: run.head_sha, head_branch: run.head_branch, head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
+    run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: Cancelled, head_sha: run.head_sha, head_branch: run.head_branch, head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
     pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
-  )) == "TriggeringRunNotSuccessful"
+  )) == "TriggeringRunReachedNoVerdict"
+}
+
+// THE POSITIVE CONTROL FOR THE ARM ABOVE, and the one the live path actually takes: the gate refused,
+// the run concluded Failure, and the repair it sealed is still publishable.
+test fn witness_a_failed_producing_run_still_publishes_its_repair() -> Bool {
+  let run = good_run()
+  match admit_heal_publication(
+    candidate: good_candidate(),
+    observations: observations_with(
+      run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: Failure, head_sha: run.head_sha, head_branch: run.head_branch, head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
+      pull: good_pull(), branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
+    ),
+    policy: main_policy()
+  ) {
+    HealPublicationRefused { refusal: _ } => false
+    HealPublicationAdmitted { admitted } => count(admitted.entries) == 1
+  }
 }
 
 // A candidate carried by a run about ANOTHER head is not a description of that run's subject.

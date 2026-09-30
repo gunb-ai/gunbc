@@ -61,7 +61,7 @@ import gunbc.dispatch_selection {
   fixture_inventory_claude_then_codex,
   fixture_codex_offer_with_standing,
   dispatch_codex_default_model,
-  Unsized,
+  NoDerivedSizingExpectation,
 }
 
 test fn witness_limit_warning_does_not_block_selection() -> Bool {
@@ -441,10 +441,10 @@ test fn witness_standing_ineligible_codex_selects_claude_before_resolve() -> Boo
   match resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
-    node_sizing: Unsized,
+    sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchSelectionResolved { receipt } => receipt.provider_kind == ClaudeCliProvider
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    DispatchSelectionRefused { requested_selection: _, reason: _ } => false
   }
 }
 

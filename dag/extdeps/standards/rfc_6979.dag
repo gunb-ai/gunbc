@@ -1,0 +1,30 @@
+module extdeps.standards.rfc_6979
+
+import std.types { Int, List, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// RFC 6979, "Deterministic Usage of the Digital Signature Algorithm (DSA) and Elliptic Curve Digital
+// Signature Algorithm (ECDSA)", APPENDIX A.2.5: the published P-256 key pair and its SHA-256
+// signatures over the messages "sample" and "test". Only the PUBLIC half is carried: the verifier
+// needs the key, the message and the signature, and the private scalar is never an input to it.
+// The key is the SEC 1 uncompressed encoding (0x04 || Ux || Uy); each signature is r || s, 32 octets
+// each (the IEEE P1363 form extdeps.crypto.nist_p256 p256_ecdsa_verify_octets reads). Every octet is
+// transcribed from the RFC's hex, none derived here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc6979#appendix-A.2.5"
+  }
+}
+
+data rfc6979_a25_p256_public_key: List<Int> = [4, 96, 254, 212, 186, 37, 90, 157, 49, 201, 97, 235, 116, 198, 53, 109, 104, 192, 73, 184, 146, 59, 97, 250, 108, 230, 105, 98, 46, 96, 242, 159, 182, 121, 3, 254, 16, 8, 184, 188, 153, 164, 26, 233, 233, 86, 40, 188, 100, 242, 241, 178, 12, 45, 126, 159, 81, 119, 163, 194, 148, 212, 70, 34, 153]
+
+data rfc6979_a25_message_sample: String = "sample"
+data rfc6979_a25_message_test: String = "test"
+
+// With SHA-256, over "sample".
+data rfc6979_a25_p256_sha256_sample_signature: List<Int> = [239, 212, 139, 42, 172, 182, 168, 253, 17, 64, 221, 156, 212, 94, 129, 214, 157, 44, 135, 123, 86, 170, 249, 145, 195, 77, 14, 168, 78, 175, 55, 22, 247, 203, 28, 148, 45, 101, 124, 65, 212, 54, 199, 161, 182, 226, 159, 101, 243, 233, 0, 219, 185, 175, 244, 6, 77, 196, 171, 47, 132, 58, 205, 168]
+
+// With SHA-256, over "test".
+data rfc6979_a25_p256_sha256_test_signature: List<Int> = [241, 171, 176, 35, 81, 131, 81, 205, 113, 216, 129, 86, 123, 30, 166, 99, 237, 62, 252, 246, 197, 19, 43, 53, 79, 40, 211, 176, 183, 211, 131, 103, 1, 159, 65, 19, 116, 42, 43, 20, 189, 37, 146, 107, 73, 198, 73, 21, 95, 38, 126, 96, 211, 129, 75, 76, 12, 200, 66, 80, 228, 111, 0, 131]

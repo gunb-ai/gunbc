@@ -13,11 +13,13 @@ import gunbc.runner_microvm {
 }
 import gunbc.runner_microvm_boot_probe {
   BootProbeVerdict, BootPrintedRunnerVersion, BootProducedNoConsole,
-  BootConsoleLacksRunnerVersion, BootNotAttempted, BootExceededHostDeadline, BootVmmFailed,
-  boot_probe_verdict, boot_probe_admitted,
+  BootConsoleLacksRunnerVersion, BootConsoleLacksGuestBooted,
+  BootNotAttempted, BootExceededHostDeadline, BootVmmFailed,
+  boot_probe_verdict, boot_probe_admitted, guest_agent_boot_verdict,
   runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
   runner_microvm_boot_probe_bounded_command,
 }
+import gunbc.runner_guest_image { guest_observation_line, GuestBooted }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -116,7 +118,7 @@ test fn the_config_document_carries_upstreams_own_key_spelling() -> Bool {
 // InstanceStart nobody sends, so the step would report a hang rather than a boot.
 test fn the_run_command_boots_rather_than_waiting_for_an_api_call() -> Bool {
   let c = firecracker_run_config_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
-  c.program as String == "/fc/firecracker"
+  c.program.invocation as String == "/fc/firecracker"
     && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
     && any(xs: c.arguments, predicate: fn(w) { w == "--config-file" })
 }
@@ -157,8 +159,25 @@ test fn a_hung_guest_is_killed_by_the_host_and_its_console_survives_the_kill() -
 // hatch DESIGN section 5 refuses. The red is a builder that drops --kill-after.
 test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool {
   let c = runner_microvm_boot_probe_bounded_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
-  c.program as String == "timeout"
+  c.program.invocation as String == "timeout"
     && any(xs: c.arguments, predicate: fn(w) { w == "--kill-after" })
     && any(xs: c.arguments, predicate: fn(w) { w == "/fc/firecracker" })
     && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
+}
+
+// A LIVE BOOT IS JUDGED THROUGH THE HOST'S CONSOLE READER, AND THIS IS THE PAIR. The same version
+// readback with and without the agent's GuestBooted marker: only the marked console is a boot of
+// this image's agent. The marker is produced by the emitter's own line builder, so an emitter edit
+// the reader does not follow reds here.
+test fn a_live_boot_requires_the_agents_guest_booted_marker() -> Bool {
+  let marker = guest_observation_line(event: GuestBooted, image: gunbc_runner_guest_image)
+  let marked = guest_agent_boot_verdict(
+    runner: actions_runner_release_2_336_0,
+    observed: process_observation(exit_code: 0, stdout: join(["[ 3.1] ", marker, "\n2.", "336.0\n"], ""), stderr: ""),
+  )
+  let unmarked = guest_agent_boot_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version())
+  boot_probe_admitted(v: marked)
+    && !boot_probe_admitted(v: unmarked)
+    && (match unmarked { BootConsoleLacksGuestBooted { console: _ } => true  _ => false })
+    && boot_probe_admitted(v: boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version()))
 }

@@ -1,7 +1,7 @@
 module gunbc.machine_intake_access
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, content_hash_equal }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import extdeps.bmc.access_profile {
@@ -22,7 +22,7 @@ import extdeps.bmc.access_profile {
   ProfilePromotedFromObservation,
   bmc_access_profile_for,
 }
-import gunbc.machine_intake_subject { MachineIntakeSubject, content_hash_equal }
+import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
 
 // THE ACCESS CONTEXT IS BOUND ONCE, BEFORE THE DELIVERY SOLVER RUNS (machine-intake ruling 3

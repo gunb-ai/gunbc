@@ -1,5 +1,6 @@
 module v2.test.manual.tm_probe
 
+import v2.extdeps.languages.dag { dag_language_model }
 
 fn tm_probe_parses() -> Bool {
   let lm = dag_language_model()

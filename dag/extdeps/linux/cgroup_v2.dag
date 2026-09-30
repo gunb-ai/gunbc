@@ -1,6 +1,6 @@
 module extdeps.linux.cgroup_v2
 
-import std.types { Bool, NonEmptyStr, Unit, Int }
+import std.types { Bool, NonEmptyStr, Unit, Int, List }
 import std.string_type { String }
 import std.algebra { trim }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
@@ -245,10 +245,6 @@ fn cgroup_v2_child_path(parent: NonEmptyStr, child: NonEmptyStr) -> NonEmptyStr 
   concat(parent as String, "/", child as String) as NonEmptyStr
 }
 
-fn cgroup_v2_slice_path(slice: NonEmptyStr) -> NonEmptyStr {
-  cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: slice)
-}
-
 fn cgroup_v2_events_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
   cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_events_interface_file)
 }
@@ -274,4 +270,53 @@ fn kernel_provides_cgroup_v2(kernel: KernelFamily) -> Bool {
     Darwin => false
     WindowsNt => false
   }
+}
+
+// KILLING A SUBTREE IS A KERNEL PRIMITIVE, AND IT IS NOT THE SAME OPERATION AS SIGNALLING A UNIT.
+//
+// The admin guide documents cgroup.kill as "a write-only single value file" where writing "1" to it
+// "kills all processes in the cgroup and all its descendant cgroups", and states the property that
+// matters here: the kill is carried out "without any permission checking" and, crucially, it is
+// ATOMIC AGAINST FORKING -- a process cannot escape by forking while the kill is in progress, which
+// no signal loop over an enumerated pid list can promise.
+//
+// WHY A CONSUMER WOULD REACH FOR THIS RATHER THAN FOR A UNIT KILL. `systemctl kill --kill-whom=all`
+// signals ONE UNIT's control group. A process that moved itself into a sibling cgroup under the same
+// parent -- a scope beside a service in one slice -- is still accounted to that parent and is still
+// found by a parent-wide readback, and is NOT reached by that kill. The two operations therefore
+// answer different questions: one ends a UNIT, this one ends everything under a CGROUP.
+//
+// THE FILE NAME AND THE TRIGGER VALUE ARE THE KERNEL'S AND ARE SPELLED ONCE. A consumer that wrote
+// "1" to a path it assembled itself would be a second authority for both.
+data cgroup_v2_kill_interface_file: NonEmptyStr = "cgroup.kill"
+
+data cgroup_v2_kill_trigger_value: String = "1"
+
+fn cgroup_v2_kill_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_kill_interface_file)
+}
+
+// cgroup.procs IS THE KERNEL'S FORMAT AND IS DECODED WHERE THE KERNEL'S FILES ARE OWNED.
+//
+// The admin guide describes it as a "newline-separated list of PIDs" belonging to THIS cgroup and
+// this cgroup only -- an inner node with controllers enabled reads empty, because its processes all
+// sit in leaf cgroups. A consumer that split the body itself would be a second authority for that
+// format, and the corpus has one consumer that reads many of these files while walking a subtree.
+//
+// A LINE THAT IS NOT A PID IS DROPPED AND NOT DEFAULTED, because there is nothing to default it to:
+// the file contains pids or it contains nothing, and a zero would name init. The trailing empty line
+// every such file ends with is exactly that case, which is why this cannot refuse on an unparseable
+// line either.
+//
+// THIS IS THE DETAIL AND NEVER THE VERDICT. Whether anything is alive under a cgroup is answered by
+// cgroup.events `populated`, which covers descendants; this names the pids an operator must go look
+// at once that has already said yes.
+data cgroup_v2_procs_interface_file: NonEmptyStr = "cgroup.procs"
+
+fn decode_cgroup_procs(body: String) -> List<Int> {
+  fold(split(s: body, delimiter: "\n"), init: [] as List<Int>, f: (acc, line) =>
+    match parse_int(s: trim(s: line)) {
+      Absent => acc
+      Present { value: pid } => concat(acc, [pid])
+    })
 }

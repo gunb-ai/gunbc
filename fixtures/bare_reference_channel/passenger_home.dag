@@ -1,0 +1,5 @@
+module probe.brc.passenger_home
+
+import probe.brc.alias_home { BrcAliasId }
+
+fn brc_alias_identity(id: BrcAliasId) -> BrcAliasId { id }

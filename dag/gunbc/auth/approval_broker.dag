@@ -2,7 +2,6 @@ module gunbc.auth.approval_broker
 
 import std.types { NonEmptyStr, String, Timestamp }
 import std.logic { Bool }
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.tailscale.identity {
   TailnetIdentity, IdentityMatch, IdentityMatches, IdentityMismatch, IdentityMissing,
@@ -15,6 +14,7 @@ import gunbc.auth.approval_capability {
   verify_capability, capability_refusal_reason, proposed_decision_name,
 }
 import extdeps.crypto.mac { MacVerification }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
 
 // ── What this module owns, and what it deliberately does not ─────────────────────────────────
 // THE LIFECYCLE IS SHARED; THE MEANING OF SUCCESS IS NOT.
@@ -54,13 +54,15 @@ fn decision_method_admission(m: HttpMethod) -> DecisionMethodAdmission {
     GET => DecisionMethodRetrievesOnly { method: GET }
     HEAD => DecisionMethodRetrievesOnly { method: HEAD }
     OPTIONS => DecisionMethodRetrievesOnly { method: OPTIONS }
+    TRACE => DecisionMethodRetrievesOnly { method: TRACE }
     PUT => DecisionMethodUnsupported { method: PUT }
     PATCH => DecisionMethodUnsupported { method: PATCH }
     DELETE => DecisionMethodUnsupported { method: DELETE }
+    CONNECT => DecisionMethodUnsupported { method: CONNECT }
   }
 }
 
-data safe_methods_must_not_decide_note: NonEmptyStr = "GET, HEAD and OPTIONS render the confirmation page and never consume the decision right. Link previews, mail scanners, chat unfurlers and browser prefetch all issue GETs at URLs nobody has looked at; a GET that decided would let any of them spend an approval and attribute it to the operator. The page's button POSTs."
+data safe_methods_must_not_decide_note: NonEmptyStr = "GET, HEAD, OPTIONS and TRACE render the confirmation page and never consume the decision right. Link previews, mail scanners, chat unfurlers and browser prefetch all issue GETs at URLs nobody has looked at; a GET that decided would let any of them spend an approval and attribute it to the operator. The page's button POSTs."
 
 // ── Redeeming a capability ───────────────────────────────────────────────────────────────────
 // The order is fixed and each stage narrows what the next one may assume:

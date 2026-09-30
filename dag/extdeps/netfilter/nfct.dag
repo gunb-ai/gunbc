@@ -1,0 +1,66 @@
+module extdeps.netfilter.nfct
+
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
+import std.types { String, NonEmptyStr, List, FilePath }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { apt_sbin_dir, package_nfct, apt_installed_bin_path }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git.netfilter.org/conntrack-tools/tree/src/nfct.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.netfilter.nfct",
+      decl_name: "nfct_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// nfct IS conntrack-tools' HELPER-OBJECT CLI, AND IS NOT THE `conntrack` BINARY. `conntrack` reads
+// the flow and expectation tables; `nfct` manages the USERSPACE helper objects that create
+// expectations. They are separate programs in the same upstream project, so they are separate
+// authorities here rather than one module with two spellings.
+fn nfct_program() -> ProgramIdentity = cataloged_program(invocation: "nfct")
+
+// NO ArgvCommand BUILDER HERE, DELIBERATELY. The only consumer in this repository reaches this
+// program through a privileged read projection that prepends its own sudo binary path, so it needs
+// the ARGUMENT WORDS and not a command whose program field it would discard. Adding a builder
+// nothing calls would be the dangling declaration DESIGN 3c refuses; it belongs here the day a
+// direct invocation exists to consume it.
+//
+// `helper list` PRINTS THE REGISTERED USERSPACE HELPERS, one stanza per helper, and an empty stdout
+// with exit zero is the honest empty reading. It is the counterpart to the kernel-side
+// nf_conntrack_helper sysctl: a host can have automatic assignment gone from the kernel and still
+// carry userspace helpers, so neither reading substitutes for the other.
+data nfct_helper_list_arguments: List<NonEmptyStr> = ["helper", "list"]
+
+// WHERE nfct IS INSTALLED IS STATED ONCE, HERE. The apt row below and every consumer that execs the
+// binary by path (gunbc.fleet_posix_accounts fleet_nfct_binary_path, the privileged helper read)
+// derive from nfct_bin_dir, so the row and the exec path cannot disagree.
+data nfct_bin_dir: FilePath = apt_sbin_dir
+
+fn nfct_installed_path() -> FilePath {
+  apt_installed_bin_path(bin_dir: nfct_bin_dir, binary: nfct_program().invocation)
+}
+
+// THE BINARY IS IN /usr/sbin, AND THE ROW SAYS SO. Ubuntu noble ships nfct in its own package,
+// `nfct` (packages.ubuntu.com/noble/amd64/nfct/filelist: /usr/sbin/nfct) -- not the conntrack
+// package and not a package named conntrack-tools. A FleetSsh presence readback tests exactly
+// bin_dir + name, so a row naming /usr/bin here would refuse after a successful install.
+data nfct_cli_tool: CliTool = CliTool {
+  program: nfct_program(),
+  min_version: none,
+  installable_via: [SourceApt { package: package_nfct, bin_dir: nfct_bin_dir }],
+}

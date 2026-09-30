@@ -658,13 +658,20 @@ fn observed_stored_artifact(
               detail: concat("the store did not report a usable object size: ", bytes_text),
             }
           } else {
-            ArtifactAvailable {
-              artifact: StoredArtifact {
-                subject_digest: build_subject_digest(subject: subject),
-                blob_oid: blob,
-                sha256: digest,
-                bytes: byte_size(count: parse_int(trim(s: bytes_text))),
-              },
+            match parse_int(trim(s: bytes_text)) {
+              Absent =>
+                ArtifactUnreadable {
+                  detail: concat("the store did not report a usable object size: ", bytes_text),
+                }
+              Present { value: size } =>
+                ArtifactAvailable {
+                  artifact: StoredArtifact {
+                    subject_digest: build_subject_digest(subject: subject),
+                    blob_oid: blob,
+                    sha256: digest,
+                    bytes: byte_size(count: size),
+                  },
+                }
             }
           }
       }
@@ -1042,7 +1049,7 @@ fn devboot_run_build_plan(
   let built = devboot_witness_run(
     site: retained_devboot_cargo_build,
     workdir: source_dir,
-    bin_path: env_path_resolved_program as String,
+    bin_path: env_path_resolved_program().invocation as String,
     args: env_prefixed_args(
       bindings: [
         EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: target_dir },

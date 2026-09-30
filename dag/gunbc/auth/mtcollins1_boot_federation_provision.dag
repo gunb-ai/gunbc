@@ -1,0 +1,39 @@
+module gunbc.auth.mtcollins1_boot_federation_provision
+
+import std.process { ProcessExit }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, dedicated_federation_provision_with_supplied_token }
+import gunbc.auth.mtcollins1_boot_federation {
+  mtcollins1_boot_wif_pool_id, mtcollins1_boot_wif_pool_display_name, mtcollins1_boot_wif_provider_id,
+  mtcollins1_boot_wif_attribute_mapping, mtcollins1_boot_wif_attribute_condition, mtcollins1_boot_wif_principal_set,
+  mtcollins1_boot_service_account, mtcollins1_boot_service_account_id, mtcollins1_boot_service_account_display_name,
+  mtcollins1_boot_service_account_member, mtcollins1_boot_secret_grants,
+}
+
+// THE PROVISIONER IS ITS OWN MODULE, NOT PART OF THE FEDERATION'S FACTS. The workflow emission
+// (gunbc.fleet_converge_workflow) reads the federation's provider resource, service account and
+// environment; it has no business depending on the out-of-band provisioning protocol, and when it did
+// the provisioner's closure (gunbc.auth.heal_publisher_provision) sat inside the workflow's closure.
+// Out-of-band: run by the grant administrator in their own session with a control-plane token
+// (gunbc.auth.access_token_source secret_access_token_path_env), the census's interim realization for
+// setIamPolicy (gunbc.auth.privileged_effect_census interim_gcp_iam_adapter_unlanded). No workflow run
+// and no session relay performs it.
+fn mtcollins1_boot_dedicated_federation() -> DedicatedFederation {
+  DedicatedFederation {
+    label: "mtcollins1 boot federation provision",
+    pool_id: mtcollins1_boot_wif_pool_id,
+    pool_display_name: mtcollins1_boot_wif_pool_display_name,
+    provider_id: mtcollins1_boot_wif_provider_id,
+    attribute_mapping: mtcollins1_boot_wif_attribute_mapping,
+    attribute_condition: mtcollins1_boot_wif_attribute_condition(),
+    principal_set: mtcollins1_boot_wif_principal_set(),
+    service_account: mtcollins1_boot_service_account,
+    service_account_id: mtcollins1_boot_service_account_id,
+    service_account_display_name: mtcollins1_boot_service_account_display_name,
+    service_account_member: mtcollins1_boot_service_account_member(),
+    secret_grants: mtcollins1_boot_secret_grants(),
+  }
+}
+
+fn mtcollins1_boot_federation_provision_with_supplied_token() -> ProcessExit {
+  dedicated_federation_provision_with_supplied_token(f: mtcollins1_boot_dedicated_federation())
+}

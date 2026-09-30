@@ -1,0 +1,311 @@
+module std.bounded_nat
+
+import std.types { Int, Bool, List }
+import std.measure { BitWidth, bit_width, bit_width_count }
+import std.bitwise { bitwise_pow2 }
+
+// ARITHMETIC ON BOUNDED NATURALS, AS DECLARED OPERATIONS RATHER THAN INFIX.
+//
+// std.operator_realization refuses infix + - * / % on a structural operand and says why: structural
+// arithmetic is a call to a DECLARED OPERATION whose typed outcome an infix form would hide. The
+// bounded naturals of std.integer (Compose<UInt, MachineWidth<N>>) are structural, so this module is
+// the operation family that refusal points at. It is ONE family over a width, never one row per
+// operator per type.
+//
+// WHY THIS IS NOT A SECOND AUTHORITY FOR THE TYPES. std.integer declares WHICH bounded naturals
+// exist; this module declares WHAT ARITHMETIC ON ONE MEANS. Reification of the N in MachineWidth<N>
+// (operator ruling, 2026-09-20) would let a CALLER stop naming a width; until it lands the width
+// arrives as a value and nothing here names one.
+//
+// REIFICATION IS NOT WHAT STANDS BETWEEN THIS FAMILY AND ITS FIRST CONSUMER, AND SAYING SO WAS A
+// TRIGGER STATED AT THE WRONG GRAIN (review 69054 of gunbc#11645; DESIGN 4b(3): a trigger naming
+// less than the capability it gates is satisfied while the capability stays dead). The operations
+// take a width as a VALUE and the witnesses pass bit_width(count: 32) today, so nothing stops
+// std.bitwise passing one too.
+//
+// THE ACTUAL BLOCKER IS AN IMPORT CYCLE. std.bounded_nat imports std.bitwise for bitwise_pow2, so
+// std.bitwise cannot import std.bounded_nat back, and DESIGN 3 makes acyclicity the import graph's
+// ONLY structural law -- a wall rather than a preference. It is breakable: relocate bitwise_pow2
+// below both and the cycle is gone.
+//
+// THE SECOND COST, STATED BESIDE IT so the next reader sees the real shape rather than a one-line
+// blocker: after the cycle is broken, every word32_* operation answers a BoundedNatArith, a six-arm
+// coproduct, and threading that through SHA-256's 64-round compression fold is the crypto
+// restructuring this family's first consumer actually costs. It is deferred to its own change with
+// the P-256 suite as its gate (operator-lane ruling, 2026-09-20), in that order -- because the only
+// suite covering that fold has never returned a result.
+//
+// THE DEFECT THIS EXISTS TO REMOVE is gunbc.recurring_failure_mode
+// bounded_natural_arithmetic_evaluated_as_unbounded_int: the v1 interpreter evaluates infix
+// arithmetic on these types as unbounded Int, so a value outside [0, 2^N) is silently admitted and
+// the interpreted and emitted realizations of one program disagree.
+
+// ── Width admission, decided before any arithmetic ───────────────────────────────────────────
+// THREE ARMS, BECAUSE THE TWO REFUSALS ARE DIFFERENT FACTS. A width with no source constant
+// (MachineWidth<PointerWidth>, whose inhabitants std.integer IntPlatform and UIntPlatform are real
+// declarations) is not the same deficit as a constant that does not fit the host integer. Collapsing
+// them into one refusal would put two deficits under one name, so neither could rank for repair.
+//
+// THE HOST BOUND IS 62 BITS: a value must be representable in the substrate's 64-bit signed Int, and
+// the sum of two N-bit values needs N + 1 bits, so 2^62 - 1 is the largest admitted magnitude.
+//
+// WidthNotStatic HAS NO PRODUCER IN THIS MODULE, and that is a declared frontier rather than dead
+// code: only reification can report that a MachineWidth's index is PointerWidth rather than a
+// literal, so the arm is minted by the binding layer that reads a declaration's width, which cannot
+// be written until reification lands. bounded_nat_admit below therefore never returns it, and no
+// witness here can exercise it. Stated so a reader does not mistake an unreachable arm for a
+// reachable one, and so the binding layer's obligation is visible before it is written.
+type BoundedNatAdmission
+  = WidthAdmitted { bits: BitWidth }
+  | WidthNotStatic
+  | WidthExceedsHostInt { bits: BitWidth }
+
+// The CARRIER bound, stated once: the widest bounded natural this family admits.
+fn bounded_nat_host_bit_ceiling() -> Int {
+  62
+}
+
+// THE HOST'S POSITIVE CAPACITY, WHICH IS A DIFFERENT LIMIT AND MUST NOT SHARE A CONSTANT WITH THE
+// ONE ABOVE. The carrier ceiling is 62 because a SUM of two N-bit values needs N + 1 bits; the host
+// integer itself represents positives up to 2^63 - 1, so an intermediate is representable while its
+// bit demand is at most 63. Those two facts are unrelated, and collapsing them cost exactly one
+// width: the wrapping split was refusing width 42, whose largest intermediate is 9223367638808264705
+// against a host maximum of 9223372036854775807 -- representable, with room to spare.
+//
+// THIS IS THE SAME DEFECT THIS FILE REMOVED ONE LEVEL UP, RECURRING (review of gunbc#11645). The
+// checked and wrapping products were forced through one admission predicate; splitting them left two
+// unrelated LIMITS still sharing one CONSTANT. A predicate that serves two facts is the shape to
+// distrust, not the particular pair.
+fn bounded_nat_host_positive_bit_capacity() -> Int {
+  63
+}
+
+// WIDTH-EXCEEDS-HOST IS A CEILING WITH A TRIGGER, NOT A TERMINAL DESIGN (DESIGN 4b(2): no untracked
+// stall). It is a fact about the HOST integer this family computes in, not about bounded naturals:
+// UInt64 and UInt128 are perfectly ordinary bounded naturals whose magnitudes exceed one i64.
+// NEXT-RUNG TRIGGER, a capability: arbitrary-precision arithmetic for this family through
+// std.bignat's multi-limb naturals, SUFFICIENT FOR UInt64 and UInt128 to be ADMITTED widths whose
+// operations carry the same typed outcomes, at which point this arm's population is empty rather
+// than refused. std.bignat already carries the limbs and the Montgomery arithmetic that would serve.
+// A reified width admitted, or refused with the reason. `bits` is what reification returns for a
+// MachineWidth<N> whose index is a literal; a MachineWidth<PointerWidth> has no constant to reify
+// and reaches this as WidthNotStatic, which is a caller's arm to answer rather than a default.
+fn bounded_nat_admit(bits: BitWidth) -> BoundedNatAdmission {
+  if bit_width_count(b: bits) > bounded_nat_host_bit_ceiling() {
+    WidthExceedsHostInt { bits: bits }
+  } else {
+    WidthAdmitted { bits: bits }
+  }
+}
+
+// The exclusive upper bound of a width: 2^N.
+fn bounded_nat_modulus(bits: BitWidth) -> Int {
+  bitwise_pow2(n: bit_width_count(b: bits))
+}
+
+// ── The carrier: sole-constructed, its admission the only mint ───────────────────────────────
+// An out-of-width value has NO CONSTRUCTOR. That is the ceiling the failure-mode row names, and it
+// is why this is a carrier rather than a bare Int with a check beside it: a check can be bypassed by
+// constructing the value another way, and a constructor cannot.
+type BoundedNat sole_constructor {
+  bits: BitWidth
+  value: Int
+}
+
+type BoundedNatMint
+  = Minted { n: BoundedNat }
+  | OutOfWidth { bits: BitWidth, value: Int }
+  | WidthRefused { cause: BoundedNatAdmission }
+
+fn bounded_nat(bits: BitWidth, value: Int) -> BoundedNatMint {
+  match bounded_nat_admit(bits: bits) {
+    WidthNotStatic => WidthRefused { cause: WidthNotStatic }
+    WidthExceedsHostInt { bits: b } => WidthRefused { cause: WidthExceedsHostInt { bits: b } }
+    WidthAdmitted { bits: b } =>
+      if value < 0 || value >= bounded_nat_modulus(bits: b) {
+        OutOfWidth { bits: b, value: value }
+      } else {
+        Minted { n: BoundedNat { bits: b, value: value } }
+      }
+  }
+}
+
+// ── The operations ───────────────────────────────────────────────────────────────────────────
+// EVERY ARM IS A FACT THE CALLER MUST ANSWER, and there is no silent wrap anywhere: wrapping exists
+// only under its own name below. This is std.integer IntegerOverflowSemantics read at the operation
+// grain -- OverflowRaises for the checked operations, OverflowReturns{ReturnWrapping} for the _mod
+// pair -- so no third overflow vocabulary is minted here.
+//
+// WIDTH MISMATCH IS ITS OWN ARM because two bounded naturals of different widths are not the
+// operands of one operation. Widening the narrower one silently is exactly the fail-open this family
+// exists to remove, so the disagreement is reported rather than resolved.
+//
+// THE TWO MULTIPLICATIONS ANSWER DIFFERENT QUESTIONS AND NEITHER IS ADMITTED BY WIDTH. A sum of two
+// N-bit values needs N + 1 bits. A product would need 2N -- but NEITHER ARM EVER FORMS ONE IT CANNOT
+// HOLD, so neither needs 2N of host headroom, and a width-keyed refusal on either was rejecting
+// operands whose actual product was small. The checked arm decides overflow by comparison BEFORE
+// multiplying; the wrapping arm computes the low N bits by splitting. Each is described where it is
+// defined below.
+//
+// THE WRAPPING PRODUCT NEEDS NO FULL PRODUCT EITHER, AND GIVING IT THE CHECKED CEILING WAS AN OVER-PROHIBITION
+// (DESIGN 4d: a mechanism that forbids more than the evidence supports costs the thing you never did).
+// Reduction modulo 2^N depends only on the LOW N bits, which a host int can carry for widths the full
+// product would overflow. Splitting one operand at h = N / 2 gives the identity
+//   (a * b) mod 2^N  =  ((a1 * b) mod 2^(N - h)) * 2^h  +  a0 * b   (mod 2^N),   a = a1 * 2^h + a0
+// whose largest intermediates are a0 * b and a1 * b, of h + N and (N - h) + N bits. So UInt32
+// wrapping multiplication is computable here for EVERY pair of operands, including those whose full
+// product does not exist on this host -- which is what the checked arm's comparison cannot do, since
+// it answers whether a product fits rather than what its low bits are. The two arms are separate
+// because they answer different questions, not because one has more headroom than the other.
+//
+// THE WRAPPING CEILING IS REAL BUT HIGHER, AND IS STATED RATHER THAN ROUNDED. The split admits a
+// width only while max(h + N, (N - h) + N) stays inside the HOST'S POSITIVE CAPACITY -- 63, not the
+// carrier ceiling of 62 -- which is N <= 42. Width 43 is the first whose worst intermediate genuinely
+// does not fit, so 43..62 refuse.
+//
+// THAT RESIDUAL IS A PROPERTY OF THIS ONE-LEVEL SPLIT, NOT OF BOUNDED NATURALS, AND THE ARM IS NAMED
+// FOR THAT. A refusal at width 43 says nothing about the operands: 3 * 5 is 15 there, and calling
+// that "product exceeds host int" would state a falsehood about values in order to describe a
+// realization's limit, which is anemic modeling in the diagnostic layer.
+//
+// NEXT-RUNG TRIGGER, a capability, and it names BOTH routes because either suffices: RECURSIVE
+// SPLITTING (applying the same identity to the sub-products until every intermediate fits) or
+// routing the wrapping product through std.bignat's multi-limb arithmetic -- SUFFICIENT FOR every
+// width this carrier admits to have a computable wrapping product, at which point
+// bounded_nat_wrapping_product_admitted is constantly true and dissolves along with its arm.
+type BoundedNatArith
+  = Within { n: BoundedNat }
+  | Overflows { bits: BitWidth }
+  | NegativeResult { bits: BitWidth }
+  | DividesByZero
+  | WidthMismatch { left: BitWidth, right: BitWidth }
+  | WrappingProductUnavailableAtWidth { bits: BitWidth }
+
+fn bounded_nat_widths_agree(a: BoundedNat, b: BoundedNat) -> Bool {
+  bit_width_count(b: a.bits) == bit_width_count(b: b.bits)
+}
+
+fn bounded_nat_in_width(bits: BitWidth, value: Int) -> BoundedNatArith {
+  if value < 0 {
+    NegativeResult { bits: bits }
+  } else if value >= bounded_nat_modulus(bits: bits) {
+    Overflows { bits: bits }
+  } else {
+    Within { n: BoundedNat { bits: bits, value: value } }
+  }
+}
+
+fn bounded_nat_add(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
+  if !bounded_nat_widths_agree(a: a, b: b) {
+    WidthMismatch { left: a.bits, right: b.bits }
+  } else {
+    bounded_nat_in_width(bits: a.bits, value: a.value + b.value)
+  }
+}
+
+fn bounded_nat_sub(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
+  if !bounded_nat_widths_agree(a: a, b: b) {
+    WidthMismatch { left: a.bits, right: b.bits }
+  } else {
+    bounded_nat_in_width(bits: a.bits, value: a.value - b.value)
+  }
+}
+
+// THE PRE-CHECK DISCIPLINE AND THE DIVISION-BASED BOUND TEST ARE NOT DERIVED HERE. std.checked_arithmetic
+// already owns both -- "PRE-CHECK, NEVER POST-CHECK: each function decides whether the operation WOULD
+// cross the bound before performing it", realized in checked_int_multiply as a division-based bound
+// test per sign quadrant. This is that pattern CONSUMED, not restated: re-deriving it in a second
+// module would be the DESIGN 3 fork, and the earlier width-wide rule here was exactly that fork
+// wearing a stricter rule (review of gunbc#11645).
+//
+// WHAT IS GENUINELY LOCAL is only the BOUND. std.checked_arithmetic tests against the HOST's
+// representable range; this family tests against the CARRIER's width, 2^N - 1, which is a different
+// and smaller bound. The shape of the test is borrowed; the limit it is applied to is this module's
+// own fact. `a * b > 2^N - 1` iff `a > (2^N - 1) / b` under integer division, which forms no product,
+// and when it admits, the product is bounded by 2^N - 1 -- inside the carrier's admitted width and so
+// inside the host's.
+//
+// THIS REPLACED A WIDTH-KEYED REFUSAL THAT REJECTED VALID PRODUCTS (review of gunbc#11645). The old
+// rule asked `2N <= 62` and so refused 40-bit 3 * 3, whose product is 9: it keyed on the TYPE's width
+// rather than the OPERANDS' values, which is the over-prohibition arm of DESIGN 4d in its purest
+// form -- the refused population was every small product of a wide type. The earlier claim that the
+// checked arm "needs the full product in order to detect overflow" was simply false, and the witness
+// that asserted the old refusal encoded the defect rather than catching it.
+fn bounded_nat_product_overflows(bits: BitWidth, a: Int, b: Int) -> Bool {
+  b != 0 && a > (bounded_nat_modulus(bits: bits) - 1) / b
+}
+
+fn bounded_nat_mul(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
+  if !bounded_nat_widths_agree(a: a, b: b) {
+    WidthMismatch { left: a.bits, right: b.bits }
+  } else if bounded_nat_product_overflows(bits: a.bits, a: a.value, b: b.value) {
+    Overflows { bits: a.bits }
+  } else {
+    bounded_nat_in_width(bits: a.bits, value: a.value * b.value)
+  }
+}
+
+// Division and remainder are total only away from a zero divisor, which is the typed arm an infix
+// `/` would have hidden -- the reason std.operator_realization refuses the infix form at all.
+fn bounded_nat_div(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
+  if !bounded_nat_widths_agree(a: a, b: b) {
+    WidthMismatch { left: a.bits, right: b.bits }
+  } else if b.value == 0 {
+    DividesByZero
+  } else {
+    bounded_nat_in_width(bits: a.bits, value: a.value / b.value)
+  }
+}
+
+fn bounded_nat_rem(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
+  if !bounded_nat_widths_agree(a: a, b: b) {
+    WidthMismatch { left: a.bits, right: b.bits }
+  } else if b.value == 0 {
+    DividesByZero
+  } else {
+    bounded_nat_in_width(bits: a.bits, value: a.value % b.value)
+  }
+}
+
+// ── Wrapping, under its own name ─────────────────────────────────────────────────────────────
+// THE DECLARED OverflowReturns{ReturnWrapping} ARM. Reduction modulo 2^N is what a hash's word
+// arithmetic means -- SHA-256's additions are defined mod 2^32 -- so it is an operation with a name,
+// not a silent outcome of the checked one. A caller that wants the checked arm calls the checked
+// arm; nothing here decides that for it.
+//
+// These still refuse on a width disagreement and on a product the host cannot hold, because those
+// are not overflow of the DECLARED width: they are the operation being inapplicable.
+fn bounded_nat_add_mod(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
+  if !bounded_nat_widths_agree(a: a, b: b) {
+    WidthMismatch { left: a.bits, right: b.bits }
+  } else {
+    Within { n: BoundedNat { bits: a.bits, value: (a.value + b.value) % bounded_nat_modulus(bits: a.bits) } }
+  }
+}
+
+// Admitted while the SPLIT's intermediates fit the host, which is a weaker demand than the checked
+// product's 2N; see the note above the carrier for the identity and the residual 42..62 ceiling.
+fn bounded_nat_wrapping_product_admitted(bits: BitWidth) -> Bool {
+  bit_width_count(b: bits) + (bit_width_count(b: bits) - bit_width_count(b: bits) / 2)
+    <= bounded_nat_host_positive_bit_capacity()
+}
+
+// The low N bits of a product, without ever forming the whole product.
+fn bounded_nat_wrapping_product(bits: BitWidth, a: Int, b: Int) -> Int {
+  let n = bit_width_count(b: bits)
+  let h = n / 2
+  let low_modulus = bitwise_pow2(n: h)
+  let high_modulus = bitwise_pow2(n: n - h)
+  let high = ((a / low_modulus) * b) % high_modulus
+  (high * low_modulus + (a % low_modulus) * b) % bounded_nat_modulus(bits: bits)
+}
+
+fn bounded_nat_mul_mod(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
+  if !bounded_nat_widths_agree(a: a, b: b) {
+    WidthMismatch { left: a.bits, right: b.bits }
+  } else if !bounded_nat_wrapping_product_admitted(bits: a.bits) {
+    WrappingProductUnavailableAtWidth { bits: a.bits }
+  } else {
+    Within { n: BoundedNat { bits: a.bits, value: bounded_nat_wrapping_product(bits: a.bits, a: a.value, b: b.value) } }
+  }
+}

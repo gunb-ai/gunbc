@@ -496,6 +496,157 @@ mod compiler_tests {
         }
     }
 
+    // Diagnostics carry Rc and cannot cross the thread boundary, so the compile runs inside the thread
+    // and hands back one plain tag per test-reference diagnostic.
+    fn test_reference_tags(module: &str, body: &str) -> Vec<String> {
+        let content = format!("module {}\n\n{}", module, body);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("test-reference-wall".to_string())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || {
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "test_reference_fixture.dag".to_string(), content });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));
+                let tags: Vec<String> = resolved.diagnostics.iter().filter_map(|e| {
+                    let blocking = crate::v1_std_core::is_error_diagnostic(e.diagnostic.clone());
+                    match e.diagnostic.as_ref() {
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenced { .. } => Some(format!("referenced blocking={}", blocking)),
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceAdmitted { .. } => Some(format!("admitted blocking={}", blocking)),
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceBudgetMismatch { declared, observed, .. } => Some(format!("mismatch declared={} observed={} blocking={}", declared, observed, blocking)),
+                        _ => None,
+                    }
+                }).collect();
+                let _ = tx.send(tags);
+            })
+            .expect("spawn test-reference-wall");
+        rx.recv_timeout(std::time::Duration::from_secs(120))
+            .expect("compile hung")
+    }
+
+    // IDENTITY GRAIN: swapping a row's target for another test fn under the same referrer keeps the
+    // count equal and must still refuse -- a new target has no row. Its own row is then paid down too.
+    #[test]
+    fn a_new_target_under_a_rostered_referrer_is_refused() {
+        let debt = crate::v1_compiler_compile::test_reference_debt();
+        let row = debt
+            .iter()
+            .find(|r| r.referrer != "<import>" && r.occurrences == 1)
+            .cloned()
+            .expect("a single-call row");
+        let body = format!("test fn zz_swapped_in() -> Bool {{\n  true\n}}\n\nfn {}() -> Bool {{\n  zz_swapped_in()\n}}\n", row.referrer);
+        let tags = test_reference_tags(&row.module_name, &body);
+        assert!(
+            tags.contains(&"referenced blocking=true".to_string()),
+            "{:?}",
+            tags
+        );
+        assert!(
+            tags.contains(&format!(
+                "mismatch declared={} observed=0 blocking=true",
+                row.occurrences
+            )),
+            "{:?}",
+            tags
+        );
+    }
+
+    // Two modules in one compile, which the floor's census probe cannot express: it types one fixture
+    // and loads the corpus for name lookup only.
+    fn import_all_tags() -> Vec<String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("test-reference-import-all".to_string())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || {
+                let target = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "wall_target.dag".to_string(), content: "module wall.fixture.target\n\ntest fn leaf() -> Bool {\n  true\n}\n".to_string() });
+                let caller = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "wall_caller.dag".to_string(), content: "module wall.fixture.caller\n\nimport wall.fixture.target\n\nfn expose() -> Bool {\n  leaf()\n}\n".to_string() });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![target, caller]));
+                let tags: Vec<String> = resolved.diagnostics.iter().filter_map(|e| match e.diagnostic.as_ref() {
+                    crate::v1_std_core::CompilerDiagnostic::TestCodeReferenced { referrer, target, .. } => Some(format!("{} -> {}", referrer, target)),
+                    _ => None,
+                }).collect();
+                let _ = tx.send(tags);
+            })
+            .expect("spawn test-reference-import-all");
+        rx.recv_timeout(std::time::Duration::from_secs(120))
+            .expect("compile hung")
+    }
+
+    #[test]
+    fn a_test_reached_through_import_all_is_refused() {
+        assert_eq!(
+            import_all_tags(),
+            vec!["wall.fixture.caller.expose -> wall.fixture.target.leaf".to_string()]
+        );
+    }
+
+    // THE ORPHAN ARM, at its own interface: a row whose module is not compiled is judged by census
+    // knowledge and scope alone, so the pure function is called directly on synthetic rows.
+    #[test]
+    fn an_orphaned_ledger_row_is_refused_only_when_the_census_is_loaded() {
+        use crate::v1_compiler_compile::{
+            CensusKnowledge, TestReferenceDebtRow, TestReferenceRowScope,
+        };
+        let row = |scope: TestReferenceRowScope| {
+            std::rc::Rc::new(TestReferenceDebtRow {
+                module_name: "gone.module".to_string(),
+                referrer: "caller".to_string(),
+                target: "gone.module.leaf".to_string(),
+                occurrences: 1,
+                scope: scope,
+                dissolution: crate::v1_compiler_compile::test_reference_debt_dissolution(),
+            })
+        };
+        let loaded = |names: &[&str]| {
+            std::rc::Rc::new(CensusKnowledge::CensusLoaded {
+                modules: std::rc::Rc::new(names.iter().map(|n| (n.to_string(), true)).collect()),
+            })
+        };
+        let orphaned = |d: &std::rc::Rc<im::Vector<std::rc::Rc<crate::v1_std_core::ErrorNode>>>| {
+            d.iter()
+                .filter(|e| {
+                    matches!(
+                        e.diagnostic.as_ref(),
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceRowOrphaned { .. }
+                    )
+                })
+                .count()
+        };
+        let diag = |r, c| crate::v1_compiler_compile::test_reference_unevaluated_row_diag(r, c);
+        // RED: census loaded, module in neither the closure nor the census.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::CorpusDebtRow),
+                loaded(&["other.module"])
+            )),
+            1
+        );
+        // CONTROL: the module exists, only outside this closure.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::CorpusDebtRow),
+                loaded(&["gone.module"])
+            )),
+            0
+        );
+        // CONTROL: no census, so absence proves nothing.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::CorpusDebtRow),
+                std::rc::Rc::new(CensusKnowledge::CensusAbsent)
+            )),
+            0
+        );
+        // CONTROL: the fixture control row is exempt by its declared scope.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::FixtureControlRow),
+                loaded(&["other.module"])
+            )),
+            0
+        );
+    }
+
     fn tco_slot(name: &str) -> String {
         {
             crate::v1_compiler_emit::tco_loop_slot_name(name.to_string())
@@ -989,7 +1140,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn fixture_closure_rustc_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_fixture_closure_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("{}", line);
@@ -1084,7 +1235,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn function_value_adapter_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_function_value_adapter_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("function-value-adapter {}", line);
@@ -1154,7 +1305,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn nested_refinement_cast_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_nested_refinement_cast_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("nested-refinement-cast {}", line);
@@ -1232,7 +1383,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn phantom_marker_identity_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_phantom_marker_identity_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("phantom-marker-identity {}", line);
@@ -1272,7 +1423,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn empty_map_turbofish_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_empty_map_turbofish_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("empty-map-turbofish {}", line);
@@ -1312,7 +1463,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn argv_word_list_splice_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_argv_word_list_splice_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("argv-word-list-splice {}", line);
@@ -1352,7 +1503,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn append_concat_form_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_append_concat_form_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("append-concat-form {}", line);
@@ -1399,7 +1550,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn shell_projection_arity_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_shell_projection_arity_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("shell-projection-arity {}", line);
@@ -1749,8 +1900,18 @@ mod compiler_tests {
                     "hof_positional.dag",
                     "module hof_positional\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2) }\nfn witness() -> Bool { host(cmp) }\n",
                 );
+                // ADMIT here is "no diagnostic but the advisory every function-value call owes":
+                // since #10688 a call through a function value reports its effect summary as a
+                // lower bound (EffectSummaryIncompleteAtFunctionValue, SeverityNonError). Any
+                // other diagnostic, of any severity, is still a red.
+                let only_function_value_advisory = |ds: &im::Vector<std::rc::Rc<crate::v1_std_core::ErrorNode>>| {
+                    ds.iter().all(|d| matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. }
+                    ) && !crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                };
                 assert!(
-                    hof_positional.diagnostics.is_empty(),
+                    only_function_value_advisory(&hof_positional.diagnostics),
                     "positional function-value application must ADMIT, got: {:?}",
                     hof_positional.diagnostics
                 );
@@ -1791,7 +1952,7 @@ mod compiler_tests {
                     "module semantic_swap\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool, a: Int, b: Int) -> Bool { agree(a, b) }\nfn correct_order() -> Bool { host(cmp, 1, 2) }\nfn swapped_order() -> Bool { host(cmp, 2, 1) }\n",
                 );
                 assert!(
-                    semantic.diagnostics.is_empty(),
+                    only_function_value_advisory(&semantic.diagnostics),
                     "swapped positional controls must compile clean for semantic RED, got: {:?}",
                     semantic.diagnostics
                 );
@@ -3966,6 +4127,7 @@ mod compiler_tests {
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
         })
     }
@@ -4030,6 +4192,93 @@ mod compiler_tests {
                 source_indices.clone(),
                 empty_emit.clone()
             )
+        );
+    }
+
+    #[test]
+    fn unresolved_variant_pattern_refuses_instead_of_binding_bare() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
+        let no_fields = std::rc::Rc::new(im::Vector::new());
+        let no_path = std::rc::Rc::new(im::Vector::new());
+        let no_shared = std::rc::Rc::new(im::OrdSet::new());
+        let unresolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Add".to_string(),
+            None,
+            no_fields.clone(),
+            no_path.clone(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved.starts_with("compile_error!(") && unresolved.contains("`Add`"),
+            "unresolved parent must refuse, got {}",
+            unresolved
+        );
+        let unresolved_rc = crate::v1_compiler_emit_rust::emit_variant_pattern_rc_aware(
+            "Add".to_string(),
+            None,
+            no_fields.clone(),
+            no_path.clone(),
+            crate::v1_compiler_emit_rust::empty_rc_pattern_analysis(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved_rc.starts_with("compile_error!("),
+            "rc-aware producer must refuse, got {}",
+            unresolved_rc
+        );
+        let unresolved_shape = crate::v1_compiler_emit_rust::variant_pattern_shape_for(
+            "Add".to_string(),
+            None,
+            String::new(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved_shape.starts_with("compile_error!("),
+            "shape producer must refuse, got {}",
+            unresolved_shape
+        );
+        let resolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Add".to_string(),
+            Some("BinOp".to_string()),
+            no_fields.clone(),
+            no_path.clone(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert_eq!(resolved, "BinOp::Add");
+        let optional = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Absent".to_string(),
+            None,
+            no_fields,
+            no_path,
+            no_shared,
+            String::new(),
+            source_indices,
+            empty_emit,
+        );
+        assert_eq!(optional, "std::option::Option::None");
+        let fielded_emit = std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+            fielded_variants: std::rc::Rc::new(im::OrdSet::unit("Named".to_string())),
+            ..(*crate::v1_compiler_infer_emit_info::empty_emit_graph_info()).clone()
+        });
+        assert_eq!(
+            crate::v1_compiler_emit_rust::variant_pattern_shape_for(
+                "Named".to_string(),
+                None,
+                String::new(),
+                fielded_emit
+            ),
+            "Named { .. }",
+            "a braced render is a struct pattern, never a binding, and is not refused"
         );
     }
 
@@ -4178,6 +4427,85 @@ mod compiler_tests {
         );
     }
 
+    // White-box witnesses for gunbc#12132: the measured compile's binding authority consumes the
+    // resolver's exact-one judgment (lookup_unit_variant_phantom_type), not bare key presence.
+    // str_bindings and ancestry_str_bindings are EMPTY, so the first arm cannot intercept and only the
+    // contribution map decides. One test per case, so each reading fails on its own. The census claims
+    // beside these cannot discriminate the two readings: the resolver and emitter refuse those leaves
+    // before the measure runs.
+    fn measure_binds_alpha(
+        by_parent: std::rc::Rc<
+            HashMap<String, std::rc::Rc<crate::v1_compiler_infer_env::UnitVariantContribution>>,
+        >,
+        observed: bool,
+    ) -> bool {
+        let mut env_value = (*crate::v1_compiler_infer_env::empty_type_env()).clone();
+        env_value.unit_variant_index = crate::v1_rt::rc_map_insert(
+            crate::v1_rt::rc_empty_map(),
+            "Alpha".to_string(),
+            by_parent,
+        );
+        env_value.unit_variant_index_observed = observed;
+        crate::v1_compiler_infer_env::type_ref_measure_binding_authority(
+            std::rc::Rc::new(env_value),
+            "Alpha".to_string(),
+        )
+    }
+
+    fn alpha_contributions(
+        parents: &[(&str, i64)],
+    ) -> std::rc::Rc<
+        HashMap<String, std::rc::Rc<crate::v1_compiler_infer_env::UnitVariantContribution>>,
+    > {
+        let mut by_parent = crate::v1_rt::rc_empty_map();
+        for (parent, count) in parents {
+            let contribution =
+                std::rc::Rc::new(crate::v1_compiler_infer_env::UnitVariantContribution {
+                    count: *count,
+                    variant: named_type_node("Alpha"),
+                });
+            by_parent = crate::v1_rt::rc_map_insert(by_parent, parent.to_string(), contribution);
+        }
+        by_parent
+    }
+
+    #[test]
+    fn measure_binds_a_unit_variant_with_exactly_one_visible_contribution() {
+        assert!(measure_binds_alpha(
+            alpha_contributions(&[("Marker", 1)]),
+            true
+        ));
+    }
+
+    #[test]
+    fn measure_refuses_a_unit_variant_contributed_once_by_each_of_two_parents() {
+        assert!(!measure_binds_alpha(
+            alpha_contributions(&[("Marker", 1), ("Other", 1)]),
+            true
+        ));
+    }
+
+    #[test]
+    fn measure_refuses_a_unit_variant_contributed_twice_by_one_parent() {
+        assert!(!measure_binds_alpha(
+            alpha_contributions(&[("Twice", 2)]),
+            true
+        ));
+    }
+
+    #[test]
+    fn measure_refuses_a_unit_variant_whose_outer_key_holds_no_contribution() {
+        assert!(!measure_binds_alpha(alpha_contributions(&[]), true));
+    }
+
+    #[test]
+    fn measure_refuses_a_unit_variant_when_the_index_is_unobserved() {
+        assert!(!measure_binds_alpha(
+            alpha_contributions(&[("Marker", 1)]),
+            false
+        ));
+    }
+
     #[test]
     fn renderer_hop_decides_realization_from_declaration_identity_without_an_env() {
         // A type-expression renderer that is handed a Node and source_indices and NO env still
@@ -4215,6 +4543,7 @@ mod compiler_tests {
                 match_pattern: None,
                 module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
                 declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+                declaration: None,
                 expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
             })
         }
@@ -4297,7 +4626,7 @@ mod compiler_tests {
             module_name: "v2.std.diagnostic".to_string(),
             kind: crate::v1_compiler_infer_items::ItemKind::FnItem,
             service_names: std::rc::Rc::new(im::Vector::new()),
-            resource_names: std::rc::Rc::new(im::Vector::new()),
+            resource_requirements: std::rc::Rc::new(im::Vector::new()),
             params: std::rc::Rc::new(vec![param].into()),
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -4678,6 +5007,114 @@ mod compiler_tests {
         );
     }
 
+    // CAUSE 1b: A DECLARATION FIELD'S TYPE REFERENCE CARRIES THE DECLARATION RESOLVE BOUND IT TO.
+    // v1.compiler.infer_resolve resolve_item_types resolved each field's authored reference and kept
+    // only its properties, so the typed tree's field reference named no declaration.
+    // field_inferred_with_declaration records resolve's binding on Node.declaration. The rows run
+    // the REAL route, parse through resolve through infer, via the census entry. Each row reads two
+    // columns: decl_identity (the production reading, which must stay UNCHANGED while
+    // Node.declaration is in shadow) and recorded_declaration (the shadow slot resolve wrote).
+    // THE RED is the first row: without the writer recorded_declaration reads none. The control keeps
+    // a kernel spelling identified by the kernel, so a repair that bound kernel fields to a mint
+    // (measured once, through the inferred slot: every String/Int field turned Unidentified) fails it.
+    #[test]
+    fn declaration_field_reference_names_its_declaration() {
+        use crate::v1_compiler_compile::SourceFile;
+        let sources = vec![
+            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/a.dag".to_string(), content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n\ntype Tree {\n  kids: List<Tree>\n}\n\nfn tree_size(t: Tree) -> Int {\n  1\n}\n\ntype Box<T> {\n  held: T\n}\n\nfn rebox<T>(b: Box<T>) -> Box<T> {\n  b\n}\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/b.dag".to_string(), content: "module fid.b\n\nimport fid.a { Leaf }\n\ntype Holder {\n  leaf: Leaf\n}\n".to_string() }),
+        ];
+        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
+            std::rc::Rc::new(sources.into()),
+        );
+        assert!(
+            !receipt.starts_with("REFUSED"),
+            "the census must compile the fixture: {receipt}"
+        );
+        let identity_at = |enclosing: &str, position: &str, authored: &str| -> Vec<String> {
+            receipt
+                .lines()
+                .skip(1)
+                .map(|l| l.split('\t').collect::<Vec<_>>())
+                .filter(|c| c[1] == enclosing && c[2] == position && c[3] == authored)
+                .map(|c| format!("{}|{}", c[8], c[12]))
+                .collect()
+        };
+        let decl_identity =
+            |enclosing: &str, authored: &str| identity_at(enclosing, "declaration_field", authored);
+        // (1) THE RED: a field naming another module's record.
+        assert_eq!(
+            decl_identity("Holder", "Leaf"),
+            vec![
+                "Unidentified:SpanDeclaresNothing/resolved:none|Declaration:fid.a::Leaf"
+                    .to_string()
+            ],
+            "{receipt}"
+        );
+        // (2) The control: a kernel spelling is identified by the kernel, not bound to a mint.
+        assert_eq!(
+            decl_identity("Leaf", "Int"),
+            vec!["Kernel:Int|none".to_string()],
+            "{receipt}"
+        );
+        // (3) CAUSE 1a, THE RED: a signature reference to a RECURSIVE type. Resolve leaves it in place
+        // rather than expanding it (is_recursive_type_for), and now records its identity there. Only the
+        // shadow column is asserted: the production reading of this position is not this row's subject.
+        let tree = identity_at("tree_size", "fn_signature_param", "Tree");
+        assert!(
+            tree.len() == 1 && tree[0].ends_with("|Declaration:fid.a::Tree"),
+            "{receipt}"
+        );
+        // (4) CAUSE 3, THE RED: a reference to a type parameter names its BINDER, (owner, TypeParameter).
+        // The two binders are spelled T, and the owner is the nearest header binding the name, so Box's
+        // field T and rebox's T inside Box<T> are DIFFERENT identities. Keying by spelling would make them one.
+        let box_t = identity_at("Box", "declaration_field", "T");
+        let rebox_t = identity_at("rebox", "fn_signature_param/type_arg", "T");
+        assert!(
+            box_t.len() == 1 && box_t[0].ends_with("|Declaration:fid.a::Box::<T>"),
+            "{receipt}"
+        );
+        assert!(
+            rebox_t.len() == 1 && rebox_t[0].ends_with("|Declaration:fid.a::rebox::<T>"),
+            "{receipt}"
+        );
+    }
+
+    // A REPEATED TYPE PARAMETER IN ONE HEADER REFUSES, LOCATED, AND SAYS WHICH NAME. The refusal
+    // predates this row. Its message once blamed a value parameter and called a type a fn, so the
+    // row asserts the NAME and the OWNER, not merely that some diagnostic fired. The control header
+    // binds two distinct names and must not produce that diagnostic.
+    #[test]
+    fn duplicate_type_parameter_in_one_header_refuses() {
+        use crate::v1_compiler_compile::SourceFile;
+        let messages = |content: &str| -> Vec<String> {
+            let sources = vec![std::rc::Rc::new(SourceFile {
+                path: "fixtures/dup_binder/a.dag".to_string(),
+                content: content.to_string(),
+            })];
+            let result =
+                crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources.into()));
+            result
+                .diagnostics
+                .iter()
+                .map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone()))
+                .collect()
+        };
+        let red = messages("module dup.a\n\ntype Pair<T, T> {\n  left: T\n}\n");
+        assert!(
+            red.iter()
+                .any(|m| m.contains("the name 'T' is bound twice in the header of 'Pair'")),
+            "{red:?}"
+        );
+        let control = messages("module dup.b\n\ntype Pair<T, U> {\n  left: T\n  right: U\n}\n");
+        assert!(
+            !control
+                .iter()
+                .any(|m| m.contains("is bound twice in the header")),
+            "{control:?}"
+        );
+    }
+
     fn item_of_kind(
         name: &str,
         kind: crate::v1_std_core::ParsedModuleItemKind,
@@ -4691,6 +5128,7 @@ mod compiler_tests {
             properties: std::rc::Rc::new(props),
             module_item_kind: kind,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             ..(*shaped_type_node(name, Vec::new())).clone()
         })
     }

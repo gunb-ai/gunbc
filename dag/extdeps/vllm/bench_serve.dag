@@ -1,0 +1,173 @@
+module extdeps.vllm.bench_serve
+
+import std.types { Bool, List, NonEmptyStr, String, Int }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.measure {
+  TokenCount, token_count, token_count_value,
+  Measure, Dimensionless, Milli, measure_count,
+  MilliRequestsPerSecond, milli_requests_per_second_count,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decimal { fixed_point_wire }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmRoute, vllm_route_chat_completions, vllm_route_completions, vllm_route_path }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/main/vllm/benchmarks/serve.py"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.bench_serve",
+      decl_name: "VllmBenchServeRequest",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ── UPSTREAM'S LOAD DRIVER, NOT OURS ──────────────────────────────────────────────────────────
+//
+// vLLM ships `vllm bench serve` with Poisson arrivals (`--request-rate` finite and
+// `--burstiness` 1), request-rate control, max-concurrency, random prefixes, and trace replay.
+// A second load generator in this repository would be a fork of that driver. This module names
+// the request the CLI actually takes and renders the argv; it does not invent a client.
+
+data vllm_bench_serve_source_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "bind this argv model to the serve.py file digest inside the running image; citing github.com/vllm-project/vllm/blob/main/vllm/benchmarks/serve.py is not the installed revision" as NonEmptyStr
+}
+
+type VllmBenchBackend
+  = OpenaiCompletions
+  | OpenaiChat
+
+fn vllm_bench_backend_wire(b: VllmBenchBackend) -> NonEmptyStr {
+  match b {
+    OpenaiCompletions => "openai" as NonEmptyStr
+    OpenaiChat => "openai-chat" as NonEmptyStr
+  }
+}
+
+fn vllm_bench_backend_route(b: VllmBenchBackend) -> VllmRoute {
+  match b {
+    OpenaiCompletions => vllm_route_completions
+    OpenaiChat => vllm_route_chat_completions
+  }
+}
+
+// FINITE RATE IS POISSON WHEN BURSTINESS IS 1; INF SENDS EVERY REQUEST AT TIME ZERO.
+// That last arm is the all-at-once launch whose wall clock the bash-loop instrument confused
+// with engine time. It remains representable because the upstream CLI offers it; a holistic
+// session simulation must not select it.
+type BenchArrival
+  = SendAllImmediately
+  | PoissonProcess { request_rate: MilliRequestsPerSecond, burstiness: Measure<Dimensionless, Milli, Nat> }
+
+type RandomDatasetSpec {
+  input_len: TokenCount
+  output_len: TokenCount
+  prefix_len: TokenCount
+}
+
+type VllmBenchServeRequest {
+  backend: VllmBenchBackend
+  base_url: NonEmptyStr
+  model: NonEmptyStr
+  tokenizer: NonEmptyStr
+  dataset: RandomDatasetSpec
+  num_prompts: Nat
+  arrival: BenchArrival
+  max_concurrency: Nat?
+  ignore_eos: Bool
+  seed: Nat
+}
+
+fn vllm_bench_serve_request(
+  backend: VllmBenchBackend,
+  base_url: NonEmptyStr,
+  model: NonEmptyStr,
+  tokenizer: NonEmptyStr,
+  dataset: RandomDatasetSpec,
+  num_prompts: Nat,
+  arrival: BenchArrival,
+  max_concurrency: Nat?,
+  ignore_eos: Bool,
+  seed: Nat,
+) -> VllmBenchServeRequest {
+  VllmBenchServeRequest {
+    backend: backend,
+    base_url: base_url,
+    model: model,
+    tokenizer: tokenizer,
+    dataset: dataset,
+    num_prompts: num_prompts,
+    arrival: arrival,
+    max_concurrency: max_concurrency,
+    ignore_eos: ignore_eos,
+    seed: seed,
+  }
+}
+
+fn vllm_bench_arrival_rate_wire(a: BenchArrival) -> String {
+  match a {
+    SendAllImmediately => "inf"
+    PoissonProcess { request_rate: n, burstiness: _ } =>
+      fixed_point_wire(value: milli_requests_per_second_count(r: n) as Int, decimals: 3)
+  }
+}
+
+fn vllm_bench_burstiness_words(a: BenchArrival) -> List<String> {
+  match a {
+    SendAllImmediately => []
+    PoissonProcess { request_rate: _, burstiness: b } =>
+      ["--burstiness", fixed_point_wire(value: measure_count(b) as Int, decimals: 3)]
+  }
+}
+
+fn vllm_bench_concurrency_words(n: Nat?) -> List<String> {
+  match n {
+    Absent => []
+    Present { value: c } => ["--max-concurrency", to_string(c)]
+  }
+}
+
+fn vllm_bench_eos_words(ignore: Bool) -> List<String> {
+  if ignore { ["--ignore-eos"] } else { [] }
+}
+
+// THE ARGV IS DERIVED FROM THE REQUEST, so a protocol that asked for Poisson arrivals cannot
+// silently render `inf`, and a protocol that named a shared prefix cannot drop `--random-prefix-len`.
+// SERVED NAME AND TOKENIZER IDENTITY ARE DIFFERENT FACTS. --model is what the OpenAI route answers;
+// --tokenizer is the tree the client actually loads. A protocol that carries only the served alias
+// tries HuggingFace and cannot be replayed against this engine.
+fn vllm_bench_serve_arguments(req: VllmBenchServeRequest) -> List<String> {
+  concat(
+    [
+      "bench", "serve",
+      "--backend", vllm_bench_backend_wire(b: req.backend) as String,
+      "--base-url", req.base_url as String,
+      "--model", req.model as String,
+      "--tokenizer", req.tokenizer as String,
+      "--endpoint", vllm_route_path(r: vllm_bench_backend_route(b: req.backend)) as String,
+      "--dataset-name", "random",
+      "--random-input-len", to_string(token_count_value(t: req.dataset.input_len)),
+      "--random-output-len", to_string(token_count_value(t: req.dataset.output_len)),
+      "--random-prefix-len", to_string(token_count_value(t: req.dataset.prefix_len)),
+      "--num-prompts", to_string(req.num_prompts),
+      "--seed", to_string(req.seed),
+      "--request-rate", vllm_bench_arrival_rate_wire(a: req.arrival),
+    ],
+    concat(
+      vllm_bench_burstiness_words(a: req.arrival),
+      concat(vllm_bench_concurrency_words(n: req.max_concurrency), vllm_bench_eos_words(ignore: req.ignore_eos)),
+    ),
+  )
+}
+

@@ -7,6 +7,7 @@ fn test_thresholds() -> OomdGroundingThresholds {
     per_session_cap: byte_size(10737418240),
     parent_slice_cap: ReservationBytes { bytes: byte_size(21474836480) },
     pressure_limit: percent(60),
+    pressure_action: ManagedOomKill,
   }
 }
 
@@ -79,6 +80,20 @@ fn auto_pressure_read() -> OomdEffectiveRead {
     effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
     effective_managed_oom_memory_pressure_limit: percent(60),
+    oomctl_manages_slice: true,
+    membership: good_membership(),
+  }
+}
+
+fn auto_pressure_limit_90_read() -> OomdEffectiveRead {
+  OomdEffectiveRead {
+    slice_present: true,
+    unit_active: Active,
+    unit_file_state: UnitEnabled,
+    effective_managed_oom_memory_pressure: ManagedOomAuto,
+    effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
+    effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
+    effective_managed_oom_memory_pressure_limit: percent(90),
     oomctl_manages_slice: true,
     membership: good_membership(),
   }
@@ -159,6 +174,7 @@ fn unestablished_aggregate_thresholds() -> OomdGroundingThresholds {
     per_session_cap: byte_size(10737418240),
     parent_slice_cap: ReservationBytesUnestablished { cause: "fixture: no reservation established for this host" },
     pressure_limit: percent(60),
+    pressure_action: ManagedOomKill,
   }
 }
 
@@ -238,6 +254,22 @@ fn grounds(read: OomdEffectiveRead) -> Bool {
   grounding_is_enforced(g: ground_oomd_from_read(read: read, req: test_thresholds()))
 }
 
+// The auto posture: PSI eviction intentionally off (see the rationale on
+// gunbc_oomd_sessions_policy). Identical to test_thresholds otherwise, so
+// these witnesses isolate the action field.
+fn auto_thresholds() -> OomdGroundingThresholds {
+  OomdGroundingThresholds {
+    per_session_cap: byte_size(10737418240),
+    parent_slice_cap: ReservationBytes { bytes: byte_size(21474836480) },
+    pressure_limit: percent(60),
+    pressure_action: ManagedOomAuto,
+  }
+}
+
+fn grounds_auto(read: OomdEffectiveRead) -> Bool {
+  grounding_is_enforced(g: ground_oomd_from_read(read: read, req: auto_thresholds()))
+}
+
 test fn witness_full_conjunction_grounds_enforced() -> Bool {
   grounds(read: good_read())
 }
@@ -251,6 +283,20 @@ test fn witness_unbounded_per_session_cap_fails_closed() -> Bool { !grounds(read
 test fn witness_wrong_parent_slice_cap_fails_closed() -> Bool { !grounds(read: wrong_parent_slice_cap_read()) }
 test fn witness_wrong_pressure_limit_fails_closed() -> Bool { !grounds(read: wrong_pressure_limit_read()) }
 test fn witness_oomctl_unmanaged_fails_closed() -> Bool { !grounds(read: oomctl_unmanaged_read()) }
+
+// A host converged to the intended auto posture GROUNDS. Under the previous
+// pressure_is_kill/1 this was unrepresentable: the intended state reported as
+// drift forever, so converge would reassert kill on every run and undo it.
+test fn witness_auto_posture_grounds_when_intended() -> Bool { grounds_auto(read: auto_pressure_read()) }
+
+// Drift is still caught in the other direction: kill where auto was asked for
+// is exactly the reassertion that caused the srv2 fleet culls.
+test fn witness_kill_under_auto_intent_fails_closed() -> Bool { !grounds_auto(read: good_read()) }
+
+// ManagedOOMMemoryPressureLimit is ignored unless the action is kill
+// (systemd.resource-control(5)), so under auto a differing percent asserts
+// nothing about the host and must not fail the grounding.
+test fn witness_pressure_limit_inert_under_auto() -> Bool { grounds_auto(read: auto_pressure_limit_90_read()) }
 
 test fn witness_unmeasured_aggregate_fails_closed() -> Bool {
   !grounding_is_enforced(g: ground_oomd_from_read(read: good_read(), req: unestablished_aggregate_thresholds()))

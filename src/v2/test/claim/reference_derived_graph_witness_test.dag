@@ -4,6 +4,7 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { Int }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_named_edge }
+import v2.compiler.normalized_tree { no_record_declarations }
 import v2.compiler.reference_site_collector { collect_module_reference_sites }
 import v2.lens.module_graph {
   LocatedModuleRoot,
@@ -154,10 +155,10 @@ data rd_both_root: Node = rd_module_root(
 )
 
 data rd_located_roots: List<LocatedModuleRoot> = [
-  LocatedModuleRoot { path: rd_provider_path, root: rd_provider_root },
-  LocatedModuleRoot { path: rd_reference_only_path, root: rd_reference_only_root },
-  LocatedModuleRoot { path: rd_import_only_path, root: rd_import_only_root },
-  LocatedModuleRoot { path: rd_both_path, root: rd_both_root },
+  LocatedModuleRoot { path: rd_provider_path, root: rd_provider_root, record_declarations: no_record_declarations() },
+  LocatedModuleRoot { path: rd_reference_only_path, root: rd_reference_only_root, record_declarations: no_record_declarations() },
+  LocatedModuleRoot { path: rd_import_only_path, root: rd_import_only_root, record_declarations: no_record_declarations() },
+  LocatedModuleRoot { path: rd_both_path, root: rd_both_root, record_declarations: no_record_declarations() },
 ]
 
 fn rd_edge_count(
@@ -188,7 +189,7 @@ fn rd_mutant_re_admitting_import_decl_edges() -> List<ModuleDependencyEdge> {
       concat(
         acc,
         reference_edges_for_located_root_sites(
-          item: item,
+          path: item.path,
           pool: pool,
           collected: collect_module_reference_sites(root: item.root)
         ).edges
@@ -260,8 +261,8 @@ fn rd_headerless_root() -> Node {
 test fn a_headerless_module_root_is_counted_unreadable_not_zero_edges() -> Bool {
   let fold = reference_derived_edges_from_located_roots(
     items: [
-      LocatedModuleRoot { path: rd_provider_path, root: rd_provider_root },
-      LocatedModuleRoot { path: "headerless.dag", root: rd_headerless_root() }
+      LocatedModuleRoot { path: rd_provider_path, root: rd_provider_root, record_declarations: no_record_declarations() },
+      LocatedModuleRoot { path: "headerless.dag", root: rd_headerless_root(), record_declarations: no_record_declarations() }
     ]
   )
   !reference_derived_edge_fold_is_total(fold: fold)
@@ -270,7 +271,7 @@ test fn a_headerless_module_root_is_counted_unreadable_not_zero_edges() -> Bool 
 
 test fn unreadable_root_is_counted_not_a_silent_leaf() -> Bool {
   let fold = reference_derived_edges_from_located_roots(
-    items: [LocatedModuleRoot { path: "unreadable.dag", root: rd_unreadable_root() }]
+    items: [LocatedModuleRoot { path: "unreadable.dag", root: rd_unreadable_root(), record_declarations: no_record_declarations() }]
   )
   !reference_derived_edge_fold_is_total(fold: fold)
     && length(xs: fold.unreadable_roots) == 1

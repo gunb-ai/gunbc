@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.a_binding_position_recorded_as_a_declaring_identity
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_binding_position_recorded_as_a_declaring_identity: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_binding_position_recorded_as_a_declaring_identity" as NonEmptyStr,
+  receipts: [
+    "**a position that merely BINDS a name is recorded as the position that DECLARES it** (INVALID STATE: an index that keys declarations by their declaring path takes a row's TARGET as that path. A target names a position the index can answer at, which is a declaration only when a declaration was written there; for a re-export it is another row's binding. v2.compiler.symbol_index_fill symbol_index_bind_pending_round passed p.row.target straight to symbol_index_bind_at as declaring_path.)",
+    "HARM. One declaration acquires one identity PER RELAY it is reached through, so the map that exists to make identity single-valued is the thing that forks it. Nothing refuses: every path resolves, and the reference is Accepted. It surfaces downstream as a wrong answer with no diagnostic -- a target that spells a declaration by its module emits a path into the relay module, which declares nothing and therefore has no item to name, so the emitted program refers to something that was never written.",
+    "DISTINGUISHING FACTS. refusal_reason_minted_as_canonical_identity is a value minted from the WRONG VOCABULARY (a diagnostic reason standing in a name's place); this row is a value from the RIGHT vocabulary read at the WRONG LAYER -- a real qualified path, naming a real position, that is a binding rather than a declaration. The recognition rule is a question, not a spelling: when a field is named for a DECLARATION, ask whether every writer of it can only have written a declaration there, and follow one re-export before answering. An index whose lookup succeeds at a relay will answer that question wrong and stay green.",
+    "RECEIPT (2026-09-22, fierce-wren-487, found by review 70003 on gunbc#12048). Uninhabited until resolution began CARRYING the declaring path: while a resolved reference was a bare leaf the recorded declaring path reached no consumer, so the fork existed in the index and was unobservable. The enrolled chain claim could not see it either -- it asserted only that the chain RESOLVES, and an index that stops at the relay resolves perfectly well. Repaired by chasing one step through symbol_index_claimants_at, which already answers who declares what lives at a position; a relay's own row was chased the same way when it bound, so one step reaches the home. Enrolled: v2.test.claim.namespace_xl0.cross_module_reference_resolution a_re_export_resolves_to_the_home_not_the_relay_holds, whose NEGATIVE conjunct is the discriminator -- measured FAIL before the chase and PASS after, with the sibling same-leaf row PASS in both runs.",
+    "RUNG FOUND AT: outside the ladder -- silent wrongness.",
+    "CEILING: structurally impossible. A binding position and a declaring position are different concepts sharing one carrier (QualifiedName), so either can be written where the other is owed. The wall is the type: a declaring identity a binding path cannot inhabit, which is the same wall refusal_reason_minted_as_canonical_identity names from its own direction.",
+    "NEXT-RUNG TRIGGER: a declaration-identity carrier distinct from the qualified path of an arbitrary position, so that symbol_index_bind_at cannot be handed a binding position at all; until then the enrolled row above is the wall, and it is a permanent regression control rather than an expecting-red probe.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_bind_pending_round", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_declaring_path_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.cross_module_reference_resolution", decl_name: "a_re_export_resolves_to_the_home_not_the_relay_holds", field: WholeDeclaration },
+  ],
+}

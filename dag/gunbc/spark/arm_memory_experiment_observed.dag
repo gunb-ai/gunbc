@@ -14,7 +14,7 @@ import extdeps.vllm.runtime_defaults { Vllm8d09804, defaults_source_revision }
 import extdeps.vllm.log_lines {
   VllmStartupReading, vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency,
 }
-import extdeps.vllm.engine_args { PrefixCachingExplicit }
+import extdeps.vllm.engine_args { PrefixCachingExplicit, KvFp8, EngramConfigOmitted }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout {
   VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
@@ -160,10 +160,11 @@ fn arm_experiment_2026_09_25_subject_mint() -> MemoryProofSubjectMint {
         profile: profile_for_intent(
           intent: experiment_intent,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
-          kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+          kv_cache_dtype: KvFp8,
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
-          prefix_caching: PrefixCachingExplicit { enabled: true }),
+          prefix_caching: PrefixCachingExplicit { enabled: true },
+          engram: EngramConfigOmitted),
         launch_generation: arm_experiment_2026_09_25_generation,
       )
   }
@@ -523,10 +524,11 @@ fn arm_experiment_2026_09_26_subject_mint() -> MemoryProofSubjectMint {
         profile: profile_for_intent(
           intent: experiment_intent,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
-          kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+          kv_cache_dtype: KvFp8,
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
-          prefix_caching: PrefixCachingExplicit { enabled: true }),
+          prefix_caching: PrefixCachingExplicit { enabled: true },
+          engram: EngramConfigOmitted),
         launch_generation: arm_experiment_2026_09_26_generation,
       )
   }
@@ -736,10 +738,11 @@ fn arm_experiment_kvplan_v2_2026_09_26_subject_mint() -> MemoryProofSubjectMint 
         profile: profile_for_intent(
           intent: experiment_intent,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
-          kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+          kv_cache_dtype: KvFp8,
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
-          prefix_caching: PrefixCachingExplicit { enabled: true }),
+          prefix_caching: PrefixCachingExplicit { enabled: true },
+          engram: EngramConfigOmitted),
         launch_generation: arm_experiment_kvplan_v2_2026_09_26_generation,
       )
   }
@@ -1471,10 +1474,11 @@ fn arm_experiment_kvplan_v2_2026_09_26_policy_profile() -> ServingLaunchProfile 
   profile_for_intent(
     intent: arm_experiment_kvplan_v2_2026_09_26_workload(),
     decided_gpu_memory_basis_points: basis_point(count: 8567),
-    kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+    kv_cache_dtype: KvFp8,
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
-    prefix_caching: PrefixCachingExplicit { enabled: true })
+    prefix_caching: PrefixCachingExplicit { enabled: true },
+    engram: EngramConfigOmitted)
 }
 
 // THE LOADER-TRANSIENT PLAN: one bounded launch, the load phase bracketed per rank, the peak

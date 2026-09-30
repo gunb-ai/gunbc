@@ -43,11 +43,20 @@ import gunbc.compile_diagnostic_census {
 
 data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. gunbc#7555 (InferToTranslate underived-refusal) is OPEN on main and introduces NO path/class/probe identities here — that lane lands its own registry rows with executing evidence when it merges. Each migrated row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. guarantee_probe_dark_suite_dispositions names each Rust dark-suite witness retained until gap-analysis sec 11 item 9 finite classification — enrolled .dag probes are the floor authority; Rust copies are explicitly dispositioned, not silently parallel. This slice owns the identity registry, canonical probe ordering, and the census-to-observation bridge for the v1 compile path. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag (frontier value-red and derived-green receipt joins). No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier. gunbc#7847 (call-missing-and-duplicate-wall, roadmap node rn_EXUHLON5V24YU7Z4XLJFWEZO33, duplicate-label slice) added call_duplicate_red_probe/call_duplicate_green_probe to the SAME call_label_surplus_class as #7519's mislabel/surplus rows — one seam (direct_call_shape_diags), a third refusal mode on it, not a new class. Its Rust dark-suite original is call_shape_duplicate_wall_witness, dispositioned below alongside call_shape_wall_witness."
 
-// THIS REGISTRY'S WITNESSES DO NOT RUN IN CI, AND EVERY RUNG DERIVED FROM THEM MUST BE READ THROUGH
-// THAT (measured 2026-08-22; gap analysis section 11 item 28). The required floor DISCOVERS a
-// witness file declaring live_tree_disposition = ReadsLiveTree and then DECLINES it before the fold
-// — v2.workflow.required_floor RequiredFloorDisposition DeclinedLiveTree, reported as
-// declined_live, 830 identities on run 32553487573. Every carrier that executes this registry
+// MOST OF THIS REGISTRY'S WITNESSES DO NOT RUN ON THE REQUIRED GATE, AND EVERY RUNG DERIVED FROM
+// THEM MUST BE READ THROUGH THAT -- BUT NOT FOR THE REASON THIS NOTE ORIGINALLY GAVE, AND NO LONGER
+// FOR ALL OF THEM. As written (measured 2026-08-22; gap analysis section 11 item 28) it said the
+// required floor DISCOVERS a witness file declaring live_tree_disposition = ReadsLiveTree and then
+// DECLINES it before the fold — v2.workflow.required_floor RequiredFloorDisposition
+// DeclinedLiveTree, reported as declined_live, 830 identities on run 32553487573. THAT ARM IS
+// DELETED at the root of v2.workflow.required_floor, so ReadsLiveTree is no longer a decline and
+// that count is history. WHAT EXCLUDES THEM TODAY IS THE GATE ROSTER: after the 2026-09-19
+// nominal-roster ruling the required floor executes only modules matching required_gate_prefixes or
+// required_gate_authored_modules, and the carriers listed below match neither, so their identities
+// disposition DeclinedOutsideRequiredGate. The remedy is therefore a module NAME on an admitted
+// prefix, not a declaration change: the record-completeness zero-field family took it, moving to
+// test.claim.infer_record_field_completeness_zero_field_witness_test, which declares ReadsLiveTree
+// truthfully and executes on every required floor run. Every carrier that executes this registry
 // declares exactly that, TRUTHFULLY: compile_dag_diagnostic_census resolves its synthetic source
 // against build_module_path_index_from_witness_roots, which walks the live checkout, and the
 // witnesses filesystem_read their harness sources besides. Five carriers and 100 identities of
@@ -72,10 +81,12 @@ data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUAR
 // as a mis-declaration for transport_script_wall_compile_red_test. Two specimens now, the second
 // authored after the first was adjudicated, and between them they are the only reason any
 // census-compiling probe executes. Either those files are mis-declared or that note is wrong; the
-// answer changes this arm's population and belongs to the arm's owner. DISSOLVES when the
-// DeclinedLiveTree arm is deleted at the root, which required_floor's own header already stages and
-// prices (run 32345970386, 626/783 passing under execution); that deletion is sequenced behind the
-// merge queue and was UNOWNED as of 2026-08-22.
+// answer changes this arm's population and belongs to the arm's owner. THAT QUESTION IS NOW MOOT
+// FOR EXECUTION and live only for affected-set eligibility, since the declaration no longer gates
+// floor admission. DISSOLVES when each carrier below either moves onto an admitted gate prefix or
+// is reached by the derived changed-population selection that v2.workflow.required_floor names as
+// gunbc.rung_drop required_gate_bankruptcy's restoration trigger; the DeclinedLiveTree deletion
+// this note used to name as its trigger has happened and was not sufficient.
 
 // TWO LANDED PATHS IN THE CANONICAL REGISTRY: v1-compile-rust is subject_grain SyntheticProgram,
 // acceptance_boundary CompileAccept, realization_target EmittedTarget { language: rust } — the path

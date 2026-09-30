@@ -4,7 +4,6 @@ import std.types { NonEmptyStr, String, Bool, Secret, List, Int }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
-import std.resources { Network }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy, EnsureObserveOnly, EnsureMayApply }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
@@ -86,7 +85,7 @@ fn project_observation_from_state(project_id: GcpProjectId, state: String) -> Pr
 fn read_project(
   token: Secret,
   project_id: GcpProjectId,
-) -> ProjectConvergeObservation uses net: Network {
+) -> ProjectConvergeObservation {
   let read = gcp.ResourceManager.GetProject(access_token: token, project_id: project_id)
   match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
     RestExchangeSucceeded => project_observation_from_state(project_id: project_id, state: read.state)
@@ -125,7 +124,7 @@ fn converge_project(
   display_name: NonEmptyStr,
   parent: NonEmptyStr,
   policy: EnsurePolicy,
-) -> ProjectConvergeOutcome uses net: Network {
+) -> ProjectConvergeOutcome {
   match read_project(token: token, project_id: project_id) {
     ProjectObservedActive { project_id: p } => ProjectAlreadyPresent { project_id: p }
     ProjectObservedOtherState { project_id: p, state: s } =>
@@ -153,7 +152,7 @@ fn converge_absent_project(
   display_name: NonEmptyStr,
   parent: NonEmptyStr,
   policy: EnsurePolicy,
-) -> ProjectConvergeOutcome uses net: Network {
+) -> ProjectConvergeOutcome {
   match policy {
     EnsureObserveOnly =>
       ProjectConvergeRefused {
@@ -172,7 +171,7 @@ fn perform_project_create(
   project_id: GcpProjectId,
   display_name: NonEmptyStr,
   parent: NonEmptyStr,
-) -> ProjectConvergeOutcome uses net: Network {
+) -> ProjectConvergeOutcome {
   let created = gcp.ResourceManager.CreateProject(
     access_token: token,
     project_id: project_id,
@@ -214,7 +213,7 @@ fn read_service_enablement(
   token: Secret,
   project_id: GcpProjectId,
   service_id: NonEmptyStr,
-) -> ServiceEnablementObservation uses net: Network {
+) -> ServiceEnablementObservation {
   let read = gcp.ServiceUsage.GetService(
     access_token: token,
     project_id: project_id,
@@ -276,7 +275,7 @@ fn converge_service_enablement(
   project_id: GcpProjectId,
   service_id: NonEmptyStr,
   policy: EnsurePolicy,
-) -> ServiceEnableOutcome uses net: Network {
+) -> ServiceEnableOutcome {
   match read_service_enablement(token: token, project_id: project_id, service_id: service_id) {
     ServiceObservedEnabled { project: _, service_id: s } => ServiceAlreadyEnabled { service_id: s }
     ServiceEnablementStateForeign { project: _, service_id: s, raw: raw } =>
@@ -303,7 +302,7 @@ fn converge_disabled_service(
   project_id: GcpProjectId,
   service_id: NonEmptyStr,
   policy: EnsurePolicy,
-) -> ServiceEnableOutcome uses net: Network {
+) -> ServiceEnableOutcome {
   match policy {
     EnsureObserveOnly =>
       ServiceEnableRefused {
@@ -319,7 +318,7 @@ fn perform_service_enable(
   token: Secret,
   project_id: GcpProjectId,
   service_id: NonEmptyStr,
-) -> ServiceEnableOutcome uses net: Network {
+) -> ServiceEnableOutcome {
   let enabled = gcp.ServiceUsage.EnableService(
     access_token: token,
     project_id: project_id,
@@ -362,7 +361,7 @@ fn read_service_account(
   token: Secret,
   project_id: GcpProjectId,
   sa_email: ServiceAccountEmail,
-) -> ServiceAccountObservation uses net: Network {
+) -> ServiceAccountObservation {
   let read = gcp.IamAdmin.GetServiceAccount(
     access_token: token,
     project_id: project_id,
@@ -406,7 +405,7 @@ fn converge_service_account(
   display_name: NonEmptyStr,
   sa_email: ServiceAccountEmail,
   policy: EnsurePolicy,
-) -> ServiceAccountConvergeOutcome uses net: Network {
+) -> ServiceAccountConvergeOutcome {
   match read_service_account(token: token, project_id: project_id, sa_email: sa_email) {
     ServiceAccountObserved { email: e } => ServiceAccountAlreadyPresent { email: e }
     ServiceAccountUnreadable { reason: r } => ServiceAccountConvergeRefused { cause: r }
@@ -434,7 +433,7 @@ fn perform_service_account_create(
   account_id: NonEmptyStr,
   display_name: NonEmptyStr,
   sa_email: ServiceAccountEmail,
-) -> ServiceAccountConvergeOutcome uses net: Network {
+) -> ServiceAccountConvergeOutcome {
   let created = gcp.IamAdmin.CreateServiceAccount(
     access_token: token,
     project_id: project_id,
@@ -466,7 +465,7 @@ fn verify_created_service_account(
   project_id: GcpProjectId,
   sa_email: ServiceAccountEmail,
   detail: NonEmptyStr,
-) -> ServiceAccountConvergeOutcome uses net: Network {
+) -> ServiceAccountConvergeOutcome {
   match read_service_account(token: token, project_id: project_id, sa_email: sa_email) {
     ServiceAccountObserved { email: e } => ServiceAccountCreatedAndVerified { email: e }
     ServiceAccountAbsent =>

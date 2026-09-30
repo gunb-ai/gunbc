@@ -1159,17 +1159,23 @@ fn specimen_row_grounding(rows: List<FloorCostRow>, run: NonEmptyStr) -> Calibra
     }
   } else {
     let steps = matched |> sort_by(n => n)
-    let low = first(steps)
-    let high = first(reverse(steps))
-    if low != high {
-      SpecimenStepsNotDeterministic { identity: wanted, low: low, high: high }
-    } else {
-      SpecimenJoined {
-        grounding: specimen_steps_grounding(
-          calibration: floor_eval_step_calibration,
-          observed_eval_steps: high,
-        )
-      }
+    match first(steps) {
+      Absent => SpecimenAbsentFromRun { identity: wanted, run: run }
+      Present { value: low } =>
+        match first(reverse(steps)) {
+          Absent => SpecimenAbsentFromRun { identity: wanted, run: run }
+          Present { value: high } =>
+            if low != high {
+              SpecimenStepsNotDeterministic { identity: wanted, low: low, high: high }
+            } else {
+              SpecimenJoined {
+                grounding: specimen_steps_grounding(
+                  calibration: floor_eval_step_calibration,
+                  observed_eval_steps: high,
+                )
+              }
+            }
+        }
     }
   }
 }

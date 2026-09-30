@@ -24,7 +24,7 @@ pub fn keyed_occurrence_count<K: Clone, V: Clone>(
         .cloned()
         .fold(0, |n: i64, row: Rc<KeyedRow<K, V>>| {
             if key_eq(row.row_key.clone(), wanted_key.clone()) {
-                (n.clone() + 1)
+                v1_rt::int_add(n.clone(), 1)
             } else {
                 n.clone()
             }
@@ -43,7 +43,7 @@ pub struct KeyedRosterDuplicateEvidence<K: Clone, V: Clone> {
 pub fn path_occurrence_count(paths: Rc<Vec<String>>, target: String) -> i64 {
     paths.iter().cloned().fold(0, |n: i64, p: String| {
         if (p.clone() == target.clone()) {
-            (n.clone() + 1)
+            v1_rt::int_add(n.clone(), 1)
         } else {
             n.clone()
         }

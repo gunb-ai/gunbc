@@ -17,7 +17,7 @@ import v2.compiler.infer {
   InferredTree
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
   List,
   Map,
@@ -292,7 +292,7 @@ fn eval_example_diagnostic(n: Node) -> Diagnostic {
 fn eval_termination_proof() -> v2.std.cardinality.TerminationProof {
   v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: v2.std.cardinality.RankingDimension { measured: ^eval_descent_dimension }
+    strict: v2.std.cardinality.RankingComponent { measured: ^eval_descent_dimension }
   }
 }
 

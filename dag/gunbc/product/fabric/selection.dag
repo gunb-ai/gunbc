@@ -1121,9 +1121,24 @@ fn axis_amount(a: PricedAxis) -> MoneyAmountMicro {
 // budget exhausted, every ask above the ceiling, and nothing fungible all end in a typed
 // refusal or a demand that stays pending, and that there is no arm to reach for something
 // cheaper and unsuitable. There is none here.
+// THE WINNER IS SEALED, SO ISSUANCE CAN DEMAND ONE AND A CALLER CANNOT NAME ANOTHER.
+//
+// A CandidateOffer proves an offer was admitted and identity-consistent with its observations; it
+// is the PRE-SELECTION input and every member of the population has one. SelectedOffer is the
+// OUTPUT: sole_constructor confines it to this module, and the only expression here that builds
+// one is the TieResolved arm of select_supply below. So a SelectedOffer in hand is an offer some
+// completed ranking chose, and product.fabric.grant_issue takes this rather than a SupplierOffer.
+//
+// What it does NOT prove is that the population ranked was the whole admissible field: the
+// candidates are select_supply's parameter. Completeness of the candidate field is its own
+// authority (product.fabric.candidate_field), a separate capability from "the ranking chose it".
+type SelectedOffer<P> sole_constructor {
+  candidate: CandidateOffer<P>
+}
+
 type SupplySelection<P>
   = OfferSelected {
-      candidate: CandidateOffer<P>,
+      candidate: SelectedOffer<P>,
       cost: SelectionCost,
       basis: CostBasis,
       horizon: CommitmentHorizon,
@@ -1394,7 +1409,7 @@ fn select_supply<P>(
               EqualCostTieUnresolved { digest: d, cause: c, considered: ranked.considered }
             TieResolved { winner: winner } =>
               OfferSelected {
-                candidate: winner.candidate,
+                candidate: SelectedOffer { candidate: winner.candidate },
                 cost: winner.cost,
                 basis: winner.basis,
                 horizon: winner.horizon,

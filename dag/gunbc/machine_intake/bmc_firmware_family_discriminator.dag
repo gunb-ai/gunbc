@@ -1,0 +1,96 @@
+module gunbc.machine_intake_bmc_firmware_family_discriminator
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import gunbc.machine_intake_bmc_first_contact_standing {
+  BmcFirmwareFamilyStanding,
+  FamilyObserved,
+  FamilyUnobserved,
+}
+
+// THE ONE FUNCTION THAT MAY CONSTRUCT FamilyObserved, AND WHY IT COULD NOT LIVE BESIDE THE PROBE.
+//
+// bmc_first_contact_standing refuses any route from transport presence to a family, and
+// IntakeRedfishSurface carries no BmcFirmwareFamily in any arm, so the promotion is unconstructible
+// from a service-root read (DESIGN §4b rung 4). What discriminates is the Manager resource, where
+// the implementation names itself, and reading it requires credentials - which is the whole reason
+// the discriminator is a separate authenticated step rather than a flag on the intake probe.
+//
+// THE OBSERVATION IS A TYPED RECORD, NOT A BLOB THE FOLD SNIFFS. The caller decodes the Manager
+// response into these fields once; the discrimination below reads fields, so a change to the wire
+// shape breaks decoding rather than silently changing a family verdict.
+type ManagerIdentityObservation {
+  manager_id: NonEmptyStr
+  firmware_version: String
+  model: String
+  oem_keys: List<String>
+}
+
+// EACH DISCRIMINATOR IS A CLAIM ABOUT AN UPSTREAM AND CARRIES ITS EVIDENTIARY STANDING. Neither is
+// cited yet: both are transcribed from how these stacks are known to present, and until someone
+// reads the specifications the honest arm is TranscribedUncited with the read that would close it
+// (DESIGN §4d - do not assert as deduced what is only inferred).
+data openbmc_oem_key_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "OpenBMC's Redfish Manager Oem key. Read the phosphor-bmc-code-mgmt / bmcweb Redfish schema for the Oem member OpenBMC publishes on /redfish/v1/Managers/<id>, and cite the version that names it.",
+}
+
+data megarac_oem_key_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "AMI MegaRAC's Redfish Manager Oem key. Read the AMI MegaRAC SP-X Redfish reference for the Oem member it publishes on the Manager resource, and cite the release that names it.",
+}
+
+data openbmc_oem_key: NonEmptyStr = "OpenBmc"
+
+data megarac_oem_key: NonEmptyStr = "Ami"
+
+type FamilyDiscrimination
+  = FamilyDiscriminated { family: BmcFirmwareFamily, basis: NonEmptyStr }
+  | FamilyIndeterminate { basis: NonEmptyStr }
+  | FamilyAmbiguous { basis: NonEmptyStr }
+
+fn observation_names_oem(observation: ManagerIdentityObservation, key: NonEmptyStr) -> Bool {
+  any(observation.oem_keys, k => k == (key as String))
+}
+
+// AMBIGUITY IS ITS OWN ARM AND DOES NOT COLLAPSE TO EITHER FAMILY. A Manager advertising both Oem
+// keys is a state this fold cannot resolve, and picking one would be the widening §5 refuses; an
+// operator reading FamilyAmbiguous knows to go look, whereas a wrong FamilyDiscriminated would
+// select a rotation route against the wrong stack.
+fn discriminate_family(observation: ManagerIdentityObservation) -> FamilyDiscrimination {
+  let open = observation_names_oem(observation: observation, key: openbmc_oem_key)
+  let ami = observation_names_oem(observation: observation, key: megarac_oem_key)
+  if open && ami {
+    FamilyAmbiguous {
+      basis: "the Manager advertises both the OpenBMC and the AMI Oem key; this fold refuses rather than choosing",
+    }
+  } else {
+    if open {
+      FamilyDiscriminated {
+        family: OpenBmc,
+        basis: "the Manager resource advertises the OpenBMC Oem key",
+      }
+    } else {
+      if ami {
+        FamilyDiscriminated {
+          family: AmiMegaRac,
+          basis: "the Manager resource advertises the AMI Oem key",
+        }
+      } else {
+        FamilyIndeterminate {
+          basis: "the Manager resource advertises neither the OpenBMC nor the AMI Oem key; firmware_version and model were read but no modeled discriminator matched",
+        }
+      }
+    }
+  }
+}
+
+// ONLY A DISCRIMINATED FAMILY BECOMES FamilyObserved. Indeterminate and ambiguous both stay
+// unobserved and carry what would close them, so a downstream realizer selection sees the same
+// refusal it saw before any probe ran.
+fn family_standing_from_discrimination(discrimination: FamilyDiscrimination) -> BmcFirmwareFamilyStanding {
+  match discrimination {
+    FamilyDiscriminated { family: f, basis: _ } => FamilyObserved { family: f }
+    FamilyIndeterminate { basis: b } => FamilyUnobserved { discriminator: b }
+    FamilyAmbiguous { basis: b } => FamilyUnobserved { discriminator: b }
+  }
+}

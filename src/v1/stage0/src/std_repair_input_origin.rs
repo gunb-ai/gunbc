@@ -100,7 +100,7 @@ pub fn candidate_spelling_from_text(name: String) -> Rc<CandidateSpelling> {
                         .clone()
                         .iter()
                         .cloned()
-                        .take(((segments.clone().len() as i64) - 1) as usize)
+                        .take(v1_rt::int_sub((segments.clone().len() as i64), 1) as usize)
                         .collect::<Vec<_>>(),
                 )
                 .join(&".".to_string()),

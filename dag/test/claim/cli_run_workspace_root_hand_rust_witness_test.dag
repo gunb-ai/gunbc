@@ -1,6 +1,7 @@
 module test.claim.cli_run_workspace_root_hand_rust_witness
 
-import gunbc.cli_run_workspace_root_scaffold { cli_run_source_root_anchor_dissolve_trigger, cli_run_source_root_anchor_loc_delta_net, cli_run_source_root_anchor_receipt_plan_anchor, cli_run_source_root_anchor_scaffold, cli_run_source_root_anchor_test_discriminator_absent_root, cli_run_source_root_anchor_test_discriminator_present_root, cli_run_workspace_root_discovery_dissolve_trigger, cli_run_workspace_root_discovery_loc_delta_net, cli_run_workspace_root_discovery_scaffold, cli_run_workspace_root_discovery_test_discriminator_cwd_ascent, cli_run_workspace_root_discovery_test_discriminator_git_toplevel, cli_run_workspace_root_hand_rust_receipt_plan_anchor }
+import gunbc.release_locus_seed_constants_emit { expected_release_locus_seed_constants_generated_rs }
+import gunbc.cli_run_workspace_root_scaffold { cli_run_source_root_anchor_dissolve_trigger, cli_run_source_root_anchor_loc_delta_net, cli_run_source_root_anchor_receipt_plan_anchor, cli_run_source_root_anchor_scaffold, cli_run_source_root_anchor_test_discriminator_absent_root, cli_run_source_root_anchor_test_discriminator_present_root, cli_run_workspace_root_discovery_dissolve_trigger, cli_run_workspace_root_discovery_loc_delta_net, cli_run_workspace_root_discovery_scaffold, cli_run_workspace_root_discovery_test_discriminator_cwd_ascent, cli_run_workspace_root_discovery_test_discriminator_git_toplevel, cli_run_workspace_root_hand_rust_receipt_plan_anchor, gunbc_workspace_root_env_name, release_locus_tree_receipt_name, cli_run_workspace_root_spawn_test_discriminator_authority, cli_run_workspace_root_spawn_test_discriminator_refusal }
 import std.disposition { SingleAuthority }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.dissolution { dissolution_description }
@@ -44,6 +45,61 @@ test fn workspace_root_hand_rust_discriminating_tests_named() -> Bool {
       s: cli_run_workspace_root_discovery_test_discriminator_cwd_ascent,
       pattern: "outside_git"
     )
+}
+
+// THE SPAWN-ROOT ARM NAMES ITS TWO EXECUTED CONTROLS (the seed's workspace_root_discovery_tests):
+// the authority control, where a real checkout subdirectory is the start and the locus wins anyway,
+// and the refusal control, where a locus without its receipt refuses rather than walks.
+// THE TWO SPELLINGS ARE NOT ASSERTED AGAINST THEMSELVES, and an earlier revision of this claim did
+// exactly that: `gunbc_workspace_root_env_name == "GUNBC_WORKSPACE_ROOT"` is a row compared to a
+// copy of its own value, which stays green when the row is edited and so establishes nothing about
+// the seed that must agree with it (review 69990, DESIGN section 5: a check satisfiable by editing
+// the declaration while the realization still lies).
+//
+// WHAT REPLACED IT IS NOT A BETTER CHECK BUT THE ABSENCE OF THE FORK. The seed no longer carries
+// its own copies: gunbc.release_locus_seed_constants_emit projects both rows into
+// release_locus_seed_constants_generated.rs and cli_run.rs consumes them from there, so the join is
+// the Rust compiler plus the generated-artifact drift wall rather than any assertion here. What is
+// left for this claim is the part that is genuinely this module's -- that the projection exists and
+// carries each row's value, which is what makes the seed's consumption of it a consumption OF THE
+// AUTHORITY. The emitter never spells either literal, so this fails if a row moves and the
+// projection does not.
+test fn workspace_root_spawn_arm_names_its_env_receipt_and_controls() -> Bool {
+  string_contains(
+    s: expected_release_locus_seed_constants_generated_rs(),
+    pattern: concat(concat("GUNBC_WORKSPACE_ROOT_ENV: &str = \"", gunbc_workspace_root_env_name), "\";"),
+  )
+    && string_contains(
+      s: expected_release_locus_seed_constants_generated_rs(),
+      pattern: concat(concat("RELEASE_LOCUS_TREE_RECEIPT_NAME: &str = \"", release_locus_tree_receipt_name), "\";"),
+    )
+    && the_scaffold_names_four_distinct_executed_controls()
+}
+
+// THE DISCRIMINATOR ROWS ARE CHECKED FOR BEING FOUR DIFFERENT CONTROLS, NOT FOR CONTAINING THEIR
+// OWN SUBSTRINGS. The two conjuncts this replaces read
+// `string_contains(s: <row>, pattern: "walk_is_not_consulted")` -- a row compared to a slice of its
+// own value, green after renaming or deleting the seed test it names, which is the same defect the
+// note above raises about the row it replaced, one conjunct later (review 70028). DESIGN section 4b:
+// a check whose red is not authorable is a decoration, and worse than absent because it is cited as
+// coverage.
+//
+// WHAT IS AUTHORABLE-RED HERE, given that no claim in this corpus can read cli_run.rs (a witness
+// that did would be a new WET witness, which v2.workflow.floor_changed_witness blocks for any
+// identity its own PR touches): that the scaffold names FOUR DISTINCT controls. The realistic
+// failure these rows have is a copy-paste that leaves two of them naming one seed test, which makes
+// a control that was never written look covered -- and that goes red here. It does not establish
+// that the seed declares these names; nothing available to this layer can, and the note above says
+// so rather than implying otherwise.
+fn the_scaffold_names_four_distinct_executed_controls() -> Bool {
+  let names = [
+    cli_run_workspace_root_spawn_test_discriminator_authority,
+    cli_run_workspace_root_spawn_test_discriminator_refusal,
+    cli_run_workspace_root_discovery_test_discriminator_git_toplevel,
+    cli_run_workspace_root_discovery_test_discriminator_cwd_ascent,
+  ]
+  all(names, n => n != "")
+    && all(names, n => (filter(names, m => m == n) |> count) == 1)
 }
 
 test fn source_root_anchor_hand_rust_scaffold_is_seed_retained() -> Bool {

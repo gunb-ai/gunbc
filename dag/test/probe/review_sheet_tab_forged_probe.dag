@@ -1,0 +1,156 @@
+module test.probe.review_sheet_tab_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. A located review tab is minted only by
+// gunbc.review_sheet_tab_locator, and only by the function that performed the spreadsheets.get
+// metadata read -- the same egress discipline gunbc.durable_exclusive_hold_file_store states for
+// its sealed plans. The three forgeries below are the three routes a caller would otherwise take,
+// and each one reinstates the defect the locator exists to remove.
+//
+// (a) THE RECORD ITSELF. A hand-built LocatedReviewTab { sheet_id: 0 } is the constant
+// the first-sheet constant 0 wearing the name of an observation: handed to
+// converge_review_sheet_format it addresses tab zero again, and every refusal downstream of it
+// reads "the located tab" while the located tab was a literal. LocatedReviewTab is
+// sole_constructor, so this refuses at the record as SoleConstructorViolation.
+//
+// (b) THE CONVERSION, CALLED WITH AN AUTHORED CLASSIFICATION. review_tab_standing_from_classification
+// is the only expression in the corpus that builds the record, and a caller handing it a
+// ClassifiedExactlyOne it wrote would obtain a TabLocated for a tab it chose rather than one it
+// read. Sealed to the live outcome route and two named claims, so this refuses.
+//
+// (d) THE WITNESS WRAPPER. Being ADMITTED to the conversion did not make this function confined:
+// while it was exported and unrestricted, any module could import it and get a located tab from
+// values it chose, which is the escape the side-chat hold on gunbc#11725 named. It is now sealed
+// to the exact claims that consume it, so this call refuses at its name.
+//
+// (c) THE CONVERSION'S CALLER. review_tab_standing_of_outcome takes the transport outcome beside the
+// response, so leaving it open would be a second door: RestOk beside an authored body reaches the
+// same mint. It is sealed for exactly that reason and refuses at its own name.
+//
+// The witness test.claim.review_sheet_tab_refusal_probe_witness enrolls this probe and asserts
+// each refusal class at its subject by name. dag/test/probe/ sits under the whole-tree
+// strict-resolve exclusion, so this source reaches the compiler only through that witness.
+
+import std.types { NonEmptyStr, String, Int }
+import std.resources { Network }
+import extdeps.transports.rest { RestOutcome, RestOk }
+import extdeps.google.sheets { SpreadsheetRead, SheetsSheetRead, SheetsSheetPropertiesRead }
+import gunbc.review_sheet_tab_locator {
+  LocatedReviewTab,
+  ReviewTabStanding,
+  ReviewTabCandidate,
+  ReviewTabClassification,
+  ClassifiedExactlyOne,
+  review_tab_standing_from_classification,
+  review_tab_standing_of_outcome,
+}
+import test.claim.review_sheet_format_target_witness { located_tab_for_witness }
+import gunbc.review_sheet_format_actuator {
+  FreezeRowsRequest,
+  HeaderBandRequest,
+  StandingRuleRequest,
+  FormatRequestPlan,
+  FormatStepOutcome,
+  FormatReport,
+  freeze_header,
+  format_header_band,
+  color_standing,
+  format_review_sheet,
+  standing_admitted_color,
+}
+
+fn forged_located_tab_over_the_constant_sheet_id(spreadsheet_id: NonEmptyStr) -> LocatedReviewTab {
+  LocatedReviewTab {
+    spreadsheet_id: spreadsheet_id,
+    sheet_id: 0,
+    title: "CI prospect sheet" as NonEmptyStr,
+  }
+}
+
+fn authored_single_tab_response(sheet_id: Int, title: String) -> SpreadsheetRead {
+  SpreadsheetRead {
+    spreadsheetId: none,
+    sheets: Present {
+      value: [
+        SheetsSheetRead {
+          properties: Present {
+            value: SheetsSheetPropertiesRead {
+              sheetId: Present { value: sheet_id },
+              title: Present { value: title },
+              index: Present { value: 0 },
+              gridProperties: none,
+            }
+          },
+          data: none,
+          conditionalFormats: none,
+        },
+      ]
+    },
+  }
+}
+
+fn mint_a_located_tab_from_an_authored_classification(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding {
+  review_tab_standing_from_classification(
+    spreadsheet_id: spreadsheet_id,
+    classified: ClassifiedExactlyOne {
+      candidate: ReviewTabCandidate { sheet_id: 0, title: "Sheet1" as NonEmptyStr, index: 0 }
+    },
+  )
+}
+
+fn mint_a_located_tab_through_the_witness_wrapper() -> ReviewTabStanding {
+  located_tab_for_witness(sheet_id: 0, title: "Sheet1")
+}
+
+fn mint_a_located_tab_from_an_authored_ok_outcome(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding {
+  review_tab_standing_of_outcome(
+    spreadsheet_id: spreadsheet_id,
+    outcome: RestOk,
+    read: authored_single_tab_response(sheet_id: 0, title: "Sheet1"),
+  )
+}
+
+// (e) THE FORMAT EFFECTS, REACHED WITHOUT A LOCATED TAB AT ALL. Each batchUpdate function takes a
+// request record, and while those records were ordinary this module could author one and format an
+// arbitrary tab of an arbitrary workbook -- no LocatedReviewTab, no validated schema, no converge.
+// The production entry required a located tab; the effects did not, which is the same
+// admitted-edge-does-not-confine-a-value class one layer out from the carrier. Every record is now
+// sole_constructor with its only mints requiring a LocatedReviewTab, so each literal below refuses
+// at the RECORD rather than at the callee -- a stronger closure than sealing the five functions,
+// because an unconstructible argument cannot reach them by any route, named or unnamed.
+fn forge_a_freeze_of_an_arbitrary_tab() -> FormatStepOutcome uses net: Network {
+  freeze_header(
+    q: FreezeRowsRequest { spreadsheet_id: "someone-elses-workbook", sheet_id: 7, frozen_row_count: 1 }
+  )
+}
+
+fn forge_a_header_band_on_an_arbitrary_tab() -> FormatStepOutcome uses net: Network {
+  format_header_band(
+    q: HeaderBandRequest {
+      spreadsheet_id: "someone-elses-workbook", sheet_id: 7,
+      start_row: 0, end_row: 1, start_col: 0, end_col: 17,
+    }
+  )
+}
+
+fn forge_a_standing_rule_on_an_arbitrary_tab() -> FormatStepOutcome uses net: Network {
+  color_standing(
+    q: StandingRuleRequest {
+      spreadsheet_id: "someone-elses-workbook", sheet_id: 7,
+      start_row: 1, start_col: 3, end_col: 4, match_text: "Opportunity", rule_index: 0,
+    },
+    color: standing_admitted_color(),
+  )
+}
+
+fn forge_every_mutation_from_an_authored_plan(
+  freeze: FreezeRowsRequest,
+  header: HeaderBandRequest,
+  rule: StandingRuleRequest,
+) -> FormatReport uses net: Network {
+  format_review_sheet(
+    plan: FormatRequestPlan {
+      freeze: freeze, header: header, opportunity: rule, arbitrage: rule,
+      incompatible: rule, required: rule, replay: rule,
+    }
+  )
+}

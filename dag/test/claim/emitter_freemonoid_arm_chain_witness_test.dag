@@ -1,0 +1,142 @@
+module test.claim.emitter_freemonoid_arm_chain_witness_test
+
+// PERMANENT REGRESSION CONTROL for the FreeMonoid match lowering in v1.compiler.emit_rust
+// (emit_native_freemonoid_match / emit_native_freemonoid_tco_match and the fm_* analysis).
+//
+// THE DEFECT. The lowering asked which arm mentions `Empty` and which mentions `Cons`, kept the
+// FIRST answer to each, and emitted `if __fm.is_empty() { A } else { B }`. Its admission predicate
+// established only that the SCRUTINEE resolves to FreeMonoid, never that the ARMS fit a two-way
+// split. So a refutable field sub-pattern degraded to a wildcard, every arm after the first `Cons`
+// arm was discarded, and an arm guard was dropped outright. v2.std.algebra `list_init` emitted as
+// `if __fm.is_empty() { vec![] } else { vec![] }` -- one function, every input answered `[]`.
+//
+// WHY THIS ROW EXISTS AT ALL, because the repair's own PR argued it could not. The PR body and an
+// earlier revision of the failure-mode row claimed the discriminating evidence was unavailable to
+// the enrolled floor "because every claim it runs is interpreted". That is true of the defect's
+// CONSEQUENCE -- a miscompiled downstream binary answering wrongly at runtime -- and FALSE of the
+// repair's own subject. `emit_native_freemonoid_match` is a pure String fold, so its output is
+// decidable by an interpreted claim over a fixture handed to the compiler, which is exactly what
+// DESIGN section 4b directs: a state unrepresentable in the accepted corpus may still be
+// representable as SOURCE HANDED TO THE COMPILER BY A FIXTURE, and if the refusal is authorable
+// there, the evidence is enrollable there and declining it is specification-without-execution.
+// Reported by review 69861 on gunbc#12026. The mistake was a SUBJECT CONFLATION: the harder
+// question (does the emitted binary compute the right list) was used to excuse not asking the
+// easy one (does the emitter emit the right arms), and that parked an available climb behind a
+// capability that does not need to exist.
+//
+// WHAT THESE ROWS DO NOT ESTABLISH. They assert the EMITTED TEXT, not the runtime answer. The
+// end-to-end behavioural evidence -- the emitted binary returning [1,2] for list_init([1,2,3]) --
+// was measured on gunbc#12026 against the real emitted crate and is NOT reproduced here, because
+// no enrolled claim executes emitted code. That remains the differential oracle's subject.
+
+// THE DISCRIMINATING RED. Three arms where the middle one is a NESTED constructor in a field
+// position. Pre-repair this emitted a two-way split: no length test, and the third arm's body
+// absent entirely. `__fm.len() == 1` is the narrowest spelling only the repaired chain produces.
+//
+// THE OTHER TWO INCLUDES PIN THE THIRD ARM, AND THE FIRST ATTEMPT AT THAT WAS A DECORATION. This
+// row originally asserted `drop_last(` for that job. It CANNOT GO RED: `drop_last` is the
+// fixture's own function, so the emitted module carries `pub fn drop_last(` however the match
+// lowers, and compile_dag_rust_emit_check is a substring read over emitted text with no rustc
+// step. Worse, the sentence here named `list_tail` as the pin -- a symbol that appears nowhere in
+// this file -- so the row's stated coverage argument cited a wall that was never built while the
+// assertion standing in its place carried no information. DESIGN section 4b names exactly this:
+// permanently green by construction, and worse than absent because it will be cited as coverage.
+// It was, here and in the PR body. Found by review 70019.
+//
+// The gap it left is the one that matters: a lowering that kept arms one and two and dropped arm
+// THREE would emit `__fm.len() == 1`, carry `pub fn drop_last(`, and pass -- which is the original
+// defect in narrower form, and the exact shape this row exists to catch.
+//
+// The replacements are READ OFF THE EMITTED ARTIFACT rather than predicted, which is the step whose
+// absence produced the decoration. Arm three is the only arm here that binds anything, so
+// `Rc::new(__fm.skip(1))` is its tail binding and `drop_last(t.clone())` is its body -- the
+// recursive call ON that binding. Neither is producible by the definition line, which emits
+// `pub fn drop_last(xs: Rc<Vec<i64>>)`.
+//
+// THE TWO PINS ARE NOT EQUALLY STRONG AND THE WEAKER ONE IS NAMED AS SUCH. `Rc::new(__fm.skip(1))`
+// is the GENERIC tail-binding spelling, and the pre-repair emitter emitted it too -- 10 sites in
+// v2_std_algebra alone -- so it discriminates for THIS fixture rather than in general: the first
+// Cons arm's tail is a nested `Empty` pattern, which the old binding reader degraded to `_`, so
+// that lowering bound nothing and emitted no skip. `drop_last(t.clone())` is the unambiguous one,
+// because only arm three's body carries a recursive call on a bound tail.
+//
+// RED-ABILITY IS MEASURED, NOT ARGUED. v2.std.algebra `list_init` carries this fixture's EXACT arm
+// shape, and its retained pre-repair emission is
+// `{ let __fm = xs.clone(); if __fm.is_empty() { Rc::new(vec![]) } else { Rc::new(vec![]) } }`
+// with `skip(1)` appearing 0 times and `list_init(t` appearing 0 times. So both pins are absent
+// from the broken lowering of this shape, and both are present in the repaired emission of the
+// fixture itself. That is the check the original include never received.
+test fn nested_field_arm_and_its_successor_both_reach_the_emitted_chain() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fmchain\n\nimport std.types { List, Int }\n\nfn drop_last(xs: List<Int>) -> List<Int> {\n  match xs {\n    Empty => Empty\n    Cons { head: _, tail: Empty } => Empty\n    Cons { head: h, tail: t } => Cons { head: h, tail: drop_last(xs: t) }\n  }\n}\n",
+    "src/fmchain.rs",
+    ["__fm.len() == 1", "Rc::new(__fm.skip(1))", "drop_last(t.clone())"],
+    []
+  )
+}
+
+// POSITIVE CONTROL. The ordinary two-arm shape must still lower to the native split and must NOT
+// refuse. Without this row the refusal arm below is satisfiable by refusing everything, which
+// would pass every must-contain-compile_error assertion while breaking all real lowering.
+test fn the_ordinary_two_arm_shape_still_lowers_natively() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fmplain\n\nimport std.types { List, Int }\n\nfn head_or_zero(xs: List<Int>) -> Int {\n  match xs {\n    Empty => 0\n    Cons { head: h, tail: _ } => h\n  }\n}\n",
+    "src/fmplain.rs",
+    ["__fm.is_empty()"],
+    ["compile_error!"]
+  )
+}
+
+// REFUSAL CONTROL ONE: a refutable HEAD sub-pattern asks a question about the ELEMENT, which this
+// lowering does not answer. Pre-repair it silently degraded to a wildcard and matched every
+// non-empty list. It must now refuse, located, rather than mis-lower.
+test fn a_refutable_head_sub_pattern_refuses_rather_than_becoming_a_wildcard() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fmhead\n\nimport std.types { List, Int }\n\ntype Box\n  = Zero\n  | One { v: Int }\n\nfn first_one(xs: List<Box>) -> Int {\n  match xs {\n    Empty => 0\n    Cons { head: One { v: n }, tail: _ } => n\n    Cons { head: _, tail: _ } => 0\n  }\n}\n",
+    "src/fmhead.rs",
+    ["compile_error!", "will not lower"],
+    ["__fm.is_empty()"]
+  )
+}
+
+// REFUSAL CONTROL TWO: an arm GUARD was dropped outright by the old lowering -- no branch body ever
+// read arm_guard -- so a guarded arm silently ran unguarded. This is the third consequence of the
+// class, and it appeared in neither of the two reports that found the other two.
+test fn a_guarded_arm_refuses_rather_than_running_unguarded() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fmguard\n\nimport std.types { List, Int }\n\nfn big_head(xs: List<Int>) -> Int {\n  match xs {\n    Empty => 0\n    Cons { head: h, tail: _ } if h > 10 => h\n    Cons { head: _, tail: _ } => 0\n  }\n}\n",
+    "src/fmguard.rs",
+    ["compile_error!", "will not lower"],
+    ["__fm.is_empty()"]
+  )
+}
+
+// THE SECOND SPECIMEN FROM THE ASSIGNMENT, ENROLLED RATHER THAN READ ONCE. v2.lens.cost
+// copied_port_derivation carries `Empty => Absent | Cons { head: only, tail: Empty } => Present |
+// _ => Absent`, and pre-repair it emitted `if is_empty { None } else { Some(first) }` -- which
+// answers Present for a list of ANY non-zero length, so it reported `exactly one` for a
+// three-element list. That is the same class as list_init with a different consequence: one
+// silently truncates a list, the other silently widens a cardinality claim, which is what makes
+// this a defect in the RULE rather than at either site.
+//
+// THE DISCRIMINATION IS THE CHAIN, so the three-way answer is readable in the emitted text: the
+// arm conditions are exactly is_empty, len() == 1, and else, so length 0 answers Absent, length 1
+// answers Present, and length 3 falls past both and answers Absent. A two-way split cannot express
+// that, which is why the pre-repair emission cannot distinguish 1 from 3 at all.
+//
+// INHABITANCE, so this fixture is not the only thing standing: the REAL site is in the emitted
+// 00_compile closure as v2_lens_cost_copied_port_derivation
+// derive_copied_port_index_from_arrow, and its repaired emission is
+// `if __fm.is_empty() { None } else if __fm.len() == 1 { let only = (*__fm)[0].clone();
+// Some(only.clone()) } else { None }` against a retained pre-repair emission of
+// `if __fm.is_empty() { None } else { let only = (*__fm)[0].clone(); Some(only.clone()) }`.
+// The fixture supplies the shape; the real site attests the producer emits it.
+test fn the_one_element_arm_answers_only_for_length_one() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fmcard\n\nimport std.types { List, Int }\n\nfn exactly_one(xs: List<Int>) -> Int? {\n  match xs {\n    Empty => none\n    Cons { head: only, tail: Empty } => Present { value: only }\n    _ => none\n  }\n}\n",
+    "src/fmcard.rs",
+    ["__fm.len() == 1", "(*__fm)[0].clone()"],
+    []
+  )
+}
+

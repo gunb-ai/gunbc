@@ -101,16 +101,32 @@ pub fn semver_compare_identifiers(
                 if ((b.clone().len() as i64) == 0) {
                     break Ordering::Greater;
                 } else {
-                    match semver_compare_identifier(a.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of semver_compare_identifier (empty Optional at runtime)"), b.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 1 of semver_compare_identifier (empty Optional at runtime)")) {
-    Ordering::Equal => { {
-                        let __tco_0 = Rc::new(a.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(b.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-__tco_loop_a = __tco_0;
-__tco_loop_b = __tco_1;
-continue;
-} },
-    other => { break other.clone(); },
-}
+                    match a.clone().first().cloned() {
+                        Some(ah) => match b.clone().first().cloned() {
+                            Some(bh) => match semver_compare_identifier(ah.clone(), bh.clone()) {
+                                Ordering::Equal => {
+                                    let __tco_0 = Rc::new(
+                                        a.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    let __tco_1 = Rc::new(
+                                        b.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    __tco_loop_a = __tco_0;
+                                    __tco_loop_b = __tco_1;
+                                    continue;
+                                }
+                                other => {
+                                    break other.clone();
+                                }
+                            },
+                            std::option::Option::None => {
+                                break Ordering::Greater;
+                            }
+                        },
+                        std::option::Option::None => {
+                            break Ordering::Less;
+                        }
+                    }
                 }
             }
         }

@@ -3,25 +3,6 @@ module gunbc.demo.semantic_system_readout
 import std.types { String, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.test.claim.translate_underived_refusal { cross_language_compile_python_to_typescript_round_trip_holds }
-import v2.test.claim.verilog_interlock_emission_test {
-  w_interlock_emits_expected_bytes_through_the_generic_fold,
-  w_expression_perturbation_changes_the_bytes,
-  w_token_spine_reads_back_to_the_same_emitted_node,
-}
-import v2.test.long.accumulator_copy_compile_gate {
-  gate_red_quadratic_rejects,
-  gate_green_identity_accepts_clean,
-  gate_refusal_ledger_counted_not_gating,
-}
-import test.claim.compute_board_admission_witness { w_a_coherent_fixture_is_admitted }
-import test.claim.compute_board_simulation_receipt_witness {
-  w_the_executed_verilog_is_what_the_product_emits_today,
-  w_the_executed_deck_is_what_the_product_emits_today,
-  w_the_placed_constraints_are_what_the_product_emits_today,
-  w_every_recorded_run_was_accepted,
-  w_every_recorded_implementation_run_was_accepted,
-}
 import product.compute_board.emission_entry {
   BoardEmission,
   BoardEmitted,
@@ -150,22 +131,16 @@ fn workflow_line() -> ReadoutLine {
   workflow_line_for(observation: observe_generated_artifact_with(a: a, rows: rows))
 }
 
+// THE READOUT CALLS PRODUCERS, NEVER CLAIMS. It once read thirteen claim functions from five witness
+// modules for their verdicts -- the layer inversion DESIGN section 3 names with this module as its
+// receipt -- and the test-reference wall (v1.compiler.compile test_reference_diagnostics) now refuses
+// that reach outright. Those capabilities are established by their own claims on the floor, so the
+// readout keeps only the lines a production call answers.
 fn readout_sections() -> List<ReadoutSection> {
   [
     ReadoutSection {
-      title: "BOUNDED LANGUAGE ADAPTER",
-      lines: [
-        live(text: "Python add parsed and emitted byte-exactly as TypeScript", holds: cross_language_compile_python_to_typescript_round_trip_holds()),
-        note(text: "whole-function grammar-row selection over one add profile; compositional ingestion not claimed"),
-      ],
-    },
-    ReadoutSection {
       title: "SEMANTIC BOARD ARTICLE",
       lines: [
-        live(text: "board article admitted", holds: w_a_coherent_fixture_is_admitted()),
-        live(text: "Verilog emitted through the generic grammar-relation fold", holds: w_interlock_emits_expected_bytes_through_the_generic_fold()),
-        live(text: "perturbing the modeled expression changes the emitted circuit", holds: w_expression_perturbation_changes_the_bytes()),
-        live(text: "Verilog token spine reads back to the same emitted node", holds: w_token_spine_reads_back_to_the_same_emitted_node()),
         live(text: "Verilog module emitted from the article", holds: emitted(e: emit_verilog())),
         live(text: "SPICE circuit emitted from the article", holds: emitted(e: emit_spice())),
         live(text: "ngspice run deck emitted from the article", holds: emitted(e: emit_ngspice_run())),
@@ -174,24 +149,9 @@ fn readout_sections() -> List<ReadoutSection> {
       ],
     },
     ReadoutSection {
-      title: "ENFORCEMENT BEFORE REALIZATION",
-      lines: [
-        live(text: "clean fold admitted with no diagnostics", holds: gate_green_identity_accepts_clean()),
-        live(text: "copied-accumulator quadratic fold refused", holds: gate_red_quadratic_rejects()),
-        live(text: "unregistered combiner admitted but ledgered as unclassified", holds: gate_refusal_ledger_counted_not_gating()),
-      ],
-    },
-    ReadoutSection {
       title: "DOGFOODING",
       lines: [
         workflow_line(),
-      ],
-    },
-    ReadoutSection {
-      title: "EXTERNAL TOOL RECEIPTS (recorded runs, not rerun here)",
-      lines: [
-        recorded(text: "Icarus and ngspice runs accepted; their inputs are today's Verilog and deck", joined: w_every_recorded_run_was_accepted() && w_the_executed_verilog_is_what_the_product_emits_today() && w_the_executed_deck_is_what_the_product_emits_today()),
-        recorded(text: "Yosys / nextpnr / icepack runs accepted; their pin input is today's constraints", joined: w_every_recorded_implementation_run_was_accepted() && w_the_placed_constraints_are_what_the_product_emits_today()),
       ],
     },
     ReadoutSection {

@@ -1,6 +1,6 @@
 module test.claim.branded_list_first_optional_witness
 
-import std.types { List, String }
+import std.types { List, String, NonEmptyStr }
 import std.content_hash {
   ContentHash,
   content_hash_of_value,

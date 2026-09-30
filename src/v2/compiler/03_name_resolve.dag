@@ -3,14 +3,20 @@ module v2.compiler.name_resolve
 import v2.std.language_model { LanguageModel }
 
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_binding_sources }
+import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.resolve {
   DeclaredBinding,
   Namespace,
   namespace_bindings_augment_from_module_atoms,
+  ObservationIncomplete,
+  ResolveNodeWalk,
+  ResolveWalkRefused,
   ResolvedTree,
-  resolve_with_namespace_policy,
+  resolved_tree_outcome,
+  resolve_walk_prefix_pending,
+  resolve_walk_with_namespace_policy,
   try_edge_declared_binding
 }
 import v2.std.resolution_policy {
@@ -21,13 +27,12 @@ import v2.std.resolution_policy {
 }
 import v2.extdeps.languages.dag {
   dag_surface_module_header_metadata_edge,
-  namespace_graft_already_grafted,
-  namespace_graft_spine_segment_edge_optional,
   qualified_name_from_module_node
 }
 import v2.compiler.namespace_graft {
-  namespace_graft_strip_provenance_marker
+  namespace_graft_module_body_root
 }
+import v2.compiler.parse { parse_tree_projection_edge }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list }
 import v2.std.collection { Absent, Map, Present, List, PointwisePower, empty_map, map_get, map_lookup, map_insert, optional_absent, optional_present }
@@ -47,7 +52,6 @@ import v2.std.diagnostic {
   rejected_with_pending,
   textual_whole_file_diagnostic
 }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.node {
@@ -58,7 +62,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   fold_node_topdown,
-  well_formed
+  well_formed,
+  symbol_intern_lexeme,
 }
 import v2.std.passing_candidate_fold {
   ManyPassingCandidates,
@@ -101,9 +106,12 @@ type Admission {
 // Shared by every subject admitted against the same language and root collection.
 // The Outcome stays with the caller so validation diagnostics retain their original
 // per-subject refusal boundary when the context is constructed before admission.
+// `test_code` is every root's test-marker channel keyed by the paths resolution binds to, built in
+// the same pass that names the roots, so no root can be resolvable while its markers are unread.
 type ValidatedModuleRoots {
   roots: FreeMonoid<NormalizedTree>
   by_name: Map<QualifiedName, NormalizedTree>
+  test_code: TestCodeIndex
 }
 
 type ResolutionContext {
@@ -125,7 +133,7 @@ fn resolution_context(
           roots: validated_roots,
           symbol_index: symbol_index_fill_module_roots(
             index: empty_symbol_index(),
-            roots: normalized_tree_roots_to_nodes(roots: validated_roots.roots)
+            roots: normalized_tree_roots_to_binding_sources(roots: validated_roots.roots)
           )
         },
         diagnostics: d
@@ -146,7 +154,7 @@ type AdmissionState
   | AdmissionRejected { diagnostics: NonEmptyDiagnostics }
 
 type ModuleRootValidateState
-  = ModuleRootsValid { seen: Map<QualifiedName, NormalizedTree>, diagnostics: Diagnostics }
+  = ModuleRootsValid { seen: Map<QualifiedName, NormalizedTree>, test_code: TestCodeIndex, diagnostics: Diagnostics }
   | ModuleRootsDuplicate { diagnostics: Diagnostics }
   | ModuleRootsProjectionRejected { diagnostics: NonEmptyDiagnostics }
 
@@ -224,14 +232,14 @@ fn admit_export_symbol(
 fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<ValidatedModuleRoots> {
   match fold_list(
     xs: roots,
-    empty: ModuleRootsValid { seen: empty_map(), diagnostics: v2.std.diagnostic.None },
+    empty: ModuleRootsValid { seen: empty_map(), test_code: test_code_index_empty(), diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, root) {
       match acc {
         ModuleRootsDuplicate { diagnostics: d } =>
           ModuleRootsDuplicate { diagnostics: d }
         ModuleRootsProjectionRejected { diagnostics: d } =>
           ModuleRootsProjectionRejected { diagnostics: d }
-        ModuleRootsValid { seen: prior, diagnostics: acc_diag } =>
+        ModuleRootsValid { seen: prior, test_code: prior_test_code, diagnostics: acc_diag } =>
           if well_formed(n: root.root) {
             match qualified_name_from_module_node(root: root.root) {
               Rejected { diagnostics: d } =>
@@ -244,6 +252,11 @@ fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<Validated
                   Absent =>
                     ModuleRootsValid {
                       seen: map_insert(m: prior, key: name, value: root),
+                      test_code: test_code_index_add_module(
+                        index: prior_test_code,
+                        module_qn: name,
+                        channel: root.test_markers
+                      ),
                       diagnostics: merged_diag
                     }
                   Present { value: _ } =>
@@ -261,8 +274,8 @@ fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<Validated
       }
     }
   ) {
-    ModuleRootsValid { seen: by_name, diagnostics: d } =>
-      Accepted { value: ValidatedModuleRoots { roots: roots, by_name: by_name }, diagnostics: d }
+    ModuleRootsValid { seen: by_name, test_code: test_code, diagnostics: d } =>
+      Accepted { value: ValidatedModuleRoots { roots: roots, by_name: by_name, test_code: test_code }, diagnostics: d }
     ModuleRootsDuplicate { diagnostics: d } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -349,10 +362,15 @@ fn module_root_find(
   }
 }
 
+// Parse-projection edges (identity / captured projections, sequence spines) are
+// machinery, not exports -- the same rule symbol_index_fill_containment_edge
+// applies. The body's identity projection reaches this fold as a direct child.
 fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
   match try_edge_declared_binding(e: e) {
     Present { value: b } =>
       if dag_surface_module_header_metadata_edge(name: b.name) {
+        optional_absent()
+      } else if parse_tree_projection_edge(name: b.name) {
         optional_absent()
       } else {
         optional_present(value: b)
@@ -410,30 +428,12 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
   }
 }
 
-fn admit_named_exports_body_root(root: Node) -> Node {
-  if namespace_graft_already_grafted(root: root) {
-    admit_named_exports_descend_spine(
-      node: namespace_graft_strip_provenance_marker(root: root)
-    )
-  } else {
-    root
-  }
-}
-
-fn admit_named_exports_descend_spine(node: Node) -> Node {
-  match namespace_graft_spine_segment_edge_optional(node: node) {
-    Present { value: edge } =>
-      admit_named_exports_descend_spine(node: edge.target)
-    Absent => node
-  }
-}
-
 fn admit_named_exports(
   root: Node,
   origin: QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
-  let working = admit_named_exports_body_root(root: root)
+  let working = namespace_graft_module_body_root(root: root)
   match working.kind {
     TypeNode { connective: Conj } =>
       match fold_node_topdown(
@@ -560,7 +560,10 @@ fn admission_namespace_base(canonical_symbols: PointwisePower<Symbol>) -> Namesp
     bindings: empty_map(),
     canonical_symbols: canonical_symbols,
     symbol_index: empty_symbol_index(),
-    module_qn: Empty
+    module_qn: Empty,
+    test_code: test_code_index_empty(),
+    declared_in: Empty,
+    imported_origins: empty_map()
   }
 }
 
@@ -600,7 +603,9 @@ fn admitted_subject_from_bindings(
   base: Namespace,
   subject_module_root: NormalizedTree,
   symbol_index: SymbolIndex,
-  module_qn: QualifiedName
+  module_qn: QualifiedName,
+  origins: Map<Symbol, QualifiedName>,
+  test_code: TestCodeIndex
 ) -> AdmittedSubject {
   AdmittedSubject {
     namespace: Namespace {
@@ -610,7 +615,10 @@ fn admitted_subject_from_bindings(
       ),
       canonical_symbols: base.canonical_symbols,
       symbol_index: symbol_index,
-      module_qn: module_qn
+      module_qn: module_qn,
+      test_code: test_code,
+      declared_in: module_qn,
+      imported_origins: origins
     },
     subject_root: subject_module_root
   }
@@ -675,14 +683,16 @@ fn namespace_for_subject_root(
             Rejected {
               diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
             }
-          AdmissionAccepted { bindings: b, origins: _ } =>
+          AdmissionAccepted { bindings: b, origins: o } =>
             Accepted {
               value: admitted_subject_from_bindings(
                 bindings: b,
                 base: base,
                 subject_module_root: subject_module_root,
                 symbol_index: shared.symbol_index,
-                module_qn: admission.subject.name
+                module_qn: admission.subject.name,
+                origins: o,
+                test_code: shared.roots.test_code
               ),
               diagnostics: validate_diag
             }
@@ -696,14 +706,16 @@ fn namespace_for_subject_root(
           index: index,
           active_roots: active_roots
         ) {
-          AdmissionAccepted { bindings: b, origins: _ } =>
+          AdmissionAccepted { bindings: b, origins: o } =>
             Accepted {
               value: admitted_subject_from_bindings(
                 bindings: b,
                 base: base,
                 subject_module_root: subject_module_root,
                 symbol_index: shared.symbol_index,
-                module_qn: admission.subject.name
+                module_qn: admission.subject.name,
+                origins: o,
+                test_code: shared.roots.test_code
               ),
               diagnostics: validate_diag
             }
@@ -740,6 +752,8 @@ fn resolve_with_admission_policy(
   )
 }
 
+// The admitted namespace is built over the context's own index (namespace_for_subject_in_context),
+// so that index is the one this resolution consulted. A refused context resolved nothing.
 fn resolve_with_admission_context_policy(
   context: Outcome<ResolutionContext>,
   admission: Admission,
@@ -750,6 +764,38 @@ fn resolve_with_admission_context_policy(
   match context {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: shared, diagnostics: _ } =>
+      resolved_tree_outcome(
+        w: resolve_walk_with_admission_context_policy(
+          context: context,
+          admission: admission,
+          index: index,
+          active_roots: active_roots,
+          policy: policy
+        ),
+        symbol_index: shared.symbol_index
+      )
+  }
+}
+
+// THE SUBJECT'S WHOLE RESOLUTION OBSERVATION, every independent failure chain in walk order. The
+// Outcome entry above is its projection and answers what it always answered. A context or
+// namespace refusal means the walk was never entered, so none of the subject's sites were observed:
+// that is recorded as ObservationIncomplete, never as a complete observation holding one refusal.
+fn resolve_walk_with_admission_context_policy(
+  context: Outcome<ResolutionContext>,
+  admission: Admission,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
+) -> ResolveNodeWalk {
+  match context {
+    Rejected { diagnostics: r } =>
+      ResolveWalkRefused {
+        first: r,
+        rest: [],
+        observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+      }
+    Accepted { value: shared, diagnostics: _ } =>
       match namespace_for_subject_in_context(
         context: context,
         admission: admission,
@@ -758,23 +804,21 @@ fn resolve_with_admission_context_policy(
         policy: policy
       ) {
         Accepted { value: admitted, diagnostics: namespace_diag } =>
-          match resolve_with_namespace_policy(
-            tree: admitted.subject_root,
-            namespace: admitted.namespace,
-            lm: shared.lm,
-            policy: policy
-          ) {
-            Accepted { value: resolved, diagnostics: resolve_diag } =>
-              Accepted {
-                value: resolved,
-                diagnostics: diagnostics_merge(outer: namespace_diag, inner: resolve_diag)
-              }
-            Rejected { diagnostics: r } =>
-              Rejected {
-                diagnostics: rejected_with_pending(pending: namespace_diag, rejected: r)
-              }
+          resolve_walk_prefix_pending(
+            pending: namespace_diag,
+            w: resolve_walk_with_namespace_policy(
+              tree: admitted.subject_root,
+              namespace: admitted.namespace,
+              lm: shared.lm,
+              policy: policy
+            )
+          )
+        Rejected { diagnostics: r } =>
+          ResolveWalkRefused {
+            first: r,
+            rest: [],
+            observation: ObservationIncomplete { reason: ^resolve_observation_namespace_refused }
           }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
   }
 }

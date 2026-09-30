@@ -1,20 +1,31 @@
-// THE HOST REALIZATION OF `gunbc test <label>`, AND IT IS A HAND MIRROR OF A `.dag` AUTHORITY.
+// THE HOST REALIZATION OF `gunbc test <target-pattern>`, AND IT IS A HAND MIRROR OF A `.dag`
+// AUTHORITY.
 //
-// The model is `gunbc.target_invocation` (generic route, termination vocabulary),
-// `gunbc.instrument_targets` (live target and binding rows, the differential's classifier and
-// rendering) and `extdeps.bazel.label` (the label grammar mirrored here). None is in the v1
-// seed's emitted closure — `src/gunbc_cli_dispatch_surface.rs` is the only `gunbc.*` mirror the
-// emitter produces — so this file is hand-written beside the carrier, as `required_regen_host.rs`
-// mirrors `v2.workflow.required_regen`. The seam is therefore MITIGATABLE, not structurally
-// guaranteed: the two can drift until the seam is emitted rather than authored. The obligation
-// is enrolled in `gunbc.target_invocation_seed_growth`.
+// The model is `gunbc.target_invocation` (operand admission, generic exact-label route,
+// termination vocabulary), `gunbc.instrument_targets` (live target and binding rows, the
+// differential's classifier and rendering), `extdeps.bazel.label` (the label grammar mirrored
+// here) and `extdeps.bazel.target_pattern` (the pattern grammar mirrored here). The SET forms
+// (`//pkg:all`, `//pkg:*`, `//pkg/...`) this file admits are NOT executed anywhere yet: they are
+// refused with status 2 (`test_operand_set_form_refusal_rendered`, mirroring
+// `gunbc.target_invocation`), because their only admissible executor is the native test route and
+// no interpreter delegation may stand in for it. None of the
+// modeled modules is in the v1 seed's emitted closure — `src/gunbc_cli_dispatch_surface.rs` is
+// the only `gunbc.*` mirror the emitter produces — so this file is hand-written beside the
+// carrier, as `required_regen_host.rs` mirrors `v2.workflow.required_regen`. The seam is
+// therefore MITIGATABLE, not structurally guaranteed: the two can drift until the seam is
+// emitted rather than authored. The obligation is enrolled in
+// `gunbc.target_invocation_seed_growth`.
 //
-// WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit label -> build the registry
-// -> exact lookup -> invoke the bound producer -> render its native standing. No per-instrument
-// arm on that route, and none may be added; a second instrument is a row in `instrument_registry`
-// plus one `Producer` arm in `run_producer` — the peripheral realization dispatch DESIGN section 3
-// keeps out of the interface. Deliberately NOT here: any consultation of `//:required` aggregate
-// policy or the Blaze status export — both refuse instrument producers by design.
+// WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit pattern -> the operand's
+// CONTAINMENT in the native route's universe decides the executor. Inside it, the native test
+// route adjudicates that pattern through the emitted compiler. Outside it, a single target builds
+// the registry, exact lookup, invoke the bound producer, render its native standing; a set form
+// has no executor and is refused with status 2. No per-instrument arm on that route, and none
+// may be added; a second instrument is a row in `instrument_registry` plus one `Producer` arm in
+// `run_producer` — the peripheral realization dispatch DESIGN section 3 keeps out of the
+// interface. Deliberately NOT here: any consultation of `//:required` aggregate policy or the
+// Blaze status export — both refuse instrument producers by design — and any re-implementation
+// of witness selection, which is `gunbc.compute.test_selection`'s to own.
 
 use crate::cli_run;
 
@@ -33,36 +44,6 @@ pub enum LabelRefusal {
     DotSegment(String),
     TargetPattern(String),
     TargetNameContainsSlash(String),
-}
-
-/// Rendering is a FREE FUNCTION, not an inherent method: `std.decl_ref` `DeclarationRef` names a
-/// declaration or a named field but has no spelling for an impl method, so an inherent method
-/// would be uncitable in the seed-growth roster that must enumerate every item this file adds.
-fn label_refusal_rendered(cause: &LabelRefusal) -> String {
-    {
-        match cause {
-            LabelRefusal::RepositoryQualifiedLabel(t) => {
-                format!("repository-qualified labels are outside the admitted subset: {t}")
-            }
-            LabelRefusal::MissingRepositoryRootPrefix(t) => {
-                format!("label is not absolute (expected a leading `//`): {t}")
-            }
-            LabelRefusal::MultipleColonSeparators(t) => {
-                format!("label carries more than one `:` separator: {t}")
-            }
-            LabelRefusal::EmptyTargetName(t) => format!("label names no target: {t}"),
-            LabelRefusal::EmptyPackageSegment(t) => {
-                format!("label carries an empty package segment: {t}")
-            }
-            LabelRefusal::DotSegment(s) => format!("label carries a dot package segment: {s}"),
-            LabelRefusal::TargetPattern(p) => format!(
-                "`{p}` is a target PATTERN and denotes a set; `gunbc test` names exactly one target"
-            ),
-            LabelRefusal::TargetNameContainsSlash(n) => {
-                format!("target name contains `/`, which this subset does not admit: {n}")
-            }
-        }
-    }
 }
 
 /// A label in the main repository: a package (the root package is its own state, the empty
@@ -143,18 +124,152 @@ pub fn parse_label(text: &str) -> Result<Label, LabelRefusal> {
     })
 }
 
+/// `extdeps.bazel.target_pattern` `TargetPattern`, mirrored: a pattern denotes a SET, a label one
+/// target. The single-target arm delegates to the label grammar above so a target name is spelled
+/// and refused in exactly one place on this side of the seam as well.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetPattern {
+    SingleTarget(Label),
+    PackageTargets(Vec<String>),
+    SubtreeTargets(Vec<String>),
+}
+
+/// `extdeps.bazel.target_pattern` `TargetPatternRefusal`, mirrored arm for arm: the remedies
+/// differ (make it absolute; fix the package the label grammar refuses; fix the single target the
+/// label grammar refuses; `:all-targets` has no meaning over a corpus of test modules), so the
+/// causes are not collapsible into one malformed-operand bit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetPatternRefusal {
+    PatternNotAbsolute(String),
+    PatternPackageRefused(LabelRefusal),
+    PatternLabelRefused(LabelRefusal),
+    PatternAllTargetsUnsupported(String),
+}
+
+/// `target_pattern_refusal_text`, mirrored.
+/// Mirrors `extdeps.bazel.label` `label_refusal_text`: each refusal renders its located cause.
+fn label_refusal_text(cause: &LabelRefusal) -> String {
+    match cause {
+        LabelRefusal::RepositoryQualifiedLabel(t) => {
+            format!("repository-qualified labels are outside the admitted subset: {t}")
+        }
+        LabelRefusal::MissingRepositoryRootPrefix(t) => {
+            format!("label is not absolute (expected a leading `//`): {t}")
+        }
+        LabelRefusal::MultipleColonSeparators(t) => {
+            format!("label carries more than one `:` separator: {t}")
+        }
+        LabelRefusal::EmptyTargetName(t) => format!("label names no target: {t}"),
+        LabelRefusal::EmptyPackageSegment(t) => {
+            format!("label carries an empty package segment: {t}")
+        }
+        LabelRefusal::DotSegment(s) => format!("label carries a dot package segment: {s}"),
+        LabelRefusal::TargetPattern(p) => {
+            format!("`{p}` is a target PATTERN where a single target was expected")
+        }
+        LabelRefusal::TargetNameContainsSlash(n) => {
+            format!("target name contains `/`, which this subset does not admit: {n}")
+        }
+    }
+}
+
+fn target_pattern_refusal_text(cause: &TargetPatternRefusal) -> String {
+    match cause {
+        TargetPatternRefusal::PatternNotAbsolute(t) => {
+            format!("target pattern is not absolute (must start with //): {t}")
+        }
+        TargetPatternRefusal::PatternPackageRefused(c) => format!(
+            "target pattern names a package the label grammar refuses: {}",
+            label_refusal_text(c)
+        ),
+        TargetPatternRefusal::PatternLabelRefused(c) => format!(
+            "target pattern names a single target the label grammar refuses: {}",
+            label_refusal_text(c)
+        ),
+        TargetPatternRefusal::PatternAllTargetsUnsupported(t) => {
+            format!(":all-targets has no meaning over a corpus of test modules: {t}")
+        }
+    }
+}
+
+fn parse_pattern_package(package_text: &str) -> Result<Vec<String>, TargetPatternRefusal> {
+    if package_text.is_empty() {
+        Ok(Vec::new())
+    } else {
+        parse_package_segments(package_text).map_err(TargetPatternRefusal::PatternPackageRefused)
+    }
+}
+
+/// `parse_target_pattern`, mirrored. The branch order is the authority's: absolute prefix, the
+/// `:all-targets` exclusion, the subtree suffixes, the package-wide suffixes, and only then the
+/// single-target delegation — a different order would admit or refuse different texts.
+pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRefusal> {
+    if !text.starts_with("//") {
+        return Err(TargetPatternRefusal::PatternNotAbsolute(text.to_string()));
+    }
+    if text.ends_with(":all-targets") {
+        return Err(TargetPatternRefusal::PatternAllTargetsUnsupported(
+            text.to_string(),
+        ));
+    }
+    let body = &text[2..];
+    let subtree_body = if body.ends_with("/...:all") {
+        Some(&body[..body.len() - ":all".len()])
+    } else if body.ends_with("/...:*") {
+        Some(&body[..body.len() - ":*".len()])
+    } else if body.ends_with("/...") || body == "..." {
+        Some(body)
+    } else if body == "...:all" || body == "...:*" {
+        Some("...")
+    } else {
+        None
+    };
+    if let Some(stripped) = subtree_body {
+        let package_text = if stripped == "..." {
+            ""
+        } else {
+            &stripped[..stripped.len() - "/...".len()]
+        };
+        return parse_pattern_package(package_text).map(TargetPattern::SubtreeTargets);
+    }
+    if let Some(stripped) = body
+        .strip_suffix(":all")
+        .or_else(|| body.strip_suffix(":*"))
+    {
+        return parse_pattern_package(stripped).map(TargetPattern::PackageTargets);
+    }
+    parse_label(text)
+        .map(TargetPattern::SingleTarget)
+        .map_err(TargetPatternRefusal::PatternLabelRefused)
+}
+
 /// `gunbc.target_binding` `TargetProducer`, narrowed to the members this seam realizes today.
 /// Adding one is a row in `instrument_registry` and an arm here; it is not a new route.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetProducer {
     SelfHost,
     V2NativeCli,
+    V2NativeFrontier,
+    EmittedCrateWorkspace,
     HeadsReadingDifferential,
     BehavioralReceiptPlan,
     BehavioralReceiptCensus,
     BehavioralReceiptSelftest,
     CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
+    FloorMemoryQualification,
+    PrimitiveEgressCensus,
+    PrimitiveEgressCensusV2,
+    PrimitiveEgressCensusDag,
+    PrimitiveEgressCensusSeed,
+    RequiredLaneResolutionCensus,
+    BareReferenceChannelOutcome,
+    SelfHostBehavioralEquivalence,
+    /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
+    /// shape is a registry row naming its entry, never another variant.
+    NativeClaimProgram {
+        entry: &'static str,
+    },
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -175,6 +290,12 @@ fn self_host_source_roots() -> Vec<String> {
 /// `gunbc.instrument_targets` `v2_native_cli_source_roots`. Which corpus the v2-native CLI's closure
 /// is emitted FROM is this instrument's own fact, on the same rule its siblings follow.
 fn v2_native_cli_source_roots() -> Vec<String> {
+    vec!["dag".to_string(), "src/v2".to_string()]
+}
+
+/// `gunbc.instrument_targets` `emitted_crate_workspace_label`: the closure is emitted from the same
+/// corpus the self-host step emits from, so the two instruments measure one closure two ways.
+fn emitted_crate_workspace_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
 }
 
@@ -209,8 +330,60 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::V2NativeCli,
         ),
         (
+            instrument_label("v2-native-frontier"),
+            TargetProducer::V2NativeFrontier,
+        ),
+        (
+            instrument_label("emitted-crate-workspace"),
+            TargetProducer::EmittedCrateWorkspace,
+        ),
+        (
+            instrument_label("native-crypto-vectors"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_crypto_vectors.dag",
+            },
+        ),
+        (
+            instrument_label("native-app-attest"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_app_attest.dag",
+            },
+        ),
+        (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
+        ),
+        (
+            instrument_label("floor-memory-qualification"),
+            TargetProducer::FloorMemoryQualification,
+        ),
+        (
+            instrument_label("primitive-egress-census"),
+            TargetProducer::PrimitiveEgressCensus,
+        ),
+        (
+            instrument_label("primitive-egress-census-v2"),
+            TargetProducer::PrimitiveEgressCensusV2,
+        ),
+        (
+            instrument_label("primitive-egress-census-dag"),
+            TargetProducer::PrimitiveEgressCensusDag,
+        ),
+        (
+            instrument_label("primitive-egress-census-seed"),
+            TargetProducer::PrimitiveEgressCensusSeed,
+        ),
+        (
+            instrument_label("required-lane-resolution-census"),
+            TargetProducer::RequiredLaneResolutionCensus,
+        ),
+        (
+            instrument_label("bare-reference-channel-outcome"),
+            TargetProducer::BareReferenceChannelOutcome,
+        ),
+        (
+            instrument_label("self-host-behavioral-equivalence"),
+            TargetProducer::SelfHostBehavioralEquivalence,
         ),
     ]
 }
@@ -222,22 +395,22 @@ fn instrument_label(target: &str) -> Label {
     }
 }
 
-/// `gunbc.target_invocation` `TargetInvocationRefusal`, MINUS ONE ARM, deliberately.
+/// `gunbc.target_invocation` refusal vocabulary AT THIS SEAM, narrowed twice, deliberately.
 ///
 /// The model separates a known target with no bound producer from an unknown target because
 /// `gunbc.target_binding` keeps two lists. Here the registry is a list of PAIRS, so a producer-less
 /// target is unwritable (DESIGN section 4b, structural impossibility) and an unconstructible arm
 /// would be decoration read as coverage. If the host ever takes the two populations separately,
 /// the arm returns with the state that makes it reachable.
+///
+/// `OperandNotALabel` is likewise ABSENT since the operand became a target PATTERN: every label
+/// refusal now arrives inside `parse_target_pattern`'s `PatternLabelRefused`, rendered by
+/// `target_pattern_refusal_text`, so the arm has no constructor left. The modeled
+/// `TargetInvocationRefusal` keeps it — `route_target_invocation` remains the exact-label route
+/// the witness-selection half delegates around.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvocationRefusal {
-    OperandNotALabel {
-        operand: String,
-        cause: LabelRefusal,
-    },
-    TargetIsUnknown {
-        target: String,
-    },
+    TargetIsUnknown { target: String },
 }
 
 /// THE REFUSAL NAMES WHAT WOULD HAVE WORKED, AND IT IS DERIVED RATHER THAN WRITTEN DOWN.
@@ -259,10 +432,6 @@ fn rostered_targets_rendered() -> String {
 fn invocation_refusal_rendered(refusal: &InvocationRefusal) -> String {
     {
         match refusal {
-            InvocationRefusal::OperandNotALabel { operand, cause } => format!(
-                "gunbc test: operand is not an absolute label: {operand}\n  cause: {}",
-                label_refusal_rendered(cause)
-            ),
             InvocationRefusal::TargetIsUnknown { target } => {
                 format!(
                     "gunbc test: no such target: {target}\n{}",
@@ -345,9 +514,10 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
         };
     }
     let mut message = format!(
-        "heads-reading-differential: compared={} divergent={} narrowed={} regressed={} both_refused={}",
+        "heads-reading-differential: compared={} divergent={} occurrence_identity_only={} narrowed={} regressed={} both_refused={}",
         d.modules_compared,
         d.divergent.len(),
+        d.occurrence_identity_only.len(),
         d.narrowed.len(),
         d.regressed.len(),
         d.both_refused.len(),
@@ -357,6 +527,20 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     }
     for path in d.regressed.iter() {
         message.push_str(&format!("\nheads-reading-differential: REGRESSED {path}"));
+    }
+    // DECLARATION-NAME AGREEMENT, printed as host output beside the parse figures rather than
+    // folded into the verdict: `HeadsReadingDifferentialObservation` carries four populations and
+    // this is a fifth, so it has no home in the modeled standing yet. It is the population a pool
+    // name census consumes, which the whole-node `divergent` row cannot isolate. FOLD-IN TRIGGER:
+    // the first consumer that decides on this population (a gate, or step 1's reference-edge name
+    // index claiming its exactness) lands it as a field of `HeadsReadingDifferentialObservation`
+    // with `holds()` requiring it empty; until then it is a reading, not a verdict.
+    message.push_str(&format!(
+        "\nheads-reading-differential: declaration_names_divergent={}",
+        d.declaration_names_divergent.len()
+    ));
+    for row in d.declaration_names_divergent.iter() {
+        message.push_str(&format!("\nheads-reading-differential: NAMES {row}"));
     }
     // THE PARSE-WALL FIGURES ARE CARRIED OVER FROM THE DELETED `--heads-reading-differential`
     // MODE, AND THEY ARE HOST OUTPUT RATHER THAN PART OF THE MODELED OBSERVATION.
@@ -384,6 +568,182 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE BARE-REFERENCE CHANNEL'S OUTCOME OVER THE FOUR HERMETIC ENTRIES
+// ---------------------------------------------------------------------------------------------
+
+/// `gunbc.instrument_targets` `bare_reference_channel_source_roots`. The subject is the
+/// instrument's own fact on the rule every sibling here follows, and it is a FIXTURE root rather
+/// than the live corpus: the reading must not move when `dag` does.
+fn bare_reference_channel_source_roots() -> Vec<String> {
+    vec!["fixtures/bare_reference_channel".to_string()]
+}
+
+/// `gunbc.target_binding` `BareChannelEligibility`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BareChannelEligibility {
+    Runs,
+    DisabledByImportLine,
+}
+
+/// `gunbc.instrument_targets` `bare_reference_channel_expectations`, mirrored. Each row states the
+/// OUTCOME the entry's one isolated condition produces, so a gate that moves flips exactly the row
+/// that isolates it.
+struct BareChannelExpectation {
+    module_path: &'static str,
+    isolated_condition: &'static str,
+    eligibility: BareChannelEligibility,
+    pulled_modules: &'static [&'static str],
+}
+
+fn bare_reference_channel_expectations() -> Vec<BareChannelExpectation> {
+    vec![
+        BareChannelExpectation {
+            module_path: "probe.brc.bare_record_consumer",
+            isolated_condition: "no imports; bare reference to a RECORD type -- pullable holds",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &["probe.brc.record_home"],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.bare_alias_consumer",
+            isolated_condition:
+                "no imports; bare reference to a nullary type alias -- every arm of pullable declines",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &[],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.imported_record_consumer",
+            isolated_condition:
+                "the row-one reference plus ONE unrelated import line -- gate one turns the channel off",
+            eligibility: BareChannelEligibility::DisabledByImportLine,
+            pulled_modules: &[],
+        },
+        BareChannelExpectation {
+            module_path: "probe.brc.transitive_alias_consumer",
+            isolated_condition:
+                "no imports; a bare CALL whose callee imports the alias home -- the alias arrives as a passenger",
+            eligibility: BareChannelEligibility::Runs,
+            pulled_modules: &["probe.brc.alias_home", "probe.brc.passenger_home"],
+        },
+    ]
+}
+
+fn bare_channel_eligibility_rendered(e: BareChannelEligibility) -> &'static str {
+    match e {
+        BareChannelEligibility::Runs => "RUNS",
+        BareChannelEligibility::DisabledByImportLine => "DISABLED",
+    }
+}
+
+/// `gunbc.instrument_targets` `bare_reference_channel_holds`, mirrored: set equality at identity
+/// grain, never a count, and eligibility compared as its own field so an ineligible channel and an
+/// eligible one that pulled nothing can never satisfy each other's row.
+fn run_bare_reference_channel_outcome() -> InvocationOutcome {
+    let source_roots = bare_reference_channel_source_roots();
+    let missing: Vec<String> = source_roots
+        .iter()
+        .filter(|r| !std::path::Path::new(r.as_str()).exists())
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!(
+                "bare-reference-channel-outcome: subject unreached (fixture source root absent): {}",
+                missing.join(", ")
+            ),
+        };
+    }
+    let expectations = bare_reference_channel_expectations();
+    let entries: Vec<String> = expectations
+        .iter()
+        .map(|e| e.module_path.to_string())
+        .collect();
+    let readings = match cli_run::bare_reference_channel_readings(&source_roots, &entries) {
+        Ok(readings) => readings,
+        Err(detail) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "bare-reference-channel-outcome: subject unreached (module index refused): {detail}"
+                ),
+            };
+        }
+    };
+    let mut lines: Vec<String> = Vec::new();
+    let mut unmet: Vec<String> = Vec::new();
+    for expected in expectations.iter() {
+        let matched: Vec<&cli_run::BareReferenceChannelEntryReading> = readings
+            .iter()
+            .filter(|r| r.module_path == expected.module_path)
+            .collect();
+        let [observed] = matched.as_slice() else {
+            unmet.push(format!(
+                "bare-reference-channel-outcome: UNMET {} ({}): expected exactly one reading, got {}",
+                expected.module_path,
+                expected.isolated_condition,
+                matched.len()
+            ));
+            continue;
+        };
+        let observed_eligibility = if observed.bare_channel_eligible {
+            BareChannelEligibility::Runs
+        } else {
+            BareChannelEligibility::DisabledByImportLine
+        };
+        let expected_pulled: Vec<String> = {
+            let mut v: Vec<String> = expected
+                .pulled_modules
+                .iter()
+                .map(|m| (*m).to_string())
+                .collect();
+            v.sort();
+            v
+        };
+        lines.push(format!(
+            "bare-reference-channel-outcome: {} channel={} pulled=[{}]",
+            observed.module_path,
+            bare_channel_eligibility_rendered(observed_eligibility),
+            observed.pulled_modules.join(", ")
+        ));
+        if observed_eligibility != expected.eligibility
+            || observed.pulled_modules != expected_pulled
+        {
+            unmet.push(format!(
+                "bare-reference-channel-outcome: UNMET {} ({}): expected channel={} pulled=[{}], observed channel={} pulled=[{}]",
+                expected.module_path,
+                expected.isolated_condition,
+                bare_channel_eligibility_rendered(expected.eligibility),
+                expected_pulled.join(", "),
+                bare_channel_eligibility_rendered(observed_eligibility),
+                observed.pulled_modules.join(", "),
+            ));
+        }
+    }
+    let mut message = format!(
+        "bare-reference-channel-outcome: entries={} unmet={}",
+        // THE READINGS, NOT THE EXPECTATIONS, because that is what the `.dag` authority renders
+        // (`gunbc.instrument_targets` `bare_reference_channel_standing_rendered` counts the
+        // readings). The two cannot differ today -- one reading is demanded per expectation -- so
+        // this is not a defect being fixed but a drift point being closed, of exactly the kind
+        // `gunbc.bare_reference_channel_outcome_seed_growth` enrolls this mirror for.
+        readings.len(),
+        unmet.len()
+    );
+    for line in lines.iter().chain(unmet.iter()) {
+        message.push('\n');
+        message.push_str(line);
+    }
+    InvocationOutcome {
+        termination: if unmet.is_empty() {
+            Termination::ObservationHeld
+        } else {
+            Termination::ObservationDidNotHold
+        },
+        message,
+    }
+}
+
 /// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
 /// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
 fn run_producer(producer: TargetProducer) -> InvocationOutcome {
@@ -403,9 +763,157 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
+        TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
+        TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
+        TargetProducer::EmittedCrateWorkspace => {
+            run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
+        }
         TargetProducer::EvaluationStoreAddressExactHead => {
             run_evaluation_store_address_exact_head()
         }
+        TargetProducer::FloorMemoryQualification => run_floor_memory_qualification(),
+        TargetProducer::PrimitiveEgressCensus => {
+            run_primitive_egress_census("primitive-egress-census", "primitive_egress_census_exit")
+        }
+        TargetProducer::PrimitiveEgressCensusV2 => run_primitive_egress_census(
+            "primitive-egress-census-v2",
+            "primitive_egress_census_v2_exit",
+        ),
+        TargetProducer::PrimitiveEgressCensusDag => run_primitive_egress_census(
+            "primitive-egress-census-dag",
+            "primitive_egress_census_dag_exit",
+        ),
+        TargetProducer::PrimitiveEgressCensusSeed => run_primitive_egress_census(
+            "primitive-egress-census-seed",
+            "primitive_egress_census_seed_exit",
+        ),
+        TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
+        TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
+            "self-host-behavioral-equivalence",
+            "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
+            "take_self_host_behavioral_equivalence_receipt",
+        ),
+        TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
+            "required-lane-resolution-census",
+            "dag/gunbc/required_lane_resolution_census_live.dag",
+            "required_lane_resolution_census_exit",
+        ),
+    }
+}
+
+/// THE PRIMITIVE EGRESS CENSUS PRODUCERS (gunbc#11642): evaluate one of the
+/// `gunbc.primitive_egress.census_live` `primitive_egress_census_*_exit` entries, each answering a
+/// `CliWireResponse` -- the receipt bytes (one JSON object per line) plus the exit the census
+/// standing carries. The bytes are printed on EVERY termination, because the receipt is the
+/// product and a did-not-hold census is exactly when its identity lists are wanted.
+///
+/// THE THREE TERMINATIONS map off the wire exit read through the one classifier in `cli_run`:
+/// success is the census holding; `ExitFailure { code: 1 }` is a located census finding (an
+/// identity with zero or two dispositions) and is `ObservationDidNotHold`; `ExitFailure { code: 2 }`
+/// is the population not being established (a refused entry, no identities) and is `Refused`;
+/// a resolve or eval failure is `SubjectUnreached`.
+/// One runner for the four census labels: the scope is the `.dag` entry function the label
+/// names (`gunbc.primitive_egress.census_live` `census_wire(scope:)` decides what it walks), so a
+/// bounded projection is a label of its own and not a flag on the full one.
+fn run_primitive_egress_census(label: &'static str, function: &'static str) -> InvocationOutcome {
+    run_cli_wire_census(
+        label,
+        "dag/gunbc/primitive_egress/census_live.dag",
+        function,
+    )
+}
+
+/// ONE RUNNER FOR EVERY INSTRUMENT WHOSE `.dag` ENTRY ANSWERS A `CliWireResponse`: resolve the
+/// entry, evaluate the named function, print the wire bytes on every termination, and map the
+/// wire exit to a Termination through the one classifier in `cli_run`. The primitive egress
+/// census labels and the required-lane resolution census share it; a new instrument of that
+/// shape is a label row plus one arm naming its entry and function, never a second runner.
+fn run_cli_wire_census(
+    label: &'static str,
+    entry: &'static str,
+    function: &'static str,
+) -> InvocationOutcome {
+    let label_name = label;
+    let function_name = function;
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, entry) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: resolve failed for {entry}: {cause}"),
+            };
+        }
+    };
+    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+        graph.diagnostics.clone(),
+    );
+    if !blocking.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{label_name}: {entry} has blocking diagnostics: {}",
+                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
+            ),
+        };
+    }
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let value =
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, function_name, &[], true) {
+            Ok(value) => value,
+            Err(cause) => {
+                return InvocationOutcome {
+                    termination: Termination::SubjectUnreached,
+                    message: format!("{label_name}: eval failed: {cause}"),
+                }
+            }
+        };
+    match cli_run::classify_cli_wire(&value, &ctx) {
+        cli_run::CliWireClass::Printable { bytes, exit } => {
+            let termination = match &exit {
+                cli_run::ExitClass::Success => Termination::ObservationHeld,
+                cli_run::ExitClass::Failure { code: 1, .. } => Termination::ObservationDidNotHold,
+                cli_run::ExitClass::Failure { .. } => Termination::Refused,
+                cli_run::ExitClass::NotProcessExit { .. } => Termination::Refused,
+            };
+            let reason = match exit {
+                cli_run::ExitClass::Success => format!("{label_name}: held"),
+                cli_run::ExitClass::Failure { reason, .. } => {
+                    reason.unwrap_or_else(|| format!("{label_name}: failed"))
+                }
+                cli_run::ExitClass::NotProcessExit { type_name } => {
+                    format!("{label_name}: wire exit is `{type_name}`, not a ProcessExit")
+                }
+            };
+            InvocationOutcome {
+                termination,
+                message: format!("{bytes}{reason}"),
+            }
+        }
+        cli_run::CliWireClass::Unprintable { cause } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: renderer refused: {cause}"),
+        },
+        cli_run::CliWireClass::NotCliWire { type_name } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{label_name}: {function_name} returned `{type_name}`, not a CliWireResponse"
+            ),
+        },
+        cli_run::CliWireClass::MalformedCliWire { detail } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: malformed CliWireResponse: {detail}"),
+        },
     }
 }
 
@@ -527,14 +1035,66 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
                 Termination::ObservationDidNotHold
             },
             message: format!(
-                "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={}",
+                "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={} \
+                 door_refusal_reason=\"{}\"",
                 held.closure_identity,
                 held.binary_identity,
                 held.seed_identity,
                 held.exit_status,
                 held.warning_count,
+                held.door_refusal_reason,
             ),
         },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// THE NATIVE FRONTIER PRODUCER: did one complete native run keep the debt
+/// `gunbc.native_frontier_roster` records. The verdict is `gunbc.native_frontier_ratchet`'s, decided
+/// inside the emitted binary; this arm only maps its word to a termination, and that map is closed:
+/// an unknown word is a harness defect, never a pass.
+///
+/// `held` and `advanced` are the observation holding: every planned identity reached a terminal
+/// verdict and every honest failure is rostered debt. An advance also prints a proposed smaller
+/// roster, which a reviewed pull request may carry (the required native-route lane publishes it). An owned
+/// correctness flip (`grew-by-owned-correctness-flip`) holds for the same reason: every added
+/// identity is owed debt under a declared, owned cause, and it too prints a proposed roster.
+/// (v1 PURPOSE admission, `gunbc.v1_maintenance_standing`: this arm only maps a v2 frontier
+/// verdict word to its termination; the verdict itself is decided in `.dag`, so no seed growth.)
+/// `lost` and `unminted` are the observation
+/// not holding. `unminted` is a complete run with nothing to hold it to, and an empty roster read as
+/// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
+/// clause or the pattern was narrower than the universe, so the subject was not reached.
+fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
+    let pattern = native_route_default_pattern_text();
+    match cli_run::run_v2_native_frontier(source_roots, &pattern) {
+        Ok(run) => {
+            let termination = match run.frontier.as_str() {
+                "held" | "advanced" | "grew-by-owned-correctness-flip" => Termination::ObservationHeld,
+                "lost" | "unminted" => Termination::ObservationDidNotHold,
+                "not-a-measurement" => Termination::SubjectUnreached,
+                other => {
+                    return InvocationOutcome {
+                        termination: Termination::SubjectUnreached,
+                        message: format!(
+                            "v2-native-frontier: the emitted binary reported an unknown frontier word {other:?}; \
+                             gunbc.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
+                        ),
+                    }
+                }
+            };
+            InvocationOutcome {
+                termination,
+                message: format!(
+                    "v2-native-frontier: frontier={} (lane qualification: {}); findings and any proposed \
+                     roster are the [native-frontier] and [native-frontier-roster] lines above",
+                    run.frontier, run.admission_summary
+                ),
+            }
+        }
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
@@ -551,9 +1111,17 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 /// door.
 ///
 /// IT SHARES `prepare_emitted_compiler_for_entry` WITH THE SELF-HOST STEP, parameterised by the
-/// entry, so the two instruments cannot disagree about what "emitted and built clean" means. What
-/// they do not share is the closure: this one compiles `v2.cli.compile_cli`, which declares
-/// `NativeCliDriver` and reaches no part of `v2.compiler.compile`.
+/// entry, so the two instruments cannot disagree about what "emitted and built clean" means — and
+/// since that preparation now establishes its own discriminating red by mutation, neither subject
+/// can report a green cargo verdict that is not a function of the emitted bytes. What they do not
+/// share is the closure: this one compiles `v2.cli.compile_cli`, which declares `NativeCliDriver`
+/// and reaches no part of `v2.compiler.compile`.
+///
+/// WHAT IT ADDS THAT ITS SIBLING DOES NOT: the built artifact's ENTRYPOINT IS EXECUTED. The
+/// self-host step's binary is the SourceRootEvalDriver, whose entrypoint the operator-invoked
+/// `--required-v2-native` route already spawns in both its modes; this one's was spawned by
+/// nothing until `walk_cli_door` ran it, so the instrument admitted a door that compiled and was
+/// never opened.
 fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_cli(source_roots) {
         Ok(held) => InvocationOutcome {
@@ -563,18 +1131,153 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
                 Termination::ObservationDidNotHold
             },
             message: format!(
-                "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={}",
+                "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={} \
+                 door_exit_status={} door_emitted_bytes={} door_refusal_exit_status={} \
+                 generation_one_executable={}",
                 held.closure_identity,
                 held.binary_identity,
                 held.seed_identity,
                 held.exit_status,
                 held.warning_count,
+                held.door_exit_status,
+                held.door_emitted_bytes,
+                held.door_refusal_exit_status,
+                held.generation_one_executable,
             ),
         },
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
         },
+    }
+}
+
+/// THE EMITTED-WORKSPACE PRODUCER (Pkg7e). SubjectUnreached when the emission, the plan, the render
+/// or either cargo run could not be reached or the red could not be attributed; the observation
+/// holds only when the derived partition built clean AND the dropped-dependency red refused with an
+/// error naming the dropped target module. Every refusal carries its typed cause from the runner.
+fn run_emitted_crate_workspace(source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_emitted_crate_workspace(source_roots) {
+        Ok(held) => InvocationOutcome {
+            termination: if held.green_exit_status == 0 && held.green_warning_count == 0 {
+                Termination::ObservationHeld
+            } else {
+                Termination::ObservationDidNotHold
+            },
+            message: format!(
+                "emitted-crate-workspace: head={} closure_modules={} crates={}                  facade_is_whole_closure={} rustc={} green_exit_status={} green_warning_count={}                  red=drop {} from {} ({} -> {}) red_refused=\"{}\"",
+                held.head,
+                held.closure_modules,
+                held.crate_count,
+                held.facade_is_whole_closure,
+                held.rustc_identity,
+                held.green_exit_status,
+                held.green_warning_count,
+                held.red_dropped_package,
+                held.red_package,
+                held.red_from_module,
+                held.red_to_module,
+                held.red_diagnostic,
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// THE NATIVE CLAIM PROGRAM PRODUCER: emit, build and run a `NativeClaimDriver` entry, then let the
+/// `.dag` reader decide what the run established. The host decides nothing about the cases -- it
+/// hands the program's stdout and status to `gunbc.native_claim_program`
+/// `native_claim_program_standing` and maps that fold's `ProcessExit` through the one classifier
+/// (`cli_run::classify_exit`): success is held, code 1 is an observation that did not hold, and code
+/// 2 -- a roster/row join that breaks, a status the rows do not support, a signal -- is no
+/// observation. The source roots are the instrument's own fact, as for every sibling here.
+fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
+    let label_name = "native-claim";
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    let run = match cli_run::run_native_claim_program(&v2_native_cli_source_roots(), entry) {
+        Ok(run) => run,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: cause,
+            }
+        }
+    };
+    const READER: &str = "dag/gunbc/native_claim_program.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
+            };
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let status = i64::from(run.status.unwrap_or(-1));
+    let args = [
+        (
+            Some("stdout".to_string()),
+            crate::v1_interpreter::Value::Str(run.stdout.clone().into()),
+        ),
+        (
+            Some("status".to_string()),
+            crate::v1_interpreter::Value::Int(status),
+        ),
+    ];
+    let standing = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_claim_program_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => cli_run::classify_exit(&value, &ctx),
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: the report reader failed: {cause}"),
+            }
+        }
+    };
+    let (termination, verdict) = match standing {
+        cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+        cli_run::ExitClass::Failure { code: 1, reason } => (
+            Termination::ObservationDidNotHold,
+            reason.unwrap_or_else(|| "not held".to_string()),
+        ),
+        cli_run::ExitClass::Failure { reason, .. } => (
+            Termination::SubjectUnreached,
+            reason.unwrap_or_else(|| "no observation".to_string()),
+        ),
+        cli_run::ExitClass::NotProcessExit { type_name } => (
+            Termination::Refused,
+            format!("the report reader returned `{type_name}`, not a ProcessExit"),
+        ),
+    };
+    InvocationOutcome {
+        termination,
+        message: format!(
+            "{}{label_name}: entry={entry} closure={} binary={} seed={} warning_count={} status={status} -- {verdict}\n{}",
+            run.stdout,
+            run.closure_identity,
+            run.binary_identity,
+            run.seed_identity,
+            run.warning_count,
+            run.stderr.trim_end(),
+        ),
     }
 }
 
@@ -704,21 +1407,220 @@ fn behavioral_outcome(
     }
 }
 
-/// THE ONE SEAM: argv operand -> label -> registry -> exact binding -> producer -> native standing.
+/// `extdeps.bazel.target_pattern` `target_pattern_package`, mirrored.
+fn target_pattern_package(pattern: &TargetPattern) -> &[String] {
+    match pattern {
+        TargetPattern::SingleTarget(label) => &label.package_segments,
+        TargetPattern::PackageTargets(package) => package,
+        TargetPattern::SubtreeTargets(package) => package,
+    }
+}
+
+/// `extdeps.bazel.target_pattern` `package_within`, mirrored: `a` is `b` or lies under it.
+fn package_within(a: &[String], b: &[String]) -> bool {
+    b.len() <= a.len() && b.iter().zip(a.iter()).all(|(outer, inner)| outer == inner)
+}
+
+/// `extdeps.bazel.target_pattern` `target_pattern_within`, mirrored arm for arm, including the
+/// subtree-inside-package arm that answers `false` rather than claiming a containment this side
+/// cannot establish either.
+fn target_pattern_within(inner: &TargetPattern, outer: &TargetPattern) -> bool {
+    match outer {
+        TargetPattern::SubtreeTargets(package) => {
+            package_within(target_pattern_package(inner), package)
+        }
+        TargetPattern::PackageTargets(package) => match inner {
+            TargetPattern::SingleTarget(label) => &label.package_segments == package,
+            TargetPattern::PackageTargets(inner_package) => inner_package == package,
+            TargetPattern::SubtreeTargets(_) => false,
+        },
+        TargetPattern::SingleTarget(label) => match inner {
+            TargetPattern::SingleTarget(inner_label) => inner_label == label,
+            TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => false,
+        },
+    }
+}
+
+/// `extdeps.bazel.target_pattern` `render_target_pattern`, mirrored. This is what reaches the
+/// emitted binary's `adjudicate` operand, so the pattern the operator wrote and the pattern the
+/// native universe is selected by are one value rendered once, never two spellings.
+fn render_target_pattern(pattern: &TargetPattern) -> String {
+    match pattern {
+        TargetPattern::SingleTarget(label) => render_label(label),
+        TargetPattern::PackageTargets(package) => format!("//{}:all", package.join("/")),
+        TargetPattern::SubtreeTargets(package) => {
+            if package.is_empty() {
+                "//...".to_string()
+            } else {
+                format!("//{}/...", package.join("/"))
+            }
+        }
+    }
+}
+
+/// `gunbc.witness_v2_native_route` `native_route_default_pattern`, mirrored: the native test
+/// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
 ///
-/// Lookup is `label_eq` once per row, and EXACT — no prefix, suffix or "did you mean": a near miss
-/// silently running a different target is worse than a refusal naming the one asked for.
+/// THIS IS THE ONLY SEED-SIDE SPELLING OF THAT UNIVERSE, and it is `pub` for exactly that reason.
+/// The lane's runner needs the same fact as TEXT (it is an argv word) and this verb needs it as a
+/// PATTERN, which is two renderings of one value, not two values. A bare `"//v2/test/..."` literal
+/// beside this one would be the second independently editable spelling DESIGN section 3 forbids,
+/// and the drift would be load-bearing rather than cosmetic: narrow one and not the other and the
+/// verb routes an operand native that the lane's default excludes, or the reverse.
+pub fn native_route_default_pattern() -> TargetPattern {
+    TargetPattern::SubtreeTargets(vec!["v2".to_string(), "test".to_string()])
+}
+
+/// The universe above as the argv word the emitted binary's `adjudicate` verb takes. Derived from
+/// the one pattern rather than spelled again.
+pub fn native_route_default_pattern_text() -> String {
+    render_target_pattern(&native_route_default_pattern())
+}
+
+/// THE NATIVE TEST ROUTE, ENTERED WITH THE OPERAND'S OWN PATTERN.
+///
+/// The seed emits the compiler closure, cargo builds it, and the EMITTED BINARY adjudicates the
+/// selected population. Nothing on this path consults the interpreter, and nothing substitutes a
+/// cached or seed-side answer.
+///
+/// THE TERMINATION IS THE OPERAND'S OWN, FOLDED FROM THE PER-IDENTITY ROWS. Every arm of this
+/// function used to answer `SubjectUnreached`, because the only bit the route returned was the
+/// LANE'S whole-route qualification and consuming that as the operand's verdict conflates two
+/// scopes in both directions -- a typo reported as a failing test, and worse, a held qualification
+/// reported as the operator's tests PASSING. That class is rostered as
+/// `gunbc.recurring_failure_mode` `route_scoped_qualification_read_as_one_members_verdict`.
+///
+/// The route now folds the population it actually emitted through
+/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored in the runner, so this
+/// caller receives a MEMBER-SCOPED standing and reads it directly. The lane's qualification is
+/// still carried and still reported, because a route-integrity refusal is something an operator
+/// needs to see -- but it no longer decides this verb's exit status.
+///
+/// THE LANE'S QUALIFICATION GATES A PASS, AND THE SUMMARY RIDES ON EVERY ARM. An earlier shape of
+/// this function said "only the member one decides the status", which over-corrected the original
+/// conflation: ruling out "qualification IS the verdict" never licensed "qualification may be
+/// IGNORED", and a refused route beside an all-passing population answered exit 0 with the refusal
+/// demoted to a sentence (review 70107). A refused qualification now clamps a `held` to
+/// `SubjectUnreached` while letting a definite member failure through unchanged.
+fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
+    let rendered = render_target_pattern(pattern);
+    match cli_run::run_required_v2_native(&self_host_source_roots(), &rendered) {
+        cli_run::NativeRouteOutcome::LaneQualificationHeld { summary, members } => {
+            native_member_outcome(
+                &rendered,
+                members,
+                true,
+                "the lane's qualification held",
+                &summary,
+            )
+        }
+        cli_run::NativeRouteOutcome::LaneQualificationRefused { summary, members } => {
+            native_member_outcome(
+                &rendered,
+                members,
+                false,
+                "the lane's qualification REFUSED",
+                &summary,
+            )
+        }
+        cli_run::NativeRouteOutcome::Unreached { cause } => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!("native test route: {rendered} — {cause}"),
+        },
+    }
+}
+
+/// THE MEMBER STANDING BECOMES THIS VERB'S TERMINATION, ONE ARM EACH AND NO WILDCARD.
+///
+/// `NativeMemberTermination` has three arms because `InvocationRefused` is unreachable from a
+/// population fold; a fourth arm here would be a constructor nothing can build. A new arm upstream
+/// must fail to compile here rather than inherit whichever status a `_` happened to name.
+fn native_member_outcome(
+    rendered: &str,
+    members: cli_run::NativeMemberTermination,
+    lane_qualified: bool,
+    lane_note: &str,
+    summary: &str,
+) -> InvocationOutcome {
+    let member_termination = match members {
+        cli_run::NativeMemberTermination::ObservationHeld => Termination::ObservationHeld,
+        cli_run::NativeMemberTermination::ObservationDidNotHold => {
+            Termination::ObservationDidNotHold
+        }
+        cli_run::NativeMemberTermination::SubjectUnreached => Termination::SubjectUnreached,
+    };
+    // `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored: the
+    // lane's qualification GATES a positive answer and nothing else. Several of its clauses are
+    // what establish the verdict surface is trustworthy at all -- the false and true controls, and
+    // MalformedSpecimenAccepted, whose own note says that when they fail every verdict in the
+    // census is worthless -- so a pass read off rows with no established provenance is the
+    // fabricated plausible output DESIGN section 5 forbids. The clamp is ONE-DIRECTIONAL: it can
+    // only weaken an answer, never strengthen one, and it never manufactures a failure no member
+    // reported.
+    let termination = if lane_qualified {
+        member_termination
+    } else {
+        match member_termination {
+            Termination::ObservationHeld => Termination::SubjectUnreached,
+            other => other,
+        }
+    };
+    let members_note = match members {
+        cli_run::NativeMemberTermination::ObservationHeld => "every selected test passed",
+        cli_run::NativeMemberTermination::ObservationDidNotHold => {
+            "a selected test evaluated and did not hold"
+        }
+        cli_run::NativeMemberTermination::SubjectUnreached => {
+            "no verdict was obtained for part of the selection (an empty selection, or a test that \
+             could not be reached)"
+        }
+    };
+    InvocationOutcome {
+        termination,
+        message: format!(
+            "native test route: {rendered} adjudicated — {members_note}; {lane_note} — {summary}"
+        ),
+    }
+}
+
+/// THE ONE SEAM: argv operand -> pattern admission -> route. Mirrors `gunbc.target_invocation`
+/// `admit_test_operand`, including the containment that decides WHICH executor answers.
+///
+/// An operand inside the native route's universe -- single target or set form alike -- enters the
+/// native implementation carrying that pattern. Outside it, a SINGLE target builds the registry
+/// and looks up EXACTLY — no prefix, suffix or "did you mean": a near miss silently running a
+/// different target is worse than a refusal naming the one asked for. A SET form outside it has no
+/// executor and is refused with status 2, no observation; handing it to the interpreter would let
+/// an interpreted run stand in for a native one. Mirrors
+/// `test_operand_set_form_refusal_rendered`.
+fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
+    format!(
+        "gunbc test: {operand} denotes a SET of targets outside the native test route's universe; no executor enumerates that population, and set forms are never delegated to the interpreter"
+    )
+}
+
 pub fn test_verb(operand: &str) -> InvocationOutcome {
-    let label = match parse_label(operand) {
-        Ok(l) => l,
+    let pattern = match parse_target_pattern(operand) {
+        Ok(pattern) => pattern,
         Err(cause) => {
-            let refusal = InvocationRefusal::OperandNotALabel {
-                operand: operand.to_string(),
-                cause,
-            };
             return InvocationOutcome {
                 termination: Termination::Refused,
-                message: invocation_refusal_rendered(&refusal),
+                message: format!(
+                    "gunbc test: operand is not an admitted target pattern: {operand}\n  cause: {}",
+                    target_pattern_refusal_text(&cause)
+                ),
+            };
+        }
+    };
+    if target_pattern_within(&pattern, &native_route_default_pattern()) {
+        return run_native_test_route(&pattern);
+    }
+    let label = match pattern {
+        TargetPattern::SingleTarget(label) => label,
+        TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: test_operand_set_form_refusal_rendered(operand),
             };
         }
     };
@@ -735,5 +1637,405 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
             }
         }
         Some((_, producer)) => run_producer(producer),
+    }
+}
+
+/// THE SUBJECT IS OWNED HERE, IN RUST, AND THAT IS A MEASURED DECISION RATHER THAN A SHORTCUT.
+///
+/// Every sibling instrument keeps its subject in `gunbc.instrument_targets` and mirrors it here,
+/// and this one was built that way first: two rows, `floor_memory_qualification_source_roots` and
+/// `floor_memory_qualification_lane`, read through the interpreter before spawning the child so
+/// the model would be the single authority for what gets measured.
+///
+/// IT CORRUPTS THE MEASUREMENT, AND THE COST WAS MEASURED RATHER THAN FEARED. Reading those rows
+/// means resolving a corpus graph, and this supervisor shares its cgroup with the child BY
+/// DESIGN — that sharing is what lets `memory.peak` survive the child's death. So the resolve
+/// lands in the very counter the instrument reports. Three runs of the same failing floor, same
+/// tree, same binary, differing only in whether the subject was read from the model:
+///
+///   Rust-owned subject   peak 15746146304  (14.66 GiB)
+///   Rust-owned subject   peak 15704227840  (14.63 GiB)   <- 0.2% apart, reproducible
+///   read from the model  peak 22293544960  (20.76 GiB)   <- +6.1 GiB, 42% inflation
+///
+/// An instrument may not consult the authority from inside the cgroup it is measuring; the act of
+/// reading perturbs the reading. Netting the supervisor's footprint back out is not available
+/// either — that would replace a measured number with an adjusted one, which is the whole habit
+/// `gunbc.floor_memory_demand` exists to refuse.
+///
+/// SO THE TWO `.dag` ROWS ARE DELETED RATHER THAN LEFT UNCONSUMED. A modeled subject nothing reads
+/// is the DESIGN section 3c dangling declaration, and keeping it while Rust silently owned the
+/// real fact would be worse than owning it openly: two authorities, one of them decorative. The
+/// honest state is one authority, here, saying plainly that it is here and why.
+///
+/// WHAT WOULD RESTORE THE MODELED SUBJECT: any route that reads the rows OUTSIDE the measured
+/// cgroup — a supervisor that resolves the subject before entering the scope, or a scope created
+/// after the read rather than around it. Both need the cgroup lifecycle to be modeled, which is
+/// the same capability `gunbc.target_invocation_seed_growth` names as this subset's trigger.
+fn floor_memory_qualification_source_roots() -> Vec<String> {
+    vec!["dag".to_string(), "src/v2".to_string()]
+}
+
+fn floor_memory_qualification_lane() -> String {
+    "witnesses".to_string()
+}
+
+/// THE SUPERVISED MEMORY QUALIFICATION OF A REQUIRED-FLOOR RUN.
+///
+/// The three terminations are load-bearing and map onto `gunbc.floor_memory_demand`'s three arms:
+/// `DemandObserved` is ObservationHeld (0), `DemandBounded` is ObservationDidNotHold (1) — the
+/// peak is a LOWER BOUND, so the run produced a reading that may not size anything downward — and
+/// every refusal is Refused (2), no observation at all. An instrument that rendered "could not
+/// read" the same as "it fits" would reproduce one layer out the conflation it exists to remove.
+///
+/// THE PRECONDITION IS CHECKED BEFORE THE WORKLOAD, NOT AFTER. Resolving the measurement cgroup
+/// first means a 35-minute run is never spent producing a figure that cannot be qualified — and,
+/// more importantly, an invocation with no enforceable limit REFUSES instead of reporting a
+/// number. An unbounded run and a bounded one are indistinguishable in everything the workload
+/// itself emits, which is the class
+/// `gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained`.
+fn run_floor_memory_qualification() -> InvocationOutcome {
+    use cli_run::floor_memory_supervisor as sup;
+
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "floor-memory-qualification: refused: could not anchor at the workspace root: {e}"
+            ),
+        };
+    }
+
+    let measured_roots = floor_memory_qualification_source_roots();
+    let measured_lane = floor_memory_qualification_lane();
+
+    let cgroup = match sup::resolve_measurement_cgroup() {
+        Ok(dir) => dir,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    // BOTH GUARDS RUN BEFORE THE WORKLOAD, not after: a 35-minute run that turns out to be
+    // unattributable is a wasted run, and worse, a tempting one to publish anyway.
+    match sup::children_of_cgroup(&cgroup) {
+        Ok(children) if !children.is_empty() => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "floor-memory-qualification: refused: {}",
+                    sup::QualificationRefusal::MeasurementCgroupHasChildren {
+                        dir: cgroup.to_string_lossy().to_string(),
+                        children,
+                    }
+                    .render()
+                ),
+            };
+        }
+        Ok(_) => {}
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    }
+
+    match sup::strangers_in_cgroup(&cgroup) {
+        Ok(strangers) if !strangers.is_empty() => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "floor-memory-qualification: refused: {}",
+                    sup::QualificationRefusal::MeasurementCgroupShared {
+                        dir: cgroup.to_string_lossy().to_string(),
+                        strangers,
+                    }
+                    .render()
+                ),
+            };
+        }
+        Ok(_) => {}
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    }
+
+    let baseline_peak = match sup::reset_or_baseline_peak(&cgroup) {
+        Ok(b) => b,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    let exe = match std::env::current_exe() {
+        Ok(p) => p.with_file_name("claim_executor"),
+        Err(e) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "floor-memory-qualification: refused: could not locate the measured binary \
+                     beside this one: {e}"
+                ),
+            };
+        }
+    };
+
+    let mut args = vec![
+        "--required-ci".to_string(),
+        "--required-lane".to_string(),
+        measured_lane.clone(),
+    ];
+    for root in measured_roots.iter().cloned() {
+        args.push("--source-root".to_string());
+        args.push(root);
+    }
+
+    let termination = match sup::run_child_in_own_cgroup(&exe.to_string_lossy(), &args) {
+        Ok(t) => t,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    let read = match sup::read_cgroup_memory(&cgroup) {
+        Ok(r) => r,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    // THE PEAK MUST HAVE RISEN, or it is not this run's. Where the kernel refused to reset the
+    // counter, a post-run peak equal to the pre-run one says only that nothing here exceeded
+    // history — it says nothing about what this run demanded, and publishing it would attribute
+    // another workload's high-water mark to the floor.
+    if read.peak <= baseline_peak {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "floor-memory-qualification: refused: {}",
+                sup::QualificationRefusal::PeakDominatedByPriorHistory {
+                    dir: read.dir.clone(),
+                    before: baseline_peak,
+                    after: read.peak,
+                }
+                .render()
+            ),
+        };
+    }
+
+    // THE JUDGMENT IS THE `.dag` MODULE'S, NOT THIS FUNCTION'S. Reproducing the arms here in
+    // Rust would give one decision two authorities (DESIGN section 3); the host reads the
+    // counters and the substrate decides what they mean — including how to parse a `max` body,
+    // which `extdeps.linux.cgroup_v2_memory` already owns.
+    const ENTRY: &str = "dag/gunbc/floor_memory_demand.dag";
+    const FUNCTION: &str = "qualify_floor_memory_from_readings";
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&measured_roots, ENTRY) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("floor-memory-qualification: resolve failed for {ENTRY}: {cause}"),
+            };
+        }
+    };
+    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+        graph.diagnostics.clone(),
+    );
+    if !blocking.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "floor-memory-qualification: {ENTRY} has blocking diagnostics: {}",
+                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
+            ),
+        };
+    }
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let (signalled, code) = match &termination {
+        sup::SupervisedTermination::Exited { code } => (false, *code as i64),
+        sup::SupervisedTermination::Signalled { signal } => (true, *signal as i64),
+    };
+    let args: Vec<(Option<String>, crate::v1_interpreter::Value)> = vec![
+        (
+            Some("peak_bytes".to_string()),
+            crate::v1_interpreter::Value::Int(read.peak as i64),
+        ),
+        (
+            Some("limit_max_body".to_string()),
+            crate::v1_interpreter::Value::Str(read.limit_max.as_str().into()),
+        ),
+        (
+            Some("limit_high_body".to_string()),
+            crate::v1_interpreter::Value::Str(read.limit_high.as_str().into()),
+        ),
+        (
+            Some("high_events".to_string()),
+            crate::v1_interpreter::Value::Int(read.high_events as i64),
+        ),
+        (
+            Some("max_events".to_string()),
+            crate::v1_interpreter::Value::Int(read.max_events as i64),
+        ),
+        (
+            Some("oom_kills".to_string()),
+            crate::v1_interpreter::Value::Int(read.oom_kills as i64),
+        ),
+        (
+            Some("terminated_by_signal".to_string()),
+            crate::v1_interpreter::Value::Bool(signalled),
+        ),
+        (
+            Some("exit_code".to_string()),
+            crate::v1_interpreter::Value::Int(code),
+        ),
+    ];
+    let verdict = match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &args, true)
+    {
+        Ok(v) => v,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "floor-memory-qualification: the judgment could not be reached: {cause}"
+                ),
+            };
+        }
+    };
+
+    // The supervisor shares the cgroup with the child, so its own few MiB are inside this peak.
+    // Stated rather than netted out: subtracting an estimate would replace a measured number with
+    // an adjusted one.
+    let detail = format!(
+        "floor-memory-qualification: cgroup={} peak={} memory.max={} memory.high={} \
+         events=[high {} / max {} / oom_kill {}] termination={} lane={} \
+         (the supervisor shares this cgroup with the measured child, so its own footprint — a few \
+         MiB — is included in the peak rather than subtracted)",
+        read.dir,
+        read.peak,
+        read.limit_max,
+        read.limit_high,
+        read.high_events,
+        read.max_events,
+        read.oom_kills,
+        match &termination {
+            sup::SupervisedTermination::Exited { code } => format!("exited {code}"),
+            sup::SupervisedTermination::Signalled { signal } => format!("signalled {signal}"),
+        },
+        measured_lane,
+    );
+
+    // WILDCARD-FREE ON PURPOSE: a fourth arm added to `FloorMemoryQualification` must land here
+    // rather than inherit whichever termination a `_` happened to name.
+    match &verdict {
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "DemandObserved") =>
+        {
+            InvocationOutcome {
+                termination: Termination::ObservationHeld,
+                message: format!(
+                    "{detail}\nDemandObserved — nothing held this run, so the peak is a DEMAND."
+                ),
+            }
+        }
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "DemandBounded") =>
+        {
+            InvocationOutcome {
+                termination: Termination::ObservationDidNotHold,
+                message: format!(
+                    "{detail}\nDemandBounded — the peak is a LOWER BOUND, not a demand: the run \
+                     was killed, throttled, or pinned to a limit. It may not be used to size \
+                     anything downward."
+                ),
+            }
+        }
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "DemandUnreadable") =>
+        {
+            InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "{detail}\nDemandUnreadable — the reading could not be qualified."
+                ),
+            }
+        }
+        other => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!(
+                "floor-memory-qualification: {FUNCTION} returned a value this seam does not \
+                 recognise as a FloorMemoryQualification: {other:?}"
+            ),
+        },
+    }
+}
+
+#[cfg(test)]
+mod native_route_termination_tests {
+    use super::*;
+
+    /// `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored here and
+    /// given its own red. The `.dag` witness pins the fold; this pins that THIS host applies it.
+    ///
+    /// A REFUSED QUALIFICATION CANNOT YIELD A PASS (review 70107). Several qualification clauses
+    /// are what establish the verdict surface is trustworthy at all, so a pass read off rows with
+    /// no established provenance is fabricated plausible output.
+    #[test]
+    fn a_refused_qualification_clamps_a_pass_to_unreached() {
+        let out = native_member_outcome(
+            "//v2/test/parse:all",
+            cli_run::NativeMemberTermination::ObservationHeld,
+            false,
+            "refused",
+            "s",
+        );
+        assert_eq!(out.termination, Termination::SubjectUnreached);
+    }
+
+    /// AND A QUALIFIED ROUTE PASSES THE MEMBER STANDING THROUGH, which is what makes the clamp a
+    /// gate rather than a constant: without this, always answering SubjectUnreached would pass the
+    /// arm above.
+    #[test]
+    fn a_qualified_route_passes_a_pass_through() {
+        let out = native_member_outcome(
+            "//v2/test/parse:all",
+            cli_run::NativeMemberTermination::ObservationHeld,
+            true,
+            "held",
+            "s",
+        );
+        assert_eq!(out.termination, Termination::ObservationHeld);
+    }
+
+    /// A DEFINITE FAILURE SURVIVES A REFUSED QUALIFICATION. Demoting it would bury a located defect
+    /// behind an infrastructure problem, and the gate is one-directional by construction.
+    #[test]
+    fn a_refused_qualification_does_not_demote_a_failure() {
+        let out = native_member_outcome(
+            "//v2/test/parse:all",
+            cli_run::NativeMemberTermination::ObservationDidNotHold,
+            false,
+            "refused",
+            "s",
+        );
+        assert_eq!(out.termination, Termination::ObservationDidNotHold);
     }
 }

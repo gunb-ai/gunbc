@@ -1,5 +1,6 @@
 module std.fermi
 
+import std.types { FermiDepth }
 
 fn fermi_ordinal(depth: FermiDepth) -> Int {
   match depth {

@@ -8,7 +8,8 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.node { Node }
+import v2.std.node { Node, node_subtree_nodes }
+import v2.compiler.normalize { record_declaration_capture }
 import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.compiler.tokenize { tokenize }
@@ -130,7 +131,11 @@ fn alias_decl_fill_lexical_lookup_holds() -> Bool {
       match qualified_name_from_module_node(root: tree) {
         Rejected { diagnostics: _ } => false
         Accepted { value: module_qn, diagnostics: _ } =>
-          let idx = symbol_index_fill_module_root(index: empty_symbol_index(), root: tree)
+          let idx = symbol_index_fill_module_root(
+            index: empty_symbol_index(),
+            root: tree,
+            record_declarations: record_declaration_capture(nodes: node_subtree_nodes(root: tree))
+          )
           let target_path = qualified_name_snoc(qn: module_qn, segment: ^AliasTargetType)
           match symbol_index_lexical_lookup(
             index: idx,

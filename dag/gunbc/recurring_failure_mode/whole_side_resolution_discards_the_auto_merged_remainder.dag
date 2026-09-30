@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.whole_side_resolution_discards_the_auto_merged_remainder
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data whole_side_resolution_discards_the_auto_merged_remainder: RecurringFailureMode = RecurringFailureMode {
+  identity: "whole_side_resolution_discards_the_auto_merged_remainder" as NonEmptyStr,
+
+  receipts: [
+    "**a conflicted file is resolved by taking ONE WHOLE SIDE, discarding the hunks in that same file that auto-merged from the OTHER side** (INVALID STATE: `git checkout --ours <file>` / `--theirs <file>` replaces the ENTIRE file, but a conflicted file is normally only PARTLY conflicted -- git has already merged every other hunk cleanly, and those merged hunks come from both parents. Taking one whole side reverts all of them to that side. HARM: the discarded content leaves NO conflict marker, NO diagnostic and NO trace; the file is syntactically fine and the loss is a silent revert of somebody else's landed work, attributed to the resolver's merge commit.)",
+
+    "MEASURED, gunbc#12058, 2026-09-22. Five files conflicted merging `origin/main` into a branch after its base PR squash-landed. `src/v1/stage0/src/cli_run.rs` had exactly ONE conflicted region -- a `pub use` re-export list -- while main's own addition, `pub mod required_ci_measurement;`, sat sixteen lines above it and had AUTO-MERGED cleanly. `checkout --ours` on that file would have taken the branch's whole copy and dropped that module declaration, reverting another lane's landed change inside a merge commit whose message said only that a conflict was resolved.",
+
+    "WHY THIS IS ABOUT TO HAPPEN REPEATEDLY RATHER THAN ONCE, which is the reason the row exists now: the repository SQUASH-MERGES. A landed PR reaches main as ONE commit with a NEW sha, while every open branch that was stacked on it, or merged it, still holds the ORIGINAL commits. Git then sees one change arriving from two lineages with no common ancestor for it and manufactures conflicts that are NOT disagreements -- the two sides agree about the content and differ only in provenance. So the conflicts look trivial, which is exactly the condition under which a resolver reaches for the whole-file shortcut.",
+
+    "THE DISCRIMINATOR IS MECHANICAL AND CHEAP, and it is the one question the resolver is not asked by any tool: after resolving, DOES THE TREE DIFFER FROM THE MERGED-IN BRANCH ONLY IN THE FILES AND LINES THIS BRANCH OWNS? `git diff <merged-branch> --name-only` should name your files and nobody else's, and within them every removed line should be a construct your change deliberately replaces. A removal you cannot attribute to your own diff is somebody else's work leaving through your merge.",
+
+    "AND VERIFY BY BUILDING, NOT BY GREPPING, because the commonest instance is invisible to grep. A dropped `pub use` re-export greps CLEAN: the symbol still appears in the module that defines it and at every use site, so every `grep -c` a resolver would run returns non-zero. What fails is RESOLUTION, at compile time, at the use sites. The same holds for a dropped `mod` line, a dropped import and a dropped feature gate. A resolver who greps that their own two-line change is 'still present' has checked the one thing that was never at risk.",
+
+    "THE CORRECT MOVE IS TO RESOLVE PER REGION, NEVER PER FILE: edit between the markers, keep the side that carries the union, and leave every auto-merged hunk untouched. It costs one editor pass per conflicted region and removes the class. Where a whole-side take is genuinely right -- a file this branch rewrote entirely -- it is still worth stating why in the merge message, because the next reader cannot distinguish a considered `--ours` from a reflexive one.",
+
+    "BOUNDARY AGAINST [[duplicate_declaration_arrives_through_a_clean_merge]]: there the merge reports NO conflict at all and the defect arrives because text merge is offset-based -- two insertions at different offsets both survive. Here the merge DOES conflict, loudly and in the right place, and the defect is introduced by the RESOLUTION rather than by the merge. That row's repair is identity-based detection of a merge nothing flagged; this row's repair is a resolver not discarding what the merge already got right.",
+
+    "BOUNDARY AGAINST [[merge_region_excludes_shared_tail]]: that class is about the BOUNDARY of a conflict region on an append-only roster whose rows share a suffix, so the region itself is drawn wrongly and a correct-looking resolution loses a row. Here the regions are drawn correctly and the content outside them is correct; only the resolver's GRANULARITY is wrong. Fixing the region boundaries changes nothing about this class.",
+
+    "CEILING AND NEXT TRIGGER. Found at mitigatable: the repair is a discipline plus a post-resolution diff, and nothing prevents the next resolver reaching for `--ours`. It is MECHANICALLY PREVENTABLE and the climb is a check that refuses a merge commit whose diff against either parent removes a line the resolving branch does not own -- decidable from the two parents and the merge result alone, with no judgement about intent. NEXT TRIGGER: that check bound to the commit path, with a discriminating control that a merge resolved by whole-file `--ours` over a partly-auto-merged file is refused while a per-region resolution of the same conflict passes.",
+  ],
+
+  evidence: [],
+}

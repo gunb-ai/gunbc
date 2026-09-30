@@ -1,0 +1,140 @@
+module product.capacity.event_json
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonKeyValue, json_object, json_kv, json_string, json_int, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound,
+}
+import product.capacity.event_chain { PartitionId, EventId, ChainEvent, EventDecode, EventDecoded, EventUndecodable }
+
+// ── THE ENVELOPE ON THE WIRE, ONCE, FOR EVERY PARTITION KIND ────────────────────────────────────
+//
+// A chain event is an envelope -- schema, partition, parent, recorded_at, actor -- around a
+// payload the partition kind owns. The pool events were the first kind and their codec spelled
+// the envelope inline; the pair-serving authority partition (gunbc.spark.pair_serving_authority_log)
+// is the second, and a second inline spelling would be the envelope written twice with nothing
+// keeping the two agreeing (DESIGN §2). So the envelope is encoded and decoded HERE for any
+// payload, and a kind supplies only its schema word, its kind word and its members -- the three
+// things that are actually about it.
+//
+// THE WIRE IS THE EVENT'S CANONICAL TEXT AND NOTHING ELSE. The id is not inside it: the store's
+// content address of these bytes IS the id, so carrying it inside would make the bytes depend on
+// their own hash.
+
+fn chain_event_json<P>(schema: String, e: ChainEvent<P>, kind: String, members: List<JsonKeyValue>) -> JsonValue {
+  json_object(members: concat([
+    json_kv(key: "schema", value: json_string(s: schema)),
+    json_kv(key: "partition", value: json_string(s: e.partition as String)),
+    json_kv(key: "parent", value: json_string(s: match e.parent { Present { value: p } => p as String  Absent => "" })),
+    json_kv(key: "recorded_at", value: json_int(n: e.recorded_at)),
+    json_kv(key: "actor", value: json_string(s: e.actor as String)),
+    json_kv(key: "kind", value: json_string(s: kind)),
+  ], members))
+}
+
+fn chain_event_wire_text<P>(schema: String, e: ChainEvent<P>, kind: String, members: List<JsonKeyValue>) -> String {
+  serialize_json(v: chain_event_json(schema: schema, e: e, kind: kind, members: members))
+}
+
+fn member_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
+    _ => none
+  }
+}
+
+fn member_nonempty(doc: JsonValue, key: String) -> NonEmptyStr? {
+  match member_string(doc: doc, key: key) {
+    Present { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } }
+    Absent => none
+  }
+}
+
+fn member_nat(doc: JsonValue, key: String) -> Nat? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonNumber { lexeme: lex } } =>
+      match parse_int(s: lex as String) {
+        Present { value: n } => if n < 0 { none } else { Present { value: n } }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
+// THE ENVELOPE IS READ ONCE. One walk over the members every event carries -- schema, partition,
+// parent (the empty string is "no parent"), recorded_at, actor, kind -- answers the envelope with
+// the kind word as its payload, the schema word beside it and the document for a payload decoder.
+// Both decoders below consume this and nothing else spells the envelope: a member added here is
+// added for every reader (DESIGN §2).
+type EnvelopeRead
+  = EnvelopeReadAt { schema: String, doc: JsonValue, event: ChainEvent<String> }
+  | EnvelopeUnreadable { reason: String }
+
+fn chain_envelope_read(text: String) -> EnvelopeRead {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => EnvelopeUnreadable { reason: join(["not JSON: ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match member_string(doc: doc, key: "schema") {
+        Absent => EnvelopeUnreadable { reason: "schema missing" }
+        Present { value: s } =>
+          match member_nonempty(doc: doc, key: "partition") {
+            Absent => EnvelopeUnreadable { reason: "partition missing" }
+            Present { value: part } =>
+              match member_nat(doc: doc, key: "recorded_at") {
+                Absent => EnvelopeUnreadable { reason: "recorded_at missing or not a non-negative integer" }
+                Present { value: at } =>
+                  match member_nonempty(doc: doc, key: "actor") {
+                    Absent => EnvelopeUnreadable { reason: "actor missing" }
+                    Present { value: actor } =>
+                      match member_string(doc: doc, key: "kind") {
+                        Absent => EnvelopeUnreadable { reason: "kind missing" }
+                        Present { value: kind } =>
+                          EnvelopeReadAt { schema: s, doc: doc, event: ChainEvent {
+                            partition: (part as String) as PartitionId,
+                            parent: match member_string(doc: doc, key: "parent") { Present { value: p } => if p == "" { none } else { Present { value: p as EventId } }  Absent => none },
+                            recorded_at: at,
+                            actor: actor,
+                            payload: kind,
+                          } }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE DECODE, generic in the payload: the envelope is read once and the kind word and document are
+// handed to the payload's own decoder, which answers a payload or nothing. A schema that is not
+// this kind's, a missing envelope member, or a payload that did not decode are each a typed
+// refusal naming what was missing -- never a skipped event.
+fn chain_event_decode<P>(text: String, schema: String, kind_decode: fn(JsonValue, String) -> P?) -> EventDecode<P> {
+  match chain_envelope_read(text: text) {
+    EnvelopeUnreadable { reason: why } => EventUndecodable { reason: why }
+    EnvelopeReadAt { schema: s, doc: doc, event: env } =>
+      if s != schema {
+        EventUndecodable { reason: join(["schema ", s, " is not ", schema], "") }
+      } else {
+        match kind_decode(doc, env.payload) {
+          Absent => EventUndecodable { reason: join(["kind ", env.payload, " did not decode"], "") }
+          Present { value: payload } =>
+            EventDecoded { event: ChainEvent { partition: env.partition, parent: env.parent, recorded_at: env.recorded_at, actor: env.actor, payload: payload } }
+        }
+      }
+  }
+}
+
+// THE ENVELOPE ALONE, FOR ANY SCHEMA: the same read without the schema check and with the kind word
+// as the payload. A reader that only needs the chain's shape -- the parent links of a partition
+// whose payload family it does not select, as the event-ref backfill does over every live
+// partition -- reads envelopes and nothing else; it decides nothing from a payload it did not
+// decode.
+fn chain_envelope_decode(text: String) -> EventDecode<String> {
+  match chain_envelope_read(text: text) {
+    EnvelopeUnreadable { reason: why } => EventUndecodable { reason: why }
+    EnvelopeReadAt { schema: _, doc: _, event: env } => EventDecoded { event: env }
+  }
+}

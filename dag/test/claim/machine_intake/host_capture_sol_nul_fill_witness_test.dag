@@ -1,0 +1,148 @@
+module test.claim.machine_intake.host_capture_sol_nul_fill_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.machine_intake_host_capture_envelope {
+  host_capture_bind, host_capture_section_reading, HostCaptureOpen, HostCaptureSectionReading, SectionComplete,
+}
+import gunbc.machine_intake_mtcollins1_boot_run {
+  mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_cause_text, MtCollins1BootTerminalVerdict, TerminalRefused,
+}
+import extdeps.posix.termios { termios_onlcr_output_lines }
+import gunbc.machine_intake_terminal_transcript { terminal_transcript_lines }
+import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject_for, MtCollins1CensusMedium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn nul(n: Int) -> String {
+  repeat_string(s: "\x00", n: n)
+}
+
+// SUPPLIED INPUT, REAL BYTES: lines of the SOL capture from mtcollins1_boot run 35808203121
+// (artifact mtcollins1-boot-receipts, mtcollins1-boot-sol.capture). Every NUL run sits where the
+// capture has it, at the start of the line, with the capture's own length for boot-media, nproc and
+// edac-before; three runs the capture carries at 10,624 (before the begin marker) and 241,778 and
+// 49,716 (inside workload) are cut to 16, since only their position is read. Sections between these
+// are dropped, output subsets are kept byte-for-byte, and the workload ARGV line is cut after its
+// write loop. The envelope stays open -- the run's BMC closed SOL before the end marker.
+fn sol_nul_capture_lines() -> List<String> {
+  [
+    concat(nul(n: 16), "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=dff85048-c24e-49ed-b76c-91ce74155228 begin 2026-09-23T02:20:03Z=====\r\n"),
+    "----SECTION boot-media----\r\n",
+    "----ARGV boot-media: ls -l /dev/disk/by-label; blkid\r\n",
+    concat(nul(n: 16), "total 0\r\n"),
+    "lrwxrwxrwx 1 root root 9 Sep 23 02:19 GUNBC_MTC1_CENSUS_2404_3 -> ../../sr0\r\n",
+    concat(nul(n: 16), "----EXIT boot-media: 0\r\n"),
+    "----SECTION nproc----\r\n",
+    "----ARGV nproc: nproc\r\n",
+    concat(nul(n: 224), "80\r\n"),
+    concat(nul(n: 16), "----EXIT nproc: 0\r\n"),
+    "----SECTION edac-before----\r\n",
+    "----ARGV edac-before: find /sys/devices/system/edac -type f -name '*count' | sort | while read -r f; do echo \"$f == $(cat \"$f\")\"; done\r\n",
+    concat(nul(n: 64), "/sys/devices/system/edac/mc/mc0/ce_count == 0\r\n"),
+    concat(nul(n: 16), "/sys/devices/system/edac/mc/mc0/ue_count == 0\r\n"),
+    "----EXIT edac-before: 0\r\n",
+    "----SECTION workload----\r\n",
+    "----ARGV workload: mkdir -p /dev/shm/gunbc && rc=0; for f in /dev/shm/gunbc/chunk0 /dev/shm/gunbc/chunk1 /dev/shm/gunbc/chunk2 /dev/shm/gunbc/chunk3; do dd if=/dev/urandom of=$f bs=1M count=16384 status=none || rc=1; done; echo workload-write-rc=$rc\r\n",
+    concat(nul(n: 16), "dd: error writing '/dev/shm/gunbc/chunk0': No space left on device\r\n"),
+    concat(nul(n: 48), "dd: error writing '/dev/shm/gunbc/chunk3': No space left on device\r\n"),
+    "workload-write-rc=1\r\n",
+    concat(nul(n: 16), "Error sending SOL data: FAIL\n"),
+    "SOL session closed by BMC\n",
+  ]
+}
+
+fn sol_nul_capture() -> String {
+  join(sol_nul_capture_lines(), "")
+}
+
+fn completed_with_exit_zero(r: HostCaptureSectionReading) -> Bool {
+  match r { SectionComplete { exit_code: c, output: _ } => c == "0"  _ => false }
+}
+
+// THE ROUTE, AT THE FRAMING: NUL fill reaches no reader, so the NUL-prefixed EXIT lines complete
+// their sections. At main (no fill removal) nproc and boot-media read as pending.
+test fn sol_nul_fill_sections_complete_with_exit_zero() -> Bool {
+  match host_capture_bind(capture: sol_nul_capture(), machine: "mtcollins1" as NonEmptyStr) {
+    HostCaptureOpen { envelope: e } =>
+      completed_with_exit_zero(r: host_capture_section_reading(envelope: e, name: "nproc"))
+        && completed_with_exit_zero(r: host_capture_section_reading(envelope: e, name: "boot-media"))
+        && completed_with_exit_zero(r: host_capture_section_reading(envelope: e, name: "edac-before"))
+    _ => false
+  }
+}
+
+// THE VERDICT: nproc's reading refuses beside workload's, and edac-after -- never run, because the
+// workload filled /dev/shm and SOL closed -- is named as unobserved rather than dropped. At main the
+// verdict is the one cause "workload write rc=1": nproc and boot-media pend behind the NULs and the
+// open fold discards every pending qualification once any other refuses.
+test fn sol_nul_capture_refuses_on_nproc_and_names_the_unobserved() -> Bool {
+  let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
+  let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
+  match mtcollins1_boot_terminal_verdict(capture: sol_nul_capture(), subject: subject, medium: medium) {
+    TerminalRefused { causes: cs } =>
+      map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
+        "nproc observed 80, qualification expects 160",
+        "workload write rc=1",
+        "edac-after not yet observed when the open envelope refused; unqualified",
+      ]
+    _ => false
+  }
+}
+
+// THE FOLD, INDEPENDENT OF THE FRAMING: the same capture with nproc's EXIT line removed leaves nproc
+// pending on an open envelope that refuses on workload. It must still be named, so a framing
+// regression (or any future corruption) cannot make a qualification vanish from the verdict -- and
+// named as OBSERVED BUT UNTERMINATED (its ARGV and 80 are there), never as unobserved.
+test fn open_refusal_names_a_pending_nproc() -> Bool {
+  let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
+  let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
+  let capture = join(filter(sol_nul_capture_lines(), l => l != concat(nul(n: 16), "----EXIT nproc: 0\r\n")), "")
+  match mtcollins1_boot_terminal_verdict(capture: capture, subject: subject, medium: medium) {
+    TerminalRefused { causes: cs } =>
+      map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
+        "workload write rc=1",
+        "nproc section opened but had not printed its EXIT line when the open envelope refused; unqualified",
+        "edac-after not yet observed when the open envelope refused; unqualified",
+      ]
+    _ => false
+  }
+}
+
+// ABSENT, NOT UNTERMINATED: with nproc's whole section removed, the same refusal names it as never
+// observed -- the two standings stay distinct at terminalization.
+test fn open_refusal_names_an_absent_nproc_as_unobserved() -> Bool {
+  let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
+  let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
+  let nproc_lines = ["----SECTION nproc----\r\n", "----ARGV nproc: nproc\r\n", concat(nul(n: 224), "80\r\n"), concat(nul(n: 16), "----EXIT nproc: 0\r\n")]
+  let capture = join(filter(sol_nul_capture_lines(), l => !any(nproc_lines, n => n == l)), "")
+  match mtcollins1_boot_terminal_verdict(capture: capture, subject: subject, medium: medium) {
+    TerminalRefused { causes: cs } =>
+      map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
+        "workload write rc=1",
+        "nproc not yet observed when the open envelope refused; unqualified",
+        "edac-after not yet observed when the open envelope refused; unqualified",
+      ]
+    _ => false
+  }
+}
+
+// TWO FACTS, TWO AUTHORITIES, ONE COMPOSITION. termios' ONLCR framing keeps NUL as content (it
+// removes only the mapped CR); the composed transcript framing removes it. And NUL is removed FIRST:
+// a line whose bytes read CR NUL NL still has its mapped CR recognised -- ONLCR-then-NUL would
+// leave "a\r" and every line-start reader past it would still match, but an EXIT code would read "0\r".
+test fn transcript_framing_composes_nul_fill_before_onlcr() -> Bool {
+  termios_onlcr_output_lines(text: "a\x00b\r\n") == ["a\x00b", ""]
+    && terminal_transcript_lines(text: "a\x00b\r\n") == ["ab", ""]
+    && terminal_transcript_lines(text: "----EXIT nproc: 0\r\x00\n") == ["----EXIT nproc: 0", ""]
+}
+
+// THE COMPOSITION CHANGES EXACTLY TWO THINGS. LF-only text frames unchanged; CR LF loses only the
+// ONLCR CR (a CR elsewhere in the line stays); NUL is removed at ANY position, not only at line
+// start; and every OTHER C0 control -- ESC, BEL -- is content and reaches the reader unchanged.
+test fn transcript_framing_removes_only_nul_and_the_mapped_cr() -> Bool {
+  terminal_transcript_lines(text: "a\nb\n") == ["a", "b", ""]
+    && terminal_transcript_lines(text: "a\rb\r\n") == ["a\rb", ""]
+    && terminal_transcript_lines(text: "\x00a\x00b\x00\r\n\x00") == ["ab", ""]
+    && terminal_transcript_lines(text: "\x1b[2Ka\x07\r\n") == ["\x1b[2Ka\x07", ""]
+}

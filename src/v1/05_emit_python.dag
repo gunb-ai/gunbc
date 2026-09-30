@@ -109,11 +109,11 @@ import v1.compiler.emit_core_support {
 fn emit_python(typed: ResolvedGraph) -> EmitResult {
   let filename_collisions = module_filename_collision_diagnostics(typed: typed)
   if filename_collisions |> count > 0 {
-    return EmitResult { files: [], diagnostics: filename_collisions }
+    return EmitResult { files: [], diagnostics: filename_collisions, emitted_edges: [] }
   }
   let symbol_collisions = emitted_symbol_collision_diagnostics(typed: typed)
   if symbol_collisions |> count > 0 {
-    return EmitResult { files: [], diagnostics: symbol_collisions }
+    return EmitResult { files: [], diagnostics: symbol_collisions, emitted_edges: [] }
   }
   let registry = typed.item_registry
   let test_projections = extract_test_projections(typed: typed)
@@ -126,7 +126,7 @@ fn emit_python(typed: ResolvedGraph) -> EmitResult {
   let init_file = emit_init_py(modules: typed.modules)
   let requirements = emit_requirements_txt(has_services: has_service_items(typed: typed))
   let files = concat([requirements, init_file], module_files, test_files)
-  EmitResult { files: files, diagnostics: [] }
+  EmitResult { files: files, diagnostics: [], emitted_edges: [] }
 }
 
 fn py_derive_attribute() -> String {

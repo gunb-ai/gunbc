@@ -1,0 +1,369 @@
+module gunbc.review_sheet_batch_actuator
+
+import std.types { NonEmptyStr, String, Bool, List, Int, HttpStatus }
+import std.resources { Network }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import extdeps.transports.rest {
+  RestMutationExchange,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_outcome,
+}
+import extdeps.google.sheets
+import extdeps.google.sheets {
+  ValueRange,
+  ValueRangeWrite,
+  SheetsValueInputOption,
+  A1RangeEncoding,
+  A1RangeEncoded,
+  A1TitleApostropheUnsupported,
+}
+import gunbc.review_sheet_projection {
+  ObservedSheet,
+  ReviewSheetProjection,
+  DerivedPayloadErasure,
+  ReviewSheetConverged,
+  ReviewSheetNeedsWrite,
+  ReviewSheetConflict,
+  ReviewSheetUnreadable,
+  conflict_reason,
+}
+import gunbc.review_sheet_sheets {
+  TabBoundWritePlan,
+  WritePlanLowering,
+  WritePlanLowered,
+  WritePlanUnlowerable,
+  WritePlanRefusal,
+  lower_write_plan,
+  write_plan_refusal_text,
+  ReviewSheetEnsureAssessment,
+  ReviewSheetRequestRejected,
+  ReviewSheetReadbackRejected,
+  ReviewSheetProjectionClassified,
+  review_sheet_ensure_assess,
+  review_sheet_get_values_request,
+  review_sheet_batch_value_input_option,
+  sheet_request_cause_text,
+  sheet_a1_range_wire,
+  TitleNotEncodable,
+}
+import gunbc.review_sheet_values_actuator {
+  ValuesReadOutcome,
+  ValuesRead,
+  ValuesUnreadable,
+  read_values,
+}
+
+// THE WHOLE-PLAN WRITE. gunbc.review_sheet_values_actuator perform_values_write takes ONE A1 range
+// and ONE desired range; an admitted TabBoundWritePlan holds several patches and append runs, and
+// looping that primitive over them would leave a prefix applied when a later call failed. Sheets
+// values.batchUpdate takes every range in one request, so the plan goes out as ONE call and the
+// standing that comes back is one fact about one mutation. Nothing here is routed through
+// perform_values_write or converge_sheet_values: those stay for their recorded private consumer
+// (strategy.ci_prospect_sheet_write) until that consumer is censused, and this module is the route
+// an admitted plan takes.
+//
+// WHAT THE PRIMITIVE TAKES, AND WHY NOT LESS. perform_batch_write takes the admitted plan with its
+// tab binding and the spreadsheet id, and it lowers the plan itself. It does not take a
+// List<ValueRangeWrite>: a caller handed that seam could author ranges no classification chose,
+// and the identity join between plan and request would be the caller's word. The request record
+// this module builds (BatchValuesRequest) is public so a witness can assert on it, but the
+// network primitive does not accept one. WHAT REMAINS THE CALLER'S: the write permit that decides
+// WHO may hand this module a plan is buyer-specific and private, and wraps this primitive; nothing
+// here checks that the plan came from review_sheet_ensure rather than from a hand, because a
+// TabBoundWritePlan is an ordinary record and the corpus cannot yet make its constructor private.
+//
+// MUTATION STANDING IS TWO LEVELS, AND THE LEVELS ARE THE POINT. extdeps.transports.rest already
+// rules that a mutation with no response, a 5xx, or an undecodable body is
+// RestExchangeCommitAmbiguous: the write may have landed. This module consumes that ruling rather
+// than re-deciding it. The top level says whether the sheet MAY have changed: BatchMayHaveCommitted
+// carries a BatchCommitStanding (committed, or ambiguous), and both oblige a fresh read;
+// BatchDidNotCommit carries a BatchNonCommitStanding (a 4xx decision before commit, or a plan that
+// could not be lowered so nothing was sent -- the one arm in which the sheet is untouched by
+// CONSTRUCTION). The receipt's verified and unverified arms take a BatchCommitStanding and nothing
+// wider, so "refused, but the readback converged" is not a value this module can build: an earlier
+// cut matched only the readback and would have minted WriteVerifiedConverged over a refused write.
+//
+// VERIFICATION IS A WHOLE-TAB REASSESSMENT, NOT A PER-RANGE ECHO. Reading back each written range
+// and comparing it to what was sent proves the request was applied; it does not prove the sheet
+// now converges to the projection. It misses a range the lowering dropped (it would never be read
+// back), an append at the wrong frontier (the range reads back what it wrote, one row too low),
+// and a stale assessment whose selected ranges happen to match. So the authority is a FRESH
+// whole-tab FORMATTED_VALUE read run through review_sheet_ensure_assess with the SAME requested
+// tab, projection and erasures the plan came from, and success is exactly
+// ReviewSheetProjectionClassified { classification: ReviewSheetConverged }. Anything else carries
+// the assessment itself -- a NeedsWrite with the residual plan, a conflict, an unreadable readback
+// -- so the caller sees what the sheet is, never a sentence about it.
+
+type BatchValuesRequest {
+  spreadsheet_id: NonEmptyStr
+  value_input_option: SheetsValueInputOption
+  data: List<ValueRangeWrite>
+}
+
+type BatchValuesRequestStanding
+  = BatchRequestBuilt { request: BatchValuesRequest }
+  | BatchRequestUnlowerable { refusals: List<WritePlanRefusal> }
+
+fn batch_values_request(spreadsheet_id: NonEmptyStr, bound: TabBoundWritePlan) -> BatchValuesRequestStanding {
+  match lower_write_plan(bound: bound) {
+    WritePlanUnlowerable { refusals: rs } => BatchRequestUnlowerable { refusals: rs }
+    WritePlanLowered { ranges: rs } =>
+      BatchRequestBuilt {
+        request: BatchValuesRequest {
+          spreadsheet_id: spreadsheet_id,
+          value_input_option: review_sheet_batch_value_input_option(),
+          data: rs,
+        }
+      }
+  }
+}
+
+type BatchCommitStanding
+  = BatchCommitted { total_updated_cells: Int? }
+  | BatchCommitAmbiguous { detail: NonEmptyStr }
+
+type BatchNonCommitStanding
+  = BatchRefused { status: HttpStatus, body: String }
+  | BatchNotIssued { refusals: List<WritePlanRefusal> }
+
+type BatchMutationStanding
+  = BatchMayHaveCommitted { commit: BatchCommitStanding }
+  | BatchDidNotCommit { cause: BatchNonCommitStanding }
+
+fn perform_batch_write(
+  spreadsheet_id: NonEmptyStr,
+  bound: TabBoundWritePlan,
+) -> BatchMutationStanding uses net: Network {
+  match batch_values_request(spreadsheet_id: spreadsheet_id, bound: bound) {
+    BatchRequestUnlowerable { refusals: rs } => BatchDidNotCommit { cause: BatchNotIssued { refusals: rs } }
+    BatchRequestBuilt { request: req } => issue_batch_request(request: req)
+  }
+}
+
+// SEALED TO ITS ONE CALLER. This is the function that puts bytes on the wire, and it takes the
+// request record; unsealed, any module could build a BatchValuesRequest of its own ranges and skip
+// lower_write_plan. admit_callers confines the call edge to perform_batch_write, which takes only a
+// plan, so the only route to the wire runs through the lowering. The witness compiles an outside
+// caller and asserts ConstructorCallAdmissionRefused at this callee by name.
+fn issue_batch_request(request: BatchValuesRequest) -> BatchMutationStanding uses net: Network admit_callers: [
+  decl_ref(module_path: "gunbc.review_sheet_batch_actuator", decl_name: "perform_batch_write")
+] {
+  let written = sheets.Spreadsheets.BatchUpdateValues(
+    spreadsheet_id: request.spreadsheet_id as String,
+    value_input_option: request.value_input_option,
+    data: request.data,
+    include_values_in_response: false,
+  )
+  match classify_rest_outcome(standing: RestMutationExchange { rest: written.outcome }) {
+    RestExchangeSucceeded =>
+      BatchMayHaveCommitted { commit: BatchCommitted { total_updated_cells: written.total_updated_cells } }
+    RestExchangeStatusRefused { status, body } =>
+      BatchDidNotCommit { cause: BatchRefused { status: status, body: body } }
+    RestExchangeCommitAmbiguous { detail } =>
+      BatchMayHaveCommitted { commit: BatchCommitAmbiguous { detail: detail } }
+    RestExchangeUnreached { cause } =>
+      BatchMayHaveCommitted {
+        commit: BatchCommitAmbiguous {
+          detail: join(["classify_rest_outcome answered Unreached for a mutation exchange, which its own ruling maps to ambiguity: ", cause as String], "") as NonEmptyStr
+        }
+      }
+    RestExchangeUndecodable { status, cause } =>
+      BatchMayHaveCommitted {
+        commit: BatchCommitAmbiguous {
+          detail: join(["classify_rest_outcome answered Undecodable(", to_string(status), ") for a mutation exchange, which its own ruling maps to ambiguity: ", cause as String], "") as NonEmptyStr
+        }
+      }
+  }
+}
+
+// THE DISPATCH AFTER THE MUTATION, pure: a standing that may have committed owes a readback and
+// hands the commit standing forward; one that did not is settled here, with no read.
+type WriteDispatch
+  = ReadbackOwed { commit: BatchCommitStanding }
+  | ReceiptSettled { receipt: ReviewSheetWriteReceipt }
+
+fn write_dispatch(standing: BatchMutationStanding) -> WriteDispatch {
+  match standing {
+    BatchMayHaveCommitted { commit: c } => ReadbackOwed { commit: c }
+    BatchDidNotCommit { cause: k } => ReceiptSettled { receipt: WriteNotCommitted { cause: k } }
+  }
+}
+
+type ReviewSheetWriteReceipt
+  = WriteVerifiedConverged { commit: BatchCommitStanding, observed: ObservedSheet }
+  | WriteUnverified {
+      commit: BatchCommitStanding
+      readback_assessment: ReviewSheetEnsureAssessment
+    }
+  | WriteNotCommitted { cause: BatchNonCommitStanding }
+
+// THE PURE HALF OF VERIFICATION: given a commit standing and the fresh whole-tab assessment,
+// decide. Converged is the only success. Committed or CommitAmbiguous rides inside the receipt
+// either way, so a consumer that wants to know whether the success rests on an ambiguous commit
+// reads it there. A refused or not-issued write cannot reach this function: its input is
+// BatchCommitStanding, and write_dispatch settles the other level without a read.
+fn review_sheet_write_receipt(
+  commit: BatchCommitStanding,
+  readback_assessment: ReviewSheetEnsureAssessment,
+) -> ReviewSheetWriteReceipt {
+  match readback_assessment {
+    ReviewSheetProjectionClassified { observed: o, tab: _, classification: c } =>
+      match c {
+        ReviewSheetConverged => WriteVerifiedConverged { commit: commit, observed: o }
+        ReviewSheetNeedsWrite { plan: _ } =>
+          WriteUnverified { commit: commit, readback_assessment: readback_assessment }
+        ReviewSheetConflict { conflict: _ } =>
+          WriteUnverified { commit: commit, readback_assessment: readback_assessment }
+        ReviewSheetUnreadable { reason: _ } =>
+          WriteUnverified { commit: commit, readback_assessment: readback_assessment }
+      }
+    ReviewSheetRequestRejected { cause: _ } =>
+      WriteUnverified { commit: commit, readback_assessment: readback_assessment }
+    ReviewSheetReadbackRejected { reason: _ } =>
+      WriteUnverified { commit: commit, readback_assessment: readback_assessment }
+  }
+}
+
+// THE FRESH READ. The whole tab, FORMATTED_VALUE, the same request the next ensure pass would
+// issue -- review_sheet_get_values_request over the plan's tab -- so the assessment here is the
+// assessment the next pass would reach. A read that fails is carried as ReviewSheetReadbackRejected
+// with the read's cause, which is the assessment arm for a readback that could not be observed.
+// The request range is the A1 codec's encoding, never a raw concat; a title the codec refuses is
+// the same TitleNotEncodable review_sheet_ensure_assess answers before any read. On this route
+// that arm is unreachable in practice -- the lowering already carried the codec's refusal as
+// BatchNotIssued, and write_dispatch settles that without a read -- but the fold stays total.
+fn reassess_after_write(
+  spreadsheet_id: NonEmptyStr,
+  tab: NonEmptyStr,
+  projection: ReviewSheetProjection,
+  erasures: List<DerivedPayloadErasure>,
+) -> ReviewSheetEnsureAssessment uses net: Network {
+  let requested = review_sheet_get_values_request(tab: tab)
+  match sheet_a1_range_wire(range: requested) {
+    A1TitleApostropheUnsupported { title: _ } =>
+      ReviewSheetRequestRejected { cause: TitleNotEncodable { range: requested } }
+    A1RangeEncoded { wire: a1 } =>
+      match read_values(spreadsheet_id: spreadsheet_id, a1: a1) {
+        ValuesUnreadable { cause: c } => ReviewSheetReadbackRejected { reason: c }
+        ValuesRead { range: got } =>
+          review_sheet_ensure_assess(
+            requested: requested,
+            range: got,
+            projection: projection,
+            erasures: erasures,
+          )
+      }
+  }
+}
+
+// THE ONE ROUTE: lower, issue once, re-read the whole tab, reassess. The projection and erasures
+// are the ones the plan was classified against; handing this fold a different projection would
+// verify the write against a goal it was not derived from, and that is the caller's obligation to
+// keep, since the plan record does not carry its own projection.
+fn write_and_verify_review_sheet(
+  spreadsheet_id: NonEmptyStr,
+  bound: TabBoundWritePlan,
+  projection: ReviewSheetProjection,
+  erasures: List<DerivedPayloadErasure>,
+) -> ReviewSheetWriteReceipt uses net: Network {
+  match write_dispatch(standing: perform_batch_write(spreadsheet_id: spreadsheet_id, bound: bound)) {
+    ReceiptSettled { receipt: r } => r
+    ReadbackOwed { commit: c } =>
+      review_sheet_write_receipt(
+        commit: c,
+        readback_assessment: reassess_after_write(
+          spreadsheet_id: spreadsheet_id,
+          tab: bound.tab,
+          projection: projection,
+          erasures: erasures,
+        ),
+      )
+  }
+}
+
+fn batch_commit_standing_text(commit: BatchCommitStanding) -> String {
+  match commit {
+    BatchCommitted { total_updated_cells: n } =>
+      match n {
+        Present { value: c } => join(["values.batchUpdate committed, ", to_string(c), " cells updated"], "")
+        Absent => "values.batchUpdate committed, no cell count reported"
+      }
+    BatchCommitAmbiguous { detail: d } => join(["values.batchUpdate left the write ambiguous: ", d as String], "")
+  }
+}
+
+fn batch_non_commit_standing_text(cause: BatchNonCommitStanding) -> String {
+  match cause {
+    BatchRefused { status: s, body: b } =>
+      join(["values.batchUpdate refused with status ", to_string(s), ": ", b], "")
+    BatchNotIssued { refusals: rs } =>
+      join(["the plan could not be lowered, nothing was sent: ", join(map(rs, r => write_plan_refusal_text(refusal: r)), "; ")], "")
+  }
+}
+
+fn readback_assessment_text(a: ReviewSheetEnsureAssessment) -> String {
+  match a {
+    ReviewSheetRequestRejected { cause: c } => sheet_request_cause_text(cause: c)
+    ReviewSheetReadbackRejected { reason: r } => r as String
+    ReviewSheetProjectionClassified { observed: _, tab: _, classification: c } =>
+      match c {
+        ReviewSheetConverged => "readback converges to the projection"
+        ReviewSheetNeedsWrite { plan: p } =>
+          join(["readback still needs a write: ", to_string(count(p.patches)), " patches and ", to_string(count(p.appends)), " appends remain"], "")
+        ReviewSheetConflict { conflict: k } => conflict_reason(conflict: k) as String
+        ReviewSheetUnreadable { reason: r } => r as String
+      }
+  }
+}
+
+fn review_sheet_write_receipt_text(receipt: ReviewSheetWriteReceipt) -> String {
+  match receipt {
+    WriteVerifiedConverged { commit: c, observed: _ } =>
+      join(["VERIFIED by whole-tab reassessment (", batch_commit_standing_text(commit: c), ")"], "")
+    WriteUnverified { commit: c, readback_assessment: a } =>
+      join(["UNVERIFIED: ", batch_commit_standing_text(commit: c), "; readback: ", readback_assessment_text(a: a)], "")
+    WriteNotCommitted { cause: k } => join(["NOT COMMITTED: ", batch_non_commit_standing_text(cause: k)], "")
+  }
+}
+
+// THE CONSUMER IS PRIVATE AND LATER. The named consumer is the private transaction
+// strategy.buyer_review_live (H2), whose write permit wraps perform_batch_write; it cannot live in
+// this repository because the buyer roster is private. Until it lands, every declaration on the
+// network route below is a declared frontier: consumed by a named consumer in a named later
+// change. The pure folds -- lower_write_plan, batch_values_request, write_dispatch, review_sheet_write_receipt --
+// are executed by test.claim.review_sheet_converge_witness and are not rows here.
+//
+// WHY review_sheet_converge_cli DOES NOT CONSUME THIS TODAY. That entry point converges the
+// ESTATE -- API enablement, the writer account, drive membership, the spreadsheet, its format --
+// and holds no ReviewSheetProjection: the listings a projection is built from come from the
+// private eBay lane, so nothing public can produce a TabBoundWritePlan for it to lower. Wiring the
+// lowering there would mean inventing a projection to have something to write, which is the
+// dangling consumption §3c refuses dressed as its opposite.
+data review_sheet_batch_write_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_batch_actuator", decl_name: "perform_batch_write"),
+    reason: "the single-call values.batchUpdate over an admitted TabBoundWritePlan; its caller is the private write permit in strategy.buyer_review_live (H2), which holds the buyer roster this repository cannot see",
+    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_batch_actuator write_and_verify_review_sheet with a plan admitted by review_sheet_ensure and consumes the receipt on that route; a witness over batch_values_request or review_sheet_write_receipt does not fire this"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_batch_actuator", decl_name: "write_and_verify_review_sheet"),
+    reason: "lower, issue once, re-read the whole tab, reassess: the route strategy.buyer_review_live (H2) takes after review_sheet_ensure admits a plan",
+    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_batch_actuator write_and_verify_review_sheet with a plan admitted by review_sheet_ensure and consumes the receipt on that route; a witness over batch_values_request or review_sheet_write_receipt does not fire this"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_batch_actuator", decl_name: "reassess_after_write"),
+    reason: "the fresh whole-tab FORMATTED_VALUE read and reassessment, reached only through write_and_verify_review_sheet",
+    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_batch_actuator write_and_verify_review_sheet with a plan admitted by review_sheet_ensure and consumes the receipt on that route; a witness over batch_values_request or review_sheet_write_receipt does not fire this"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_batch_actuator", decl_name: "review_sheet_write_receipt_text"),
+    reason: "the operator rendering of a receipt, consumed by the same private transaction's report",
+    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_batch_actuator write_and_verify_review_sheet with a plan admitted by review_sheet_ensure and consumes the receipt on that route; a witness over batch_values_request or review_sheet_write_receipt does not fire this"),
+  )
+]

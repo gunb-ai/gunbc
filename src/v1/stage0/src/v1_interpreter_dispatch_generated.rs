@@ -12,6 +12,7 @@ pub enum EvalBuiltinArm {
     FreeCallBytesOctets,
     FreeCallOctetsBytes,
     FreeCallUtf8EncodeBytes,
+    FreeCallPureDagSeamUnreachable,
     FreeCallDiscriminant,
     FreeCallCharsToString,
     FreeCallGet,
@@ -71,6 +72,7 @@ pub enum EvalBuiltinArm {
     FreeCallImportResolutionFacts,
     FreeCallReferenceResolutionFacts,
     FreeCallDependencyResolutionFacts,
+    FreeCallDependencyResolutionFactsAt,
     FreeCallConceptDeclFacts,
     FreeCallDataDeclTypeFacts,
     FreeCallExportSignatureFacts,
@@ -110,6 +112,11 @@ pub enum EvalBuiltinArm {
     FreeCallCompileDagReferenceOccurrenceBindingCensus,
     FreeCallCompileDagImporterResolvedCallEdges,
     FreeCallCompileDagCallsiteResolvedCallEdges,
+    FreeCallBuiltinFunctionRegistryKeys,
+    FreeCallCompileDagPrimitiveCallEdges,
+    FreeCallSourceRootIngestModuleIdentities,
+    FreeCallRequiredFloorNominalSubjectModuleIdentities,
+    FreeCallEntryClosureModuleIdentities,
     FreeCallCompileDagCallFormLeafGuard,
     FreeCallObserveDeclaredImportClosureSymbolBinding,
     FreeCallClassBImportClosureGateNotAffectedSkip,
@@ -157,6 +164,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "bytes_octets" => Some(EvalBuiltinArm::FreeCallBytesOctets),
         "octets_bytes" => Some(EvalBuiltinArm::FreeCallOctetsBytes),
         "utf8_encode_bytes" => Some(EvalBuiltinArm::FreeCallUtf8EncodeBytes),
+        "pure_dag_seam_unreachable" => Some(EvalBuiltinArm::FreeCallPureDagSeamUnreachable),
         "discriminant" => Some(EvalBuiltinArm::FreeCallDiscriminant),
         "chars_to_string" => Some(EvalBuiltinArm::FreeCallCharsToString),
         "get" => Some(EvalBuiltinArm::FreeCallGet),
@@ -219,6 +227,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "import_resolution_facts" => Some(EvalBuiltinArm::FreeCallImportResolutionFacts),
         "reference_resolution_facts" => Some(EvalBuiltinArm::FreeCallReferenceResolutionFacts),
         "dependency_resolution_facts" => Some(EvalBuiltinArm::FreeCallDependencyResolutionFacts),
+        "dependency_resolution_facts_at" => Some(EvalBuiltinArm::FreeCallDependencyResolutionFactsAt),
         "concept_decl_facts" => Some(EvalBuiltinArm::FreeCallConceptDeclFacts),
         "data_decl_type_facts" => Some(EvalBuiltinArm::FreeCallDataDeclTypeFacts),
         "export_signature_facts" => Some(EvalBuiltinArm::FreeCallExportSignatureFacts),
@@ -258,6 +267,11 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "compile_dag_reference_occurrence_binding_census" => Some(EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus),
         "compile_dag_importer_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges),
         "compile_dag_callsite_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges),
+        "builtin_function_registry_keys" => Some(EvalBuiltinArm::FreeCallBuiltinFunctionRegistryKeys),
+        "compile_dag_primitive_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagPrimitiveCallEdges),
+        "source_root_ingest_module_identities" => Some(EvalBuiltinArm::FreeCallSourceRootIngestModuleIdentities),
+        "required_floor_nominal_subject_module_identities" => Some(EvalBuiltinArm::FreeCallRequiredFloorNominalSubjectModuleIdentities),
+        "entry_closure_module_identities" => Some(EvalBuiltinArm::FreeCallEntryClosureModuleIdentities),
         "compile_dag_call_form_leaf_guard" => Some(EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard),
         "observe_declared_import_closure_symbol_binding" => Some(EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding),
         "class_b_import_closure_gate_not_affected_skip" => Some(EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip),
@@ -306,6 +320,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.bytes_octets") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallBytesOctets };
     ("free_call.octets_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallOctetsBytes };
     ("free_call.utf8_encode_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallUtf8EncodeBytes };
+    ("free_call.pure_dag_seam_unreachable") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallPureDagSeamUnreachable };
     ("free_call.discriminant") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDiscriminant };
     ("free_call.chars_to_string") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCharsToString };
     ("free_call.get") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallGet };
@@ -365,6 +380,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.import_resolution_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallImportResolutionFacts };
     ("free_call.reference_resolution_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallReferenceResolutionFacts };
     ("free_call.dependency_resolution_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDependencyResolutionFacts };
+    ("free_call.dependency_resolution_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDependencyResolutionFactsAt };
     ("free_call.concept_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConceptDeclFacts };
     ("free_call.data_decl_type_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDataDeclTypeFacts };
     ("free_call.export_signature_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExportSignatureFacts };
@@ -404,6 +420,11 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.compile_dag_reference_occurrence_binding_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus };
     ("free_call.compile_dag_importer_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges };
     ("free_call.compile_dag_callsite_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges };
+    ("free_call.builtin_function_registry_keys") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallBuiltinFunctionRegistryKeys };
+    ("free_call.compile_dag_primitive_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagPrimitiveCallEdges };
+    ("free_call.source_root_ingest_module_identities") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallSourceRootIngestModuleIdentities };
+    ("free_call.required_floor_nominal_subject_module_identities") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRequiredFloorNominalSubjectModuleIdentities };
+    ("free_call.entry_closure_module_identities") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallEntryClosureModuleIdentities };
     ("free_call.compile_dag_call_form_leaf_guard") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard };
     ("free_call.observe_declared_import_closure_symbol_binding") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding };
     ("free_call.class_b_import_closure_gate_not_affected_skip") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip };
@@ -576,24 +597,24 @@ macro_rules! eval_algebra_method_inner_arm {
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EvalCallBridgeStdCompilersLexingArm {
+pub enum EvalCallBridgeStdNodeArm {
     V4BridgeSymbolInternLexeme,
     V4BridgeSymbolLexeme,
 }
 
 #[rustfmt::skip]
-pub fn lookup_eval_call_bridge_std_compilers_lexing(spelling: &str) -> Option<EvalCallBridgeStdCompilersLexingArm> {
+pub fn lookup_eval_call_bridge_std_node(spelling: &str) -> Option<EvalCallBridgeStdNodeArm> {
     match spelling {
-        "symbol_intern_lexeme" => Some(EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolInternLexeme),
-        "symbol_lexeme" => Some(EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolLexeme),
+        "symbol_intern_lexeme" => Some(EvalCallBridgeStdNodeArm::V4BridgeSymbolInternLexeme),
+        "symbol_lexeme" => Some(EvalCallBridgeStdNodeArm::V4BridgeSymbolLexeme),
         _ => None,
     }
 }
 
 #[rustfmt::skip]
-macro_rules! eval_call_bridge__v2_std_compilers_lexing_arm {
-    ("v4_bridge.symbol_intern_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolInternLexeme };
-    ("v4_bridge.symbol_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolLexeme };
+macro_rules! eval_call_bridge__v2_std_node_arm {
+    ("v4_bridge.symbol_intern_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeArm::V4BridgeSymbolInternLexeme };
+    ("v4_bridge.symbol_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeArm::V4BridgeSymbolLexeme };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

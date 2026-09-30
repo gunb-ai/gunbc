@@ -413,7 +413,7 @@ pub fn lookup_resolved_sig_with_telemetry(
                     } else {
                         Some(sig.clone())
                     },
-                    match_count: (acc.match_count.clone() + 1),
+                    match_count: v1_rt::int_add(acc.match_count.clone(), 1),
                     first_parent: if (acc.first_parent.clone() != std::option::Option::None) {
                         acc.first_parent.clone()
                     } else {
@@ -923,7 +923,7 @@ pub fn topo_resolve_loop(
             let __tco_5 = module_name;
             let __tco_6 = ready_accum.diagnostics.clone();
             let __tco_7 = parent_envs;
-            let __tco_8 = (fuel - 1);
+            let __tco_8 = v1_rt::int_sub(fuel, 1);
             __tco_loop_remaining = __tco_0;
             __tco_loop_resolved = __tco_1;
             __tco_loop_declared_sigs = __tco_2;

@@ -1,0 +1,196 @@
+module v2.test.claim.namespace_xl0.call_argument_resolve_refusal
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN UNDECLARED NAME USED ONLY AS A CALL ARGUMENT REFUSES AT RESOLVE, LOCATED AT THE ARGUMENT.
+//
+// THE SUBJECT IS RESOLVE OVER A TREE WHOSE CALL ARGUMENTS SURVIVED LOWERING, and the route is the one
+// the native lane runs: native_test_context_from_ingest tokenizes, parses and normalizes the supplied
+// sources and builds the corpus index, and native_census_module_resolution resolves one module
+// against it. Before v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the
+// grammar's comma-list shape, every argument of a plain call was dropped at lowering, so the
+// undeclared-argument modules below resolved with no diagnostic
+// (gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering, measured at b8e0cc4eb9).
+//
+// WHY THIS ROUTE AND NOT v2.compiler.staged_front_end. That single-module harness refuses EVERY call
+// to a same-module fn as unbound AT THE CALLEE, on main as well as here, so an undeclared-argument
+// candidate there refuses for the callee's reason and a declared-argument control cannot pass: it
+// cannot discriminate the argument subtree. Measured by running both controls below through it.
+//
+// THE FOUR MODULES VARY ONE THING EACH. The undeclared name appears in no module but as the argument,
+// so its refusal can only come from the argument reaching resolve; the positional twin shows the
+// reader is not specific to the named form; the declared-argument module is the same call with a
+// bound argument, so an argument reaching resolve is not by itself a refusal; and the callee-only
+// module shows the callee half still resolves.
+data xl2_named_source: String = "module v2.test.xl2_named\n\nimport v2.std.logic { Bool }\n\nfn xl2_callee(probe: Bool) -> Bool { probe }\n\nfn xl2_caller() -> Bool { xl2_callee(probe: xl2_undeclared_argument) }\n"
+
+data xl2_positional_source: String = "module v2.test.xl2_positional\n\nimport v2.std.logic { Bool }\n\nfn xl2_callee(probe: Bool) -> Bool { probe }\n\nfn xl2_caller() -> Bool { xl2_callee(xl2_undeclared_argument) }\n"
+
+data xl2_declared_source: String = "module v2.test.xl2_declared\n\nimport v2.std.logic { Bool }\n\ndata xl2_declared_argument: Bool = true\n\nfn xl2_callee(probe: Bool) -> Bool { probe }\n\nfn xl2_caller() -> Bool { xl2_callee(probe: xl2_declared_argument) }\n"
+
+data xl2_callee_only_source: String = "module v2.test.xl2_callee_only\n\nimport v2.std.logic { Bool }\n\nfn xl2_zero() -> Bool { true }\n\nfn xl2_caller() -> Bool { xl2_zero() }\n"
+
+fn xl2_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data xl2_ingest: SourceRootIngest = Cons {
+  head: xl2_read(source: xl2_named_source, id: ^xl2_named_artifact, unit: ^xl2_named_cu, path: "src/v2/test/fixture/namespace_xl0/xl2_named.dag"),
+  tail: Cons {
+    head: xl2_read(source: xl2_positional_source, id: ^xl2_positional_artifact, unit: ^xl2_positional_cu, path: "src/v2/test/fixture/namespace_xl0/xl2_positional.dag"),
+    tail: Cons {
+      head: xl2_read(source: xl2_declared_source, id: ^xl2_declared_artifact, unit: ^xl2_declared_cu, path: "src/v2/test/fixture/namespace_xl0/xl2_declared.dag"),
+      tail: Cons {
+        head: xl2_read(source: xl2_callee_only_source, id: ^xl2_callee_only_artifact, unit: ^xl2_callee_only_cu, path: "src/v2/test/fixture/namespace_xl0/xl2_callee_only.dag"),
+        tail: Empty
+      }
+    }
+  }
+}
+
+// ONE FRONT END FOR ALL FOUR CLAIMS, SHARED THE WAY v2.test.claim.resolve.namespace_candidate_rule
+// ncr_outcomes IS. native_test_context_from_ingest tokenizes, parses, normalizes and indexes the
+// whole ingest, and the floor builds a fresh frame per claim, so each claim re-derived it at ~1.4s
+// against the enrolment margin (ENROLMENT-MARGIN-REFUSED on the first floor run of gunbc#12108).
+// xl2_outcomes is nullary and its sources are inline, so it is enrolled WARM in
+// v2.workflow.floor_pure_producer_share and forced once at preparation. THE SEAM IS RESOLUTION'S
+// OUTPUT READ AS A VERDICT: the stored value is a reason symbol and the atom the refusal names --
+// no resolution context, no Node, no closure -- and each claim reads one module's verdict.
+type Xl2Verdict
+  = Xl2Resolved
+  | Xl2Refused { reason: Symbol, at_atom: Optional<Symbol> }
+  | Xl2FileRefused
+  | Xl2Absent
+
+type Xl2Outcomes
+  = Xl2ContextRefused
+  | Xl2OutcomesDecided {
+      named: Xl2Verdict
+      positional: Xl2Verdict
+      declared: Xl2Verdict
+      callee_only: Xl2Verdict
+    }
+
+fn xl2_verdict_of(outcome: NativeCensusModuleOutcome) -> Xl2Verdict {
+  match outcome {
+    NativeCensusModuleResolved => Xl2Resolved
+    NativeCensusModuleFileRefused => Xl2FileRefused
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      Xl2Refused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn xl2_verdict_in(context: NativeTestContext, module_name: String) -> Xl2Verdict {
+  fold_list(
+    xs: native_census_modules(ingest: xl2_ingest),
+    empty: Xl2Absent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        xl2_verdict_of(
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          )
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn xl2_outcomes() -> Xl2Outcomes {
+  match native_test_context_from_ingest(ingest: xl2_ingest) {
+    Rejected { diagnostics: _ } => Xl2ContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      Xl2OutcomesDecided {
+        named: xl2_verdict_in(context: context, module_name: "v2.test.xl2_named"),
+        positional: xl2_verdict_in(context: context, module_name: "v2.test.xl2_positional"),
+        declared: xl2_verdict_in(context: context, module_name: "v2.test.xl2_declared"),
+        callee_only: xl2_verdict_in(context: context, module_name: "v2.test.xl2_callee_only")
+      }
+  }
+}
+
+fn xl2_is_resolved(v: Xl2Verdict) -> Bool {
+  match v {
+    Xl2Resolved => true
+    _ => false
+  }
+}
+
+// Refused at resolve, the first refusal is unbound, and its locus is the argument's own atom.
+fn xl2_is_unbound_at(v: Xl2Verdict, spelling: Symbol) -> Bool {
+  match v {
+    Xl2Refused { reason: r, at_atom: Present { value: id } } =>
+      (r == ^resolve_reason_unbound_symbol) && (id == spelling)
+    _ => false
+  }
+}
+
+test fn an_undeclared_named_call_argument_refuses_at_resolve_at_the_argument() -> Bool {
+  match xl2_outcomes() {
+    Xl2OutcomesDecided { named: v, positional: _, declared: _, callee_only: _ } =>
+      xl2_is_unbound_at(v: v, spelling: ^xl2_undeclared_argument)
+    Xl2ContextRefused => false
+  }
+}
+
+test fn an_undeclared_positional_call_argument_refuses_at_resolve_at_the_argument() -> Bool {
+  match xl2_outcomes() {
+    Xl2OutcomesDecided { named: _, positional: v, declared: _, callee_only: _ } =>
+      xl2_is_unbound_at(v: v, spelling: ^xl2_undeclared_argument)
+    Xl2ContextRefused => false
+  }
+}
+
+test fn a_declared_call_argument_resolves() -> Bool {
+  match xl2_outcomes() {
+    Xl2OutcomesDecided { named: _, positional: _, declared: v, callee_only: _ } => xl2_is_resolved(v: v)
+    Xl2ContextRefused => false
+  }
+}
+
+test fn a_callee_only_call_resolves() -> Bool {
+  match xl2_outcomes() {
+    Xl2OutcomesDecided { named: _, positional: _, declared: _, callee_only: v } => xl2_is_resolved(v: v)
+    Xl2ContextRefused => false
+  }
+}

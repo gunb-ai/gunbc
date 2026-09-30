@@ -189,7 +189,7 @@ pub fn import_module_start(
             if is_import_whitespace(v1_rt::char_at(&statement_text, at.clone())) {
                 {
                     let __tco_0 = statement_text;
-                    let __tco_1 = (at + 1);
+                    let __tco_1 = v1_rt::int_add(at, 1);
                     let __tco_2 = limit;
                     __tco_loop_statement_text = __tco_0;
                     __tco_loop_at = __tco_1;
@@ -211,7 +211,8 @@ pub fn statement_text_names_module(statement_text: String, imported_module: Stri
             v1_rt::string_length(&import_statement_keyword()),
             text_length.clone(),
         );
-        let module_end = (module_start.clone() + v1_rt::string_length(&imported_module));
+        let module_end =
+            v1_rt::int_add(module_start.clone(), v1_rt::string_length(&imported_module));
         ((((v1_rt::string_length(&imported_module) > 0)
             && (module_end.clone() <= text_length.clone()))
             && (v1_rt::substring(&statement_text, module_start.clone(), module_end.clone())
@@ -308,9 +309,13 @@ pub fn import_strip_step(
                                     } else {
                                         Rc::new(ImportStripProgress::ImportStripScanning {
                                             cursor: statement.span.clone().end.clone(),
-                                            rewritten_cursor: (rewritten_cursor.clone()
-                                                + (statement.span.clone().start.clone()
-                                                    - cursor.clone())),
+                                            rewritten_cursor: v1_rt::int_add(
+                                                rewritten_cursor.clone(),
+                                                v1_rt::int_sub(
+                                                    statement.span.clone().start.clone(),
+                                                    cursor.clone(),
+                                                ),
+                                            ),
                                             kept_segments: v1_rt::rc_list_push(
                                                 kept_segments.clone(),
                                                 v1_rt::substring(
@@ -334,9 +339,13 @@ pub fn import_strip_step(
                                                         .start
                                                         .clone(),
                                                     rewritten_start: rewritten_cursor.clone(),
-                                                    rewritten_end: (rewritten_cursor.clone()
-                                                        + (statement.span.clone().start.clone()
-                                                            - cursor.clone())),
+                                                    rewritten_end: v1_rt::int_add(
+                                                        rewritten_cursor.clone(),
+                                                        v1_rt::int_sub(
+                                                            statement.span.clone().start.clone(),
+                                                            cursor.clone(),
+                                                        ),
+                                                    ),
                                                 }),
                                             ),
                                         })
@@ -403,8 +412,10 @@ pub fn strip_import_statements(
                         original_start: cursor.clone(),
                         original_end: source_length.clone(),
                         rewritten_start: rewritten_cursor.clone(),
-                        rewritten_end: (rewritten_cursor.clone()
-                            + (source_length.clone() - cursor.clone())),
+                        rewritten_end: v1_rt::int_add(
+                            rewritten_cursor.clone(),
+                            v1_rt::int_sub(source_length.clone(), cursor.clone()),
+                        ),
                     }),
                 ),
             }),

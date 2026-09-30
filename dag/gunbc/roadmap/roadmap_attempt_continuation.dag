@@ -278,7 +278,8 @@ fn continuation_continue_next_turn(prior: PriorAttemptFacts, verdict_detail: Str
       match prior_turn {
         ContinuationTurnUnreadable { reason } =>
           ContinuationRefused { reason: join(["the prior attempt ", prior.attempt_key, " has a continuation-turn file that could not be read: ", reason], "") }
-        _ => ContinuationRefused { reason: "the prior attempt's turn is unknown" }
+        ContinuationTurnAbsent => ContinuationRefused { reason: "the prior attempt's turn is unknown" }
+        ContinuationTurnKnown { turn: _ } => ContinuationRefused { reason: "the prior attempt's turn is unknown" }
       }
     Present { value: t } =>
       if t >= continuation_turn_cap {

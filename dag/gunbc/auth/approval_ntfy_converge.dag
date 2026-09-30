@@ -9,8 +9,9 @@ import gunbc.executor_privileged_operation {
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.auth.approval_ntfy_deployment {
   approval_ntfy_principal_name, approval_ntfy_state_root, approval_ntfy_config_dir,
-  approval_ntfy_unit_name,
+  approval_ntfy_unit_name, approval_ntfy_dir_mode,
 }
+import gunbc.managed_directory { declared_directory_mode_octal }
 
 // ── The ntfy service as CONVERGED MEMBERS, not as instructions to a person ────────────────────
 // Everything this file declares was, before it existed, a sentence telling an operator which
@@ -127,7 +128,15 @@ fn ntfy_attachment_cache_dir() -> NonEmptyStr {
   join([approval_ntfy_state_root as String, "/", ntfy_attachments_dir_name as String], "") as NonEmptyStr
 }
 
-data ntfy_state_dir_mode: NonEmptyStr = "0750"
+// DERIVED, NOT RE-MINTED -- the same move the paths above got. This was the octal literal "0750",
+// and gunbc.host_credential_custody_converge spelled the same octal for the SAME directory, so one
+// directory had two authorities for its mode. The arm is declared once by the deployment this
+// converge installs (approval_ntfy_dir_mode) and the octal is rendered by
+// gunbc.managed_directory from a constructed FileMode, so no permission literal survives on either
+// side and there is nothing left for a witness to hold equal.
+fn ntfy_state_dir_mode() -> NonEmptyStr {
+  declared_directory_mode_octal(m: approval_ntfy_dir_mode) as NonEmptyStr
+}
 
 // THE DESIRED SET, derived from the deployment's own declarations rather than restated. The order
 // is the dependency order a first convergence needs -- the account must exist before a directory
@@ -166,7 +175,7 @@ fn ntfy_member_operations(m: NtfyConvergedMember) -> List<ExecutorPrivilegedOper
         path: p,
         owner: approval_ntfy_principal_name,
         group: approval_ntfy_principal_name,
-        mode: ntfy_state_dir_mode,
+        mode: ntfy_state_dir_mode(),
       },
     ]
     NtfyConfigDirectory { path: p } => [
@@ -174,7 +183,7 @@ fn ntfy_member_operations(m: NtfyConvergedMember) -> List<ExecutorPrivilegedOper
         path: p,
         owner: "root",
         group: approval_ntfy_principal_name,
-        mode: ntfy_state_dir_mode,
+        mode: ntfy_state_dir_mode(),
       },
     ]
     NtfyUnitDaemonReloaded => [SystemdDaemonReload]

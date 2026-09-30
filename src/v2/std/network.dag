@@ -6,17 +6,6 @@ import v2.std.optional {
 import v2.std.text { String }
 import v2.std.nat { Nat }
 
-type HttpMethod
-  = GET
-  | POST
-  | PUT
-  | PATCH
-  | DELETE
-  | HEAD
-  | OPTIONS
-  | CONNECT
-  | TRACE
-
 type Rfc3986AbnfProduction {
   name: String,
   expression: String,

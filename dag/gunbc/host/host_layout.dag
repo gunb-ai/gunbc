@@ -49,6 +49,22 @@ import gunbc.package_delivery { codex_linux_arm64_native_executable_rel }
 
 data srv1_gunbc_repo_root: FilePath = "/opt/gunbc/gunbc" as FilePath
 
+// ── THE APPROVAL BROKER'S OWN TREE ──────────────────────────────────────────────────────────
+// A SEPARATE ROOT BECAUSE THE BROKER AND THE ROADMAP ARE SEPARATE PROCESSES AT SEPARATE REVISIONS,
+// which is the entire point of the split. srv1_gunbc_repo_root is the roadmap's deployed tree and
+// is FROZEN at its release by operator ruling until the cutover completes; the broker's module does
+// not exist in it. The stage-A run made that concrete: the unit was written with
+// WorkingDirectory pointing at the roadmap tree, `gunbc serve --entry
+// dag/gunbc/auth/approval_broker_serve.dag` could not resolve its own entry, and systemd restarted
+// it in a loop.
+//
+// THE REJECTED ALTERNATIVE WAS THE DEPLOYING CHECKOUT (the CI runner workspace the dark install
+// runs from). It does contain the module and it is what "candidate" already means elsewhere in
+// gunbc.live_deploy.candidate -- and it is a directory the NEXT job on that runner slot checks out
+// over, mutating code beneath a running service. Pointing a long-lived unit at it would be a
+// knowingly shipped defect (operator ruling 2026-09-20).
+data srv1_gunbc_approval_broker_root: FilePath = "/opt/gunbc/approval-broker" as FilePath
+
 data srv1_gunbc_serve_binary: FilePath = "/opt/gunbc/bin/gunbc" as FilePath
 
 data srv1_dispatch_worktree_root: FilePath = "/opt/gunbc/dispatch-worktrees" as FilePath

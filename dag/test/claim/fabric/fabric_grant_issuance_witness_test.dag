@@ -1,12 +1,11 @@
 module test.claim.fabric_grant_issuance_witness
 
-import product.fabric.provider_route { ProviderRoute }
 import test.claim.fabric.provider_use_fixture {
   fixture_admitted_use, fixture_unadmitted_use, fixture_route, fixture_route_sibling_region,
   fixture_posture_revision, fixture_route_facts_revision,
 }
 import product.fabric.provider_route { provider_route_eq }
-import product.fabric.provider_admission { ProviderUsePermit, ProviderUseAdmitted, ProviderUseDenied }
+import product.fabric.provider_admission { ProviderUseAdmission }
 import std.types { NonEmptyStr, Bool, Int, List }
 import std.measure { Count, One, MoneyRate, money_amount_micro, money_amount_micro_count, hardware_thread_count, second }
 import std.nat { Nat }
@@ -29,6 +28,8 @@ import product.fabric.execution {
   grant_admitting_posture_revision, grant_admitting_route_facts_revision, grant_admitting_route,
 }
 import product.fabric.budget { MoneyAccount, MoneyReservationRequest }
+import product.fabric.selection { SelectedOffer, CandidateOffer }
+import test.claim.fabric.selected_offer_fixture { selected_under, selected_from_population, bound }
 import product.fabric.grant_issue {
   GrantIssue, GrantCommitted, GrantRefused, GrantIssueRefusal,
   AttemptNamesAnotherWork, AttemptPrincipalIsNotTheWorkPrincipal,
@@ -215,29 +216,32 @@ data fixture_evidence: FabricGrantEvidence = FabricGrantEvidence {
   principal_authority: "principal-authority-1",
 }
 
-// The permit issuance now requires. It is obtained by RUNNING the admission over a roster that
-// sanctions this offer's route - a fixture cannot fabricate one, because ProviderUsePermit is
-// sole_constructor. The list is empty when the fixture route is not admitted, so a witness that
-// expected an issue and got none goes red rather than quietly skipping the call.
 // The demand every issuance in this witness is for. Named once so the permit and the grant cannot
 // drift apart: issuance now refuses a permit whose demand is not this one.
 fn subject_demand() -> FabricIdentity<NonEmptyStr, DemandKey> {
   FabricIdentity { principal: "gunbc", key: "demand-1" }
 }
 
-fn permit_for_use(
+// THE SELECTED OFFER ISSUANCE NOW REQUIRES. Issuance takes a SelectedOffer, and the only
+// constructor of one is select_supply's winning arm, so the witness obtains it by binding the
+// offer under a REAL admission (ProviderUsePermit is sole_constructor too) and running the ranking.
+// The list is empty when admission denies or binding refuses, so a witness that expected an issue
+// and got none goes red rather than quietly skipping the call.
+fn selected_for_use(
   offer: SupplierOffer<NonEmptyStr>,
   work: FabricIdentity<NonEmptyStr, WorkKey>,
   demand: FabricIdentity<NonEmptyStr, DemandKey>,
-) -> List<ProviderUsePermit<NonEmptyStr>> {
-  match fixture_admitted_use(route: offer.route, offer: offer.id, demand: demand, work: work) {
-    ProviderUseAdmitted { permit: p } => [p]
-    ProviderUseDenied { decision: _, cause: _ } => []
-  }
+) -> List<SelectedOffer<NonEmptyStr>> {
+  selected_under(
+    offer: offer,
+    admission: fixture_admitted_use(route: offer.route, offer: offer.id, demand: demand, work: work),
+    demand: demand,
+    work: work,
+  )
 }
 
-fn permit_for(offer: SupplierOffer<NonEmptyStr>) -> List<ProviderUsePermit<NonEmptyStr>> {
-  permit_for_use(offer: offer, work: subject_work.id, demand: subject_demand())
+fn selected_for(offer: SupplierOffer<NonEmptyStr>) -> List<SelectedOffer<NonEmptyStr>> {
+  selected_for_use(offer: offer, work: subject_work.id, demand: subject_demand())
 }
 
 fn issue(
@@ -248,11 +252,10 @@ fn issue(
   account: MoneyAccount,
   ledger: EncumbranceLedger<Count, One>,
 ) -> List<GrantIssue<NonEmptyStr, Count, One>> {
-  map(permit_for(offer: offer), permit => issue_grant(
+  map(selected_for(offer: offer), selected => issue_grant(
     work: work,
     attempt: attempt,
-    offer: offer,
-    permit: permit,
+    selected: selected,
     outstanding: outstanding,
     account: account,
     money_request: money_request,
@@ -640,28 +643,14 @@ test fn the_recorded_liability_is_the_booked_liability() -> Bool {
 // THE PROVIDER-USE WALL AT THE SECOND ENTRANCE. Selection cannot RANK an unadmitted offer because
 // the permit sits inside the sealed candidate; issuance is the other way in, and these rows are why
 // closing only one of them would have been a wall with a door beside it.
-fn unadmitted_permit_for(offer: SupplierOffer<NonEmptyStr>) -> List<ProviderUsePermit<NonEmptyStr>> {
-  match fixture_unadmitted_use(
-    route: offer.route,
-    offer: offer.id,
-    demand: subject_demand(),
-    work: subject_work.id,
-  ) {
-    ProviderUseAdmitted { permit: p } => [p]
-    ProviderUseDenied { decision: _, cause: _ } => []
-  }
-}
-
-fn issue_with_permit(
-  offer: SupplierOffer<NonEmptyStr>,
-  permit: ProviderUsePermit<NonEmptyStr>,
+fn issue_selected(
+  selected: SelectedOffer<NonEmptyStr>,
   account: MoneyAccount,
 ) -> GrantIssue<NonEmptyStr, Count, One> {
   issue_grant(
     work: subject_work,
     attempt: first_attempt,
-    offer: offer,
-    permit: permit,
+    selected: selected,
     outstanding: [],
     account: account,
     money_request: money_request,
@@ -675,25 +664,28 @@ fn issue_with_permit(
   )
 }
 
-// The same issuance helper over an UNADMITTED use. It runs the identical path; the only thing that
-// differs is that the admission denied, so there is no permit to hand issue_grant and no grant can
-// be produced.
+// The same issuance path over an UNADMITTED use. Admission denies, so binding refuses, so there is
+// no candidate to rank, no SelectedOffer to hand issue_grant, and no grant can be produced.
 fn issue_unadmitted(
   offer: SupplierOffer<NonEmptyStr>,
   account: MoneyAccount,
 ) -> List<GrantIssue<NonEmptyStr, Count, One>> {
   map(
-    unadmitted_permit_for(offer: offer),
-    permit => issue_with_permit(offer: offer, permit: permit, account: account),
+    selected_under(
+      offer: offer,
+      admission: fixture_unadmitted_use(
+        route: offer.route, offer: offer.id, demand: subject_demand(), work: subject_work.id),
+      demand: subject_demand(),
+      work: subject_work.id,
+    ),
+    selected => issue_selected(selected: selected, account: account),
   )
 }
 
 // RED - AN UNADMITTED USE YIELDS NO GRANT, ASSERTED THROUGH ISSUANCE AND NOT THROUGH LIST LENGTHS.
-// An earlier revision of this row compared two permit-list lengths and never called issue_grant at
-// all, so it could not have gone red on any issuance behaviour; it was named for a claim it did not
-// make. This runs the same helper the committed rows run, with a funded account so no economic
-// cause can be doing the work, and asserts that NO grant comes back - and the positive control
-// beside it is the identical call on an admitted use, which does commit.
+// This runs the same helper the committed rows run, with a funded account so no economic cause can
+// be doing the work, and asserts that NO grant comes back - and the positive control beside it is
+// the identical call on an admitted use, which does commit.
 test fn w_an_unadmitted_use_yields_no_grant() -> Bool {
   count(issue_unadmitted(offer: admitted_offer, account: funded_account)) == 0
     && outcome_label_of(os: issue_unadmitted(offer: admitted_offer, account: funded_account))
@@ -710,119 +702,163 @@ test fn w_an_unadmitted_use_yields_no_grant() -> Bool {
     )) == "committed"
 }
 
-// RED - A PERMIT DOES NOT OVERRIDE AN EXHAUSTED BUDGET. The permit is admitted in both halves and
+// RED - A PERMIT DOES NOT OVERRIDE AN EXHAUSTED BUDGET. The selection is admitted in both halves and
 // the only thing that moves is the account, so this says what a permit IS: authority to use a
-// route, never authority to spend money that is not there. A gate that answered "admitted" and let
-// the spend through would be a permit doing a budget's job.
+// route, never authority to spend money that is not there.
 test fn w_a_permit_does_not_override_an_exhausted_budget() -> Bool {
   fold(
-    permit_for(offer: admitted_offer),
+    selected_for(offer: admitted_offer),
     init: false,
-    f: fn(acc, p) {
-      outcome_label(o: issue_with_permit(
-        offer: admitted_offer, permit: p, account: funded_account)) == "committed"
-        && outcome_label(o: issue_with_permit(
-          offer: admitted_offer, permit: p, account: exhausted_account)) == "money-refused"
+    f: fn(acc, sel) {
+      outcome_label(o: issue_selected(selected: sel, account: funded_account)) == "committed"
+        && outcome_label(o: issue_selected(selected: sel, account: exhausted_account)) == "money-refused"
     },
   )
 }
 
-// RED - A REAL PERMIT CARRIED ONTO ANOTHER OFFER REFUSES. This is the wiring fault, and it is the
-// one an admission check written as "was something admitted" would miss entirely: a genuine,
-// currently-valid permit is presented, and it is simply about a different offer.
-test fn w_a_permit_for_another_offer_refuses_at_issuance() -> Bool {
-  fold(
-    permit_for(offer: foreign_domain_offer),
-    init: false,
-    f: fn(acc, p) {
-      outcome_label(o: issue_with_permit(
-        offer: admitted_offer, permit: p, account: funded_account)) == "permit-names-another-offer"
-    },
+// A cheaper admitted offer than admitted_offer, fungible for the subject work, with room for a grant.
+data cheaper_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
+  id: FabricIdentity { principal: "supplier", key: "offer-cheaper" },
+  executor: "srv5",
+  route: fixture_route(),
+  shape: fixture_shape,
+  capabilities: "linux-x86_64-cargo",
+  trust_domain: "gunbc-ci",
+  isolation: shared_kernel_sandbox_profile(),
+  quantity_bound: 1,
+  ready_at: "2026-09-04T00:00:00Z",
+  quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 10), currency: Usd }),
+  billing_quantum: second(count: 1),
+  evidence: ObservedSupply { observed_at: "2026-09-04T00:00:00Z", receipt: "supply-observation-1" },
+}
+
+fn bound_for_subject(offer: SupplierOffer<NonEmptyStr>) -> List<CandidateOffer<NonEmptyStr>> {
+  bound(
+    offer: offer,
+    admission: fixture_admitted_use(
+      route: offer.route, offer: offer.id, demand: subject_demand(), work: subject_work.id),
+    demand: subject_demand(),
+    work: subject_work.id,
   )
 }
 
-// The permit-minting helper with the ROUTE left open, so a caller can present a permit that is
-// genuine in every respect except where it is about. The offer keeps its own route; only the route
-// the admission was evaluated against moves.
-fn permit_on_route(
-  offer: SupplierOffer<NonEmptyStr>,
-  route: ProviderRoute,
-) -> List<ProviderUsePermit<NonEmptyStr>> {
-  match fixture_admitted_use(
-    route: route, offer: offer.id, demand: subject_demand(), work: subject_work.id) {
-    ProviderUseAdmitted { permit: p } => [p]
-    ProviderUseDenied { decision: _, cause: _ } => []
-  }
+fn granted_offer_keys(os: List<GrantIssue<NonEmptyStr, Count, One>>) -> List<NonEmptyStr> {
+  map(committed_grants_of(os: os), g => (g.object.offer.key as NonEmptyStr))
 }
 
-// RED - A PERMIT FOR A SIBLING REGION REFUSES AT ISSUANCE. The permit names the right offer, the
-// right work and the right demand; it was admitted for the same provider and the same service in
-// the region next door. Nothing but the route check can see the difference, which is why this row
-// is the one that makes SupplierOffer.route load-bearing rather than recorded: product.fabric.supply
-// justifies that field on the ground that it "buys the cross-check that is otherwise unwritable",
-// and until this row existed the cross-check was written and never executed.
+// THE ISSUED OFFER IS THE ONE THE RANKING CHOSE, asserted over the ROUTE and not only the answer.
+// Two offers, both admitted, both fungible for the Work, both with room: before issuance took a
+// SelectedOffer, a caller could hand issue_grant either, and the dearer one committed exactly as
+// the cheaper did. Now the only value issuance accepts is select_supply's winner, so the grants
+// obtainable from this population name the cheaper offer and never the dearer - in either roster
+// order, so the answer cannot be the roster's first element standing in for the ranking.
 //
-// A sanction never inherits across regions (product.fabric.provider_route states that a route is
-// the same route or a different one, with no prefix relation), so the near-miss is the dangerous
-// case: an operator reading "acme-cloud, acme-cx-runners, admitted" would call this the same thing.
-test fn w_a_permit_for_a_sibling_region_refuses_at_issuance() -> Bool {
-  fold(
-    permit_on_route(offer: admitted_offer, route: fixture_route_sibling_region()),
-    init: false,
-    f: fn(acc, p) {
-      outcome_label(o: issue_with_permit(
-        offer: admitted_offer, permit: p, account: funded_account)) == "permit-names-another-route"
-    },
+// The discriminating red for the capability itself is a COMPILE refusal, not a runtime answer: a
+// SelectedOffer written by hand, or a SupplierOffer handed where one is demanded, is refused by
+// the sole_constructor wall whose own fixture corpus is dag/test/fixture/sole_constructor_sealed.
+// What executes here is the inhabitance claim that the real producer emits the value issuance
+// consumes and that the grant is its winner.
+test fn w_the_grant_is_for_the_offer_the_ranking_chose() -> Bool {
+  let dear_first = concat(bound_for_subject(offer: admitted_offer), bound_for_subject(offer: cheaper_offer))
+  let cheap_first = concat(bound_for_subject(offer: cheaper_offer), bound_for_subject(offer: admitted_offer))
+  let issued_dear_first = map(
+    selected_from_population(requirements: fixture_requirements, candidates: dear_first),
+    sel => issue_selected(selected: sel, account: funded_account),
   )
+  let issued_cheap_first = map(
+    selected_from_population(requirements: fixture_requirements, candidates: cheap_first),
+    sel => issue_selected(selected: sel, account: funded_account),
+  )
+  dear_first.length() == 2
+    && granted_offer_keys(os: issued_dear_first) == ["offer-cheaper"]
+    && granted_offer_keys(os: issued_cheap_first) == ["offer-cheaper"]
 }
 
-// POSITIVE CONTROL FOR THE ROW ABOVE, and it is what stops that red from being satisfied by a
-// helper that simply fails to mint anything: the SAME helper, handed the offer's own route,
-// produces a permit that commits.
+// POSITIVE CONTROL FOR THE ROW ABOVE: the dearer offer is not unissuable in itself - ranked alone
+// it wins and commits. So the row above is the ranking at work, not the dearer offer failing some
+// other screen.
+test fn w_the_dearer_offer_ranked_alone_commits() -> Bool {
+  granted_offer_keys(os: map(
+    selected_from_population(requirements: fixture_requirements, candidates: bound_for_subject(offer: admitted_offer)),
+    sel => issue_selected(selected: sel, account: funded_account),
+  )) == ["offer-1"]
+}
+
+// RED - A REAL PERMIT FOR ANOTHER OFFER OR ANOTHER REGION YIELDS NO SELECTED OFFER. Before issuance
+// took a SelectedOffer these refused AT issuance; now the permit reaches issuance only inside a
+// candidate, and bind_candidate refuses a permit about another offer or another route, so the
+// wiring fault stops one step earlier and there is nothing to issue.
+fn selected_with_admission(
+  offer: SupplierOffer<NonEmptyStr>,
+  admission: ProviderUseAdmission<NonEmptyStr>,
+) -> List<SelectedOffer<NonEmptyStr>> {
+  selected_under(offer: offer, admission: admission, demand: subject_demand(), work: subject_work.id)
+}
+
+test fn w_a_permit_for_another_offer_or_region_selects_nothing() -> Bool {
+  count(selected_with_admission(
+    offer: admitted_offer,
+    admission: fixture_admitted_use(
+      route: admitted_offer.route, offer: foreign_domain_offer.id,
+      demand: subject_demand(), work: subject_work.id),
+  )) == 0
+    && count(selected_with_admission(
+      offer: admitted_offer,
+      admission: fixture_admitted_use(
+        route: fixture_route_sibling_region(), offer: admitted_offer.id,
+        demand: subject_demand(), work: subject_work.id),
+    )) == 0
+}
+
+// POSITIVE CONTROL FOR THE ROW ABOVE: the same helper, handed the offer's own id and route,
+// selects the offer and it commits.
 test fn w_the_same_helper_on_the_offers_own_route_commits() -> Bool {
   fold(
-    permit_on_route(offer: admitted_offer, route: admitted_offer.route),
+    selected_with_admission(
+      offer: admitted_offer,
+      admission: fixture_admitted_use(
+        route: admitted_offer.route, offer: admitted_offer.id,
+        demand: subject_demand(), work: subject_work.id),
+    ),
     init: false,
-    f: fn(acc, p) {
-      outcome_label(o: issue_with_permit(
-        offer: admitted_offer, permit: p, account: funded_account)) == "committed"
+    f: fn(acc, sel) {
+      outcome_label(o: issue_selected(selected: sel, account: funded_account)) == "committed"
     },
   )
 }
 
-// RED - A PERMIT FOR ANOTHER WORK REFUSES. The permit is genuine, current, and about the right
-// offer and route; it was simply admitted for a different unit of work. Admission is granted FOR a
-// customer profile and a data-handling profile, and both are properties of the work, so accepting
-// this would run work B under the scope somebody admitted for work A. Before this check the two
-// fields recording what was admitted were read by nothing at all.
+// RED - A SELECTION MADE FOR ANOTHER WORK REFUSES AT ISSUANCE. The candidate was bound, and won,
+// for a different unit of work; its permit is genuine and about the right offer and route.
+// Admission is granted FOR a customer profile and a data-handling profile, and both are properties
+// of the work, so accepting this would run work B under the scope somebody admitted for work A.
+// Selection does not know the issuing Work, so this check stays at issuance.
 test fn w_a_permit_for_another_work_refuses_at_issuance() -> Bool {
   fold(
-    permit_for_use(
+    selected_for_use(
       offer: admitted_offer,
       work: FabricIdentity { principal: "gunbc", key: "work-somewhere-else" },
       demand: subject_demand(),
     ),
     init: false,
-    f: fn(acc, p) {
-      outcome_label(o: issue_with_permit(
-        offer: admitted_offer, permit: p, account: funded_account)) == "permit-names-another-work"
+    f: fn(acc, sel) {
+      outcome_label(o: issue_selected(selected: sel, account: funded_account)) == "permit-names-another-work"
     },
   )
 }
 
-// RED - A PERMIT FOR ANOTHER DEMAND REFUSES, for the same reason one level across: the demand is
-// who is being served, and a permit that named a different one is authority for somebody else.
+// RED - A SELECTION MADE FOR ANOTHER DEMAND REFUSES, for the same reason one level across: the
+// demand is who is being served, and a permit that named a different one is authority for
+// somebody else.
 test fn w_a_permit_for_another_demand_refuses_at_issuance() -> Bool {
   fold(
-    permit_for_use(
+    selected_for_use(
       offer: admitted_offer,
       work: subject_work.id,
       demand: FabricIdentity { principal: "gunbc", key: "demand-somewhere-else" },
     ),
     init: false,
-    f: fn(acc, p) {
-      outcome_label(o: issue_with_permit(
-        offer: admitted_offer, permit: p, account: funded_account)) == "permit-names-another-demand"
+    f: fn(acc, sel) {
+      outcome_label(o: issue_selected(selected: sel, account: funded_account)) == "permit-names-another-demand"
     },
   )
 }

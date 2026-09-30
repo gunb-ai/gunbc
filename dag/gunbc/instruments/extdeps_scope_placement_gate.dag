@@ -244,9 +244,11 @@ fn scope_placement_gate_verdict(
 }
 
 fn run_extdeps_scope_placement_gate_body() -> ProcessExit {
+  let change_observation = scope_placement_change_added_paths()
+  let freeze_observation = scope_placement_added_paths()
   scope_placement_gate_verdict(
-    change_observation: scope_placement_change_added_paths(),
-    freeze_observation: scope_placement_added_paths(),
+    change_observation: change_observation,
+    freeze_observation: freeze_observation,
   )
 }
 

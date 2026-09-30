@@ -1,0 +1,18 @@
+module extdeps.standards.rfc_7515
+
+import std.types { Int, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// RFC 7515, "JSON Web Signature (JWS)", APPENDIX A.3: the ES256 (P-256) example key. Carried as its
+// public point in SEC 1 uncompressed form (0x04 || x || y), transcribed from the appendix's JWK x and
+// y members. Its consumer uses it as a VALID point that is the WRONG key for a signature made under
+// another key, so it discriminates key binding rather than point admission.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc7515#appendix-A.3"
+  }
+}
+
+data rfc7515_a3_es256_public_key: List<Int> = [4, 127, 205, 206, 39, 112, 246, 196, 93, 65, 131, 203, 238, 111, 219, 75, 123, 88, 7, 51, 53, 123, 233, 239, 19, 186, 207, 110, 60, 123, 209, 84, 69, 199, 241, 68, 205, 27, 189, 155, 126, 135, 44, 223, 237, 185, 238, 185, 244, 179, 105, 93, 110, 169, 11, 36, 173, 138, 70, 35, 40, 133, 136, 229, 173]

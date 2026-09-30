@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, List, CommitSha }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import gunbc.running_release_identity { running_release_healthz_members }
 import std.markup { Fragment }
+import gunbc.site.markup { page_render_refusal_body }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.languages.json.emit {
   serialize_json,
@@ -21,12 +22,6 @@ data roadmap_site_dispatch_url_path: NonEmptyStr = "/target/roadmap-dispatch.jso
 data roadmap_site_daily_url_path: NonEmptyStr = "/"
 data roadmap_site_full_url_path: NonEmptyStr = "/roadmap"
 data roadmap_site_service_name: String = "gunbc-roadmap"
-
-data page_render_refusal_prefix: String = "page render refused: "
-
-fn page_render_refusal_body(reason: String) -> String {
-  join([page_render_refusal_prefix, reason, "\n"], "")
-}
 
 fn site_artifact_digest(body: String) -> Fnv1a64Structural {
   content_hash_atom(value: body as NonEmptyStr)

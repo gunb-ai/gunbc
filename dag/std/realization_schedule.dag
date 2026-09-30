@@ -675,10 +675,14 @@ fn schedule_witness_entry_list_eq(left: List<ScheduleWitnessEntry>, right: List<
     false
   } else if left.count() == 0 {
     true
-  } else if !schedule_witness_entry_eq(a: left.first(), b: right.first()) {
-    false
   } else {
-    schedule_witness_entry_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+    match left.first() {
+      Present { value: l } => match right.first() {
+        Present { value: r } => if !schedule_witness_entry_eq(a: l, b: r) { false } else { schedule_witness_entry_list_eq(left: left.skip(n: 1), right: right.skip(n: 1)) }
+        Absent => false
+      }
+      Absent => false
+    }
   }
 }
 
@@ -714,10 +718,14 @@ fn runnable_batch_eq(left: List<Runnable>, right: List<Runnable>) -> Bool {
     false
   } else if left.count() == 0 {
     true
-  } else if !runnable_eq(left: left.first(), right: right.first()) {
-    false
   } else {
-    runnable_batch_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+    match left.first() {
+      Present { value: l } => match right.first() {
+        Present { value: r } => if !runnable_eq(left: l, right: r) { false } else { runnable_batch_eq(left: left.skip(n: 1), right: right.skip(n: 1)) }
+        Absent => false
+      }
+      Absent => false
+    }
   }
 }
 
@@ -726,10 +734,14 @@ fn schedule_eq(left: Schedule, right: Schedule) -> Bool {
     false
   } else if left.count() == 0 {
     true
-  } else if !runnable_batch_eq(left: left.first(), right: right.first()) {
-    false
   } else {
-    schedule_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+    match left.first() {
+      Present { value: l } => match right.first() {
+        Present { value: r } => if !runnable_batch_eq(left: l, right: r) { false } else { schedule_eq(left: left.skip(n: 1), right: right.skip(n: 1)) }
+        Absent => false
+      }
+      Absent => false
+    }
   }
 }
 

@@ -1,7 +1,7 @@
 module v2.test.claim.name_resolve_cross_tree_resolution
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
+import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots }
 import v2.compiler.name_resolve {
   Admission,
   Import,
@@ -157,7 +157,7 @@ fn ct_both_trees() -> SourceRootSet {
 }
 
 fn ct_dag_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
@@ -171,7 +171,7 @@ fn ct_dag_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
         root: ct_module_root(
           qn_spine: ct_qn_node(seg: ^ct_dag_peer_seg),
           export_sym: ^ct_dag_imported_decl,
-          export_atom: ^dag_c3_surface_sugar_service
+          export_atom: ^dag_token_ident
         )
       ),
       tail: Empty
@@ -195,7 +195,7 @@ fn ct_dag_same_tree_admission() -> Admission {
 }
 
 fn ct_v2_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
@@ -213,7 +213,7 @@ fn ct_v2_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
             segments: Cons { head: ^v2, tail: Cons { head: ^ct_v2_peer_seg, tail: Empty } }
           ),
           export_sym: ^ct_v2_imported_decl,
-          export_atom: ^dag_c3_surface_sugar_service
+          export_atom: ^dag_token_ident
         )
       ),
       tail: Empty
@@ -237,7 +237,7 @@ fn ct_v2_same_tree_admission() -> Admission {
 }
 
 fn ct_cross_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
@@ -253,7 +253,7 @@ fn ct_cross_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
         root: ct_module_root(
           qn_spine: ct_qn_node(seg: ^ct_cross_dag_target_seg),
           export_sym: ^ct_cross_dag_export_sym,
-          export_atom: ^dag_c3_surface_sugar_service
+          export_atom: ^dag_token_ident
         )
       ),
       tail: Empty
@@ -291,7 +291,7 @@ fn ct_v2_to_dag_index() -> SourceRootIndex {
 }
 
 fn ct_dag_to_v2_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
@@ -307,7 +307,7 @@ fn ct_dag_to_v2_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
             segments: Cons { head: ^v2, tail: Cons { head: ^std, tail: Empty } }
           ),
           export_sym: ^ct_inv_v2_export_sym,
-          export_atom: ^dag_c3_surface_sugar_service
+          export_atom: ^dag_token_ident
         )
       ),
       tail: Empty

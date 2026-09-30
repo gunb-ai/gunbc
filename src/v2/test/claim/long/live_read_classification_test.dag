@@ -21,6 +21,7 @@ import v2.lens.live_read_classification {
 }
 import v2.lens.witness_cost_locality { ModuleImportFact }
 import v2.std.live_read {
+  LiveReadUnestablished,
   LiveReadSelectionProjection,
   LiveReadSelectionClassified,
   LiveReadSelectionRefused,
@@ -32,8 +33,7 @@ import v2.std.live_read {
   live_read_carrier_homes_v0
 }
 import v2.std.collection { List }
-import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode, symbol_intern_lexeme }
 import v2.std.fn_index {
   FnArrowDecl,
   fn_arrow_decl_facts_live,
@@ -272,6 +272,7 @@ test fn g2_unknown_path_pattern_fail_closed_touched() -> Bool {
         touched_path: "dag/unrelated.dag"
       )
     LocalRead => false
+    LiveReadUnestablished { refusals: _ } => false
   }
 }
 

@@ -38,6 +38,7 @@ import v2.std.live_read {
   LiveReadSelectionProjection,
   LiveReadSelectionClassified,
   LiveReadSelectionRefused,
+  LiveReadUnestablished,
   LocalRead,
   RuntimeRead
 }
@@ -138,6 +139,7 @@ test fn specimen_does_not_classify_as_local_read() -> Bool {
       match c {
         LocalRead => false
         RuntimeRead { carriers: _ } => true
+        LiveReadUnestablished { refusals: _ } => true
       }
     LiveReadSelectionRefused { cause: _ } => true
   }

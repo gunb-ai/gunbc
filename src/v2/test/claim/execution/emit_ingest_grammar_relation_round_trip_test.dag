@@ -7,7 +7,7 @@ import v2.compiler.ingest {
 import v2.compiler.ingested_fixture_arrows { ingested_add_module_source }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
-import v2.compiler.translate { grammar_relation_row_for_emitted }
+import v2.compiler.target_serialize { grammar_relation_row_for_emitted }
 import v2.extdeps.languages.dag {
   dag_language_model,
   dag_fixture_emitted_add_fn,
@@ -15,8 +15,7 @@ import v2.extdeps.languages.dag {
   dag_target_model,
   dag_translation_rules_node
 }
-import std.algebra { Empty }
-import v2.std.algebra { list_append }
+import std.algebra { Empty, list_append }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.compilers.target_model {

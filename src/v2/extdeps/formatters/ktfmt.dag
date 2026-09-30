@@ -73,8 +73,6 @@ data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
   editorconfig_ktfmt_trailing_comma_management_strategy: KtfmtTrailingCommaOnlyAdd,
 }
 
-type KtfmtConfigPatch = ConfigPatchRecord<KtfmtConfig>
-
-fn ktfmt_layer(base: KtfmtConfig, patch: KtfmtConfigPatch) -> KtfmtConfig {
+fn ktfmt_layer(base: KtfmtConfig, patch: ConfigPatchRecord<KtfmtConfig>) -> KtfmtConfig {
   config_patch_layer(base: base, patch: patch)
 }

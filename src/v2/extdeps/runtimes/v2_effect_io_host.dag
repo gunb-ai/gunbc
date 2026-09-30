@@ -26,7 +26,7 @@ import v2.extdeps.runtimes.effect_io_host_grant {
 }
 import std.effect_grant {
   Envelope,
-  Read, RealTransport, Replay,
+  Read, RealTransport, Replay, ModeledRealization,
   CoveringGrant, CoveredBy, NoCoveringGrant, covering_grant,
 }
 import std.access { Permit, Deny }
@@ -48,7 +48,7 @@ import v2.std.node { Symbol }
 import v2.std.runtime {
   EffectHandler,
   EffectHandlerBinding,
-  EffectRequest,
+  OperationCall,
   RuntimeValue
 }
 import v2.std.witness { Holds, Violates }
@@ -174,7 +174,7 @@ fn effect_io_host_dispatch_read(
   host_ctx: EffectIoHostBackendContext,
   read_envelope: Envelope,
   fixture: EffectIoFixtureStore,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>
@@ -196,6 +196,8 @@ fn effect_io_host_dispatch_read(
               }
             Replay { fixture_store: s } =>
               effect_io_pure_store_lookup(store: fixture, locator: locator)
+            ModeledRealization { realization: r } =>
+              outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_modeled_realization_unrealized))
           }
         NoCoveringGrant { verb: v, target: t, frame: f } =>
           outcome_rejected(d: effect_io_host_read_outside_grant_diagnostic())
@@ -208,7 +210,7 @@ fn effect_io_host_dispatch_write(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
   write_envelope: Envelope,
-  request: EffectRequest
+  request: OperationCall
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>

@@ -135,7 +135,7 @@ test fn determinism_flags_nested_map_keys_in_subtree() -> Bool {
 }
 
 test fn determinism_axis_map_keys_is_nondeterministic() -> Bool {
-  axis_is_nondeterministic(a: determinism_axis_for_node(n: map_keys_call_fixture()))
+  axis_is_nondeterministic(a: determinism_axis_for_node(n: map_keys_call_fixture()).axis)
 }
 
 fn gate_rejects(o: Outcome<Witness<Node>>) -> Bool {

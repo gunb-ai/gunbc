@@ -1,0 +1,25 @@
+module test.claim.auth.approval_gate_witness
+
+import std.types { Bool, NonEmptyStr, Timestamp }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.auth.approval_request_client { PollStillPending, PollExpired, PollApproved, PollNotFiled }
+import gunbc.auth.approval_gate {
+  approval_poll_step, PollReturn, PollSleepAndContinue, PollObservedAt, PollBudgetExhausted,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE STEP AFTER A READ, in the order the bounded poll depends on: a decided standing returns as
+// read whatever the budget (a decision read on the last tick is that decision, review 69509); a
+// pending one continues while ticks remain, and with none left is the SPENT BUDGET -- never an
+// expiry, which only the timestamp fold may mint; an expiry the timestamp fold did mint returns
+// as read.
+test fn the_poll_step_returns_a_decision_on_the_last_tick_and_never_relabels_a_spent_budget_as_expiry() -> Bool {
+  let at = "2026-09-21T10:00:00Z" as Timestamp
+  let approved = PollApproved { revision: "r" as NonEmptyStr, decided_by: "op" as NonEmptyStr, decided_at: at, execute_by: "2026-09-21T11:00:00Z" as Timestamp }
+  (match approval_poll_step(escalation_id: "e" as NonEmptyStr, standing: approved, observed_at: at, remaining: 0) { PollReturn { outcome: PollObservedAt { standing: PollApproved { revision: _, decided_by: _, decided_at: _, execute_by: _ }, observed_at: _ } } => true  _ => false })
+    && (match approval_poll_step(escalation_id: "e" as NonEmptyStr, standing: PollStillPending, observed_at: at, remaining: 0) { PollReturn { outcome: PollBudgetExhausted { escalation_id: e, observed_at: o } } => (e as String) == "e" && o == at  _ => false })
+    && (match approval_poll_step(escalation_id: "e" as NonEmptyStr, standing: PollStillPending, observed_at: at, remaining: 3) { PollSleepAndContinue { next_remaining: n } => n == 2  _ => false })
+    && (match approval_poll_step(escalation_id: "e" as NonEmptyStr, standing: PollExpired, observed_at: at, remaining: 5) { PollReturn { outcome: PollObservedAt { standing: PollExpired, observed_at: _ } } => true  _ => false })
+    && (match approval_poll_step(escalation_id: "e" as NonEmptyStr, standing: PollNotFiled, observed_at: at, remaining: 0) { PollReturn { outcome: PollObservedAt { standing: PollNotFiled, observed_at: _ } } => true  _ => false })
+}

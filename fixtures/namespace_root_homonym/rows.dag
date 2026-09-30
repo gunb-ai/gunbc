@@ -1,0 +1,5 @@
+module nsroot_decl.rows
+
+type NsRow { tag: Int }
+
+data ns_row: NsRow = NsRow { tag: 2 }

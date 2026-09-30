@@ -1,0 +1,115 @@
+module gunbc.machine_intake_mtjade1_fan_standing
+
+import std.types { NonEmptyStr }
+
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import gunbc.machine_intake_bmc_first_contact_standing {
+  BmcFirmwareFamilyStanding,
+  FamilyObserved,
+  FamilyUnobserved,
+}
+import gunbc.machine_intake_mtjade1_access_observation { mtjade1_firmware_family_standing }
+import product.acoustic_ceiling { SiteDutyCeiling }
+import product.fan_policy_standing {
+  FanDutyConvergeRoute,
+  FanPolicyStanding,
+  HostPostState,
+  HostPoweredOnPrePost,
+}
+import gunbc.fleet_acoustic_intent { operator_residence_duty_ceiling }
+import gunbc.fleet_fan_converge_routes { fan_converge_route_for_family }
+
+// COVERAGE STATE FOR THIS MODULE IS NOT HERE. Which consumer each standing waits on and what
+// retires it is carried by gunbc.machine_intake_mtjade1_coverage_frontier
+// mtjade1_fan_standing_frontier_rows as typed std.roster_frontier rows, because a "NAMED CONSUMER
+// / TRIGGER" note is unreadable to every Accepted program (DESIGN §4c, review 67984).
+//
+// OPERATOR RECEIPT 2026-09-18: Jade powered on with no DIMMs; fans ran at full and did not stop;
+// operator chassis-powered the host off. Next power-on is with the Table 11 16-DIMM 1DPC fill.
+// Acoustic inaudibility is not a PWM number: cooling_qualification already keeps room acoustics
+// as a live observation. The cited tolerance here is the act of cutting host power.
+//
+// THIS MODULE ONCE CARRIED ITS OWN VOCABULARY FOR FOUR CONCEPTS THAT NOW HAVE ONE HOME, and the
+// migration is the point of the revision rather than a tidy-up. gunbc#11623 and gunbc#11529 were in
+// flight at the same time and each modelled: a residence acoustic intent, a host-thermal-before-POST
+// state, a first-POST fan finding, and a per-family converge route. Two authorities for one meaning
+// is the §3 fork, and DESIGN prices the surviving one as an ATTRACTOR -- every later Jade question
+// would have been answered in this module's vocabulary rather than the fleet's. So the four local
+// types are deleted here and the product rows are consumed, in the same change that introduces
+// them, rather than left to a follow-up: a fork that lands with a promise is the deferred-refactor
+// tell (§6), not a plan.
+//
+// WHAT STAYS LOCAL IS WHAT IS GENUINELY THIS UNIT'S: the operator's act, the window-close cause,
+// the coverage state of a capture that has not happened, and the family dispatch that reads THIS
+// unit's firmware standing. Those are receipts in the observing layer, which is exactly where §3
+// says an observation belongs.
+
+// THE RESIDENCE CEILING IS FLEET INTENT AND IS CONSUMED, NOT RESTATED. What is local is the ACT
+// that evidences it. An earlier revision declared ResidenceAcousticIntent with a JadeSite and a
+// tolerated/not-tolerated pair; that is the same policy gunbc.fleet_acoustic_intent states for the
+// whole site, and a second spelling of it would have let one machine's notion of "tolerable" drift
+// from the fleet's. The ceiling field here is the fleet row, carried so the receipt cannot be read
+// without the bound it is evidence for.
+type JadeAcousticReceipt {
+  cited_act: NonEmptyStr
+  ceiling: SiteDutyCeiling
+}
+
+data mtjade1_residence_acoustic_intent: JadeAcousticReceipt = JadeAcousticReceipt {
+  cited_act: "2026-09-18: no DIMMs, fans at full, operator powered the host off. Unbounded failsafe full duty is not tolerated at this residence.",
+  ceiling: operator_residence_duty_ceiling,
+}
+
+// HOW A FAILSAFE EPISODE ENDED, which is not the same question as whether it was inside a window.
+// product.fan_policy_standing ExcursionBound answers "was this excursion within the post-POST
+// window"; this answers "what stopped it", and on 2026-09-18 the answer was the operator's hand on
+// the power. FailsafeWindowUnbounded is the arm that makes the residence constraint bite.
+type FailsafeWindowClose
+  = ChassisHostPowerOff
+  | FailsafeWindowUnbounded
+
+data mtjade1_failsafe_window_close: FailsafeWindowClose = ChassisHostPowerOff
+
+// THE HOST'S POST STATE IS product.fan_policy_standing HostPostState. A local
+// HostThermalAbsentBeforePost / HostThermalPresentAfterPost pair said the same thing in two words
+// and could not be compared against a Collins reading; HostPoweredOnPrePost is that state in the
+// vocabulary the fan policy standing itself branches on.
+data mtjade1_host_thermal_before_next_power_on: HostPostState = HostPoweredOnPrePost
+
+// THE CAPTURE CARRIES A STANDING, NOT A FINDING OF ITS OWN. FirstPostFanFinding had two arms --
+// FansLeftFailsafeForThermalCurve and FansStayAtFailsafeAfterPost -- which are SteadyCurve and
+// FailsafeHeldAfterPost under other names. Consuming the standing is strictly stronger than
+// re-typing them: those arms cannot be MINTED without a host, an authority, a drive reading and,
+// for the failsafe arm, the elapsed time and window that make it a finding rather than an opinion.
+// Jade has none of those yet, which is precisely why the capture is still AwaitingFirstPostWithDimms.
+type FirstPostFanCapture
+  = AwaitingFirstPostWithDimms
+  | FirstPostFanCaptured { standing: FanPolicyStanding }
+
+data mtjade1_first_post_fan_capture: FirstPostFanCapture = AwaitingFirstPostWithDimms
+
+// OpenBMC: missing control-sensor reading is BmcFanDutyFromSensorFailsafe (extdeps.bmc.types
+// bmc_fan_duty_decision). That is the failsafe->curve transition: Present reading selects the
+// stepwise curve. MegaRAC fan PWM profile is not executed on this unit; Appendix E 100% is the
+// GSG 1P-image note, not a pid_control JSON -- which is why that family's shared route is UNBOUND
+// and carries what would bind it.
+//
+// ONLY THE UNOBSERVED ARM IS LOCAL. The two family arms are gunbc.fleet_fan_converge_routes rows,
+// shared with every other host of the same family; what is Jade's own is that its BMC family is
+// not yet observed, so no realizer can be selected at all. That is a fact about this unit's intake
+// and not about either upstream, so it stays a wrapper here rather than widening the product type.
+type JadeFanConvergeSelection
+  = JadeFanRouteSelected { route: FanDutyConvergeRoute }
+  | FamilyUnobservedNoFanRealizer
+
+fn jade_fan_policy_convergence(family: BmcFirmwareFamilyStanding) -> JadeFanConvergeSelection {
+  match family {
+    FamilyUnobserved { discriminator: _ } => FamilyUnobservedNoFanRealizer
+    FamilyObserved { family: OpenBmc } => JadeFanRouteSelected { route: fan_converge_route_for_family(family: OpenBmc) }
+    FamilyObserved { family: AmiMegaRac } => JadeFanRouteSelected { route: fan_converge_route_for_family(family: AmiMegaRac) }
+  }
+}
+
+fn jade_current_fan_policy_convergence() -> JadeFanConvergeSelection {
+  jade_fan_policy_convergence(family: mtjade1_firmware_family_standing)
+}

@@ -2,6 +2,7 @@ module gunbc.harness.harness_cli
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
 import product.capacity.event_chain { PartitionId }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
@@ -271,15 +272,26 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
     TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
       ExitSuccess
     TurnCompletedByArtifact { path: _, steps_taken: _ } => ExitSuccess
+    TurnStepBudgetExhausted { steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnTransportRefused { detail: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnResponseUnreadable { cause: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnRequestUnwritable { path: _, detail: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnTruncatedMidToolCall { output_tokens: _, ceiling: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnThinkingFormatInvalid { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnUsageUnavailable { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnSubmissionUndecodable { reason: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnAlignmentCheckpointDue { steps_taken: _ } =>
       ExitFailure { code: 3, reason: harness_outcome_label(outcome: outcome) }
-    _ =>
-      ExitFailure {
-        code: 1,
-        reason: join([
-          harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
-        ], ""),
-      }
+  }
+}
+
+fn harness_turn_refusal_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
+  ExitFailure {
+    code: 1,
+    reason: join([
+      harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
+    ], ""),
   }
 }
 
@@ -397,7 +409,7 @@ fn harness_place_for(request: String, actor: String, attempt: String, receipt: S
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant, partition, ceiling: bound_ceiling, group_wire, launch, layout: _, model: bound_model, unit: _, class: _ } => {
+    HarnessSeatBound { url, grant, partition, ceiling: bound_ceiling, group_wire, launch, store: _, model: bound_model, unit: _, class: _ } => {
       let capability = harness_release_capability(partition: partition, ceiling: bound_ceiling, grant: grant)
       let line = join([
         "url=", url,
@@ -446,13 +458,27 @@ fn harness_place_receipt_failed(binding: HarnessSeatBinding, cause: String) -> P
 // class there is no single ceiling this entry could assume, and assuming one would rebuild the
 // wrong pool and refuse a valid release. It travels the same way the generation does -- written on
 // the receipt by the placement that granted the seat, handed back by whoever holds it.
+// The ceiling and generation arrive as argv Ints; a negative one names no pool and no fence, so it
+// refuses here rather than being asserted `as Nat` (std.coercion refinement_cast_rules).
 fn harness_release_cli(partition: String, reference: String, grant: String, generation: Int, ceiling: Int, reason: String) -> ProcessExit {
+  match checked_int_to_nat(n: ceiling) {
+    Absent => ExitFailure { code: 2, reason: join(["harness release refused: ceiling ", to_string(ceiling), " is negative"], "") }
+    Present { value: ceiling_nat } =>
+      match checked_int_to_nat(n: generation) {
+        Absent => ExitFailure { code: 2, reason: join(["harness release refused: generation ", to_string(generation), " is negative"], "") }
+        Present { value: generation_nat } =>
+          harness_release_admitted(partition: partition, reference: reference, grant: grant, generation: generation_nat, ceiling: ceiling_nat, reason: reason)
+      }
+  }
+}
+
+fn harness_release_admitted(partition: String, reference: String, grant: String, generation: Nat, ceiling: Nat, reason: String) -> ProcessExit {
   let capability = HarnessReleaseCapability {
     partition: partition as PartitionId,
-    ceiling: ceiling as Nat,
+    ceiling: ceiling,
     reference: reference as NonEmptyStr,
     grant: grant as GrantIdentity,
-    generation: generation as Nat,
+    generation: generation,
   }
   match harness_release_held(short_hostname: harness_executor_short_hostname(), capability: capability, reason: reason as NonEmptyStr) {
     HarnessSeatReleased { partition: _ } => ExitSuccess
@@ -473,7 +499,7 @@ fn harness_probe_cli() -> ProcessExit {
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_probe_outcome(backend_url: url, model: bound_model, unit: bound_unit)
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       harness_turn_exit_released(outcome: outcome, seat: seat_release)
@@ -581,7 +607,7 @@ fn harness_worker_cli(
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_worker_config(
           worktree: worktree as FilePath,
@@ -675,7 +701,7 @@ fn harness_reviewer_cli(
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_reviewer_config(
           worktree: worktree as FilePath,
@@ -756,7 +782,7 @@ fn harness_auditor_cli(
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_run_turn(
         config: harness_auditor_config(
           worktree: worktree as FilePath,
@@ -874,7 +900,7 @@ fn harness_probe_report() -> String {
   match binding {
     HarnessSeatRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
     HarnessSeatPending { detail } => join(["harness probe is pending placement: ", detail, "\n"], "")
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
       let outcome = harness_probe_outcome(backend_url: url, model: bound_model, unit: bound_unit)
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       join([

@@ -323,6 +323,23 @@ pub fn symbol_intern_lexeme(lexeme: String) -> String {
     lexeme
 }
 
+/// std.bytes bytes_octets: the octets of a Bytes carrier (Vec<u8> on this target), each as
+/// the List<Int> member the interpreter's free_call.bytes_octets arm answers.
+pub fn bytes_octets(b: Vec<u8>) -> Rc<Vec<i64>> {
+    Rc::new(b.iter().map(|octet| *octet as i64).collect())
+}
+
+/// std.bytes utf8_encode_bytes: RFC 3629 UTF-8 encoding, the inverse of utf8_decode_bytes.
+pub fn utf8_encode_bytes(s: String) -> Vec<u8> {
+    s.into_bytes().into_iter().collect()
+}
+
+/// std.bytes pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
+/// unreachable was evaluated, and then it diverges, as the interpreter's arm refuses.
+pub fn pure_dag_seam_unreachable() -> i64 {
+    panic!("std.bytes pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated")
+}
+
 /// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.
 pub fn substring(s: &str, start: i64, end: i64) -> String {
     let start = start.max(0) as usize;
@@ -399,16 +416,61 @@ pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
 /// free functions' semantics: each method falls back to the function it shadows
 /// whenever the flag is false, and takes the byte path only under the same
 /// condition that path is already taken there (byte index == code-point index).
+///
+/// The content hash is the second carried fact, carried for the same reason as the
+/// flag: a pure function of immutable content that a hot consumer re-derived per
+/// access. The interpreter's eval-call memo keys every pure call by the content hash
+/// of its arguments and rehashed a `Value::Str` in full on EVERY call, so a recursion
+/// threading one large text through its steps paid O(|text|) per step and O(|text|^2)
+/// overall. It is filled lazily -- most strings are never a call argument -- and it is
+/// carried beside the Rc rather than behind it: a clone taken after the first hash
+/// inherits it, which is the route a threaded argument takes (the key is read off the
+/// argument before it becomes the callee's binding, and the next step's argument is a
+/// clone of that binding). An identity memo keyed on the allocation was rejected: a
+/// `Weak<str>` keeps the string's inline bytes allocated, so every hashed argument
+/// would be retained for the context's lifetime.
 #[derive(Debug, Clone)]
 pub struct RcStr {
     rc: Rc<str>,
     is_ascii: bool,
+    content_hash: Cell<Option<u64>>,
+}
+
+/// The one content hash of interpreted string text. `RcStr::content_hash` carries it and
+/// a consumer holding a bare `&str` calls it directly, so a carried hash and a computed
+/// one cannot disagree.
+pub fn str_content_hash(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
+
+#[cfg(test)]
+thread_local! {
+    static STR_CONTENT_HASH_COMPUTED: Cell<u64> = const { Cell::new(0) };
 }
 
 impl RcStr {
     pub fn new(rc: Rc<str>) -> Self {
         let is_ascii = rc.is_ascii();
-        RcStr { rc, is_ascii }
+        RcStr {
+            rc,
+            is_ascii,
+            content_hash: Cell::new(None),
+        }
+    }
+
+    /// `str_content_hash` of this text, computed at most once per carrier lineage.
+    pub fn content_hash(&self) -> u64 {
+        if let Some(h) = self.content_hash.get() {
+            return h;
+        }
+        #[cfg(test)]
+        STR_CONTENT_HASH_COMPUTED.with(|c| c.set(c.get() + 1));
+        let h = str_content_hash(&self.rc);
+        self.content_hash.set(Some(h));
+        h
     }
 
     #[inline]
@@ -493,6 +555,51 @@ impl std::borrow::Borrow<str> for RcStr {
 impl std::fmt::Display for RcStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&*self.rc, f)
+    }
+}
+
+#[cfg(test)]
+mod rc_str_content_hash_tests {
+    use super::*;
+
+    fn computed() -> u64 {
+        STR_CONTENT_HASH_COMPUTED.with(|c| c.get())
+    }
+
+    #[test]
+    fn carried_hash_equals_the_free_authority() {
+        for text in ["", "a", "{\"weight_map\": {}}", "caf\u{e9} \u{1f600}"] {
+            assert_eq!(
+                RcStr::new(Rc::from(text)).content_hash(),
+                str_content_hash(text)
+            );
+        }
+    }
+
+    #[test]
+    fn a_threaded_clone_inherits_the_hash_instead_of_rehashing() {
+        let first = RcStr::new(Rc::from("x".repeat(4096).as_str()));
+        let before = computed();
+        let h = first.content_hash();
+        let mut carried = first.clone();
+        for _ in 0..1000 {
+            assert_eq!(carried.content_hash(), h);
+            carried = carried.clone();
+        }
+        assert_eq!(
+            computed() - before,
+            1,
+            "one hash per lineage, not one per step"
+        );
+    }
+
+    #[test]
+    fn a_clone_taken_before_the_first_hash_is_an_independent_lineage() {
+        let a = RcStr::new(Rc::from("abc"));
+        let b = a.clone();
+        let before = computed();
+        assert_eq!(a.content_hash(), b.content_hash());
+        assert_eq!(computed() - before, 2);
     }
 }
 
@@ -896,8 +1003,8 @@ pub fn json_unescape_checked(s: &str) -> Option<String> {
             Some('"') => out.push('"'),
             Some('\\') => out.push('\\'),
             Some('/') => out.push('/'),
-            Some('b') => out.push('\u{8}'),
-            Some('f') => out.push('\u{c}'),
+            Some('b') => out.push('\x08'),
+            Some('f') => out.push('\x0c'),
             Some('n') => out.push('\n'),
             Some('r') => out.push('\r'),
             Some('t') => out.push('\t'),
@@ -1194,7 +1301,11 @@ pub fn hash_combine(a: Hash, b: Hash) -> Hash {
 
 pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT: u32 = 1024;
 
-pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {
+pub fn gunbc_file_write_create_new(
+    file_path: &str,
+    content: &[u8],
+    declared_mode: Option<u32>,
+) -> std::io::Result<()> {
     use std::io::Write;
     static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let mut attempted: u32 = 0;
@@ -1218,6 +1329,25 @@ pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::
             Err(host) => return Err(host),
         }
     };
+    if let Some(declared) = declared_mode {
+        #[cfg(unix)]
+        let applied = {
+            use std::os::unix::fs::PermissionsExt;
+            staged.set_permissions(std::fs::Permissions::from_mode(declared))
+        };
+        #[cfg(not(unix))]
+        let applied: std::io::Result<()> = Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            format!(
+                "gunbc create-new: declared mode {} is unavailable on this platform",
+                declared
+            ),
+        ));
+        if let Err(mode_err) = applied {
+            let _ = std::fs::remove_file(&staging_path);
+            return Err(mode_err);
+        }
+    }
     if let Err(staging_err) = staged.write_all(content) {
         let _ = std::fs::remove_file(&staging_path);
         return Err(staging_err);
@@ -1246,6 +1376,79 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
     FilesystemReadResult { content }
 }
+/// Substrate `Int` arithmetic: the interpreter refuses on overflow and on a zero divisor
+/// (v1.interpreter eval_int_binop / eval_unaryop); release-profile i64 operators wrap. The emitter
+/// realizes every Int operator through these (extdeps.languages.rust.emit
+/// rust_refusing_int_operator_helper), and each refusal carries the interpreter's own text.
+#[cold]
+#[inline(never)]
+fn int_overflow(op: &str, lhs: i64, rhs: i64) -> ! {
+    panic!(
+        "integer overflow: {} {} {} does not fit in a 64-bit Int",
+        lhs, op, rhs
+    )
+}
+
+#[cold]
+#[inline(never)]
+fn int_division_by_zero() -> ! {
+    panic!("division by zero")
+}
+
+#[inline]
+pub fn int_add(lhs: i64, rhs: i64) -> i64 {
+    match lhs.checked_add(rhs) {
+        Some(v) => v,
+        None => int_overflow("+", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_sub(lhs: i64, rhs: i64) -> i64 {
+    match lhs.checked_sub(rhs) {
+        Some(v) => v,
+        None => int_overflow("-", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_mul(lhs: i64, rhs: i64) -> i64 {
+    match lhs.checked_mul(rhs) {
+        Some(v) => v,
+        None => int_overflow("*", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_div(lhs: i64, rhs: i64) -> i64 {
+    if rhs == 0 {
+        int_division_by_zero()
+    }
+    match lhs.checked_div(rhs) {
+        Some(v) => v,
+        None => int_overflow("/", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_rem(lhs: i64, rhs: i64) -> i64 {
+    if rhs == 0 {
+        int_division_by_zero()
+    }
+    match lhs.checked_rem(rhs) {
+        Some(v) => v,
+        None => int_overflow("%", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_neg(operand: i64) -> i64 {
+    match operand.checked_neg() {
+        Some(v) => v,
+        None => int_overflow("-", 0, operand),
+    }
+}
+
 fn int_relu(x: i64) -> i64 {
     if x > 0 {
         x

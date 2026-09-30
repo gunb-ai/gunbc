@@ -27,11 +27,14 @@ fn last_runner_slice_knob_name(knobs: List<ConvergeKnob>) -> String {
 }
 
 test fn witness_srv3_committed_allocation_matches_authority() -> Bool {
-  let alloc = gunbc_committed_host_runner_slot_allocation(host: operator_host_srv3)
   let desired = gunbc_runner_slot_desired()
-  alloc.host == operator_host_srv3
-    && byte_size_count(b: alloc.per_slot.memory_max) == byte_size_count(b: desired.memory_max)
-    && byte_size_count(b: alloc.per_slot.memory_high) == byte_size_count(b: desired.memory_high)
+  match gunbc_committed_host_runner_slot_allocation(host: operator_host_srv3) {
+    HostSlotAllocationWidthUnresolved { host: _, cause: _ } => false
+    HostSlotAllocationAdmitted { allocation: alloc } =>
+      alloc.host == operator_host_srv3
+        && byte_size_count(b: alloc.per_slot.memory_max) == byte_size_count(b: desired.memory_max)
+        && byte_size_count(b: alloc.per_slot.memory_high) == byte_size_count(b: desired.memory_high)
+  }
 }
 
 test fn witness_srv3_standup_converge_policy_includes_host() -> Bool {

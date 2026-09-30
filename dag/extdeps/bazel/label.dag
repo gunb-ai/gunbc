@@ -205,6 +205,27 @@ fn parse_label(text: String) -> LabelParse {
   }
 }
 
+// EACH REFUSAL RENDERS ITS OWN LOCATED CAUSE AND ITS REMEDY'S CLASS. The arms above are separate
+// because their remedies differ; a renderer that collapsed them into one sentence would give that
+// distinction back at the moment a person reads it. Consumers render through this rather than
+// paraphrasing a cause they cannot see (`extdeps.bazel.target_pattern` `target_pattern_refusal_text`
+// carries it inside the pattern refusal).
+fn label_refusal_text(r: LabelRefusal) -> String {
+  match r {
+    RepositoryQualifiedLabel { repository_text } =>
+      concat("repository-qualified labels are outside the admitted subset: ", repository_text)
+    MissingRepositoryRootPrefix { text } =>
+      concat("label is not absolute (expected a leading `//`): ", text)
+    MultipleColonSeparators { text } => concat("label carries more than one `:` separator: ", text)
+    EmptyTargetName { text } => concat("label names no target: ", text)
+    EmptyPackageSegment { text } => concat("label carries an empty package segment: ", text)
+    DotSegment { segment } => concat("label carries a dot package segment: ", segment)
+    TargetPattern { pattern } => concat("`", concat(pattern, "` is a target PATTERN where a single target was expected"))
+    TargetNameContainsSlash { name } =>
+      concat("target name contains `/`, which this subset does not admit: ", name)
+  }
+}
+
 fn render_package(p: PackageName) -> String {
   match p {
     RootPackage => ""

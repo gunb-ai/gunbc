@@ -1,6 +1,6 @@
 module gunbc.roadmap_static_site
 
-import std.types { String, Bool, List, CommitSha, NonEmptyStr, HttpMethod, GET, Port }
+import std.types { String, Bool, List, CommitSha, NonEmptyStr, Port }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -29,6 +29,7 @@ import gunbc.roadmap_site_surface_render {
   healthz_body_with_release_identity,
 }
 import gunbc.roadmap_authority {
+  roadmap_acceptance_event_history_load,
   expected_roadmap_md_for_projection,
   RoadmapAuthorityProjection, roadmap_authority_projection,
   authored_merged_prs,
@@ -45,6 +46,7 @@ import extdeps.languages.json.emit {
   JsonKeyValue,
 }
 import extdeps.tools.curl { curl_localhost_bounded_get_argv_prefix }
+import extdeps.ietf.http_semantics { HttpMethod, GET }
 
 type SiteArtifactKind
   = RoadmapMarkdown
@@ -114,7 +116,7 @@ fn roadmap_site_roadmap_md_body_over(plan: RoadmapAuthorityProjection) -> String
 }
 
 fn roadmap_site_roadmap_md_body() -> String {
-  roadmap_site_roadmap_md_body_over(plan: roadmap_authority_projection())
+  roadmap_site_roadmap_md_body_over(plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
 }
 
 fn roadmap_site_dispatch_json_body_over(plan: RoadmapAuthorityProjection) -> String {
@@ -122,7 +124,7 @@ fn roadmap_site_dispatch_json_body_over(plan: RoadmapAuthorityProjection) -> Str
 }
 
 fn roadmap_site_dispatch_json_body() -> String {
-  roadmap_site_dispatch_json_body_over(plan: roadmap_authority_projection())
+  roadmap_site_dispatch_json_body_over(plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
 }
 
 fn roadmap_site_roadmap_md_artifact() -> SiteArtifact {

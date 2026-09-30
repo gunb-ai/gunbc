@@ -1,0 +1,392 @@
+module test.claim.review_sheet_legacy_declaration_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.google.drive { DriveFile, DriveFileList, google_sheet_mime_type }
+import std.types { Bool, NonEmptyStr, String, List }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy, EnsureMayApply, EnsureObserveOnly }
+import gunbc.review_sheet_drive_converge {
+  ReviewSpreadsheetObservation,
+  SheetObservedOne,
+  SheetAbsent,
+  SpreadsheetCreatePlan,
+}
+import gunbc.review_sheet_identity {
+  ReviewSheetIdentitySubject,
+  ReviewSheetIdentityDisposition,
+  LegacyExtentEvidence,
+  review_sheet_identity_standing_disposition,
+}
+import gunbc.review_sheet_identity_converge {
+  review_sheet_identity_subject,
+  ensure_review_spreadsheet_on_identity,
+}
+import gunbc.review_sheet_legacy_extent_producer {
+  read_operator_legacy_declaration,
+  operator_declaration_evidence,
+}
+import gunbc.review_sheet_identity {
+  ReviewSheetConflictingLineages,
+  CurrentMarkerObservedLegacyExtentUnresolved,
+  LegacyExtentFound,
+}
+import gunbc.review_sheet_declared_id_admission {
+  DeclaredIdCandidacy,
+  SelectionStandsForAdjudication,
+  SelectionNotOffered,
+  SelectionRejected,
+  declared_id_candidacy,
+}
+
+// THE OPERATOR-DECLARATION PRODUCER, EXECUTED AGAINST REAL FILES ON A REAL FILESYSTEM, and that is
+// the point of the file rather than an implementation detail of it. Every claim below writes a
+// declaration into a throwaway temp directory, reads it back through the production reader
+// read_operator_legacy_declaration, parses it with the production JSON reader, transcribes a real
+// ReviewSheetIdentitySubject from its content, joins it in the production kernel
+// gunbc.review_sheet_identity, and takes the production decision in
+// gunbc.review_sheet_identity_converge -- one composed call, and no supplied value anywhere along
+// that chain. Delete the reader's integration and these go red, because nothing else here can
+// produce a declared subject.
+//
+// ITS SIBLING IS test.claim.review_sheet_legacy_extent_producer_witness, which holds the claims
+// that reach no host effect. The split follows the envelope: Filesystem.Write and
+// shell.Mktemp.DirWithTemplate have no hermetic response, so these rows are excluded from the
+// discovery corpus and scheduled on the required floor's local-repo wet lane instead. No network,
+// no cargo, no repository, and nothing outside a directory each claim creates and removes.
+//
+// THE DRIVE OBSERVATION IS STILL SUPPLIED, and the network leg is exercised by the operator's live
+// converge run rather than here. No claim in this file says otherwise.
+
+fn w_drive() -> NonEmptyStr { "drive-1" as NonEmptyStr }
+
+fn w_marker() -> NonEmptyStr { "ci-prospect-sheet" as NonEmptyStr }
+
+fn w_subject() -> ReviewSheetIdentitySubject {
+  review_sheet_identity_subject(drive_id: w_drive(), marker_value: w_marker())
+}
+
+// THE TWO PRODUCTION CALLS THE CONVERGE MAKES, COMPOSED HERE RATHER THAN IN PRODUCTION. The
+// converge needs the disposition on its own -- the declared-id admission reads it too -- so there
+// is no production function that takes a current observation and evidence and answers a decision.
+// This helper is that composition for the claims below, and it is a WITNESS helper precisely
+// because production has no consumer for it: a pub declaration nothing in the closure calls is
+// DESIGN section 3c's dangling declaration, and adding one to be tested would be the test wagging
+// the model.
+fn review_spreadsheet_identity_decision(
+  policy: EnsurePolicy,
+  current: ReviewSpreadsheetObservation,
+  legacy: LegacyExtentEvidence,
+  drive_id: NonEmptyStr,
+  sheet_name: NonEmptyStr,
+  marker_value: NonEmptyStr,
+) -> UpsertDecision<SpreadsheetCreatePlan> {
+  ensure_review_spreadsheet_on_identity(
+    policy: policy,
+    disposition: review_sheet_identity_standing_disposition(
+      subject: review_sheet_identity_subject(drive_id: drive_id, marker_value: marker_value),
+      current: current,
+      legacy: legacy,
+    ),
+    drive_id: drive_id,
+    sheet_name: sheet_name,
+    marker_value: marker_value,
+  )
+}
+
+fn fresh_dir() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_review_sheet_decl.XXXXXX").path
+}
+
+// A DECLARATION FILE AS AN OPERATOR WOULD WRITE IT. The five subject members are spelled out here
+// rather than derived from the production subject, so a relocation of either marker field breaks
+// this fixture LOUDLY instead of following the production subject into agreement with itself.
+fn declaration_text(
+  drive_id: String,
+  current_field: String,
+  superseded_field: String,
+) -> String {
+  join(
+    [
+      "{\n  \"drive_id\": \"", drive_id,
+      "\",\n  \"marker_key\": \"gunbcReviewSheet\",\n  \"marker_value\": \"ci-prospect-sheet\",\n  \"current_marker_field\": \"", current_field,
+      "\",\n  \"superseded_marker_field\": \"", superseded_field,
+      "\",\n  \"legacy_extent\": \"absent\",\n  \"basis\": \"the operator owns this shared drive and listed it in the Drive UI, seeing no other review sheet\"\n}\n",
+    ],
+    "",
+  )
+}
+
+fn matching_declaration_text() -> String {
+  declaration_text(
+    drive_id: w_drive() as String,
+    current_field: "properties",
+    superseded_field: "appProperties",
+  )
+}
+
+// THE REAL ROUTE, WRITTEN AND READ. Everything between the file bytes and the UpsertDecision is
+// production code called once.
+fn decision_over_declaration_file(
+  text: String,
+  write_the_file: Bool,
+  current: ReviewSpreadsheetObservation,
+  policy: EnsurePolicy,
+) -> UpsertDecision<SpreadsheetCreatePlan> {
+  let dir = fresh_dir()
+  let path = join([dir, "/review-sheet-legacy-extent-declaration.json"], "")
+  let written = Filesystem.Write(path: path, content: if write_the_file { text } else { "" })
+  let removed_before = if write_the_file { false } else { shell.Remove.RecursiveForce(path: path).success }
+  let decided = review_spreadsheet_identity_decision(
+    policy: policy,
+    current: current,
+    legacy: operator_declaration_evidence(
+      declaration: read_operator_legacy_declaration(path: path),
+      subject: w_subject(),
+      search_cause: "the superseded-marker search returned no rows, which establishes only that the requesting OAuth application received none" as NonEmptyStr,
+    ),
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: w_marker(),
+  )
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  decided
+}
+
+// NO DECLARATION, EMPTY CURRENT SEARCH, AND THE CREATE IS REFUSED. This is the exact state the
+// live converge was in when it minted the duplicate: a clean empty answer under the CURRENT marker
+// field, with the superseded generation unexamined. The replaced fold answered Apply here. The
+// file is really absent -- the temp path is removed before the read -- so the refusal comes from
+// the production reader failing to find it, not from a supplied value.
+test fn an_absent_declaration_beside_an_empty_current_search_refuses_the_create_by_real_execution() -> Bool {
+  match decision_over_declaration_file(
+    text: "",
+    write_the_file: false,
+    current: SheetAbsent,
+    policy: EnsureMayApply,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "no operator declaration could be read")
+        && string_contains(s: r as String, pattern: "received none")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR IT. The same empty current search with a real, subject-matching
+// declaration on disk DOES authorize the create. Without this claim a converge that refused
+// everything would pass the red above and never create anything again.
+test fn a_matching_declaration_beside_an_empty_current_search_authorizes_the_create_by_real_execution() -> Bool {
+  match decision_over_declaration_file(
+    text: matching_declaration_text(),
+    write_the_file: true,
+    current: SheetAbsent,
+    policy: EnsureMayApply,
+  ) {
+    Apply { plan: p } =>
+      (p.drive_id as String) == (w_drive() as String)
+        && (p.marker_property_value as String) == (w_marker() as String)
+    Refuse { reason: _ } => false
+    Noop => false
+  }
+}
+
+// A DECLARATION FOR ANOTHER DRIVE IS NOT EVIDENCE ABOUT THIS ONE, and the refusal comes from the
+// kernel's subject comparison rather than from anything this reader decided. The file is real,
+// well-formed and complete; only its drive_id differs.
+test fn a_declaration_naming_another_drive_refuses_by_real_execution() -> Bool {
+  match decision_over_declaration_file(
+    text: declaration_text(
+      drive_id: "some-other-drive",
+      current_field: "properties",
+      superseded_field: "appProperties",
+    ),
+    write_the_file: true,
+    current: SheetAbsent,
+    policy: EnsureMayApply,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "different identity subject")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+// A DECLARATION WRITTEN ABOUT AN EARLIER MARKER GENERATION MUST NOT ANSWER FOR THIS ONE. Both
+// marker fields are part of the subject precisely so a second relocation is decidable rather than
+// invisible; this file declares the pre-relocation pair and is refused on that alone.
+test fn a_declaration_about_another_marker_generation_refuses_by_real_execution() -> Bool {
+  match decision_over_declaration_file(
+    text: declaration_text(
+      drive_id: w_drive() as String,
+      current_field: "appProperties",
+      superseded_field: "someEarlierField",
+    ),
+    write_the_file: true,
+    current: SheetAbsent,
+    policy: EnsureMayApply,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "different identity subject")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+// A CURRENT-MARKED FILE BESIDE AN UNSETTLED EXTENT IS NOT AN ADOPTION. It writes nothing, so it
+// looks harmless; reporting it as converged asserts a single lineage nobody established, which is
+// what let a duplicate be adopted while the original went dark.
+test fn a_current_hit_without_a_declaration_refuses_rather_than_adopting_by_real_execution() -> Bool {
+  match decision_over_declaration_file(
+    text: "",
+    write_the_file: false,
+    current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
+    policy: EnsureMayApply,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "current-A")
+        && string_contains(s: r as String, pattern: "not settled")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// AND THE STEADY STATE STILL CONVERGES. With the declaration present, the same current hit is the
+// single lineage and the converge adopts it without writing -- the live behaviour the operator
+// exercised, preserved rather than re-litigated.
+test fn a_current_hit_with_a_matching_declaration_adopts_without_writing_by_real_execution() -> Bool {
+  match decision_over_declaration_file(
+    text: matching_declaration_text(),
+    write_the_file: true,
+    current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
+    policy: EnsureMayApply,
+  ) {
+    Noop => true
+    Refuse { reason: _ } => false
+    Apply { plan: _ } => false
+  }
+}
+
+// A MALFORMED DECLARATION IS NOT A MISSING ONE AND IS NOT AN ABSENT EXTENT. It names the member
+// that failed, because an operator repairing the file by hand is the whole audience for the text.
+test fn a_declaration_missing_its_basis_refuses_and_names_the_member_by_real_execution() -> Bool {
+  match decision_over_declaration_file(
+    text: "{\n  \"drive_id\": \"drive-1\",\n  \"marker_key\": \"gunbcReviewSheet\",\n  \"marker_value\": \"ci-prospect-sheet\",\n  \"current_marker_field\": \"properties\",\n  \"superseded_marker_field\": \"appProperties\",\n  \"legacy_extent\": \"absent\"\n}\n",
+    write_the_file: true,
+    current: SheetAbsent,
+    policy: EnsureMayApply,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "basis member is absent")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+// AN UNADMITTED EXTENT VALUE REFUSES RATHER THAN BEING READ AS THE NEAREST ADMITTED ONE. "probably
+// absent" is not "absent", and folding it would be exactly the conclusion-from-a-reading-that-did-
+// not-establish-it failure this lane exists to close.
+test fn an_unadmitted_extent_value_refuses_by_real_execution() -> Bool {
+  match decision_over_declaration_file(
+    text: "{\n  \"drive_id\": \"drive-1\",\n  \"marker_key\": \"gunbcReviewSheet\",\n  \"marker_value\": \"ci-prospect-sheet\",\n  \"current_marker_field\": \"properties\",\n  \"superseded_marker_field\": \"appProperties\",\n  \"legacy_extent\": \"probably absent\",\n  \"basis\": \"a hunch\"\n}\n",
+    write_the_file: true,
+    current: SheetAbsent,
+    policy: EnsureMayApply,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "admits only")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+// OBSERVE-ONLY STILL REFUSES A CREATE IT WOULD OTHERWISE AUTHORIZE, so the policy arm was not lost
+// when the decision moved onto the standing.
+test fn observe_only_refuses_a_create_the_standing_would_admit_by_real_execution() -> Bool {
+  match decision_over_declaration_file(
+    text: matching_declaration_text(),
+    write_the_file: true,
+    current: SheetAbsent,
+    policy: EnsureObserveOnly,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "observe-only")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+// ── THE SELECTION HALF OF THE DECLARATION READER, ALSO AGAINST REAL FILES ─────────────────────
+
+fn selection_declaration_text(drive_id: String, file_id: String) -> String {
+  join(
+    [
+      "{\n  \"drive_id\": \"", drive_id,
+      "\",\n  \"marker_key\": \"gunbcReviewSheet\",\n  \"marker_value\": \"ci-prospect-sheet\",\n  \"current_marker_field\": \"properties\",\n  \"superseded_marker_field\": \"appProperties\",\n  \"legacy_extent\": \"selected\",\n  \"file_id\": \"", file_id,
+      "\",\n  \"basis\": \"the operator opened both sheets and this is the one holding the review data\"\n}\n",
+    ],
+    "",
+  )
+}
+
+fn candidacy_over_declaration_file(
+  text: String,
+  disposition: ReviewSheetIdentityDisposition,
+) -> DeclaredIdCandidacy {
+  let dir = fresh_dir()
+  let path = join([dir, "/review-sheet-legacy-extent-declaration.json"], "")
+  let written = Filesystem.Write(path: path, content: text)
+  let decided = declared_id_candidacy(
+    subject: w_subject(),
+    disposition: disposition,
+    declaration: read_operator_legacy_declaration(path: path),
+  )
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  decided
+}
+
+// A SELECTION WRITTEN BY AN OPERATOR, READ OFF DISK, AND ADJUDICATING A REAL CONFLICT. Everything
+// between the file bytes and the candidacy is production code: the JSON reader, the subject
+// transcription, the LegacyFileSelection construction and the reconciliation. Nothing here
+// supplies a selection.
+test fn a_selected_declaration_file_adjudicates_an_observed_conflict_by_real_execution() -> Bool {
+  match candidacy_over_declaration_file(
+    text: selection_declaration_text(drive_id: w_drive() as String, file_id: "legacy-B"),
+    disposition: ReviewSheetConflictingLineages {
+      current_file_ids: ["current-A"],
+      legacy: LegacyExtentFound { file_ids: ["legacy-B"] },
+    },
+  ) {
+    SelectionStandsForAdjudication { file_id: f } => (f as String) == "legacy-B"
+    SelectionRejected { cause: _ } => false
+    SelectionNotOffered => false
+  }
+}
+
+// THE SAME REAL FILE BESIDE AN UNRESOLVED EXTENT STAYS UNRESOLVED, which is the refusal this cut
+// installs, reached here through the reader rather than through a supplied selection.
+test fn a_selected_declaration_file_beside_an_unresolved_extent_refuses_by_real_execution() -> Bool {
+  match candidacy_over_declaration_file(
+    text: selection_declaration_text(drive_id: w_drive() as String, file_id: "current-A"),
+    disposition: CurrentMarkerObservedLegacyExtentUnresolved {
+      file_id: "current-A" as NonEmptyStr,
+      cause: "the superseded-marker search returned no rows and visibility is unresolved" as NonEmptyStr,
+    },
+  ) {
+    SelectionRejected { cause: c } =>
+      string_contains(s: c as String, pattern: "never that no other lineage exists")
+    SelectionStandsForAdjudication { file_id: _ } => false
+    SelectionNotOffered => false
+  }
+}
+
+// A SELECTION MISSING ITS file_id IS NOT A SELECTION, and it does not degrade into one with an
+// empty id.
+test fn a_selected_declaration_missing_its_file_id_offers_no_selection_by_real_execution() -> Bool {
+  match candidacy_over_declaration_file(
+    text: "{\n  \"drive_id\": \"drive-1\",\n  \"marker_key\": \"gunbcReviewSheet\",\n  \"marker_value\": \"ci-prospect-sheet\",\n  \"current_marker_field\": \"properties\",\n  \"superseded_marker_field\": \"appProperties\",\n  \"legacy_extent\": \"selected\",\n  \"basis\": \"a hunch\"\n}\n",
+    disposition: ReviewSheetConflictingLineages {
+      current_file_ids: ["current-A"],
+      legacy: LegacyExtentFound { file_ids: ["legacy-B"] },
+    },
+  ) {
+    SelectionNotOffered => true
+    SelectionRejected { cause: _ } => false
+    SelectionStandsForAdjudication { file_id: _ } => false
+  }
+}

@@ -1,0 +1,24 @@
+module test.claim.fleet_health_goal_witness
+
+import std.types { Bool, List }
+import std.goal_assessment { ObservationEstablished, ObservationRefused }
+import gunbc.fleet_intent { fleet_intent_known_hosts }
+import gunbc.fleet_health { fleet_health_goals, host_telemetry_profile }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The goal is derived from the roster, not restated: one goal per known host, in roster order, and
+// every rostered host resolves a telemetry profile on its declared BMC. Resolving this module also
+// typechecks the read-only entry fleet_health_check beside it.
+test fn every_rostered_host_gets_a_goal_and_a_telemetry_profile() -> Bool {
+  let goals = match fleet_health_goals() {
+    ObservationEstablished { observed: gs } => map(gs, g => g.host) == map(fleet_intent_known_hosts, h => h.identity)
+    ObservationRefused { cause: _ } => false
+  }
+  let profiles = all(fleet_intent_known_hosts, h => match host_telemetry_profile(host: h) {
+    ObservationEstablished { observed: p } => p.host == h.identity
+    ObservationRefused { cause: _ } => false
+  })
+  goals && profiles
+}

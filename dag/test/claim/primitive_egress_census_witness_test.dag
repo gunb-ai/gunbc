@@ -1,0 +1,502 @@
+module test.claim.primitive_egress_census_witness_test
+
+import std.types { Bool, Int, List, String }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import std.primitive_projection { PrimitiveProjection, ModeledProjection, primitive_identity_slug, primitive_identity_runtime_name }
+import std.primitive_identity { PrimitiveSurfaceAuthority, BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, InterpreterDispatch, EmitHandler, primitive_identity_eq }
+import gunbc.primitive_egress.identity {
+  CallForm, FreeForm, MethodForm, FormlessSurface, canonical_join, JoinedByEgressAliasRow, JoinedByD0AliasTable, JoinedBySpelling,
+  egress_alias_rows_are_acyclic, egress_alias_rows_agree_with_d0_table,
+}
+import gunbc.primitive_egress.disposition {
+  PrimitiveEvidence, PrimitiveDisposition, DagBodyRequired, ReferenceBodyAbsent, NoExternalSubject, NoPureComputationHalf,
+  RefusalsTyped, RefusalsNotApplicable, NoNativeRealizationClaim, NotACompilerQuery, NoMeaningConflict,
+  evidence_row, computes, observes, realizes, queries, refusals_unmodeled, declared_authority, authority_required, provider_required, provider_declared,
+  reference_at, unqualified, qualified_by, derive_primitive_disposition, disposition_class, disposition_class_label,
+  PureDagComputationClass, BoundHostEffectClass, TargetKernelRealizationClass, CompilerQueryFrontierClass, UnresolvedClass,
+  NoSeedGrowthRow, SeedGrowthRows, Unresolved, UnresolvedCause, RefusalContractIncomplete, OperationAuthorityAbsent,
+  TargetKernelUnqualified, SeedGrowthOwnershipAbsent, MixedSemanticQuestions, ConflictingRealizations, SubjectUnestablished,
+  ExternalSubjectUnverified, OwningFactUnresolved,
+}
+import gunbc.primitive_egress.census {
+  SurfaceFact, surface_fact, PrimitiveCallEdge, PrimitiveCalleeIdentity, RuntimePrimitiveCallee, AlgebraMethodCallee,
+  PlainMethodCallee, UndeterminedFreeCallee, ServiceOperationCallee, PrimitiveCallEntryRefusal,
+  PrimitiveCallEdgeCensus, PrimitiveCallEdgeCensusObserved, PrimitiveCallEdgeCensusRefused,
+  CensusInputs, PrimitiveCensus, primitive_census, IdentityStanding, DispositionMatch, interpreter_arm_facts, surface_fact_on_arm, ExactlyOneDisposition, NoDisposition, MultipleDispositions,
+  consumer_only_identities, projection_only_identities, seed_growth_only_identities, standings_of_class,
+  registry_without_contract, contract_without_interpreter_arm, interpreter_arm_without_contract, emitted_bridge_without_consumer,
+  consumers_with_unresolved_callee, zero_disposition, multiple_disposition, exactly_one_disposition, shared_v1_v2_identities,
+  aliased_identities, unresolved_standings, v2_projection, v1_only_projection,
+  census_standing, CensusStanding, CensusHeld, CensusDidNotHold, CensusRefused,
+}
+import gunbc.primitive_egress.category { TextOps, SeedQuery }
+import gunbc.primitive_egress.census_live { live_surface_facts }
+import gunbc.primitive_egress.receipt { census_receipt_lines }
+import v2.std.decl_ref_resolution { DeclarationRefResolution, DeclarationRefResolved, DeclarationRefDeclarationAbsent, DeclarationIdentity }
+import v2.std.decl_index { FnItem, ServiceItem }
+import gunbc.v1_interpreter_primitive_surface { InterpreterPrimitiveDispatchArm, InterpreterPrimitiveArmId, ServiceDispatch, EvalServiceCallCarveOutSite, AuthoredInRoster }
+
+// EVERY CONTROL SUPPLIES ITS INPUTS AT THE CENSUS INTERFACE (DESIGN section 3: a witness
+// discriminates at one interface). The one claim that runs the real producer is the decoy pool
+// below, which compiles a fixture through compile_dag_primitive_call_edges and asserts the ROUTE:
+// a call to a same-leaf declaration yields no primitive edge, while the free-call, method-form and
+// aliased spellings of the same operation all reach one canonical identity.
+
+fn fact(surface: PrimitiveSurfaceAuthority, spelling: String, form: CallForm) -> SurfaceFact {
+  surface_fact(surface: surface, spelling: spelling, form: form)
+}
+
+fn edge(module: String, decl: String, callee: PrimitiveCalleeIdentity) -> PrimitiveCallEdge {
+  PrimitiveCallEdge { caller_module: module, caller_decl: decl, authored_spelling: "x", callee: callee, span_file: "f.dag", span_start: 0 }
+}
+
+fn prim(name: String) -> PrimitiveCalleeIdentity {
+  RuntimePrimitiveCallee { primitive_name: name, projected_from_module: none, projected_from_decl: none }
+}
+
+// A pure-computation evidence row under a DECLARED authority with typed refusals: the shape the
+// derivation classifies PureDagComputation. Controls below vary one fact at a time.
+fn row(name: String) -> PrimitiveEvidence {
+  evidence_row(name: name, category: TextOps, external_subject: NoExternalSubject,
+    computation: computes(authority: declared_authority(module_path: "std.algebra", decl_name: "free_monoid_scalar_templates"), inputs: "x", result: "y", body: DagBodyRequired),
+    refusals: RefusalsTyped, realization: NoNativeRealizationClaim, compiler_query: NotACompilerQuery, conflict: NoMeaningConflict,
+    located: "fixture", next: "fixture")
+}
+
+// THE FIXTURE RESOLVER: every reference resolves to a fn declaration. Controls that need a
+// spoofed reference use `resolver_refusing_all`.
+fn resolver_all_fn(ref: DeclarationRef) -> DeclarationRefResolution {
+  DeclarationRefResolved { declaration_identity: DeclarationIdentity { qualified_name: concat(ref.module_path as String, ".", ref.decl_name as String), name: ref.decl_name as String, rel_path: "fixture.dag", kind: FnItem } }
+}
+
+fn resolver_refusing_all(ref: DeclarationRef) -> DeclarationRefResolution {
+  DeclarationRefDeclarationAbsent { reference: ref }
+}
+
+fn resolver_all_service(ref: DeclarationRef) -> DeclarationRefResolution {
+  DeclarationRefResolved { declaration_identity: DeclarationIdentity { qualified_name: concat(ref.module_path as String, ".", ref.decl_name as String), name: ref.decl_name as String, rel_path: "fixture.dag", kind: ServiceItem } }
+}
+
+data witness_prefixes: List<String> = ["test.claim."]
+
+fn census_with(facts: List<SurfaceFact>, edges: List<PrimitiveCallEdge>, rows: List<PrimitiveEvidence>, projections: List<PrimitiveProjection>, decls: List<DeclarationRef>, resolve: fn(DeclarationRef) -> DeclarationRefResolution) -> PrimitiveCensus {
+  primitive_census(inputs: CensusInputs { surface_facts: facts, edges: edges, entries_refused: [], projections: projections, dispositions: rows, seed_growth_decls: decls, resolve: resolve, witness_module_prefixes: witness_prefixes })
+}
+
+fn census_of(facts: List<SurfaceFact>, edges: List<PrimitiveCallEdge>, rows: List<PrimitiveEvidence>) -> PrimitiveCensus {
+  census_with(facts: facts, edges: edges, rows: rows, projections: [], decls: [], resolve: resolver_all_fn)
+}
+
+// The pure-row shape needs an ALGEBRA surface to verify its refusal contract, so most controls
+// carry both a registry and an algebra fact for their identity.
+fn pure_facts(name: String) -> List<SurfaceFact> {
+  [fact(surface: BuiltinRegistry, spelling: name, form: FreeForm), fact(surface: AlgebraTemplate, spelling: name, form: MethodForm)]
+}
+
+fn class_of(c: PrimitiveCensus, name: String) -> String {
+  match c.standings |> filter(fn(s) { s.name == name }) |> first {
+    Present { value: s } =>
+      match s.disposition {
+        ExactlyOneDisposition { evidence: _, qualified: _, disposition: d } => disposition_class_label(c: disposition_class(d: d))
+        NoDisposition => "NONE"
+        MultipleDispositions { rows: _ } => "MULTIPLE"
+      }
+    Absent => "ABSENT"
+  }
+}
+
+fn cause_kind(c: PrimitiveCensus, name: String) -> String {
+  match c.standings |> filter(fn(s) { s.name == name }) |> first {
+    Present { value: s } =>
+      match s.disposition {
+        ExactlyOneDisposition { evidence: _, qualified: _, disposition: d } =>
+          match d {
+            Unresolved { cause: cause, candidate_classes: _ } =>
+              match cause {
+                MixedSemanticQuestions { questions: _ } => "MixedSemanticQuestions"
+                ConflictingRealizations { detail: _ } => "ConflictingRealizations"
+                SubjectUnestablished { detail: _ } => "SubjectUnestablished"
+                RefusalContractIncomplete { detail: _ } => "RefusalContractIncomplete"
+                OperationAuthorityAbsent { home: _ } => "OperationAuthorityAbsent"
+                TargetKernelUnqualified { detail: _ } => "TargetKernelUnqualified"
+                SeedGrowthOwnershipAbsent { producer: _ } => "SeedGrowthOwnershipAbsent"
+                ExternalSubjectUnverified { detail: _ } => "ExternalSubjectUnverified"
+                OwningFactUnresolved { premise: _, reference: _, cause: _ } => "OwningFactUnresolved"
+              }
+            _ => "not-unresolved"
+          }
+        NoDisposition => "NONE"
+        MultipleDispositions { rows: _ } => "MULTIPLE"
+      }
+    Absent => "ABSENT"
+  }
+}
+
+fn standing_names(ss: List<IdentityStanding>) -> List<String> {
+  ss |> map(s => s.name)
+}
+
+fn has(xs: List<String>, x: String) -> Bool {
+  xs |> any(y => y == x)
+}
+
+// 1. Registry entry with no modeled contract.
+test fn w_registry_entry_with_no_contract_is_found() -> Bool {
+  let c = census_of(facts: [fact(surface: BuiltinRegistry, spelling: "zeta", form: FreeForm)], edges: [], rows: [row(name: "zeta")])
+  has(xs: standing_names(ss: registry_without_contract(c: c)), x: "zeta")
+    && !has(xs: standing_names(ss: contract_without_interpreter_arm(c: c)), x: "zeta")
+}
+
+// 2. Contract with no interpreter arm.
+test fn w_contract_with_no_interpreter_arm_is_found() -> Bool {
+  let c = census_of(facts: [fact(surface: PrimitiveContractRow, spelling: "zeta", form: FormlessSurface)], edges: [], rows: [row(name: "zeta")])
+  has(xs: standing_names(ss: contract_without_interpreter_arm(c: c)), x: "zeta")
+    && !has(xs: standing_names(ss: interpreter_arm_without_contract(c: c)), x: "zeta")
+}
+
+// 3. Interpreter arm with no contract -- and the positive control that a paired contract clears it.
+test fn w_interpreter_arm_with_no_contract_is_found() -> Bool {
+  let red = census_of(facts: [fact(surface: InterpreterDispatch, spelling: "zeta", form: FreeForm)], edges: [], rows: [row(name: "zeta")])
+  let green = census_of(facts: [fact(surface: InterpreterDispatch, spelling: "zeta", form: FreeForm), fact(surface: PrimitiveContractRow, spelling: "zeta", form: FormlessSurface)], edges: [], rows: [row(name: "zeta")])
+  has(xs: standing_names(ss: interpreter_arm_without_contract(c: red)), x: "zeta")
+    && !has(xs: standing_names(ss: interpreter_arm_without_contract(c: green)), x: "zeta")
+}
+
+// 4. Emitted bridge with no consumer; one consumer clears it.
+test fn w_emitted_bridge_with_no_consumer_is_found() -> Bool {
+  let facts = [fact(surface: EmitHandler, spelling: "zeta", form: FreeForm)]
+  let red = census_of(facts: facts, edges: [], rows: [row(name: "zeta")])
+  let green = census_of(facts: facts, edges: [edge(module: "v2.m", decl: "f", callee: prim(name: "zeta"))], rows: [row(name: "zeta")])
+  has(xs: standing_names(ss: emitted_bridge_without_consumer(c: red)), x: "zeta")
+    && !has(xs: standing_names(ss: emitted_bridge_without_consumer(c: green)), x: "zeta")
+}
+
+// 5. A consumer whose callee identity the resolver did not establish, on a spelling the surfaces
+// carry, is reported against that identity; the same shape on a spelling no surface carries is an
+// off-surface receipt and never mints an identity.
+test fn w_unresolved_callee_on_a_surface_spelling_is_attributed() -> Bool {
+  let facts = [fact(surface: InterpreterDispatch, spelling: "zeta", form: MethodForm)]
+  let c = census_of(facts: facts, edges: [edge(module: "v2.m", decl: "f", callee: PlainMethodCallee { spelling: "zeta" }), edge(module: "v2.m", decl: "g", callee: UndeterminedFreeCallee { spelling: "nothing_here" })], rows: [row(name: "zeta")])
+  has(xs: standing_names(ss: consumers_with_unresolved_callee(c: c)), x: "zeta")
+    && count(c.standings) == 1
+    && c.consumer_fold.off_surface_sites == 1
+}
+
+// 7. Aliased and alternate spellings join the canonical identity BEFORE classification: count and
+// size on any surface are `length`, so one disposition row for length covers all three and no
+// identity named count or size exists to classify.
+test fn w_aliases_join_canonical_identity_before_classification() -> Bool {
+  let facts = [
+    fact(surface: InterpreterDispatch, spelling: "length", form: MethodForm),
+    fact(surface: InterpreterDispatch, spelling: "count", form: MethodForm),
+    fact(surface: InterpreterDispatch, spelling: "size", form: MethodForm),
+    fact(surface: BuiltinRegistry, spelling: "string_length", form: FreeForm),
+  ]
+  let c = census_of(facts: facts, edges: [edge(module: "v2.m", decl: "f", callee: AlgebraMethodCallee { template_name: "count" })], rows: [row(name: "length")])
+  count(c.standings) == 1
+    && has(xs: standing_names(ss: aliased_identities(c: c)), x: "length")
+    && has(xs: standing_names(ss: exactly_one_disposition(c: c)), x: "length")
+    && count(zero_disposition(c: c)) == 0
+    && match c.standings |> first { Present { value: s } => s.consumers.v2_sites == 1 && count(s.spellings) == 4  Absent => false }
+}
+
+test fn w_alias_table_is_acyclic_and_agrees_with_d0() -> Bool {
+  egress_alias_rows_are_acyclic() && egress_alias_rows_agree_with_d0_table()
+}
+
+// 8. One identity reached by both v1 and v2 consumers.
+test fn w_identity_reached_by_v1_and_v2_is_shared() -> Bool {
+  let facts = [fact(surface: BuiltinRegistry, spelling: "concat", form: FreeForm)]
+  let c = census_of(facts: facts, edges: [edge(module: "v2.m", decl: "f", callee: prim(name: "concat")), edge(module: "v1.compiler.x", decl: "g", callee: prim(name: "concat"))], rows: [row(name: "concat")])
+  has(xs: standing_names(ss: shared_v1_v2_identities(c: c)), x: "concat")
+    && count(v1_only_projection(c: c)) == 0
+    && has(xs: standing_names(ss: v2_projection(c: c)), x: "concat")
+}
+
+// 9. One identity matching no disposition refuses the census standing -- the direct control
+// against default classification.
+test fn w_zero_disposition_identity_does_not_hold() -> Bool {
+  let c = census_of(facts: [fact(surface: BuiltinRegistry, spelling: "zeta", form: FreeForm)], edges: [], rows: [])
+  has(xs: standing_names(ss: zero_disposition(c: c)), x: "zeta")
+    && match census_standing(c: c) { CensusDidNotHold { cause: _ } => true  CensusHeld => false  CensusRefused { cause: _ } => false }
+}
+
+// 10. One identity matching two dispositions refuses too.
+test fn w_multiple_disposition_identity_does_not_hold() -> Bool {
+  let c = census_of(facts: [fact(surface: BuiltinRegistry, spelling: "zeta", form: FreeForm)], edges: [], rows: [row(name: "zeta"), row(name: "zeta")])
+  has(xs: standing_names(ss: multiple_disposition(c: c)), x: "zeta")
+    && count(exactly_one_disposition(c: c)) == 0
+    && match census_standing(c: c) { CensusDidNotHold { cause: _ } => true  CensusHeld => false  CensusRefused { cause: _ } => false }
+}
+
+// The receipt prints the colliding rows themselves, not only how many collided: the population
+// that fails the census is the one a reader must be able to act on, so its identity line carries
+// every matched evidence row (matching_rows), and the count is the length of that list.
+test fn w_receipt_names_the_colliding_rows_of_a_multiple_disposition() -> Bool {
+  let c = census_of(facts: [fact(surface: BuiltinRegistry, spelling: "zeta", form: FreeForm)], edges: [], rows: [row(name: "zeta"), row(name: "zeta")])
+  let lines = census_receipt_lines(c: c, scope: "fixture", scope_complete: false, entries_resolved: 0, roster_missing: [], roster_extra: [])
+  let zeta_lines = lines |> filter(fn(l) { string_contains(s: l, pattern: "\"class\": \"MULTIPLE\"") })
+  count(zeta_lines) == 1
+    && (zeta_lines |> all(l => string_contains(s: l, pattern: "\"matching_dispositions\": 2") && string_contains(s: l, pattern: "\"matching_rows\": [{")))
+}
+
+// INHABITANCE OF THE SURFACE BOUNDARY (DESIGN §3, the pairing obligation). Every other claim in
+// this file supplies its surface facts; this one runs the real producer, live_surface_facts, and
+// asserts the ROUTE: each of the five surface authorities is read from its own source (a fact on
+// every one), the interpreter roster is split to operation grain (Filesystem.Read and
+// Filesystem.List each present, the joined spelling absent), and the registry key set is the
+// compiled registry (a key the hand roster never carried, compile_dag_primitive_call_edges, is
+// present). Deleting any one producer from the concatenation turns this red.
+fn facts_on(facts: List<SurfaceFact>, s: PrimitiveSurfaceAuthority) -> Bool {
+  facts |> any(f => f.surface == s)
+}
+
+fn facts_spell(facts: List<SurfaceFact>, x: String) -> Bool {
+  facts |> any(f => f.spelling == x)
+}
+
+test fn w_live_surface_facts_are_produced_from_every_surface_authority() -> Bool {
+  let facts = live_surface_facts()
+  count(facts) > 0
+    && (facts |> all(f => f.spelling != ""))
+    && facts_on(facts: facts, s: BuiltinRegistry) && facts_on(facts: facts, s: PrimitiveContractRow) && facts_on(facts: facts, s: AlgebraTemplate)
+    && facts_on(facts: facts, s: EmitHandler) && facts_on(facts: facts, s: InterpreterDispatch)
+    && facts_spell(facts: facts, x: "Filesystem.Read") && facts_spell(facts: facts, x: "Filesystem.List") && !facts_spell(facts: facts, x: "Filesystem.Read|List")
+    && facts_spell(facts: facts, x: "compile_dag_primitive_call_edges") && facts_spell(facts: facts, x: "length")
+}
+
+// Unresolved is explicit and does NOT fail the census.
+// Unresolved is CONSTRUCTED by the derivation from conflicting evidence (an external subject AND
+// a computation half), is explicit, and does not fail the census.
+test fn w_unresolved_disposition_is_derived_explicit_and_holds() -> Bool {
+  let r = evidence_row(name: "zeta", category: TextOps,
+    external_subject: observes(operation: "zeta", subject: "a file", provider: provider_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"), ambient: "arm"),
+    computation: computes(authority: authority_required(home: "h"), inputs: "the bytes", result: "a fold", body: DagBodyRequired),
+    refusals: RefusalsTyped, realization: NoNativeRealizationClaim, compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "fixture", next: "split")
+  let c = census_with(facts: [fact(surface: BuiltinRegistry, spelling: "zeta", form: FreeForm)], edges: [], rows: [r], projections: [], decls: [], resolve: resolver_all_service)
+  has(xs: standing_names(ss: unresolved_standings(c: c)), x: "zeta")
+    && cause_kind(c: c, name: "zeta") == "MixedSemanticQuestions"
+    && match census_standing(c: c) { CensusHeld => true  CensusDidNotHold { cause: _ } => false  CensusRefused { cause: _ } => false }
+}
+
+// THE CLASS IS DERIVED, NOT SELECTED: the same evidence shape with ONE fact varied changes the
+// class, and every terminal class needs its own qualifying facts. No row names a class.
+test fn w_class_is_derived_from_evidence_not_authored() -> Bool {
+  let facts = pure_facts(name: "zeta")
+  let pure = row(name: "zeta")
+  let unmodeled = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject,
+    computation: computes(authority: declared_authority(module_path: "std.algebra", decl_name: "free_monoid_scalar_templates"), inputs: "x", result: "y", body: DagBodyRequired),
+    refusals: refusals_unmodeled(detail: "out of range is a host panic"), realization: NoNativeRealizationClaim, compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
+  let required = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject,
+    computation: computes(authority: authority_required(home: "std.text"), inputs: "x", result: "y", body: DagBodyRequired),
+    refusals: RefusalsTyped, realization: NoNativeRealizationClaim, compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
+  let effect = evidence_row(name: "zeta", category: TextOps,
+    external_subject: observes(operation: "zeta", subject: "a clock", provider: provider_declared(module_path: "std.observation", decl_name: "ClockLookup"), ambient: "arm"),
+    computation: NoPureComputationHalf, refusals: RefusalsNotApplicable, realization: NoNativeRealizationClaim, compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
+  let effect_required = evidence_row(name: "zeta", category: TextOps,
+    external_subject: observes(operation: "zeta", subject: "a clock", provider: provider_required(shape: "clock"), ambient: "arm"),
+    computation: NoPureComputationHalf, refusals: RefusalsNotApplicable, realization: NoNativeRealizationClaim, compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
+  class_of(c: census_of(facts: facts, edges: [], rows: [pure]), name: "zeta") == "PureDagComputation"
+    && cause_kind(c: census_of(facts: facts, edges: [], rows: [unmodeled]), name: "zeta") == "RefusalContractIncomplete"
+    && cause_kind(c: census_of(facts: facts, edges: [], rows: [required]), name: "zeta") == "OperationAuthorityAbsent"
+    && class_of(c: census_with(facts: facts, edges: [], rows: [effect], projections: [], decls: [], resolve: resolver_all_service), name: "zeta") == "BoundHostEffect"
+    && cause_kind(c: census_of(facts: facts, edges: [], rows: [effect_required]), name: "zeta") == "ExternalSubjectUnverified"
+}
+
+// THE PREMISE JOIN: the same authored row (declared authority, typed refusals, no external
+// subject) derives PureDagComputation ONLY when every premise joins its owning fact. With a
+// registry-only surface the refusal contract has no owner; with a resolver that refuses the
+// authority reference the authority has none. Neither reaches a terminal class: an authored
+// premise the corpus does not own can only lower the class. Citing a template LIST with no
+// template row for the identity is an authority that does not own the identity, even though
+// the list itself resolves; a resolving fn authority that is not a template list verifies the
+// purity claim, but the refusal contract still has no owner without a template declaring the result.
+test fn w_authored_premises_that_do_not_join_cannot_reach_a_terminal_class() -> Bool {
+  let registry_only = [fact(surface: BuiltinRegistry, spelling: "zeta", form: FreeForm)]
+  let spoofed_authority = census_with(facts: pure_facts(name: "zeta"), edges: [], rows: [row(name: "zeta")], projections: [], decls: [], resolve: resolver_refusing_all)
+  let list_without_template = census_of(facts: registry_only, edges: [], rows: [row(name: "zeta")])
+  let fn_authority_row = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject,
+    computation: computes(authority: declared_authority(module_path: "v2.std.algebra", decl_name: "length"), inputs: "x", result: "y", body: DagBodyRequired),
+    refusals: RefusalsTyped, realization: NoNativeRealizationClaim, compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
+  let unowned_refusals = census_of(facts: registry_only, edges: [], rows: [fn_authority_row])
+  let joined = census_of(facts: pure_facts(name: "zeta"), edges: [], rows: [row(name: "zeta")])
+  cause_kind(c: spoofed_authority, name: "zeta") == "OwningFactUnresolved"
+    && cause_kind(c: list_without_template, name: "zeta") == "OwningFactUnresolved"
+    && cause_kind(c: unowned_refusals, name: "zeta") == "RefusalContractIncomplete"
+    && class_of(c: joined, name: "zeta") == "PureDagComputation"
+}
+
+// A kernel's witness must resolve AND sit under an enrolled witness module prefix; a witness
+// reference that does not resolve is a candidate, never a terminal kernel.
+test fn w_spoofed_equivalence_witness_is_not_terminal() -> Bool {
+  let comp = computes(authority: declared_authority(module_path: "std.algebra", decl_name: "finitely_supported_function_templates"), inputs: "m, k", result: "Optional<V>", body: DagBodyRequired)
+  let claimed = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject, computation: comp, refusals: RefusalsTyped,
+    realization: realizes(module_path: "std.algebra", decl_name: "finitely_supported_function_templates", semantics: "s", realization: "r", reference: reference_at(module_path: "v2.std.collection", decl_name: "map_lookup"), equivalence: qualified_by(module_path: "test.claim.x", decl_name: "w")),
+    compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
+  let outside_prefix = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject, computation: comp, refusals: RefusalsTyped,
+    realization: realizes(module_path: "std.algebra", decl_name: "finitely_supported_function_templates", semantics: "s", realization: "r", reference: reference_at(module_path: "v2.std.collection", decl_name: "map_lookup"), equivalence: qualified_by(module_path: "gunbc.not_a_witness", decl_name: "w")),
+    compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
+  cause_kind(c: census_with(facts: pure_facts(name: "zeta"), edges: [], rows: [claimed], projections: [], decls: [], resolve: resolver_refusing_all), name: "zeta") == "TargetKernelUnqualified"
+    && cause_kind(c: census_of(facts: pure_facts(name: "zeta"), edges: [], rows: [outside_prefix]), name: "zeta") == "TargetKernelUnqualified"
+    && class_of(c: census_of(facts: pure_facts(name: "zeta"), edges: [], rows: [claimed]), name: "zeta") == "TargetKernelRealization"
+}
+
+// A conflict is DERIVED from the surfaces: one interpreter arm carrying spellings of two
+// identities marks both, and no authored NoMeaningConflict can clear it.
+test fn w_conflict_is_derived_from_a_shared_arm() -> Bool {
+  let facts = [
+    surface_fact_on_arm(surface: InterpreterDispatch, spelling: "alpha", form: FreeForm, arm: "free_call.alpha"),
+    surface_fact_on_arm(surface: InterpreterDispatch, spelling: "beta", form: FreeForm, arm: "free_call.alpha"),
+    fact(surface: AlgebraTemplate, spelling: "alpha", form: MethodForm),
+    fact(surface: AlgebraTemplate, spelling: "beta", form: MethodForm),
+  ]
+  let c = census_of(facts: facts, edges: [], rows: [row(name: "alpha"), row(name: "beta")])
+  let clean = census_of(facts: pure_facts(name: "alpha"), edges: [], rows: [row(name: "alpha")])
+  cause_kind(c: c, name: "alpha") == "ConflictingRealizations"
+    && cause_kind(c: c, name: "beta") == "ConflictingRealizations"
+    && class_of(c: clean, name: "alpha") == "PureDagComputation"
+}
+
+// A native realization is a terminal target kernel only with a reference body AND a qualified
+// equivalence; the same claim without them is a candidate, i.e. Unresolved.
+test fn w_unqualified_target_kernel_is_not_terminal() -> Bool {
+  let facts = pure_facts(name: "zeta")
+  let comp = computes(authority: declared_authority(module_path: "std.algebra", decl_name: "finitely_supported_function_templates"), inputs: "m, k", result: "Optional<V>", body: DagBodyRequired)
+  let unqualified_row = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject, computation: comp, refusals: RefusalsTyped,
+    realization: realizes(module_path: "std.algebra", decl_name: "finitely_supported_function_templates", semantics: "s", realization: "r", reference: ReferenceBodyAbsent, equivalence: unqualified(obligation: "witness owed")),
+    compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
+  let qualified_row = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject, computation: comp, refusals: RefusalsTyped,
+    realization: realizes(module_path: "std.algebra", decl_name: "finitely_supported_function_templates", semantics: "s", realization: "r", reference: reference_at(module_path: "v2.std.collection", decl_name: "map_lookup"), equivalence: qualified_by(module_path: "test.claim.x", decl_name: "w")),
+    compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
+  cause_kind(c: census_of(facts: facts, edges: [], rows: [unqualified_row]), name: "zeta") == "TargetKernelUnqualified"
+    && class_of(c: census_of(facts: facts, edges: [], rows: [qualified_row]), name: "zeta") == "TargetKernelRealization"
+}
+
+// A compiler query reaches the terminal class only when a seed-growth row owns its producer.
+fn query_row(name: String) -> PrimitiveEvidence {
+  evidence_row(name: name, category: SeedQuery, external_subject: NoExternalSubject, computation: NoPureComputationHalf, refusals: RefusalsNotApplicable,
+    realization: NoNativeRealizationClaim,
+    compiler_query: queries(subject: "the declaration index", product: "the accepted index", producer: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "zeta_producer"), trigger: "a judgment"),
+    conflict: NoMeaningConflict, located: "f", next: "n")
+}
+
+test fn w_compiler_query_without_seed_growth_row_is_not_terminal() -> Bool {
+  let facts = [fact(surface: BuiltinRegistry, spelling: "zeta", form: FreeForm)]
+  let unowned = census_of(facts: facts, edges: [], rows: [query_row(name: "zeta")])
+  let owned = census_with(facts: facts, edges: [], rows: [query_row(name: "zeta")], projections: [], decls: [DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "zeta_producer", field: WholeDeclaration }], resolve: resolver_all_fn)
+  cause_kind(c: unowned, name: "zeta") == "SeedGrowthOwnershipAbsent"
+    && class_of(c: owned, name: "zeta") == "CompilerQueryFrontier"
+}
+
+// THE DENOMINATOR IS THE UNION. (a) A resolver-established consumer whose callee no surface
+// carries gets a standing and cannot vanish: with no evidence row it is NoDisposition and the
+// census does not hold. (b) A projection-only identity is in the denominator. (c) A seed-growth-
+// owned query identity no surface carries is in the denominator; the same row unowned is the
+// typed refusal, not a silent drop.
+test fn w_consumer_only_identity_cannot_vanish() -> Bool {
+  let c = census_of(facts: [fact(surface: BuiltinRegistry, spelling: "known", form: FreeForm)], edges: [edge(module: "v2.m", decl: "f", callee: prim(name: "ghost"))], rows: [row(name: "known")])
+  has(xs: standing_names(ss: consumer_only_identities(c: c)), x: "ghost")
+    && class_of(c: c, name: "ghost") == "NONE"
+    && has(xs: standing_names(ss: zero_disposition(c: c)), x: "ghost")
+    && match census_standing(c: c) { CensusDidNotHold { cause: _ } => true  CensusHeld => false  CensusRefused { cause: _ } => false }
+}
+
+test fn w_projection_only_identity_is_in_the_denominator() -> Bool {
+  let projection = PrimitiveProjection { primitive: primitive_identity_slug(name: "shadow"), declaration: decl_ref(module_path: "test.fixture.primitive_egress_decoy.decoy", decl_name: "scan_to_eol"), fidelity: ModeledProjection }
+  let c = census_with(facts: [], edges: [], rows: [row(name: "shadow")], projections: [projection], decls: [], resolve: resolver_all_fn)
+  has(xs: standing_names(ss: projection_only_identities(c: c)), x: "shadow")
+    && class_of(c: c, name: "shadow") != "NONE"
+    && class_of(c: c, name: "shadow") != "ABSENT"
+    && match c.standings |> first { Present { value: s } => count(s.modeled_bodies) == 1 && !s.registry  Absent => false }
+}
+
+test fn w_seed_growth_only_identity_is_in_the_denominator_or_refused() -> Bool {
+  let decl = DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "zeta_producer", field: WholeDeclaration }
+  let owned = census_with(facts: [], edges: [], rows: [query_row(name: "zeta")], projections: [], decls: [decl], resolve: resolver_all_fn)
+  let unowned = census_with(facts: [], edges: [], rows: [query_row(name: "zeta")], projections: [], decls: [], resolve: resolver_all_fn)
+  has(xs: standing_names(ss: seed_growth_only_identities(c: owned)), x: "zeta")
+    && class_of(c: owned, name: "zeta") == "CompilerQueryFrontier"
+    && count(unowned.standings) == 0
+    && count(unowned.dispositions_naming_no_identity) == 1
+    && match census_standing(c: unowned) { CensusRefused { cause: _ } => true  CensusDidNotHold { cause: _ } => true  CensusHeld => false }
+}
+
+// Filesystem.Read and Filesystem.List are two operation-grain identities: the one roster row
+// spelled "Filesystem.Read|List" yields two surface facts, and a service call to each joins its
+// own identity.
+test fn w_filesystem_read_and_list_are_two_identities() -> Bool {
+  let arm = InterpreterPrimitiveDispatchArm {
+    arm: InterpreterPrimitiveArmId { identity: "service_dispatch.Filesystem.checkout_input" }, form: ServiceDispatch, authored_spelling: "Filesystem.Read|List",
+    realization_module: "v1_interpreter", dispatch_symbol: "eval_service_call", dispatch_emit_site: EvalServiceCallCarveOutSite, enumeration: AuthoredInRoster,
+  }
+  let facts = interpreter_arm_facts(arm: arm)
+  let c = census_of(facts: facts, edges: [edge(module: "v2.m", decl: "f", callee: ServiceOperationCallee { service_name: "Filesystem", operation: "List" })], rows: [row(name: "Filesystem.Read"), row(name: "Filesystem.List")])
+  count(facts) == 2
+    && count(c.standings) == 2
+    && has(xs: standing_names(ss: c.standings), x: "Filesystem.Read")
+    && has(xs: standing_names(ss: c.standings), x: "Filesystem.List")
+    && match c.standings |> filter(fn(s) { s.name == "Filesystem.List" }) |> first { Present { value: s } => s.consumers.v2_sites == 1  Absent => false }
+}
+
+// A disposition row naming an identity outside the join is a finding, not a silent extra.
+test fn w_disposition_row_naming_no_identity_does_not_hold() -> Bool {
+  let c = census_of(facts: [fact(surface: BuiltinRegistry, spelling: "zeta", form: FreeForm)], edges: [], rows: [row(name: "zeta"), row(name: "phantom")])
+  count(c.dispositions_naming_no_identity) == 1
+    && match census_standing(c: c) { CensusDidNotHold { cause: _ } => true  CensusHeld => false  CensusRefused { cause: _ } => false }
+}
+
+// A refused entry refuses the census: the consumer population is incomplete, never silently short.
+test fn w_refused_entry_refuses_the_census() -> Bool {
+  let c = primitive_census(inputs: CensusInputs { surface_facts: [fact(surface: BuiltinRegistry, spelling: "zeta", form: FreeForm)], edges: [], entries_refused: [PrimitiveCallEntryRefusal { entry: "dag/x.dag", cause: "blocking" }], projections: [], dispositions: [row(name: "zeta")], seed_growth_decls: [], resolve: resolver_all_fn, witness_module_prefixes: witness_prefixes })
+  match census_standing(c: c) { CensusRefused { cause: _ } => true  CensusHeld => false  CensusDidNotHold { cause: _ } => false }
+}
+
+// 6. THE SAME-LEAF DECOY, ON THE REAL PRODUCER. The fixture declares its own `scan_to_eol` (a
+// registry + contract + bridge spelling that no other module reads bare, so the decoy cannot
+// ambiguate or rebind a bare read anywhere in the prepared corpus -- a spelling with bare readers
+// makes every one of them an AmbiguousBareNameRead on the floor) and calls
+// it bare and through an import: the resolver binds both to the declaration, so neither is a
+// primitive edge. The free call `count(..)`, the method form `|> count` and the aliased `map_has`
+// ARE primitive edges, and the census joins them to `length` and `map_contains_key`.
+fn decoy_pool_census() -> PrimitiveCallEdgeCensus {
+  compile_dag_primitive_call_edges([], ["dag/test/fixture/primitive_egress_decoy"], [])
+}
+
+fn edge_callee_spelling(e: PrimitiveCallEdge) -> String {
+  match e.callee {
+    RuntimePrimitiveCallee { primitive_name: n, projected_from_module: _, projected_from_decl: _ } => n
+    AlgebraMethodCallee { template_name: t } => t
+    ServiceOperationCallee { service_name: s, operation: op } => concat(s, ".", op)
+    PlainMethodCallee { spelling: s } => s
+    UndeterminedFreeCallee { spelling: s } => s
+  }
+}
+
+fn callee_names_primitive(e: PrimitiveCallEdge, name: String) -> Bool {
+  match e.callee {
+    RuntimePrimitiveCallee { primitive_name: n, projected_from_module: _, projected_from_decl: _ } => n == name
+    AlgebraMethodCallee { template_name: t } => t == name
+    ServiceOperationCallee { service_name: _, operation: _ } => false
+    PlainMethodCallee { spelling: s } => s == name
+    UndeterminedFreeCallee { spelling: s } => s == name
+  }
+}
+
+test fn w_decoy_declaration_is_not_a_primitive_edge_on_the_real_producer() -> Bool {
+  match decoy_pool_census() {
+    PrimitiveCallEdgeCensusRefused { cause: _ } => false
+    PrimitiveCallEdgeCensusObserved { entries_resolved: resolved, entries_refused: refused, edges: edges } => {
+      let from_decoy_callers = edges |> filter(fn(e) { e.caller_decl == "decoy_caller" || e.caller_decl == "same_leaf_imported_call" })
+      let count_edges = edges |> filter(fn(e) { callee_names_primitive(e: e, name: "count") })
+      let map_has_edges = edges |> filter(fn(e) { callee_names_primitive(e: e, name: "map_has") })
+      count(resolved) == 2
+        && count(refused) == 0
+        && count(from_decoy_callers) == 0
+        && count(count_edges) == 2
+        && count(edges |> filter(fn(e) { callee_names_primitive(e: e, name: "scan_to_eol") })) == 0
+        && count(map_has_edges) == 1
+        && (count_edges |> all(fn(e) { primitive_identity_eq(left: canonical_join(surface: none, spelling: edge_callee_spelling(e: e)).identity, right: primitive_identity_slug(name: "length")) }))
+        && primitive_identity_eq(left: canonical_join(surface: none, spelling: "map_has").identity, right: primitive_identity_slug(name: "map_contains_key"))
+    }
+  }
+}

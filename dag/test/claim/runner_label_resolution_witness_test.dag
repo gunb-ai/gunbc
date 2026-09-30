@@ -390,8 +390,10 @@ test fn witness_two_catalogs_sharing_a_provider_still_read_as_two_catalogs() -> 
     ],
   ) {
     RunnerLabelClaimedByTwoCatalogs { label, matches, cause } =>
-      count(matches) == 2
-        && declaration_ref_eq(a: first(matches).row.provider, b: github_actions_provider_identity)
+      match first(matches) {
+        Present { value: m } => count(matches) == 2 && declaration_ref_eq(a: m.row.provider, b: github_actions_provider_identity)
+        Absent => false
+      }
     other => false
   }
 }

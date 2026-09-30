@@ -64,6 +64,7 @@ import gunbc.fabric_cell_observe {
   DiscoveredExpectedCell,
   DiscoveredUnexpectedCommittedSlot,
   DiscoveredForeignArtifact,
+  DiscoveredHostWidthUnresolved,
   DiscoveredCrossHostNamedArtifact,
   fabric_cell_discovered_subject_wire,
   fabric_cell_observe,
@@ -663,6 +664,7 @@ fn discovered_is_expected(s: FabricCellDiscoveredSubject) -> Bool {
     DiscoveredUnexpectedCommittedSlot { slot: _ } => false
     DiscoveredCrossHostNamedArtifact { observed_name: _, named_slot: _, observed_on: _ } => false
     DiscoveredForeignArtifact { observed_name: _, location: _ } => false
+    DiscoveredHostWidthUnresolved { observed_name: _, host: _, cause: _ } => false
   }
 }
 
@@ -672,6 +674,7 @@ fn discovered_is_cross_host(s: FabricCellDiscoveredSubject) -> Bool {
     DiscoveredExpectedCell { slot: _ } => false
     DiscoveredUnexpectedCommittedSlot { slot: _ } => false
     DiscoveredForeignArtifact { observed_name: _, location: _ } => false
+    DiscoveredHostWidthUnresolved { observed_name: _, host: _, cause: _ } => false
   }
 }
 

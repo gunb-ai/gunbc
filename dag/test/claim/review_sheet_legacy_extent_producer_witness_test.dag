@@ -1,0 +1,313 @@
+module test.claim.review_sheet_legacy_extent_producer_witness
+
+import extdeps.google.drive { DriveFile, DriveFileList, google_sheet_mime_type }
+import std.types { Bool, NonEmptyStr, String, List }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy, EnsureMayApply, EnsureObserveOnly }
+import gunbc.review_sheet_drive_converge {
+  ReviewSpreadsheetObservation,
+  SheetObservedOne,
+  SheetAbsent,
+  SheetDuplicated,
+  SheetSearchIncomplete,
+  SheetPageIncomplete,
+  SheetSearchUnreadable,
+  SpreadsheetCreatePlan,
+  spreadsheet_from_file_list,
+  review_sheet_marker_query,
+  review_sheet_search_query,
+  review_sheet_current_marker_field,
+  review_sheet_superseded_marker_field,
+}
+import gunbc.review_sheet_identity {
+  ReviewSheetIdentitySubject,
+  LegacyExtentEvidence,
+  LegacyExtentAbsentByOperator,
+  LegacySearchObserved,
+  LegacyExtentUnresolved,
+  LegacySearchVisibilityBasis,
+  PositiveFindEstablishesVisibility,
+  SearchVisibilityUnresolved,
+  review_sheet_identity_standing_disposition,
+}
+import gunbc.review_sheet_identity_converge {
+  review_sheet_identity_subject,
+  ensure_review_spreadsheet_on_identity,
+}
+import gunbc.review_sheet_legacy_extent_producer {
+  legacy_search_visibility_basis,
+  legacy_search_evidence,
+}
+
+// WHAT THIS FILE EXECUTES FOR REAL AND WHAT IT SUPPLIES, stated first because the distinction is
+// the whole evidentiary claim. The OPERATOR-DECLARATION PRODUCER runs end to end here: a real file
+// is written to a real temp directory, read back through the production reader
+// read_operator_legacy_declaration, parsed by the production JSON reader, transcribed into a real
+// ReviewSheetIdentitySubject, joined by the production kernel gunbc.review_sheet_identity, and
+// turned into a real UpsertDecision by gunbc.review_sheet_identity_converge -- one call, and no
+// fixture standing anywhere along that chain. Delete the reader's integration and the wet claims
+// below go red, because nothing else in them can produce a declared subject.
+//
+// THE DRIVE OBSERVATION IS SUPPLIED, and that boundary is named rather than blurred. Its
+// inhabitance claims are the query-shape claims below, which read the query the production
+// constructor BUILDS, plus the existing transport pin in
+// test.claim.review_sheet_transport_pin_witness. The network leg is exercised by the operator's
+// live converge run and not by CI, and no claim here says otherwise.
+
+fn w_drive() -> NonEmptyStr { "drive-1" as NonEmptyStr }
+
+fn w_marker() -> NonEmptyStr { "ci-prospect-sheet" as NonEmptyStr }
+
+fn w_subject() -> ReviewSheetIdentitySubject {
+  review_sheet_identity_subject(drive_id: w_drive(), marker_value: w_marker())
+}
+
+// THE TWO PRODUCTION CALLS THE CONVERGE MAKES, COMPOSED HERE RATHER THAN IN PRODUCTION. The
+// converge needs the disposition on its own -- the declared-id admission reads it too -- so there
+// is no production function that takes a current observation and evidence and answers a decision.
+// This helper is that composition for the claims below, and it is a WITNESS helper precisely
+// because production has no consumer for it: a pub declaration nothing in the closure calls is
+// DESIGN section 3c's dangling declaration, and adding one to be tested would be the test wagging
+// the model.
+fn review_spreadsheet_identity_decision(
+  policy: EnsurePolicy,
+  current: ReviewSpreadsheetObservation,
+  legacy: LegacyExtentEvidence,
+  drive_id: NonEmptyStr,
+  sheet_name: NonEmptyStr,
+  marker_value: NonEmptyStr,
+) -> UpsertDecision<SpreadsheetCreatePlan> {
+  ensure_review_spreadsheet_on_identity(
+    policy: policy,
+    disposition: review_sheet_identity_standing_disposition(
+      subject: review_sheet_identity_subject(drive_id: drive_id, marker_value: marker_value),
+      current: current,
+      legacy: legacy,
+    ),
+    drive_id: drive_id,
+    sheet_name: sheet_name,
+    marker_value: marker_value,
+  )
+}
+
+// ── THE SHARED MARKER-QUERY CONSTRUCTOR ───────────────────────────────────────────────────────
+
+// ONE SHAPE, TWO FIELDS, AND THE ONLY DIFFERENCE IS THE FIELD. If the superseded query ever grew a
+// clause the current one lacks -- or lost trashed=false -- the two generations would be counting
+// different populations while both reported the same fact, which is the fork the one constructor
+// exists to prevent.
+test fn the_superseded_query_differs_from_the_current_one_only_in_the_field() -> Bool {
+  let current = review_sheet_search_query(marker_value: w_marker())
+  let superseded = review_sheet_marker_query(
+    marker_field: review_sheet_superseded_marker_field,
+    marker_value: w_marker(),
+  )
+  current == join([review_sheet_current_marker_field as String, " has { key='gunbcReviewSheet' and value='ci-prospect-sheet' } and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"], "")
+    && superseded == join([review_sheet_superseded_marker_field as String, " has { key='gunbcReviewSheet' and value='ci-prospect-sheet' } and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"], "")
+    && (review_sheet_current_marker_field as String) != (review_sheet_superseded_marker_field as String)
+}
+
+// ── THE DRIVE SUPERSEDED-MARKER PRODUCER'S VISIBILITY DECISION ────────────────────────────────
+
+// THE CLAIM THE WHOLE CUT PROTECTS. A clean, complete, empty superseded-marker search leaves
+// visibility UNRESOLVED. There is no arm of this producer that answers otherwise, in any spelling:
+// appProperties are private to the requesting OAuth application and nothing in this corpus
+// observes which application its token was obtained for.
+test fn a_clean_empty_superseded_search_never_establishes_visibility() -> Bool {
+  match legacy_search_visibility_basis(o: SheetAbsent) {
+    SearchVisibilityUnresolved { cause: c } =>
+      string_contains(s: c as String, pattern: "private to the requesting application")
+    PositiveFindEstablishesVisibility => false
+  }
+}
+
+// THE POSITIVE CONTROL. Without it a producer that answered unresolved for everything would pass
+// the claim above while making a positive find worthless.
+test fn a_superseded_find_establishes_visibility_for_that_observation() -> Bool {
+  match legacy_search_visibility_basis(o: SheetObservedOne { file_id: "legacy-A" as NonEmptyStr }) {
+    PositiveFindEstablishesVisibility => true
+    SearchVisibilityUnresolved { cause: _ } => false
+  }
+}
+
+test fn an_unreadable_superseded_search_leaves_visibility_unresolved() -> Bool {
+  match legacy_search_visibility_basis(
+    o: SheetSearchUnreadable { reason: "files.list refused with status 403" as NonEmptyStr },
+  ) {
+    SearchVisibilityUnresolved { cause: c } => string_contains(s: c as String, pattern: "403")
+    PositiveFindEstablishesVisibility => false
+  }
+}
+
+// ── THE DECLARATION READER, EXECUTED AGAINST REAL FILES ───────────────────────────────────────
+
+// ── THE DISCRIMINATING RED ────────────────────────────────────────────────────────────────────
+
+// ── A LEGACY-ONLY LINEAGE REFUSES WITH THE FILE NAMED ─────────────────────────────────────────
+
+// THE FILE CARRYING ONLY THE SUPERSEDED MARKER IS THE REVIEW SHEET, and this arm is why the
+// converge may not create beside it. The evidence is a real superseded FIND, so it needs no
+// declaration: a positive find is self-proving.
+test fn a_superseded_only_find_refuses_the_create_and_names_the_file() -> Bool {
+  match review_spreadsheet_identity_decision(
+    policy: EnsureMayApply,
+    current: SheetAbsent,
+    legacy: legacy_search_evidence(
+      subject: w_subject(),
+      observed: SheetObservedOne { file_id: "legacy-A" as NonEmptyStr },
+    ),
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: w_marker(),
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "legacy-A")
+        && string_contains(s: r as String, pattern: "would mint the duplicate again")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+// TWO LINEAGES REFUSE AND THE TEXT SAYS WHICH SIDE WAS SETTLED. An operator sent to adjudicate
+// needs to know whether the old generation was ruled out or merely unread.
+test fn two_lineages_refuse_and_name_both_sides() -> Bool {
+  match review_spreadsheet_identity_decision(
+    policy: EnsureMayApply,
+    current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
+    legacy: legacy_search_evidence(
+      subject: w_subject(),
+      observed: SheetObservedOne { file_id: "legacy-B" as NonEmptyStr },
+    ),
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: w_marker(),
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "current-A")
+        && string_contains(s: r as String, pattern: "legacy-B")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+
+// ── THE CURRENT-MARKER OBSERVATION ARMS, RE-HOMED ONTO THE STANDING ───────────────────────────
+//
+// THESE FIVE CLAIMS MOVED HERE WITH THE DECISION THEY ARE ABOUT. They used to test
+// gunbc.review_sheet_drive_converge's ensure_review_spreadsheet, which decided from ONE
+// observation of the current marker field and no longer exists; the decision now reads a standing,
+// so the claims read one too. Each supplies an operator absence declaration on the legacy side, so
+// the legacy extent is settled and the arm under test is the current observation's -- which is
+// what each of them was always about.
+
+fn w_operator_absence() -> LegacyExtentEvidence {
+  LegacyExtentAbsentByOperator {
+    subject: w_subject(),
+    basis: "fixture: an operator declared this drive holds no superseded-marked review sheet" as NonEmptyStr,
+  }
+}
+
+fn w_file(id: String) -> DriveFile {
+  DriveFile {
+    id: id,
+    name: "CI prospect sheet",
+    mimeType: google_sheet_mime_type as String,
+    properties: none
+  }
+}
+
+fn decision_over_current_list(list: DriveFileList) -> UpsertDecision<SpreadsheetCreatePlan> {
+  review_spreadsheet_identity_decision(
+    policy: EnsureMayApply,
+    current: spreadsheet_from_file_list(list: list),
+    legacy: w_operator_absence(),
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: w_marker(),
+  )
+}
+
+// THE LOAD-BEARING ONE. incompleteSearch beside an empty file list is Drive saying it could not
+// look everywhere -- not that the sheet is absent. Folding it to absent is how a converge mints a
+// second spreadsheet beside one it simply failed to find, and the duplicate is unrecoverable
+// because both then carry the same marker property key.
+test fn incomplete_search_refuses_rather_than_creating() -> Bool {
+  match decision_over_current_list(
+    list: DriveFileList {
+      files: Present { value: [] },
+      incompleteSearch: Present { value: true },
+      nextPageToken: none
+    }
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "exactly-one is not established")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// The same empty list with a COMPLETE search is a real absence and does authorize a create. This
+// is the positive control for the claim above: without it, a fold that refused everything would
+// pass that test while making the converge unable to ever create anything.
+test fn complete_search_with_no_files_creates() -> Bool {
+  match decision_over_current_list(
+    list: DriveFileList {
+      files: Present { value: [] },
+      incompleteSearch: Present { value: false },
+      nextPageToken: none
+    }
+  ) {
+    Apply { plan: p } =>
+      (p.marker_property_value as String) == "ci-prospect-sheet"
+        && (p.drive_id as String) == (w_drive() as String)
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn exactly_one_match_adopts_without_writing() -> Bool {
+  match decision_over_current_list(
+    list: DriveFileList {
+      files: Present { value: [w_file(id: "sheet-one")] },
+      incompleteSearch: Present { value: false },
+      nextPageToken: none
+    }
+  ) {
+    Noop => true
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// DUPLICATES REFUSE AND NEVER SELECT. Two files under one key means an earlier create was retried
+// after its answer was lost; picking either silently abandons whatever was written to the other,
+// and only an operator can say which lineage is real.
+test fn duplicate_matches_refuse_and_name_both() -> Bool {
+  match decision_over_current_list(
+    list: DriveFileList {
+      files: Present { value: [w_file(id: "sheet-one"), w_file(id: "sheet-two")] },
+      incompleteSearch: Present { value: false },
+      nextPageToken: none
+    }
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "sheet-one")
+        && string_contains(s: r as String, pattern: "sheet-two")
+        && string_contains(s: r as String, pattern: "settled empty")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn a_partial_file_page_refuses_rather_than_adopting() -> Bool {
+  match decision_over_current_list(
+    list: DriveFileList {
+      files: Present { value: [w_file(id: "sheet-one")] },
+      incompleteSearch: Present { value: false },
+      nextPageToken: Present { value: "PAGE2" }
+    }
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "one page of several")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}

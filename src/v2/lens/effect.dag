@@ -4,7 +4,8 @@ import v2.lens.common.algebraic_composition { EffectClassification, effect_class
 import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree, infer_facts_lookup_miss_diagnostic }
-import v2.std.algebra { bag_eq, list_snoc_item, non_empty }
+import v2.std.algebra { bag_eq, non_empty }
+import std.algebra { list_snoc_item }
 import v2.std.collection {
   List,
   optional_present_witness

@@ -137,9 +137,11 @@ fn census_total_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
 //
 // THE NAME IS DELIBERATELY NOT THE ONE IT REPLACES. The receipt this was lifted out of called its
 // local copy census_key_count, and homing it under that same spelling would have REBOUND a name
-// already authored on both sides -- which namespace-wave-admission classifies as TargetChanged and
-// refuses until admitted, correctly: a spelling that keeps its text and changes which declaration it
-// admits is invisible to a reader of either side alone. A fresh spelling makes the move a deletion
+// already authored on both sides -- which the wave-admission wall, while it stood, classified as
+// TargetChanged and refused until admitted, correctly: a spelling that keeps its text and changes
+// which declaration it admits is invisible to a reader of either side alone. (The wall was deleted
+// by operator ruling 2026-09-19; the invisibility it policed is a fact about readers, not about
+// the gate.) A fresh spelling makes the move a deletion
 // and an addition rather than a silent rebind, which is what it actually is.
 fn census_count_at_key(
   rows: List<CompileDiagnosticCensusRow>,

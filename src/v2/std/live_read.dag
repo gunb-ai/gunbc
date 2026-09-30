@@ -1,6 +1,7 @@
 module v2.std.live_read
 
 import v2.std.collection { List }
+import v2.std.diagnostic { Diagnostic }
 
 // G2 call-reachability live-read classification
 // (docs/plans/live-read-witness-classification-design.md P1): carrier invocations are derived from
@@ -31,11 +32,15 @@ type LiveReadCarrier
   | ModuleDeclarationFactsScan
   | DeclFactsReflection { home: String }
 
+// LiveReadUnestablished: the G2 call walk met applications it could not read (v2.std.fn_index
+// CallReach.refusals), so "no carrier reached" is not established and LocalRead may not be
+// answered. Only G2 produces it; the selection projection turns it into LiveReadSelectionRefused.
 type LiveReadClassification
   = LocalRead
   | RuntimeRead {
       carriers: List<LiveReadCarrier>
     }
+  | LiveReadUnestablished { refusals: List<Diagnostic> }
 
 data g2_fact_subject_law: String = "COMPLETENESS IS A PROPERTY OF THE PRODUCER, NOT OF THE FACT LIST. G2 concludes LocalRead by finding no reachable carrier invocation, and that conclusion is sound only if the facts contain the bodies where such an invocation would appear. Nothing in a List<FnArrowDecl> can establish that: a list of one planted declaration is indistinguishable from a whole-tree projection with one match. The earlier heuristic — every reachable carrier home contributes at least one declaration — asked the facts to vouch for their own coverage, which is the shape of the question it was trying to answer.
 

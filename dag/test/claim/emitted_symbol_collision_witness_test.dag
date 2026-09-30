@@ -17,16 +17,17 @@ import tools.multi_module_compile_fixture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE SUBJECT. v1.compiler.emit_core_support sanitize_service_name splits on '.' and joins
-// capitalized segments with nothing, so `type GitWorktree` and `service git.Worktree` render one
-// emitted type `GitWorktree`. DuplicateDeclaration does not fire: the authored names differ.
-// Before the wall, emit wrote both `pub struct GitWorktree` definitions into one module and rustc
-// reported E0428. The mapping cannot be made injective without renaming every emitted service, so
-// the residue is REFUSED. This file is the executing evidence.
+// THE SUBJECT. v1.compiler.emit_core_support sanitize_service_name used to join a dotted service's
+// capitalized segments with nothing, so `type GitWorktree` and `service git.Worktree` rendered one
+// emitted type and rustc reported E0428; the wall below turned that into a typed refusal. The
+// projection now joins segments with `__`, so the live `extdeps.git` shape emits TWO structs,
+// `GitWorktree` and `Git__Worktree`, and compiles. The wall stays: it is what observes the
+// residue no spelling can prevent, and a type authored INTO the dotted-service space
+// (`type Git__Worktree` beside `service git.Worktree`) is the RED that keeps it executing.
 //
-// THE LIVE SPECIMEN is `extdeps.git`: type GitWorktree and service git.Worktree. The repair is
-// the emitter wall, not a rename of that module. The fixture is isolated so the RED is
-// attributable and does not depend on emitting the live git closure.
+// THE LIVE SPECIMEN is `extdeps.git`: type GitWorktree and service git.Worktree. The repair is the
+// projection, not a rename of that module. The fixture is isolated so the RED is attributable and
+// does not depend on emitting the live git closure.
 
 // NO `std.types` IMPORT IN EITHER FIXTURE SOURCE, AND THAT IS LOAD-BEARING RATHER THAN TERSENESS.
 // `compile_fixture` compiles the supplied manifest with NO corpus roots, so `import std.types`
@@ -38,9 +39,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // module sees them. The same constraint is recorded at
 // `test.claim.bare_name_ambiguity_wall_witness` and asserted as a control by
 // `test.claim.multi_module_compile_fixture_witness` `no_default_corpus_roots_are_loaded`.
-data collide_source: String = "module esc.probe\n\ntype GitWorktree {\n  n: Int\n}\n\nservice git.Worktree {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+data live_shape_source: String = "module esc.probe\n\ntype GitWorktree {\n  n: Int\n}\n\nservice git.Worktree {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
 
-data distinct_source: String = "module esc.probe\n\ntype GitWorktree {\n  n: Int\n}\n\nservice git.Other {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+data collide_source: String = "module esc.probe\n\ntype Git__Worktree {\n  n: Int\n}\n\nservice git.Worktree {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
 
 fn collision_run() -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
@@ -49,9 +50,9 @@ fn collision_run() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-fn distinct_run() -> MultiModuleCompileFixtureOutcome {
+fn live_shape_run() -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
-    sources: [fixture_source("esc/probe.dag", distinct_source)],
+    sources: [fixture_source("esc/probe.dag", live_shape_source)],
     entry: "esc/probe.dag"
   })
 }
@@ -74,16 +75,16 @@ fn completed_with_struct(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
-test fn type_and_dotted_service_sharing_one_emitted_symbol_refuse() -> Bool {
+test fn a_type_spelled_into_the_dotted_service_space_refuses() -> Bool {
   refused_with_class(collision_run(), "EmittedSymbolCollision")
 }
 
-test fn a_type_and_a_service_with_distinct_emitted_symbols_still_compile() -> Bool {
-  completed_with_struct(distinct_run())
-    && !refused_with_class(distinct_run(), "EmittedSymbolCollision")
+test fn the_live_git_worktree_shape_compiles_with_two_symbols() -> Bool {
+  completed_with_struct(live_shape_run())
+    && !refused_with_class(live_shape_run(), "EmittedSymbolCollision")
 }
 
-test fn the_live_git_worktree_shape_is_refused_as_a_fixture() -> Bool {
+test fn the_reserved_space_collision_is_refused_as_a_fixture() -> Bool {
   compile_dag_rust_emit_check(
     collide_source,
     "src/esc_probe.rs",
@@ -92,11 +93,11 @@ test fn the_live_git_worktree_shape_is_refused_as_a_fixture() -> Bool {
   ) == false
 }
 
-test fn git_worktree_type_without_the_colliding_service_emits() -> Bool {
+test fn the_live_git_worktree_shape_emits_both_structs() -> Bool {
   compile_dag_rust_emit_check(
-    distinct_source,
+    live_shape_source,
     "src/esc_probe.rs",
-    ["struct GitWorktree"],
+    ["pub struct GitWorktree ", "#[allow(non_camel_case_types)]\npub struct Git__Worktree "],
     []
   )
 }

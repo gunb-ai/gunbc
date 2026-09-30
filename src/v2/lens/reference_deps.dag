@@ -10,6 +10,7 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_diagnostics }
 import v2.std.text { string_eq }
 import v2.std.node { symbol_eq }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 
 
 type ReferenceResolutionFact {

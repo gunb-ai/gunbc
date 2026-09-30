@@ -2,7 +2,6 @@ module gunbc.busybox_bmc_build
 
 import std.types { NonEmptyStr, String, List }
 import std.process { ProcessExit }
-import std.resources { Network }
 import extdeps.uri { Uri, uri_wire }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.curl { curl_download_command }
@@ -68,7 +67,6 @@ fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<ArgvCommand> {
 }
 
 fn busybox_bmc_build_run() -> ProcessExit
-  uses net: Network
 {
   run_shell_commands(commands: busybox_build_commands(plan: bmc_busybox_build_plan), transport: LocalExec)
 }

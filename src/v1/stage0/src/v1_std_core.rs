@@ -46,6 +46,7 @@ use crate::std_coercion::TypeReferenceIdentity::{
 pub use crate::std_coercion::{
     ReferenceIdentityUnavailableCause, TypeDeclarationProvenance, TypeReferenceIdentity,
 };
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -233,6 +234,7 @@ pub fn divergent_type() -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -638,9 +640,39 @@ pub enum CompilerDiagnostic {
         observed: i64,
         span: Rc<SourceSpan>,
     },
+    TestCodeReferenced {
+        referrer: String,
+        target: String,
+        span: Rc<SourceSpan>,
+    },
+    TestCodeReferenceAdmitted {
+        referrer: String,
+        target: String,
+        span: Rc<SourceSpan>,
+    },
+    TestCodeReferenceBudgetMismatch {
+        referrer: String,
+        declared: i64,
+        observed: i64,
+        span: Rc<SourceSpan>,
+    },
+    TestCodeReferenceRowOrphaned {
+        referrer: String,
+        span: Rc<SourceSpan>,
+    },
     MissingField {
         field: String,
         type_name: String,
+        span: Rc<SourceSpan>,
+    },
+    SiblingOperandEffectOrderUndetermined {
+        construct: String,
+        first_operand: String,
+        second_operand: String,
+        span: Rc<SourceSpan>,
+    },
+    PresentArmScrutineeTypeUnresolved {
+        pattern: String,
         span: Rc<SourceSpan>,
     },
     NonExhaustiveMatch {
@@ -833,6 +865,17 @@ pub enum CompilerDiagnostic {
         declared: i64,
         span: Rc<SourceSpan>,
     },
+    TypeArgumentKindMismatch {
+        type_name: String,
+        param_name: String,
+        kind_name: String,
+        supplied: String,
+        span: Rc<SourceSpan>,
+    },
+    TypeParameterInValuePosition {
+        name: String,
+        span: Rc<SourceSpan>,
+    },
     OccurrenceTransportViolation {
         refusal: Rc<OccurrenceTransportRefusal>,
     },
@@ -967,7 +1010,13 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ReceiverTypeUnestablished { span: s, .. } => s.clone(),
         CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TestCodeReferenced { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TestCodeReferenceAdmitted { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TestCodeReferenceBudgetMismatch { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TestCodeReferenceRowOrphaned { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingField { span: s, .. } => s.clone(),
+        CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { span: s, .. } => s.clone(),
+        CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
         CompilerDiagnostic::DuplicateModule { span: s, .. } => s.clone(),
@@ -1008,6 +1057,8 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::EqualityOnFunctionMember { span: s, .. } => s.clone(),
         CompilerDiagnostic::EqualityMemberUnjudgeable { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeArgumentArityMismatch { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TypeArgumentKindMismatch { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TypeParameterInValuePosition { span: s, .. } => s.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation {
             refusal: refusal, ..
         } => match occurrence_transport_refusal_diagnostic_span(refusal.clone()) {
@@ -1037,8 +1088,14 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' on receiver type '".to_string()), t.clone()), "' is admitted by a declared unresolved-method frontier row; dissolves on: ".to_string()), tr.clone()),
     CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("algebra receiver application evidence unavailable for '".to_string(), t.clone()), "' at argument ".to_string()), (i.clone()).to_string()), ": structural members are not type arguments".to_string()),
     CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
-    CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), "' no longer matches what this module contains: its declared occurrence count and the count observed here differ, and both numbers are carried on this diagnostic. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
+    CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), v1_rt::concat(v1_rt::concat("' no longer matches what this module contains: the row declares ".to_string(), (d.clone()).to_string()), v1_rt::concat(" occurrence(s) and ".to_string(), (o.clone()).to_string()))), " were observed here. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
+    CompilerDiagnostic::TestCodeReferenced { referrer: r, target: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), r.clone()), "' references test code '".to_string()), t.clone()), "': a `test` declaration is entered only by the witness runner, so no declaration may call, name or import it. Move shared logic into an ordinary fn, or delete a test that only re-asserts other tests".to_string()),
+    CompilerDiagnostic::TestCodeReferenceAdmitted { referrer: r, target: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), r.clone()), "' references test code '".to_string()), t.clone()), "'; admitted by the declared test-reference debt ledger (v1.compiler.compile test_reference_debt), which may only shrink".to_string()),
+    CompilerDiagnostic::TestCodeReferenceRowOrphaned { referrer: r, .. } => v1_rt::concat(v1_rt::concat("the test-reference debt row for '".to_string(), r.clone()), "' names a module that no longer exists in the corpus: it is neither compiled here nor in the loaded name census. A row that can never be observed again must be deleted, not left to persist".to_string()),
+    CompilerDiagnostic::TestCodeReferenceBudgetMismatch { referrer: r, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the test-reference debt row for '".to_string(), r.clone()), "' declares ".to_string()), (d.clone()).to_string()), " reference(s) but ".to_string()), (o.clone()).to_string()), " were observed. The count is an equality in both directions: more means new test-code references appeared and must be removed; fewer means debt was paid and the row must be lowered or deleted".to_string()),
     CompilerDiagnostic::MissingField { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("missing required field '".to_string(), f.clone()), "' in literal of type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { construct: c, first_operand: a, second_operand: b, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("two sibling operands of '".to_string(), c.clone()), "' each reach a declared effect ('".to_string()), a.clone()), "' and '".to_string()), b.clone()), "'), and nothing in the model orders them: sibling position is not a sequencing authority, and two realizations of this program may run them in opposite orders. Bind them with let, in the order this program needs, before constructing '".to_string()), c.clone()), "'".to_string()),
+    CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { pattern: p, .. } => v1_rt::concat(v1_rt::concat("a '".to_string(), p.clone()), "' arm decides from the scrutinee's type whether it reads an optional's present value, and the checker could not resolve that type: the scrutinee's type is unresolved, typically because a generic variant upstream was constructed with no expected type, so its type arguments were never instantiated. Without that type the arm's meaning is undecided, so it refuses rather than guessing. Give the value that produces the scrutinee a declared type (annotate the let, or construct it inside a function whose return type declares it)".to_string()),
     CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
     CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
     CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()), "'".to_string()),
@@ -1064,9 +1121,9 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::UnlistedVariantValueUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted variant value use '".to_string(), n.clone()), "' (a coproduct arm referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
     CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous anonymous record literal shape matches ".to_string(), ((cs.clone().len() as i64)).to_string()), " structs: ".to_string()), cs.clone().join(&", ".to_string())), " — add a nominal type".to_string()),
-    CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name: n, .. } => v1_rt::concat(v1_rt::concat("effectful declaration '".to_string(), n.clone()), "' calls itself: the Rust realization renders an effectful declaration as `async fn`, and rustc refuses recursion in an async fn without boxing (E0733), which no emitter performs. Realize the recursion as a loop, or move the self-call into a pure helper.".to_string()),
+    CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name: n, .. } => v1_rt::concat(v1_rt::concat("effectful declaration '".to_string(), n.clone()), "' calls itself outside tail position: the Rust realization lowers tail calls to a loop, but non-tail async recursion has no realization. Put the recursive call in tail position or move it into a pure helper.".to_string()),
     CompilerDiagnostic::ModuleFilenameCollision { filename: f, modules: ms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("module filename collision: ".to_string(), ((ms.clone().len() as i64)).to_string()), " modules render one emitted file name '".to_string()), f.clone()), "': ".to_string()), ms.clone().join(&", ".to_string())), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment".to_string()),
-    CompilerDiagnostic::EmittedSymbolCollision { symbol: s, identities: ids, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("emitted symbol collision: ".to_string(), ((ids.clone().len() as i64)).to_string()), " authored identities render one emitted symbol '".to_string()), s.clone()), "': ".to_string()), ids.clone().join(&", ".to_string())), " — sanitize_service_name joins capitalized '.' segments with nothing, so a type name and a dotted service name are indistinguishable at the emitted type; rename one".to_string()),
+    CompilerDiagnostic::EmittedSymbolCollision { symbol: s, identities: ids, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("emitted symbol collision: ".to_string(), ((ids.clone().len() as i64)).to_string()), " authored identities render one emitted symbol '".to_string()), s.clone()), "': ".to_string()), ids.clone().join(&", ".to_string())), " — two authored identities one emitted scope cannot hold apart (an undotted service with a type's name, a type spelled with `__`, dotted services differing only in first-letter case or in a segment's leading or trailing `_`); rename one".to_string()),
     CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller: c, .. } => v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer".to_string()),
     CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls the local binding '".to_string()), n.clone()), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
@@ -1077,6 +1134,8 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::EqualityOnFunctionMember { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality is not defined for '".to_string(), t.clone()), "': member '".to_string()), m.clone()), "' is function-valued, and function equality has no denotation — compare a declared identity for this type instead of '=='".to_string()),
     CompilerDiagnostic::EqualityMemberUnjudgeable { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality admission for '".to_string(), t.clone()), "' cannot be judged: ".to_string()), m.clone()), " — '==' is refused rather than admitted on an unjudged member".to_string()),
     CompilerDiagnostic::TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument arity mismatch applying '".to_string(), t.clone()), "': ".to_string()), (s.clone()).to_string()), " type argument(s) supplied, ".to_string()), (d.clone()).to_string()), " type parameter(s) declared".to_string()),
+    CompilerDiagnostic::TypeArgumentKindMismatch { type_name: t, param_name: p, kind_name: k, supplied: sup, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument does not inhabit the declared kind applying '".to_string(), t.clone()), "': parameter '".to_string()), p.clone()), "' is declared '".to_string()), k.clone()), "', and '".to_string()), sup.clone()), "' is not one of its inhabitants".to_string()),
+    CompilerDiagnostic::TypeParameterInValuePosition { name: n, .. } => v1_rt::concat(v1_rt::concat("'".to_string(), n.clone()), "' is a type parameter, not a value: a name bound as a type may not stand in an expression position".to_string()),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
     CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("service config field '".to_string(), f.clone()), "' carries the reference '".to_string()), n.clone()), "', and the reference judgment does not yet run on this field -- ".to_string()), t.clone()), ". This is a counted deferral, not a pass: nothing has established that '".to_string()), n.clone()), "' names anything".to_string()),
@@ -1184,7 +1243,31 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
+    CompilerDiagnostic::TestCodeReferenced { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TestCodeReferenceAdmitted { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::TestCodeReferenceBudgetMismatch { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TestCodeReferenceRowOrphaned { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
     CompilerDiagnostic::MissingField { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -1349,6 +1432,14 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
+    CompilerDiagnostic::TypeArgumentKindMismatch { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TypeParameterInValuePosition { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: _, .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
@@ -1479,6 +1570,7 @@ pub struct Node {
     pub match_pattern: Option<Rc<MatchPattern>>,
     pub module_item_kind: ParsedModuleItemKind,
     pub declaration_marker: DeclarationMarker,
+    pub declaration: Option<Rc<DeclarationRef>>,
     pub expr_data: Rc<ExprData>,
 }
 
@@ -1528,6 +1620,7 @@ pub fn make_expr_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: expr_data.clone(),
         ident: None,
     })
@@ -1562,6 +1655,7 @@ pub fn make_named_expr_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: expr_data.clone(),
         ident: None,
     })
@@ -1612,6 +1706,7 @@ pub fn make_expr_error_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::ExprError {
             kind: kind.clone(),
             message: message.clone(),
@@ -1652,6 +1747,7 @@ pub fn make_arg_node(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1690,6 +1786,7 @@ pub fn make_arm_node(
             match_pattern: Some(pattern.clone()),
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1723,6 +1820,7 @@ pub fn make_resource_use_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1774,6 +1872,7 @@ pub fn make_field_init_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1806,6 +1905,7 @@ pub fn make_field_binding_node(
         match_pattern: Some(binding.clone()),
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1850,6 +1950,7 @@ pub fn make_text_part_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::ExprLiteral {
             value: Rc::new(LiteralValue::LitStr {
                 value: text.clone(),
@@ -1884,6 +1985,7 @@ pub fn make_interp_part_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1922,6 +2024,7 @@ pub fn make_param_node(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1964,6 +2067,7 @@ pub fn make_resolved_param_node(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -2005,7 +2109,7 @@ pub fn authored_name_at(
                     v1_rt::substring(
                         &span.file.clone(),
                         8,
-                        (v1_rt::string_length(&span.file.clone()) - 1),
+                        v1_rt::int_sub(v1_rt::string_length(&span.file.clone()), 1),
                     )
                 } else {
                     node.name.clone()
@@ -2114,6 +2218,7 @@ pub fn make_field_node(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -2205,6 +2310,7 @@ pub fn make_variant_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -2236,7 +2342,7 @@ pub struct ChildRole {
 pub fn expr_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> = {
-            serde_json::from_value(serde_json::json!({"ExprFieldAccess": [{"name": "base", "accessor": "field_access_base", "position": 0, "required": true}], "ExprBinOp": [{"name": "left", "accessor": "binop_left", "position": 0, "required": true}, {"name": "right", "accessor": "binop_right", "position": 1, "required": true}], "ExprUnaryOp": [{"name": "operand", "accessor": "unaryop_operand", "position": 0, "required": true}], "ExprIf": [{"name": "condition", "accessor": "if_condition", "position": 0, "required": true}, {"name": "then", "accessor": "if_then_branch", "position": 1, "required": true}, {"name": "else", "accessor": "if_else_branch", "position": 2, "required": false}], "ExprMatch": [{"name": "scrutinee", "accessor": "match_scrutinee", "position": 0, "required": true}], "ExprLet": [{"name": "value", "accessor": "let_value", "position": 0, "required": true}, {"name": "body", "accessor": "let_body", "position": 1, "required": false}], "ExprLambda": [{"name": "body", "accessor": "lambda_body", "position": 0, "required": true}], "ExprMethodCall": [{"name": "receiver", "accessor": "method_receiver", "position": 0, "required": true}], "ExprCast": [{"name": "expr", "accessor": "cast_expr", "position": 0, "required": true}, {"name": "target", "accessor": "cast_target", "position": 1, "required": true}], "ExprForEach": [{"name": "collection", "accessor": "foreach_collection", "position": 0, "required": true}, {"name": "body", "accessor": "foreach_body", "position": 1, "required": true}], "ExprIndex": [{"name": "base", "accessor": "index_base", "position": 0, "required": true}, {"name": "index", "accessor": "index_expr", "position": 1, "required": true}], "ExprSlice": [{"name": "base", "accessor": "slice_base", "position": 0, "required": true}, {"name": "start", "accessor": "slice_start", "position": 1, "required": true}, {"name": "end", "accessor": "slice_end", "position": 2, "required": true}], "ExprReturn": [{"name": "value", "accessor": "return_value", "position": 0, "required": true}]}))
+            serde_json::from_str("{\"ExprFieldAccess\": [{\"name\": \"base\", \"accessor\": \"field_access_base\", \"position\": 0, \"required\": true}], \"ExprBinOp\": [{\"name\": \"left\", \"accessor\": \"binop_left\", \"position\": 0, \"required\": true}, {\"name\": \"right\", \"accessor\": \"binop_right\", \"position\": 1, \"required\": true}], \"ExprUnaryOp\": [{\"name\": \"operand\", \"accessor\": \"unaryop_operand\", \"position\": 0, \"required\": true}], \"ExprIf\": [{\"name\": \"condition\", \"accessor\": \"if_condition\", \"position\": 0, \"required\": true}, {\"name\": \"then\", \"accessor\": \"if_then_branch\", \"position\": 1, \"required\": true}, {\"name\": \"else\", \"accessor\": \"if_else_branch\", \"position\": 2, \"required\": false}], \"ExprMatch\": [{\"name\": \"scrutinee\", \"accessor\": \"match_scrutinee\", \"position\": 0, \"required\": true}], \"ExprLet\": [{\"name\": \"value\", \"accessor\": \"let_value\", \"position\": 0, \"required\": true}, {\"name\": \"body\", \"accessor\": \"let_body\", \"position\": 1, \"required\": false}], \"ExprLambda\": [{\"name\": \"body\", \"accessor\": \"lambda_body\", \"position\": 0, \"required\": true}], \"ExprMethodCall\": [{\"name\": \"receiver\", \"accessor\": \"method_receiver\", \"position\": 0, \"required\": true}], \"ExprCast\": [{\"name\": \"expr\", \"accessor\": \"cast_expr\", \"position\": 0, \"required\": true}, {\"name\": \"target\", \"accessor\": \"cast_target\", \"position\": 1, \"required\": true}], \"ExprForEach\": [{\"name\": \"collection\", \"accessor\": \"foreach_collection\", \"position\": 0, \"required\": true}, {\"name\": \"body\", \"accessor\": \"foreach_body\", \"position\": 1, \"required\": true}], \"ExprIndex\": [{\"name\": \"base\", \"accessor\": \"index_base\", \"position\": 0, \"required\": true}, {\"name\": \"index\", \"accessor\": \"index_expr\", \"position\": 1, \"required\": true}], \"ExprSlice\": [{\"name\": \"base\", \"accessor\": \"slice_base\", \"position\": 0, \"required\": true}, {\"name\": \"start\", \"accessor\": \"slice_start\", \"position\": 1, \"required\": true}, {\"name\": \"end\", \"accessor\": \"slice_end\", \"position\": 2, \"required\": true}], \"ExprReturn\": [{\"name\": \"value\", \"accessor\": \"return_value\", \"position\": 0, \"required\": true}]}")
                 .expect("valid data definition")
         };
     }
@@ -2246,7 +2352,7 @@ pub fn expr_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
 pub fn wrapper_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> = {
-            serde_json::from_value(serde_json::json!({"Arg": [{"name": "value", "accessor": "arg_value", "position": 0, "required": true}], "Arm": [{"name": "guard", "accessor": "arm_guard", "position": 0, "required": false}, {"name": "body", "accessor": "arm_body", "position": -1, "required": true}], "FieldInit": [{"name": "value", "accessor": "field_init_node_value", "position": 0, "required": true}]}))
+            serde_json::from_str("{\"Arg\": [{\"name\": \"value\", \"accessor\": \"arg_value\", \"position\": 0, \"required\": true}], \"Arm\": [{\"name\": \"guard\", \"accessor\": \"arm_guard\", \"position\": 0, \"required\": false}, {\"name\": \"body\", \"accessor\": \"arm_body\", \"position\": -1, \"required\": true}], \"FieldInit\": [{\"name\": \"value\", \"accessor\": \"field_init_node_value\", \"position\": 0, \"required\": true}]}")
                 .expect("valid data definition")
         };
     }
@@ -3103,6 +3209,7 @@ pub fn make_transport_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -3252,6 +3359,7 @@ pub fn shell_transport_node(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -3287,6 +3395,7 @@ pub fn shell_transport_node(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -3328,6 +3437,10 @@ pub fn file_transport_node(
             span.clone(),
         )
     }
+}
+
+pub fn type_param_kind_property_name() -> String {
+    "__param_kind".to_string()
 }
 
 pub fn find_property(
@@ -3378,7 +3491,7 @@ pub fn expr_literal_int_optional(expr: Rc<Node>) -> Option<i64> {
                 op: UnaryOpKind::Neg,
                 ..
             } => match expr_literal_int_optional(unaryop_operand(expr.clone())) {
-                Some(v) => Some((0 - v.clone())),
+                Some(v) => Some(v1_rt::int_sub(0, v.clone())),
                 std::option::Option::None => std::option::Option::None,
             },
             _ => std::option::Option::None,
@@ -3794,6 +3907,7 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + C
         match_pattern: node.match_pattern.clone(),
         module_item_kind: node.module_item_kind.clone(),
         declaration_marker: node.declaration_marker.clone(),
+        declaration: node.declaration.clone(),
         expr_data: node.expr_data.clone(),
     })
 }
@@ -4013,7 +4127,7 @@ pub fn expr_has_non_tail_self_call(
                                 .iter()
                                 .cloned()
                                 {
-                                    if (p.0.clone() < (ss_count.clone() - 1)) {
+                                    if (p.0.clone() < v1_rt::int_sub(ss_count.clone(), 1)) {
                                         __result.push(p);
                                     }
                                 }
@@ -4311,6 +4425,7 @@ pub fn module_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4346,6 +4461,7 @@ pub fn import_node(
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                 declaration_marker: DeclarationMarker::Unmarked,
+                declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }))
@@ -4372,6 +4488,7 @@ pub fn import_node(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4428,6 +4545,7 @@ pub fn leaf_node_with_span(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4609,6 +4727,7 @@ pub fn unit_type() -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4640,6 +4759,7 @@ pub fn bool_type() -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4671,6 +4791,7 @@ pub fn string_type() -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4702,6 +4823,7 @@ pub fn hash_type() -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4733,6 +4855,7 @@ pub fn int_type() -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4764,6 +4887,7 @@ pub fn float_type() -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4795,6 +4919,7 @@ pub fn none_type() -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4838,6 +4963,7 @@ pub fn error_type() -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::ExprError {
         kind: ExprErrorKind::SemanticExprError,
         message: "unresolved type".to_string(),
@@ -4914,17 +5040,19 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
         } else {
             offset.clone()
         };
-        let line = ((Rc::new({
-            let mut __result = Vec::new();
-            for o in index.offsets.clone().iter().cloned() {
-                if (o.clone() < clamped.clone()) {
-                    __result.push(o);
+        let line = v1_rt::int_add(
+            (Rc::new({
+                let mut __result = Vec::new();
+                for o in index.offsets.clone().iter().cloned() {
+                    if (o.clone() < clamped.clone()) {
+                        __result.push(o);
+                    }
                 }
-            }
-            __result
-        })
-        .len() as i64)
-            + 1);
+                __result
+            })
+            .len() as i64),
+            1,
+        );
         let line_start = if (line.clone() <= 1) {
             0
         } else {
@@ -4933,14 +5061,14 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
                 .clone()
                 .iter()
                 .cloned()
-                .skip((line.clone() - 2) as usize)
+                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
                 .next()
             {
-                Some(o) => (o.clone() + 1),
+                Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => 0,
             }
         };
-        let col = ((clamped.clone() - line_start.clone()) + 1);
+        let col = v1_rt::int_add(v1_rt::int_sub(clamped.clone(), line_start.clone()), 1);
         LineCol {
             line: line.clone(),
             col: col.clone(),
@@ -4959,10 +5087,10 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
                 .clone()
                 .iter()
                 .cloned()
-                .skip((line.clone() - 2) as usize)
+                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
                 .next()
             {
-                Some(o) => (o.clone() + 1),
+                Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => src_len.clone(),
             }
         };
@@ -4971,7 +5099,7 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             .clone()
             .iter()
             .cloned()
-            .skip((line.clone() - 1) as usize)
+            .skip(v1_rt::int_sub(line.clone(), 1) as usize)
             .next()
         {
             Some(o) => o.clone(),
@@ -5041,7 +5169,7 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
                 table: Rc::new(InternTable {
                     strings: v1_rt::rc_list_push(table.strings.clone(), s.clone()),
                     index: v1_rt::rc_map_insert(table.index.clone(), s.clone(), id.clone()),
-                    next_id: (id.clone() + 1),
+                    next_id: v1_rt::int_add(id.clone(), 1),
                     authored_token_ordinals: table.authored_token_ordinals.clone(),
                 }),
                 id: id.clone(),
@@ -5143,6 +5271,7 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
         match_pattern: n.match_pattern.clone(),
         module_item_kind: n.module_item_kind.clone(),
         declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -5169,6 +5298,7 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
         match_pattern: n.match_pattern.clone(),
         module_item_kind: n.module_item_kind.clone(),
         declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
     })
 }

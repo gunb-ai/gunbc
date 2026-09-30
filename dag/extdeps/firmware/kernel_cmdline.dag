@@ -25,3 +25,4 @@ fn kernel_cmdline_arg_wire(arg: KernelCmdlineArg) -> String {
 fn kernel_cmdline_render(args: List<KernelCmdlineArg>) -> String {
   join(map(args, a => kernel_cmdline_arg_wire(arg: a)), " ")
 }
+

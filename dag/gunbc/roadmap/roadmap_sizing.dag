@@ -1,0 +1,129 @@
+module gunbc.roadmap_sizing
+
+import std.types { String, Bool, NonEmptyStr }
+
+// SIZE IS DERIVED, NEVER AUTHORED. Until this module existed, every roadmap work item carried a
+// hand-authored intricacy/volume pair inside the NodeSizing coproduct, chosen by whoever wrote the
+// row before any of the work was done. That is an estimate wearing a fact's clothes: nothing
+// observed it, nothing could contradict it, and two rows sharing a cell shared only their authors'
+// moods. Consumers then read it as though it were measured -- the dispatch request published it to
+// the spawner, the presentation badged it, and the forecast keyed its cycle-time calibration
+// population on it, so a guess entered a schedule as evidence.
+//
+// THE SUBJECT IS A TASK, NOT A ROADMAP NODE. This module imports nothing from the roadmap: a task
+// worth sizing may be a plan item in another repository, a dashboard work item, or a brief that
+// never becomes a RoadmapNode at all, and a deriver that took a RoadmapNode would make the roadmap
+// the only sizable thing in the corpus. SizingSubject is the minimum a sizing process reads:
+// WHAT the work is (title), WHAT IT INVOLVES (description -- the decision surface intricacy comes
+// from and the extent of material volume comes from), and WHAT DONE MEANS (exit_criterion, absent
+// where the subject genuinely declares none, never an empty string standing in for one). It
+// deliberately does not carry the repository, the acceptance route, the owner or the dependency
+// edges: none of those change how hard or how large the work is, and a deriver that could see them
+// could accidentally size by lane. The signature is wider than today's stub needs, and that is
+// deliberate -- the stub is the seam, and a seam shaped around the one caller that exists today
+// would have to be recut by the first caller that is not a roadmap node.
+//
+// THE DERIVER IS A STUB AND SAYS SO. derive_task_sizing is the single home for the answer, and
+// today it refuses with a typed, located refusal rather than returning a fabricated cell. SizingNotDerivable is
+// a DISTINCT ARM from SizingDerived, so no consumer can read a stub answer as a derived one: a
+// default returned through the derived arm would be the fabricated plausible output DESIGN section
+// 5 forbids, and it would be indistinguishable from an answer the deriver stood behind.
+//
+// WHAT THE CENSUS ACTUALLY FOUND, stated without the phrase it used to carry. No dispatch, launch,
+// admission, or provider-selection decision depended on intricacy or volume. The values had three
+// live uses: the spawn artifact rendered them, the roadmap presentation rendered them, and the
+// forecast used both their presence and their VALUES -- via cell equality -- to select calibration
+// populations and determine whether a projection could be produced. The rendering losses are
+// explicit output changes; the forecast capability loss is the declared section 4b(3) drop.
+//
+// An earlier draft of this note said no consumer's control flow ever branched on intricacy or
+// volume. That was FALSE and it was load-bearing: roadmap_forecast calibrate_cell selects its
+// sample with filter(o => sizing_cell_eq(...)), which compares intricacy and volume, so the values
+// decided membership in the calibration population. The sentence is recorded here as retracted
+// rather than deleted, because it was the sentence licensing "refusal is safe because the census
+// says so" and a reader who met only the corrected version would not know that claim had rested on
+// something untrue.
+//
+// WHAT THE DERIVER CONSUMES IS THE SUBJECT, AND NOTHING ELSE. derive_task_sizing takes a
+// SizingSubject: identity, title, description, exit criterion. An earlier draft said the deriver
+// would consume gunbc.roadmap_forecast's calibrated per-node work and dependency-closure facts;
+// that is a DIFFERENT question and the confusion mattered. roadmap_forecast's own note calls
+// remaining-cost-to-complete a FOLLOW-ON DERIVED READ and says in terms that it is "never an
+// authored field on RoadmapNode or NodeSizing" -- so closure cost is computed FROM sizes and
+// cannot also be an input to them without the circle the note refuses.
+//
+// SO THIS IS A DERIVED ESTIMATE, NOT AN OBSERVED FACT, and the vocabulary has to say so. Reading a
+// task's title, description and exit criterion and answering how hard the work is and how much of
+// it there is, is a judgement about work NOBODY HAS PERFORMED YET. There is no observation to
+// ground it, because the thing it describes has not happened. Calling the result a measurement or a
+// size fact would be asserting as deduced what is only inferred (DESIGN section 4d), which is
+// precisely the defect the authored cells had: an author's ordinal guess that nothing observed and
+// nothing could contradict. Deriving the guess does not make it an observation; it makes it an
+// estimate with a stated method, which is a different and honest thing.
+
+type SizingSubjectId = NonEmptyStr where brand("SizingSubjectId")
+
+type SizingSubject {
+  subject: SizingSubjectId
+  title: String
+  description: String
+  exit_criterion: String?
+}
+
+type Intricacy
+  = IntricacyLow
+  | IntricacyMedium
+  | IntricacyHigh
+
+type Volume
+  = VolumeSmall
+  | VolumeMedium
+  | VolumeLarge
+
+// NodeSizing is now a RECORD carrying only size. The name is kept because the concept is the one
+// the coproduct used to hide; what left is everything that was never a size -- the repository and
+// the acceptance route, which are now gunbc.roadmap_model WorkItemDispatch, and the
+// is-this-dispatchable-at-all discriminant, which was never sizing either.
+type NodeSizing {
+  intricacy: Intricacy
+  volume: Volume
+}
+
+// WHY A REFUSAL CARRIES ITS SUBJECT AND NOT A CAUSE COPRODUCT, stated because the first shape here
+// was one. There is exactly one reason a derivation refuses today -- the deriver is not built --
+// and a coproduct with one arm is a type alias in this substrate, not a closed set. Rather than
+// mint a second arm nobody measured just to make the coproduct legal, the arm itself is the typed
+// refusal and the reason is one declared sentence below. A partially built deriver that can fail
+// two distinguishable ways introduces the coproduct then, with both arms real.
+data sizing_deriver_unbuilt_detail: String = "sizing is derived from the task, and the deriver is not built yet; the authored intricacy/volume fields it replaces were deleted rather than left standing as a second authority"
+
+type NodeSizingDerivation
+  = SizingDerived { subject: SizingSubjectId, sizing: NodeSizing }
+  | SizingNotDerivable { subject: SizingSubjectId, detail: String }
+
+fn derive_task_sizing(subject: SizingSubject) -> NodeSizingDerivation {
+  SizingNotDerivable {
+    subject: subject.subject,
+    detail: sizing_deriver_unbuilt_detail,
+  }
+}
+
+fn intricacy_label(i: Intricacy) -> String {
+  match i {
+    IntricacyLow => "low"
+    IntricacyMedium => "medium"
+    IntricacyHigh => "high"
+  }
+}
+
+fn volume_label(v: Volume) -> String {
+  match v {
+    VolumeSmall => "small"
+    VolumeMedium => "medium"
+    VolumeLarge => "large"
+  }
+}
+
+fn node_sizing_eq(a: NodeSizing, b: NodeSizing) -> Bool {
+  a.intricacy == b.intricacy && a.volume == b.volume
+}

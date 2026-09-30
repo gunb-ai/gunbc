@@ -6,10 +6,9 @@ import std.algebra { trim }
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
-import gunbc.roadmap_status { signoff_accepts, line_ticket }
-import gunbc.roadmap_spawner { node_title }
+import gunbc.roadmap_status { signoff_accepts, line_ticket, node_title }
 import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
   CriterionReviewEvidence, criterion_standing, criterion_standing_text, review_verdict_instruction,
@@ -30,6 +29,7 @@ import gunbc.roadmap_dispatch_actuator {
 }
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
+  roadmap_acceptance_event_history_load,
   RoadmapAuthorityProjection, roadmap_authority_projection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   authored_merged_prs,
@@ -50,7 +50,7 @@ import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
@@ -206,7 +206,7 @@ import gunbc.worker_lifecycle {
   transcript_evidence_label,
   terminal_outcome_evidence_label,
 }
-import gunbc.dispatch_selection { default_provider_selection_request }
+import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
 import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import gunbc.deploy_transition {
   ActuationAdmission,
@@ -1793,21 +1793,24 @@ fn belt_footprint_admission_decision(
 }
 
 fn belt_footprint_observe(root: BeltFootprintRoot) -> BeltFootprintObservation {
+  let present = shell.Test.IsDirectory(
+    path: root.path as FilePath,
+    expect: OutcomeIsData,
+  ).is_directory
+  let writable = shell.Test.IsWritable(
+    path: root.path as FilePath,
+    expect: OutcomeIsData,
+  ).writable
+  let searchable = shell.Test.IsExecutable(
+    path: root.path as FilePath,
+    expect: OutcomeIsData,
+  ).executable
   BeltFootprintObservation {
     member: root.member,
     path: root.path,
-    present: shell.Test.IsDirectory(
-      path: root.path as FilePath,
-      expect: OutcomeIsData,
-    ).is_directory,
-    writable: shell.Test.IsWritable(
-      path: root.path as FilePath,
-      expect: OutcomeIsData,
-    ).writable,
-    searchable: shell.Test.IsExecutable(
-      path: root.path as FilePath,
-      expect: OutcomeIsData,
-    ).executable,
+    present: present,
+    writable: writable,
+    searchable: searchable,
   }
 }
 
@@ -1864,7 +1867,9 @@ fn belt_actuate_spawn_for_instance(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
-      let selection = dispatch_actuator_selection(node_sizing: node.sizing)
+      let selection = dispatch_actuator_selection(
+        sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
+      )
       match selection {
         DispatchActuatorSelectionRefused { reason } =>
           SpawnFailed {
@@ -2764,7 +2769,9 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
-      let selection = dispatch_actuator_selection(node_sizing: node.sizing)
+      let selection = dispatch_actuator_selection(
+        sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
+      )
       match selection {
         DispatchActuatorSelectionRefused { reason } =>
           SpawnFailed {
@@ -3028,7 +3035,7 @@ fn belt_observe_from_result(
       BeltSessionsObserved {
         live: dispatch_live_sessions_from_entries(
           entries: entries,
-          selection: dispatch_actuator_selection(node_sizing: Unsized),
+          selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
         ),
       }
     TmuxNoServer { evidence: _ } =>
@@ -3862,7 +3869,7 @@ fn belt_tick_for_instance(
     standing: standing,
     state: state,
     frontier: frontier,
-    graph: launch_graph_of_projection(proj: roadmap_authority_projection()),
+    graph: launch_graph_of_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load())),
     merged: authored_merged_prs(),
     tmux_live: match belt_sessions_observe_for_instance(instance: instance) {
       BeltSessionsObserved { live } => live
@@ -4069,7 +4076,7 @@ fn belt_run_once_in(
   instance: HostDashboardInstance,
   spawn_workdir: String,
 ) -> BeltTickResult {
-  match roadmap_authority_projection() {
+  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       {
         let commit_outcomes = belt_commit_attempts_for_instance(instance: instance)
@@ -4446,7 +4453,7 @@ fn belt_sessions_observe_for_instance(
                   entries: entries,
                   panes: panes,
                   pane_observation_refusal: "",
-                  selection: dispatch_actuator_selection(node_sizing: Unsized),
+                  selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
                 ),
               }
             BeltAttemptPanesRefused { reason } =>
@@ -4455,7 +4462,7 @@ fn belt_sessions_observe_for_instance(
                   entries: entries,
                   panes: [],
                   pane_observation_refusal: reason,
-                  selection: dispatch_actuator_selection(node_sizing: Unsized),
+                  selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
                 ),
               }
           }
@@ -8152,7 +8159,7 @@ fn belt_stop_node_for_instance(
     BeltSessionsObserved { live } => {
       match dispatch_tmux_session_scope(
         node_id: node_id,
-        selection: dispatch_actuator_selection(node_sizing: Unsized),
+        selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
       ) {
         Absent =>
           StopRefusedResult {
@@ -8431,7 +8438,7 @@ fn belt_find_node_in(nodes: List<RoadmapNode>, node_id: String) -> BeltNodeLooku
 }
 
 fn belt_lookup_node(node_id: String) -> BeltNodeLookup {
-  match roadmap_authority_projection() {
+  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       AuthorityProjectionRefused { detail: detail }
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
@@ -8726,7 +8733,7 @@ fn belt_dispatch_node_staged(
   belt_dispatch_node_staged_over(
     instance: instance,
     standing: standing,
-    graph: launch_graph_of_projection(proj: roadmap_authority_projection()),
+    graph: launch_graph_of_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load())),
     merged: authored_merged_prs(),
     node_id: node_id,
   )
@@ -8853,7 +8860,7 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
     LaunchNodeSuperseded { by: _ } => BandFail
     LaunchAlreadyAccepted => BandFail
     LaunchReviewRequired => BandFail
-    LaunchSizeMissing => BandFail
+    LaunchDispatchBindingMissing => BandFail
     LaunchExecutionContractMissing { reason: _ } => BandFail
     LaunchCenteringAbsent => BandFail
     LaunchNotAgentWork { mode: _ } => BandFail
@@ -8974,7 +8981,7 @@ data belt_dispatch_path_prefix: String = "/dispatch/"
 // at construction time, so exemplars, sandbox echoes and post-selection receipts stay honest when
 // standing refuses production re-query.
 fn belt_dispatch_provider_label() -> String {
-  match dispatch_actuator_selection(node_sizing: Unsized) {
+  match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
     DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
       dispatch_provider_label(provider: provider)
     DispatchActuatorSelectionRefused { reason } =>

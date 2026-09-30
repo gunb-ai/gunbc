@@ -40,7 +40,6 @@ fn srv3_bmcweb_login_body_content_for_resolution(resolution: BmcCredentialResolu
 }
 
 fn srv3_bmcweb_session_login() -> ProcessExit
-  uses net: std.resources.Network
 {
   let resolution = observe_and_resolve_srv3_bmc_credential()
   return match resolution {
@@ -57,7 +56,6 @@ fn srv3_bmcweb_session_login() -> ProcessExit
 // absent, null or blank token BEFORE Filesystem.Write, so a converged extract cannot have produced
 // an empty file and a second reading has nothing left to discover.
 fn srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> ProcessExit
-  uses net: std.resources.Network
 {
   let materialization = materialize_bmc_login_password(resolution: resolution)
   let password = match materialization {
@@ -107,7 +105,6 @@ fn srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> Pr
 }
 
 fn srv3_nbd_proxy_serve() -> ProcessExit
-  uses net: std.resources.Network
 {
   srv3_apply_to_process_exit(
     d: srv3_nbd_proxy_serve_apply(),
@@ -118,10 +115,13 @@ fn srv3_nbd_proxy_serve() -> ProcessExit
 // The step count was never the subject — that the plan is DERIVED from the solved mechanism was.
 // srv3's BMC upgrade propagates through that derivation and the plan now refuses, which is what
 // distinguishes a derived plan from a hardcoded three-step one: a hardcoded plan would still be Ready.
-fn srv3_os_install_actuator_plan_refuses_on_unestablished_path() -> Bool {
-  match srv3_os_install_actuator_plan_standing {
-    ActuatorPlanRefused { cause: _ } => true
-    ActuatorPlanReady { plan: _, intents: _ } => false
+// THE REFUSAL MUST BE THE MECHANISM'S. The plan is also a function of the served image, and an
+// unresolved image refuses the serve step on its own; a caller supplying a RESOLVED image isolates
+// the mechanism as the only thing left that can refuse.
+fn srv3_os_install_actuator_plan_refuses_on_unestablished_path(image: SeededImageResolution) -> Bool {
+  match srv3_os_install_actuator_plan_standing(image: image) {
+    ActuatorPlanRefused { cause: ActuatorMechanismRefused { cause: _ } } => true
+    _ => false
   }
 }
 

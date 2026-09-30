@@ -65,19 +65,19 @@ test fn witness_serialize_int() -> Bool {
 
 test fn witness_serialize_object() -> Bool {
   serialize_json(v: json_object(members: [
-    json_kv(key: "host", value: json_string(s: "srv1")),
+    json_kv(key: "host", value: extdeps.languages.json.emit.json_string(s: "srv1")),
     json_kv(key: "runner_count", value: json_int(n: 4)),
   ])) == "{\"host\": \"srv1\", \"runner_count\": 4}"
 }
 
 test fn witness_serialize_nested_object() -> Bool {
   serialize_json(v: json_object(members: [
-    json_kv(key: "Password", value: json_string(s: "secret")),
+    json_kv(key: "Password", value: extdeps.languages.json.emit.json_string(s: "secret")),
   ])) == "{\"Password\": \"secret\"}"
 }
 
 test fn witness_serialize_array() -> Bool {
-  serialize_json(v: json_array(elements: [json_string(s: "a"), json_string(s: "b")])) == "[\"a\", \"b\"]"
+  serialize_json(v: json_array(elements: [extdeps.languages.json.emit.json_string(s: "a"), extdeps.languages.json.emit.json_string(s: "b")])) == "[\"a\", \"b\"]"
 }
 
 test fn witness_int_list_helper() -> Bool {

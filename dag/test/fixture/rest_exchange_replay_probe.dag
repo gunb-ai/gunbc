@@ -3,6 +3,7 @@ module test.fixture.rest_exchange_replay_probe
 import std.types { Bool, Int, List, String }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.github.workflow_runs { WorkflowRunList }
+import extdeps.cloud.gcp.gcp { WifProviderWire, WifProviderListWire, WifPoolWire }
 
 type WireFileShape {
   encoding: String
@@ -24,6 +25,9 @@ type WireUncontractedShape {
   arm: UncontractedArm
 }
 
+// WifProvidersPage and WifPool carry the OUTPUT SHAPES of extdeps.cloud.gcp.iam_admin
+// ListWorkloadIdentityPoolProviders and GetWorkloadIdentityPool verbatim, so a recorded IAM body
+// reaches the same type-directed decode gunbc.auth.heal_publisher_provision reads through.
 service test.RestReplay {
   config { endpoint: "https://rest-replay.invalid" }
 
@@ -74,6 +78,20 @@ service test.RestReplay {
     readonly
     transport rest { method: GET, path: "/answer" }
     response { 200 => WorkflowRunList }
+  }
+
+  operation WifProvidersPage {
+    output { providers: List<WifProviderWire>? from "workloadIdentityPoolProviders", outcome: RestOutcome }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+    response { 200 => WifProviderListWire }
+  }
+
+  operation WifPool {
+    output { pool_name: String from "name", display_name: String? from "displayName", disabled: Bool?, state: String?, outcome: RestOutcome }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+    response { 200 => WifPoolWire }
   }
 
   operation WorkflowRunsPageLegacy {

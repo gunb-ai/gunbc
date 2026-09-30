@@ -1,0 +1,113 @@
+module test.claim.spark.v41_index_engram_selection_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.content_hash { Sha256DigestHex }
+import std.measure { byte_size }
+import extdeps.safetensors.format {
+  SafetensorsIndexMember, safetensors_index_member,
+  SafetensorsPopulationStanding, PopulationEstablished, PopulationIncomplete, PopulationRefused,
+  MembershipClosure, MembershipClosedAgainstFullIndex, MembershipScopedToReadRows, membership_closure_obligations,
+}
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_engram_index_members, deepseek_v4_1_flash_engram_shard_14_path }
+import gunbc.spark.v41_index_engram_selection {
+  V41IndexParse, V41IndexParsed, V41IndexParseRefused, v41_select_index_document, v41_index_engram_selector,
+  V41IndexEngramSelectionReading, V41IndexEngramSelectionRead, V41IndexEngramSelectionUnread,
+  v41_engram_population_observed_of, v41_engram_population_observed, v41_index_engram_selection_reading,
+}
+
+// THE INSTRUMENT AND THE READING, AT THEIR OWN INTERFACES. The parse fold runs over supplied index
+// text; the observed population runs over supplied readings, compared by the extdeps
+// fold against the pin. The live reading is the transcription of the instrument's receipt.
+
+data w_text: String = "{\"metadata\": {\"total_size\": 42}, \"weight_map\": {\"layers.0.attn.wq\": \"model-00001-of-00048.safetensors\", \"layers.1.engram.embed.weight\": \"model-00047-of-00048.safetensors\", \"layers.14.engram.q_weight\": \"model-00048-of-00048.safetensors\", \"head.weight\": \"model-00046-of-00048.safetensors\"}}"
+
+// THE FOLD OVER parse_json_document SELECTS EXACTLY THE .engram. NAMES AND COUNTS EVERY NAME.
+test fn the_parse_fold_selects_the_engram_names_and_counts_every_name() -> Bool {
+  match v41_select_index_document(text: w_text, selector: v41_index_engram_selector) {
+    V41IndexParsed { name_count: n, members: ms } =>
+      n == 4 && length(ms) == 2
+        && any(ms, m => (m.name as String) == "layers.14.engram.q_weight" && (m.shard as String) == "model-00048-of-00048.safetensors")
+    V41IndexParseRefused { cause: _ } => false
+  }
+}
+
+// AN ESCAPE IS READ, NOT REFUSED: the retired token scan refused any backslash because a quoted token
+// could hide a quote; the JSON authority decodes the key, so the selection sees the real name.
+test fn an_escaped_key_is_decoded_by_the_parser() -> Bool {
+  match v41_select_index_document(text: "{\"weight_map\": {\"layers.1.engram.\\u0071\": \"model-00047-of-00048.safetensors\"}}", selector: v41_index_engram_selector) {
+    V41IndexParsed { name_count: n, members: ms } => n == 1 && any(ms, m => (m.name as String) == "layers.1.engram.q")
+    V41IndexParseRefused { cause: _ } => false
+  }
+}
+
+fn w_refused_with(text: String, fragment: String) -> Bool {
+  match v41_select_index_document(text: text, selector: v41_index_engram_selector) {
+    V41IndexParseRefused { cause: c } => (c as String).contains(fragment)
+    V41IndexParsed { name_count: _, members: _ } => false
+  }
+}
+
+// EACH REFUSAL IS ITS OWN CLAIM, so a regression in one arm fails under its own name.
+test fn a_document_that_is_not_json_refuses() -> Bool {
+  w_refused_with(text: "{\"weight_map\": {", fragment: "not a JSON document")
+}
+
+test fn an_index_without_a_weight_map_refuses() -> Bool {
+  w_refused_with(text: "{\"metadata\": {\"total_size\": 1}}", fragment: "no weight_map member")
+}
+
+test fn a_weight_map_that_is_not_an_object_refuses() -> Bool {
+  w_refused_with(text: "{\"weight_map\": [\"x.safetensors\"]}", fragment: "not an object")
+}
+
+test fn a_value_that_is_not_a_shard_name_refuses() -> Bool {
+  w_refused_with(text: "{\"weight_map\": {\"a\": \"x.bin\", \"b\": 7}}", fragment: "2 entries whose value is not a .safetensors shard name")
+}
+
+test fn an_empty_weight_map_refuses() -> Bool {
+  w_refused_with(text: "{\"weight_map\": {}}", fragment: "empty")
+}
+
+fn w_reading(hex: String, names: Nat, members: List<SafetensorsIndexMember>) -> V41IndexEngramSelectionReading {
+  V41IndexEngramSelectionRead { index_sha256_hex: hex as Sha256DigestHex, index_bytes: byte_size(count: 7470294), name_count: names, members: members, observed: "fixture" as NonEmptyStr }
+}
+
+fn w_closure_of(s: SafetensorsPopulationStanding) -> Nat {
+  match s {
+    PopulationEstablished { population: p } => length(membership_closure_obligations(c: p.closure))
+    PopulationIncomplete { obligation: _, partial_entries: _ } => 99
+    PopulationRefused { defects: _ } => 98
+  }
+}
+
+data w_pin_hex: String = "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"
+
+// A READING OF THE PINNED FILE OVER ALL ITS NAMES CLOSES; A READING OF ANOTHER FILE, OR OF FEWER NAMES,
+// DOES NOT -- the reading is compared with the pin, not restated as it.
+test fn only_a_reading_of_the_pinned_file_over_every_name_closes() -> Bool {
+  w_closure_of(s: v41_engram_population_observed_of(reading: w_reading(hex: w_pin_hex, names: 96085, members: deepseek_v4_1_flash_engram_index_members))) == 0
+    && w_closure_of(s: v41_engram_population_observed_of(reading: w_reading(hex: "1111111111111111111111111111111111111111111111111111111111111111", names: 96085, members: deepseek_v4_1_flash_engram_index_members))) == 1
+    && w_closure_of(s: v41_engram_population_observed_of(reading: w_reading(hex: w_pin_hex, names: 96084, members: deepseek_v4_1_flash_engram_index_members))) == 1
+    && w_closure_of(s: v41_engram_population_observed_of(reading: V41IndexEngramSelectionUnread { obligation: "fixture" as NonEmptyStr })) == 1
+}
+
+// THE RED: a reading that selected a thirteenth .engram. name refuses the population by that name.
+test fn a_reading_with_a_thirteenth_engram_name_refuses() -> Bool {
+  let thirteen = concat(deepseek_v4_1_flash_engram_index_members, [safetensors_index_member(name: "layers.20.engram.embed.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path)])
+  match v41_engram_population_observed_of(reading: w_reading(hex: w_pin_hex, names: 96085, members: thirteen)) {
+    PopulationRefused { defects: d } => any(d, x => (x as String).contains("layers.20.engram.embed.weight"))
+    PopulationEstablished { population: _ } => false
+    PopulationIncomplete { obligation: _, partial_entries: _ } => false
+  }
+}
+
+// THE LIVE READING IS AN ENROLLED ROUTE'S RECEIPT, AND OVER THE PINNED FILE AND EVERY NAME IT CLOSES
+// MEMBERSHIP. The oracle is the extdeps fold against the pin; the row's own values are not asserted
+// here, because comparing them with literals copied from the row would only restate it (review 70580).
+test fn the_live_reading_closes_the_observed_population() -> Bool {
+  (match v41_index_engram_selection_reading {
+    V41IndexEngramSelectionRead { index_sha256_hex: _, index_bytes: _, name_count: _, members: _, observed: _ } => true
+    V41IndexEngramSelectionUnread { obligation: _ } => false
+  }) && w_closure_of(s: v41_engram_population_observed()) == 0
+}

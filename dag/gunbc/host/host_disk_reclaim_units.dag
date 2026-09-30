@@ -5,7 +5,7 @@ import std.measure { Second, second, second_count }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile,
   Description, After,
-  ServiceType, ExecStart, ServiceNice, ServiceIoSchedulingClass, TimeoutStartSec,
+  ServiceType, OneshotMode, ExecStart, ServiceNice, ServiceIoSchedulingClass, TimeoutStartSec,
   IoSchedulingIdle,
   TimerUnit, OnCalendar, RandomizedDelaySec, Persistent,
   SystemdInstallSection, Installable, NotInstallable, WantedBy,
@@ -108,7 +108,7 @@ fn reclaim_service_unit_file() -> SystemdUnitFile {
       After { target: "network.target" as NonEmptyStr },
     ],
     service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceType { mode: OneshotMode },
       ExecStart { command: reclaim_exec_start_command() },
       ServiceNice { priority: 15 },
       ServiceIoSchedulingClass { scheduling_class: IoSchedulingIdle },

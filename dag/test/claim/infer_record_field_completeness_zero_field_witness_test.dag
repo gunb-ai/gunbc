@@ -1,0 +1,130 @@
+module test.claim.infer_record_field_completeness_zero_field_witness_test
+
+import gunbc.guarantee_probe_corpus {
+  floor_record_completeness_zero_field_product_control_probe,
+  floor_record_completeness_zero_field_variant_control_probe,
+  floor_record_completeness_bare_name_control_probe,
+  active_probe_row,
+  probe_row_expectation_holds,
+  census_blocking_count_for_class,
+}
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+}
+import gunbc.guarantee_measurement { GuaranteeProbeId }
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.optional { Present, Absent }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHY THESE FIVE WITNESSES LIVE HERE AND NOT BESIDE THEIR SIBLINGS. They are the executing
+// evidence `gunbc.recurring_failure_mode` `zero_field_construction_escapes_the_field_set_check`
+// cites for a rung-3 climb on the ORDINARY COMPILER FLOOR, and a floor run's green is evidence
+// only for what that run PLANNED. Their previous home,
+// `test.claim.guarantee_floor_class_probe_witness`, matches no row of
+// `v2.workflow.required_floor` `required_gate_prefixes` and no row of
+// `required_gate_authored_modules` after the 2026-09-19 nominal-roster ruling, so the required
+// floor discovers it and dispositions every identity in it `DeclinedOutsideRequiredGate` --
+// never planned, so its pass was nobody's. This module name begins with `test.claim.infer_`,
+// which IS such a row, so admission here is BY CONSTRUCTION rather than by a roster edit: the
+// gate roster is closed to growth without operator sign-off and this change does not touch it.
+//
+// THE PREFIX IS NOT A CONVENIENCE. The wall these five discriminate is `v1.compiler.infer` --
+// `infer_record_lit_structural` judging a literal's key set against its declaration through
+// `declared_field_is_required`, `variant_tag_reference_argument_results` holding the one
+// sanctioned `discriminant` seam, and the two bare-name routes beside them -- so the inference
+// family is where their subject already lives.
+//
+// ReadsLiveTree IS DECLARED TRUTHFULLY AND IS NOT A DECLINE. `compile_dag_diagnostic_census`
+// resolves its synthetic source against the live checkout. `DeclinedLiveTree` was deleted at the
+// root of `v2.workflow.required_floor`, and the sibling admitted probes
+// `test.claim.infer_record_lit_variant_field_witness_test` and
+// `test.claim.match_exhaustiveness_coproduct_witness` call the same builtin and execute on the
+// floor today.
+//
+// WHAT STAYED BEHIND: the record-completeness partial-omission red, its green control, and the
+// four other floor classes that module carries. They are a different subject with a different
+// citation, and moving them would be a scope this change did not read for.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn total_row_count_is_zero(census: CompileDiagnosticCensus) -> Bool {
+  match census {
+    CensusObserved { rows: rows } => count(rows) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+fn row_holds(probe: GuaranteeProbeId, source: String) -> Bool {
+  match active_probe_row(probe: probe) {
+    Present { value: row } => probe_row_expectation_holds(census: census_of(source: source), row: row)
+    Absent => false
+  }
+}
+
+fn blocking_count(source: String, wanted: String) -> Int {
+  match census_blocking_count_for_class(census: census_of(source: source), wanted: wanted) {
+    Present { value: n } => n
+    Absent => -1
+  }
+}
+
+// ZERO FIELDS SUPPLIED. The sibling red omits ONE of two fields; these omit ALL of them, which
+// is a different question with a different answer per declaration kind (measured, not assumed).
+// The sources are STRINGS and never appear as corpus literals: an inline expecting-red cannot
+// flip when its wall lands, it makes the file unparseable and takes the lane down with it.
+data record_completeness_zero_field_product_source: String = "module probe_floor_record_zero_product\ntype Pair { a: Int, b: Int }\nfn f() -> Pair { Pair { } }\n"
+data record_completeness_zero_field_variant_source: String = "module probe_floor_record_zero_variant\ntype Shape = Circle { radius: Int } | Square\nfn f() -> Shape { Circle { } }\n"
+data record_completeness_bare_name_variant_source: String = "module probe_floor_record_bare_variant\ntype Shape = Circle { radius: Int } | Square\nfn f() -> Shape { Circle }\n"
+data record_completeness_bare_name_product_source: String = "module probe_floor_record_bare_product\ntype Pair { a: Int, b: Int }\nfn f() -> Pair { Pair }\n"
+
+// A PRODUCT WITH AN EMPTY BRACE PAIR REFUSES, ONE MissingField PER DECLARED FIELD. This is the
+// adequacy control for the zero-field family: it establishes that the completeness check DOES
+// handle zero supplied fields, so a silence on either path below would be a gap on that path
+// rather than an absent wall.
+test fn floor_record_completeness_zero_field_product_refuses_every_field() -> Bool {
+  row_holds(probe: floor_record_completeness_zero_field_product_control_probe, source: record_completeness_zero_field_product_source)
+    && blocking_count(source: record_completeness_zero_field_product_source, wanted: "MissingField") == 2
+}
+
+// THE SAME OMISSION ON A COPRODUCT VARIANT REFUSES THE SAME WAY. `Circle { }` where Circle declares
+// `radius` was accepted with zero diagnostics until 2026-09-11 (the exemption that admitted it is
+// narrowed to the discriminant seam, v1.compiler.infer zero_field_variant_tag_reference_frontier_note);
+// it now refuses with exactly one MissingField, the declared field. This row was the discriminating
+// RED for that wall and stays enrolled as its regression control (DESIGN section 4b(4)).
+test fn floor_record_completeness_zero_field_variant_refuses_every_field() -> Bool {
+  row_holds(probe: floor_record_completeness_zero_field_variant_control_probe, source: record_completeness_zero_field_variant_source)
+    && blocking_count(source: record_completeness_zero_field_variant_source, wanted: "MissingField") == 1
+}
+
+// A BARE NAME PRESENTS NO FIELD SET, and is judged against the declaration's field list all the
+// same, in BOTH declaration kinds: the variant owes its one field, the product owes both. The two
+// kinds reach the wall by two routes (a VariantValueBinding reference and a plain global binding),
+// so each is asserted at full strength -- one silent route would otherwise hide behind the other
+// (the same coverage lesson cursor review 63461 taught this row while it was still a hole).
+test fn floor_record_completeness_bare_name_refuses_every_field() -> Bool {
+  row_holds(probe: floor_record_completeness_bare_name_control_probe, source: record_completeness_bare_name_variant_source)
+    && blocking_count(source: record_completeness_bare_name_variant_source, wanted: "MissingField") == 1
+    && row_holds(probe: floor_record_completeness_bare_name_control_probe, source: record_completeness_bare_name_product_source)
+    && blocking_count(source: record_completeness_bare_name_product_source, wanted: "MissingField") == 2
+}
+
+// THE RULING'S SEAM STAYS OPEN, AND NOTHING ELSE DOES. `discriminant(v: Fielded {})` is the
+// sanctioned tag-reference idiom (operator Ruling 1a, 2026-07-15) and compiles clean; the same
+// literal one expression away from that seam is a construction and refuses. Both arms are measured
+// so the exemption can neither vanish silently nor widen back into the hole it used to be.
+data tag_reference_at_discriminant_seam_source: String = "module probe_floor_tag_ref_seam\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { discriminant(v: Fielded {}) }\n"
+data tag_reference_off_the_seam_source: String = "module probe_floor_tag_ref_off\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { let v = Fielded {}\n  discriminant(v: v) }\n"
+
+test fn floor_record_completeness_discriminant_tag_reference_stays_clean() -> Bool {
+  total_row_count_is_zero(census: census_of(source: tag_reference_at_discriminant_seam_source))
+}
+
+test fn floor_record_completeness_zero_field_literal_off_the_seam_refuses() -> Bool {
+  blocking_count(source: tag_reference_off_the_seam_source, wanted: "MissingField") == 1
+}

@@ -14,7 +14,6 @@ import gunbc.container.registry_image_config {
   read_docker_hub_image_config_at_digest,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 
 // WHAT THIS CLASSIFIES: Env entries decoded from a ContainerImageConfig against a modeled
 // syntactic class (name markers and PEM headers). EnvSecretShapeUnmatched is that class
@@ -154,7 +153,6 @@ type PinnedBaseEnvRead
   | PinnedBaseEnvReadRefused { cause: String }
 
 fn sparkrun_pinned_base_env_read() -> PinnedBaseEnvRead
-  uses net: Network
 {
   match read_docker_hub_image_config_at_digest(
     repository: sparkrun_vllm_ds4_gb10_repository,
@@ -170,7 +168,6 @@ fn sparkrun_pinned_base_env_read() -> PinnedBaseEnvRead
 }
 
 fn sparkrun_pinned_base_env_classification_wet() -> ProcessExit
-  uses net: Network
 {
   match sparkrun_pinned_base_env_read() {
     PinnedBaseEnvReadRefused { cause: c } =>

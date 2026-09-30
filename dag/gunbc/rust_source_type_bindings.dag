@@ -109,7 +109,7 @@ fn checkpoint_row_migration_rows() -> List<CheckpointRowMigration> {
     CheckpointRowMigration {
       dag_name: "Float" as NonEmptyStr,
       disposition: StillBareNameDebt {
-        reason: "std.float Float has an exact row (RustF64). v2.std.float Float (= Float64) is answered f64 by the bare-name bypass with no ruling that this is its modeled realization; the kernel float_type mint rides the same row." as NonEmptyStr,
+        reason: "std.float Float has an exact row (RustF64). v2.std.float Float (= Binary64) is answered f64 by the bare-name bypass with no ruling that this is its modeled realization; the kernel float_type mint rides the same row." as NonEmptyStr,
         restoration_trigger: "The same ruling as Int, for v2.std.float Float; then ProvenUniqueKernelBinding on the f64 primitive token." as NonEmptyStr
       }
     },
@@ -193,6 +193,6 @@ fn symbol_capture_declarers() -> List<SymbolCaptureDeclarer> {
     symbol_capture_declarer(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_terminal_lexeme", symbol_position: "token_class"),
     symbol_capture_declarer(module_path: "v2.std.integer", decl_name: "integer_inhabitant_atom", symbol_position: "id"),
     symbol_capture_declarer(module_path: "v2.std.qualified_name", decl_name: "qualified_name_from_dotted_string", symbol_position: "return FreeMonoid<Symbol>"),
-    symbol_capture_declarer(module_path: "v2.compiler.translate", decl_name: "target_bundle_child", symbol_position: "edge_name")
+    symbol_capture_declarer(module_path: "v2.compiler.target_serialize", decl_name: "target_bundle_child", symbol_position: "edge_name")
   ]
 }

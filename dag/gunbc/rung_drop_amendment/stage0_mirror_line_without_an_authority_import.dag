@@ -1,0 +1,21 @@
+module gunbc.rung_drop_amendment.stage0_mirror_line_without_an_authority_import
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+// A SECOND RECEIPT FOR THE SAME HALF-RESTORED LINE, of a different shape from the first. The first
+// (stage0_mirrors_left_outside_the_restored_drift_gate) was an authority that changed without its
+// mirror being reinstalled. This one is the converse: a mirror line that no authority produces.
+// Both landed with every required check green for the one reason that row records -- at the time,
+// the stage0 mirror population was checked by no job. gunbc#12104 has since put the stage0 build
+// lane on merge_group; this row records the event, not a present-tense gap.
+
+data stage0_mirror_line_without_an_authority_import: RungDropAmendment = RungDropAmendment {
+  drop_identity: "witness_floor_off_the_required_gate" as NonEmptyStr,
+
+  amended: "2026-09-24",
+
+  later_event: "gunbc#12047 added `pub use crate::v1_compiler_infer_items::item_resource_names;` to the src/v1/stage0/src/v1_compiler_emit.rs mirror while its authority, v1.compiler.emit (src/v1/05_emit.dag), CALLED item_resource_names without listing it in its import from v1.compiler.infer_items. The call resolved as an unimported bare reference, so --required-regen on main (0e914b4, after gunbc#12216) regenerated the mirror WITHOUT that line: pass 1 refused on generated surface drift, and the fixed point held only after the line was dropped. Measured by swift-bat-511 regenerating main; an earlier report of a fixed-point failure on main was a mis-measurement (the fixed point was run without the regen that writes its receipt) and is retracted. The repair lands with this row: the authority now imports item_resource_names, so the mirror line is derived rather than hand-carried" as NonEmptyStr,
+
+  bearing: "the half-restoration admitted drift in BOTH directions -- an authority change without its mirror (the first receipt) and a mirror line without its authority (this one) -- and the second is invisible to anyone who does not regenerate, because the stale line compiles. Both landed before gunbc#12104 put the stage0 build lane on merge_group; whether that restores this drop's capability is the drop's own trigger to decide, not this row's" as NonEmptyStr,
+}

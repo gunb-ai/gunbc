@@ -65,10 +65,15 @@ fn an_empty_read_refuses_rather_than_parsing_empty() -> Bool {
   }
 }
 
+// TWO READS, BOUND SEPARATELY, because they are two independent observations and the claim is over
+// both. Conjoining the calls themselves would put an observation under a boolean operand, where
+// whether it is made at all is an undeclared evaluation-order fact
+// (gunbc.recurring_failure_mode realization_arms_diverge_on_whether_the_program_refuses). Both reads
+// are pure, so no value changes here; the shape is what changes, and it is the shape the claim means.
 fn a_missing_path_reads_as_empty_content() -> Bool {
-  Filesystem.Read(path: "artifacts/bmc/no-such-capture.json").content.length() == 0
-    && Filesystem.Read(path: "artifacts/bmc/srv3-config-asrr.json").content.length()
-      == srv3_captured_program.program.artifact_byte_count
+  let missing = Filesystem.Read(path: "artifacts/bmc/no-such-capture.json").content.length()
+  let captured = Filesystem.Read(path: "artifacts/bmc/srv3-config-asrr.json").content.length()
+  missing == 0 && captured == srv3_captured_program.program.artifact_byte_count
 }
 
 fn a_wrong_expected_count_refuses() -> Bool {

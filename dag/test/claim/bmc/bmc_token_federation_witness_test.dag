@@ -44,7 +44,7 @@ test fn bmc_wif_principal_set_pins_repo() -> Bool {
 }
 
 test fn bmc_smoke_workflow_is_keyless_with_id_token_write() -> Bool {
-  let y = emit_bmc_token_smoke_workflow_yaml()
+  let y = bmc_smoke_workflow_text()
   string_contains(s: y, pattern: "id-token: write")
     && string_contains(s: y, pattern: action_release_uses_text(action_release: google_auth_action))
     && string_contains(s: y, pattern: "workload_identity_provider:")
@@ -53,7 +53,15 @@ test fn bmc_smoke_workflow_is_keyless_with_id_token_write() -> Bool {
 }
 
 test fn bmc_smoke_workflow_carries_no_pasted_key() -> Bool {
-  let y = emit_bmc_token_smoke_workflow_yaml()
-  !string_contains(s: y, pattern: "credentials_json")
+  let y = bmc_smoke_workflow_text()
+  (y != "")
+    && !string_contains(s: y, pattern: "credentials_json")
     && !string_contains(s: y, pattern: "service_account_key")
+}
+
+fn bmc_smoke_workflow_text() -> String {
+  match emit_bmc_token_smoke_workflow_yaml() {
+    EmittedYaml { text: t } => t
+    YamlEmitRefused { path: _, reason: _ } => ""
+  }
 }

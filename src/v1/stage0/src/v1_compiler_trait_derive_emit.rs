@@ -23,8 +23,6 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_supplemental_impls_bool_coproduct, rust_supplemental_impls_group_completion,
     rust_trait_derive_attr_from_traits, rust_trait_derive_spelling,
 };
-pub use crate::std_content_hash::Fnv1a64Structural;
-pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -43,7 +41,6 @@ use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
 pub use crate::v1_compiler_emit::{emit_ident, to_pascal};
 pub use crate::v1_compiler_emit_core_support::{is_type_alias_item, unique_strings};
-pub use crate::v1_compiler_emit_rust::item_generic_param_names;
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -363,7 +360,7 @@ pub fn v1_map_key_round_add(
     } else {
         Rc::new(MapKeyRequirementRound {
             names: v1_rt::rc_set_insert(round.names.clone(), name.clone()),
-            added: (round.added.clone() + 1),
+            added: v1_rt::int_add(round.added.clone(), 1),
         })
     }
 }
@@ -474,7 +471,7 @@ pub fn v1_map_key_fixpoint_loop(
                     let __tco_0 = next.clone();
                     let __tco_1 = declared_type_names;
                     let __tco_2 = type_decl_items;
-                    let __tco_3 = (remaining - 1);
+                    let __tco_3 = v1_rt::int_sub(remaining, 1);
                     let __tco_4 = source_indices;
                     __tco_loop_round = __tco_0;
                     __tco_loop_declared_type_names = __tco_1;
@@ -531,7 +528,7 @@ pub fn v1_map_key_required_type_names(
             seeded.clone(),
             declared_type_names.clone(),
             type_decl_items.clone(),
-            ((declared_type_names.clone().len() as i64) + 1),
+            v1_rt::int_add((declared_type_names.clone().len() as i64), 1),
             source_indices.clone(),
         )
     }
@@ -3725,7 +3722,7 @@ pub fn v1_clone_bound_round_add(
                     type_name.clone(),
                     v1_rt::rc_set_insert(current.clone(), param_name.clone()),
                 ),
-                added: (round.added.clone() + 1),
+                added: v1_rt::int_add(round.added.clone(), 1),
             })
         }
     }
@@ -3838,7 +3835,7 @@ pub fn v1_clone_bound_fixpoint_loop(
                     let __tco_0 = generic_type_names;
                     let __tco_1 = type_decl_items;
                     let __tco_2 = round.bounds.clone();
-                    let __tco_3 = (remaining - 1);
+                    let __tco_3 = v1_rt::int_sub(remaining, 1);
                     let __tco_4 = source_indices;
                     __tco_loop_generic_type_names = __tco_0;
                     __tco_loop_type_decl_items = __tco_1;
@@ -3897,7 +3894,7 @@ pub fn v1_clone_bounded_type_params(
             generic_type_names.clone(),
             type_decl_items.clone(),
             seeded.bounds.clone(),
-            ((generic_type_names.clone().len() as i64) + 1),
+            v1_rt::int_add((generic_type_names.clone().len() as i64), 1),
             source_indices.clone(),
         )
     }
@@ -3967,7 +3964,7 @@ pub fn v1_clone_impl_required_type_params(
             generic_type_names.clone(),
             type_decl_items.clone(),
             seeded.bounds.clone(),
-            ((generic_type_names.clone().len() as i64) + 1),
+            v1_rt::int_add((generic_type_names.clone().len() as i64), 1),
             source_indices.clone(),
         )
     }

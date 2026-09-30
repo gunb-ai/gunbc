@@ -35,7 +35,9 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_allocation_srv3,
   gunbc_runner_slot_allocation_srv4,
-  gunbc_runner_slots_per_host,
+  HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
 }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 
@@ -88,15 +90,29 @@ test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
     }
 }
 
-// RENAMED 2026-08-23: the width is 21, not six. The two hosts still agree with each other and with
-// gunbc_runner_slots_per_host, which is what this row actually checks -- that the materialized
-// per-host allocation rows and the function that derives width have not drifted apart. Naming the
-// number in the test's own identity meant the name went stale the moment the fleet's memory did.
+// THE LITERAL IS GONE AND THE ROW ASSERTS THE AGREEMENT IT IS NAMED FOR. It pinned 21 on all four
+// conjuncts; the 26/25 GiB row took the managed hosts to 17, so every conjunct was false and the
+// row had stopped being a check of anything -- its own comment says the width was renamed off six
+// for exactly this reason one width earlier, which is the tell that the LITERAL was the defect and
+// not its value (DESIGN 6: name the instrument, never transcribe its output).
+//
+// What this row actually checks is that the materialized per-host allocation rows and the function
+// that derives width have not drifted apart. That is a relation and it is asserted as one, so it
+// holds at any width and reds if the row and the derivation ever disagree.
+fn standing_width_agrees(standing: HostRunnerSlotAllocationStanding, host: HostIdentity) -> Bool {
+  match standing {
+    HostSlotAllocationWidthUnresolved { host: _, cause: _ } => false
+    HostSlotAllocationAdmitted { allocation: a } =>
+      match gunbc_runner_committed_width(host: host) {
+        RunnerWidthUnresolved { cause: _ } => false
+        RunnerWidthDerived { slots: n } => a.slots_per_host == n && (a.host as String) == (host as String)
+      }
+  }
+}
+
 test fn witness_srv3_srv4_committed_width_agrees_with_the_derivation() -> Bool {
-  gunbc_runner_slot_allocation_srv3.slots_per_host == 21
-    && gunbc_runner_slot_allocation_srv4.slots_per_host == 21
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 21
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 21
+  standing_width_agrees(standing: gunbc_runner_slot_allocation_srv3, host: operator_host_srv3)
+    && standing_width_agrees(standing: gunbc_runner_slot_allocation_srv4, host: operator_host_srv4)
 }
 
 test fn witness_host_capacity_receipt_converged_shape() -> Bool {

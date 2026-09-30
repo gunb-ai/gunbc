@@ -1,0 +1,209 @@
+module gunbc.rust_crate_package_ident
+
+import std.types { List, String, Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, retires_dissolution }
+import extdeps.languages.rust.emit { rust_reserved }
+
+// THE PACKAGE-NAME-TO-RUST-IDENTIFIER PROJECTION, WITH THE TWO REFUSALS IT OWES.
+//
+// A partition crate's lib.rs re-exports every crate below it as `pub use <ident>::*;`, and the
+// ident is the package name with hyphens turned into underscores -- the form cargo gives the
+// extern crate. The stage0 partition renderers read the admitted bindings through
+// package_ident_bound and never re-project; this replaced a bare replace() in
+// v1.compiler.stage0_crates that was total and silent. ONE COPY REMAINS, declared as the typed
+// row emit_rust_second_ident_projection_dissolve_on below rather than as a promise in prose.
+// The projection is NOT INJECTIVE: "a-b" and "a_b" both carry to "a_b". Two packages
+// sharing an image means one crate's facade re-exports the wrong crate, or emits the same
+// `pub use` twice -- a crate wrong at the reference level while every row that produced it is
+// individually well formed. That is DESIGN section 5's silent wrong answer, and the reason it is
+// closed HERE rather than at the call site is that the population is about to grow: stage0
+// supplies six hand-authored hyphen-only names that cannot collide, and the derived partition
+// will supply names nobody reviewed one at a time.
+//
+// STATED AT ITS ACTUAL STRENGTH: on the existing stage0 route this hazard is LATENT, not live.
+// No current package name reaches either refusal, so this module changes no rendered byte today.
+// It is landed because the derived-partition consumer is what makes the collision reachable.
+//
+// THE TWO ARMS ARE DELIBERATELY SEPARATE BECAUSE THEY SEE DIFFERENT THINGS, and one cannot cover
+// for the other. Validity is a property of ONE name -- a character cargo will not accept -- so it
+// is decidable per name. A collision is a PAIRWISE property OF THE SET: no amount of per-name
+// checking can see it, because each colliding name is individually perfectly valid. A per-name
+// predicate standing at this seam would be cited as covering both while being blind to the
+// second, so only the set-level fold may answer for a collision.
+type PackageIdentRefusalCause
+  = PackageNameNotIdentSafe { package_name: String }
+  | PackageIdentNotLeadable { package_name: String }
+  | PackageIdentReserved { package_name: String, ident: String }
+  | PackageIdentCollision { ident: String, first_package: String, second_package: String }
+
+type PackageIdentOutcome
+  = PackageIdentOk { ident: String }
+  | PackageIdentRefused { cause: PackageIdentRefusalCause }
+
+type PackageIdentSetOutcome
+  = PackageIdentSetOk { bindings: List<PackageIdentBinding> }
+  | PackageIdentSetRefused { cause: PackageIdentRefusalCause }
+
+// The characters this projection carries to a rust ident. Narrower than cargo's own package-name
+// rule on purpose: uppercase and dots REFUSE rather than being mapped, because mapping them is
+// the sanitize-and-continue arm that manufactures the collisions this module exists to refuse.
+data package_ident_alphabet: String = "abcdefghijklmnopqrstuvwxyz0123456789-_"
+
+// An identifier may not BEGIN with a digit, and a hyphen would carry to a leading underscore
+// that the name never had; both refuse rather than being prefixed into something that parses.
+data package_ident_forbidden_leading: List<String> = [
+  "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "-"
+]
+
+// Three checks, in the order a reader would ask them, each with its own cause: the characters
+// (per name), where the name may start, and whether the carried ident is a word Rust reserves --
+// `_` alone, and every keyword extdeps.languages.rust.emit rust_reserved already models, so
+// `pub use self::*;` is refused rather than emitted. The keyword list is REUSED, not restated.
+fn rust_crate_package_ident(package_name: String) -> PackageIdentOutcome {
+  if package_name == "" {
+    PackageIdentRefused { cause: PackageNameNotIdentSafe { package_name: package_name } }
+  } else {
+    if chars(package_name) |> all(c => chars(package_ident_alphabet) |> any(a => a == c)) {
+      if package_ident_forbidden_leading |> any(p => starts_with(s: package_name, prefix: p)) {
+        PackageIdentRefused { cause: PackageIdentNotLeadable { package_name: package_name } }
+      } else {
+        rust_crate_package_ident_unreserved(package_name: package_name, ident: replace(package_name, "-", "_"))
+      }
+    } else {
+      PackageIdentRefused { cause: PackageNameNotIdentSafe { package_name: package_name } }
+    }
+  }
+}
+
+fn rust_crate_package_ident_unreserved(package_name: String, ident: String) -> PackageIdentOutcome {
+  if (ident == "_") || (rust_reserved |> any(word => word == ident)) {
+    PackageIdentRefused { cause: PackageIdentReserved { package_name: package_name, ident: ident } }
+  } else {
+    PackageIdentOk { ident: ident }
+  }
+}
+
+// THE SECOND PROJECTION THAT STILL STANDS, AS A BOUND TRIGGER. v1.compiler.emit_rust
+// stage0_package_name_to_crate_ident renders the host shell's `pub use <ident>::*;` lines for the
+// linked partition packages with its own replace(), so a name refused here could still be carried
+// there. Folding it onto these bindings needs a refusal threaded through emit_lib_rs_from_paths,
+// the lib.rs emitter DESIGN names load-bearing, which is its own change. This row fires when that
+// declaration RETIRES -- the capability is "no second projection", and the retirement of the one
+// that exists is exactly that, so the trigger names the capability and not an artifact near it.
+data emit_rust_second_ident_projection_dissolve_on: DissolutionCondition = retires_dissolution(
+  ref: DeclarationRef {
+    module_path: "v1.compiler.emit_rust" as NonEmptyStr,
+    decl_name: "stage0_package_name_to_crate_ident" as NonEmptyStr,
+    field: WholeDeclaration,
+  }
+)
+
+type PackageIdentBinding {
+  package_name: String
+  ident: String
+}
+
+type PackageIdentFold {
+  bindings: List<PackageIdentBinding>
+  refusal: Optional<PackageIdentRefusalCause>
+}
+
+fn package_ident_bound_to(bindings: List<PackageIdentBinding>, ident: String) -> String {
+  bindings
+    |> fold(init: ident, f: fn(found, binding) {
+      if binding.ident == ident { binding.package_name } else { found }
+    })
+}
+
+fn package_ident_step(acc: PackageIdentFold, package_name: String) -> PackageIdentFold {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match rust_crate_package_ident(package_name: package_name) {
+        PackageIdentRefused { cause: cause } =>
+          PackageIdentFold { bindings: acc.bindings, refusal: Present { value: cause } }
+        PackageIdentOk { ident: ident } =>
+          if acc.bindings |> any(binding => binding.ident == ident) {
+            PackageIdentFold {
+              bindings: acc.bindings,
+              refusal: Present { value: PackageIdentCollision {
+                ident: ident,
+                first_package: package_ident_bound_to(bindings: acc.bindings, ident: ident),
+                second_package: package_name
+              } }
+            }
+          } else {
+            PackageIdentFold {
+              bindings: acc.bindings |> concat([PackageIdentBinding { package_name: package_name, ident: ident }]),
+              refusal: Absent
+            }
+          }
+      }
+  }
+}
+
+// THE SET-LEVEL ENTRY, and the only one a renderer may call for more than one package. It refuses
+// on the FIRST cause it reaches rather than accumulating, because a partition whose crate names
+// are ambiguous has no correct rendering to continue toward.
+fn rust_crate_package_idents(package_names: List<String>) -> PackageIdentSetOutcome {
+  let folded = package_names
+    |> fold(init: PackageIdentFold { bindings: [], refusal: Absent }, f: fn(acc, package_name) {
+      package_ident_step(acc: acc, package_name: package_name)
+    })
+  match folded.refusal {
+    Present { value: cause } => PackageIdentSetRefused { cause: cause }
+    Absent => PackageIdentSetOk { bindings: folded.bindings }
+  }
+}
+
+// THE ONE READ A RENDERER MAY MAKE: the ident an admitted set bound to a package. Absent means the
+// package was not in the admitted set, and a caller must refuse there -- never re-project the name,
+// which would be a second source for the fact this module owns.
+fn package_ident_bound(bindings: List<PackageIdentBinding>, package_name: String) -> Optional<String> {
+  bindings
+    |> fold(init: Absent, f: fn(found, binding) {
+      match binding.package_name == package_name {
+        true => Present { value: binding.ident }
+        false => found
+      }
+    })
+}
+
+// The refusal reaches a human as a located sentence rather than a variant name, and it names BOTH
+// packages for a collision: an operator reading "two packages share one identifier" without being
+// told which two has to rediscover the pair the fold already knew.
+fn package_ident_refusal_message(cause: PackageIdentRefusalCause) -> String {
+  match cause {
+    PackageNameNotIdentSafe { package_name: package_name } =>
+      concat(
+        "package name is not carriable to a rust identifier: ",
+        package_name,
+        " (admitted characters: ",
+        package_ident_alphabet,
+        ")"
+      )
+    PackageIdentNotLeadable { package_name: package_name } =>
+      concat(
+        "package name cannot begin a rust identifier (leading digit or hyphen): ",
+        package_name
+      )
+    PackageIdentReserved { package_name: package_name, ident: ident } =>
+      concat(
+        "package name carries to a reserved rust word ",
+        ident,
+        ": ",
+        package_name
+      )
+    PackageIdentCollision { ident: ident, first_package: first_package, second_package: second_package } =>
+      concat(
+        "two packages project to one rust identifier ",
+        ident,
+        ": ",
+        first_package,
+        " and ",
+        second_package,
+        " -- a crate facade would re-export the wrong crate or emit the same pub use twice"
+      )
+  }
+}

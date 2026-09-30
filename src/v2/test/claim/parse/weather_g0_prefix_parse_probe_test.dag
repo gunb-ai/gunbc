@@ -3,6 +3,7 @@ module v2.test.parse.weather_g0_prefix_parse_probe
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
 import v2.compiler.parse { parse_module }
+import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
   Namespace,
   ResolveContext,
@@ -16,7 +17,7 @@ import v2.extdeps.languages.dag {
   dag_language_model
 }
 import v2.std.collection { empty_map }
-import v2.std.compilers.lexing { TokenStream, symbol_intern_lexeme }
+import v2.std.compilers.lexing { TokenStream }
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
@@ -35,7 +36,8 @@ import v2.std.node {
   Node,
   TypeNode,
   canonicalize_node_strip_provenance,
-  content_hash
+  content_hash,
+  symbol_intern_lexeme,
 }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.resolution_policy { NamespaceOnlyY }
@@ -160,10 +162,14 @@ fn float_literal_resolve_ctx() -> ResolveContext {
     bindings: empty_map(),
     canonical_symbols: empty_canonical_symbol_set(),
     symbol_index: empty_symbol_index(),
-    module_qn: qualified_name_from_dotted_string(dotted: "m")
+    module_qn: qualified_name_from_dotted_string(dotted: "m"),
+    test_code: test_code_index_empty(),
+    declared_in: qualified_name_from_dotted_string(dotted: "m"),
+    imported_origins: empty_map()
   }
   ResolveContext {
     scope: scope_from_namespace(namespace: namespace),
+    type_scope: scope_from_namespace(namespace: namespace),
     namespace: namespace,
     policy: NamespaceOnlyY,
     position: qualified_name_from_dotted_string(dotted: "m"),

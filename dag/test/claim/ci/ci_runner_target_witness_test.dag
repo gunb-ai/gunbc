@@ -1,5 +1,7 @@
 module test.claim.ci_runner_target_witness
 
+import gunbc.ci_runner_target { ci_runner_target_spec, gunbc_ci_selected_runner_spec }
+
 test fn witness_fleet_target_projects_fleet_derivation() -> Bool {
   ci_runner_target_spec(target: FleetSelfHosted) == gunbc_ci_runner_spec()
 }

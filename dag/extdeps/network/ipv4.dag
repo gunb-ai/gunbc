@@ -78,6 +78,22 @@ fn render_ipv4_cidr(addr: Ipv4Address, prefix: PrefixLength) -> NonEmptyStr {
   join([render_ipv4_address(addr: addr) as String, to_string(prefix)], "/") as NonEmptyStr
 }
 
+// A NETWORK HELD AS A VALUE rather than as its rendering, for rosters of networks -- a denial list,
+// a route table -- where each row must be a well-formed address and a prefix that exists. The CIDR
+// text stays a projection of this, never a second spelling authored beside it.
+type Ipv4Prefix {
+  network: Ipv4Address
+  length: PrefixLength
+}
+
+fn ipv4_prefix(o1: Octet, o2: Octet, o3: Octet, o4: Octet, length: PrefixLength) -> Ipv4Prefix {
+  Ipv4Prefix { network: ipv4_address(octet1: o1, octet2: o2, octet3: o3, octet4: o4), length: length }
+}
+
+fn render_ipv4_prefix(p: Ipv4Prefix) -> NonEmptyStr {
+  render_ipv4_cidr(addr: p.network, prefix: p.length)
+}
+
 // Whether two addresses share a network at a given prefix. Written as an octet-wise comparison over
 // the four whole octets a /8, /16, /24 or /32 fixes, plus the partial octet a /30 splits -- so it is
 // exact for the prefixes this repository actually uses and REFUSES to answer for the rest, rather

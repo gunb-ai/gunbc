@@ -28,10 +28,9 @@ import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.algebra { Empty, fold_list, length }
 import v2.std.logic { Bool }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.optional { Absent, Present }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
-import v2.std.compilers.lexing { symbol_lexeme }
 import v2.workflow.body_lowering_retention_census {
   EvidenceNotApplicable,
   B4EvidenceOutcome,
@@ -448,8 +447,7 @@ fn product_receipt_tail(
       args: [
         "--out-dir", candidate_dir,
         "--entry-dag", entry,
-        "--root", root,
-        "--std-bridge-dir", "dag/gunbc/instruments/self_host_std_bridge_shims"
+        "--root", root
       ]
     )
     let assembled_read = Filesystem.Read(path: concat(candidate_dir, "/src/lib.rs"))

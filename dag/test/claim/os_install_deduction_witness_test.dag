@@ -4,7 +4,7 @@ module test.claim.os_install_deduction
 import extdeps.uri { Uri, Https }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, StoragePolicyDirectLayout, UbuntuAutoinstallPayload }
 import gunbc.os_install_deduction { AutoinstallIncompleteNotBootable, ForeignOsPresent, KvmOperatorAttestation, LoginPrompt, RequiresStoragePolicy, SubiquityStorageScreen, UnknownDiskState, fold_nbd_proxy_os_install_preflight_verdict, plan_for_os_install_preflight_verdict, runtime_verdict_from_kvm_attestation }
-import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -145,9 +145,10 @@ test fn incomplete_not_bootable_plans_refuse_until_declared() -> Bool {
 }
 
 test fn direct_layout_emits_storage_yaml() -> Bool {
-  let ud = autoinstall_user_data(payload: witness_autoinstall_with_storage)
-  ud.contains("layout:")
-    && ud.contains("direct")
+  match autoinstall_user_data(payload: witness_autoinstall_with_storage) {
+    AutoinstallUserDataRefused { reason: _ } => false
+    AutoinstallUserDataRendered { content: ud } => ud.contains("layout:") && ud.contains("direct")
+  }
 }
 
 test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {

@@ -26,8 +26,9 @@ import gunbc.spark.pair_serving_apply {
 import gunbc.spark.native_serving_realization {
   GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
   glm_native_experiment_all_unit_renders, glm_native_ranked_hosts, glm_native_head_unit_name,
-  glm_native_container_name, glm_native_head_log_path, glm_native_rank_log_path,
+  glm_native_head_log_path, glm_native_rank_log_path,
 }
+import gunbc.spark.serving_arm_launch { glm_native_container_name }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology, serving_launch_profile_key,
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,

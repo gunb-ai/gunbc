@@ -31,7 +31,7 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
 pub fn rust_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
-            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "i64", "grounding_type": "i64", "default_expr": "0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Float", "target_type": "f64", "grounding_type": "f64", "default_expr": "0.0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "grounding_type": "bool", "default_expr": "false", "is_copy": true, "literal_suffix": null}, {"dag_name": "Unit", "target_type": "()", "grounding_type": "()", "default_expr": "()", "is_copy": true, "literal_suffix": null}, {"dag_name": "String", "target_type": "String", "grounding_type": "std::string::String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Bytes", "target_type": "Vec<u8>", "grounding_type": "Vec<u8>", "default_expr": "Vec::new()", "is_copy": false, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "String", "grounding_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Json", "target_type": "serde_json::Value", "grounding_type": "serde_json::Value", "default_expr": "serde_json::Value::Null", "is_copy": false, "literal_suffix": null}]))
+            serde_json::from_str("[{\"dag_name\": \"Int\", \"target_type\": \"i64\", \"grounding_type\": \"i64\", \"default_expr\": \"0\", \"is_copy\": true, \"literal_suffix\": null}, {\"dag_name\": \"Float\", \"target_type\": \"f64\", \"grounding_type\": \"f64\", \"default_expr\": \"0.0\", \"is_copy\": true, \"literal_suffix\": null}, {\"dag_name\": \"Bool\", \"target_type\": \"bool\", \"grounding_type\": \"bool\", \"default_expr\": \"false\", \"is_copy\": true, \"literal_suffix\": null}, {\"dag_name\": \"Unit\", \"target_type\": \"()\", \"grounding_type\": \"()\", \"default_expr\": \"()\", \"is_copy\": true, \"literal_suffix\": null}, {\"dag_name\": \"String\", \"target_type\": \"String\", \"grounding_type\": \"std::string::String\", \"default_expr\": \"String::new()\", \"is_copy\": false, \"literal_suffix\": \".to_string()\"}, {\"dag_name\": \"Bytes\", \"target_type\": \"Vec<u8>\", \"grounding_type\": \"Vec<u8>\", \"default_expr\": \"Vec::new()\", \"is_copy\": false, \"literal_suffix\": null}, {\"dag_name\": \"Secret\", \"target_type\": \"String\", \"grounding_type\": \"String\", \"default_expr\": \"String::new()\", \"is_copy\": false, \"literal_suffix\": \".to_string()\"}, {\"dag_name\": \"Json\", \"target_type\": \"serde_json::Value\", \"grounding_type\": \"serde_json::Value\", \"default_expr\": \"serde_json::Value::Null\", \"is_copy\": false, \"literal_suffix\": null}]")
                 .expect("valid data definition")
         };
     }
@@ -59,7 +59,7 @@ pub fn rust_checkpoint_scalar_arity_note() -> String {
 pub fn rust_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<InhabitantDecl>>> = {
-            serde_json::from_value(serde_json::json!([{"algebra": "FreeMonoid", "template": "Vec<{0}>", "arity": 1, "identity_expr": "Vec::new()", "import_path": null, "is_copy": false}, {"algebra": "FinitePowerSet", "template": "BTreeSet<{0}>", "arity": 1, "identity_expr": "BTreeSet::new()", "import_path": null, "is_copy": false}, {"algebra": "FinitelySupportedFunction", "template": "HashMap<{0}, {1}>", "arity": 2, "identity_expr": "HashMap::new()", "import_path": null, "is_copy": false}, {"algebra": "OrderedRing", "template": "i64", "arity": 0, "identity_expr": "0i64", "import_path": null, "is_copy": true}, {"algebra": "ApproximateField", "template": "f64", "arity": 0, "identity_expr": "0.0f64", "import_path": null, "is_copy": true}]))
+            serde_json::from_str("[{\"algebra\": \"FreeMonoid\", \"template\": \"Vec<{0}>\", \"arity\": 1, \"identity_expr\": \"Vec::new()\", \"import_path\": null, \"is_copy\": false}, {\"algebra\": \"FinitePowerSet\", \"template\": \"BTreeSet<{0}>\", \"arity\": 1, \"identity_expr\": \"BTreeSet::new()\", \"import_path\": null, \"is_copy\": false}, {\"algebra\": \"FinitelySupportedFunction\", \"template\": \"HashMap<{0}, {1}>\", \"arity\": 2, \"identity_expr\": \"HashMap::new()\", \"import_path\": null, \"is_copy\": false}, {\"algebra\": \"OrderedRing\", \"template\": \"i64\", \"arity\": 0, \"identity_expr\": \"0i64\", \"import_path\": null, \"is_copy\": true}, {\"algebra\": \"ApproximateField\", \"template\": \"f64\", \"arity\": 0, \"identity_expr\": \"0.0f64\", \"import_path\": null, \"is_copy\": true}]")
                 .expect("valid data definition")
         };
     }
@@ -96,7 +96,7 @@ pub fn rust_some_template() -> String {
 pub fn rust_callable() -> Rc<CallableRepr> {
     thread_local! {
         static CACHED: Rc<CallableRepr> = {
-            serde_json::from_value(serde_json::json!({"template": "fn({params}) -> {return}", "param_separator": ", ", "return_separator": " -> ", "import_path": null}))
+            serde_json::from_str("{\"template\": \"fn({params}) -> {return}\", \"param_separator\": \", \", \"return_separator\": \" -> \", \"import_path\": null}")
                 .expect("valid data definition")
         };
     }
@@ -207,7 +207,7 @@ pub fn trait_bound_template() -> String {
 pub fn rust_cast_syntax() -> Rc<CastSyntax> {
     thread_local! {
         static CACHED: Rc<CastSyntax> = {
-            serde_json::from_value(serde_json::json!({"template": "{expr} as {type}", "cast_rules": [{"from_type": "i64", "to_type": "i64"}, {"from_type": "i64", "to_type": "f64"}, {"from_type": "f64", "to_type": "i64"}, {"from_type": "f64", "to_type": "f64"}, {"from_type": "bool", "to_type": "i64"}]}))
+            serde_json::from_str("{\"template\": \"{expr} as {type}\", \"cast_rules\": [{\"from_type\": \"i64\", \"to_type\": \"i64\"}, {\"from_type\": \"i64\", \"to_type\": \"f64\"}, {\"from_type\": \"f64\", \"to_type\": \"i64\"}, {\"from_type\": \"f64\", \"to_type\": \"f64\"}, {\"from_type\": \"bool\", \"to_type\": \"i64\"}]}")
                 .expect("valid data definition")
         };
     }

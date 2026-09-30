@@ -1,0 +1,412 @@
+module test.claim.compute.attempt_lifecycle_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { trim }
+import std.measure { kibibyte, kibibyte_count }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
+import gunbc.compute.work_provider_local {
+  ComputeLayout,
+  AttemptGate, AttemptGateReady, AttemptGateRefused, compute_begin_launch,
+  AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
+  compute_settle_attempt, compute_attempt_settlement_wire, attempt_settlement_host_record,
+  host_record_was_written,
+  ProvideResult, ProvideFresh, ProvideAttached, compute_run_ceiling_retry, compute_ceiling_retry_reference,
+}
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.compute.host_capacity { ComputeReservationRefused }
+import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows, work_class_of }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import gunbc.compute.work_request {
+  ExactTree, work_default_build,
+  WorkEnding, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch,
+}
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal,
+  AttemptVerdict, AttemptWorkEnded, AttemptRecovered, attempt_verdict_wire,
+  AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
+  AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_advanced, attempt_transition_wire,
+  attempt_state_wire, attempt_record_wire, attempt_record_decode, compute_pre_launch_ceiling_seconds,
+  UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
+  UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
+  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
+  recovery_trigger, recovery_trigger_fires, recovery_trigger_wire,
+}
+
+// WET CONTROLS FOR THE ATTEMPT LIFECYCLE. Every transition below is a real compare-and-set against
+// a real generation-file store in a real temporary directory. The exclusion being asserted is the
+// one the operating system performs on the write, not one this witness arranges.
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_attempt.XXXXXX").path
+}
+
+fn record_for(reference: String) -> AttemptRecord {
+  AttemptRecord {
+    identity: "abcdef0123456789",
+    reference: reference,
+    unit: join(["gunbc-compute-abcdef0123456789-", reference], ""),
+    granted: kibibyte(count: 27262976),
+    opened_at: 1800,
+    launch_deadline: 2000,
+    state: AttemptReserved,
+  }
+}
+
+fn generation_of(r: AttemptSlotReading) -> Int {
+  match r {
+    AttemptSlotHeld { record: _, generation: g } => cas_generation_count(g: g)
+    AttemptSlotAbsent => 0
+    AttemptSlotUnreadable { detail: _ } => 0 - 1
+  }
+}
+
+fn state_word_of(r: AttemptSlotReading) -> String {
+  match r {
+    AttemptSlotHeld { record: rec, generation: _ } => attempt_state_wire(s: rec.state)
+    AttemptSlotAbsent => "<absent>"
+    AttemptSlotUnreadable { detail: _ } => "<unreadable>"
+  }
+}
+
+fn held_record(r: AttemptSlotReading) -> AttemptRecord {
+  match r {
+    AttemptSlotHeld { record: rec, generation: _ } => rec
+    AttemptSlotAbsent => record_for(reference: "<absent>")
+    AttemptSlotUnreadable { detail: _ } => record_for(reference: "<unreadable>")
+  }
+}
+
+fn lost_race(t: AttemptTransition) -> Bool {
+  match t {
+    AttemptLostRace { expected: _, observed: _ } => true
+    AttemptAdvanced { state: _, generation: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+}
+
+// CRITERION 3, ORDER ONE: THE TERMINAL TRANSITION WINS AND THE LAUNCH IS REFUSED BEFORE IT SPAWNS.
+//
+// This is the interleaving that produces an unbacked launch if the two steps are not one: the
+// attempt reserves, recovery decides it is dead and terminates it, and THEN the producer -- which
+// has been paused somewhere between reserving and spawning -- goes to launch. With a gate, the
+// producer's compare-and-set is refused against a generation that has moved, and it learns this
+// BEFORE it spawns rather than after. The refusal is the store's, not a check this witness wrote.
+test fn a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let record = record_for(reference: "attempt-terminate-first")
+  let opened = attempt_open(root: root, record: record)
+  let after_open = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let terminated = attempt_terminate(root: root, record: record, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "the producer never launched")
+  let after_terminal = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let late_launch = attempt_begin_launch(root: root, record: record, expected: generation_of(r: after_open))
+  let final_read = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  attempt_transition_advanced(t: opened)
+    && generation_of(r: after_open) == 1
+    && state_word_of(r: after_open) == "reserved"
+    && attempt_transition_advanced(t: terminated)
+    && state_word_of(r: after_terminal) == "terminal:recovered"
+    && lost_race(t: late_launch)
+    && state_word_of(r: final_read) == "terminal:recovered"
+    && generation_of(r: final_read) == 2
+}
+
+// CRITERION 3, ORDER TWO: THE LAUNCH WINS AND RECOVERY IS REFUSED.
+//
+// The mirror, and it is the half that keeps the gate from being a one-way wall: a producer that HAS
+// advanced to launching owns the attempt, and a recovery arriving afterwards must not be able to
+// declare it terminal behind its back -- that is how a live unit's memory gets handed away. Same
+// mechanism, opposite winner, and the loser is again refused by precondition rather than by
+// noticing.
+test fn a_launch_that_won_refuses_a_recovery_arriving_behind_it() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let record = record_for(reference: "attempt-launch-first")
+  let opened = attempt_open(root: root, record: record)
+  let after_open = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let launched = attempt_begin_launch(root: root, record: record, expected: generation_of(r: after_open))
+  let after_launch = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let late_recovery = attempt_terminate(root: root, record: record, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "arrived after the launch")
+  let final_read = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  attempt_transition_advanced(t: opened)
+    && attempt_transition_advanced(t: launched)
+    && state_word_of(r: after_launch) == "launching"
+    && lost_race(t: late_recovery)
+    && state_word_of(r: final_read) == "launching"
+    && generation_of(r: final_read) == 2
+}
+
+// CRITERION 2: THE BINDING IS READ, NOT RECONSTRUCTED. The unit name recovery would act on comes
+// out of the record the attempt wrote, and it survives the round trip through the store bytes. A
+// recovery deriving the name from the identity would be a second authority for the binding, and a
+// wrong derivation stops somebody else's unit.
+test fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let record = record_for(reference: "attempt-binding")
+  let opened = attempt_open(root: root, record: record)
+  let read_back = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let recovered = held_record(r: read_back)
+  attempt_transition_advanced(t: opened)
+    && recovered.unit == record.unit
+    && recovered.identity == record.identity
+    && recovered.reference == record.reference
+    && kibibyte_count(k: recovered.granted) == 27262976
+    && recovered.unit != record.identity
+}
+
+// CRITERION 6: THE TERMINAL GENERATION CARRIES WHY, AND THE EARLIER GENERATIONS STILL EXIST. The
+// store is generation-suffixed and append-only, so settling does not erase what it settled -- a
+// reader can still see the attempt was reserved and launched before it ended. Recovery that
+// overwrote its own evidence would be indistinguishable from an attempt that had never run.
+test fn settling_records_why_and_does_not_erase_what_it_settled() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let record = record_for(reference: "attempt-history")
+  let opened = attempt_open(root: root, record: record)
+  let g1 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let launched = attempt_begin_launch(root: root, record: record, expected: generation_of(r: g1))
+  let g2 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let settled = attempt_terminate(root: root, record: record, expected: generation_of(r: g2), verdict: AttemptWorkEnded { ending: WorkEndedFailed }, detail: "unit terminated-failure, exit 101")
+  let g3 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let terminal = held_record(r: g3)
+  attempt_transition_advanced(t: opened) && attempt_transition_advanced(t: launched) && attempt_transition_advanced(t: settled)
+    && generation_of(r: g1) == 1 && generation_of(r: g2) == 2 && generation_of(r: g3) == 3
+    && (match terminal.state { AttemptTerminal { verdict: v, detail: d } => attempt_verdict_wire(v: v) == "failed" && string_contains(s: d, pattern: "exit 101")  AttemptReserved => false  AttemptLaunching => false })
+    && Filesystem.Read(path: join([root as String, "/", record.reference, ".1"], "")).success
+    && Filesystem.Read(path: join([root as String, "/", record.reference, ".2"], "")).success
+    && string_contains(s: Filesystem.Read(path: join([root as String, "/", record.reference, ".1"], "")).content, pattern: "reserved")
+    && string_contains(s: Filesystem.Read(path: join([root as String, "/", record.reference, ".2"], "")).content, pattern: "launching")
+}
+
+// CRITERION 1: FOUR STATES, AND THE TWO THAT MUST NEVER FREE CAPACITY ARE SEPARATE ARMS CARRYING
+// WHY. Still-running and unknown are not one "not ended" bucket: one waits, the other is
+// investigated, and a reader told only "could not establish" has nothing to act on.
+test fn the_union_keeps_every_arm_either_list_carried_and_each_refuses_as_before() -> Bool {
+  unit_lifecycle_ended(u: UnitTerminatedSuccess { detail: "exit 0" })
+    && unit_lifecycle_ended(u: UnitTerminatedFailure { detail: "exit 101" })
+    && unit_lifecycle_ended(u: UnitTerminatedCauseUnknown { detail: "LoadState=not-found" })
+    && !unit_lifecycle_ended(u: UnitStillRunning { detail: "populated 1" })
+    && !unit_lifecycle_ended(u: UnitLifecycleUnknown { detail: "the manager could not be read" })
+    && string_contains(s: unit_lifecycle_wire(u: UnitTerminatedCauseUnknown { detail: "LoadState=not-found" }), pattern: "cause unknown")
+    && string_contains(s: unit_lifecycle_wire(u: UnitStillRunning { detail: "populated 1" }), pattern: "STILL RUNNING")
+    && string_contains(s: unit_lifecycle_wire(u: UnitLifecycleUnknown { detail: "the manager could not be read" }), pattern: "the manager could not be read")
+}
+
+// THE RECOVERY TRIGGER, AND THE ROW THAT MATTERS IS THE FIRST ONE. A producer that is alive and has
+// simply not reached its launch CAS yet sits in Reserved -- indistinguishable by OBSERVATION from a
+// dead one, because in Reserved there is no unit to observe. So recovery must not be able to enter
+// the race at all inside the window the producer declared; the gate decides who wins a race, and
+// this decides who may start one. Without it an impatient recovery kills a live attempt and the CAS
+// makes that outcome look correct.
+test fn recovery_cannot_fire_inside_the_window_the_producer_declared() -> Bool {
+  let record = record_for(reference: "attempt-trigger")
+  let unobservable = UnitLifecycleUnknown { detail: "no unit exists yet, which is what pre-launch looks like" }
+  let early = recovery_trigger(record: record, lifecycle: unobservable, now: 1999)
+  let at_deadline = recovery_trigger(record: record, lifecycle: unobservable, now: 2000)
+  let late = recovery_trigger(record: record, lifecycle: unobservable, now: 2001)
+  !recovery_trigger_fires(t: early)
+    && recovery_trigger_fires(t: at_deadline)
+    && recovery_trigger_fires(t: late)
+    && (match early { RecoveryTooEarly { deadline: d, now: n } => d == 2000 && n == 1999  _ => false })
+    && string_contains(s: recovery_trigger_wire(t: early), pattern: "not dead")
+}
+
+// AND ONCE LAUNCHED THE TRIGGER IS THE OBSERVATION, WITH CRITERION 4 IN FULL. Only the three ended
+// arms may terminate a launched attempt; still-running and unknown keep the charge, and unknown is
+// the one that matters because it is what a lost launcher, an unreadable manager and a missing
+// cgroup all look like.
+test fn a_launched_attempt_is_recovered_only_on_an_ended_unit() -> Bool {
+  let launched = AttemptRecord {
+    identity: "abcdef0123456789", reference: "attempt-launched",
+    unit: "gunbc-compute-abcdef0123456789-attempt-launched", granted: kibibyte(count: 27262976),
+    opened_at: 1800, launch_deadline: 2000, state: AttemptLaunching,
+  }
+  let terminal = AttemptRecord {
+    identity: "abcdef0123456789", reference: "attempt-done",
+    unit: "gunbc-compute-abcdef0123456789-attempt-done", granted: kibibyte(count: 27262976),
+    opened_at: 1800, launch_deadline: 2000, state: AttemptTerminal { verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "done" },
+  }
+  recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999))
+    && recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedFailure { detail: "exit 101" }, now: 9999))
+    && recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedCauseUnknown { detail: "LoadState=not-found" }, now: 9999))
+    && !recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitStillRunning { detail: "populated 1" }, now: 9999))
+    && !recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitLifecycleUnknown { detail: "the manager could not be read" }, now: 9999))
+    && !recovery_trigger_fires(t: recovery_trigger(record: terminal, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999))
+    && string_contains(s: recovery_trigger_wire(t: recovery_trigger(record: terminal, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999)), pattern: "nothing to recover")
+}
+
+// CRITERION 4: A SLOT THAT CANNOT BE READ IS NOT AN EMPTY SLOT. The distinction has opposite
+// remedies and opposite hazards -- an unreadable slot read as absent lets a producer open a second
+// attempt over a live one, and lets recovery believe there is nothing to terminate.
+test fn an_undecodable_slot_is_unreadable_and_never_absent() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let reference = "attempt-corrupt"
+  let planted = Filesystem.Write(path: join([root as String, "/", reference, ".1"], ""), content: "this is not a json document at all")
+  let reading = attempt_slot_read(root: root, reference: reference as NonEmptyStr)
+  let absent_reading = attempt_slot_read(root: root, reference: "attempt-never-written" as NonEmptyStr)
+  let negative_instant = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-negative\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":-5,\"launch_deadline\":100,\"state\":\"reserved\"}")
+  let negative_grant = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-negative\",\"unit\":\"u\",\"granted_kib\":-1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
+  let well_formed = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-fine\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
+  planted.success
+    && (match reading { AttemptSlotUnreadable { detail: d } => string_contains(s: d, pattern: "cannot decode")  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotAbsent => false })
+    && (match absent_reading { AttemptSlotAbsent => true  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotUnreadable { detail: _ } => false })
+    && (match negative_instant { Absent => true  Present { value: _ } => false })
+    && (match negative_grant { Absent => true  Present { value: _ } => false })
+    && (match well_formed { Present { value: r } => kibibyte_count(k: r.granted) == 1 && r.opened_at == 5  Absent => false })
+}
+
+fn terminal_record_text(verdict_word: String) -> String {
+  join(["{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-verdict\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"terminal:", verdict_word, "\",\"detail\":\"why\"}"], "")
+}
+
+fn verdict_round_trips(v: AttemptVerdict) -> Bool {
+  let written = attempt_record_wire(r: AttemptRecord {
+    identity: "abcdef0123456789", reference: "attempt-verdict", unit: "u", granted: kibibyte(count: 1),
+    opened_at: 5, launch_deadline: 100, state: AttemptTerminal { verdict: v, detail: "why" },
+  })
+  match attempt_record_decode(text: written) {
+    Present { value: r } =>
+      match r.state {
+        AttemptTerminal { verdict: back, detail: d } => attempt_verdict_wire(v: back) == attempt_verdict_wire(v: v) && d == "why"
+        AttemptReserved => false
+        AttemptLaunching => false
+      }
+    Absent => false
+  }
+}
+
+// A TERMINAL VERDICT IS A CLOSED SET AND A WORD OUTSIDE IT IS UNREADABLE, like an unknown state word
+// (review 70244). The positive half writes every verdict the two writers can produce through the
+// real record wire and reads it back; the RED half hands the real decode a misspelling and the word
+// this file itself used to write, "released", which no producer ever wrote -- both must come back
+// unreadable rather than as a terminal state some later reader trusts.
+test fn a_terminal_verdict_outside_the_closed_set_is_unreadable() -> Bool {
+  verdict_round_trips(v: AttemptRecovered)
+    && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedSucceeded })
+    && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedFailed })
+    && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedRefusedByInfrastructure })
+    && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedCancelled })
+    && verdict_round_trips(v: AttemptWorkEnded { ending: WorkEndedOutputMismatch })
+    && (match attempt_record_decode(text: terminal_record_text(verdict_word: "recovered")) { Present { value: _ } => true  Absent => false })
+    && (match attempt_record_decode(text: terminal_record_text(verdict_word: "recoverd")) { Present { value: _ } => false  Absent => true })
+    && (match attempt_record_decode(text: terminal_record_text(verdict_word: "released")) { Present { value: _ } => false  Absent => true })
+    && (match attempt_record_decode(text: terminal_record_text(verdict_word: "")) { Present { value: _ } => false  Absent => true })
+}
+
+// THE SELF-DECLARED BOUND HAS A BOUND, AND AN OVER-LONG DECLARATION REFUSES RATHER THAN BEING
+// CLAMPED. The deadline is declared by the party it protects, so nothing in the gate alone stops a
+// producer declaring an hour -- and the cost of that does not land on the producer, it lands on
+// every other contender as a seat nobody may reclaim. That is DESIGN 5's externalization: an
+// accepted risk re-exported to another principal while the contract keeps its name.
+//
+// CLAMPING WOULD BE THE WIDEN. Admitting the attempt under a bound it did not ask for, and then
+// reclaiming its seat mid-checkout, is a safety limit's clothes on a silent narrowing of somebody
+// else's window. It refuses, and the refusal names both numbers so the author learns the ceiling
+// instead of meeting it as a mysterious reclaim.
+test fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped() -> Bool {
+  let root = fresh_root() as NonEmptyStr
+  let base = record_for(reference: "attempt-greedy")
+  let greedy = AttemptRecord {
+    identity: base.identity, reference: base.reference, unit: base.unit, granted: base.granted,
+    opened_at: 1800, launch_deadline: 1800 + compute_pre_launch_ceiling_seconds + 1, state: AttemptReserved,
+  }
+  let at_ceiling = AttemptRecord {
+    identity: base.identity, reference: "attempt-at-ceiling", unit: base.unit, granted: base.granted,
+    opened_at: 1800, launch_deadline: 1800 + compute_pre_launch_ceiling_seconds, state: AttemptReserved,
+  }
+  let backwards = AttemptRecord {
+    identity: base.identity, reference: "attempt-backwards", unit: base.unit, granted: base.granted,
+    opened_at: 1800, launch_deadline: 1799, state: AttemptReserved,
+  }
+  let refused = attempt_open(root: root, record: greedy)
+  let admitted = attempt_open(root: root, record: at_ceiling)
+  let closed_window = attempt_open(root: root, record: backwards)
+  let greedy_slot = attempt_slot_read(root: root, reference: greedy.reference as NonEmptyStr)
+  !attempt_transition_advanced(t: refused)
+    && attempt_transition_advanced(t: admitted)
+    && !attempt_transition_advanced(t: closed_window)
+    && string_contains(s: attempt_transition_wire(t: refused), pattern: "every other contender")
+    && string_contains(s: attempt_transition_wire(t: refused), pattern: to_string(value: compute_pre_launch_ceiling_seconds))
+    && string_contains(s: attempt_transition_wire(t: closed_window), pattern: "already closed")
+    && (match greedy_slot { AttemptSlotAbsent => true  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotUnreadable { detail: _ } => false })
+}
+
+
+// THE LOSER OF A LAUNCH RACE MAY NOT REPORT THAT IT SETTLED THE SLOT (review 69967). This is the
+// reachable path: compute_run_leased returns its gate from compute_begin_launch, so a producer whose
+// launch CAS lost carries AttemptGateRefused into compute_settle_attempt, and the string that fold
+// produces is written into the operator-facing consumption receipt. Before the third arm existed the
+// refusal mapped to HostRecordWritten and the receipt read `attempt: settled in the attempt slot` for
+// a producer that settled nothing and observed nothing about the slot's final state.
+//
+// THE RACE IS REAL AND NOT DESCRIBED. Two producers open against one store; the winner advances the
+// generation, so the loser's begin_launch is refused BY THE STORE. The claim then asserts three
+// things that a two-armed carrier could not have kept apart: the winner says settled, the loser's
+// wire denies it and says who to believe instead, and the loser is NOT reported as a host-record
+// LOSS -- because it owed no record, and calling it a loss would manufacture an incident for an
+// operator to chase.
+fn layout_at(root: String) -> ComputeLayout {
+  ComputeLayout {
+    root: root, work_dir: root, checkout: root, out_dir: root,
+    leases_dir: root, lease_path: root, store_dir: root, target_dir: root,
+    log_path: root, outcome_path: root, consumption_path: root,
+    attempts_dir: root,
+  }
+}
+
+test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> Bool {
+  let root = fresh_root()
+  let layout = layout_at(root: root)
+  let rec = record_for(reference: "attempt-race")
+  let opened = attempt_open(root: root as NonEmptyStr, record: rec)
+  let generation = match opened {
+    AttemptAdvanced { state: _, generation: g } => g
+    AttemptLostRace { expected: _, observed: _ } => cas_generation_first()
+    AttemptTransitionRefused { detail: _ } => cas_generation_first()
+  }
+  let winner = compute_begin_launch(layout: layout, gate: AttemptGateReady { record: rec, generation: generation })
+  let loser = compute_begin_launch(layout: layout, gate: AttemptGateReady { record: rec, generation: generation })
+  let winner_settled = compute_settle_attempt(layout: layout, gate: winner, verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "the winner closes the slot")
+  let loser_settled = compute_settle_attempt(layout: layout, gate: loser, verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "the loser has no slot to close")
+  attempt_transition_advanced(t: opened)
+    && (match winner { AttemptGateReady { record: _, generation: _ } => true  AttemptGateRefused { detail: _ } => false })
+    && (match loser { AttemptGateReady { record: _, generation: _ } => false  AttemptGateRefused { detail: _ } => true })
+    && (match winner_settled { AttemptSettled => true  AttemptNotSettled { detail: _ } => false  AttemptUnsettleable { detail: _ } => false })
+    && (match loser_settled { AttemptSettled => false  AttemptNotSettled { detail: _ } => false  AttemptUnsettleable { detail: _ } => true })
+    && compute_attempt_settlement_wire(closed: winner_settled) == "settled in the attempt slot"
+    && !string_contains(s: compute_attempt_settlement_wire(closed: loser_settled), pattern: "settled in the attempt slot")
+    && string_contains(s: compute_attempt_settlement_wire(closed: loser_settled), pattern: "NOT SETTLED BY THIS PRODUCER")
+    && host_record_was_written(h: attempt_settlement_host_record(s: loser_settled))
+}
+
+
+// THE CEILING RETRY IS A NEW ATTEMPT AND IT ASKS THE GATE BEFORE IT SPAWNS. The retry's own slot --
+// compute_ceiling_retry_reference of the first attempt's reference -- is already held here by
+// another attempt, so the retry's open must be refused by the store and the retry must return
+// before a checkout or a unit exists. The refusal names the open, the held slot is untouched, and
+// the unused ceiling seat is returned through ComputeNothingToRelease rather than silently. Were
+// the retry route to skip compute_open_attempt, it would reach compute_run_leased and end as a
+// unit's outcome, never as this refusal.
+test fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn() -> Bool {
+  let root = fresh_root()
+  let layout = layout_at(root: root)
+  let retry_reference = compute_ceiling_retry_reference(reference: "attempt-first" as NonEmptyStr)
+  let squatter = record_for(reference: retry_reference as String)
+  let held = attempt_open(root: root as NonEmptyStr, record: squatter)
+  let op = work_default_build()
+  let tree = match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") { Present { value: oid } => oid  Absent => "0000000000000000000000000000000000000000" }
+  let r = compute_run_ceiling_retry(
+    instance: srv1_live_dashboard_instance(), commit: "0000000000000000000000000000000000000000", layout: layout,
+    identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: op, dependency_store: "",
+    grant: work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: kibibyte(count: 27262976)),
+    reference: retry_reference, reservation: ComputeReservationRefused { detail: "fixture: no ledger" })
+  let after = attempt_slot_read(root: root as NonEmptyStr, reference: retry_reference)
+  attempt_transition_advanced(t: held)
+    && (match r {
+      ProvideFresh { outcome: _, document: doc, host_record: _ } =>
+        string_contains(s: doc, pattern: "opening the attempt") && string_contains(s: doc, pattern: "no seat to return")
+      ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false
+    })
+    && generation_of(r: after) == 1
+    && state_word_of(r: after) == attempt_state_wire(s: AttemptReserved)
+}

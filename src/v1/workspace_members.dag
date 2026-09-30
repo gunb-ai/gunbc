@@ -4,9 +4,11 @@ import v1.compiler.stage0_crates {
   stage0_crate_plan_outcome,
   Stage0CratePlanOk,
   Stage0CratePlanRefused,
+  Stage0CratePlanIdentRefused,
   stage0_map_package_dir_refusal_to_boundary,
   stage0_crate_boundary_emit_refusal_message,
-  Stage0CrateSpec
+  Stage0CrateSpec,
+  Stage0CrateBoundaryEmitPackageIdentRefused
 }
 
 fn workspace_members_region_begin_marker() -> String {
@@ -30,6 +32,13 @@ fn stage0_workspace_member_region() -> String {
         "    # REFUSED: ",
         stage0_crate_boundary_emit_refusal_message(
           cause: stage0_map_package_dir_refusal_to_boundary(cause: cause)
+        )
+      )
+    Stage0CratePlanIdentRefused { cause: cause } =>
+      concat(
+        "    # REFUSED: ",
+        stage0_crate_boundary_emit_refusal_message(
+          cause: Stage0CrateBoundaryEmitPackageIdentRefused { cause: cause }
         )
       )
   }

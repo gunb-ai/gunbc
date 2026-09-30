@@ -2,6 +2,7 @@ module gunbc.machine_intake_receipt
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import std.content_hash {
+  content_hash_equal,
   ContentHash,
   ContentHashEqual,
   ContentHashDifferent,
@@ -15,7 +16,7 @@ import std.content_hash {
 }
 import extdeps.toolchain.types { Architecture }
 import gunbc.boot_artifact { BootArtifact }
-import gunbc.machine_intake_subject { IntakeAttemptId, MachineIntakeSubject, QualificationSubject, UnitKey, content_hash_equal }
+import gunbc.machine_intake_subject { IntakeAttemptId, MachineIntakeSubject, QualificationSubject, UnitKey }
 import gunbc.machine_intake_phase { IntakePhase, QualificationRefusalOwner, intake_phase_label, intake_phase_rank, refusal_owner_label }
 
 // THE RECEIPT SPINE (machine-intake ruling 2026-08-29 §12). Every phase emits one normalized

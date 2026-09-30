@@ -132,6 +132,46 @@ data glm_5_3_flash_vllm_integration_commit: NonEmptyStr = "385dce36bcee42309924a
 // consumer is asking for, and a 28 MB coincidence today is not a reason to conflate two questions
 // that will diverge on the next artifact.
 
+// AND IT IS A HYBRID, WHICH IS THE PART THE BOOL COULD NEVER HAVE SAID. The same config declares
+// `linear_attn_config` and a `full_attn_layers` list, and the engine groups the layers as
+// [('MLAAttentionSpec', [0], ...), ('MambaSpec', [2, 3, 4, 5], 'MambaManager', ...)]. MLA is the
+// mechanism on the FULL-ATTENTION layers; the rest are linear-attention layers. A single Bool forces
+// one answer onto a model that has two, so setting the old row to `true` would have replaced a wrong
+// answer with a differently wrong one -- which is why this is decomposed rather than negated.
+//
+// THE SPARSITY IS A SEPARATE AXIS FROM THE LATENCY OF THE MECHANISM, and only the engine's own words
+// establish it: `Sparse MLA impl has no dense-MHA prefill path; using the top-k MQA path only`. That
+// is a property of the realization's kernel, not of the checkpoint, so it is named and not claimed.
+// ONLY THE FULL-ATTENTION ROW IS CARRIED: main deleted this block as unconsumed (#11470), and
+// glm_5_3_flash_mla_pe_dim below now consumes it -- the non-full-attention row and the hybrid flag
+// still have no reader, so they stay deleted.
+type GlmAttentionMechanism
+  = GlmMultiHeadLatentAttention { kv_lora_rank: Nat, qk_nope_head_dim: Nat, qk_rope_head_dim: Nat, v_head_dim: Nat }
+  | GlmLinearAttention
+
+data glm_5_3_flash_full_attention_mechanism: GlmAttentionMechanism = GlmMultiHeadLatentAttention {
+  kv_lora_rank: 512,
+  qk_nope_head_dim: 256,
+  qk_rope_head_dim: 0,
+  v_head_dim: 256,
+}
+
+// THE POSITIONAL-EMBEDDING DIMENSION, SURFACED IN THE KERNEL'S VOCABULARY. The vLLM fp8_ds_mla
+// kernel calls this pe_dim and requires it to be 64 (extdeps.vllm.kv_cache
+// vllm_fp8_ds_mla_required_pe_dim); in the checkpoint's config.json it is qk_rope_head_dim, and on
+// this model it is 0. The accessor keeps the two vocabularies joined to the one authority row
+// above rather than restating the number -- and the consequence is not drawn here: whether a given
+// engine build can serve this model under an fp8 KV cache is the JOIN of this fact with that
+// kernel law, and it is refused where the serving profile is decided
+// (gunbc.spark.serving_arm glm_native_kv_cache_dtype_admission).
+fn glm_5_3_flash_mla_pe_dim() -> Nat {
+  match glm_5_3_flash_full_attention_mechanism {
+    GlmMultiHeadLatentAttention { kv_lora_rank: _, qk_nope_head_dim: _, qk_rope_head_dim: rope, v_head_dim: _ } => rope
+    GlmLinearAttention => 0
+  }
+}
+
+
 data glm_5_3_flash_native_manifest: HubCheckpointManifest = hub_checkpoint_manifest(
   revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
   safetensors_shard_count: 62,

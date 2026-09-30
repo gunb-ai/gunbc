@@ -1,0 +1,116 @@
+module gunbc.auth.approval_assertion_counter
+
+import std.types { NonEmptyStr, String, Int, HttpStatus }
+import std.logic { Bool }
+import gunbc.durable_cas_file_store {
+  OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+  file_compare_and_set, observe_cas_slot_state,
+}
+import std.durable_compare_and_set {
+  cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
+  CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+}
+
+// ── THE APP ATTEST ASSERTION COUNTER, COMMITTED BY ITS CONSUMER ──────────────────────────────
+// extdeps.apple.app_attest carries AuthenticAssertion.counter OUT of the verifier because Apple's
+// step 5 -- the counter exceeds the one last stored for this key -- needs the consumer's state. This
+// module is that consumer state for the device routes: one CAS slot per enrolment holding the last
+// admitted counter, advanced by ONE compare-and-set whose expectation is the generation that was
+// read. So "observed > stored, commit observed, then perform the operation" is atomic: two requests
+// carrying the same captured assertion read the same generation, at most one commit lands, and the
+// loser is refused before its operation runs. A timestamp window alone is not this wall -- a
+// captured read replays inside it -- which is why the skew check in the routes is kept beside this
+// standing rather than in place of it.
+//
+// WHICH ROUTES CONSULT IT is gunbc.auth.approval_device_routes' decision, stated there: the three
+// reads and the push update do; the redemption POST does not, because its own replay wall is the
+// server-minted expiring challenge and the one-decision CAS slot, and Apple's counter is monotonic
+// across every assertion of the key, so a redemption that does not advance the standing leaves the
+// reads' comparison sound.
+//
+// THE SLOT GROWS ONE GENERATION PER ADMITTED ASSERTION, AND THAT IS NO LONGER A LIVENESS BOUND.
+// It was: gunbc.durable_cas_file_store walked a slot linearly from generation 1 and refused past 4096
+// generations, so an enrolment stopped being readable (a 503 here) after ~4096 admitted requests and
+// only re-enrolment recovered it. The fact kept here is ONE value -- last_admitted_counter -- and no
+// consumer reads a superseded generation, so the store now finds the head by galloping and bisecting
+// over the contiguous chain, O(log n) reads, with its typed bound at the generation carrier's Int
+// range rather than at a count a phone reaches. The chain itself stays because it is the store's
+// O_EXCL exclusion mechanism, which is what makes the commit below atomic across racing requests.
+// Storage still grows one small file per admitted assertion; that is disk, not a refusal.
+// test.claim.approval_assertion_counter_wet_witness_test admits past the old bound to keep it so.
+
+data approval_assertion_counter_root: NonEmptyStr = "/var/lib/gunbc/approval-assertion-counters"
+
+type AssertionCounterStanding {
+  enrollment_id: NonEmptyStr
+  last_admitted_counter: Int
+  generation: CasGeneration
+}
+
+type AssertionCounterObservation
+  = AssertionCounterNeverAdmitted
+  | AssertionCounterStood { standing: AssertionCounterStanding }
+  | AssertionCounterUnreadable { detail: NonEmptyStr }
+
+type AssertionCounterAdmission
+  = AssertionCounterAdmitted { enrollment_id: NonEmptyStr, counter: Int }
+  | AssertionCounterReplayed { observed: Int, last_admitted: Int }
+  | AssertionCounterRaced
+  | AssertionCounterStoreRefused { detail: NonEmptyStr }
+
+fn observe_assertion_counter(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> AssertionCounterObservation {
+  match observe_cas_slot_state(root: root, key: enrollment_id) {
+    CasObservedUnreadable { cause: c } => AssertionCounterUnreadable { detail: concat("assertion counter slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
+    CasObservedReadable { readable: r } => match r {
+      CasReadableAbsent => AssertionCounterNeverAdmitted
+      CasReadablePresent { version: v } =>
+        match parse_int(s: v.value as String) {
+          Absent => AssertionCounterUnreadable { detail: "assertion counter slot holds no integer" }
+          Present { value: n } => AssertionCounterStood { standing: AssertionCounterStanding { enrollment_id: enrollment_id, last_admitted_counter: n, generation: v.generation } }
+        }
+    }
+  }
+}
+
+fn assertion_counter_commit(root: NonEmptyStr, enrollment_id: NonEmptyStr, expected: CasExpectation, observed: Int) -> AssertionCounterAdmission {
+  match admit_cas_attempt_for_derived_payload(key: enrollment_id, expected: expected, proposed: to_string(observed) as NonEmptyStr) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => AssertionCounterStoreRefused { detail: "enrolment id is not slot-addressable" }
+    DerivedPayloadAdmitted { verified: v } =>
+      match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v) {
+        CasCommitted { committed: _ } => AssertionCounterAdmitted { enrollment_id: enrollment_id, counter: observed }
+        CasPreconditionFailed { expected: _, observed: _ } => AssertionCounterRaced
+        CasStoreRefused { cause: _ } => AssertionCounterStoreRefused { detail: "assertion counter store refused the publication" }
+      }
+  }
+}
+
+// THE ADMISSION: the observed counter strictly exceeds the standing, and the commit of it is the
+// admission. Equal is a replay (the same assertion again), lower is a replay of an older one.
+fn admit_assertion_counter(root: NonEmptyStr, enrollment_id: NonEmptyStr, observed: Int) -> AssertionCounterAdmission {
+  match observe_assertion_counter(root: root, enrollment_id: enrollment_id) {
+    AssertionCounterUnreadable { detail: d } => AssertionCounterStoreRefused { detail: d }
+    AssertionCounterNeverAdmitted => assertion_counter_commit(root: root, enrollment_id: enrollment_id, expected: ExpectSlotAbsent, observed: observed)
+    AssertionCounterStood { standing: s } =>
+      if observed <= s.last_admitted_counter { AssertionCounterReplayed { observed: observed, last_admitted: s.last_admitted_counter } }
+      else { assertion_counter_commit(root: root, enrollment_id: enrollment_id, expected: ExpectSlotGeneration { generation: s.generation }, observed: observed) }
+  }
+}
+
+fn assertion_counter_refusal_status(a: AssertionCounterAdmission) -> HttpStatus {
+  match a {
+    AssertionCounterAdmitted { enrollment_id: _, counter: _ } => 200
+    AssertionCounterReplayed { observed: _, last_admitted: _ } => 403
+    AssertionCounterRaced => 409
+    AssertionCounterStoreRefused { detail: _ } => 503
+  }
+}
+
+fn assertion_counter_refusal_reason(a: AssertionCounterAdmission) -> String {
+  match a {
+    AssertionCounterAdmitted { enrollment_id: _, counter: _ } => "admitted"
+    AssertionCounterReplayed { observed: o, last_admitted: l } => "the assertion counter " + to_string(o) + " does not exceed the last admitted " + to_string(l) + ": a replay"
+    AssertionCounterRaced => "another assertion for this enrolment was admitted concurrently"
+    AssertionCounterStoreRefused { detail: d } => d as String
+  }
+}

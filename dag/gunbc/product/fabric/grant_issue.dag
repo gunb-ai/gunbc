@@ -25,6 +25,7 @@ import product.fabric.supply {
   offer_fungibility_for,
 }
 import product.fabric.work { Work }
+import product.fabric.selection { SelectedOffer }
 import product.fabric.budget {
   MoneyAccount, MoneyReservationRequest, MoneyRefusal,
   AccountAdvanced, MoneyRefused, reserve_money, fence_admits,
@@ -346,21 +347,8 @@ type GrantIssue<P, Q, S>
 // for the grantee principal, one premise earlier: a caller-selected principal was closed by
 // reading it off the Work, and a caller-selected winning offer is still open.
 //
-// Three residual capabilities, each stated as what must EXIST rather than as an artifact:
-//
-// ONE -- A SEALED SELECTED OFFER. issue_grant takes a SupplierOffer and rechecks fungibility.
-// Fungibility is selection's FIRST screen, not its result: product.fabric.selection folds
-// affordability, commitment, availability, operating, opportunity and delay cost into a ranked
-// decision, and a raw fungible offer is not that decision. So the caller still picks which
-// fungible offer becomes the grant. CandidateOffer IS NOT THAT CAPABILITY, and naming it here would
-// be a trigger satisfied while the defect stood: bind_candidate seals only that an offer and its
-// dispatch observations name the SAME offer, so it constructs a CandidateOffer for ANY
-// identity-consistent candidate. It is the PRE-SELECTION BOUND INPUT to the fold, not its winner.
-// Pricing alone is insufficient for the same reason -- a PricedCandidate proves one candidate was
-// costed, never that it won comparison against the population. TRIGGER: a sealed selected-offer
-// capability constructible ONLY from the successful winner arm of the completed select_supply
-// population fold, SUFFICIENT FOR issuance to have no parameter by which a caller can name an offer
-// the ranking did not choose.
+// Two residual capabilities, each stated as what must EXIST rather than as an artifact. (The
+// first of three, a sealed selected offer, is CLOSED: see the note above issue_grant.)
 //
 // TWO -- A LIFETIME-HELD RESERVATION. The lease and the resource reference are parameters, and
 // GrantIssueRefusal has no stale, expired or superseded arm, so THE GATE'S expired-reservation
@@ -389,29 +377,31 @@ type GrantIssue<P, Q, S>
 // ReservationRefs while the cell actuator needs a slot key, and nothing relates the two. Issuance
 // does not need that relation -- it MINTS the reference rather than interpreting one -- which is
 // why the kernel could land without it.
-// ISSUANCE TAKES THE PERMIT EXPLICITLY, AND DELIBERATELY NOT A CandidateOffer.
+// ISSUANCE TAKES THE RANKING'S WINNER, SO A CALLER CANNOT NAME AN OFFER THE RANKING DID NOT CHOOSE.
 //
-// The provider-use wall put the permit inside the sealed CandidateOffer so selection cannot RANK an
-// offer nobody admitted. Issuance took a bare SupplierOffer, so that wall stood on one path while
-// the other stayed open, and a wall with a way around it is not a wall. The obvious repair is to
-// take a CandidateOffer here - and residual capability ONE above rules that out in advance, for a
-// reason worth restating rather than stepping around: bind_candidate seals only that an offer and
-// its dispatch observations name the SAME offer, so it constructs a CandidateOffer for ANY
-// identity-consistent candidate, which is the PRE-SELECTION BOUND INPUT to the fold and not its
-// winner. Naming it here would be a trigger satisfied while the defect stood - exactly DESIGN
-// section 4b(3)'s rule that a trigger naming less than the capability it restores gets retired
-// while the capability stays dead. Capability ONE is untouched by this change and remains open.
+// Issuance used to take a SupplierOffer and a ProviderUsePermit as two parameters and recheck
+// fungibility, and fungibility is selection's FIRST screen, not its result: the caller still picked
+// which fungible offer became the grant. A CandidateOffer would not have closed that -- bind_candidate
+// seals any identity-consistent admitted offer, which is the PRE-SELECTION input to the fold, and
+// a PricedCandidate proves only that one candidate was costed. What closes it is
+// product.fabric.selection's SelectedOffer: sole_constructor, built only on the winning arm of
+// select_supply's completed population fold, carrying the winning CandidateOffer and therefore its
+// sealed permit. So the offer and the permit are read off one value the ranking produced, and there
+// is no parameter left through which a caller names a loser.
 //
-// So the permit arrives as its own parameter and answers only its own question. It cannot be
-// forged: ProviderUsePermit is sole_constructor, so the only permit a caller can pass is one
-// admit_provider_use actually produced. The two refusals below check that the permit the caller
-// brought is about THIS offer and THIS route, which is the same wiring fault bind_candidate
-// refuses, caught at the second entrance.
+// What that does NOT establish, so no reader budgets for it: that the population select_supply
+// ranked was the whole admissible field. Candidates are select_supply's parameter; completeness of
+// the field is product.fabric.candidate_field's question, a separate capability from "the ranking
+// chose it".
+//
+// The permit is still checked against THIS work and THIS demand, because selection is not told the
+// issuing Work: a winner bound and ranked for work A must not issue for work B. The offer and route
+// arms of permit_standing cannot fire on a sealed candidate -- bind_candidate already refused those
+// -- and are mapped rather than dropped only because permit_standing is one shared coproduct.
 fn issue_grant<P, Q, S>(
   work: Work<P>,
   attempt: Attempt<P>,
-  offer: SupplierOffer<P>,
-  permit: ProviderUsePermit<P>,
+  selected: SelectedOffer<P>,
   outstanding: List<ExecutionGrant<P>>,
   account: MoneyAccount,
   money_request: MoneyReservationRequest,
@@ -432,6 +422,8 @@ fn issue_grant<P, Q, S>(
       refusal: AttemptPrincipalIsNotTheWorkPrincipal { attempt: attempt.id, subject_work: work.id },
     }
   } else {
+    let offer = selected.candidate.offer
+    let permit = selected.candidate.permit
     match permit_standing(
       permit: permit, offer: offer.id, route: offer.route, demand: demand, work: work.id) {
     PermitNamesAnotherOfferThan { permit_names: n } =>

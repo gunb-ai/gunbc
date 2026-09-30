@@ -1,0 +1,56 @@
+module gunbc.rung_drop.namespace_wave_admission_wall_removed
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
+
+// DECLARED 2026-09-19, beside the change that deletes the gate: operator ruling 2026-09-19 removed
+// the namespace-wave-admission phase from required CI outright rather than repairing its
+// bookkeeping. The phase measured closure, subject-membership and occurrence-binding deltas
+// between the merge base and the head and refused unadjudicated motion; the ruling's occasion was
+// the transition-admission roster's debt loop refusing 100% of merge_group runs against a clean
+// floor -- evidence run 35461710214: eight of eight queued compositions refused in roughly three
+// hours on one consumed roster row, a median of 93 minutes of fleet time burned per queued pull
+// request before the refusal, with the required floor itself green (4264/4264). A gate that
+// charges every bystander for one row's debt is the externalized degradation DESIGN section 5
+// names, and repairing the loop was ruled not worth its cost against the coverage the wall bought.
+//
+// THE REDESIGN THAT LANDED FIRST IS NOT RECORDED HERE ANY MORE. It was, in this block, and the
+// same argument was also pasted into docs/design-rung-drops.md by the change that wrote it -- two
+// authorities for one argument, one of which no Accepted program can read. It now lives once, in
+// gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign, which the ledger projection
+// renders beneath this row's declaration. What stays in this block is reasoning about the
+// DECLARATION: why the drop was taken and why it is one row.
+//
+// WHY THIS IS ONE ROW AND NOT THREE. The two earlier partial drops of this wall's arms --
+// gunbc.rung_drop owner_deletion_follow_up_charge_removed and consumed_row_owner_charge_unenforced
+// -- stay as their own records; they declared the lowering of two arms while the wall stood. This
+// row declares the wall itself gone, and its population SUBSUMES theirs: with no executing wall
+// there is no run on which any admission-row charge could fire at all, so both siblings' temporary
+// states collapse into this one. They are not deleted -- they are the record of how the wall was
+// already narrowed before it fell, and this row's trigger subsumes their triggers.
+
+data namespace_wave_admission_wall_removed: RungDrop = RungDrop {
+  identity: "namespace_wave_admission_wall_removed" as NonEmptyStr,
+
+  subject: "the required namespace-wave-admission phase: merge-path adjudication of closure, subject-membership and occurrence-binding deltas between merge base and head",
+
+  declared: "2026-09-19",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: OutsideTheLadder,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "unadjudicated subject-membership deltas between merge base and head: no required run computes or refuses them",
+      "unadjudicated occurrence-binding deltas (a spelling already authored on both sides changing which declarations it admits): no required run computes or refuses them",
+      "the TargetChanged arm's mis-shaped-wave detection: a wave that both requalifies and repoints a reference to a different declaration is no longer caught anywhere on the merge path",
+      "closure deltas, which the wall measured and attributed to their membership generators as blast radius: not computed",
+      "the transition-admission roster's stale/consumed bookkeeping and its deletion-follow-up debt record: moot, because no executing consumer reads the roster -- the roster directory dag/gunbc/namespace/transition_admission/ is deleted with the wall",
+      "the parse-environment-agreement tripwire on the merge path (a base revision read under its own grammar before adjudication): survives only inside the floor's own planning reconstruction (v1_compiler.cli_run.namespace_baseline), which is not a gate over namespace deltas",
+    ],
+    restoration_trigger: "THE CAPABILITY, BOTH HALVES AND NO SMALLER SET. (1) A debt-collection design for transition admissions that never charges bystanders: a row's consumption and deletion debt is adjudicated on the composition of the change that OWNS the row, and a merge_group run over bystanders cannot refuse on a row it did not touch -- the 2026-09-16 arm removals (gunbc#11481) and this deletion are the two measured costs of getting that billing wrong in either direction. (2) A landing-time enforcement run: the adjudication executes on the composition that actually lands (or on the push to the default branch), so a base-consumed row is observed then and not whenever the roster happens to be touched next. Both halves executing with a discriminating RED each, on the real acceptance path, re-enrol the phase and retire this row; the program interlock's NamespaceWaveAdmissionEnrolled milestone and ACT-0's release gate read this row's standing meanwhile, so the waves cannot be released while it stands. Re-adding the deleted arms verbatim does NOT retire this row: that is the loop the operator priced out.",
+  }
+}

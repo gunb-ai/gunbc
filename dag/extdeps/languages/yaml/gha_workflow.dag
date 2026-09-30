@@ -456,20 +456,23 @@ fn job_yaml(job: Job) -> YamlValue {
       concat(
         optional_string_list_kv(key: "needs", items: job.needs),
         concat(
-          optional_int_kv(key: "timeout-minutes", value: job.timeout_minutes),
+          optional_string_kv(key: "environment", value: job.environment),
           concat(
-            optional_string_kv(key: "if", value: job.if_condition),
+            optional_int_kv(key: "timeout-minutes", value: job.timeout_minutes),
             concat(
-              optional_job_permissions_kv(perms: job.permissions),
+              optional_string_kv(key: "if", value: job.if_condition),
               concat(
-                optional_job_concurrency_kv(spec: job.concurrency),
+                optional_job_permissions_kv(perms: job.permissions),
                 concat(
-                  optional_job_outputs_kv(entries: job.outputs),
+                  optional_job_concurrency_kv(spec: job.concurrency),
                   concat(
-                    [kv(key: "steps", value: steps_yaml(steps: job.steps))],
+                    optional_job_outputs_kv(entries: job.outputs),
                     concat(
-                      optional_env_mapping(entries: job.env),
-                      optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
+                      [kv(key: "steps", value: steps_yaml(steps: job.steps))],
+                      concat(
+                        optional_env_mapping(entries: job.env),
+                        optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
+                      )
                     )
                   )
                 )

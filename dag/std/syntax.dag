@@ -110,13 +110,15 @@ type SyntaxSpec {
 // frontier here: every producer was the head's own `dag_parse_environment`, no caller read a revision
 // under another revision's grammar, and the trigger was named as the base environment loader landing
 // with a cross-revision read green by execution and a discriminating red when the head's environment
-// is substituted. THAT TRIGGER HAS FIRED. `v1_compiler.namespace_wave_admission`
+// is substituted. THAT TRIGGER HAS FIRED. `v1_compiler.namespace_baseline`
 // `load_parse_environment_at` reads this value out of the git object store at a base revision,
 // `environment_agreement` decides by blob identity over the declaring closure whether the base and
-// head grammars differ, and `run_wave_admission_between` reads the base under the base's own
-// environment when they do. The enrolled evidence is the grammar-differs witness
-// (src/v1/stage0/tests/wave_admission_grammar_differs.rs): green by execution over a base/head pair
-// whose grammars differ, red when the head's environment is substituted for the base's. The climb
+// head grammars differ, and `reconstruct_base_index` reads the base under the base's own
+// environment when they do. (It was the deleted wave-admission wall's loader until 2026-09-19;
+// the floor's base-side reconstruction is the consumer that survives.) The enrolled evidence is the
+// decode roundtrip witness (src/v1/stage0/tests/parse_environment_decode_roundtrip.rs): green by
+// execution over a committed revision whose environment diverges from the worktree's, red when the
+// loader reads the worktree instead of the revision. The climb
 // is recorded on gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change, and
 // this sentence does not restate its rung -- the row does.
 //
@@ -124,9 +126,9 @@ type SyntaxSpec {
 // whose grammar differs from the head's is readable so long as this type's own declaring closure --
 // thirteen modules at this writing, asked of the resolver rather than listed -- is itself readable
 // under the head's grammar. A grammar change that reaches into that closure is the compiler's own
-// bootstrap boundary and refuses as `ClosureNotEvaluable`. The residual trigger is the wave phase
-// in .dag, where a revision-relative read is a fold over this value with no head-built index in the
-// path.
+// bootstrap boundary and refuses as `ClosureNotEvaluable`. The residual trigger is a
+// revision-relative read in .dag, where a read is a fold over this value with no head-built index
+// in the path.
 type ParseEnvironment {
   syntax_spec: SyntaxSpec
   non_name_keywords: Map<String, Bool>

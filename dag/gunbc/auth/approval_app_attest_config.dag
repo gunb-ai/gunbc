@@ -1,0 +1,54 @@
+module gunbc.auth.approval_app_attest_config
+
+import std.types { NonEmptyStr, Int, List }
+import extdeps.apple.app_attest { AppIdPrefix, AppAttestEnvironment, AppAttestDevelopment, app_attest_app_id }
+
+// THE FACTS THE APP ATTEST VERIFIER IS CONFIGURED WITH, and who owns each. The bundle identifier
+// is the app's (apps/approve-ios/project.yml PRODUCT_BUNDLE_IDENTIFIER). The App ID prefix is
+// read from the Identifier entry of the operator's Apple Developer account -- its own fact, not a
+// second name for the team id (extdeps.apple.app_attest AppIdPrefix). The environment is decided
+// by how the build reaches the phone: TestFlight and App Store builds attest in production. The
+// admitted launch categories are Apple's validation categories for those distributions (2 =
+// TestFlight, 4 = App Store; 3 = a development signing identity is admitted so the operator's
+// own Xcode build can enrol during bring-up), and the bundle version is the one the operator
+// distributed.
+//
+// THE OPERATOR SUPPLIED THE PREFIX (chat, 2026-09-22): the Team ID 72HGYAMBVQ shown under
+// Membership details, which Apple uses as the App ID prefix for an account's own identifiers. The
+// bring-up build reaches the phone from the operator's Xcode over a cable, so it attests in the
+// development environment with a development signing identity (category 3); TestFlight (2) and
+// App Store (4) stay admitted for the day the distribution changes, and the bundle version is the
+// MARKETING_VERSION apps/approve-ios/project.yml sets. A wrong prefix does not fabricate: every
+// attestation refuses AttestationAppIdMismatch by name. The row below is the one place that changes.
+type AppAttestVerifierConfig
+  = AppAttestVerifierConfigured {
+      app_id_prefix: AppIdPrefix
+      bundle_id: NonEmptyStr
+      environment: AppAttestEnvironment
+      admitted_validation_categories: List<Int>
+      expected_bundle_version: NonEmptyStr
+    }
+  | AppAttestVerifierAwaitingOperator { missing: NonEmptyStr }
+
+data approval_app_bundle_id: NonEmptyStr = "ai.gunb.approve"
+
+data approval_app_attest_verifier: AppAttestVerifierConfig = AppAttestVerifierConfigured {
+  app_id_prefix: "72HGYAMBVQ" as AppIdPrefix,
+  bundle_id: approval_app_bundle_id,
+  environment: AppAttestDevelopment,
+  admitted_validation_categories: [2, 3, 4],
+  expected_bundle_version: approval_app_bundle_version,
+}
+
+// CFBundleShortVersionString of the operator's build. gunbc.approve_ios_project reads this row as the
+// Approve target's MARKETING_VERSION (and approval_app_bundle_id as PRODUCT_BUNDLE_IDENTIFIER), so
+// apps/approve-ios/project.yml is derived from it and cannot drift from the verifier.
+data approval_app_bundle_version: NonEmptyStr = "1"
+
+fn approval_app_attest_app_id(c: AppAttestVerifierConfig) -> NonEmptyStr? {
+  match c {
+    AppAttestVerifierAwaitingOperator { missing: _ } => none
+    AppAttestVerifierConfigured { app_id_prefix: p, bundle_id: b, environment: _, admitted_validation_categories: _, expected_bundle_version: _ } =>
+      Present { value: app_attest_app_id(prefix: p, bundle_id: b) }
+  }
+}

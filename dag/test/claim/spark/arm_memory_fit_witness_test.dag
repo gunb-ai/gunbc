@@ -13,7 +13,7 @@ import std.measure {
 import std.interval { closed_interval, IntervalReady, IntervalRefused }
 import extdeps.vllm.server { vllm_source_revision_read }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
-import extdeps.vllm.engine_args { PrefixCachingExplicit }
+import extdeps.vllm.engine_args { PrefixCachingExplicit, KvFp8, EngramConfigOmitted }
 import extdeps.vllm.kv_layout {
   ResolvedKvLayout, resolved_kv_layout, KvGroupLayout, FullAttention,
   cold_admission_bytes, AdmissionByteCostBytes, AdmissionByteCostUnestablished,
@@ -35,6 +35,7 @@ import gunbc.spark.pair_serving_capacity_floor {
   spark_pair_serving_minimum_cold_sessions, minimum_cold_sessions_intent,
 }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
+import gunbc.spark.glm_group_b_launch { glm_group_b_sparse_indexer_max_logits }
 import gunbc.spark.arm_memory_fit {
   ArmMemoryComponent, ArmComponentBound, ArmRankDemand, ArmSupplyDeductions,
   ArmPoolBound, ArmPoolBounded, ArmPoolUnbounded,
@@ -243,10 +244,11 @@ fn fx_derived_profile() -> ServingLaunchProfile {
   profile_for_intent(
     intent: fx_shrunk_intent(),
     decided_gpu_memory_basis_points: basis_point(count: 8400),
-    kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+    kv_cache_dtype: KvFp8,
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
-    prefix_caching: PrefixCachingExplicit { enabled: true })
+    prefix_caching: PrefixCachingExplicit { enabled: true },
+    engram: EngramConfigOmitted)
 }
 
 // ONE MEASURED RANK ROW: per-rank checkpoint placement measured even (the ceiling is the split
@@ -1356,10 +1358,11 @@ fn fx_wet_profile() -> ServingLaunchProfile {
   profile_for_intent(
     intent: fx_wet_intent(),
     decided_gpu_memory_basis_points: basis_point(count: 8567),
-    kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+    kv_cache_dtype: KvFp8,
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
-    prefix_caching: PrefixCachingExplicit { enabled: true })
+    prefix_caching: PrefixCachingExplicit { enabled: true },
+    engram: EngramConfigOmitted)
 }
 
 fn fx_wet_join(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
@@ -2015,10 +2018,11 @@ fn fx_262k_subject() -> MemoryProofSubject? {
         profile: profile_for_intent(
           intent: intent,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
-          kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+          kv_cache_dtype: KvFp8,
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
-          prefix_caching: PrefixCachingExplicit { enabled: true }),
+          prefix_caching: PrefixCachingExplicit { enabled: true },
+          engram: EngramConfigOmitted),
         launch_generation: "group-b/future-262k" as NonEmptyStr) {
         MemoryProofSubjectReady { subject: s } => Present { value: s }
         MemoryProofSubjectRefused { cause: _ } => none
@@ -2162,6 +2166,7 @@ fn fx_prefill_shape() -> PrefillTransientShape {
     index_kpool: 4,
     attention_heads_per_rank: 16,
     kv_lora_rank: 512,
+    indexer_max_logits: glm_group_b_sparse_indexer_max_logits,
   }
 }
 
@@ -2303,6 +2308,7 @@ test fn w_the_prefill_derived_terms_move_with_batch_and_length() -> Bool {
     index_kpool: 4,
     attention_heads_per_rank: 16,
     kv_lora_rank: 512,
+    indexer_max_logits: glm_group_b_sparse_indexer_max_logits,
   }
   let wider = PrefillTransientShape {
     length: token_count(count: 262144),
@@ -2313,6 +2319,7 @@ test fn w_the_prefill_derived_terms_move_with_batch_and_length() -> Bool {
     index_kpool: 4,
     attention_heads_per_rank: 16,
     kv_lora_rank: 512,
+    indexer_max_logits: glm_group_b_sparse_indexer_max_logits,
   }
   let longer_terms = prefill_transient_demand_terms(shape: longer)
   let wider_terms = prefill_transient_demand_terms(shape: wider)
@@ -2395,10 +2402,11 @@ fn fx_launch_wall_profile() -> ServingLaunchProfile {
   profile_for_intent(
     intent: fx_launch_wall_intent(),
     decided_gpu_memory_basis_points: basis_point(count: 8567),
-    kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+    kv_cache_dtype: KvFp8,
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
-    prefix_caching: PrefixCachingExplicit { enabled: true })
+    prefix_caching: PrefixCachingExplicit { enabled: true },
+    engram: EngramConfigOmitted)
 }
 
 // THE SUBJECT MINT: the launch wall's own ranks and deductions, the rounded pool, the sealed

@@ -995,8 +995,25 @@ impl Value {
     }
 }
 
+// TEST-ONLY WORK OBSERVATION: how many times structural equality ran. The memo's verification
+// equality (`value_fast_eq`) is a cost contract, not only a result contract -- a top-level-only
+// shortcut followed by `==` returns the same answers while walking every shared part -- so its
+// control must observe the WORK, and this counter is that observation. Compiled only under
+// cfg(test): production equality pays nothing.
+#[cfg(test)]
+thread_local! {
+    static VALUE_EQ_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn value_eq_calls() -> u64 {
+    VALUE_EQ_CALLS.with(|c| c.get())
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
+        #[cfg(test)]
+        VALUE_EQ_CALLS.with(|c| c.set(c.get() + 1));
         match (self, other) {
             (Value::Null, Value::Null) => true,
             (Value::Bool(a), Value::Bool(b)) => a == b,
@@ -1222,6 +1239,26 @@ pub enum InterpError {
         limit_bytes: usize,
         argv0: String,
     },
+    /// The shell transport could not spawn argv[0] (absent, not executable): no process ran, so
+    /// no exit status exists. Raised only for an operation that declares no
+    /// `extdeps.transports.shell` `ShellOutcome` field; one that declares it receives
+    /// `ShellSpawnRefused` as a value instead and the evaluation continues.
+    ShellSpawnRefused {
+        argv0: String,
+        cause: String,
+    },
+    /// An operation issued while a modeled operation realization is active that the realization
+    /// does not answer: uncovered, bound to another handler, unbound, bound twice, a harness fault,
+    /// or a frame admitted outside Hermetic execution. No real transport, fixture or mock is tried.
+    ModeledOperationRefused {
+        operation: String,
+        cause: String,
+    },
+    /// A modeled realization reported that the worker died after this operation and before any
+    /// reply. The evaluation stops here; the frame returns `WitnessInterrupted`.
+    ModeledWorkerKilled {
+        operation: String,
+    },
     /// A host-tool program could not be resolved to an existing executable path.
     /// `probed` carries every candidate location examined so the refusal is located
     /// and countable by class rather than by grepping a format string.
@@ -1407,6 +1444,21 @@ impl fmt::Display for InterpError {
                 f,
                 "argv exceeds host arg limit: '{}' invocation carries a {}-byte argument > {}-byte host MAX_ARG_STRLEN — route large payloads through stdin, not argv (Linux execve(2) E2BIG; extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen; DESIGN §5 typed refusal in place of an opaque os error 7)",
                 argv0, actual_bytes, limit_bytes
+            ),
+            InterpError::ModeledOperationRefused { operation, cause } => write!(
+                f,
+                "modeled operation realization refused {}: {} (no real transport, recorded fixture or published mock was consulted)",
+                operation, cause
+            ),
+            InterpError::ModeledWorkerKilled { operation } => write!(
+                f,
+                "modeled operation realization: the worker was killed after {} and before any reply",
+                operation
+            ),
+            InterpError::ShellSpawnRefused { argv0, cause } => write!(
+                f,
+                "shell spawn refused: '{}' could not be executed: {} (no process ran, so no exit status exists; declare an extdeps.transports.shell ShellOutcome output field to receive this as ShellSpawnRefused)",
+                argv0, cause
             ),
             InterpError::HostToolUnresolved { name, probed } => write!(
                 f,
@@ -5947,7 +5999,19 @@ fn call_function(
     });
     let result = call_function_guarded(ctx, fn_node, args, env, depth);
     CALL_DEPTH.with(|d| d.set(d.get() - 1));
-    result
+    // A located TypeError carries its raise site but no route back up the call chain, which made
+    // a production-path defect (harness_probe_cli, 2026-09-18) expensive to attribute. Append each
+    // frame as the error unwinds, bounded so a deep chain cannot grow the message without limit.
+    match result {
+        Err(InterpError::TypeError { msg })
+            if msg.contains(" [at ") && msg.matches(" <- ").count() < 12 =>
+        {
+            Err(InterpError::TypeError {
+                msg: format!("{} <- {}", msg, fn_node.name),
+            })
+        }
+        other => other,
+    }
 }
 
 fn call_function_guarded(
@@ -6632,10 +6696,47 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
+        // WHICH OPERANDS ARE EVALUATED IS READ FROM THE DECLARED ROW, NOT DECIDED HERE.
+        //
+        // This arm used to evaluate BOTH operands through `?` and then dispatch, which made the
+        // interpreter strict for every operator while the Rust emitter rendered `&&`, `||` and
+        // `??` as host forms that demand the right operand only conditionally. One accepted
+        // program, two behaviours: `false && Filesystem.Write(..)` wrote the file under this arm
+        // and not under the emitted one, and `n != 0 && (100 / n) > 1` at n = 0 refused here and
+        // returned false there. The class is gunbc.recurring_failure_mode
+        // realization_arms_diverge_on_whether_the_program_refuses, whose next-rung trigger named
+        // the capability this now consumes: std.operator_realization operand_demand, one row that
+        // THIS ARM AND THE RUST EMITTER read -- those two, and not every realization of BinOp. The
+        // Rust emitter derives its rendering from the same fold (v1.compiler.emit_rust
+        // emit_rust_demanded_host_bin_op), so neither of those two arms carries an evaluation-order
+        // decision of its own. The Go, Python and dag emission paths still reach BinOp through
+        // v1.compiler.emit emit_default_bin_op, which consults no demand row; that gap and its
+        // trigger are recorded on the failure-mode row rather than implied away here.
+        //
+        // The row is derived from std.logic, not invented: classical_and is
+        // `match a { False => False  True => b }`, so the right operand is demanded only under one
+        // left value, and the interpreter was the arm disagreeing with the corpus's own logic
+        // authority.
         ExprData::ExprBinOp { op, .. } => {
             let left = eval_expr(&binop_left(node.clone()), env, ctx)?;
-            let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
-            eval_binop(&op, left, right, ctx)
+            match &*crate::std_operator_realization::operand_demand(op.clone()) {
+                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIs {
+                    deciding,
+                } if left.is_truthy() != *deciding => {
+                    // `a && b` with a false, or `a || b` with a true: the result IS the left
+                    // value's truth and the right operand is never asked for.
+                    Ok(Value::Bool(left.is_truthy()))
+                }
+                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent
+                    if !matches!(left, Value::Null) =>
+                {
+                    Ok(left)
+                }
+                _ => {
+                    let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
+                    eval_binop(&op, left, right, ctx)
+                }
+            }
         }
 
         ExprData::ExprUnaryOp { op } => {
@@ -7514,12 +7615,55 @@ fn eval_block(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
 }
 
 fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let scrutinee_val = eval_expr(&match_scrutinee(node.clone()), env, ctx)?;
+    let scrutinee = match_scrutinee(node.clone());
+    let scrutinee_val = eval_expr(&scrutinee, env, ctx)?;
     let arms = match_arm_nodes(node.clone());
+    // WHICH arms of a match over an optional see the PRESENT value is one checker decision,
+    // `v1.compiler.infer` `optional_match_arm_sees_present_value` (a bare binding after an
+    // unguarded Absent arm; a non-null literal arm), and every Rust match rendering reads the same
+    // predicate. The interpreter reads it too and decides nothing of its own. What is interpreter
+    // specific is only HOW the payload is reached: an optional's value has two runtime
+    // representations -- a bare value (host builtins) or an `Optional.Present` variant (an authored
+    // `Present { value }`) -- and `optional_present_payload` peels either.
+    // An untyped scrutinee cannot be asked the predicate. That is harmless while its value is a
+    // bare value (every arm then sees the same value either way) and a silent wrong answer when it
+    // is an `Optional.Present` variant (the literal arm would miss, the binding would hold the
+    // variant), so that one case refuses, located, rather than falling back (DESIGN section 5).
+    let scrutinee_type = match scrutinee.inferred.as_ref() {
+        Some(_) => Some(crate::v1_compiler_infer_types::resolved_type(
+            scrutinee.clone(),
+        )),
+        None if is_optional_variant(&scrutinee_val, ctx) => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "match at {}:{}: the scrutinee is an Optional variant but carries no inferred type, so which arms see its present value (v1.compiler.infer optional_match_arm_sees_present_value) cannot be read",
+                    node.span.file, node.span.start
+                ),
+            });
+        }
+        None => None,
+    };
+    let absent_arm_index = crate::v1_compiler_infer::match_unguarded_absent_arm_index(arms.clone());
 
-    for arm in arms.iter() {
+    for (arm_index, arm) in arms.iter().enumerate() {
         let pattern = arm_pattern(arm.clone());
-        if let Some(bindings) = match_pattern(&pattern, &scrutinee_val, ctx) {
+        let sees_present_value = scrutinee_type.as_ref().is_some_and(|ty| {
+            crate::v1_compiler_infer::optional_match_arm_sees_present_value(
+                ty.clone(),
+                pattern.clone(),
+                arm_index as i64,
+                absent_arm_index,
+            )
+        });
+        let arm_value = if sees_present_value {
+            match optional_present_payload(&scrutinee_val, ctx)? {
+                Some(payload) => payload,
+                None => continue,
+            }
+        } else {
+            scrutinee_val.clone()
+        };
+        if let Some(bindings) = match_pattern(&pattern, &arm_value, ctx) {
             let arm_env = Env::extend(env, bindings);
             return eval_expr(&arm_body(arm.clone()), &arm_env, ctx);
         }
@@ -7528,6 +7672,35 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     Err(InterpError::PatternMatchFailure {
         value: format!("{}", scrutinee_val),
     })
+}
+
+fn is_optional_variant(value: &Value, ctx: &InterpContext) -> bool {
+    matches!(value, Value::Variant { type_name, .. } if *type_name == ctx.sym("Optional"))
+}
+
+/// The present payload of an optional value in either runtime representation, `None` when it
+/// is absent (`Null` or `Optional.Absent`). An `Optional.Present` without its `value` field is
+/// malformed and refuses rather than reading as absent.
+fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if is_optional_variant(value, ctx) => {
+            if *variant_name != ctx.sym("Present") {
+                return Ok(None);
+            }
+            match fields_get(fields, ctx.sym("value")) {
+                Some(payload) => Ok(Some(payload.clone())),
+                None => Err(InterpError::TypeError {
+                    msg: format!("malformed Optional.Present without a `value` field: {value}"),
+                }),
+            }
+        }
+        other => Ok(Some(other.clone())),
+    }
 }
 
 fn char_value(c: char) -> Value {
@@ -7618,6 +7791,9 @@ impl Drop for WitnessFramePop {
         WITNESS_EVALUATION_FRAMES.with(|frames| {
             let _ = frames.borrow_mut().pop();
         });
+        MODELED_REALIZATION_SLOTS.with(|slots| {
+            let _ = slots.borrow_mut().pop();
+        });
     }
 }
 
@@ -7662,21 +7838,617 @@ fn witness_evaluation_diagnostic_value(
     }
 }
 
-fn witness_evaluation_variant(
-    ctx: &InterpContext,
-    variant: &str,
-    field: &str,
-    value: Value,
-) -> Value {
-    Value::Variant {
-        type_name: ctx.sym("WitnessEvaluation"),
-        variant_name: ctx.sym(variant),
-        fields: Rc::new(vec![(ctx.sym(field), value)]),
+fn current_witness_evaluation_frame() -> Option<Value> {
+    WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow().last().cloned())
+}
+
+// HAND-RUST GATE, seed-retained, admitted by `gunbc.modeled_operation_realization_seed_growth`
+// `modeled_operation_realization_seed_growth_justification` (gunbc#12486, #12423 decision
+// 5858742863). This is the seed realization of a .dag contract: selection
+// (`operation_handler_selection`), duplicate admission, the virtual clock and every scenario
+// transition are .dag; this code keeps a state value, a clock value and the dispatch log, and
+// dispatches. Lane: ROADMAP `v1-materialization-kernel` (rn_53JPH6BB7G588K7DMZNWM0E3AS), with the
+// witness-frame stack above. Deletion condition, checkable by execution: the emitted runtime realizes
+// the evaluation frame and its modeled realization, and `test.claim.operation_realization_witness_test`
+// stays green without this code.
+/// The dynamic-extent state of one witness frame's modeled operation realization. The model is
+/// `.dag` (`v2.std.operation_realization`): this slot only holds its current state, the virtual
+/// clock and the dispatch log the dispatcher writes. It is pushed and popped with its frame, so a
+/// nested frame has its own slot and an outer slot is untouched by an inner scenario.
+struct ModeledRealizationSlot {
+    envelope: Value,
+    realization: Value,
+    identity: String,
+    state: Value,
+    /// The virtual clock, an opaque `std.measure` `Second`: the dispatcher never reads its
+    /// representation, it only passes it to `virtual_clock_after`.
+    now: Value,
+    route: Vec<Value>,
+    interrupted: Option<Value>,
+}
+
+thread_local! {
+    static MODELED_REALIZATION_SLOTS: RefCell<Vec<Option<ModeledRealizationSlot>>> =
+        const { RefCell::new(Vec::new()) };
+    /// Nonzero while a modeled handler or advance function is being applied.
+    static MODELED_HANDLER_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+struct ModeledHandlerScope;
+
+impl ModeledHandlerScope {
+    fn enter() -> Self {
+        MODELED_HANDLER_DEPTH.with(|d| d.set(d.get() + 1));
+        ModeledHandlerScope
     }
 }
 
-fn current_witness_evaluation_frame() -> Option<Value> {
-    WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow().last().cloned())
+impl Drop for ModeledHandlerScope {
+    fn drop(&mut self) {
+        MODELED_HANDLER_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+    }
+}
+
+fn apply_modeled_handler(
+    closure: &Value,
+    args: &[Value],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let _scope = ModeledHandlerScope::enter();
+    apply_closure(closure, args, env, ctx)
+}
+
+fn modeled_refused(operation: &str, cause: impl Into<String>) -> InterpError {
+    InterpError::ModeledOperationRefused {
+        operation: operation.to_string(),
+        cause: cause.into(),
+    }
+}
+
+fn record_field(ctx: &InterpContext, value: &Value, name: &str) -> Option<Value> {
+    match value {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+            ctx.field(fields, name).cloned()
+        }
+        _ => None,
+    }
+}
+
+fn variant_parts(ctx: &InterpContext, value: &Value) -> Option<(String, Rc<Vec<(Symbol, Value)>>)> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => Some((ctx.resolve(*variant_name).to_string(), fields.clone())),
+        _ => None,
+    }
+}
+
+fn record_value(ctx: &InterpContext, type_name: &str, fields: Vec<(&str, Value)>) -> Value {
+    Value::Record {
+        type_name: ctx.sym(type_name),
+        fields: Rc::new(sorted_fields(
+            fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+        )),
+    }
+}
+
+fn variant_value(
+    ctx: &InterpContext,
+    type_name: &str,
+    variant: &str,
+    fields: Vec<(&str, Value)>,
+) -> Value {
+    Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(sorted_fields(
+            fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+        )),
+    }
+}
+
+/// Admits a frame's realization before its subject runs. Refuses outside Hermetic execution (the
+/// realization is the DRY arm; a Wet or Record run -- including any physical qualification -- can
+/// never be answered by a model), a realization binding one identity twice, and a binding whose
+/// identity resolves to no declared operation.
+fn admit_modeled_realization(
+    frame: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Option<ModeledRealizationSlot>> {
+    // FRAME COMPOSITION: while a modeled realization is active, NO further witness frame may open
+    // inside it -- not one without a realization, not one with another realization, not one with
+    // the same. Any nested frame would sit above the active slot and could only weaken it (a
+    // realization-less frame would let the dispatcher fall through to ordinary dispatch while the
+    // parent is still in force). The refusal is independent of what the nested frame carries.
+    let enclosing_modeled =
+        MODELED_REALIZATION_SLOTS.with(|slots| slots.borrow().iter().any(|slot| slot.is_some()));
+    if enclosing_modeled {
+        return Err(modeled_refused(
+            "(frame)",
+            "a witness frame cannot open while a modeled operation realization is active; nested frames are refused whatever they carry",
+        ));
+    }
+    let realization = match record_field(ctx, frame, "realization") {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::Variant {
+            variant_name,
+            fields,
+            ..
+        }) if ctx.resolve(variant_name) == "Present" => {
+            ctx.field(&fields, "value").cloned().ok_or_else(|| {
+                modeled_refused(
+                    "(frame)",
+                    "the frame's realization is Present with no value",
+                )
+            })?
+        }
+        Some(Value::Variant { variant_name, .. }) if ctx.resolve(variant_name) == "Absent" => {
+            return Ok(None)
+        }
+        Some(other) => other,
+    };
+    let mode = variant_value(
+        ctx,
+        "ExecutionMode",
+        match ctx.execution_mode {
+            ExecutionMode::Hermetic => "Hermetic",
+            ExecutionMode::Wet => "Wet",
+            ExecutionMode::Record => "Record",
+        },
+        vec![],
+    );
+    let admitted = run_in_context_with_args(
+        ctx,
+        "modeled_realization_admitted_in",
+        &[(Some("mode".to_string()), mode)],
+        false,
+    )?;
+    if !matches!(admitted, Value::Bool(true)) {
+        return Err(modeled_refused(
+            "(frame)",
+            "a modeled operation realization is admitted only under Hermetic execution; this run dispatches real effects",
+        ));
+    }
+    let envelope = record_field(ctx, frame, "envelope")
+        .ok_or_else(|| modeled_refused("(frame)", "the frame carries no envelope"))?;
+    let identity = match record_field(ctx, &realization, "identity") {
+        Some(Value::Str(s)) => s.to_string(),
+        _ => {
+            return Err(modeled_refused(
+                "(frame)",
+                "the realization carries no identity",
+            ))
+        }
+    };
+    let duplicate = run_in_context_with_args(
+        ctx,
+        "operation_realization_duplicate",
+        &[(Some("realization".to_string()), realization.clone())],
+        false,
+    )?;
+    if let Some((name, fields)) = variant_parts(ctx, &duplicate) {
+        if name == "Present" {
+            let at = ctx
+                .field(&fields, "value")
+                .and_then(|b| record_field(ctx, b, "at"))
+                .map(|at| format!("{at}"))
+                .unwrap_or_default();
+            return Err(modeled_refused(
+                "(frame)",
+                format!("the realization binds one operation identity twice: {at}"),
+            ));
+        }
+    }
+    let bindings = match record_field(ctx, &realization, "bindings") {
+        Some(Value::List(items)) => items,
+        _ => {
+            return Err(modeled_refused(
+                "(frame)",
+                "the realization carries no binding list",
+            ))
+        }
+    };
+    for binding in bindings.iter() {
+        let at = record_field(ctx, binding, "at")
+            .ok_or_else(|| modeled_refused("(frame)", "a binding carries no operation identity"))?;
+        let part = |name: &str| match record_field(ctx, &at, name) {
+            Some(Value::Str(s)) => s.to_string(),
+            _ => String::new(),
+        };
+        let (path, service, operation) = (part("path"), part("service"), part("operation"));
+        let resolves = ctx
+            .indexes
+            .service_ops
+            .get(&format!("{service}.{operation}"))
+            .is_some_and(|(_, op_node)| op_node.span.file.as_ref() as &str == path.as_str());
+        if !resolves {
+            return Err(modeled_refused(
+                "(frame)",
+                format!(
+                    "binding {service}.{operation} declared at {path} resolves to no declared operation with that identity"
+                ),
+            ));
+        }
+    }
+    let initial = record_field(ctx, &realization, "initial")
+        .ok_or_else(|| modeled_refused("(frame)", "the realization carries no initial state"))?;
+    // The realization's clock starts at its declared epoch -- the origin for a fresh scenario, the
+    // interrupted attempt's clock (plus any absence the supervisor declares) for a resume -- and
+    // every event due by then fires before the subject issues anything.
+    let now = record_field(ctx, &realization, "epoch")
+        .ok_or_else(|| modeled_refused("(frame)", "the realization carries no epoch"))?;
+    let advance = record_field(ctx, &realization, "advance")
+        .ok_or_else(|| modeled_refused("(frame)", "the realization carries no advance function"))?;
+    let state = apply_modeled_handler(&advance, &[initial, now.clone()], env, ctx)?;
+    Ok(Some(ModeledRealizationSlot {
+        envelope,
+        realization,
+        identity,
+        state,
+        now,
+        route: Vec::new(),
+        interrupted: None,
+    }))
+}
+
+fn op_declared_readonly(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
+    op_node.properties.iter().any(|p| {
+        matches!(
+            crate::v1_std_core::field_init_operation_modifier(p.clone(), ctx.si()),
+            Some(crate::v1_std_core::OperationModifier::Readonly)
+        )
+    })
+}
+
+/// The BoundOperationInvocation (`v2.std.operation_argv`) of one dispatched operation: its resolved
+/// identity -- declaring file, service, operation -- and each declared input by name.
+fn bound_operation_invocation_value(
+    service_name: &str,
+    op_name: &str,
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let at = operation_ref_value(&op_node.span.file, service_name, op_name, ctx);
+    let mut bindings = Vec::new();
+    for p in op_node.params.iter() {
+        let name = param_node_name_at(p.clone(), ctx.si());
+        let Some(value) = param_env.lookup(ctx.sym(&name)) else {
+            continue;
+        };
+        let bound = match value {
+            Value::List(items) => {
+                let texts: Vec<Value> = items.iter().map(|v| str_value(render_input(v))).collect();
+                variant_value(
+                    ctx,
+                    "OperationInputValue",
+                    "InputTextList",
+                    vec![("items", list_value(texts))],
+                )
+            }
+            other => variant_value(
+                ctx,
+                "OperationInputValue",
+                "InputText",
+                vec![("text", str_value(render_input(&other)))],
+            ),
+        };
+        bindings.push(record_value(
+            ctx,
+            "OperationInputBinding",
+            vec![("name", str_value(name)), ("value", bound)],
+        ));
+    }
+    Ok(record_value(
+        ctx,
+        "BoundOperationInvocation",
+        vec![("at", at), ("bindings", list_value(bindings))],
+    ))
+}
+
+fn render_input(value: &Value) -> String {
+    match value {
+        Value::Str(s) => s.to_string(),
+        Value::Int(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        other => format!("{other}"),
+    }
+}
+
+/// Answers one operation from the active modeled realization, or `None` when no frame carries one.
+/// While one is active this is the ONLY route: every refusal is terminal and nothing falls through
+/// to a real transport, the recorded fixture store, a published mock or the checkout carve-out.
+fn dispatch_modeled_operation(
+    service_name: &str,
+    op_name: &str,
+    op_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Option<Value>> {
+    let snapshot = MODELED_REALIZATION_SLOTS.with(|slots| {
+        slots.borrow().last().and_then(|slot| {
+            slot.as_ref().map(|s| {
+                (
+                    s.envelope.clone(),
+                    s.realization.clone(),
+                    s.identity.clone(),
+                    s.state.clone(),
+                    s.now.clone(),
+                    s.route.len() as i64,
+                )
+            })
+        })
+    });
+    let Some((envelope, realization, identity, state, now, ordinal)) = snapshot else {
+        return Ok(None);
+    };
+    let key = format!("{service_name}.{op_name}");
+    let invocation =
+        bound_operation_invocation_value(service_name, op_name, op_node, param_env, ctx)?;
+    let log =
+        |outcome: Value, completed: Value, state: Option<Value>, interrupted: bool| -> Value {
+            let record = record_value(
+                ctx,
+                "DispatchRecord",
+                vec![
+                    ("ordinal", Value::Int(ordinal)),
+                    ("invocation", invocation.clone()),
+                    ("realization", str_value(identity.clone())),
+                    ("dispatched_at", now.clone()),
+                    ("completed_at", completed.clone()),
+                    ("outcome", outcome),
+                ],
+            );
+            MODELED_REALIZATION_SLOTS.with(|slots| {
+                if let Some(Some(slot)) = slots.borrow_mut().last_mut() {
+                    slot.route.push(record.clone());
+                    slot.now = completed;
+                    if let Some(s) = state {
+                        slot.state = s;
+                    }
+                    if interrupted {
+                        slot.interrupted = Some(record.clone());
+                    }
+                }
+            });
+            record
+        };
+    let selection = run_in_context_with_args(
+        ctx,
+        "operation_handler_selection",
+        &[
+            (Some("env".to_string()), envelope),
+            (Some("realization".to_string()), realization.clone()),
+            (Some("invocation".to_string()), invocation.clone()),
+            (
+                Some("readonly".to_string()),
+                Value::Bool(op_declared_readonly(op_node, ctx)),
+            ),
+        ],
+        false,
+    )?;
+    let (arm, fields) = variant_parts(ctx, &selection)
+        .ok_or_else(|| modeled_refused(&key, "handler selection returned a malformed value"))?;
+    let binding = match arm.as_str() {
+        "OperationHandlerSelected" => ctx
+            .field(&fields, "binding")
+            .cloned()
+            .ok_or_else(|| modeled_refused(&key, "selection omitted its binding"))?,
+        "OperationHandlerRefused" => {
+            let cause = ctx.field(&fields, "cause").cloned().unwrap_or(Value::Unit);
+            let rendered = format!("{cause}");
+            log(
+                variant_value(
+                    ctx,
+                    "DispatchOutcome",
+                    "DispatchUnbound",
+                    vec![("cause", cause)],
+                ),
+                now.clone(),
+                None,
+                false,
+            );
+            return Err(modeled_refused(&key, rendered));
+        }
+        other => {
+            return Err(modeled_refused(
+                &key,
+                format!("unrecognized handler selection {other}"),
+            ))
+        }
+    };
+    let harness_fault = |reason: String| -> InterpError {
+        log(
+            variant_value(
+                ctx,
+                "DispatchOutcome",
+                "DispatchHarnessFault",
+                vec![("reason", str_value(reason.clone()))],
+            ),
+            now.clone(),
+            None,
+            false,
+        );
+        modeled_refused(&key, format!("harness fault: {reason}"))
+    };
+    if !is_shell_transport(transport.clone()) {
+        return Err(harness_fault(
+            "a modeled realization supplies shell transport observations only; this operation's transport is not shell".to_string(),
+        ));
+    }
+    let handler = record_field(ctx, &binding, "handler")
+        .ok_or_else(|| harness_fault("the binding carries no handler".to_string()))?;
+    let call = record_value(
+        ctx,
+        "OperationCall",
+        vec![("invocation", invocation.clone()), ("now", now.clone())],
+    );
+    // A HANDLER OR advance THAT FAILS STILL LEAVES A RECORD. The dispatch happened -- this operation,
+    // at this ordinal -- so its record is finalized with the original cause, the last established
+    // state and the unadvanced clock, and the cause then propagates unchanged. No completion is
+    // manufactured: the outcome is a callback failure, never an observation.
+    let callback_failed = |stage: &str, error: &InterpError, state: Option<Value>| {
+        log(
+            variant_value(
+                ctx,
+                "DispatchOutcome",
+                "DispatchCallbackFailed",
+                vec![
+                    ("stage", variant_value(ctx, "CallbackStage", stage, vec![])),
+                    ("cause", str_value(error.to_string())),
+                ],
+            ),
+            now.clone(),
+            state,
+            false,
+        );
+    };
+    let step = match apply_modeled_handler(&handler, &[state, call], env, ctx) {
+        Ok(step) => step,
+        Err(error) => {
+            callback_failed("HandlerFailed", &error, None);
+            return Err(error);
+        }
+    };
+    let (step_arm, step_fields) = variant_parts(ctx, &step)
+        .ok_or_else(|| harness_fault("the handler returned a malformed step".to_string()))?;
+    match step_arm.as_str() {
+        "OperationObserved" => {
+            let observation = ctx
+                .field(&step_fields, "observation")
+                .cloned()
+                .ok_or_else(|| {
+                    harness_fault("an observed step carries no observation".to_string())
+                })?;
+            let stepped = ctx
+                .field(&step_fields, "state")
+                .cloned()
+                .ok_or_else(|| harness_fault("an observed step carries no state".to_string()))?;
+            let elapsed = ctx.field(&step_fields, "elapsed").cloned().ok_or_else(|| {
+                harness_fault("an observed step carries no elapsed time".to_string())
+            })?;
+            let completed = run_in_context_with_args(
+                ctx,
+                "virtual_clock_after",
+                &[
+                    (Some("now".to_string()), now.clone()),
+                    (Some("elapsed".to_string()), elapsed),
+                ],
+                false,
+            )?;
+            let advance = record_field(ctx, &realization, "advance").ok_or_else(|| {
+                harness_fault("the realization carries no advance function".to_string())
+            })?;
+            let advanced = match apply_modeled_handler(
+                &advance,
+                &[stepped.clone(), completed.clone()],
+                env,
+                ctx,
+            ) {
+                Ok(advanced) => advanced,
+                Err(error) => {
+                    callback_failed("AdvanceFailed", &error, Some(stepped));
+                    return Err(error);
+                }
+            };
+            let shell = shell_result_of_observation(&observation, ctx).map_err(&harness_fault)?;
+            log(
+                variant_value(
+                    ctx,
+                    "DispatchOutcome",
+                    "DispatchObserved",
+                    vec![("observation", observation)],
+                ),
+                completed,
+                Some(advanced),
+                false,
+            );
+            shell_result_projection(shell, op_node, ctx).map(Some)
+        }
+        "OperationWorkerKilled" => {
+            let committed = ctx
+                .field(&step_fields, "committed")
+                .cloned()
+                .unwrap_or(Value::Bool(false));
+            let stepped = ctx
+                .field(&step_fields, "state")
+                .cloned()
+                .ok_or_else(|| harness_fault("a killed step carries no state".to_string()))?;
+            log(
+                variant_value(
+                    ctx,
+                    "DispatchOutcome",
+                    "DispatchWorkerKilled",
+                    vec![("committed", committed)],
+                ),
+                now.clone(),
+                Some(stepped),
+                true,
+            );
+            Err(InterpError::ModeledWorkerKilled { operation: key })
+        }
+        "OperationHarnessFault" => {
+            let reason = match ctx.field(&step_fields, "reason") {
+                Some(Value::Str(s)) => s.to_string(),
+                _ => "unstated".to_string(),
+            };
+            Err(harness_fault(reason))
+        }
+        other => Err(harness_fault(format!("unrecognized step {other}"))),
+    }
+}
+
+/// A modeled ShellExchangeObservation as the shell transport result the real dispatcher produces.
+fn shell_result_of_observation(
+    observation: &Value,
+    ctx: &InterpContext,
+) -> Result<InterpResult<ShellResult>, String> {
+    let (arm, fields) = variant_parts(ctx, observation).ok_or("the observation is malformed")?;
+    if arm != "ShellObserved" {
+        return Err(format!("unsupported transport observation {arm}"));
+    }
+    let shell = ctx
+        .field(&fields, "observation")
+        .ok_or("ShellObserved carries no observation")?;
+    let (shell_arm, shell_fields) =
+        variant_parts(ctx, shell).ok_or("the shell observation is malformed")?;
+    let text = |name: &str| match ctx.field(&shell_fields, name) {
+        Some(Value::Str(s)) => Ok(s.to_string()),
+        _ => Err(format!("the shell observation carries no {name}")),
+    };
+    match shell_arm.as_str() {
+        "ShellProcessExited" => {
+            let exit_code = match ctx.field(&shell_fields, "exit_code") {
+                Some(Value::Int(n)) => {
+                    i32::try_from(*n).map_err(|_| "exit_code out of range".to_string())?
+                }
+                _ => return Err("the shell observation carries no exit_code".to_string()),
+            };
+            let stream = |t: String| bounded_shell_host_drain::CapturedStreamEvidence {
+                total_bytes: t.len() as u64,
+                retained_bytes: t.len() as u64,
+                truncated: false,
+                digest_hex: None,
+                retained_text: t.trim_end().to_string(),
+            };
+            Ok(Ok(ShellResult {
+                exit_code,
+                stdout: stream(text("stdout")?),
+                stderr: stream(text("stderr")?),
+            }))
+        }
+        "ShellProcessSpawnRefused" => Ok(Err(InterpError::ShellSpawnRefused {
+            argv0: text("program")?,
+            cause: text("cause")?,
+        })),
+        other => Err(format!("unrecognized shell observation {other}")),
+    }
 }
 
 fn try_witness_evaluation_dispatch(
@@ -7724,18 +8496,79 @@ fn try_witness_evaluation_dispatch(
                     msg: "evaluate_in_witness_frame requires a subject".to_string(),
                 }));
             };
-            WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow_mut().push(frame));
-            let evaluated = {
-                let _pop = WitnessFramePop;
-                apply_closure(&subject, &[Value::Bool(true)], env, ctx)
+            let empty_route = || list_value(Vec::<Value>::new());
+            let absent_state = || variant_value(ctx, "Optional", "Absent", vec![]);
+            let admitted = match admit_modeled_realization(&frame, env, ctx) {
+                Ok(slot) => slot,
+                Err(error) => {
+                    return Some(Ok(variant_value(
+                        ctx,
+                        "WitnessEvaluation",
+                        "WitnessRefused",
+                        vec![
+                            (
+                                "diagnostic",
+                                witness_evaluation_diagnostic_value(ctx, call_node, &error),
+                            ),
+                            ("route", empty_route()),
+                            ("state", absent_state()),
+                        ],
+                    )))
+                }
             };
-            Some(Ok(match evaluated {
-                Ok(value) => witness_evaluation_variant(ctx, "WitnessReturned", "value", value),
-                Err(error) => witness_evaluation_variant(
+            WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow_mut().push(frame));
+            MODELED_REALIZATION_SLOTS.with(|slots| slots.borrow_mut().push(admitted));
+            let (evaluated, slot) = {
+                let _pop = WitnessFramePop;
+                let evaluated = apply_closure(&subject, &[Value::Bool(true)], env, ctx);
+                let slot = MODELED_REALIZATION_SLOTS
+                    .with(|slots| slots.borrow_mut().last_mut().and_then(|s| s.take()));
+                (evaluated, slot)
+            };
+            let (route, state, interrupted, clock) = match slot {
+                Some(slot) => (
+                    list_value(slot.route),
+                    Some(slot.state),
+                    slot.interrupted,
+                    Some(slot.now),
+                ),
+                None => (empty_route(), None, None, None),
+            };
+            let present = |v: Value| variant_value(ctx, "Optional", "Present", vec![("value", v)]);
+            Some(Ok(match (evaluated, interrupted, state, clock) {
+                (
+                    Err(InterpError::ModeledWorkerKilled { .. }),
+                    Some(at),
+                    Some(state),
+                    Some(now),
+                ) => variant_value(
                     ctx,
+                    "WitnessEvaluation",
+                    "WitnessInterrupted",
+                    vec![("at", at), ("route", route), ("state", state), ("now", now)],
+                ),
+                (Ok(value), _, state, _) => variant_value(
+                    ctx,
+                    "WitnessEvaluation",
+                    "WitnessReturned",
+                    vec![
+                        ("value", value),
+                        ("route", route),
+                        ("state", state.map(present).unwrap_or_else(absent_state)),
+                    ],
+                ),
+                (Err(error), _, state, _) => variant_value(
+                    ctx,
+                    "WitnessEvaluation",
                     "WitnessRefused",
-                    "diagnostic",
-                    witness_evaluation_diagnostic_value(ctx, call_node, &error),
+                    vec![
+                        (
+                            "diagnostic",
+                            witness_evaluation_diagnostic_value(ctx, call_node, &error),
+                        ),
+                        ("route", route),
+                        ("state", state.map(present).unwrap_or_else(absent_state)),
+                    ],
                 ),
             }))
         }
@@ -8105,8 +8938,8 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.coproduct_nullary_inhabitants" { "coproduct_nullary_inhabitants" } =>
                     crate::coproduct_reflection::eval_coproduct_nullary_inhabitants($ctx, $node, &$args),
             }
-            family STD_LEXING_BRIDGE_FNS "v2.std.compilers.lexing"
-                lookup_eval_call_bridge_std_compilers_lexing eval_call_bridge__v2_std_compilers_lexing_arm {
+            family STD_NODE_BRIDGE_FNS "v2.std.node"
+                lookup_eval_call_bridge_std_node eval_call_bridge__v2_std_node_arm {
                 arm "v4_bridge.symbol_intern_lexeme" { "symbol_intern_lexeme" } =>
                     crate::coproduct_reflection::eval_symbol_intern_lexeme($ctx, &$args),
                 arm "v4_bridge.symbol_lexeme" { "symbol_lexeme" } =>
@@ -8749,14 +9582,11 @@ fn is_structural_pure_fn(name: &str) -> bool {
 }
 
 fn eval_recompute_str_hash(s: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    s.hash(&mut h);
-    h.finish()
+    v1_rt::str_content_hash(s)
 }
 
 fn eval_recompute_mix(seed: u64, x: u64) -> u64 {
-    (seed.rotate_left(5) ^ x).wrapping_mul(0x100000001b3)
+    (seed.rotate_left(5) ^ x).wrapping_mul(EVAL_RECOMPUTE_MIX_PRIME)
 }
 
 fn eval_recompute_canon_key_hash(k: &CanonKey) -> u64 {
@@ -8866,7 +9696,7 @@ fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomp
             }
         }
         EvalRecomputeFrameKind::Map { rc, .. } => {
-            let vh = eval_recompute_mix(0xA5A5_0090, h);
+            let vh = eval_recompute_mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, h);
             memo.insert(
                 Rc::as_ptr(&rc) as usize,
                 (CompositeWeak::Map(Rc::downgrade(&rc)), vh),
@@ -8902,10 +9732,9 @@ fn eval_recompute_value_hash(
                 Value::Float(f) => {
                     EvalRecomputeStep::Have(eval_recompute_mix(0xA5A5_0030, f.to_bits()))
                 }
-                Value::Str(s) => EvalRecomputeStep::Have(eval_recompute_mix(
-                    0xA5A5_0040,
-                    eval_recompute_str_hash(s),
-                )),
+                Value::Str(s) => {
+                    EvalRecomputeStep::Have(eval_recompute_mix(0xA5A5_0040, s.content_hash()))
+                }
                 Value::Fn { node } => EvalRecomputeStep::Have(eval_recompute_mix(
                     0xA5A5_0050,
                     Rc::as_ptr(node) as u64,
@@ -9067,6 +9896,120 @@ fn eval_recompute_value_hash(
     }
 }
 
+/// THE PUSH CONSTRUCTOR CARRIES THE LIST KEY FORWARD, because the list content hash is a left
+/// fold with no finalizer: `hash(push(xs, x)) == mix(hash(xs), hash(x))` exactly. A recursion that
+/// threads a growing `list_push` accumulator hands every call a NEW `Rc`, so the identity memo
+/// missed on every step and the key rehashed the whole accumulator: one relation realized at
+/// per-call O(size), the same key-derivation defect #12065 closed for strings. The failing link is
+/// the key derivation, not memo admission -- once the key is O(item), a call that never recurs
+/// costs a bounded constant, so no "can this recur" heuristic is needed to decide admission.
+///
+/// DEMAND-GATED: it extends only a parent hash that a key derivation already paid for (alive in the
+/// memo). An accumulator no call ever keyed is never hashed here, so a program that does not key
+/// lists pays nothing. The item is hashed through the same memo the key would use, so the result is
+/// the value the full fold would compute; a Closure item bails and the result is simply left
+/// unmemoized, to be refused by the ordinary derivation.
+fn eval_recompute_extend_push_hash(
+    ctx: &InterpContext,
+    parent: &Rc<RrbVector<Value>>,
+    item: &Value,
+    pushed: &Value,
+) {
+    let Value::List(child) = pushed else { return };
+    let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
+        return;
+    };
+    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
+        Some((w, h)) if w.alive() => *h,
+        _ => return,
+    };
+    let interner = ctx.symbols.borrow();
+    let Some(item_h) = eval_recompute_value_hash(&mut memo, &interner, item) else {
+        return;
+    };
+    memo.insert(
+        Rc::as_ptr(child) as usize,
+        (
+            CompositeWeak::List(Rc::downgrade(child)),
+            eval_recompute_mix(parent_h, item_h),
+        ),
+    );
+}
+
+/// THE INSERT CONSTRUCTOR CARRIES THE MAP KEY FORWARD, exactly as the push constructor carries the
+/// list key (`eval_recompute_extend_push_hash`, #12066). The map content hash is an order-independent
+/// wrapping sum of `mix(key_hash, value_hash)` over its entries, finalized once by
+/// `mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, sum)`; `mix` multiplies by an odd constant, so the finalizer
+/// is invertible and the parent's sum is recovered from its memoized hash. An insert of a new key
+/// adds one term; an overwrite also subtracts the replaced entry's term. So
+/// `hash(insert(m, k, v))` is derived in O(1) plus the hash of `v` (and of the replaced value),
+/// never by re-walking `m`. A threaded accumulator map rebuilt per step -- 02_parse's `ParseTable`
+/// memo map, a new `Rc` after every insert -- otherwise missed the identity memo on every call and
+/// was rehashed whole: O(n) per call, O(n^2) per parse. The failing link is key derivation, not
+/// admission (#12066's ruling), so no recurrence criterion is added.
+///
+/// DEMAND-GATED like the push extension: only a parent whose hash a key derivation already paid for
+/// is extended. A Closure key or value bails and leaves the child unmemoized, so the ordinary
+/// derivation refuses it. Serving still verifies argument equality (`eval_call_memo_args_match`), so
+/// a hash collision recomputes rather than serves a wrong value.
+fn eval_recompute_extend_insert_hash(
+    ctx: &InterpContext,
+    parent: &Rc<HamtMap<CanonKey, Value>>,
+    key: &CanonKey,
+    value: &Value,
+    inserted: &Value,
+) {
+    let Value::Map(child) = inserted else { return };
+    let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
+        return;
+    };
+    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
+        Some((w, h)) if w.alive() => *h,
+        _ => return,
+    };
+    let interner = ctx.symbols.borrow();
+    let key_h = eval_recompute_canon_key_hash(key);
+    let mut sum = eval_recompute_map_sum_from_hash(parent_h);
+    if let Some(replaced) = parent.get(key) {
+        let Some(replaced_h) = eval_recompute_value_hash(&mut memo, &interner, replaced) else {
+            return;
+        };
+        sum = sum.wrapping_sub(eval_recompute_mix(key_h, replaced_h));
+    }
+    let Some(value_h) = eval_recompute_value_hash(&mut memo, &interner, value) else {
+        return;
+    };
+    sum = sum.wrapping_add(eval_recompute_mix(key_h, value_h));
+    memo.insert(
+        Rc::as_ptr(child) as usize,
+        (
+            CompositeWeak::Map(Rc::downgrade(child)),
+            eval_recompute_mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, sum),
+        ),
+    );
+}
+
+const EVAL_RECOMPUTE_MIX_PRIME: u64 = 0x100000001b3;
+const EVAL_RECOMPUTE_MAP_FINAL_SEED: u64 = 0xA5A5_0090;
+
+/// The multiplicative inverse of `EVAL_RECOMPUTE_MIX_PRIME` mod 2^64 (Newton iteration; the prime is
+/// odd, so it exists and five doublings of precision reach 64 bits).
+const fn eval_recompute_mix_prime_inverse() -> u64 {
+    let mut inv = EVAL_RECOMPUTE_MIX_PRIME;
+    let mut i = 0;
+    while i < 6 {
+        inv = inv.wrapping_mul(2u64.wrapping_sub(EVAL_RECOMPUTE_MIX_PRIME.wrapping_mul(inv)));
+        i += 1;
+    }
+    inv
+}
+
+/// Inverse of the map finalizer: recovers the entry sum from a finalized map hash.
+fn eval_recompute_map_sum_from_hash(h: u64) -> u64 {
+    h.wrapping_mul(eval_recompute_mix_prime_inverse())
+        ^ EVAL_RECOMPUTE_MAP_FINAL_SEED.rotate_left(5)
+}
+
 fn eval_recompute_arg_key(
     memo: &mut EvalRecomputeHashMemo,
     interner: &SymbolInterner,
@@ -9077,7 +10020,7 @@ fn eval_recompute_arg_key(
         Value::Bool(b) => Some(EvalRecomputeArgKey::Bool(*b)),
         Value::Int(i) => Some(EvalRecomputeArgKey::Int(*i)),
         Value::Float(f) => Some(EvalRecomputeArgKey::FloatBits(f.to_bits())),
-        Value::Str(s) => Some(EvalRecomputeArgKey::StrHash(eval_recompute_str_hash(s))),
+        Value::Str(s) => Some(EvalRecomputeArgKey::StrHash(s.content_hash())),
         Value::Variant {
             type_name,
             variant_name,
@@ -9879,43 +10822,6 @@ pub fn eval_recompute_totals(ctx: &InterpContext) -> EvalRecomputeTotals {
     out
 }
 
-// Process-wide accumulator fed by InterpContext::drop, so EVERY eval path lands in the receipt
-// by construction — harvest is not a per-call-site discipline a future site could forget.
-// Sums at the totals grain only: raw ledger keys are address-based and single-ctx.
-static PROCESS_EVAL_RECOMPUTE_TOTALS: std::sync::Mutex<Option<EvalRecomputeTotals>> =
-    std::sync::Mutex::new(None);
-
-/// Drain the process-wide ledger totals (e.g. to write a receipt file at the
-/// end of a floor walk). Returns zeroed totals when tracing was disabled.
-pub fn take_process_eval_recompute_totals() -> EvalRecomputeTotals {
-    // A poisoned lock still holds structurally valid totals (absorb is
-    // add-only), so recover the data rather than silently returning zeroes.
-    PROCESS_EVAL_RECOMPUTE_TOTALS
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .take()
-        .unwrap_or_default()
-}
-
-impl Drop for InterpContext {
-    fn drop(&mut self) {
-        if !eval_recompute_trace_enabled() {
-            return;
-        }
-        let totals = eval_recompute_totals(self);
-        if totals.keyed_calls == 0 && totals.unkeyed_calls == 0 {
-            return;
-        }
-        // Recover a poisoned lock rather than dropping this ctx's contribution
-        // without a trace — absorb is add-only, so the state stays valid.
-        let mut g = PROCESS_EVAL_RECOMPUTE_TOTALS
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        g.get_or_insert_with(EvalRecomputeTotals::default)
-            .absorb(&totals);
-    }
-}
-
 fn value_rc_identity(v: &Value) -> Option<usize> {
     match v {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
@@ -9928,15 +10834,62 @@ fn value_rc_identity(v: &Value) -> Option<usize> {
     }
 }
 
-// Same-allocation composites are equal without a walk; everything else takes
-// the full structural equality (Value::eq, the one equality authority).
+// Same-allocation composites are equal without a walk AT EVERY LEVEL; everything else takes the
+// structural equality of Value::eq (the one equality authority), arm for arm.
+//
+// THE SHORTCUT MUST RECURSE, because a persistent value is rebuilt around shared parts. A threaded
+// record (02_parse's ParseTable) is a NEW fields allocation after every rebuild while its large
+// parts -- the memo entries map, the carried grammar analysis -- are the SAME allocations. A
+// top-level-only shortcut missed on the rebuilt record and fell into Value::eq, which walked every
+// shared part in full: verifying one served hit cost O(|table|), and the parse's repeated
+// equal-content calls made verification quadratic in list length (the #12377 blocker). Descending
+// to the first differing allocation keeps the verification O(changed structure).
+//
+// The shortcut agrees with Value::eq except where Value::eq is not reflexive (a NaN inside an
+// allocation): there one allocation is still one value, and a pure call over it has one result,
+// which is the only thing a memo verification decides. The top-level shortcut already made that
+// disposition; recursing does not widen it.
 fn value_fast_eq(a: &Value, b: &Value) -> bool {
     if let (Some(x), Some(y)) = (value_rc_identity(a), value_rc_identity(b)) {
         if x == y {
             return true;
         }
     }
-    a == b
+    match (a, b) {
+        (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => {
+            value_fields_fast_eq(af, bf)
+        }
+        (
+            Value::Variant {
+                type_name: at,
+                variant_name: av,
+                fields: af,
+            },
+            Value::Variant {
+                type_name: bt,
+                variant_name: bv,
+                fields: bf,
+            },
+        ) => at == bt && av == bv && value_fields_fast_eq(af, bf),
+        (Value::List(xs), Value::List(ys)) => {
+            xs.len() == ys.len() && xs.iter().zip(ys.iter()).all(|(x, y)| value_fast_eq(x, y))
+        }
+        (Value::Map(xm), Value::Map(ym)) => {
+            xm.len() == ym.len()
+                && xm
+                    .iter()
+                    .all(|(k, v)| ym.get(k).is_some_and(|w| value_fast_eq(v, w)))
+        }
+        _ => a == b,
+    }
+}
+
+fn value_fields_fast_eq(af: &[(Symbol, Value)], bf: &[(Symbol, Value)]) -> bool {
+    af.len() == bf.len()
+        && af
+            .iter()
+            .zip(bf.iter())
+            .all(|((an, av), (bn, bv))| an == bn && value_fast_eq(av, bv))
 }
 
 // A stored call matches only when argument NAMES and values both agree —
@@ -10131,8 +11084,21 @@ fn eval_field_access(
             Value::Null => Ok(Value::Null),
             _ => Ok(base_val),
         },
-        Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx),
-        _ => extract_field(&base_val, &field_name, env, ctx),
+        Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx)
+            .map_err(|e| locate_field_access_error(e, node)),
+        _ => extract_field(&base_val, &field_name, env, ctx)
+            .map_err(|e| locate_field_access_error(e, node)),
+    }
+}
+
+// A field-access TypeError named no location, which made a production-path defect
+// (harness_probe_cli, 2026-09-18) unlocatable without a bisect scaffold. Attach the span.
+fn locate_field_access_error(e: InterpError, node: &Rc<Node>) -> InterpError {
+    match e {
+        InterpError::TypeError { msg } => InterpError::TypeError {
+            msg: format!("{} [at {} byte {}]", msg, node.span.file, node.span.start),
+        },
+        other => other,
     }
 }
 
@@ -10318,6 +11284,20 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
         }
     }
     Ok(str_value(result))
+}
+
+/// The wire key a record field is encoded under: its declared `from` key when the record's type
+/// declares one for that field, else the authored name. The encode-side twin of the lookup
+/// `decode_json_by_declared_type` performs, so one declaration governs both directions.
+pub(crate) fn record_field_wire_key(ctx: &InterpContext, type_name: &str, field: &str) -> String {
+    lookup_type_item_across_modules(ctx, type_name)
+        .and_then(|ty| {
+            ty.children
+                .iter()
+                .find(|f| authored_name_at(ctx.si(), (*f).clone()) == field)
+                .and_then(|f| extract_from_key(f, ctx))
+        })
+        .unwrap_or_else(|| field.to_string())
 }
 
 fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
@@ -10823,9 +11803,21 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // Int position without a cast, so `as Int` removes nothing a position enforced. A unit-bearing
     // type is a `std.measure` Measure, carried as a Record, and still refuses here.
     //
-    // Cast admissibility is decided ONLY here: validate_cast abstains whenever either side is
-    // outside std.coercion's dag_cast_rules domain, so this runtime arm is the sole wall, and
-    // std.coercion admits `Int as Nat` and `Bool as Int` while this fold refuses both.
+    // A REFINEMENT cast (std.coercion refinement_cast_rules, e.g. `Int as Nat`) is refused by the
+    // checker (v1.compiler.infer validate_cast) from the same rows, so no accepted program reaches
+    // this arm with one; it refuses here as the echo of that refusal, not as a second authority.
+    // `Bool as Int` is refused by the checker too since dag_cast_rules withdrew that row. The
+    // residue this fold still decides alone: validate_cast abstains whenever either side is outside
+    // dag_cast_rules -- rostered in gunbc.recurring_failure_mode
+    // the_checker_admits_a_cast_the_evaluator_refuses.
+    if crate::std_coercion::dag_cast_requires_proof(source_name.clone(), target_name.clone()) {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "{}: a refinement cast the checker refuses (std.coercion refinement_cast_rules); use std.checked_arithmetic checked_int_to_nat",
+                cast_refusal_message(&source_name, val.type_label(), &target_name)
+            ),
+        });
+    }
     match target_name.as_str() {
         "Float" => match val {
             Value::Float(n) => Ok(Value::Float(n)),
@@ -11089,8 +12081,10 @@ macro_rules! v1_algebra_method_arms {
                         counters.list_push_items_copied += copied;
                         drop(counters);
                         let mut result = (*items).clone();
-                        result.push_back(item);
-                        Ok(list_value(result))
+                        result.push_back(item.clone());
+                        let pushed = list_value(result);
+                        eval_recompute_extend_push_hash($ctx, &items, &item, &pushed);
+                        Ok(pushed)
                     }
                     None => Err(InterpError::TypeError {
                         msg: format!("list_push on non-list: {}", $receiver.type_label()),
@@ -11369,7 +12363,9 @@ macro_rules! v1_algebra_method_arms {
                 let mut counters = $ctx.mutation_counters.borrow_mut();
                 counters.map_insert_calls += 1;
                 drop(counters);
-                Ok(map_value(m.update(ck, val)))
+                let inserted = map_value(m.update(ck.clone(), val.clone()));
+                eval_recompute_extend_insert_hash($ctx, &m, &ck, &val, &inserted);
+                Ok(inserted)
             },
 
             arm "method_call.merge" { "merge" } => {
@@ -11763,9 +12759,18 @@ fn eval_service_call(
     declared: ExpectationDeclaration,
 ) -> InterpResult<Value> {
     let expected = declared.resolve(service_name, op_name);
+    let key = format!("{}.{}", service_name, op_name);
+    // A modeled handler is a pure transition over its scenario state: it receives no effect
+    // context, so an operation issued from inside one refuses before anything is counted or
+    // dispatched -- including an operation reached indirectly through a helper it calls.
+    if MODELED_HANDLER_DEPTH.with(|d| d.get()) > 0 {
+        return Err(InterpError::ModeledOperationRefused {
+            operation: key,
+            cause: "a modeled realization handler issued an operation; handlers receive no effect context".to_string(),
+        });
+    }
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
-    let key = format!("{}.{}", service_name, op_name);
     let (service_node, op_node) =
         ctx.indexes
             .service_ops
@@ -11783,6 +12788,20 @@ fn eval_service_call(
         })?;
 
     let param_env = build_service_param_env(op_node, args, env, ctx)?;
+    // A modeled operation realization, when one is active, answers EXCLUSIVELY: it is consulted
+    // before the checkout-input carve-out, the recorded fixture store, the published mocks and wet
+    // dispatch, and none of those is reached while it is active (v2.std.operation_realization).
+    if let Some(answered) = dispatch_modeled_operation(
+        service_name,
+        op_name,
+        op_node,
+        transport,
+        &param_env,
+        env,
+        ctx,
+    )? {
+        return Ok(answered);
+    }
     let inputs_hash =
         crate::recorded_fixture::content_hash_service_inputs(op_node, &param_env, ctx);
     let inputs_json =
@@ -11966,8 +12985,14 @@ fn dispatch_service_wet(
     }
 
     if is_shell_transport(transport.clone()) {
-        let result = dispatch_shell(transport, param_env, ctx, intent, expected)?;
-        return map_shell_outputs(&result, op_node, ctx);
+        // An operation declaring an `extdeps.transports.shell` `ShellOutcome` field receives the
+        // spawn failure as a value, with every other declared field absent; one declaring none
+        // keeps refusing the evaluation, now with the typed `ShellSpawnRefused` diagnostic.
+        return shell_result_projection(
+            dispatch_shell(transport, param_env, ctx, intent, expected),
+            op_node,
+            ctx,
+        );
     }
 
     if is_file_transport(transport.clone(), ctx.si()) {
@@ -11976,6 +13001,47 @@ fn dispatch_service_wet(
     }
 
     dispatch_rest(service_node, op_node, transport, param_env, ctx)
+}
+
+/// The ONE projection from a shell transport result to an operation's declared output: the real
+/// process result and a modeled realization's observation both reach it, so a modeled observation
+/// is decoded by exactly the declared-output mapping a spawned process's result is.
+fn shell_result_projection(
+    dispatched: InterpResult<ShellResult>,
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let outcome_field = transport_outcome_output_field(op_node, ctx, "ShellOutcome");
+    match (dispatched, outcome_field) {
+        (Ok(result), None) => map_shell_outputs(&result, op_node, ctx),
+        (Ok(result), Some(field)) => {
+            let mapped = map_shell_outputs(&result, op_node, ctx)?;
+            Ok(attach_transport_outcome(
+                Some(mapped),
+                op_node,
+                &field,
+                shell_outcome_variant(ctx, "ShellExited", vec![]),
+                ctx,
+            ))
+        }
+        (Err(InterpError::ShellSpawnRefused { argv0, cause }), Some(field)) => {
+            Ok(attach_transport_outcome(
+                None,
+                op_node,
+                &field,
+                shell_outcome_variant(
+                    ctx,
+                    "ShellSpawnRefused",
+                    vec![
+                        (ctx.sym("program"), str_value(argv0)),
+                        (ctx.sym("cause"), str_value(cause)),
+                    ],
+                ),
+                ctx,
+            ))
+        }
+        (Err(err), _) => Err(err),
+    }
 }
 
 /// Native realization of `shell.Env.Get` for OnTarget locality — same Absent/Present
@@ -13653,6 +14719,162 @@ fn resolved_call_edge_census_value(
     }
 }
 
+fn primitive_callee_identity_value(
+    callee: crate::cli_run::PrimitiveCalleeIdentity,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::cli_run::PrimitiveCalleeIdentity;
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("PrimitiveCalleeIdentity"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match callee {
+        PrimitiveCalleeIdentity::RuntimePrimitive {
+            primitive_name,
+            projected_from_module,
+            projected_from_decl,
+        } => variant(
+            "RuntimePrimitiveCallee",
+            vec![
+                (ctx.sym("primitive_name"), str_value(primitive_name)),
+                (
+                    ctx.sym("projected_from_module"),
+                    match projected_from_module {
+                        Some(m) => optional_present(str_value(m), ctx),
+                        None => optional_absent(ctx),
+                    },
+                ),
+                (
+                    ctx.sym("projected_from_decl"),
+                    match projected_from_decl {
+                        Some(d) => optional_present(str_value(d), ctx),
+                        None => optional_absent(ctx),
+                    },
+                ),
+            ],
+        ),
+        PrimitiveCalleeIdentity::AlgebraMethod { template_name } => variant(
+            "AlgebraMethodCallee",
+            vec![(ctx.sym("template_name"), str_value(template_name))],
+        ),
+        PrimitiveCalleeIdentity::ServiceOperation {
+            service_name,
+            operation,
+        } => variant(
+            "ServiceOperationCallee",
+            vec![
+                (ctx.sym("service_name"), str_value(service_name)),
+                (ctx.sym("operation"), str_value(operation)),
+            ],
+        ),
+        PrimitiveCalleeIdentity::PlainMethod { spelling } => variant(
+            "PlainMethodCallee",
+            vec![(ctx.sym("spelling"), str_value(spelling))],
+        ),
+        PrimitiveCalleeIdentity::UndeterminedFreeCall { spelling } => variant(
+            "UndeterminedFreeCallee",
+            vec![(ctx.sym("spelling"), str_value(spelling))],
+        ),
+    }
+}
+
+/// `gunbc.required_lane_resolution_census` `ModuleIdentityPopulation`, lifted from the host's
+/// carrier. Two arms and nothing else: an observed identity list, or the typed cause the
+/// population could not be established -- never an empty list standing for a refusal.
+fn module_identity_population_value(
+    population: crate::cli_run::ModuleIdentityPopulation,
+    ctx: &InterpContext,
+) -> Value {
+    match population {
+        crate::cli_run::ModuleIdentityPopulation::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("ModuleIdentityPopulation"),
+            variant_name: ctx.sym("ModuleIdentityPopulationRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::ModuleIdentityPopulation::Observed { modules } => Value::Variant {
+            type_name: ctx.sym("ModuleIdentityPopulation"),
+            variant_name: ctx.sym("ModuleIdentityPopulationObserved"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("modules"),
+                list_value(modules.into_iter().map(str_value).collect::<Vec<_>>()),
+            )])),
+        },
+    }
+}
+
+fn primitive_call_edge_census_value(
+    census: crate::cli_run::PrimitiveCallEdgeCensus,
+    ctx: &InterpContext,
+) -> Value {
+    match census {
+        crate::cli_run::PrimitiveCallEdgeCensus::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
+            variant_name: ctx.sym("PrimitiveCallEdgeCensusRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::PrimitiveCallEdgeCensus::Observed {
+            entries_resolved,
+            entries_refused,
+            edges,
+        } => Value::Variant {
+            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
+            variant_name: ctx.sym("PrimitiveCallEdgeCensusObserved"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("entries_resolved"),
+                    list_value(
+                        entries_resolved
+                            .into_iter()
+                            .map(str_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("entries_refused"),
+                    list_value(
+                        entries_refused
+                            .into_iter()
+                            .map(|r| Value::Record {
+                                type_name: ctx.sym("PrimitiveCallEntryRefusal"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (ctx.sym("entry"), str_value(r.entry)),
+                                    (ctx.sym("cause"), str_value(r.cause)),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("edges"),
+                    list_value(
+                        edges
+                            .into_iter()
+                            .map(|edge| Value::Record {
+                                type_name: ctx.sym("PrimitiveCallEdge"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (ctx.sym("caller_module"), str_value(edge.caller_module)),
+                                    (ctx.sym("caller_decl"), str_value(edge.caller_decl)),
+                                    (
+                                        ctx.sym("authored_spelling"),
+                                        str_value(edge.authored_spelling),
+                                    ),
+                                    (
+                                        ctx.sym("callee"),
+                                        primitive_callee_identity_value(edge.callee, ctx),
+                                    ),
+                                    (ctx.sym("span_file"), str_value(edge.span_file)),
+                                    (ctx.sym("span_start"), Value::Int(edge.span_start)),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            ])),
+        },
+    }
+}
+
 fn evaluation_store_address_production_coverage_value(
     coverage: crate::cli_run::EvaluationStoreAddressProductionCoverage,
     ctx: &InterpContext,
@@ -14392,6 +15614,91 @@ fn trace_emit(channel: OutputChannel, line: &str) {
 /// the observation_emit_census roster cannot go stale.
 pub const SHELL_CENSUS_MARKER: &str = "[shell]";
 
+/// Census hygiene marker for the `[file]` emit family — the mirror of SHELL_CENSUS_MARKER,
+/// kept for the same reason: the `[file]` raw shape is gone from the seed and
+/// `gunbc.observation_emit_census`'s `[file]` row must still find its MARKER, or the
+/// bidirectional roster check goes stale without reddening.
+///
+/// IT IS NOT THE ROW'S `producer`, and an earlier draft of this comment said it was. The
+/// census keeps those as separate obligations with separate fields: `marker` feeds
+/// census_marker_present, while `producer` is the DeclarationRef of the declaration that
+/// actually EMITS the line and feeds w_every_named_producer_symbol_is_present_in_the_seed.
+/// This constant emits nothing — it is the retired spelling kept as a presence anchor — so
+/// naming it as the producer would let all seven call sites in `dispatch_file` be deleted
+/// while the census still reported the family migrated. `file_trace_site` names
+/// `dispatch_file`; this constant anchors the marker.
+pub const FILE_CENSUS_MARKER: &str = "[file]";
+
+/// Mirror of `gunbc.observation_seed_render.seed_file_effect_begin_line`.
+///
+/// The `[file]` family's seven emit sites all fire BEFORE their effect, so the subject is the
+/// named intent from `extdeps.filesystem.filesystem_io`'s operation roster and the path is the
+/// operand — never the raw verb. Keeping the path on the line is load-bearing rather than
+/// decorative: the pre-attempt trace is what made twelve failed publication writes (srv1,
+/// 2026-08-19) log exactly like successes, so a projection that dropped the operand would
+/// re-create that defect.
+///
+/// `clause` is the ALREADY-RENDERED parenthetical body, the same argument
+/// `ci_file_effect_line` takes: "" for a path-only operation, "N bytes" or "N bytes, mode M" for a
+/// write. Passing the rendered clause rather than a count-plus-flag keeps the mirror from
+/// inventing a second representation of the payload sum the authority declares.
+///
+/// ORACLE RED, AT A STATED RUNG: the seed test `file_effect_begin_mirror_matches_seed_oracle`
+/// renders this fn's .dag counterpart through the interpreter on the same inputs and asserts
+/// byte-equality, so the format authority stays in `ci_file_effect_line` (the same pairing
+/// `render_shell_effect_*_line_mirror` and `render_heartbeat_line_mirror` carry). That test is a
+/// `--lib` test and the job running that population is `continue-on-error`, NOT read by the
+/// required aggregate -- see `gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`, and review
+/// 72597 for why this comment states the rung rather than the stronger claim: a semantic drift
+/// between the two representations can land green. What the required path does buy is
+/// ATTRIBUTION: this module compiles under the required `generated` lane's clippy step, so
+/// deleting or renaming these declarations and their call sites still cannot land silently.
+pub fn render_file_effect_begin_line_mirror(
+    intent: &str,
+    path: &str,
+    clause: &str,
+    emoji: bool,
+) -> String {
+    let _ = FILE_CENSUS_MARKER;
+    let glyph = if emoji { "🔄" } else { "◐" };
+    let detail = if clause.is_empty() {
+        String::new()
+    } else {
+        format!(" ({clause})")
+    };
+    format!("{glyph} started {intent} {path}{detail}")
+}
+
+/// The payload clause a write carries: bytes, plus the mode's octal spelling when one is declared.
+/// The spelling is produced HERE for the seed mirror the same way `file_mode_octal` produces it for
+/// the authority — a write site that declared a mode passes it, and the two agree because the
+/// oracle test feeds both the same mode.
+pub fn file_payload_clause(bytes: u64, mode: Option<u32>) -> String {
+    match mode {
+        None => format!("{bytes} bytes"),
+        Some(m) => format!("{bytes} bytes, mode {}", file_mode_octal(m)),
+    }
+}
+
+/// The octal spelling of a mode, mirroring `extdeps.access.posix file_mode_octal` — four digits,
+/// most significant first (setuid/setgid/sticky, then owner, group, other).
+///
+/// THE CALLER ADMITS THE RANGE, AND `u32` IS NOT THE ADMISSION. `dispatch_file` refuses a mode
+/// outside 0..=0o7777 before dispatch ("needs an Int `mode` within 0..=0o7777"), so every value
+/// reaching here is already four octal digits wide; the mask makes that precondition explicit
+/// instead of relying on it. An earlier draft of this comment claimed the range was guaranteed by
+/// the TYPE, which is false — a u32 holds far more — and a fabricated claim beside a
+/// silently-masking body is the widening §5 forbids. The claim now names where the refusal lives,
+/// and `file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range` holds the two
+/// together by execution rather than by assertion.
+fn file_mode_octal(mode: u32) -> String {
+    let special = (mode >> 9) & 0o7;
+    let owner = (mode >> 6) & 0o7;
+    let group = (mode >> 3) & 0o7;
+    let other = mode & 0o7;
+    format!("{special}{owner}{group}{other}")
+}
+
 /// Collapse argv into one readable line — runs of whitespace become a single space —
 /// so a multiline `sh -c` script reads as one command. Used in Failed.error (uncapped:
 /// an anomaly expands fully). Ambient subjects are named intents, not argv.
@@ -14868,9 +16175,7 @@ fn dispatch_shell(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         configure_shell_process_group_for_wall_kill(&mut cmd, ctx);
-        let mut child = cmd.spawn().map_err(|e| InterpError::TypeError {
-            msg: format!("failed to execute '{}': {}", argv[0], e),
-        })?;
+        let mut child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
 
         let stdin_writer = child
             .stdin
@@ -14908,9 +16213,7 @@ fn dispatch_shell(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         configure_shell_process_group_for_wall_kill(&mut cmd, ctx);
-        let child = cmd.spawn().map_err(|e| InterpError::TypeError {
-            msg: format!("failed to execute '{}': {}", argv[0], e),
-        })?;
+        let child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
         let capture =
             wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
         render_shell_completion_trace(
@@ -14936,6 +16239,16 @@ fn dispatch_shell(
         }
     }
     shell_result_from_capture(&capture, &argv[0])
+}
+
+/// The one place a spawn failure becomes a value: both spawn sites above (with and without stdin)
+/// route here, and `dispatch_service_wet` is the one place it is either delivered as
+/// `ShellSpawnRefused` or left to refuse the evaluation.
+fn shell_spawn_refused(argv0: &str, err: &std::io::Error) -> InterpError {
+    InterpError::ShellSpawnRefused {
+        argv0: argv0.to_string(),
+        cause: err.to_string(),
+    }
 }
 
 pub(crate) fn shell_result_from_capture(
@@ -15454,7 +16767,7 @@ mod write_file_create_new_tests {
             std::fs::write(name, format!("occupant {seq}")).expect("plant a candidate");
         }
 
-        let refusal = super::write_file_create_new(&target, b"a fresh repository")
+        let refusal = super::write_file_create_new(&target, b"a fresh repository", None)
             .expect_err("an exhausted candidate budget must refuse");
         // NOT AlreadyExists: the target is absent, and conflating the two is the defect this
         // whole module exists to remove.
@@ -15519,7 +16832,7 @@ mod write_file_create_new_tests {
         let planted = format!("{}.gunbc-create-{}-0", target, std::process::id());
         std::fs::write(&planted, b"a stale internal candidate").expect("plant the first candidate");
 
-        super::write_file_create_new(&target, b"a fresh repository")
+        super::write_file_create_new(&target, b"a fresh repository", None)
             .expect("an occupied staging candidate must be skipped, not refused");
         assert_eq!(
             std::fs::read(&path).expect("target must be published"),
@@ -15548,7 +16861,7 @@ mod write_file_create_new_tests {
         std::fs::write(&collided, b"a leftover from an earlier attempt")
             .expect("plant the leftover");
 
-        super::write_file_create_new(&target, b"a fresh repository")
+        super::write_file_create_new(&target, b"a fresh repository", None)
             .expect("a leftover staging file must not refuse a create whose TARGET is absent");
         assert_eq!(
             std::fs::read(&path).expect("target must exist"),
@@ -15575,7 +16888,7 @@ mod write_file_create_new_tests {
             .map(|_| {
                 let t = target.clone();
                 let p = payload.clone();
-                std::thread::spawn(move || super::write_file_create_new(&t, &p))
+                std::thread::spawn(move || super::write_file_create_new(&t, &p, None))
             })
             .collect();
         let results: Vec<_> = handles
@@ -15617,7 +16930,7 @@ mod write_file_create_new_tests {
         let path = dir.join("repo.json");
         std::fs::write(&path, b"SOMEONE ELSE'S BYTES").expect("seed the path");
 
-        let err = super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository")
+        let err = super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository", None)
             .expect_err("a path that exists must refuse, not be truncated");
         assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
 
@@ -15670,7 +16983,7 @@ mod write_file_create_new_tests {
                 };
                 libc::setrlimit(libc::RLIMIT_FSIZE, &lim);
             }
-            let _ = super::write_file_create_new(&target_s, &content);
+            let _ = super::write_file_create_new(&target_s, &content, None);
             unsafe { libc::_exit(0) };
         }
         let mut status: libc::c_int = 0;
@@ -15750,13 +17063,81 @@ mod write_file_create_new_tests {
         let dir = std::env::temp_dir().join(format!("gunbc-create-new-ok-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         let path = dir.join("repo.json");
-        super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository")
+        super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository", None)
             .expect("an absent path is created");
         assert_eq!(
             std::fs::read(&path).expect("written"),
             b"a fresh repository"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // THE DECLARED MODE IS THE PUBLISHED MODE, WHATEVER THE UMASK. A fleet-converge step runs
+    // `umask 077` in its credential prelude and then invokes gunbc in the same shell, so every
+    // create-new it performs used to publish 0600 -- a fabric-store object the other declared
+    // reader could not open. The child sets exactly that umask and publishes with a declared mode
+    // the umask would narrow; the published inode must carry the declared bits. RED against the
+    // umask-only construction: it publishes 0600 here.
+    //
+    // The paired control is the Absent arm under the same umask: a caller that declares no mode
+    // keeps today's behaviour exactly (0666 & !umask), so widening the signature changed nothing
+    // for the callers that did not ask.
+    fn create_new_mode_under_umask(label: &str, umask: libc::mode_t, declared: Option<u32>) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-create-new-mode-{label}-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let target = dir.join("object");
+        let target_s = target.to_str().unwrap().to_string();
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+        if pid == 0 {
+            unsafe { libc::umask(umask) };
+            let code = match super::write_file_create_new(&target_s, b"an object", declared) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            };
+            unsafe { libc::_exit(code) };
+        }
+        let mut status: libc::c_int = 0;
+        unsafe { libc::waitpid(pid, &mut status, 0) };
+        assert!(
+            libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0,
+            "the create in the child must succeed"
+        );
+        let mode = std::fs::metadata(&target)
+            .expect("published")
+            .permissions()
+            .mode()
+            & 0o7777;
+        std::fs::remove_dir_all(&dir).ok();
+        mode
+    }
+
+    #[test]
+    fn a_declared_mode_is_published_regardless_of_the_umask() {
+        assert_eq!(
+            create_new_mode_under_umask("declared", 0o077, Some(0o644)),
+            0o644
+        );
+        assert_eq!(
+            create_new_mode_under_umask("declared-narrow", 0o022, Some(0o640)),
+            0o640
+        );
+    }
+
+    #[test]
+    fn an_absent_mode_keeps_the_umask_derived_mode() {
+        assert_eq!(
+            create_new_mode_under_umask("absent-077", 0o077, None),
+            0o600
+        );
+        assert_eq!(
+            create_new_mode_under_umask("absent-022", 0o022, None),
+            0o644
+        );
     }
 }
 
@@ -15780,6 +17161,7 @@ fn io_error_kind_name(e: &std::io::Error) -> String {
         std::io::ErrorKind::NotFound => "not_found",
         std::io::ErrorKind::AlreadyExists => "already_exists",
         std::io::ErrorKind::PermissionDenied => "permission_denied",
+        std::io::ErrorKind::NotADirectory => "not_a_directory",
         _ => "other",
     }
     .to_string()
@@ -15827,7 +17209,12 @@ fn dispatch_file(
             "delete" => {
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] delete {}", path),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.Delete",
+                        &path,
+                        "",
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match std::fs::remove_file(&path) {
                     Ok(()) => Ok(FileResult {
@@ -15851,7 +17238,12 @@ fn dispatch_file(
             "list" => {
                 trace_emit(
                     OutputChannel::Instrumentation,
-                    &format!("[file] list {}", path),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.List",
+                        &path,
+                        "",
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match std::fs::read_dir(&path) {
                     Ok(entries) => match collect_listing_entry_names(entries) {
@@ -15901,7 +17293,12 @@ fn dispatch_file(
                 let byte_count = content.len() as i64;
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] write_owner_only {} ({} bytes)", path, byte_count),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteOwnerOnly",
+                        &path,
+                        &file_payload_clause(byte_count as u64, None),
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match write_file_owner_only(&path, content.as_bytes()) {
                     Ok(()) => Ok(FileResult {
@@ -15937,9 +17334,14 @@ fn dispatch_file(
                 let byte_count = content.len() as i64;
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] write_create_new {} ({} bytes)", path, byte_count),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteCreateNew",
+                        &path,
+                        &file_payload_clause(byte_count as u64, None),
+                        shell_obs_emoji(),
+                    ),
                 );
-                return match write_file_create_new(&path, content.as_bytes()) {
+                return match write_file_create_new(&path, content.as_bytes(), None) {
                     Ok(()) => Ok(FileResult {
                         success: true,
                         byte_count,
@@ -15962,10 +17364,68 @@ fn dispatch_file(
                     }),
                 };
             }
+            // THE DECLARED-MODE ARM. Same canonical realization as write_create_new; the only
+            // difference is that the staged inode is given the caller's declared permission bits
+            // before publication, so the published mode is the model's and not the process umask's.
+            // `mode` is the permission-bit VALUE (extdeps.access.posix file_mode_bits), refused
+            // rather than truncated when it is not a mode.
+            "write_create_new_with_mode" => {
+                let content = match param_env.lookup(ctx.sym("content")) {
+                    Some(v) => format!("{}", v),
+                    None => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "file write_create_new_with_mode operation missing `content` argument for {}",
+                                path
+                            ),
+                        })
+                    }
+                };
+                let mode = match param_env.lookup(ctx.sym("mode")) {
+                    Some(Value::Int(n)) if (0..=0o7777).contains(n) => *n as u32,
+                    other => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "file write_create_new_with_mode for {} needs an Int `mode` within 0..=0o7777, got {:?}",
+                                path,
+                                other.map(|v| format!("{}", v))
+                            ),
+                        })
+                    }
+                };
+                let byte_count = content.len() as i64;
+                trace_emit(
+                    OutputChannel::ShellTrace,
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteCreateNewWithMode",
+                        &path,
+                        &file_payload_clause(byte_count as u64, Some(mode)),
+                        shell_obs_emoji(),
+                    ),
+                );
+                return match write_file_create_new(&path, content.as_bytes(), Some(mode)) {
+                    Ok(()) => Ok(FileResult {
+                        success: true,
+                        byte_count,
+                        path,
+                        error: String::new(),
+                        error_kind: String::new(),
+                        content: String::new(),
+                    }),
+                    Err(e) => Ok(FileResult {
+                        success: false,
+                        byte_count: 0,
+                        path,
+                        error: format!("{}", e),
+                        error_kind: io_error_kind_name(&e),
+                        content: String::new(),
+                    }),
+                };
+            }
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!(
-                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only, write_create_new)"
+                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only, write_create_new, write_create_new_with_mode)"
                     ),
                 })
             }
@@ -15992,7 +17452,12 @@ fn dispatch_file(
         let byte_count = content.len() as i64;
         trace_emit(
             OutputChannel::ShellTrace,
-            &format!("[file] write {} ({} bytes)", path, byte_count),
+            &render_file_effect_begin_line_mirror(
+                "Filesystem.Write",
+                &path,
+                &file_payload_clause(byte_count as u64, None),
+                shell_obs_emoji(),
+            ),
         );
         match std::fs::write(&path, content.as_bytes()) {
             Ok(()) => Ok(FileResult {
@@ -16015,7 +17480,7 @@ fn dispatch_file(
     } else {
         trace_emit(
             OutputChannel::Instrumentation,
-            &format!("[file] read {}", path),
+            &render_file_effect_begin_line_mirror("Filesystem.Read", &path, "", shell_obs_emoji()),
         );
         match std::fs::read_to_string(&path) {
             Ok(s) => Ok(FileResult {
@@ -16173,7 +17638,7 @@ fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
 /// EARLIER, NARROWER deletion condition than the lane's, which should fire first (SCOPE
 /// paragraph of the `rest_outcome_note` annotation): when the `response` block becomes the single authority
 /// and `output` is DERIVED from its 2xx arm, every operation carries its outcome without
-/// declaring one; the opt-in disappears, `rest_outcome_output_field` deletes outright (no
+/// declaring one; the opt-in disappears, `transport_outcome_output_field` deletes outright (no
 /// field to detect), and the `if status >= 400` raise below it deletes in the same motion
 /// (it serves only operations declaring no outcome). Checkable by execution:
 /// `rest_operation_without_outcome_still_refuses` pins the opt-in's existence, so it must be
@@ -16187,7 +17652,15 @@ fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
 /// response table becomes the universal result authority; see the rest_outcome_note annotation. Inspect the
 /// field's TYPE, not its spelling, so callers may pick a domain-appropriate name without
 /// another transport convention.
-fn rest_outcome_output_field(op_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
+///
+/// ONE DETECTOR FOR BOTH TRANSPORTS: `outcome_type` names the transport's outcome carrier
+/// (`RestOutcome`, `extdeps.transports.shell` `ShellOutcome`), so the shell opt-in is the same
+/// seam read with a different type name, not a second convention beside this one.
+fn transport_outcome_output_field(
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+    outcome_type: &str,
+) -> Option<String> {
     let return_type = match op_node.inferred.as_deref()? {
         InferredNode::Resolved { node } => node,
         _ => return None,
@@ -16198,7 +17671,7 @@ fn rest_outcome_output_field(op_node: &Rc<Node>, ctx: &InterpContext) -> Option<
             _ => return None,
         };
         let type_name = authored_name_at(ctx.si(), field_type.clone());
-        (type_name.rsplit('.').next() == Some("RestOutcome"))
+        (type_name.rsplit('.').next() == Some(outcome_type))
             .then(|| authored_name_at(ctx.si(), field.clone()))
     })
 }
@@ -16211,6 +17684,21 @@ fn rest_outcome_variant(
     fields.sort_unstable_by_key(|(name, _)| name.0);
     Value::Variant {
         type_name: ctx.sym("RestOutcome"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    }
+}
+
+/// `extdeps.transports.shell` `ShellOutcome`, projected the way `rest_outcome_variant` projects
+/// `RestOutcome`.
+fn shell_outcome_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    mut fields: Vec<(Symbol, Value)>,
+) -> Value {
+    fields.sort_unstable_by_key(|(name, _)| name.0);
+    Value::Variant {
+        type_name: ctx.sym("ShellOutcome"),
         variant_name: ctx.sym(variant),
         fields: Rc::new(fields),
     }
@@ -16540,6 +18028,12 @@ fn rest_exchange_selection(
             msg: "REST invocation is not covered by the witness frame; real transport refused"
                 .to_string(),
         }),
+        "RestExchangeModeledRealizationUnsupported" => Err(InterpError::TypeError {
+            msg:
+                "REST invocation is covered by a modeled operation realization, which has no REST \
+                  observation arm yet; real transport refused"
+                    .to_string(),
+        }),
         other => Err(InterpError::TypeError {
             msg: format!("unrecognized REST exchange resolution: {}", other),
         }),
@@ -16591,7 +18085,7 @@ fn decide_rest_exchange(
     let (status, body) = match observation {
         RestExchangeObservationHost::ExchangeRefused(cause) => {
             return match outcome_field {
-                Some(field) => Ok(attach_rest_outcome(
+                Some(field) => Ok(attach_transport_outcome(
                     None,
                     op_node,
                     field,
@@ -16608,7 +18102,7 @@ fn decide_rest_exchange(
             body: RestBodyObservationHost::ReadRefused(cause),
         } => {
             return match outcome_field {
-                Some(field) => Ok(attach_rest_outcome(
+                Some(field) => Ok(attach_transport_outcome(
                     None,
                     op_node,
                     field,
@@ -16627,7 +18121,7 @@ fn decide_rest_exchange(
     };
     if !(200..300).contains(&status) {
         if let Some(field) = outcome_field {
-            return Ok(attach_rest_outcome(
+            return Ok(attach_transport_outcome(
                 None,
                 op_node,
                 field,
@@ -16649,7 +18143,7 @@ fn decide_rest_exchange(
             Err(error) => {
                 let cause = format!("JSON body did not decode: {}", error);
                 return match outcome_field {
-                    Some(field) => Ok(attach_rest_outcome(
+                    Some(field) => Ok(attach_transport_outcome(
                         None,
                         op_node,
                         field,
@@ -16666,7 +18160,7 @@ fn decide_rest_exchange(
             Ok(mapped) => mapped,
             Err(refusal) => {
                 return match outcome_field {
-                    Some(field) => Ok(attach_rest_outcome(
+                    Some(field) => Ok(attach_transport_outcome(
                         None,
                         op_node,
                         field,
@@ -16688,7 +18182,7 @@ fn decide_rest_exchange(
             status, missing
         );
         return match outcome_field {
-            Some(field) => Ok(attach_rest_outcome(
+            Some(field) => Ok(attach_transport_outcome(
                 None,
                 op_node,
                 field,
@@ -16699,7 +18193,7 @@ fn decide_rest_exchange(
         };
     }
     match outcome_field {
-        Some(field) => Ok(attach_rest_outcome(
+        Some(field) => Ok(attach_transport_outcome(
             Some(mapped),
             op_node,
             field,
@@ -16711,10 +18205,10 @@ fn decide_rest_exchange(
 }
 
 /// Project an observation into the operation's declared output record. On a non-success
-/// outcome the body-derived fields are Null: RestOutcome is the only inhabited branch and so
-/// the only consumable fact. On RestOk, keep the decoded body fields and replace just the
-/// outcome field.
-fn attach_rest_outcome(
+/// outcome (RestOutcome or ShellOutcome) the transport-derived fields are Null: the outcome is the
+/// only inhabited branch and so the only consumable fact. On success (RestOk, ShellExited) keep
+/// the mapped fields and replace just the outcome field.
+fn attach_transport_outcome(
     mapped: Option<Value>,
     op_node: &Rc<Node>,
     outcome_field: &str,
@@ -17020,7 +18514,7 @@ fn dispatch_rest(
     )?;
     let selection = rest_exchange_selection(invocation, ctx)?;
     let observation = observe_rest_exchange(selection, request, body_json);
-    let outcome_field = rest_outcome_output_field(op_node, ctx);
+    let outcome_field = transport_outcome_output_field(op_node, ctx, "RestOutcome");
     decide_rest_exchange(
         observation,
         op_node,
@@ -17482,6 +18976,12 @@ pub enum RestResponseDecodeCause {
     NotAString { json_kind: &'static str },
     /// The string names no arm under the contract's naming policy.
     UnknownSpelling { spelling: String },
+    /// A record member is spelled as a renamed field's AUTHORED name rather than its declared
+    /// wire key (`from`). The authored name is reserved: it is not a wire spelling of that field.
+    AuthoredNameIsNotTheWireKey { authored: String, wire: String },
+    /// Both the wire key and the authored name of one renamed field are present; which one
+    /// populates the field would be decided by iteration order.
+    AmbiguousWireSpelling { authored: String, wire: String },
 }
 
 impl fmt::Display for RestResponseDecodeRefusal {
@@ -17512,6 +19012,16 @@ impl fmt::Display for RestResponseDecodeRefusal {
             RestResponseDecodeCause::NotAString { json_kind } => {
                 write!(f, "expected a JSON string, found {}", json_kind)
             }
+            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey { authored, wire } => write!(
+                f,
+                "member `{}` is the authored name of a field whose declared wire key is `{}`",
+                authored, wire
+            ),
+            RestResponseDecodeCause::AmbiguousWireSpelling { authored, wire } => write!(
+                f,
+                "both `{}` and its authored name `{}` are present; the field's spelling is ambiguous",
+                wire, authored
+            ),
             RestResponseDecodeCause::UnknownSpelling { spelling } => {
                 write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
             }
@@ -17750,21 +19260,60 @@ fn decode_json_by_declared_type(
     if let serde_json::Value::Object(obj) = json {
         if ty.connective == Connective::Conj && !ty.children.is_empty() {
             let mut fields: HamtMap<CanonKey, Value> = HamtMap::new();
+            // A declared field is found by its WIRE key -- its `from` key when it carries one,
+            // else its authored name -- and the decoded value is stored under the AUTHORED name,
+            // which is the only name a program's field access reads. Keying the record by the
+            // wire spelling left every renamed nested field (`issuerUri` for `issuer_uri`) absent
+            // to its reader: gunbc.auth.heal_publisher_provision read a live provider whose
+            // oidc.issuerUri, attributeCondition and attributeMapping all matched and refused it
+            // as "issuer is null" (gunbc.recurring_failure_mode
+            // rest_response_nested_from_key_ignored).
+            // A renamed field's AUTHORED name is reserved: it is not a wire spelling, so a member
+            // carrying it refuses rather than populating the field around `from` and the typed
+            // decode, and a body carrying both spellings refuses rather than letting iteration
+            // order choose.
+            for f in ty.children.iter() {
+                if let Some(wire) = extract_from_key(f, ctx) {
+                    let authored = authored_name_at(ctx.si(), f.clone());
+                    if authored != wire && obj.contains_key(&authored) {
+                        let cause = if obj.contains_key(&wire) {
+                            RestResponseDecodeCause::AmbiguousWireSpelling {
+                                authored: authored.clone(),
+                                wire,
+                            }
+                        } else {
+                            RestResponseDecodeCause::AuthoredNameIsNotTheWireKey {
+                                authored: authored.clone(),
+                                wire,
+                            }
+                        };
+                        return Err(RestResponseDecodeRefusal {
+                            field_path: format!("{}.{}", path, authored),
+                            coproduct: name.clone(),
+                            cause,
+                        });
+                    }
+                }
+            }
             for (key, value) in obj.iter() {
-                let declared = ty
-                    .children
-                    .iter()
-                    .find(|f| authored_name_at(ctx.si(), (*f).clone()) == *key);
-                let decoded = match declared {
-                    Some(f) => decode_json_by_declared_field_at(
-                        value,
-                        f,
-                        &format!("{}.{}", path, key),
-                        ctx,
-                    )?,
-                    None => json_to_value(value),
+                let declared = ty.children.iter().find(|f| {
+                    extract_from_key(f, ctx)
+                        .unwrap_or_else(|| authored_name_at(ctx.si(), (*f).clone()))
+                        == *key
+                });
+                let (stored, decoded) = match declared {
+                    Some(f) => (
+                        authored_name_at(ctx.si(), f.clone()),
+                        decode_json_by_declared_field_at(
+                            value,
+                            f,
+                            &format!("{}.{}", path, key),
+                            ctx,
+                        )?,
+                    ),
+                    None => (key.clone(), json_to_value(value)),
                 };
-                if let Some(ck) = CanonKey::new(str_value(key.clone())) {
+                if let Some(ck) = CanonKey::new(str_value(stored)) {
                     fields.insert(ck, decoded);
                 }
             }
@@ -19484,6 +21033,12 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
+            arm "free_call.pure_dag_seam_unreachable" { "pure_dag_seam_unreachable" } => {
+                Err(InterpError::TypeError {
+                    msg: "std.bytes pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated".to_string(),
+                })
+            },
+
             arm "free_call.discriminant" { "discriminant" } => match $positional.first() {
                 Some(Value::Variant { variant_name, .. }) => {
                     Ok(Some(str_value(resolve_sym(*variant_name))))
@@ -19810,7 +21365,9 @@ macro_rules! v1_builtin_arms {
                         drop(counters);
                         let mut result = (*items).clone();
                         result.push_back((*item).clone());
-                        Ok(Some(list_value(result)))
+                        let pushed = list_value(result);
+                        eval_recompute_extend_push_hash($ctx, &items, item, &pushed);
+                        Ok(Some(pushed))
                     }
                     None => Ok(None),
                 },
@@ -19875,7 +21432,9 @@ macro_rules! v1_builtin_arms {
                         let mut counters = $ctx.mutation_counters.borrow_mut();
                         counters.map_insert_calls += 1;
                         drop(counters);
-                        Ok(Some(map_value(m.update(ck, (*v).clone()))))
+                        let inserted = map_value(m.update(ck.clone(), (*v).clone()));
+                        eval_recompute_extend_insert_hash($ctx, m, &ck, v, &inserted);
+                        Ok(Some(inserted))
                     }
                     None => Err(InterpError::TypeError {
                         msg: format!(
@@ -20183,6 +21742,10 @@ macro_rules! v1_builtin_arms {
                     expect_str_list($positional.get(1).copied(), "dependency_resolution_facts")?;
                 let exclude_substrings =
                     expect_str_list($positional.get(2).copied(), "dependency_resolution_facts")?;
+                refuse_roots_that_are_not_walkable_directories(
+                    "dependency_resolution_facts",
+                    &pool_roots.iter().chain(importer_roots.iter()).cloned().collect::<Vec<_>>(),
+                )?;
                 // Reference-first exact union through the ONE dedup authority, then the
                 // import_module -> target_module rename. Both halves are the host twin of what
                 // `v2.lens.module_graph` composed in the interpreter; moved because it measured
@@ -20190,6 +21753,41 @@ macro_rules! v1_builtin_arms {
                 let facts = crate::cli_run::dependency_resolution_facts(
                     &pool_roots,
                     &importer_roots,
+                    &exclude_substrings,
+                );
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ModuleDependencyEdge"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("path"), str_value(f.path)),
+                            ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                            ($ctx.sym("target_module"), str_value(f.import_module)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            arm "free_call.dependency_resolution_facts_at" { "dependency_resolution_facts_at" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "dependency_resolution_facts_at")?;
+                let importer_path =
+                    expect_value_str($positional.get(1).copied(), "dependency_resolution_facts_at")?;
+                let exclude_substrings =
+                    expect_str_list($positional.get(2).copied(), "dependency_resolution_facts_at")?;
+                // The pool roots are anchored as directories, so they refuse typed here like the
+                // population read's. The importer is a FILE path by contract and is never anchored:
+                // it is a key into the population's importer grouping, not a root to walk.
+                refuse_roots_that_are_not_walkable_directories(
+                    "dependency_resolution_facts_at",
+                    &pool_roots,
+                )?;
+                // Same row shape as the population read, so a `.dag` consumer switching to the keyed
+                // form changes its source of rows and not its fold.
+                let facts = crate::cli_run::dependency_resolution_facts_at(
+                    &pool_roots,
+                    importer_path.as_str(),
                     &exclude_substrings,
                 );
                 let mut items: Vec<Value> = Vec::new();
@@ -20777,6 +22375,50 @@ macro_rules! v1_builtin_arms {
                         &pool_roots,
                         &target_leaves,
                     ),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.builtin_function_registry_keys" { "builtin_function_registry_keys" } => {
+                Ok(Some(list_value(
+                    crate::cli_run::builtin_function_registry_keys()
+                        .into_iter()
+                        .map(str_value)
+                        .collect::<Vec<_>>(),
+                )))
+            },
+
+            arm "free_call.compile_dag_primitive_call_edges" { "compile_dag_primitive_call_edges" } => {
+                let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
+                let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry_prefixes = expect_str_list($positional.get(2).copied(), $name)?;
+                Ok(Some(primitive_call_edge_census_value(
+                    crate::cli_run::compile_dag_primitive_call_edges(&exclude_substrings, &pool_roots, &entry_prefixes),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.source_root_ingest_module_identities" { "source_root_ingest_module_identities" } => {
+                let source_roots = expect_str_list($positional.first().copied(), $name)?;
+                Ok(Some(module_identity_population_value(
+                    crate::cli_run::source_root_ingest_module_identities(&source_roots),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.required_floor_nominal_subject_module_identities" { "required_floor_nominal_subject_module_identities" } => {
+                let source_roots = expect_str_list($positional.first().copied(), $name)?;
+                Ok(Some(module_identity_population_value(
+                    crate::cli_run::required_floor_nominal_subject_module_identities(&source_roots),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.entry_closure_module_identities" { "entry_closure_module_identities" } => {
+                let source_roots = expect_str_list($positional.first().copied(), $name)?;
+                let entry_path = expect_str($positional.get(1).copied(), $name)?;
+                Ok(Some(module_identity_population_value(
+                    crate::cli_run::entry_closure_module_identities(&source_roots, &entry_path),
                     $ctx,
                 )))
             },
@@ -22475,6 +24117,74 @@ fn expect_byte_vec(val: Option<&Value>, context: &str) -> InterpResult<Vec<u8>> 
     }
 }
 
+/// A ROOT THAT IS NOT A WALKABLE DIRECTORY REFUSES HERE, TYPED AND LOCATED, before the host anchors
+/// it. `cli_run` `anchor_source_root` panics on a file, which crossed the builtin boundary as a
+/// process abort rather than an answer the caller can read (DESIGN section 5). The classification is
+/// `coproduct_reflection` `pool_root_defects`, the one the parse-only pool walks already refuse with,
+/// so a file root reads `NamesFile` here exactly as it does there.
+fn refuse_roots_that_are_not_walkable_directories(
+    caller: &'static str,
+    roots: &[String],
+) -> InterpResult<()> {
+    let defects = crate::coproduct_reflection::pool_root_defects(roots);
+    if defects.is_empty() {
+        return Ok(());
+    }
+    Err(InterpError::PoolRootContributesNothing {
+        caller,
+        declared: roots.len(),
+        defects,
+    })
+}
+
+#[cfg(test)]
+mod walkable_root_refusal_tests {
+    use super::{refuse_roots_that_are_not_walkable_directories, InterpError};
+    use crate::coproduct_reflection::PoolRootDefect;
+
+    fn repo_path(rel: &str) -> String {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join(rel)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    // THE RED: a module FILE handed where a root directory is owed refuses NamesFile, naming it.
+    #[test]
+    fn a_file_path_root_refuses_names_file() {
+        let file = repo_path("dag/gunbc/auth/approval_broker_serve.dag");
+        match refuse_roots_that_are_not_walkable_directories(
+            "dependency_resolution_facts",
+            &[file.clone()],
+        ) {
+            Err(InterpError::PoolRootContributesNothing {
+                caller,
+                declared,
+                defects,
+            }) => {
+                assert_eq!(caller, "dependency_resolution_facts");
+                assert_eq!(declared, 1);
+                assert_eq!(defects.len(), 1);
+                assert_eq!(defects[0].0, file);
+                assert!(matches!(defects[0].1, PoolRootDefect::NamesFile));
+            }
+            other => panic!("expected PoolRootContributesNothing(NamesFile), got {other:?}"),
+        }
+    }
+
+    // THE POSITIVE CONTROL: a directory holding .dag files is admitted, so the red above is the
+    // file-ness of the root and not a refusal of every root.
+    #[test]
+    fn a_directory_root_with_dag_files_is_admitted() {
+        assert!(refuse_roots_that_are_not_walkable_directories(
+            "dependency_resolution_facts",
+            &[repo_path("dag/gunbc/auth")]
+        )
+        .is_ok());
+    }
+}
+
 fn expect_str_list(val: Option<&Value>, context: &str) -> InterpResult<Vec<String>> {
     match val {
         Some(Value::List(items)) => {
@@ -22811,6 +24521,271 @@ mod dispatch_rest_decision_tests {
         assert!(!rest_auth_authority_conflict(true, false));
         assert!(!rest_auth_authority_conflict(false, true));
         assert!(!rest_auth_authority_conflict(false, false));
+    }
+}
+
+#[cfg(test)]
+mod file_effect_trace_tests {
+    use super::file_mode_octal;
+    use super::file_payload_clause;
+    use super::render_file_effect_begin_line_mirror;
+    use super::Value;
+
+    /// THE ORACLE RED for `render_file_effect_begin_line_mirror`: the mirror must be BYTE-EQUAL to
+    /// the .dag renderer on the same inputs, and the .dag renderer is EXECUTED here through the
+    /// interpreter rather than restated. Three specimens cover the three payload states the seed
+    /// can produce: a write with a mode, a write without one, and a path-only operation.
+    ///
+    /// THE EXPECTED STRINGS ARE ASSERTED TOO, so the three agree over one input: if the .dag
+    /// moves, this reds; if the mirror moves, this reds; and neither can pass by the other's
+    /// construction. The operand is asserted separately in every case, because that is the half
+    /// the retired raw line carried and the half whose loss gunbc.roadmap_dispatch_actuator
+    /// records as the srv1 2026-08-19 publication incident.
+    fn oracle_context() -> super::InterpContext {
+        let root = crate::cli_run::workspace_root();
+        let roots = vec![
+            root.join("dag").to_string_lossy().into_owned(),
+            root.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/gunbc/observation_seed_render.dag")
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = crate::cli_run::resolve_entry_graph_shared(&roots, &entry)
+            .expect("observation_seed_render resolves");
+        crate::cli_run::make_eval_context(&graph, indices, super::ExecutionMode::Hermetic)
+    }
+
+    fn variant(
+        ctx: &super::InterpContext,
+        name: &str,
+        fields: Vec<(super::Symbol, Value)>,
+    ) -> Value {
+        Value::Variant {
+            type_name: ctx.sym("FileEffectPayload"),
+            variant_name: ctx.sym(name),
+            fields: std::rc::Rc::new(fields),
+        }
+    }
+
+    fn byte_size(ctx: &super::InterpContext, bytes: u64) -> Value {
+        super::run_in_context_with_args(
+            ctx,
+            "byte_size",
+            &[(Some("count".to_string()), Value::Int(bytes as i64))],
+            false,
+        )
+        .expect("std.measure byte_size constructs")
+    }
+
+    /// The mode field as `FileMode?`, built by the authority itself: `extdeps.access.posix
+    /// file_mode_of_octal_text` reads a chmod spelling back into a FileMode, so the fixture never
+    /// hand-builds a `Present { value: Int }` that the authority would not accept. An unreadable
+    /// spelling yields the Absent arm — the same call, the other direction.
+    fn mode_bound(ctx: &super::InterpContext, spelling: &str) -> Value {
+        super::run_in_context_with_args(
+            ctx,
+            "file_mode_of_octal_text",
+            &[(Some("text".to_string()), Value::Str(spelling.into()))],
+            false,
+        )
+        .expect("extdeps.access.posix file_mode_of_octal_text resolves")
+    }
+
+    fn written_payload(ctx: &super::InterpContext, bytes: u64, mode: Option<&str>) -> Value {
+        let bound = match mode {
+            Some(spelling) => mode_bound(ctx, spelling),
+            None => mode_bound(ctx, "not-a-mode"),
+        };
+        variant(
+            ctx,
+            "FileEffectPayloadWritten",
+            vec![
+                (ctx.sym("bytes"), byte_size(ctx, bytes)),
+                (ctx.sym("mode"), bound),
+            ],
+        )
+    }
+
+    fn render(
+        ctx: &super::InterpContext,
+        intent: &str,
+        path: &str,
+        payload: Value,
+        emoji: bool,
+    ) -> String {
+        let out = super::run_in_context_with_args(
+            ctx,
+            "seed_file_effect_begin_line",
+            &[
+                (Some("intent".to_string()), Value::Str(intent.into())),
+                (Some("path".to_string()), Value::Str(path.into())),
+                (Some("payload".to_string()), payload),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .expect("the .dag oracle must resolve and render");
+        match out {
+            Value::Str(s) => s.to_string(),
+            other => panic!("seed_file_effect_begin_line must return a String, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn file_effect_begin_mirror_matches_seed_oracle() {
+        let ctx = oracle_context();
+
+        // The mode spelling comes back from the authority's own file_mode_of_octal_text →
+        // file_mode_octal round trip, so the expected clause below is not this test's invention.
+        let oracle = render(
+            &ctx,
+            "Filesystem.WriteCreateNewWithMode",
+            "dag/x.dag",
+            written_payload(&ctx, 12, Some("0600")),
+            true,
+        );
+        let mirror = render_file_effect_begin_line_mirror(
+            "Filesystem.WriteCreateNewWithMode",
+            "dag/x.dag",
+            &file_payload_clause(12, Some(0o600)),
+            true,
+        );
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(
+            mirror,
+            "🔄 started Filesystem.WriteCreateNewWithMode dag/x.dag (12 bytes, mode 0600)"
+        );
+
+        // 2. A write with no declared mode.
+        let oracle = render(
+            &ctx,
+            "Filesystem.Write",
+            "dag/gunbc/observation_emit_census.dag",
+            written_payload(&ctx, 166, None),
+            false,
+        );
+        let mirror = render_file_effect_begin_line_mirror(
+            "Filesystem.Write",
+            "dag/gunbc/observation_emit_census.dag",
+            &file_payload_clause(166, None),
+            false,
+        );
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(
+            mirror,
+            "◐ started Filesystem.Write dag/gunbc/observation_emit_census.dag (166 bytes)"
+        );
+
+        // 3. A path-only operation: the size clause is ABSENT rather than zero, so the line cannot
+        //    be read as "wrote 0 bytes".
+        let oracle = render(
+            &ctx,
+            "Filesystem.Read",
+            "foo.dag",
+            variant(&ctx, "FileEffectNoPayload", vec![]),
+            true,
+        );
+        let mirror = render_file_effect_begin_line_mirror("Filesystem.Read", "foo.dag", "", true);
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(mirror, "🔄 started Filesystem.Read foo.dag");
+        assert!(!mirror.contains("0 bytes"));
+        assert!(!mirror.contains("unreadable"));
+    }
+
+    /// The mirror keeps the operand in every payload state — the property the raw line supplied
+    /// and the one a "started <intent>"-only projection would silently drop.
+    #[test]
+    fn file_effect_begin_mirror_keeps_the_operand() {
+        for clause in ["", "7 bytes", "7 bytes, mode 0600"] {
+            let line = render_file_effect_begin_line_mirror(
+                "Filesystem.Write",
+                "dag/target.dag",
+                clause,
+                true,
+            );
+            assert!(
+                line.contains("dag/target.dag"),
+                "the operand must survive in {line:?}"
+            );
+        }
+    }
+    /// The doc on `file_mode_octal` claims the range comes from the caller's admission, not from
+    /// the type. That claim is only worth making if it is checked, so this holds the mirror against
+    /// `extdeps.access.posix file_mode_octal` BY EXECUTION across the range that admission admits
+    /// (0..=0o7777) — including the special-bits digit, which is where a three-digit rendering and a
+    /// four-digit one disagree. It also pins the discriminating case the reviewer raised: a value
+    /// ABOVE the admitted range would be silently masked, which is why the admission arm exists
+    /// upstream rather than here.
+    #[test]
+    fn file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range() {
+        let ctx = oracle_context();
+        // The authority's own direction: text -> FileMode -> octal spelling. A mode admitted by
+        // dispatch_file is a four-digit octal spelling, so feeding one and reading it back
+        // exercises both halves of the posix module on the same value this mirror spells.
+        let authority_octal = |spelling: &str| -> String {
+            let mode = super::run_in_context_with_args(
+                &ctx,
+                "file_mode_of_octal_text",
+                &[(Some("text".to_string()), Value::Str(spelling.into()))],
+                false,
+            )
+            .expect("file_mode_of_octal_text resolves");
+            // The parse returns FileMode?, so unwrap through the same optional shape the authority
+            // publishes rather than assuming a bare record.
+            let peeled = match mode {
+                Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } if ctx.sym_eq(variant_name, "Present") => fields
+                    .iter()
+                    .find(|(name, _)| ctx.sym_eq(*name, "value"))
+                    .map(|(_, v)| v.clone())
+                    .expect("Present carries its value"),
+                other => panic!("file_mode_of_octal_text refused {spelling}: {other:?}"),
+            };
+            super::run_in_context_with_args(
+                &ctx,
+                "file_mode_octal",
+                &[(Some("mode".to_string()), peeled)],
+                false,
+            )
+            .and_then(|v| match v {
+                Value::Str(s) => Ok(s.to_string()),
+                _ => Err(super::InterpError::NoSuchFunction {
+                    name: "file_mode_octal returned a non-string".to_string(),
+                }),
+            })
+            .expect("file_mode_octal resolves")
+        };
+        for spelling in [
+            "0000", "0600", "0644", "0755", "1777", "2755", "4755", "7777",
+        ] {
+            let value = u32::from_str_radix(spelling, 8).expect("octal literal");
+            assert!(
+                value <= 0o7777,
+                "{spelling} must be inside the range dispatch_file admits"
+            );
+            assert_eq!(
+                file_mode_octal(value),
+                authority_octal(spelling),
+                "mirror must agree with extdeps.access.posix on {spelling}"
+            );
+        }
+        // The narrowing the comment names: the mask is what makes a four-digit rendering total
+        // over the admitted range, and a value above it is the caller's to refuse (dispatch_file
+        // does, before dispatch). Asserted so the claim cannot drift back into "the type says so".
+        assert_eq!(file_mode_octal(0o100600), "0600");
     }
 }
 
@@ -23335,6 +25310,7 @@ mod map_shell_outputs_optional_stream_tests {
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -23416,6 +25392,7 @@ mod map_shell_outputs_optional_stream_tests {
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23441,6 +25418,7 @@ mod map_shell_outputs_optional_stream_tests {
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -24053,6 +26031,64 @@ mod argv_arg_limit_test {
                 panic!("small argv must not trip the arg-size wall")
             }
             Ok(_) | Err(_) => {}
+        }
+    }
+
+    /// `argv[0]` alone, so the program itself is the thing that may fail to spawn.
+    fn single_program_transport(program: &str) -> Rc<Node> {
+        let span = no_span();
+        shell_transport_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(im_vec![make_text_part_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic
+                ),
+                program.to_string(),
+                span.clone()
+            )]),
+            Rc::new(im_vec![]),
+            None,
+            span,
+        )
+    }
+
+    // DISCRIMINATING RED: a program absent from PATH never runs, and the refusal is the typed
+    // ShellSpawnRefused carrying the program -- not the untyped TypeError it replaced, which is
+    // what this test fails on if the spawn sites regress to it.
+    #[test]
+    fn dispatch_shell_missing_binary_is_typed_spawn_refusal() {
+        let ctx = argv_limit_test_context();
+        let program = "gunbc-shell-spawn-probe-absent-binary";
+        match dispatch_shell(
+            &single_program_transport(program),
+            &Env::empty(),
+            &ctx,
+            "test.ShellSpawnProbe.Observed",
+            ExpectedOutcome::ExpectSuccess,
+        ) {
+            Err(InterpError::ShellSpawnRefused { argv0, cause }) => {
+                assert_eq!(argv0, program);
+                assert!(!cause.is_empty(), "the host's reason must be retained");
+            }
+            Err(other) => panic!("expected ShellSpawnRefused, got {other:?}"),
+            Ok(_) => panic!("an absent binary cannot produce an exit status"),
+        }
+    }
+
+    // POSITIVE CONTROL: a present program spawns and yields an exit status, so the refusal above
+    // is caused by the absent binary and not by the transport shape.
+    #[test]
+    fn dispatch_shell_present_binary_yields_exit_status() {
+        let ctx = argv_limit_test_context();
+        match dispatch_shell(
+            &single_program_transport("true"),
+            &Env::empty(),
+            &ctx,
+            "test.ShellSpawnProbe.Observed",
+            ExpectedOutcome::ExpectSuccess,
+        ) {
+            Ok(result) => assert_eq!(result.exit_code, 0),
+            Err(other) => panic!("`true` must spawn and exit 0, got {other:?}"),
         }
     }
 }
@@ -25252,5 +27288,275 @@ mod the_emitted_listing_producer_refuses_too {
              assert_eq!(file_content, \"\", \"a refused listing carries no population\");\n    \
              assert_eq!(file_byte_count, 0i64, \"a refused listing counts nothing\");",
         );
+    }
+}
+
+#[cfg(test)]
+mod push_hash_extension_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use super::*;
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+
+    fn test_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn full_fold_hash(ctx: &InterpContext, v: &Value) -> u64 {
+        // A fresh memo: the reference is the whole fold, with nothing served from identity.
+        let mut fresh = EvalRecomputeHashMemo::default();
+        eval_recompute_value_hash(&mut fresh, &ctx.symbols.borrow(), v).expect("keyable")
+    }
+
+    /// THROUGH THE PRODUCTION ARMS, never the helper: `i` selects the free-call arm
+    /// (`eval_builtin`) or the method arm (`eval_algebra_method_inner`), alternating so deleting
+    /// the extension from EITHER arm turns the test red (DESIGN section 3: deleting the
+    /// integration must make a control fail).
+    fn push(ctx: &InterpContext, xs: &Rc<RrbVector<Value>>, item: Value, i: i64) -> Value {
+        let receiver = Value::List(xs.clone());
+        if i % 2 == 0 {
+            eval_builtin("list_push", &[(None, receiver), (None, item)], ctx)
+                .expect("free list_push evaluates")
+                .expect("free list_push is a builtin")
+        } else {
+            eval_algebra_method_inner("list_push", receiver, &[item], &Env::empty(), ctx)
+                .expect("method list_push evaluates")
+        }
+    }
+
+    /// The extended entry must be the value the full fold computes, for scalar and composite
+    /// items alike -- otherwise two equal accumulators would key apart (or two distinct ones
+    /// together). And it must be demand-gated: an unkeyed parent is never extended.
+    #[test]
+    fn pushed_list_hash_is_the_full_fold_and_is_demand_gated() {
+        let ctx = test_ctx();
+        let mut acc = list_value(Vec::<Value>::new());
+        // Unkeyed parent: no entry may appear for the child.
+        let Value::List(rc0) = acc.clone() else {
+            unreachable!()
+        };
+        let child = push(&ctx, &rc0, Value::Int(0), 0);
+        let Value::List(child_rc) = &child else {
+            unreachable!()
+        };
+        assert!(ctx
+            .eval_recompute_hash_memo
+            .borrow()
+            .get(&(Rc::as_ptr(child_rc) as usize))
+            .is_none());
+        // Key the root once, then thread the accumulator.
+        {
+            let mut m = ctx.eval_recompute_hash_memo.borrow_mut();
+            eval_recompute_value_hash(&mut m, &ctx.symbols.borrow(), &acc).unwrap();
+        }
+        for i in 0..64 {
+            let Value::List(rc) = acc.clone() else {
+                unreachable!()
+            };
+            let item = if i % 3 == 0 {
+                list_value(vec![Value::Int(i), str_value(format!("s{i}"))])
+            } else {
+                Value::Int(i)
+            };
+            acc = push(&ctx, &rc, item, i);
+            let Value::List(now) = &acc else {
+                unreachable!()
+            };
+            let served = ctx
+                .eval_recompute_hash_memo
+                .borrow()
+                .get(&(Rc::as_ptr(now) as usize))
+                .map(|(_, h)| *h)
+                .expect("a keyed lineage is extended on push");
+            assert_eq!(served, full_fold_hash(&ctx, &acc));
+        }
+    }
+
+    /// THROUGH THE PRODUCTION ARMS: even `i` is the free `map_insert` (`eval_builtin`), odd is the
+    /// method `insert`, so deleting the extension from either arm turns the property red.
+    fn insert(
+        ctx: &InterpContext,
+        m: &Rc<HamtMap<CanonKey, Value>>,
+        k: Value,
+        v: Value,
+        i: u64,
+    ) -> Value {
+        let receiver = Value::Map(m.clone());
+        if i % 2 == 0 {
+            eval_builtin("map_insert", &[(None, receiver), (None, k), (None, v)], ctx)
+                .expect("free map_insert evaluates")
+                .expect("free map_insert is a builtin")
+        } else {
+            eval_algebra_method_inner("insert", receiver, &[k, v], &Env::empty(), ctx)
+                .expect("method insert evaluates")
+        }
+    }
+
+    /// The derived map key equals the from-scratch fold over a randomized sequence of inserts and
+    /// overwrites (a small key space forces overwrites; values mix scalars, strings and composites),
+    /// and an unkeyed parent is never extended.
+    #[test]
+    fn inserted_map_hash_is_the_full_fold_under_insert_and_overwrite() {
+        let ctx = test_ctx();
+        let empty = Value::Map(Rc::new(HamtMap::new()));
+        let Value::Map(rc0) = empty.clone() else {
+            unreachable!()
+        };
+        let child = insert(&ctx, &rc0, Value::Int(1), Value::Int(1), 0);
+        let Value::Map(child_rc) = &child else {
+            unreachable!()
+        };
+        assert!(ctx
+            .eval_recompute_hash_memo
+            .borrow()
+            .get(&(Rc::as_ptr(child_rc) as usize))
+            .is_none());
+        let mut acc = empty;
+        {
+            let mut m = ctx.eval_recompute_hash_memo.borrow_mut();
+            eval_recompute_value_hash(&mut m, &ctx.symbols.borrow(), &acc).unwrap();
+        }
+        let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut overwrites = 0;
+        for i in 0..256u64 {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let r = seed >> 33;
+            let key = if r % 5 == 0 {
+                str_value(format!("k{}", r % 7))
+            } else {
+                Value::Int((r % 16) as i64)
+            };
+            let value = match r % 3 {
+                0 => Value::Int(r as i64),
+                1 => str_value(format!("v{r}")),
+                _ => list_value(vec![Value::Int(i as i64), str_value(format!("c{r}"))]),
+            };
+            let Value::Map(rc) = acc.clone() else {
+                unreachable!()
+            };
+            if rc.contains_key(&CanonKey::new(key.clone()).expect("key")) {
+                overwrites += 1;
+            }
+            acc = insert(&ctx, &rc, key, value, i);
+            let Value::Map(now) = &acc else {
+                unreachable!()
+            };
+            let served = ctx
+                .eval_recompute_hash_memo
+                .borrow()
+                .get(&(Rc::as_ptr(now) as usize))
+                .map(|(_, h)| *h)
+                .expect("a keyed lineage is extended on insert");
+            assert_eq!(served, full_fold_hash(&ctx, &acc), "step {i}");
+        }
+        assert!(
+            overwrites > 32,
+            "the sequence must exercise overwrite: {overwrites}"
+        );
+    }
+
+    fn record(ctx: &InterpContext, fields: Vec<(&str, Value)>) -> Value {
+        Value::Record {
+            type_name: ctx.sym("T"),
+            fields: Rc::new(fields.into_iter().map(|(n, v)| (ctx.sym(n), v)).collect()),
+        }
+    }
+
+    /// The memo's verification equality agrees with Value::eq, the equality authority, on values
+    /// that share nothing, AND on records rebuilt around shared parts -- the ParseTable shape: a
+    /// new fields allocation whose large map field is the same allocation. The shared case must
+    /// decide equality and inequality alike (a differing small field beside a shared large one is
+    /// unequal), so the recursion cannot degrade into "shares a part, therefore equal".
+    #[test]
+    fn memo_verification_equality_agrees_with_value_eq_and_descends_to_sharing() {
+        let ctx = test_ctx();
+        let mut big = HamtMap::new();
+        for i in 0..512 {
+            big.insert(
+                CanonKey::new(Value::Int(i)).expect("key"),
+                list_value(vec![Value::Int(i), str_value(format!("e{i}"))]),
+            );
+        }
+        let shared = Value::Map(Rc::new(big));
+        let t1 = record(
+            &ctx,
+            vec![("entries", shared.clone()), ("hits", Value::Int(1))],
+        );
+        let t1_rebuilt = record(
+            &ctx,
+            vec![("entries", shared.clone()), ("hits", Value::Int(1))],
+        );
+        let t2_rebuilt = record(
+            &ctx,
+            vec![("entries", shared.clone()), ("hits", Value::Int(2))],
+        );
+        // WORK: two records rebuilt around the SAME 512-entry map must be compared in O(changed)
+        // structural-equality calls (the one small field), never by walking the shared map. A
+        // top-level-only shortcut followed by `==` returns the same answer and fails here: the
+        // derived walk recurses into every entry.
+        for other in [&t1_rebuilt, &t2_rebuilt] {
+            let before = value_eq_calls();
+            let _ = value_fast_eq(&t1, other);
+            let work = value_eq_calls() - before;
+            assert!(
+                work <= 4,
+                "verification walked shared structure: {work} Value::eq calls"
+            );
+        }
+        assert!(value_fast_eq(&t1, &t1_rebuilt));
+        assert_eq!(value_fast_eq(&t1, &t1_rebuilt), t1 == t1_rebuilt);
+        assert!(!value_fast_eq(&t1, &t2_rebuilt));
+        assert_eq!(value_fast_eq(&t1, &t2_rebuilt), t1 == t2_rebuilt);
+        // Unshared, deep: a copy equal by content and a copy differing in one nested element.
+        let deep = |last: i64| {
+            let mut m = HamtMap::new();
+            for i in 0..64 {
+                let tail = if i == 63 { last } else { i };
+                m.insert(
+                    CanonKey::new(Value::Int(i)).expect("key"),
+                    list_value(vec![Value::Int(tail), str_value(format!("d{i}"))]),
+                );
+            }
+            record(
+                &ctx,
+                vec![("entries", Value::Map(Rc::new(m))), ("hits", Value::Int(0))],
+            )
+        };
+        let (a, b, c) = (deep(63), deep(63), deep(-1));
+        assert_eq!(value_fast_eq(&a, &b), a == b);
+        assert!(value_fast_eq(&a, &b));
+        assert_eq!(value_fast_eq(&a, &c), a == c);
+        assert!(!value_fast_eq(&a, &c));
+        let v1 = Value::Variant {
+            type_name: ctx.sym("V"),
+            variant_name: ctx.sym("A"),
+            fields: Rc::new(vec![(ctx.sym("x"), shared.clone())]),
+        };
+        let v2 = Value::Variant {
+            type_name: ctx.sym("V"),
+            variant_name: ctx.sym("B"),
+            fields: Rc::new(vec![(ctx.sym("x"), shared)]),
+        };
+        assert_eq!(value_fast_eq(&v1, &v2), v1 == v2);
+        assert!(!value_fast_eq(&v1, &v2));
+    }
+
+    #[test]
+    fn map_finalizer_inverse_recovers_the_sum() {
+        for sum in [0u64, 1, 0xDEAD_BEEF, u64::MAX, 0x1234_5678_9ABC_DEF0] {
+            let h = eval_recompute_mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, sum);
+            assert_eq!(eval_recompute_map_sum_from_hash(h), sum);
+        }
     }
 }

@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.leading_separator_single_variant_read_as_an_alias_in_v2
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data leading_separator_single_variant_read_as_an_alias_in_v2: RecurringFailureMode = RecurringFailureMode {
+  identity: "leading_separator_single_variant_read_as_an_alias_in_v2" as NonEmptyStr,
+  receipts: [
+    "**v2 read a one-variant coproduct written with a leading separator as an ALIAS to its variant's name** (INVALID STATE: `type SignatureSuite =\n  | EcdsaP256Sha256` is a coproduct with one nullary variant in v1 -- v1.compiler.parse parse_type_body_after_eq takes the `|` arm to a Disj, and only the bare arm to type_item_from_alias_rhs. v2.std.compilers.sugar sugar_rule_type_alias_rhs_lead lowered the lead production by DROPPING the separator as layout, and a single payload-less variant then does not form a coproduct (sugar_variants_form_coproduct), so the right-hand side normalized to the tree `type SignatureSuite = EcdsaP256Sha256` does: an alias to a name nothing declares. The separator is layout over two or more variants and MEANING over one, and the rule treated it as layout at every count.)",
+    "HARM: a meaning fork on `=` between the seed and v2 -- one source text, two declarations -- over 26 corpus declarations of this shape at this writing (a scan for `type X =` followed by exactly one `|` line, or `type X = | A` on one line), almost all non-generic one-variant enums in extdeps (crypto signature and mac suites, OS distributions, APNs push type, AWS instance family). FOUND by execution (lively-newt-275, 2026-09-25): carrying generic aliases turned `type X<T> =\n  | T` from a refusal into an ACCEPTED alias, because the separator was already gone when body lowering ran -- normalize is bottom-up, so the lead child is sugared before its type_decl parent lowers, and no check at the declaration can see it.",
+    "DISTINGUISHING FACTS. Not gunbc.recurring_failure_mode plain_type_alias_left_as_a_parse_shell_in_v2 (a representation split over declarations that ARE aliases); here the declaration is not an alias at all. Not a parse defect: the parse tree carries the separator; the loss is in normalization. RECOGNITION RULE: a v2-normalized type declaration whose source right-hand side opens with `|` and has exactly one payload-less variant, and whose normalized right-hand side is not a Disj.",
+    "CLIMB (same change): the lead rule keeps dropping the separator over a coproduct, and over a single variant lowers the right-hand side to the coproduct of its variants (sugar_carries_separator, sugar_separated_rhs_as_coproduct), so the separator's meaning is carried rather than inferred downstream. Controls: v2.test.claim.type_param_binder_frame tpb_plain_single_variant_after_separator_is_a_coproduct (red before: no one-arm Disj), tpb_generic_single_variant_after_separator_is_a_coproduct (red before: lowered as an alias under the generic-alias arm), and the twin tpb_plain_single_alias_is_not_a_coproduct (green before and after: without the separator it stays an alias). RUNG: source to normalize -- structurally guaranteed, established by those executed controls. CEILING: structurally guaranteed; the rule is decidable from the parse. NEXT TRIGGER: none for the normalize path; the 26 declarations' downstream readers (variant references like `SignatureSuite.EcdsaP256Sha256`) now meet a Disj and are covered by the ordinary coproduct route.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.std.compilers.sugar", decl_name: "sugar_rule_type_alias_rhs_lead", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.compilers.sugar", decl_name: "sugar_separated_rhs_as_coproduct", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.compilers.sugar", decl_name: "sugar_variants_form_coproduct", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.type_param_binder_frame", decl_name: "tpb_plain_single_variant_after_separator_is_a_coproduct", field: WholeDeclaration },
+  ],
+}

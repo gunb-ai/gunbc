@@ -1,0 +1,7 @@
+module test.fixture.variant_owner_homonym.record
+
+import std.types { String }
+
+type HomonymOwner {
+  label: String
+}

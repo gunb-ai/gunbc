@@ -18,6 +18,7 @@ module std.durable_compare_and_set
 
 import std.types { NonEmptyStr, Int, String }
 import std.content_hash { ContentHash, serialize_content_hash }
+import std.checked_arithmetic { int_inclusive_max }
 
 
 type CasGeneration =
@@ -128,8 +129,9 @@ type CasSlotObservation<T>
 //
 // THE PLACEMENT WAS PUT TO REVIEW AND RULED ON, and the ruling also corrected the NAME, which is the
 // part worth keeping. The arm stays here: an interface outcome need not be producible by every
-// realization, it needs a real producer and a stable caller-visible meaning, and the file store
-// supplies both. Moving it into the realization would either erase the typed remedy or force the whole
+// realization, it needs a real producer and a stable caller-visible meaning, and a realization that
+// must discover its head under a budget supplies both (gunbc.fabric.durable_cas_fabric_storage does; the
+// file store no longer does, because its head search is total over the generation line). Moving it into the realization would either erase the typed remedy or force the whole
 // store-failure carrier to become realization-specific.
 //
 // But the first spelling was `CasUnreadableBeyondProbeBound`, and PROBE IS THE FILE REALIZATION'S
@@ -176,9 +178,16 @@ fn cas_unreadable_slot_detail(cause: CasUnreadableSlot) -> String {
 // only the DETAIL of the third. So the three-way outcome stands and its payload gains the
 // distinction. A caller with no use for it matches `CasStoreRefused` and carries the value on, which
 // is honest; a caller that needs to tell a corrupt head from a failed write can now do so.
+// THE THIRD WAY IS THAT THE GENERATION LINE HAS ENDED. CasGeneration is realized as a machine Int
+// (std.checked_arithmetic int_inclusive_max), so a slot whose head IS that maximum has no successor to
+// publish. That is neither an unreadable head nor a publication the store refused for a host reason:
+// the head is well formed and the store is healthy, and the only honest answer is that this slot can
+// never advance again. It is unreachable by any consumer at a physical rate, and it is still typed,
+// because the alternative is a successor computed by an overflowing addition.
 type CasStoreFailure
   = CasSlotObservationRefused { cause: CasUnreadableSlot }
   | CasGenerationPublicationRefused { detail: NonEmptyStr }
+  | CasGenerationSpaceExhausted { head: CasGeneration }
 
 // The outcome of one attempt.
 //
@@ -252,8 +261,23 @@ fn cas_generation_count(g: CasGeneration) -> Int {
   g
 }
 
-fn cas_generation_next(g: CasGeneration) -> CasGeneration {
-  cas_generation_count(g: g) + 1
+// THE SUCCESSOR IS TOTAL, AND THE LAST GENERATION HAS NONE. This replaces `cas_generation_next`,
+// which added 1 unconditionally, so a head at the Int maximum had a successor only an overflowing
+// addition could name. The check precedes the addition (std.checked_arithmetic: pre-check, never
+// post-check).
+type CasGenerationSuccessor
+  = CasSuccessorGeneration { generation: CasGeneration }
+  | CasSuccessorExhausted { head: CasGeneration }
+
+fn cas_generation_successor(g: CasGeneration) -> CasGenerationSuccessor {
+  if cas_generation_count(g: g) >= int_inclusive_max() { CasSuccessorExhausted { head: g } }
+  else { CasSuccessorGeneration { generation: cas_generation_count(g: g) + 1 } }
+}
+
+// ONE AUTHORITY FOR THE EXHAUSTED OUTCOME, so every realization that finds a head with no successor
+// answers with the same refusal rather than re-spelling it.
+fn cas_generation_exhausted<T>(head: CasGeneration) -> CasOutcome<T> {
+  CasStoreRefused { cause: CasGenerationSpaceExhausted { head: head } }
 }
 
 fn cas_generation_first() -> CasGeneration {
@@ -263,10 +287,10 @@ fn cas_generation_first() -> CasGeneration {
 // The generation a successful commit lands on, derived from the observation
 // rather than from the caller's expectation — a caller cannot name the
 // generation it is about to occupy.
-fn cas_committed_generation<T>(readable: CasReadableSlot<T>) -> CasGeneration {
+fn cas_committed_generation<T>(readable: CasReadableSlot<T>) -> CasGenerationSuccessor {
   match readable {
-    CasReadableAbsent => cas_generation_first()
-    CasReadablePresent { version: v } => cas_generation_next(g: v.generation)
+    CasReadableAbsent => CasSuccessorGeneration { generation: cas_generation_first() }
+    CasReadablePresent { version: v } => cas_generation_successor(g: v.generation)
   }
 }
 
@@ -335,12 +359,16 @@ fn cas_decide_readable<T>(
   readable: CasReadableSlot<T>
 ) -> CasOutcome<T> {
   if cas_expectation_admits(expected: attempt.expected, readable: readable) {
-    CasCommitted {
-      committed: CasSlotVersion {
-        generation: cas_committed_generation(readable: readable),
-        content: attempt.proposed_content,
-        value: attempt.proposed
-      }
+    match cas_committed_generation(readable: readable) {
+      CasSuccessorExhausted { head: h } => cas_generation_exhausted(head: h)
+      CasSuccessorGeneration { generation: g } =>
+        CasCommitted {
+          committed: CasSlotVersion {
+            generation: g,
+            content: attempt.proposed_content,
+            value: attempt.proposed
+          }
+        }
     }
   } else {
     CasPreconditionFailed { expected: attempt.expected, observed: readable }

@@ -104,9 +104,11 @@ fn replay_mtcollins_two_configurations() -> ObservationAttempt<List<MemoryChange
     PopulationRolesResolved { roles } => {
       let first = mtcollins_witnessed_configuration(roles: roles)
       let second = mtcollins_3ds_configuration(roles: roles)
+      let first_capture = read_verified_memory_capture(path: mtcollins_training_capture_path, expected_sha256: mtcollins_training_capture_sha256)
+      let second_capture = read_verified_memory_capture(path: mtcollins_3ds_capture_path, expected_sha256: mtcollins_3ds_capture_sha256)
       let evidence = mtcollins_two_capture_evidence(first_configuration: first, second_configuration: second,
-        first_capture: read_verified_memory_capture(path: mtcollins_training_capture_path, expected_sha256: mtcollins_training_capture_sha256),
-        second_capture: read_verified_memory_capture(path: mtcollins_3ds_capture_path, expected_sha256: mtcollins_3ds_capture_sha256))
+        first_capture: first_capture,
+        second_capture: second_capture)
       ObservationEstablished { observed: map([first, second], configuration =>
         evaluate_memory_change(proposal: mtcollins_replay_proposal(configuration: configuration), evidence: evidence)) }
     }

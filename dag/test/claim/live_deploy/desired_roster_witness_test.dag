@@ -49,6 +49,8 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.live_deploy.emit {
   live_deploy_systemd_unit_for,
+}
+import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
 }
 import gunbc.roadmap_dashboard_instance { dashboard_instance_dispatch_worktree_root }

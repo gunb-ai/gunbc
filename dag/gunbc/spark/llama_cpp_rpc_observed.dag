@@ -13,6 +13,7 @@ import std.content_hash { Sha256Digest, sha256_hex_digest }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, ipv4_address_eq }
 import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
+import gunbc.spark.model_snapshot_acquisition { spark_models_root }
 
 // A SERVING DEPLOYMENT THAT SPANS TWO HOSTS, WHICH THIS CORPUS HAD NO WAY TO SAY.
 //
@@ -1005,7 +1006,7 @@ fn llama_cpp_rpc_observed_artifact() -> LlamaCppRpcOnDiskArtifact? {
     Absent => none
     Present { value: bound } =>
       llama_cpp_rpc_artifact(
-        primary_shard_path: "/home/briansrls/models/dsv4-iq3s/DeepSeek-V4-Flash-0731-UD-IQ3_S-00001-of-00004.gguf" as NonEmptyStr,
+        primary_shard_path: join([spark_models_root as String, "/dsv4-iq3s/DeepSeek-V4-Flash-0731-UD-IQ3_S-00001-of-00004.gguf"], "") as NonEmptyStr,
         shard_count: llama_cpp_rpc_observed_shard_count,
         identity: ArtifactIdentityBound { identity: bound })
   }

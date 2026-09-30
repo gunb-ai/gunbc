@@ -73,15 +73,18 @@ browser session or revoked creation-time PAT from poisoning an otherwise usable 
 
 The existing `gunbc.fleet_converge_workflow.fleet_converge_job` owns the first consumer; there is no
 parallel workflow. Its `org_actions_observe` mode invokes
-`gunbc.fleet.org_actions_converge.org_actions_converge_wet`. The phase refuses a missing secret,
-executes the read-only runner-groups validation call, strictly decodes the response, reads each
-group's selected repositories through `extdeps.github.org_actions.CliOrgRunnerGroups`, and evaluates
-`gunbc.fleet.org_actions_standing.org_actions_settings_diff`. Any missing/stale credential, probe
-failure, malformed response, repository-read failure, or desired-state divergence is a failing
+`gunbc.fleet.org_actions_inspection.org_actions_inspect_wet`. The entry refuses a missing secret,
+then composes the read through `std.goal_assessment.inspect_goal`: the goal-blind observer
+`observe_org_actions` executes the read-only runner-groups call, strictly decodes the response and
+reads each group's selected repositories through `extdeps.github.org_actions.CliOrgRunnerGroups`;
+`gunbc.fleet.org_actions_standing.assess_org_actions` then compares the observed groups with the
+desired goal. A refused or malformed read, or a repository-read failure, is a
+typed observation refusal, and any desired-state divergence is a located `GoalDiverged`; each is a failing
 typed outcome. It never silently skips and it has no write/fix-divergence arm.
 
 The validation receipt is uploaded as a workflow artifact only after the probe and joined reads
-succeed. The artifact contains identity, endpoint, organization, and time—not a token, header,
+succeed, and it records the assessment verdict. The artifact contains identity, endpoint, organization,
+verdict and time—not a token, header,
 response body, or token fingerprint. Until the operator creates `GUNBC_ORG_ADMIN_TOKEN`, dispatching
 the mode witnesses the intended missing-credential refusal. Once the secret exists, the same route
 performs the live read without a code-path switch.

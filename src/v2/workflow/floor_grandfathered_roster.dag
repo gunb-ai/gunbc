@@ -125,6 +125,51 @@ type GrandfatheredRemoval =
 // old one is not -- and one is a deletion, because the band-grounding check it named was replaced
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
+  WitnessDeleted {
+    identity: "v2.test.execution.bind_round_trip.bind_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/bind_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.execution.branch_if_then_else_round_trip.branch_if_then_else_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/branch_if_then_else_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.execution.dag_add_emit_round_trip.dag_add_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.execution.loop_round_trip.loop_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/loop_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.execution.match_bool_round_trip.match_bool_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/match_bool_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.parse_engine_hooks_test.parse_engine_hooks_symbols_match_grammar_productions" as NonEmptyStr,
+    deleted_in: "parse_engine_hooks deletion (follow-up to gunbc#12376): v2.compiler.parse_engine_hooks was unconsumed -- v2.compiler.parse imported its three Symbols and read none -- and one of them named dag_production_match_arm_body, a production extdeps.languages.dag does not declare. The module is deleted, so the claim comparing its constants to literals has no subject" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_parse_engine_hooks_behavioral_witness.self_host_parse_engine_hooks_behavioral_receipt_holds" as NonEmptyStr,
+    deleted_in: "parse_engine_hooks deletion (follow-up to gunbc#12376): the self-host behavioral receipt for a deleted module; checking the emitted contract of dead code is residue. Its roster row, driver and wet-receipt standing row are deleted with it" as NonEmptyStr
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.claim.c_compilation_unit_witness.witness_partition_fold_compat_wrapper_not_receipt_path" as NonEmptyStr,
+    new_identity: "v2.test.claim.c_compilation_unit_witness.witness_partition_fold_outcome_yields_both_units" as NonEmptyStr,
+    renamed_in: "the compilation-unit refusal-swallowing cut: the witness was named for the compat WRAPPER it stood against, and that wrapper is deleted by this change, so the name pointed at something no longer in the tree. It now names the fact it actually establishes -- partition_fold_outcome yields both units -- and as a new identity it is judged against the new-witness tier rather than inheriting the cut row's grandfathered one" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler_materialization_witness.single_site_demands_are_accepted_single_recompute" as NonEmptyStr,
+    deleted_in: "Pkg19 precursor: the claim asserted BOTH carrier demands were AcceptedSingleRecompute, which was true only because each demand row described a single non-emergent site. Naming the parse-table demand's grammar-emergent expansion frame moves that demand onto the discharge path, so one claim can no longer answer for both identities and the conjunction would have hidden which half moved. Its subject survives, split, at v2.test.claim.compiler_materialization_witness.parse_table_demand_is_discharged_by_its_catalog_provider and compile_stage_demand_is_accepted_single_recompute -- two new identities, judged against the new-witness tier, as a split of a grandfathered row must be" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.rust_crate_partition_witness.witness_policy_partition_refuses_holds" as NonEmptyStr,
+    deleted_in: "Pkg7a/b policy partition resolver: it pinned PolicyResolverUnimplemented, the refusal the resolver replaces. The arm and its cause are deleted; the policy arm's refusal (PolicyTargetCountNotPositive) and admission are asserted at v2.test.claim.rust_crate_partition_witness.policy_target_below_one_refuses and policy_partition_admits_a_balanced_acyclic_assignment, new identities judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.declared_type_inhabitance_direct_call_witness.w_optional_value_at_required_binding_is_admitted_only_at_the_counted_boundary" as NonEmptyStr,
+    deleted_in: "gunbc#11626 Optional-at-Required wall: it pinned the silent state (an Optional at a Required String parameter admitted with only an Undecided advisory) that the wall climbs to a DeclaredTypeNotInhabited refusal. Its subject survives, inverted, at test.claim.optional_at_required_position_witness_test an_optional_at_a_string_parameter_must_refuse, which counts the blocking class" as NonEmptyStr,
+  },
   WitnessRenamed {
     previous_identity: "test.claim.floor_eval_step_budget_witness_test.a_claim_over_the_eval_step_budget_refuses" as NonEmptyStr,
     new_identity: "test.claim.floor_eval_step_budget_witness_test.a_cost_between_the_ceilings_refuses_for_a_new_identity" as NonEmptyStr,
@@ -179,6 +224,30 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   WitnessDeleted {
     identity: "test.claim.bare_name_fork_lens_witness_test.two_declarations_of_one_name_inside_the_subject_are_not_a_fork_with_itself" as NonEmptyStr,
     deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.field_access_emit.field_access_emit_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.field_access_emit.field_access_emit_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.field_access_emit.field_access_grammar_inverse_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.field_access_emit.field_access_grammar_inverse_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.field_access_emit.field_access_ingest_via_coerce_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.field_access_emit.field_access_ingest_via_coerce_matches_canonical by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.record_construct_emit.record_construct_emit_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.record_construct_emit.record_construct_emit_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.record_construct_emit.record_construct_grammar_inverse_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.record_construct_emit.record_construct_grammar_inverse_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.record_construct_emit.record_construct_ingest_via_coerce_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.record_construct_emit.record_construct_ingest_via_coerce_matches_canonical by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
   },
   WitnessDeleted {
     identity: "v2.test.lens_application.sg_claims.lens_application_introspect_advisory_holds" as NonEmptyStr,
@@ -505,7 +574,7 @@ fn floor_grandfathered_chunk_062() -> List<String> {
 }
 
 fn floor_grandfathered_chunk_063() -> List<String> {
-  Cons { head: "v2.test.claim.normalized_tree_admission.retention_is_found_past_the_diagnostic_head_RED", tail: Cons { head: "v2.test.claim.normalized_tree_admission.the_production_retention_producer_is_refused_by_the_door", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_missing_row_refuses_typed", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_non_data_edge_refuses_typed", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_operand_flows_is_total_over_edges", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_operand_root_refuses_non_data_kind", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_operand_root_resolves_data_depends_on", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_shared_operand_consumers_agree", tail: Cons { head: "v2.test.claim.parse_engine_hooks_test.parse_engine_hooks_symbols_match_grammar_productions", tail: Cons { head: "v2.test.claim_pipeline.infer.spine_infer_accepts_resolved_tree", tail: Cons { head: "v2.test.claim_pipeline.normalize.spine_normalize_accepts_well_formed_sugar", tail: Cons { head: "v2.test.claim_pipeline.normalize.spine_normalize_dissolves_interior_service_sugar", tail: Cons { head: "v2.test.claim_pipeline.resolve.spine_resolve_accepts_normalized_tree", tail: Cons { head: "v2.test.claim_pipeline.resolve.spine_resolve_rejects_noncanonical_root_atom", tail: Cons { head: "v2.test.claim_pipeline.translate.spine_translate_accepts_rust_add_inferred_tree", tail: Cons { head: "v2.test.claim.port_locus_classification.port_locus_states_are_distinct_and_retain_required_evidence", tail: Cons { head: "v2.test.claim.port_locus_classification.port_refusal_classifies_only_from_available_evidence", tail: Cons { head: "v2.test.claim.proactive_verification_ledger_witness.proactive_verification_ledger_enumeration_holds", tail: Cons { head: "v2.test.claim.product_receipt_evidence_cause_swap_test.establishes_cannot_separate_refutation_from_absence", tail: Cons { head: "v2.test.claim.product_receipt_evidence_cause_swap_test.instrument_refusal_is_distinguishable_from_subject_absence", tail: Cons { head: "v2.test.claim.product_receipt_evidence_cause_swap_test.only_a_green_receipt_licenses_the_claim", tail: Cons { head: "v2.test.claim.product_receipt_evidence_cause_swap_test.produced_a_verdict_separates_refutation_from_absence", tail: Cons { head: "v2.test.claim.provenance.cross_file_provenance.cross_file_name_answers_with_its_owning_module_and_derives_the_edge_holds", tail: Cons { head: "v2.test.claim.provenance.cross_file_provenance.repeated_mentions_collapse_only_in_the_dependency_set_holds", tail: Cons { head: "v2.test.claim.provenance.cross_file_provenance.undeclared_spelling_under_a_module_prefix_derives_no_edge_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "v2.test.claim.normalized_tree_admission.retention_is_found_past_the_diagnostic_head_RED", tail: Cons { head: "v2.test.claim.normalized_tree_admission.the_production_retention_producer_is_refused_by_the_door", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_missing_row_refuses_typed", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_non_data_edge_refuses_typed", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_operand_flows_is_total_over_edges", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_operand_root_refuses_non_data_kind", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_operand_root_resolves_data_depends_on", tail: Cons { head: "v2.test.claim.operand_flow_witness.witness_shared_operand_consumers_agree", tail: Cons { head: "v2.test.claim.parse_engine_hooks_test.parse_engine_hooks_symbols_match_grammar_productions", tail: Cons { head: "v2.test.claim_pipeline.infer.spine_infer_accepts_resolved_tree", tail: Cons { head: "v2.test.claim_pipeline.resolve.spine_resolve_accepts_normalized_tree", tail: Cons { head: "v2.test.claim_pipeline.resolve.spine_resolve_rejects_noncanonical_root_atom", tail: Cons { head: "v2.test.claim_pipeline.translate.spine_translate_accepts_rust_add_inferred_tree", tail: Cons { head: "v2.test.claim.port_locus_classification.port_locus_states_are_distinct_and_retain_required_evidence", tail: Cons { head: "v2.test.claim.port_locus_classification.port_refusal_classifies_only_from_available_evidence", tail: Cons { head: "v2.test.claim.proactive_verification_ledger_witness.proactive_verification_ledger_enumeration_holds", tail: Cons { head: "v2.test.claim.product_receipt_evidence_cause_swap_test.establishes_cannot_separate_refutation_from_absence", tail: Cons { head: "v2.test.claim.product_receipt_evidence_cause_swap_test.instrument_refusal_is_distinguishable_from_subject_absence", tail: Cons { head: "v2.test.claim.product_receipt_evidence_cause_swap_test.only_a_green_receipt_licenses_the_claim", tail: Cons { head: "v2.test.claim.product_receipt_evidence_cause_swap_test.produced_a_verdict_separates_refutation_from_absence", tail: Cons { head: "v2.test.claim.provenance.cross_file_provenance.cross_file_name_answers_with_its_owning_module_and_derives_the_edge_holds", tail: Cons { head: "v2.test.claim.provenance.cross_file_provenance.repeated_mentions_collapse_only_in_the_dependency_set_holds", tail: Cons { head: "v2.test.claim.provenance.cross_file_provenance.undeclared_spelling_under_a_module_prefix_derives_no_edge_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_grandfathered_chunk_064() -> List<String> {

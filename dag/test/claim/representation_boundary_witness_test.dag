@@ -1,0 +1,323 @@
+module test.claim.representation_boundary_witness_test
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.derived_obligation_row {
+  WitnessSubject,
+  witness_subject,
+  PathExecution,
+  path_execution_is_executing,
+  interpreted_standing_of,
+  witness_subject_is_inside_gate_closure,
+  HomeAuthority
+}
+import gunbc.representation_boundary {
+  RepresentationBoundary,
+  Calls,
+  ControlFlow,
+  Bindings,
+  OneAuthority,
+  TwoAuthoritiesAnswerOneQuestion,
+  NoAuthorityExists,
+  ForkEstablished,
+  ForkCandidate,
+  DivergenceDeclaredOnTheCarrier,
+  AgreesByConstruction,
+  EvidenceOnBothRoutes,
+  InterpretedOnly,
+  NoEvidence,
+  boundary_is_interpreted_only,
+  boundary_has_an_executing_witness,
+  no_evidence_count,
+  boundary_has_unbuilt_local_evidence,
+  unbuilt_but_testable_now_count,
+  boundary_is_established_fork,
+  boundary_is_candidate_fork,
+  boundary_is_declared_divergence,
+  boundary_has_no_authority,
+  boundary_authority_and_evidence_are_consistent,
+  every_boundary_names_a_trigger,
+  no_boundary_claims_evidence_without_an_authority,
+  boundary_roster_size,
+  interpreted_only_count,
+  established_fork_count,
+  candidate_fork_count,
+  declared_divergence_count,
+  boundaries_without_an_authority
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY ARM BELOW IS EXERCISED ON A FIXTURE ROW THIS FILE CONSTRUCTS, not on the production roster,
+// because a claim that folds the roster's own rows asserts what the author typed rather than what
+// the reader decides -- DESIGN section 3's standing rule on supplying a boundary's inputs. The
+// PAIRING OBLIGATION that rule attaches is discharged by the last two arms, which run the real
+// production roster through the real derivation and the real walls.
+
+fn a_home() -> DeclarationRef {
+  decl_ref(module_path: "fixture.module", decl_name: "fixture_decl")
+}
+
+fn conforming_row() -> RepresentationBoundary {
+  RepresentationBoundary {
+    identity: "fixture-conforming" as NonEmptyStr,
+    boundary_class: Calls,
+    authority: OneAuthority { home: HomeAuthority { authority: a_home() } },
+    witnesses: [],
+    supported_scope: "fixture" as NonEmptyStr,
+    preservation_obligation: "fixture" as NonEmptyStr,
+    crossing_evidence: AgreesByConstruction { how: "fixture" as NonEmptyStr },
+    next_trigger: climbs_when(capability: "fixture capability")
+  }
+}
+
+fn row_with(authority_arm: Int) -> RepresentationBoundary {
+  RepresentationBoundary {
+    identity: "fixture-variable" as NonEmptyStr,
+    boundary_class: Bindings,
+    authority: if authority_arm == 0 {
+      TwoAuthoritiesAnswerOneQuestion {
+        first: HomeAuthority { authority: a_home() },
+        second: HomeAuthority { authority: a_home() },
+        one_question: "fixture shared question" as NonEmptyStr,
+        standing: ForkEstablished { how: "fixture" as NonEmptyStr }
+      }
+    } else {
+      TwoAuthoritiesAnswerOneQuestion {
+        first: HomeAuthority { authority: a_home() },
+        second: HomeAuthority { authority: a_home() },
+        one_question: "fixture shared question" as NonEmptyStr,
+        standing: ForkCandidate {
+          what_was_established: "fixture" as NonEmptyStr,
+          what_was_not: "fixture" as NonEmptyStr,
+          discriminator: "fixture discriminator" as NonEmptyStr
+        }
+      }
+    },
+    witnesses: [],
+    supported_scope: "fixture" as NonEmptyStr,
+    preservation_obligation: "fixture" as NonEmptyStr,
+    crossing_evidence: InterpretedOnly {
+      what_goes_red: "fixture" as NonEmptyStr,
+      blocked_on_a_two_route_oracle: "fixture" as NonEmptyStr,
+      unbuilt_but_testable_now: "fixture cheap local claim"
+    },
+    next_trigger: climbs_when(capability: "fixture capability")
+  }
+}
+
+fn row_with_nothing_testable_now() -> RepresentationBoundary {
+  RepresentationBoundary {
+    identity: "fixture-asked-and-found-nothing" as NonEmptyStr,
+    boundary_class: Calls,
+    authority: OneAuthority { home: HomeAuthority { authority: a_home() } },
+    witnesses: [],
+    supported_scope: "fixture",
+    preservation_obligation: "fixture",
+    crossing_evidence: InterpretedOnly {
+      what_goes_red: "fixture" as NonEmptyStr,
+      blocked_on_a_two_route_oracle: "fixture" as NonEmptyStr,
+      unbuilt_but_testable_now: ""
+    },
+    next_trigger: climbs_when(capability: "fixture capability")
+  }
+}
+
+fn declared_divergence_row() -> RepresentationBoundary {
+  RepresentationBoundary {
+    identity: "fixture-declared-divergence" as NonEmptyStr,
+    boundary_class: Bindings,
+    authority: TwoAuthoritiesAnswerOneQuestion {
+      first: HomeAuthority { authority: a_home() },
+      second: HomeAuthority { authority: a_home() },
+      one_question: "fixture shared question" as NonEmptyStr,
+      standing: DivergenceDeclaredOnTheCarrier {
+        stated_by: a_home(),
+        what_is_duplicated: "fixture" as NonEmptyStr,
+        what_is_legitimately_layered: "fixture" as NonEmptyStr
+      }
+    },
+    witnesses: [],
+    supported_scope: "fixture" as NonEmptyStr,
+    preservation_obligation: "fixture" as NonEmptyStr,
+    crossing_evidence: InterpretedOnly {
+      what_goes_red: "fixture" as NonEmptyStr,
+      blocked_on_a_two_route_oracle: "fixture" as NonEmptyStr,
+      unbuilt_but_testable_now: ""
+    },
+    next_trigger: climbs_when(capability: "fixture capability")
+  }
+}
+
+fn no_authority_row(claims_evidence: Bool) -> RepresentationBoundary {
+  RepresentationBoundary {
+    identity: "fixture-no-authority" as NonEmptyStr,
+    boundary_class: ControlFlow,
+    authority: NoAuthorityExists { what_would_own_it: "fixture" as NonEmptyStr },
+    witnesses: [],
+    supported_scope: "fixture" as NonEmptyStr,
+    preservation_obligation: "fixture" as NonEmptyStr,
+    crossing_evidence: if claims_evidence {
+      EvidenceOnBothRoutes { what_goes_red: "fixture" as NonEmptyStr }
+    } else {
+      NoEvidence { why: "fixture" as NonEmptyStr }
+    },
+    next_trigger: climbs_when(capability: "fixture capability")
+  }
+}
+
+// THE THREE VALUES ARE DISCRIMINATED, AND THAT IS THE POINT OF THE COPRODUCT. If any two of these
+// collapsed onto one arm -- the two-valued reading DESIGN section 3b forbids -- one of the six
+// conjuncts below goes false. This is the arm that would catch a later edit "simplifying"
+// ForkStanding back to a Bool.
+test fn representation_boundary_three_standings_are_discriminated_holds() -> Bool {
+  boundary_is_established_fork(b: row_with(authority_arm: 0))
+    && !boundary_is_candidate_fork(b: row_with(authority_arm: 0))
+    && boundary_is_candidate_fork(b: row_with(authority_arm: 1))
+    && !boundary_is_established_fork(b: row_with(authority_arm: 1))
+    && boundary_is_declared_divergence(b: declared_divergence_row())
+    && !boundary_is_established_fork(b: declared_divergence_row())
+    && !boundary_is_candidate_fork(b: declared_divergence_row())
+}
+
+// NO ARM HERE CHECKS THAT A DISCRIMINATOR OR A SHARED QUESTION IS PRESENT, and that is deliberate
+// rather than an omission. Both fields are NonEmptyStr, so the empty case is refused by the
+// refinement at construction and a fixture cannot build the row such an arm would need -- the
+// "red" would be a refusal, not a false. DESIGN section 4b: a check whose red is unauthorable is a
+// decoration, permanently green and worse than absent because it gets cited as coverage. The rule
+// is held by the type; see the note in gunbc.representation_boundary.
+
+// A ROW WITH NO AUTHORITY MAY NOT CLAIM EVIDENCE. If nothing declares the fact there is nothing for
+// an execution to establish agreement WITH, so such a row would be the unadjudicable divergence
+// report written down as coverage. Both arms are authorable, so both are checked.
+test fn representation_boundary_no_authority_may_not_claim_evidence_holds() -> Bool {
+  !boundary_authority_and_evidence_are_consistent(b: no_authority_row(claims_evidence: true))
+    && boundary_authority_and_evidence_are_consistent(b: no_authority_row(claims_evidence: false))
+    && boundary_authority_and_evidence_are_consistent(b: conforming_row())
+    && boundary_has_no_authority(b: no_authority_row(claims_evidence: false))
+    && !boundary_has_no_authority(b: conforming_row())
+}
+
+// THE EVIDENCE ARMS RANK DIFFERENTLY AND MUST NOT COLLAPSE. AgreesByConstruction is not
+// InterpretedOnly with a better adjective, and NoEvidence is not InterpretedOnly with a smaller
+// number -- a fold that treated any two as one would report coverage this roster does not have.
+test fn representation_boundary_evidence_arms_do_not_collapse_holds() -> Bool {
+  boundary_is_interpreted_only(b: row_with(authority_arm: 1))
+    && !boundary_is_interpreted_only(b: conforming_row())
+    && !boundary_is_interpreted_only(b: no_authority_row(claims_evidence: false))
+}
+
+// THE PAIRING OBLIGATION, PART ONE: THE REAL ROSTER THROUGH THE REAL WALLS. The arms above supply
+// their inputs; this one supplies nothing. Deleting a row's trigger, blanking a candidate's
+// discriminator, blanking a shared question, or giving the control-flow row evidence it cannot have
+// makes this go red on the production data.
+test fn representation_boundary_production_roster_satisfies_its_own_walls_holds() -> Bool {
+  every_boundary_names_a_trigger()
+    && no_boundary_claims_evidence_without_an_authority()
+    && boundary_roster_size() > 0
+}
+
+// THE PAIRING OBLIGATION, PART TWO: THE DERIVATION RUNS ON A REAL SUBJECT AGAINST THE LIVE GATE.
+// This is the arm that makes the roster's REAL CONSUMERS field a reading rather than an assertion:
+// it asks the required floor's own admission function about two real module paths and requires it
+// to answer DIFFERENTLY about them. The discriminating pair is the point -- a predicate that
+// answered "inside" to everything, which is how this derivation would most plausibly rot, passes
+// the third conjunct and fails the fourth.
+//
+// AND THE NEGATIVE HALF IS THIS FILE'S OWN STANDING, which is uncomfortable and is the honest
+// pair: test.claim.representation_boundary_witness_test matches no prefix the gate roster admits,
+// so this witness asserts its own dormancy on an ordinary required floor. Using any other module
+// as the control would have let this file avoid stating that about itself.
+//
+// AN EARLIER CUT OF THIS ARM WAS VACUOUS AND IS WORTH RECORDING. It read `A && B || C` intending
+// `A && (B || C)`, where C was "an empty witness list is not executing" -- constant true. So the
+// whole arm was true regardless of A, which is the decoration this file deletes elsewhere,
+// committed by the file that deletes it. Precedence, not the check, was the defect.
+test fn representation_boundary_consumer_standing_is_derived_not_authored_holds() -> Bool {
+  !boundary_has_an_executing_witness(b: row_with_nothing_testable_now())
+    && !path_execution_is_executing(p: interpreted_standing_of(ws: [], unverified_premise: a_home()))
+    && witness_subject_is_inside_gate_closure(w: a_gate_admitted_subject())
+    && !witness_subject_is_inside_gate_closure(w: this_witnesss_own_subject())
+}
+
+// THE POSITIVE HALF NAMES A MODULE THE GATE ROSTER ACTUALLY ADMITS, AND THE FIRST CUT DID NOT.
+// It named v2.test.claim.effect_demand.effect_demand_census_test on the assumption that the v2 test
+// tree is inside the required closure. IT IS NOT: v2.workflow.required_floor required_gate_prefixes
+// carries no v2.test. row at all, so that conjunct was false and THIS WITNESS WENT RED ON ITS OWN
+// FIXTURE -- which is the arm working, not failing. test.claim.occurrence_binding_ IS a row in that
+// roster, and the entry below is the one the bindings boundary already cites, so the positive half
+// is now grounded in a prefix a reader can find rather than in an assumption about tree layout.
+fn a_gate_admitted_subject() -> WitnessSubject {
+  witness_subject(
+    entry: "dag/test/claim/occurrence_binding_witness_test.dag",
+    function: "occurrence_binding_root_only_path_is_nonempty_holds",
+    module_path: "test.claim.occurrence_binding_witness_test"
+  )
+}
+
+fn this_witnesss_own_subject() -> WitnessSubject {
+  witness_subject(
+    entry: "dag/test/claim/representation_boundary_witness_test.dag",
+    function: "representation_boundary_consumer_standing_is_derived_not_authored_holds",
+    module_path: "test.claim.representation_boundary_witness_test"
+  )
+}
+
+// THE TWO EVIDENCE GAPS MUST NOT COLLAPSE INTO ONE, and this is the arm that catches it if they
+// ever do. "No executed oracle" is true of a row that has a cheap local claim available and of a
+// row that has none, and those rank completely differently for work -- reporting the first as the
+// second is can-climb-now-but-unbuilt misreported as cannot-climb-further, which takes the row off
+// the climb list. Both fixtures below are InterpretedOnly and differ ONLY in whether a local claim
+// was found, so a predicate that read the ARM instead of the FIELD fails here.
+test fn representation_boundary_local_evidence_gap_is_separate_from_the_oracle_gap_holds() -> Bool {
+  boundary_is_interpreted_only(b: row_with(authority_arm: 1))
+    && boundary_is_interpreted_only(b: row_with_nothing_testable_now())
+    && boundary_has_unbuilt_local_evidence(b: row_with(authority_arm: 1))
+    && !boundary_has_unbuilt_local_evidence(b: row_with_nothing_testable_now())
+    && !boundary_has_unbuilt_local_evidence(b: conforming_row())
+}
+
+// EVERY BOUND HERE IS GROUNDED IN A NAMED ROW, WHICH IS WHAT SEPARATES IT FROM A CHANGE DETECTOR.
+// An earlier cut opened with `boundary_roster_size() == 11` -- a literal compared against a
+// population authored in the same tree, which DESIGN section 5 names outright: if automating the
+// literal's update collapses the assertion to measure() == measure(), the manual update was the
+// test's entire content. It is deleted rather than adjusted, and nothing is lost -- the emptiness it
+// was reaching for is already carried by `boundary_roster_size() > 0` in the production-walls arm,
+// which is a bound rather than a transcription. Review 69899 flagged it as a soft spot not worth a
+// round trip; it is one line and DESIGN names the shape, so it is fixed rather than deferred.
+//
+// TWO MORE CONJUNCTS WENT WITH IT AND THE REVIEW DID NOT CATCH THESE. `interpreted_only_count() >= 0`
+// and `candidate_fork_count() >= 0` are VACUOUSLY TRUE -- a count is never negative -- so they were
+// permanently green, carried no information, and padded the arm with the appearance of rigour. That
+// is the same decoration this file deletes twice elsewhere, committed inside the arm that counts.
+//
+// WHAT SURVIVES IS ANCHORED TO SPECIFIC ROWS, so each bound would go red for a NAMED reason rather
+// than because a population moved: at least one ESTABLISHED fork (the coercion two-algebra row), at
+// least one DECLARED DIVERGENCE (bindings), at least one row with NO AUTHORITY (evaluation order),
+// at least two rows carrying a cheap local claim (coercions and bindings), and the containment
+// relations between the arms, which must hold at any population size.
+//
+// THE LAST CONJUNCT IS A CONTAINMENT BOUND AND NOT A SUM, and the difference is worth stating
+// because the roster's own header forbids the second. Adding a defect count, an open question and
+// an admitted decision together produces a number TRUE OF NO POPULATION -- that is why no
+// declaration in gunbc.representation_boundary adds them. What this asserts is weaker and real:
+// the three standings are DISJOINT SUBSETS of one roster, so their total cannot exceed it, at any
+// population size and without any literal. It also keeps candidate_fork_count consumed by an
+// executing claim rather than by an import -- the roster currently has ZERO candidate forks, since
+// bindings was settled into a declared divergence, and a count nothing calls is the dangling
+// declaration DESIGN section 3c calls red. Asserting `candidate_fork_count() == 0` instead would
+// have been worse than useless: it would fire on the legitimate act of recording a new candidate,
+// which is the thing this roster exists to make easy.
+test fn representation_boundary_counts_are_grounded_in_named_rows_holds() -> Bool {
+  established_fork_count() >= 1
+    && declared_divergence_count() >= 1
+    && boundaries_without_an_authority() >= 1
+    && no_evidence_count() >= 1
+    && unbuilt_but_testable_now_count() >= 2
+    && unbuilt_but_testable_now_count() <= interpreted_only_count()
+    && interpreted_only_count() <= boundary_roster_size()
+    && no_evidence_count() + interpreted_only_count() <= boundary_roster_size()
+    && established_fork_count() + candidate_fork_count() + declared_divergence_count() <= boundary_roster_size()
+}

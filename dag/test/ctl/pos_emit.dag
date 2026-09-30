@@ -16,7 +16,6 @@ import extdeps.bmc.ipmi
 // refusal witness for a service op in a service-free fn passes for the OPPOSITE of its intended
 // reason, since an uncollected service means its expected refusal text is emitted unconditionally.
 fn emits_a_service_call(host: String) -> String
-  uses net: std.resources.Network
 {
   r = diagnostic.ipmi.Tool.SensorList(bmc_host: host as NonEmptyStr)
   return r.stdout
@@ -27,7 +26,6 @@ fn emits_a_service_call(host: String) -> String
 // transitive propagation rather than the direct collection alone. If propagation is broken while
 // direct collection works, this signature loses its parameter while the one above keeps it.
 fn forwards_to_a_service_call(host: String) -> String
-  uses net: std.resources.Network
 {
   return emits_a_service_call(host: host)
 }

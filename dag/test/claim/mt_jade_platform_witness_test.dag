@@ -2,7 +2,10 @@ module test.claim.mt_jade_platform_witness
 
 import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.integer { Int }
-import std.measure { hertz_count, microsecond_count, micrometer_count, megatransfers_per_second_count }
+import std.measure {
+  hertz_count, microsecond_count, micrometer_count, megatransfers_per_second_count,
+  millimeter_count, rack_unit_count, bandwidth_count,
+}
 import gunbc.specification_citation_read_provenance {
   DocumentMirrorLocatorFetchedAndTextIngested,
   DocumentLocatorFetchRefused,
@@ -27,6 +30,8 @@ import extdeps.ocp.mt_jade.subject {
   mt_jade_specification_version_label,
 }
 import extdeps.bmc.aspeed_ast2500 { aspeed_ast2500_catalog }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import extdeps.standards.nic_attachment { NamedOnboardPhy, OnboardControllerUnstated }
 import extdeps.ocp.mt_jade.platform {
   BaseboardManagementController,
   CpuBmcGpioVoltageIsolation,
@@ -58,6 +63,14 @@ import extdeps.ocp.mt_jade.platform {
   mt_jade_dimm_speed_at_two_dpc,
   mt_jade_platform_subject,
   mt_jade_bmc_chip_catalog,
+  mt_jade_bmc_ethernet_phy,
+  mt_jade_bmc_management_network,
+  mt_jade_cited_bmc_firmware_options_include,
+  mt_jade_cited_bmc_firmware_options,
+  mt_jade_crps_ac_inlet,
+  mt_jade_crps_power,
+  mt_jade_fan_connectors_1u,
+  mt_jade_fan_connectors_2u,
   mt_jade_reference_parts,
   processor_power_rail_enable_order,
   processor_power_rail_name,
@@ -67,7 +80,7 @@ import extdeps.ocp.mt_jade.platform {
   soc_pwrgd_minimum_system_clock_cycles,
   platform_sequencing_handshake_chain,
 }
-import extdeps.external_authority { external_subject_ref_eq, ExternalSubjectRef }
+import extdeps.external_authority { external_subject_ref_eq, ExternalSubjectRef, CitedToAuthority, TranscribedUncited }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -272,4 +285,55 @@ test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
 test fn w_mt_jade_bmc_chip_catalog_joins_the_aspeed_ast2500_authority() -> Bool {
   (mt_jade_bmc_chip_catalog.ordering_part_number as String) == "AST2500"
     && mt_jade_bmc_chip_catalog == aspeed_ast2500_catalog
+}
+
+test fn w_2u_fan_connectors_are_six_60_by_56_dual_rotor() -> Bool {
+  rack_unit_count(u: mt_jade_fan_connectors_2u.chassis_height) == 2
+    && mt_jade_fan_connectors_2u.connector_count == 6
+    && millimeter_count(m: mt_jade_fan_connectors_2u.frame_width) == 60
+    && millimeter_count(m: mt_jade_fan_connectors_2u.frame_thickness) == 56
+    && mt_jade_fan_connectors_2u.dual_rotor
+    && rack_unit_count(u: mt_jade_fan_connectors_1u.chassis_height) == 1
+    && mt_jade_fan_connectors_1u.connector_count == 8
+    && millimeter_count(m: mt_jade_fan_connectors_1u.frame_width) == 40
+    && millimeter_count(m: mt_jade_fan_connectors_1u.frame_thickness) == 56
+    && mt_jade_fan_connectors_1u.dual_rotor
+}
+
+test fn w_crps_is_dual_redundant_and_inlet_names_the_owed_discriminator() -> Bool {
+  mt_jade_crps_power.psu_count == 2
+    && mt_jade_crps_power.required_count == 1
+    && mt_jade_crps_power.spare_count == 1
+    && mt_jade_crps_power.hot_plug
+    && match mt_jade_crps_ac_inlet {
+      TranscribedUncited { read_obligation } =>
+        string_contains(s: read_obligation as String, pattern: "C14 vs C20")
+      CitedToAuthority { authority: _ } => false
+    }
+}
+
+test fn w_bmc_management_nic_is_one_rear_rj45_rtl8211e_phy() -> Bool {
+  match mt_jade_bmc_management_network.network.controller {
+    OnboardControllerUnstated { read_obligation: _ } => true
+    _ => false
+  }
+    && match mt_jade_bmc_management_network.network.phy {
+      NamedOnboardPhy { part } => part == mt_jade_bmc_ethernet_phy.ordering_part_number
+      _ => false
+    }
+    && mt_jade_bmc_management_network.network.port_count == 1
+    && bandwidth_count(b: mt_jade_bmc_management_network.network.per_port_bandwidth) == 1000000000
+    && (mt_jade_bmc_management_network.location_label as String) == "rear RJ45, power-supply / bottom-side I/O"
+}
+
+test fn w_cited_bmc_firmware_is_a_disjunction_not_a_default() -> Bool {
+  list_length(items: mt_jade_cited_bmc_firmware_options) == 2
+    && mt_jade_cited_bmc_firmware_options_include(
+    options: mt_jade_cited_bmc_firmware_options,
+    wanted: AmiMegaRac,
+  )
+    && mt_jade_cited_bmc_firmware_options_include(
+      options: mt_jade_cited_bmc_firmware_options,
+      wanted: OpenBmc,
+    )
 }

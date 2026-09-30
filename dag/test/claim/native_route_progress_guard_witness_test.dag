@@ -1,0 +1,1914 @@
+module test.claim.native_route_progress_guard_witness_test
+
+import v2.std.algebra { any, count_where, is_empty, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.optional { Present, Absent, optional_present, optional_absent }
+import std.content_hash { structural_content_hash }
+import v2.compiler.native_test_vocabulary {
+  NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval
+}
+import gunbc.witness_v2_native_route {
+  NativeRouteExclusionCause, NativeRouteDivergenceCause,
+  NativeEntryResolutionLimit, NativePassedExpectedRed, NativeReturnedOtherVerdict,
+  NativeRouteTestIdentity,
+  NativeAgreementPass, NativeAgreementExpectedRed,
+  NativeExclusion, CompilerFrontierAttributed,
+  NativeRouteEmittedBuild
+}
+import gunbc.native_route_progress_guard {
+  NativeRouteAttainment, AttainRefused, AttainDiverged, AttainAgreed,
+  NativeBaselineAttainment, BaselineRefused, BaselineDiverged, BaselineAgreed,
+  NativeCauseTransitionDisposition, NativeCauseTransitionRow,
+  CauseNowMoreTruthful, SameDefectRenamed, CauseRegressedUnderANewLabel,
+  CauseTransitionUndispositioned, CauseRegressedAtAFixedRank,
+  CauseTransitionDispositionContradicted,
+  native_cause_unchanged, native_exclusion_cause_same,
+  native_baseline_rank, native_observed_as_baseline,
+  NativeBaselineMinting, native_progress_mint_baseline,
+  native_observation_is_on_a_landable_tree,
+  AuthorCompositionObservation, BaselineAdvanceRefusedNotALandableTree,
+  native_attainment_at_least, native_attainment_rank,
+  NativeProgressBaseline, NativeProgressBaselineRow,
+  NativeVerdictAdjudication, BaselineMintedUnderADifferentAdjudication, native_adjudication_same,
+  NativeAcceptToRefuseDisposition, NativeAcceptToRefuseRow,
+  PriorAcceptanceDependedOnARemovedFallback, AcceptanceWasSoundAndThisIsARegression,
+  AcceptToRefuseDeclaredARegression,
+  AcceptToRefuseUndispositioned, AcceptToRefuseDispositionContradicted,
+  native_fall_is_accept_to_refuse,
+  NativeProgressDispositionRow, SubjectDeleted, SubjectRenamed, SubjectLeftTheUniverse,
+  NativeProgressObservedRow, NativeProgressObservedReading,
+  native_progress_read_observed,
+  native_progress_report, native_progress_verdict,
+  native_progress_finding_text,
+  ProgressPreserved, ProgressLost, ProgressUnobserved,
+  NativeRunReach, ReachEmissionAttempted, ReachSourceEmitted, ReachCrateBuilt, ReachExecutableStarted,
+  native_run_reach_rank, native_run_reached_the_population,
+  NativeObservationProvenance, MainBaselineObservation, BranchObservation, HistoricalMainObservation,
+  native_progress_baseline_advance,
+  BaselineMayAdvance, BaselineAdvanceRefusedHistorical, BaselineAdvanceRefusedNeverMain,
+  BaselineAdvanceRefusedUnreached, BaselineAdvanceRefusedProgressLost,
+  AttainUnreached, SubjectUnreachedEarlierRungFailed,
+  NativeProgressFinding,
+  ProgressRegressed, BaselineMemberMissingUndisposed, DispositionContradictedByRun,
+  RenameTargetAbsent, RenameTargetBelowBaseline, DisposedSubjectHasNoBaselineRow,
+  ArtifactProductionFailed, ObservedMemberReadingMalformed
+}
+
+// WHAT THIS FILE DISCRIMINATES. The guard exists because `native_route_admission` is complete on
+// ONE HEAD and blind to the head behind it: a change that makes the emitted compiler refuse
+// EARLIER for a subject it used to carry further produces a receipt admission accepts. Every
+// claim below is one way that blindness could return, and each is authorable here because the
+// guard's subject is a PAIR OF SUPPLIED READINGS -- a baseline and a run -- which is exactly the
+// boundary a claim may supply (DESIGN section 3: a witness discriminates at one interface).
+//
+// THE PAIRING OBLIGATION IS DISCHARGED ELSEWHERE AND DELIBERATELY NOT HERE. The real producer of
+// an observed reading is the native lane, whose inhabitance claim is `native_route_admission`'s
+// own; this module's boundary is the ORDER and the JOIN, and re-executing the route to establish
+// them would be the layer reach that section names. What this file must not do -- and does not --
+// is assert the guard is green on the live corpus, because there is no live baseline yet.
+
+data subject_a: NativeRouteTestIdentity = NativeRouteTestIdentity { module: "v2.test.alpha", declaration: "holds" }
+data subject_b: NativeRouteTestIdentity = NativeRouteTestIdentity { module: "v2.test.beta", declaration: "holds" }
+data subject_b_renamed: NativeRouteTestIdentity = NativeRouteTestIdentity { module: "v2.test.beta", declaration: "still_holds" }
+
+// A BUILD THAT PRODUCED ITS ARTIFACT. Zero status, zero warnings -- the two facts admission
+// requires of the emitted crate, so the artifact arm contributes nothing and every finding below
+// comes from the join rather than from the build.
+data clean_build: NativeRouteEmittedBuild = NativeRouteEmittedBuild {
+  cargo_argv: ["cargo", "build", "--release"],
+  rustflags: "-D warnings",
+  compiler_path: "/opt/rust/bin/rustc",
+  rustc_identity: "rustc 1.90.0",
+  exit_status: 0,
+  warning_count: 0
+}
+
+fn observed(identity: NativeRouteTestIdentity, attained: NativeRouteAttainment) -> NativeProgressObservedReading {
+  NativeProgressObservedReading {
+    row: NativeProgressObservedRow { identity: identity, attained: attained },
+    findings: []
+  }
+}
+
+// THE ADJUDICATION A BASELINE WAS MINTED UNDER is the same one the default report is adjudicated
+// by, so every claim that does not vary it is comparing within one meaning of green -- which is
+// the only condition under which a per-identity comparison says anything.
+data current_adjudicator: NativeVerdictAdjudication = NativeVerdictAdjudication {
+  authority: "gunbc.witness_v2_native_route native_route_admission",
+  closure_identity: structural_content_hash(digest: "1111222233334444"),
+  receipt_identity: optional_present(value: "native_route_receipt.json")
+}
+
+// THE SAME NAME, A DIFFERENT CLOSURE. This is the case the first cut could not see and the reason
+// the discriminator moved off `authority`: a gate strengthening that renames nothing -- the
+// NORMAL case, since gunbc#11829 renamed nothing it strengthened.
+data strengthened_adjudicator: NativeVerdictAdjudication = NativeVerdictAdjudication {
+  authority: "gunbc.witness_v2_native_route native_route_admission",
+  closure_identity: structural_content_hash(digest: "aaaabbbbccccdddd"),
+  receipt_identity: optional_absent()
+}
+
+fn baseline_of(
+  rows: List<NativeProgressBaselineRow>,
+  dispositions: List<NativeProgressDispositionRow>
+) -> NativeProgressBaseline {
+  NativeProgressBaseline {
+    rows: rows,
+    dispositions: dispositions,
+    accept_to_refuse: [],
+    cause_transitions: [],
+    minted_under: current_adjudicator
+  }
+}
+
+data frontier_cause: NativeRouteExclusionCause = NativeEntryResolutionLimit { reason: ^native_test_entry_not_found }
+
+data head_sha: String = "0123456789abcdef0123456789abcdef01234567"
+
+// THE DEFAULT SUBJECT OF A CLAIM HERE IS A LIVE RUN THAT REACHED THE POPULATION, because that is
+// the only condition under which the per-identity comparison is asked at all. The claims that
+// vary either field say so at their own call site.
+fn live_report(
+  baseline: NativeProgressBaseline,
+  readings: List<NativeProgressObservedReading>,
+  build: NativeRouteEmittedBuild
+) -> NativeProgressReport {
+  native_progress_report(
+    baseline: baseline,
+    readings: readings,
+    build: build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+}
+
+fn preserved(
+  baseline: NativeProgressBaseline,
+  readings: List<NativeProgressObservedReading>
+) -> Bool {
+  match native_progress_verdict(report: live_report(baseline: baseline, readings: readings, build: clean_build)) {
+    ProgressPreserved => true
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+fn findings_of(
+  baseline: NativeProgressBaseline,
+  readings: List<NativeProgressObservedReading>
+) -> List<NativeProgressFinding> {
+  live_report(baseline: baseline, readings: readings, build: clean_build).findings
+}
+
+// ═══ THE ORDER ═══
+
+test fn the_stage_ladder_orders_a_later_refusal_above_an_earlier_one() -> Bool {
+  native_attainment_at_least(
+    observed: AttainRefused { stage: NativeTestStageEval, cause: frontier_cause },
+    baseline: BaselineRefused { stage: NativeTestStagePrepare, cause: frontier_cause }
+  )
+    && native_attainment_at_least(
+      observed: AttainRefused { stage: NativeTestStageEntry, cause: frontier_cause },
+      baseline: BaselineRefused { stage: NativeTestStageContext, cause: frontier_cause }
+    )
+}
+
+// A DIVERGENCE IS FURTHER ALONG THAN ANY REFUSAL AND STRICTLY BELOW AGREEMENT. Both halves
+// matter: the first keeps the guard from reading "the pipeline finally ran" as a regression, the
+// second keeps it from reading a lost agreement as progress.
+test fn divergence_sits_above_every_refusal_and_below_agreement() -> Bool {
+  native_attainment_at_least(observed: AttainDiverged { cause: NativePassedExpectedRed }, baseline: BaselineRefused { stage: NativeTestStageEval, cause: frontier_cause })
+    && native_attainment_at_least(observed: AttainAgreed, baseline: BaselineDiverged { cause: NativePassedExpectedRed })
+    && (native_attainment_at_least(observed: AttainDiverged { cause: NativePassedExpectedRed }, baseline: BaselineAgreed) == false)
+}
+
+// THE THREE AGREEMENT ARMS ARE ONE BAND. A subject moving from a correctly-observed required red
+// to a correctly-observed pass is a change in the FLOOR'S REFERENCE, not in the emitted
+// compiler's reach, and a guard that scored it as progress would score the reverse as a
+// regression and red the lane for a legitimate roster edit.
+test fn a_required_red_and_a_pass_are_the_same_attainment() -> Bool {
+  let from_red = native_progress_read_observed(
+    identity: subject_a, disposition: NativeAgreementExpectedRed, refused_at: optional_absent()
+  )
+  let from_pass = native_progress_read_observed(
+    identity: subject_a, disposition: NativeAgreementPass, refused_at: optional_absent()
+  )
+  match native_observed_as_baseline(a: from_pass.row.attained) {
+    Present { value: pass_bar } =>
+      match native_observed_as_baseline(a: from_red.row.attained) {
+        Present { value: red_bar } =>
+          native_attainment_at_least(observed: from_red.row.attained, baseline: pass_bar)
+            && native_attainment_at_least(observed: from_pass.row.attained, baseline: red_bar)
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// ═══ THE GUARD'S OWN GREEN ═══
+
+test fn an_unchanged_head_preserves_progress() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [
+        NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed },
+        NativeProgressBaselineRow { identity: subject_b, attained: BaselineRefused { stage: NativeTestStageEntry, cause: frontier_cause } }
+      ],
+      dispositions: []
+    ),
+    readings: [
+      observed(identity: subject_a, attained: AttainAgreed),
+      observed(identity: subject_b, attained: AttainRefused { stage: NativeTestStageEntry, cause: frontier_cause })
+    ]
+  )
+}
+
+// ADVANCING IS NOT A REGRESSION, which is the claim that keeps the guard from being a freeze.
+test fn a_subject_that_advances_preserves_progress() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineRefused { stage: NativeTestStagePrepare, cause: frontier_cause } }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)]
+  )
+}
+
+// A SUBJECT THE BASELINE NEVER HELD IS FREE TO APPEAR AT ANY POSITION. The contract is monotone
+// over the baseline, not a whitelist over the universe.
+test fn a_new_subject_below_every_baseline_row_preserves_progress() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [
+      observed(identity: subject_a, attained: AttainAgreed),
+      observed(identity: subject_b, attained: AttainRefused { stage: NativeTestStagePrepare, cause: frontier_cause })
+    ]
+  )
+}
+
+// ═══ THE REGRESSIONS ═══
+
+// THE CLASS THE GUARD EXISTS FOR, AND THE ONE ADMISSION CANNOT SEE: an exclusion is COUNTED by
+// admission rather than refused, so a subject falling from `eval` to `prepare` produces a receipt
+// admission accepts and a lane that goes green.
+test fn w_RED_a_subject_refused_earlier_than_before_is_a_regression() -> Bool {
+  let fs = findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineRefused { stage: NativeTestStageEval, cause: frontier_cause } }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainRefused { stage: NativeTestStagePrepare, cause: frontier_cause })]
+  )
+  any(xs: fs, predicate: fn(f) {
+    match f {
+      ProgressRegressed { identity: i, baseline: _, observed: _ } => i.module == "v2.test.alpha"
+      BaselineMemberMissingUndisposed { identity: _ } => false
+      DispositionContradictedByRun { identity: _ } => false
+      RenameTargetAbsent { identity: _, target: _ } => false
+      RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+      DisposedSubjectHasNoBaselineRow { identity: _ } => false
+      ArtifactProductionFailed { detail: _ } => false
+      ObservedMemberReadingMalformed { identity: _ } => false
+      BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+      AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+      AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+      CauseTransitionUndispositioned { identity: _ } => false
+      CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+      SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+    }
+  })
+}
+
+// A REQUIRED REFUSAL LOST. The subject used to return false where the floor expects red and now
+// passes: the route reached a verdict either way, so no count moves and no admission clause about
+// exclusions fires -- admission catches THIS one as a divergence, and the guard catches it as a
+// lost position, which is the fact a frontier report owes.
+test fn w_RED_an_agreement_becoming_a_divergence_is_a_regression() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainDiverged { cause: NativePassedExpectedRed })]
+  ) == false
+}
+
+// ═══ REMOVAL AND ITS DISPOSITION ═══
+
+test fn w_RED_a_baseline_member_that_vanishes_without_a_disposition_reds() -> Bool {
+  let fs = findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: []
+  )
+  length(xs: fs) == 1
+}
+
+test fn a_deleted_subject_with_a_disposition_is_admitted() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: [NativeProgressDispositionRow {
+        identity: subject_a,
+        disposition: SubjectDeleted { authority: "the declaration was deleted by gunbc#00000" }
+      }]
+    ),
+    readings: []
+  )
+}
+
+test fn a_subject_that_left_the_universe_is_admitted_under_its_own_name() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: [NativeProgressDispositionRow {
+        identity: subject_a,
+        disposition: SubjectLeftTheUniverse { moved_to_module: "v2.lens.alpha" }
+      }]
+    ),
+    readings: []
+  )
+}
+
+// A DISPOSITION IS A CHECKABLE CLAIM, NOT AN EXEMPTION. Declaring a deletion for a subject the run
+// still discovered would otherwise pre-authorize a future removal nobody looked at.
+test fn w_RED_a_deletion_the_run_contradicts_reds() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: [NativeProgressDispositionRow {
+        identity: subject_a,
+        disposition: SubjectDeleted { authority: "claimed deleted" }
+      }]
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)]
+  ) == false
+}
+
+// BOOKKEEPING ABOUT NOTHING. This is the shape a disposition list takes as it rots, and it is
+// caught from the disposition's own side because the baseline-row fold cannot see it.
+test fn w_RED_a_disposition_for_a_subject_with_no_baseline_row_reds() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [],
+      dispositions: [NativeProgressDispositionRow {
+        identity: subject_b,
+        disposition: SubjectDeleted { authority: "no baseline row ever existed" }
+      }]
+    ),
+    readings: []
+  ) == false
+}
+
+// ═══ SUBSTITUTION CANNOT SATISFY THE BASELINE ═══
+
+test fn a_rename_that_carries_the_baseline_is_admitted() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_b, attained: BaselineRefused { stage: NativeTestStageEntry, cause: frontier_cause } }],
+      dispositions: [NativeProgressDispositionRow {
+        identity: subject_b,
+        disposition: SubjectRenamed { to: subject_b_renamed, authority: "renamed by gunbc#00000" }
+      }]
+    ),
+    readings: [observed(identity: subject_b_renamed, attained: AttainRefused { stage: NativeTestStageEntry, cause: frontier_cause })]
+  )
+}
+
+// THE CLAUSE THE WHOLE GUARD TURNS ON. A rename is a continuation of a position, so it carries the
+// position; a rename whose target attains LESS is a regression wearing a rename's clothes, and it
+// reds under its own name rather than passing as bookkeeping.
+test fn w_RED_a_rename_whose_target_attains_less_reds() -> Bool {
+  let fs = findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_b, attained: BaselineAgreed }],
+      dispositions: [NativeProgressDispositionRow {
+        identity: subject_b,
+        disposition: SubjectRenamed { to: subject_b_renamed, authority: "rewritten and renamed" }
+      }]
+    ),
+    readings: [observed(identity: subject_b_renamed, attained: AttainRefused { stage: NativeTestStagePrepare, cause: frontier_cause })]
+  )
+  any(xs: fs, predicate: fn(f) {
+    match f {
+      RenameTargetBelowBaseline { identity: _, target: t, baseline: _, observed: _ } => t.declaration == "still_holds"
+      ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+      BaselineMemberMissingUndisposed { identity: _ } => false
+      DispositionContradictedByRun { identity: _ } => false
+      RenameTargetAbsent { identity: _, target: _ } => false
+      DisposedSubjectHasNoBaselineRow { identity: _ } => false
+      ArtifactProductionFailed { detail: _ } => false
+      ObservedMemberReadingMalformed { identity: _ } => false
+      BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+      AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+      AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+      CauseTransitionUndispositioned { identity: _ } => false
+      CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+      SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+    }
+  })
+}
+
+test fn w_RED_a_rename_to_a_target_the_run_never_saw_reds() -> Bool {
+  let fs = findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_b, attained: BaselineAgreed }],
+      dispositions: [NativeProgressDispositionRow {
+        identity: subject_b,
+        disposition: SubjectRenamed { to: subject_b_renamed, authority: "renamed" }
+      }]
+    ),
+    readings: []
+  )
+  any(xs: fs, predicate: fn(f) {
+    match f {
+      RenameTargetAbsent { identity: _, target: t } => t.declaration == "still_holds"
+      ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+      BaselineMemberMissingUndisposed { identity: _ } => false
+      DispositionContradictedByRun { identity: _ } => false
+      RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+      DisposedSubjectHasNoBaselineRow { identity: _ } => false
+      ArtifactProductionFailed { detail: _ } => false
+      ObservedMemberReadingMalformed { identity: _ } => false
+      BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+      AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+      AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+      CauseTransitionUndispositioned { identity: _ } => false
+      CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+      SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+    }
+  })
+}
+
+// ═══ ARTIFACT PRODUCTION ═══
+
+// A RUN WHOSE CRATE DID NOT BUILD IS A GUARD FINDING, NOT A PRECONDITION OF THE GUARD. The
+// population here is otherwise perfect, so nothing but the build arm can red this -- which is the
+// discrimination: the finding is not a side effect of an empty population.
+test fn w_RED_a_build_that_did_not_produce_its_artifact_reds_a_clean_population() -> Bool {
+  let broken = NativeRouteEmittedBuild {
+    cargo_argv: ["cargo", "build", "--release"],
+    rustflags: "-D warnings",
+    compiler_path: "/opt/rust/bin/rustc",
+    rustc_identity: "rustc 1.90.0",
+    exit_status: 101,
+    warning_count: 0
+  }
+  let report = live_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: broken
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => false
+    ProgressLost { findings: fs } => length(xs: fs) == 1
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// A WARNING UNDER A DENIAL THAT MAKES A LINT AN ERROR is a warning rustc did not own, which the
+// receipt would otherwise swallow.
+test fn w_RED_a_zero_status_build_carrying_warnings_reds() -> Bool {
+  let warned = NativeRouteEmittedBuild {
+    cargo_argv: ["cargo", "build", "--release"],
+    rustflags: "-D warnings",
+    compiler_path: "/opt/rust/bin/rustc",
+    rustc_identity: "rustc 1.90.0",
+    exit_status: 0,
+    warning_count: 3
+  }
+  let report = live_report(
+    baseline: baseline_of(rows: [], dispositions: []),
+    readings: [],
+    build: warned
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => false
+    ProgressLost { findings: _ } => true
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// ═══ THE MALFORMED READING IS REPORTED, NOT ONLY ABSORBED ═══
+
+// An exclusion whose verdict names no stage takes the ladder's bottom, which can never
+// manufacture progress -- but it CAN mask a fall from `eval`, so the reading says so.
+test fn w_RED_an_exclusion_with_no_stage_is_reported_as_malformed() -> Bool {
+  let reading = native_progress_read_observed(
+    identity: subject_a,
+    disposition: NativeExclusion { cause: CompilerFrontierAttributed { reason: ^some_reason } },
+    refused_at: optional_absent()
+  )
+  length(xs: reading.findings) == 1
+}
+
+test fn an_exclusion_that_names_its_stage_reads_cleanly_at_that_stage() -> Bool {
+  let reading = native_progress_read_observed(
+    identity: subject_a,
+    disposition: NativeExclusion { cause: CompilerFrontierAttributed { reason: ^some_reason } },
+    refused_at: optional_present(value: NativeTestStageEval)
+  )
+  is_empty(xs: reading.findings)
+    && native_attainment_at_least(
+      observed: reading.row.attained,
+      baseline: BaselineRefused { stage: NativeTestStageEval, cause: frontier_cause }
+    )
+}
+
+// ═══ PROGRESS PRESERVED IS NOT REQUESTED-TESTS-PASSED ═══
+
+// THE TWO NUMBERS COME APART IN BOTH DIRECTIONS, and a lane that printed one would answer
+// neither. A head where nothing agrees and nothing regressed is GREEN with no good news in it.
+test fn a_report_with_no_agreements_can_still_preserve_progress() -> Bool {
+  let report = live_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineRefused { stage: NativeTestStagePrepare, cause: frontier_cause } }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainRefused { stage: NativeTestStagePrepare, cause: frontier_cause })],
+    build: clean_build
+  )
+  report.agreed == 0
+    && match native_progress_verdict(report: report) {
+      ProgressPreserved => true
+      ProgressLost { findings: _ } => false
+      ProgressUnobserved { reach: _, findings: _ } => false
+    }
+}
+
+// AND THE OTHER DIRECTION, WHICH IS THE ONE THAT MATTERS: a head where agreements RISE and one
+// position is lost is RED, and the encouraging number cannot green it.
+test fn w_RED_a_rising_agreement_count_cannot_green_a_lost_position() -> Bool {
+  let report = live_report(
+    baseline: baseline_of(
+      rows: [
+        NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed },
+        NativeProgressBaselineRow { identity: subject_b, attained: BaselineRefused { stage: NativeTestStagePrepare, cause: frontier_cause } }
+      ],
+      dispositions: []
+    ),
+    readings: [
+      observed(identity: subject_a, attained: AttainDiverged { cause: NativePassedExpectedRed }),
+      observed(identity: subject_b, attained: AttainAgreed)
+    ],
+    build: clean_build
+  )
+  report.agreed == 1
+    && match native_progress_verdict(report: report) {
+      ProgressPreserved => false
+      ProgressLost { findings: fs } => length(xs: fs) == 1
+      ProgressUnobserved { reach: _, findings: _ } => false
+    }
+}
+
+// ═══ THE PRE-CONTEXT RUNGS, WHICH ARE WHERE THE LIVE FRONTIER ACTUALLY SITS ═══
+
+test fn the_reach_ladder_orders_the_pre_context_rungs() -> Bool {
+  native_run_reach_rank(r: ReachEmissionAttempted) < native_run_reach_rank(r: ReachSourceEmitted)
+    && native_run_reach_rank(r: ReachSourceEmitted) < native_run_reach_rank(r: ReachCrateBuilt)
+    && native_run_reach_rank(r: ReachCrateBuilt) < native_run_reach_rank(r: ReachExecutableStarted)
+}
+
+// ONLY THE TOP RUNG HAS A POPULATION TO HAVE AN OPINION ABOUT. Three of the four reaches produce
+// no subject verdicts at all, which is why the comparison is gated on this rather than on whether
+// the population happens to be empty.
+test fn only_the_top_rung_reaches_the_population() -> Bool {
+  native_run_reached_the_population(r: ReachExecutableStarted)
+    && (native_run_reached_the_population(r: ReachCrateBuilt) == false)
+    && (native_run_reached_the_population(r: ReachSourceEmitted) == false)
+    && (native_run_reached_the_population(r: ReachEmissionAttempted) == false)
+}
+
+// THE STATE EVERY CONTEMPORARY HEAD IS ACTUALLY IN, and the claim that decides whether this model
+// is honest. main at c4464fc75d9 with no diff emits its source and then refuses at the emitted
+// cargo build; gunbc#12043's `emit-build` lane reproduces it on every head. A two-state verdict
+// would read that as a corpus-wide REGRESSION -- every baseline row vanished, each owing a
+// disposition -- which is loud, wrong, and wrong in the direction that rots.
+test fn w_RED_a_run_that_died_at_the_emitted_build_is_unobserved_not_lost() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [
+        NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed },
+        NativeProgressBaselineRow { identity: subject_b, attained: BaselineRefused { stage: NativeTestStageEntry, cause: frontier_cause } }
+      ],
+      dispositions: []
+    ),
+    readings: [],
+    build: NativeRouteEmittedBuild {
+      cargo_argv: ["cargo", "build", "--release"],
+      rustflags: "-D warnings",
+      compiler_path: "/opt/rust/bin/rustc",
+      rustc_identity: "rustc 1.93.0",
+      exit_status: 101,
+      warning_count: 0
+    },
+    reach: ReachSourceEmitted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressUnobserved { reach: r, findings: _ } => native_run_reach_rank(r: r) == native_run_reach_rank(r: ReachSourceEmitted)
+    ProgressPreserved => false
+    ProgressLost { findings: _ } => false
+  }
+}
+
+// AND AN UNOBSERVED RUN IS STILL RED. A merge candidate that established nothing is not a pass;
+// the third state changes the CAUSE a reader is sent to, never the blocking.
+test fn an_unobserved_run_does_not_report_progress_preserved() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(rows: [], dispositions: []),
+    readings: [],
+    build: clean_build,
+    reach: ReachCrateBuilt,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => false
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => true
+  }
+}
+
+// A SUBJECT THE RUN COULD NOT LOOK AT IS NOT A REGRESSED SUBJECT. Per-identity, this time: the
+// run reached the population but the driver never reported on this member.
+test fn w_RED_an_unreached_subject_reds_as_unreached_and_not_as_a_regression() -> Bool {
+  let fs = findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainUnreached { blocked_at: ReachCrateBuilt })]
+  )
+  length(xs: fs) == 1
+    && any(xs: fs, predicate: fn(f) {
+      match f {
+        SubjectUnreachedEarlierRungFailed { identity: i, blocked_at: _ } => i.module == "v2.test.alpha"
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+      CauseTransitionUndispositioned { identity: _ } => false
+      CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionUndispositioned { identity: _ } => false
+        CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+      }
+    })
+}
+
+// ═══ WHAT MAY ADVANCE THE RATCHET ═══
+
+test fn a_live_run_that_preserved_progress_may_advance_the_baseline() -> Bool {
+  let report = live_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineMayAdvance { head: h } => h == head_sha
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// A HISTORICAL MEASUREMENT IS EVIDENCE TO KEEP AND NEVER TO ADVANCE FROM. The reading is
+// otherwise perfect -- it would advance the ratchet if it were live -- so nothing but the
+// provenance can refuse it, which is the discrimination. A3: a baseline advanced from a tree that
+// no longer exists asserts a position no current head can be held to.
+test fn w_RED_a_historical_measurement_cannot_advance_the_ratchet() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: HistoricalMainObservation {
+      tree: "b1f83a32f36",
+      note: "a main observation that has aged; refreshable by re-measuring on today's main"
+    },
+    adjudication: current_adjudicator
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineAdvanceRefusedHistorical { tree: t } => t == "b1f83a32f36"
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// READING IS NOT ADVANCING. The same historical report still produces a verdict, so an operator
+// can see where the frontier was; what it may not do is move the roster.
+test fn a_historical_measurement_is_still_read_and_reported() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: HistoricalMainObservation { tree: "b1f83a32f36", note: "retained" },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => true
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+test fn w_RED_an_unreached_run_cannot_advance_the_ratchet() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(rows: [], dispositions: []),
+    readings: [],
+    build: clean_build,
+    reach: ReachSourceEmitted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+        BaselineAdvanceRefusedUnreached { reach: _ } => true
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// A LOST POSITION MUST NOT BE FROZEN INTO THE NEW FLOOR, which is the way a ratchet quietly
+// becomes a record of whatever happened last.
+test fn w_RED_a_run_that_lost_a_position_cannot_advance_the_ratchet() -> Bool {
+  let report = live_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainDiverged { cause: NativePassedExpectedRed })],
+    build: clean_build
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineAdvanceRefusedProgressLost => true
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+        BaselineAdvanceRefusedUnreached { reach: _ } => false
+  }
+}
+
+// THE RED FOR THE DEFECT THIS MODULE ITSELF HAD, asked for by the reviewer of `5397b6d` and
+// absent until now. Making `ProgressUnobserved` a verdict arm fixed what the LANE reports and left
+// what the FINDINGS say untouched: with an empty population every baseline row still fell down the
+// `Absent` path and came out as "vanished, owing a disposition". The verdict had stopped repeating
+// the misattribution while the findings went on making it.
+//
+// SO THIS CLAIM ASSERTS THE FINDING KIND, NOT THE VERDICT. `w_RED_a_run_that_died_at_the_emitted_
+// build_is_unobserved_not_lost` above already pins the verdict and PASSED THROUGHOUT THE BUG,
+// which is exactly why it could not catch it. It is also the claim a later refactor is most
+// likely to undo, because short-circuiting below the top rung looks like a special case until you
+// remember there is no population to be absent from.
+test fn w_RED_a_run_with_no_binary_reports_every_row_unreached_not_missing() -> Bool {
+  let fs = native_progress_report(
+    baseline: baseline_of(
+      rows: [
+        NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed },
+        NativeProgressBaselineRow { identity: subject_b, attained: BaselineRefused { stage: NativeTestStageEntry, cause: frontier_cause } }
+      ],
+      dispositions: []
+    ),
+    readings: [],
+    build: NativeRouteEmittedBuild {
+      cargo_argv: ["cargo", "build", "--release"],
+      rustflags: "-D warnings",
+      compiler_path: "/opt/rust/bin/rustc",
+      rustc_identity: "rustc 1.93.0",
+      exit_status: 101,
+      warning_count: 0
+    },
+    reach: ReachSourceEmitted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  ).findings
+  length(xs: fs) == 3
+    && (any(xs: fs, predicate: fn(f) {
+      match f {
+        BaselineMemberMissingUndisposed { identity: _ } => true
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+      CauseTransitionUndispositioned { identity: _ } => false
+      CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionUndispositioned { identity: _ } => false
+        CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+      }
+    }) == false)
+    && count_where(xs: fs, predicate: fn(f) {
+      match f {
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => true
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+      CauseTransitionUndispositioned { identity: _ } => false
+      CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionUndispositioned { identity: _ } => false
+        CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+      }
+    }) == 2
+}
+
+// AND A RUN THAT NEVER REACHED THE POPULATION EMITS NO DISPOSITION-SIDE FINDINGS EITHER.
+// `DispositionContradictedByRun` asks whether the run still discovered the subject; a run that
+// discovered nothing would answer "uncontradicted" for every disposition, which looks like
+// agreement and is ignorance.
+test fn w_RED_an_unreached_run_emits_no_disposition_side_findings() -> Bool {
+  let fs = native_progress_report(
+    baseline: baseline_of(
+      rows: [],
+      dispositions: [NativeProgressDispositionRow {
+        identity: subject_b,
+        disposition: SubjectDeleted { authority: "no baseline row ever existed" }
+      }]
+    ),
+    readings: [],
+    build: clean_build,
+    reach: ReachCrateBuilt,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  ).findings
+  is_empty(xs: fs)
+}
+
+// THE SAME MISATTRIBUTION, ONE ARM OVER (review 70018). The direct path was repaired to route an
+// unreached reading to its own finding; the RENAME path was not, and handed its target straight
+// to a comparison that answers `false` for an unreached reading by construction. So a rename whose
+// target nothing could look at was reported as "the rename lowered the bar".
+//
+// AND THE FINDING NAMES THE TARGET, not the original: the target is the identity the run failed
+// to reach and the one a reader goes looking for.
+//
+// `a_rename_that_carries_the_baseline_is_admitted` and
+// `w_RED_a_rename_whose_target_attains_less_reds` both PASSED THROUGHOUT, because neither supplies
+// an unreached target -- the same reason the verdict-level claim could not catch the direct-path
+// version of this bug. The finding kind is the assertion.
+test fn w_RED_a_rename_to_an_unreached_target_reds_as_unreached_not_as_a_lowered_bar() -> Bool {
+  let fs = findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_b, attained: BaselineAgreed }],
+      dispositions: [NativeProgressDispositionRow {
+        identity: subject_b,
+        disposition: SubjectRenamed { to: subject_b_renamed, authority: "renamed" }
+      }]
+    ),
+    readings: [observed(identity: subject_b_renamed, attained: AttainUnreached { blocked_at: ReachCrateBuilt })]
+  )
+  length(xs: fs) == 1
+    && any(xs: fs, predicate: fn(f) {
+      match f {
+        SubjectUnreachedEarlierRungFailed { identity: i, blocked_at: _ } => i.declaration == "still_holds"
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+      CauseTransitionUndispositioned { identity: _ } => false
+      CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionUndispositioned { identity: _ } => false
+        CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+      }
+    })
+}
+
+// THE PARTIAL RANK IS A PROPERTY OF THE TYPE, NOT OF A PARAGRAPH (review 70018). The annotation
+// claimed `AttainUnreached` had no rank while the function gave it 0 -- colliding exactly with a
+// prepare-stage refusal. Nothing reached the collision, which is what makes it the kind of defect
+// a later refactor inherits as a fact. Now the absence is `Absent` and every caller must say what
+// it does about it.
+test fn an_unreached_reading_has_no_rank_at_all() -> Bool {
+  match native_attainment_rank(a: AttainUnreached { blocked_at: ReachCrateBuilt }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND THE RANKED ARMS STILL RANK, so the partiality did not quietly disarm the ladder.
+test fn every_ranked_arm_still_carries_a_rank() -> Bool {
+  match native_attainment_rank(a: AttainRefused { stage: NativeTestStagePrepare, cause: frontier_cause }) {
+    Present { value: p } =>
+      match native_attainment_rank(a: AttainAgreed) {
+        Present { value: a } => a > p
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// A BRANCH OBSERVATION IS REAL EVIDENCE AND MAY NEVER RAISE THE FLOOR (manager ruling,
+// 2026-09-22). The reading is otherwise perfect -- it would advance the ratchet if its tree were
+// main -- so nothing but the provenance arm can refuse it, which is the discrimination.
+//
+// FOLDING THIS INTO THE ADMITTED ARM lets one branch enforce a bar no merge candidate ever
+// cleared against every other lane. `session/sharp-bear-756` is exactly this case today:
+// self-host green, capability demonstrated, main unchanged.
+test fn w_RED_a_branch_observation_cannot_raise_the_floor_for_everyone_else() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: BranchObservation { branch: "session/sharp-bear-756", head: "6032d50be7d" },
+    adjudication: current_adjudicator
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineAdvanceRefusedNeverMain { branch: b, head: _ } => b == "session/sharp-bear-756"
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// AND IT IS STILL READ, because a branch observation answers a question a baseline cannot: is
+// this capability possible right now. Discarding it would lose a true fact; admitting it would
+// move the floor. The third arm is what lets it be neither.
+test fn a_branch_observation_is_still_read_and_reported() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: BranchObservation { branch: "session/sharp-bear-756", head: "6032d50be7d" },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => true
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// THE TWO NON-ADVANCING ROLES REFUSE UNDER DIFFERENT NAMES, because their remedies differ and one
+// of them cannot be carried out: a stale main observation is refreshed by re-measuring on today's
+// main, and a branch observation is not refreshable at all -- re-running it produces another
+// branch observation. A single "not admitted" arm would send a reader on an errand that cannot
+// finish.
+test fn a_stale_main_observation_and_a_branch_observation_refuse_differently() -> Bool {
+  let rows = [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }]
+  let readings = [observed(identity: subject_a, attained: AttainAgreed)]
+  let stale = native_progress_report(
+    baseline: baseline_of(rows: rows, dispositions: []),
+    readings: readings, build: clean_build, reach: ReachExecutableStarted,
+    provenance: HistoricalMainObservation { tree: "b1f83a32f36", note: "aged" },
+    adjudication: current_adjudicator
+  )
+  let branch = native_progress_report(
+    baseline: baseline_of(rows: rows, dispositions: []),
+    readings: readings, build: clean_build, reach: ReachExecutableStarted,
+    provenance: BranchObservation { branch: "session/sharp-bear-756", head: "6032d50be7d" },
+    adjudication: current_adjudicator
+  )
+  match native_progress_baseline_advance(report: stale) {
+    BaselineAdvanceRefusedHistorical { tree: _ } =>
+      match native_progress_baseline_advance(report: branch) {
+        BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => true
+        BaselineMayAdvance { head: _ } => false
+        BaselineAdvanceRefusedHistorical { tree: _ } => false
+        BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+        BaselineAdvanceRefusedUnreached { reach: _ } => false
+        BaselineAdvanceRefusedProgressLost => false
+      }
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// ═══ GATE-SEMANTIC DRIFT: SAME SUBJECT, DIFFERENT ADJUDICATOR ═══
+//
+// The incident that forced this: gunbc#11998's floor job concluded SUCCESS while its own log read
+// `verdict=FloorRefused, phases_failed=1`, because the head it built the adjudicator from predates
+// f5bd9b064a. Same source, opposite lane verdicts, one commit between. So "green at SHA X" is
+// incomplete, and this module is where it matters, because it is the one thing that compares
+// verdicts ACROSS TIME.
+
+// THE COMPARISON REFUSES RATHER THAN RUNNING, and the reading is otherwise perfect -- it would
+// preserve progress under the matching adjudicator -- so nothing but the adjudication identity can
+// red it. The finding says NOT A BAR IN THE CURRENT MEANING rather than reporting a regression,
+// because a bar from a different definition of green is not a weaker reading of the same fact.
+test fn w_RED_a_baseline_minted_under_a_weaker_adjudicator_is_not_a_bar() -> Bool {
+  let fs = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: [],
+      accept_to_refuse: [],
+      cause_transitions: [],
+      minted_under: strengthened_adjudicator
+    },
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  ).findings
+  length(xs: fs) == 1
+    && any(xs: fs, predicate: fn(f) {
+      match f {
+        BaselineMintedUnderADifferentAdjudication { baseline: b, run: _ } =>
+          (b.closure_identity.digest as String) == "aaaabbbbccccdddd"
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+      CauseTransitionUndispositioned { identity: _ } => false
+      CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionUndispositioned { identity: _ } => false
+        CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+      }
+    })
+}
+
+// AND IT SUPPRESSES THE PER-IDENTITY FINDINGS RATHER THAN STANDING BESIDE THEM. Emitting both
+// would let a reader take the regressions at face value and read the meaning boundary as a
+// footnote -- so a baseline the run WOULD have regressed against, under a different adjudicator,
+// reports the boundary and nothing else. The reading supplied below is, under a MATCHING
+// adjudicator, a regression -- agreement down to diverged -- which the control after it pins.
+test fn w_RED_across_a_meaning_boundary_no_regression_is_reported_beside_it() -> Bool {
+  let fs = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: [],
+      accept_to_refuse: [],
+      cause_transitions: [],
+      minted_under: strengthened_adjudicator
+    },
+    readings: [observed(identity: subject_a, attained: AttainDiverged { cause: NativePassedExpectedRed })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  ).findings
+  length(xs: fs) == 1
+    && (any(xs: fs, predicate: fn(f) {
+      match f {
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => true
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+      CauseTransitionUndispositioned { identity: _ } => false
+      CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionUndispositioned { identity: _ } => false
+        CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+      }
+    }) == false)
+}
+
+// THE CONTROL: THE SAME COMPARISON UNDER A MATCHING ADJUDICATOR DOES REPORT THE REGRESSION. Without
+// it the claim above would be satisfied by a guard that never reports regressions at all.
+test fn under_a_matching_adjudicator_that_same_reading_is_a_regression() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainDiverged { cause: NativePassedExpectedRed })]
+  ) == false
+}
+
+// TREE DRIFT AND GATE-SEMANTIC DRIFT ARE INDEPENDENT AXES. A run on main under the current
+// adjudicator against a baseline minted on main under the current adjudicator is the only cell
+// that compares; the identity is the PAIR, and neither half alone identifies a verdict.
+test fn the_two_drifts_are_independent_and_both_are_carried() -> Bool {
+  let report = live_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build
+  )
+  native_adjudication_same(a: report.adjudication, b: current_adjudicator)
+    && match report.provenance {
+      MainBaselineObservation { head: h } => h == head_sha
+      BranchObservation { branch: _, head: _ } => false
+      HistoricalMainObservation { tree: _, note: _ } => false
+      AuthorCompositionObservation { base_head: _, overlay: _, note: _ } => false
+    }
+}
+
+// ═══ A BAR IS A DIFFERENT TYPE FROM A READING (review 70058) ═══
+//
+// `AttainUnreached` was representable on a baseline row, and the comparison answered `false` for
+// an unreached BAR exactly as it once did for an unreached READING -- the third side of a
+// misattribution already repaired twice. It was reachable through the module's own intended
+// minting route, so the remedy is a type split rather than a third guard clause: "nothing was
+// looked at" is not a level anything can be held to, and it now has no constructor on a bar.
+
+// THE STRUCTURAL CLAIM. This is the whole fix in one line -- there is no `BaselineUnreached`, so
+// the invalid state cannot be written, and the projection that would have to produce one refuses.
+test fn an_unreached_reading_cannot_become_a_bar() -> Bool {
+  match native_observed_as_baseline(a: AttainUnreached { blocked_at: ReachCrateBuilt }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND EVERY READING THAT DID LOOK AT SOMETHING STILL MINTS, so the gate did not simply close.
+test fn every_reading_that_observed_something_mints_a_bar() -> Bool {
+  all([AttainAgreed, AttainDiverged { cause: NativePassedExpectedRed }, AttainRefused { stage: NativeTestStageEval, cause: frontier_cause }], a =>
+    match native_observed_as_baseline(a: a) {
+      Present { value: _ } => true
+      Absent => false
+    })
+}
+
+// ONE LADDER, NOT TWO. The bar ranks and the reading ranks are the same numbers, which is what
+// keeps the type split a refinement rather than the second authority it would otherwise be.
+test fn the_bar_ladder_and_the_reading_ladder_are_one_ladder() -> Bool {
+  all([AttainAgreed, AttainDiverged { cause: NativePassedExpectedRed }, AttainRefused { stage: NativeTestStageEntry, cause: frontier_cause }], a =>
+    match native_observed_as_baseline(a: a) {
+      Present { value: b } =>
+        match native_attainment_rank(a: a) {
+          Present { value: r } => r == native_baseline_rank(b: b)
+          Absent => false
+        }
+      Absent => false
+    })
+}
+
+// THE REVIEWER'S EXACT PATH, AT THE MINT. A run reaches the population and reports an unreached
+// subject that is not yet in the baseline; it produces no finding, verdicts preserved, and is
+// admitted to advance. Minting must then OMIT that subject rather than freeze a bar of "nothing
+// looked at it" -- which would report `ProgressRegressed` for it on every later run, forever.
+test fn w_RED_minting_omits_an_unreached_subject_rather_than_freezing_it() -> Bool {
+  let minted = native_progress_mint_baseline(readings: [
+    observed(identity: subject_a, attained: AttainAgreed),
+    observed(identity: subject_b, attained: AttainUnreached { blocked_at: ReachCrateBuilt })
+  ])
+  length(xs: minted.rows) == 1
+    && length(xs: minted.unmintable) == 1
+    && any(xs: minted.unmintable, predicate: fn(i) { i.module == "v2.test.beta" })
+}
+
+// AND THE OMISSION IS RETURNED RATHER THAN DROPPED. A subject silently missing from a new
+// baseline is indistinguishable from one legitimately removed, which is the disposition question
+// this module spends a section on -- so the mint reports what it could not take.
+test fn the_mint_names_what_it_could_not_take() -> Bool {
+  let minted = native_progress_mint_baseline(readings: [
+    observed(identity: subject_a, attained: AttainUnreached { blocked_at: ReachSourceEmitted })
+  ])
+  is_empty(xs: minted.rows) && length(xs: minted.unmintable) == 1
+}
+
+// ═══ A TREE THAT CAN NEVER BE A LANDED ONE (gunbc#12009's case, relayed) ═══
+//
+// Their conjuncts were met HONESTLY on a measurement composition -- a head plus two cherry-picked
+// emitter files -- that will never exist as a landed tree. By the letter, compliant. The shared
+// class, in their words: a verdict that is only meaningful relative to a context the verdict does
+// not carry.
+
+test fn w_RED_an_author_composition_cannot_advance_the_ratchet() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: AuthorCompositionObservation {
+      base_head: "6032d50be7d",
+      overlay: "two cherry-picked emitter files",
+      note: "assembled to take a measurement; will never exist as a landed tree"
+    },
+    adjudication: current_adjudicator
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: o } =>
+      string_contains(s: o, pattern: "cherry-picked")
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// THE SECOND CONSUMER'S PREDICATE, AND IT IS NOT "DID THIS ADVANCE". A flip check asks whether
+// the tree an observation was made on can BE the landing tree. A stale main observation is
+// landable and must not advance; an author composition is neither. One question would conflate
+// them, which is why there are two functions.
+test fn landability_and_advancement_are_different_questions() -> Bool {
+  native_observation_is_on_a_landable_tree(p: MainBaselineObservation { head: head_sha })
+    && native_observation_is_on_a_landable_tree(p: BranchObservation { branch: "b", head: "h" })
+    && native_observation_is_on_a_landable_tree(
+      p: HistoricalMainObservation { tree: "t", note: "aged but it was main" })
+    && (native_observation_is_on_a_landable_tree(
+      p: AuthorCompositionObservation { base_head: "h", overlay: "o", note: "n" }) == false)
+}
+
+// AND A BRANCH IS NOT AN AUTHOR COMPOSITION, which is the fold that would have served their case
+// wrongly: a branch head CAN land, so classifying an assembled tree as one asserts a future that
+// will not happen.
+test fn w_RED_a_branch_and_an_author_composition_refuse_under_different_names() -> Bool {
+  let rows = [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }]
+  let readings = [observed(identity: subject_a, attained: AttainAgreed)]
+  let branch = native_progress_report(
+    baseline: baseline_of(rows: rows, dispositions: []), readings: readings,
+    build: clean_build, reach: ReachExecutableStarted,
+    provenance: BranchObservation { branch: "session/sharp-bear-756", head: "6032d50be7d" },
+    adjudication: current_adjudicator
+  )
+  let composed = native_progress_report(
+    baseline: baseline_of(rows: rows, dispositions: []), readings: readings,
+    build: clean_build, reach: ReachExecutableStarted,
+    provenance: AuthorCompositionObservation { base_head: "6032d50be7d", overlay: "o", note: "n" },
+    adjudication: current_adjudicator
+  )
+  match native_progress_baseline_advance(report: branch) {
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } =>
+      match native_progress_baseline_advance(report: composed) {
+        BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => true
+        BaselineMayAdvance { head: _ } => false
+        BaselineAdvanceRefusedHistorical { tree: _ } => false
+        BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+        BaselineAdvanceRefusedUnreached { reach: _ } => false
+        BaselineAdvanceRefusedProgressLost => false
+      }
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// ═══ THE DISCRIMINATOR IS DERIVED, NOT THE NAME (review 70073) ═══
+//
+// The first cut compared `authority`, a free-form String, and the module's prose promised that a
+// gate strengthening would make older verdicts incomparable AUTOMATICALLY. A strengthening that
+// renames nothing -- the normal case -- left `comparable` true. The fixture even demonstrated the
+// dependency rather than the property: its red only fired because a person hand-typed a commit
+// hash into the string.
+
+// THE CLAIM THE OLD SHAPE COULD NOT PASS. Same authority spelling, different adjudicating
+// closure, and the comparison must refuse. Nothing here recalls a hash.
+test fn w_RED_a_strengthening_that_renames_nothing_is_still_a_different_meaning() -> Bool {
+  (current_adjudicator.authority == strengthened_adjudicator.authority)
+    && (native_adjudication_same(a: current_adjudicator, b: strengthened_adjudicator) == false)
+}
+
+// AND THE SAME CLOSURE STILL COMPARES, so the discriminator did not simply refuse everything.
+// The receipt differs between these two and must NOT make them incomparable: two runs under one
+// adjudicator with different receipts are the same meaning of green.
+test fn the_same_closure_compares_even_with_a_different_receipt() -> Bool {
+  let same_closure_no_receipt = NativeVerdictAdjudication {
+    authority: "a different human label entirely",
+    closure_identity: structural_content_hash(digest: "1111222233334444"),
+    receipt_identity: optional_absent()
+  }
+  native_adjudication_same(a: current_adjudicator, b: same_closure_no_receipt)
+}
+
+// ═══ ACCEPT-TO-REFUSE IS NOT AUTOMATICALLY A REGRESSION ═══
+//
+// gunbc#12009 deletes the global spelling search; on a 132-module closure that makes 106 resolve
+// refusals APPEAR, and 81 of them reach a module that FILE-REFUSES -- the search was inventing
+// answers around sixteen front-end defects. DESIGN section 4b puts silent wrongness BELOW the
+// ladder entirely, so a fabricated acceptance becoming an attributed refusal is a rung UP. A
+// ratchet that scored it as a fall would penalise the lane that removes a fail-open.
+
+// THE SHAPE IS RECOGNISED BEFORE ANY DISPOSITION IS CONSULTED, and only this shape: no fail-open
+// removal turns an agreement into a divergence or a later stage into an earlier one.
+test fn only_an_agreement_becoming_a_refusal_is_an_accept_to_refuse_fall() -> Bool {
+  native_fall_is_accept_to_refuse(
+    baseline: BaselineAgreed, seen: AttainRefused { stage: NativeTestStagePrepare, cause: frontier_cause })
+    && (native_fall_is_accept_to_refuse(baseline: BaselineAgreed, seen: AttainDiverged { cause: NativePassedExpectedRed }) == false)
+    && (native_fall_is_accept_to_refuse(
+      baseline: BaselineRefused { stage: NativeTestStageEval, cause: frontier_cause },
+      seen: AttainRefused { stage: NativeTestStagePrepare, cause: frontier_cause }) == false)
+}
+
+// THE ARM IS NOT "DID ANYTHING FALL" BUT "IS EVERY ACCEPT-TO-REFUSE MEMBER ATTRIBUTED". Undisposed
+// reds under its OWN name, not as a regression -- the cause a reader is sent to is different.
+test fn w_RED_an_undispositioned_accept_to_refuse_reds_under_its_own_name() -> Bool {
+  let fs = findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainRefused { stage: NativeTestStageContext, cause: frontier_cause })]
+  )
+  length(xs: fs) == 1
+    && any(xs: fs, predicate: fn(f) {
+      match f {
+        AcceptToRefuseUndispositioned { identity: i, baseline: _, observed: _ } => i.module == "v2.test.alpha"
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+      CauseTransitionUndispositioned { identity: _ } => false
+      CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionUndispositioned { identity: _ } => false
+        CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+      CauseTransitionUndispositioned { identity: _ } => false
+      CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionUndispositioned { identity: _ } => false
+        CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+      }
+    })
+}
+
+// AND WITH THE DISPOSITION IT IS ADMITTED. This is the lane that removed a fail-open not being
+// penalised for it -- the whole requirement.
+test fn an_attributed_accept_to_refuse_is_admitted() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: [],
+      accept_to_refuse: [NativeAcceptToRefuseRow {
+        identity: subject_a,
+        disposition: PriorAcceptanceDependedOnARemovedFallback {
+          fallback: "the corpus-wide global spelling search, deleted by gunbc#12009",
+          now_refuses_with: "resolve refusal at the real binding, which never existed"
+        }
+      }],
+      cause_transitions: [],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(identity: subject_a, attained: AttainRefused { stage: NativeTestStageContext, cause: frontier_cause })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => true
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// A TRANSITION DISPOSITION IS CHECKED FROM ITS OWN SIDE, exactly as a removal disposition is: one
+// claimed for a subject that did NOT go accept-to-refuse is contradicted by the run, and leaving
+// it standing would pre-authorise a future fall nobody looked at.
+// The reading supplied below still AGREES, so no transition happened and the claimed
+// disposition has nothing to attribute.
+test fn w_RED_an_accept_to_refuse_disposition_the_run_contradicts_reds() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: [],
+      accept_to_refuse: [NativeAcceptToRefuseRow {
+        identity: subject_a,
+        disposition: PriorAcceptanceDependedOnARemovedFallback {
+          fallback: "claimed", now_refuses_with: "claimed"
+        }
+      }],
+      cause_transitions: [],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressLost { findings: fs } => length(xs: fs) == 1
+    ProgressPreserved => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// ═══ THE CAUSE COORDINATE: SAME RANK, DIFFERENT DIAGNOSTIC ═══
+//
+// 47 modules move from `resolve_reason_ambiguous_symbol` to `resolve_reason_unbound_symbol`:
+// same stage, same disposition, same verdict -- and the second is TRUE while the first was
+// manufactured by a fallback searching unrelated modules. The consequence is a person's day: an
+// author told to disambiguate names spends it on names; an author told the provider is missing
+// walks upstream and finds the file that will not parse. Scoring on attainment alone reports
+// those 47 as no progress.
+//
+// The general form, which bit this file in TWO places at once: compare the payload of an outcome
+// at the grain the subject claims, not only its variant.
+
+data ambiguous_cause: NativeRouteExclusionCause = CompilerFrontierAttributed { reason: ^resolve_reason_ambiguous_symbol }
+data unbound_cause: NativeRouteExclusionCause = CompilerFrontierAttributed { reason: ^resolve_reason_unbound_symbol }
+
+// THE COMPARISON KEYS ON THE REASON, NOT ON THE VARIANT. Both of these are
+// `CompilerFrontierAttributed`, so a variant-grain comparison calls them identical -- which is
+// exactly the blindness, since the reason is the coordinate the 47 modules moved on.
+test fn two_causes_sharing_a_variant_are_still_different_causes() -> Bool {
+  (native_exclusion_cause_same(a: ambiguous_cause, b: unbound_cause) == false)
+    && native_exclusion_cause_same(a: ambiguous_cause, b: ambiguous_cause)
+}
+
+// AND THE LADDER STILL CANNOT SEE IT, which is why the cause needs its own arm rather than a
+// finer rank: both positions are Prepare-stage refusals, so the rank is equal and
+// `native_attainment_at_least` says the bar is met. It is met. Something still moved.
+test fn a_cause_change_does_not_move_the_rank() -> Bool {
+  native_attainment_at_least(
+    observed: AttainRefused { stage: NativeTestStagePrepare, cause: unbound_cause },
+    baseline: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause }
+  )
+    && (native_cause_unchanged(
+      baseline: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause },
+      seen: AttainRefused { stage: NativeTestStagePrepare, cause: unbound_cause }) == false)
+}
+
+// THE 47-MODULE CASE, END TO END AND UNDISPOSITIONED. Rank unchanged, verdict unchanged, and the
+// guard must still say something -- because the change is either the most valuable kind there is
+// or a regression that moves nothing, and it cannot tell which without being told.
+test fn w_RED_a_cause_change_at_a_fixed_rank_is_not_a_non_event() -> Bool {
+  let fs = findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause }
+      }],
+      dispositions: []
+    ),
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStagePrepare, cause: unbound_cause })]
+  )
+  length(xs: fs) == 1
+    && any(xs: fs, predicate: fn(f) {
+      match f {
+        CauseTransitionUndispositioned { identity: i } => i.module == "v2.test.alpha"
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        CauseRegressedAtAFixedRank { identity: _, was: _, now: _ } => false
+      CauseTransitionDispositionContradicted { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+      }
+    })
+}
+
+// ATTRIBUTED AS AN ADVANCE, IT IS ADMITTED. This is the 47 modules being credited rather than
+// scored as nothing -- the whole requirement.
+test fn a_cause_that_became_truthful_is_admitted() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause }
+      }],
+      dispositions: [],
+      accept_to_refuse: [],
+      cause_transitions: [NativeCauseTransitionRow {
+        identity: subject_a,
+        disposition: CauseNowMoreTruthful {
+          was: "resolve_reason_ambiguous_symbol",
+          now: "resolve_reason_unbound_symbol",
+          why: "the ambiguity was manufactured by a fallback searching unrelated modules; the provider genuinely does not exist"
+        }
+      }],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStagePrepare, cause: unbound_cause })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => true
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// DECLARING A CAUSE REGRESSION DOES NOT EXCUSE IT. The arm exists so an author CAN say it, and
+// saying it produces a located red rather than a pass -- which is the difference between a
+// disposition that classifies and one that waives.
+test fn w_RED_a_declared_cause_regression_still_reds() -> Bool {
+  let fs = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStagePrepare, cause: unbound_cause }
+      }],
+      dispositions: [],
+      accept_to_refuse: [],
+      cause_transitions: [NativeCauseTransitionRow {
+        identity: subject_a,
+        disposition: CauseRegressedUnderANewLabel {
+          was: "resolve_reason_unbound_symbol",
+          now: "resolve_reason_ambiguous_symbol",
+          why: "a fallback was reintroduced and the true cause is hidden again"
+        }
+      }],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  ).findings
+  length(xs: fs) == 1
+    && any(xs: fs, predicate: fn(f) {
+      match f {
+        CauseRegressedAtAFixedRank { identity: _, was: w, now: _ } => w == "resolve_reason_unbound_symbol"
+        CauseTransitionUndispositioned { identity: _ } => false
+        CauseTransitionDispositionContradicted { identity: _ } => false
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseUndispositioned { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDispositionContradicted { identity: _ } => false
+      AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        AcceptToRefuseDeclaredARegression { identity: _, baseline: _, observed: _ } => false
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+        BaselineMintedUnderADifferentAdjudication { baseline: _, run: _ } => false
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+      }
+    })
+}
+
+// THE SAME BLINDNESS ON THE DIVERGENCE SIDE, which is the second place this bit at once: a
+// subject moving between two kinds of divergence kept the same rank and was invisible.
+test fn w_RED_a_divergence_changing_kind_is_also_a_cause_transition() -> Bool {
+  native_cause_unchanged(
+    baseline: BaselineDiverged { cause: NativePassedExpectedRed },
+    seen: AttainDiverged { cause: NativeReturnedOtherVerdict }
+  ) == false
+}
+
+// THE ACCEPT-TO-REFUSE ROSTER CLASSIFIES RATHER THAN WAIVES, the same shape the cause-transition
+// roster takes. Its first cut admitted on ANY declaration, so an author declaring
+// `PriorAcceptanceWasNeverSound` over an acceptance that WAS sound got a silent pass -- an escape
+// hatch with a vocabulary on it. The honest arm exists so the real case can be said, and saying
+// it produces a located red rather than a pass.
+test fn w_RED_a_declared_accept_to_refuse_regression_still_reds() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: [],
+      accept_to_refuse: [NativeAcceptToRefuseRow {
+        identity: subject_a,
+        disposition: AcceptanceWasSoundAndThisIsARegression {
+          why: "the acceptance did not depend on any fallback; this subject genuinely stopped working"
+        }
+      }],
+      cause_transitions: [],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(identity: subject_a, attained: AttainRefused { stage: NativeTestStageContext, cause: frontier_cause })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressLost { findings: fs } => length(xs: fs) == 1
+    ProgressPreserved => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// ═══ THE RENDERING IS EXECUTED, NOT MERELY DECLARED (review 70109) ═══
+//
+// `native_adjudication_receipt_text` existed to make the receipt identity READ rather than merely
+// written -- and it was called only by `native_progress_finding_text`, which nothing called. So
+// the review-70073 defect had MOVED OUT ONE LAYER rather than closed: the receipt still reached
+// nobody, under an annotation claiming it reached an operator. That is
+// `a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling` with my own claimed fix as
+// the specimen, which is why these claims assert the RENDERED TEXT and not the finding's presence.
+
+test fn the_boundary_finding_renders_the_receipt_that_would_be_looked_for() -> Bool {
+  let rendered = native_progress_finding_text(f: BaselineMintedUnderADifferentAdjudication {
+    baseline: strengthened_adjudicator,
+    run: current_adjudicator
+  })
+  string_contains(s: rendered, pattern: "native_route_receipt.json")
+    && string_contains(s: rendered, pattern: "aaaabbbbccccdddd")
+    && string_contains(s: rendered, pattern: "NOT A BAR IN THE CURRENT MEANING")
+}
+
+// AN ABSENT RECEIPT IS ITSELF INFORMATIVE and must not render as a blank: an adjudicator that
+// decided inline HAS no receipt, which is a different fact from one whose receipt went
+// unrecorded, and a reader sent looking for a file that does not exist is worse served than one
+// told there is none.
+test fn w_RED_an_absent_receipt_says_so_rather_than_rendering_nothing() -> Bool {
+  let rendered = native_progress_finding_text(f: BaselineMintedUnderADifferentAdjudication {
+    baseline: strengthened_adjudicator,
+    run: current_adjudicator
+  })
+  string_contains(s: rendered, pattern: "adjudicated inline, no receipt")
+}
+
+// THE UNREACHED FINDING NAMES THE RUNG THE RUN STOPPED AT, which is the whole point of sending a
+// reader to the earlier rung rather than into a diff. Without the rung the line says only that
+// something did not happen.
+test fn the_unreached_finding_names_the_rung_it_stopped_at() -> Bool {
+  let rendered = native_progress_finding_text(f: SubjectUnreachedEarlierRungFailed {
+    identity: subject_a,
+    blocked_at: ReachCrateBuilt
+  })
+  string_contains(s: rendered, pattern: "emitted crate built")
+    && string_contains(s: rendered, pattern: "v2.test.alpha.holds")
+}
+
+// EVERY FINDING NAMES ITS SUBJECT, which is what keeps a red from sending a reader to diff two
+// receipts by hand -- DESIGN section 5 asks for a located diagnostic, not a count.
+test fn a_regression_finding_locates_the_identity_it_is_about() -> Bool {
+  let rendered = native_progress_finding_text(f: ProgressRegressed {
+    identity: subject_b,
+    baseline: BaselineAgreed,
+    observed: AttainRefused { stage: NativeTestStagePrepare, cause: frontier_cause }
+  })
+  string_contains(s: rendered, pattern: "REGRESSED")
+    && string_contains(s: rendered, pattern: "v2.test.beta.holds")
+}
+
+// A GENUINE STAGE ADVANCE IS NOT A CAUSE TRANSITION (review 70123). A subject carried from a
+// prepare-stage refusal to an eval-stage one NECESSARILY refuses for a different reason -- it
+// refused somewhere else -- and reporting that as "same stage, same verdict, different
+// diagnostic" is a loud finding whose text is false about the run. The cause coordinate is the
+// question asked of positions the RANK cannot separate; a rank change already has its own
+// accounting.
+test fn w_RED_a_stage_advance_carrying_a_new_cause_is_not_a_cause_transition() -> Bool {
+  is_empty(xs: findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause }
+      }],
+      dispositions: []
+    ),
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStageEval, cause: unbound_cause })]
+  ))
+}
+
+// AND A FALL CARRYING A NEW CAUSE IS STILL SCORED AS A FALL, not silently absorbed by the gate:
+// the rank comparison owns it, and the cause arm must not have taken it away.
+test fn w_RED_a_stage_fall_carrying_a_new_cause_is_still_a_regression() -> Bool {
+  preserved(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStageEval, cause: ambiguous_cause }
+      }],
+      dispositions: []
+    ),
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStagePrepare, cause: unbound_cause })]
+  ) == false
+}
+
+// THE THIRD ROSTER IS CHECKED FROM ITS OWN SIDE (review 70131). It was the only one that was not:
+// a `CauseNowMoreTruthful` row for an identity whose cause did not move was never contradicted,
+// persisted in the baseline, and SILENTLY PRE-AUTHORISED THE NEXT cause change at that identity.
+// A pre-declared waiver of a red this module exists to raise, which DESIGN section 5 calls an
+// escape hatch and a hard reject.
+test fn w_RED_a_cause_transition_row_the_run_contradicts_reds() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause }
+      }],
+      dispositions: [],
+      accept_to_refuse: [],
+      cause_transitions: [NativeCauseTransitionRow {
+        identity: subject_a,
+        disposition: SameDefectRenamed { was: "claimed", now: "claimed" }
+      }],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressLost { findings: fs } => length(xs: fs) == 1
+    ProgressPreserved => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// AND A ROW FOR AN IDENTITY WHOSE RANK MOVED IS ALSO CONTRADICTED, because the disposition claims
+// a change AT A FIXED RANK. A stage advance is not what this vocabulary describes, and a row
+// saying otherwise would waive the cause check on the head after next.
+test fn w_RED_a_cause_transition_row_over_a_rank_change_is_contradicted() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause }
+      }],
+      dispositions: [],
+      accept_to_refuse: [],
+      cause_transitions: [NativeCauseTransitionRow {
+        identity: subject_a,
+        disposition: CauseNowMoreTruthful { was: "a", now: "b", why: "claimed" }
+      }],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStageEval, cause: unbound_cause })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressLost { findings: fs } => length(xs: fs) == 1
+    ProgressPreserved => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+// THE CONTROL: A GENUINE CAUSE TRANSITION WITH ITS ROW IS STILL ADMITTED, so the own-side check
+// did not simply reject every row.
+test fn a_cause_transition_row_the_run_confirms_is_admitted() -> Bool {
+  let report = native_progress_report(
+    baseline: NativeProgressBaseline {
+      rows: [NativeProgressBaselineRow {
+        identity: subject_a,
+        attained: BaselineRefused { stage: NativeTestStagePrepare, cause: ambiguous_cause }
+      }],
+      dispositions: [],
+      accept_to_refuse: [],
+      cause_transitions: [NativeCauseTransitionRow {
+        identity: subject_a,
+        disposition: CauseNowMoreTruthful { was: "ambiguous", now: "unbound", why: "the fallback was removed" }
+      }],
+      minted_under: current_adjudicator
+    },
+    readings: [observed(
+      identity: subject_a,
+      attained: AttainRefused { stage: NativeTestStagePrepare, cause: unbound_cause })],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: MainBaselineObservation { head: head_sha },
+    adjudication: current_adjudicator
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => true
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}

@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.hand_written_seed_rust_wraps_silently_in_release
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data hand_written_seed_rust_wraps_silently_in_release: RecurringFailureMode = RecurringFailureMode {
+  identity: "hand_written_seed_rust_wraps_silently_in_release" as NonEmptyStr,
+
+  receipts: [
+    "hand-written seed Rust wraps silently on integer overflow in release (the sibling of emitted_int_arithmetic_wraps_where_the_interpreter_refuses one layer down: that row covers arithmetic the emitter writes, this one covers arithmetic a person wrote in the seed's host Rust).",
+
+    "INVALID STATE: a bare + - * or unary - on a Rust integer in hand-written seed Rust (cli_run, the interpreter host, required_regen_host and the rest), compiled under a [profile.release] that leaves overflow-checks off, so an overflow wraps in two's complement and computation continues on a fabricated value.",
+
+    "HARM: silent wrongness in the binary that decides whether the corpus compiles and what the floor reports. The same code traps in dev and test, where overflow-checks is on by default, so a wrap cannot be reproduced by the ordinary local debugging route: the two profiles disagree on the program's meaning.",
+
+    "DISTINGUISHING FACT: intended wrapping in the seed is already spelled wrapping_* (hash mixing, step counters), and checked arithmetic is spelled checked_*; neither is affected by the profile flag, so the flag changes behaviour ONLY at sites whose wrap was never declared.",
+
+    "REPAIRED: overflow-checks = true in the workspace [profile.release], so every undeclared overflow in the seed and every workspace member panics in release as it already does in dev. SCOPE: the flag reaches workspace members only; an emitted crate has its own manifest and is covered instead by the refusing Int helpers of the sibling row emitted_int_arithmetic_wraps_where_the_interpreter_refuses. COST, named by its instrument and not transcribed (DESIGN section 6): the floor and emit-build job wall times of the witnesses.yml pull_request run on the landing PR, compared against the preceding successful pull_request runs of the same workflow (gh run list --workflow witnesses.yml --event pull_request --status success); the landing run fell inside the spread of recent runs, so no measurable cost is claimed.",
+
+    "RUNG: mitigatable -- the overflow now aborts loudly instead of fabricating, but nothing prevents authoring a bare operator that can overflow. CEILING: the seed shrinks toward zero (DESIGN section 7), so the terminal repair is deletion of hand-written seed Rust, not a lint over it. NEXT-RUNG TRIGGER: none worth building ahead of that migration."
+  ],
+
+  evidence: [],
+}

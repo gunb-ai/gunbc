@@ -417,6 +417,8 @@ type ResetPreflightRefusal
   | IssuingRunUnidentified { variable: NonEmptyStr, detail: NonEmptyStr }
   | ObserverNotAssigned { observer: NonEmptyStr }
   | SubjectHasNoRosterRow { subject: NonEmptyStr }
+  | UnitHoldStoreNotOnObserver { subject: NonEmptyStr, observer: NonEmptyStr, store_host: NonEmptyStr }
+  | UnitHeldForMaintenance { subject: NonEmptyStr, reason: NonEmptyStr }
 
 fn reset_preflight_refusal_wire(refusal: ResetPreflightRefusal) -> String {
   match refusal {
@@ -430,6 +432,10 @@ fn reset_preflight_refusal_wire(refusal: ResetPreflightRefusal) -> String {
       join(["observer-not-assigned observer=", o as String], "")
     SubjectHasNoRosterRow { subject: sj } =>
       join(["subject-has-no-roster-row subject=", sj as String], "")
+    UnitHoldStoreNotOnObserver { subject: sj, observer: o, store_host: h } =>
+      join(["unit-hold-store-not-on-observer subject=", sj as String, " observer=", o as String, " store_host=", h as String], "")
+    UnitHeldForMaintenance { subject: sj, reason: r } =>
+      join(["unit-held subject=", sj as String, " reason=", r as String], "")
   }
 }
 

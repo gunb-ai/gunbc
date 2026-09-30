@@ -1,5 +1,6 @@
 module v2.test.claim.compiler.infer_application_argument_inhabitance_witness_test
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer { infer }
 import v2.std.inhabitance {
   inhabitance_cardinality_type,
@@ -151,7 +152,7 @@ fn inhabitance_formal_unresolved_tree() -> Node {
 
 test fn infer_incompatible_argument_refuses_holds() -> Bool {
   match infer(
-    tree: inhabitance_call_tree(arg: dag_type_atom_node(identity: ^dag_token_kw_true))
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(arg: dag_type_atom_node(identity: ^dag_token_kw_true)))
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
@@ -163,7 +164,7 @@ test fn infer_incompatible_argument_refuses_holds() -> Bool {
 }
 
 test fn infer_compatible_argument_admits_holds() -> Bool {
-  match infer(tree: inhabitance_call_tree(arg: dag_int_literal_fixture_one())) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(arg: dag_int_literal_fixture_one()))) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -171,9 +172,9 @@ test fn infer_compatible_argument_admits_holds() -> Bool {
 
 test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool {
   match infer(
-    tree: inhabitance_call_tree(
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(
       arg: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
-    )
+    ))
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
@@ -185,7 +186,7 @@ test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool {
 }
 
 test fn infer_generic_formal_is_counted_frontier_holds() -> Bool {
-  match infer(tree: inhabitance_generic_formal_tree()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_generic_formal_tree())) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(
@@ -209,7 +210,7 @@ test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
 }
 
 test fn infer_optional_formal_is_refused_for_unproven_cardinality_descent_holds() -> Bool {
-  match infer(tree: inhabitance_optional_formal_tree()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_optional_formal_tree())) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
       diagnostics_has_reason(
@@ -220,7 +221,7 @@ test fn infer_optional_formal_is_refused_for_unproven_cardinality_descent_holds(
 }
 
 test fn infer_positional_surplus_refuses_holds() -> Bool {
-  match infer(tree: inhabitance_arity_unmodeled_tree()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_arity_unmodeled_tree())) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
       diagnostics_has_reason(
@@ -231,12 +232,104 @@ test fn infer_positional_surplus_refuses_holds() -> Bool {
 }
 
 test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool {
-  match infer(tree: inhabitance_formal_unresolved_tree()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_formal_unresolved_tree())) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(
         d: d,
         reason: ^inhabitance_undecidable_formal_unresolved
+      )
+  }
+}
+
+// THE COLLECTION-VERSUS-NOMINAL-PRODUCT CELL, MEASURED ON THIS PATH BECAUSE THE SEED'S SAME CELL
+// WAS A HOLE. `v1.compiler.infer` admitted a `List<String>` at a `Rec { a: String }` formal and a
+// `Rec` at a `List<Int>` formal, in both directions, by falling through a chain of arms each
+// keyed on the kind of ONE side (gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel, measured specimen three). This path's
+// relation is different in kind -- `declared_type_inhabitance` is find_witness over
+// preservation_rule_exact_structural_equality_zip_fold, which reads BOTH sides -- so the seed's
+// repair does not transfer and the cell had to be measured rather than assumed.
+//
+// WHAT IS MEASURED (captured diagnostics, not inferred from the classifier): neither direction
+// reaches that fold, and the two directions stop at DIFFERENT earlier boundaries. With the
+// product declared and the collection supplied as the argument, the argument is a type node with
+// no derived value type, so the obligation is counted as UndecidableArgumentTypeNotDerived
+// (alongside infer_grounding_not_derived) before the formal is classified. With the collection
+// declared, `inhabitance_node_undecidable_reason` classifies the Instantiation formal as
+// UndecidableGenericFormal. Either way this path does not silently answer Inhabits the way the
+// seed did -- it counts the obligation as undecidable and the route advances, which is exactly
+// the standing of gunbc.recurring_failure_mode argument_type_obligation_absent_while_the_route_advances
+// and not a second class. The next-rung trigger is that row's: an argument whose value type is
+// derived as an APPLIED collection type, and a classifier that distinguishes an applied type whose
+// constructor and arguments are all established from a type variable, which it cannot do today
+// because both are Instantiation.
+fn inhabitance_collection_type_node() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_type_atom_node(identity: ^inhabitance_type_list)
+      },
+      Edge {
+        label: Positional,
+        target: dag_type_atom_node(identity: ^dag_binding_type_int)
+      }
+    ]
+  )
+}
+
+fn inhabitance_nominal_product_type_node() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^inhabitance_field_a },
+        target: dag_type_atom_node(identity: ^dag_binding_type_int)
+      }
+    ]
+  )
+}
+
+fn inhabitance_declared_formal_tree(declared: Node, arg: Node) -> Node {
+  inhabitance_apply(
+    domain: inhabitance_named_conj_domain(
+      parameter: ^inhabitance_param_x,
+      declared: declared
+    ),
+    arg: arg
+  )
+}
+
+test fn inhabitance_collection_produced_at_a_product_formal_is_counted_frontier_holds() -> Bool {
+  match infer(
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_declared_formal_tree(
+      declared: inhabitance_nominal_product_type_node(),
+      arg: inhabitance_collection_type_node()
+    ))
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(
+        d: d,
+        reason: ^inhabitance_undecidable_argument_type_not_derived
+      )
+  }
+}
+
+test fn inhabitance_product_produced_at_a_collection_formal_is_counted_frontier_holds() -> Bool {
+  match infer(
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_declared_formal_tree(
+      declared: inhabitance_collection_type_node(),
+      arg: inhabitance_nominal_product_type_node()
+    ))
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(
+        d: d,
+        reason: ^inhabitance_undecidable_generic_formal
       )
   }
 }

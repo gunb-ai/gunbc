@@ -1,6 +1,6 @@
 module test.claim.runner_host_file_converge_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Int }
+import std.types { Bool, String, NonEmptyStr, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess, serialize_systemd_drop_in }
 import extdeps.needrestart {
@@ -10,6 +10,27 @@ import extdeps.needrestart {
   needrestart_unit_name_prefix_regex,
 }
 import product.placement_supply { HostIdentity }
+import gunbc.runner_slot_population_census { desired_unit_names_range }
+import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees, TransitionPopulationUndecidable }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
+import extdeps.systemd.systemctl { systemctl_show_properties_argv }
+import gunbc.runner_slot_retirement {
+  RunnerRetirementStanding,
+  CgroupOccupancy,
+  CgroupAbsent,
+  CgroupObservedPopulated,
+  runner_retirement_standing,
+  retirement_observation_from_readings,
+  retirement_unit,
+  retirement_is_complete,
+  retirement_is_unobserved,
+  CgroupEventsBatch,
+  CgroupEventsBatchRead,
+  CgroupEventsBatchUnread,
+}
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
@@ -30,6 +51,9 @@ import gunbc.typed_remote_file_write {
 }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, File }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.stat { stat_file_type_command }
+import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
 import gunbc.runner_host_file_converge {
   RunnerHostFileDesired,
   RunnerHostFilesDesired,
@@ -46,7 +70,17 @@ import gunbc.runner_host_file_converge {
   HostFileDiffers,
   HostFileAbsent,
   HostFileUnobservable,
-  classify_host_file_presence,
+  RunnerHostFileMetadataReading,
+  HostFileMetadataRead,
+  HostFileMetadataUnread,
+  classify_host_file_metadata,
+  RunnerHostFilePathStanding,
+  HostFilePathPresent,
+  HostFilePathAbsent,
+  HostFilePathUnreadable,
+  classify_host_file_path,
+  runner_host_file_settled_standing,
+  runner_host_file_metadata_probe_argv,
   RunnerHostFileStanding,
   RunnerHostPathMetadata,
   PathsRootOnly,
@@ -69,7 +103,9 @@ import gunbc.runner_host_file_converge {
   SlotReloadPending,
   SlotUnitNotLoaded,
   SlotUnitUnread,
-  classify_runner_slot_unit,
+  SlotRetiredAsDeclared,
+  SlotRetirementIncomplete,
+  classify_runner_slot_unit_against_retirement,
   RunnerSlotUnitResult,
   RunnerSlotPopulation,
   SlotPopulationObserved,
@@ -77,6 +113,15 @@ import gunbc.runner_host_file_converge {
   runner_slot_units_from_list_units,
   runner_slot_population_units,
   classify_runner_slot_population,
+  runner_retiree_show_readings,
+  runner_retiree_cgroup_events_read,
+  runner_retiree_cgroup_events_unread,
+  RetireeCgroupEventsRead,
+  RetireeCgroupEventsNotOwed,
+  RetireeCgroupEventsArgv,
+  RetireeCgroupEventsRefused,
+  runner_slot_show_properties,
+  runner_retiree_standings,
   runner_slot_population_owes_reload,
   runner_slot_population_effective,
   runner_slot_population_read_completely,
@@ -305,20 +350,117 @@ fn standing_is_unobservable(standing: RunnerHostFileStanding) -> Bool {
   }
 }
 
-test fn presence_zero_continues_one_is_absent_other_is_unobservable() -> Bool {
-  let continues = match classify_host_file_presence(exit_code: 0, stderr: "") {
+fn path_is_present(st: RunnerHostFilePathStanding) -> Bool {
+  match st { HostFilePathPresent { file_type: _ } => true HostFilePathAbsent => false HostFilePathUnreadable { cause: _ } => false }
+}
+
+fn path_is_absent(st: RunnerHostFilePathStanding) -> Bool {
+  match st { HostFilePathAbsent => true HostFilePathPresent { file_type: _ } => false HostFilePathUnreadable { cause: _ } => false }
+}
+
+fn path_is_unreadable(st: RunnerHostFilePathStanding) -> Bool {
+  match st { HostFilePathUnreadable { cause: _ } => true HostFilePathPresent { file_type: _ } => false HostFilePathAbsent => false }
+}
+
+// A metadata read that FAILED is the outcome `test -e` could not distinguish from an absence: both
+// were exit 1 with an empty stderr. Here the same failed read reaches three different standings
+// depending on what the containing directory established, and the middle row is the discriminating
+// one: the parent HOLDS the entry, so the read failed for a reason that is not absence -- EACCES on
+// an ancestor, ELOOP, ENOTDIR, EIO -- and it must reach unreadable. A classifier that collapsed the
+// failed read back to absence reds on that row alone; one that merely separated exit 0 from exit 1
+// would pass every row here, which is why the unread cause is held constant across all three.
+test fn a_metadata_read_that_failed_is_absent_only_when_the_parent_lacks_the_entry() -> Bool {
+  let unread = HostFileMetadataUnread { cause: "stat could not read the path's metadata; exit=1 " }
+  path_is_absent(st: classify_host_file_path(reading: unread, parent: EntryAbsent))
+    && path_is_unreadable(st: classify_host_file_path(reading: unread, parent: EntryPresent))
+    && path_is_unreadable(st: classify_host_file_path(
+         reading: unread,
+         parent: EntryPresenceIndeterminate { cause: "listing /etc/needrestart/conf.d failed" },
+       ))
+}
+
+fn settled_is_unobservable(st: RunnerHostFilePathStanding) -> Bool {
+  match runner_host_file_settled_standing(st: st) {
+    Absent => false
+    Present { value: s } => standing_is_unobservable(standing: s) && !standing_is_absent(standing: s)
+  }
+}
+
+fn settled_is_absent(st: RunnerHostFilePathStanding) -> Bool {
+  match runner_host_file_settled_standing(st: st) {
+    Absent => false
+    Present { value: s } => standing_is_absent(standing: s)
+  }
+}
+
+fn settles_nothing(st: RunnerHostFilePathStanding) -> Bool {
+  match runner_host_file_settled_standing(st: st) {
     Absent => true
     Present { value: _ } => false
   }
-  let absent = match classify_host_file_presence(exit_code: 1, stderr: "") {
-    Present { value: st } => standing_is_absent(standing: st)
+}
+
+// THE BRIEF'S OWN SENTENCE, AT THE STANDING GRAIN: a metadata read that did not happen must reach
+// HostFileUnobservable carrying the failure and must NEVER reach HostFileAbsent. Under `test -e`
+// both of these rows were exit 1 and both became HostFileAbsent, which is the arm that plans a
+// write into a file this module exists to keep root-owned; a classifier that collapses them again
+// reds here. The present arm settles nothing because it continues into the byte comparison.
+test fn an_unread_path_reaches_unobservable_and_never_absent() -> Bool {
+  let unread = HostFileMetadataUnread { cause: "stat could not read the path's metadata; exit=1 " }
+  settled_is_unobservable(st: classify_host_file_path(reading: unread, parent: EntryPresent))
+    && settled_is_absent(st: classify_host_file_path(reading: unread, parent: EntryAbsent))
+    && settles_nothing(st: classify_host_file_path(
+         reading: HostFileMetadataRead { file_type: "regular file" },
+         parent: EntryPresent,
+       ))
+}
+
+// The read decides presence; the parent decides nothing when the read answered. An indeterminate
+// parent beside a successful read is still present, so the join cannot turn a read file unreadable.
+test fn a_metadata_read_that_answered_is_present_whatever_the_parent_said() -> Bool {
+  let read = HostFileMetadataRead { file_type: "regular file" }
+  path_is_present(st: classify_host_file_path(reading: read, parent: EntryPresent))
+    && path_is_present(st: classify_host_file_path(reading: read, parent: EntryAbsent))
+    && path_is_present(st: classify_host_file_path(
+         reading: read,
+         parent: EntryPresenceIndeterminate { cause: "listing refused" },
+       ))
+}
+
+// Exit success is a fact about the CALL. A `stat` that exited zero and printed nothing answered no
+// question, so it is unread -- and unread beside a parent that holds the entry is unreadable, never
+// a nameless kind and never an absence.
+fn reading_is_unread(r: RunnerHostFileMetadataReading) -> Bool {
+  match r { HostFileMetadataUnread { cause: _ } => true HostFileMetadataRead { file_type: _ } => false }
+}
+
+test fn a_stat_that_exited_zero_and_printed_nothing_is_unread() -> Bool {
+  reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "  \n", stderr: ""))
+    && reading_is_unread(r: classify_host_file_metadata(exit_code: 1, stdout: "", stderr: ""))
+    && !reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "regular file\n", stderr: ""))
+    && match classify_host_file_metadata(exit_code: 0, stdout: " directory \n", stderr: "") {
+         HostFileMetadataRead { file_type: t } => t == "directory"
+         HostFileMetadataUnread { cause: _ } => false
+       }
+}
+
+// INHABITANCE (DESIGN section 3): the words observe_runner_host_file_content actually sends are the
+// ones extdeps.tools.stat derives from its cited GNU authority, over the production path of a
+// production desired file -- not a boolean test, and not a literal spelled here. The remote leg
+// itself is not executed hermetically (gunbc.rung_drop runner_host_file_apply_route_hermetic), so
+// this is the deepest live route to the new probe: the same function the observer calls, over the
+// same path the population produces. It reds if the probe is respelled as any boolean test.
+test fn the_production_probe_sends_the_cited_stat_metadata_words() -> Bool {
+  match teardown_desired() {
     Absent => false
+    Present { value: f } => {
+      let path = f.path as String
+      let sent = runner_host_file_metadata_probe_argv(path: path)
+      sent == argv_words(command: stat_file_type_command(path: path))
+        && sent == ["/usr/bin/stat", "-c", "%F", "--", path]
+        && !any(sent, w => w == "test" || w == "-e")
+    }
   }
-  let unobservable = match classify_host_file_presence(exit_code: 2, stderr: "test: extra argument") {
-    Present { value: st } => standing_is_unobservable(standing: st)
-    Absent => false
-  }
-  continues && absent && unobservable
 }
 
 // Every directory from the write scope down to the file's own, in order, and nothing above /etc.
@@ -404,34 +546,36 @@ fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
     SlotTeardownNotEffective { kill_mode: k, exit_type: e } => concat(concat("not-effective:", k), concat(":", e))
     SlotReloadPending => "reload-pending"
     SlotUnitNotLoaded { load_state: l } => concat("not-loaded:", l)
+    SlotRetiredAsDeclared => "retired"
+    SlotRetirementIncomplete { cause: _ } => "retirement-incomplete"
     SlotUnitUnread => "unread"
   }
 }
 
 test fn the_declared_pair_on_a_loaded_current_unit_is_effective() -> Bool {
-  standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "effective"
+  standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "effective"
 }
 
 // THE FALSE-POSITIVE RED. systemctl shows a unit it has not loaded with the manager's DEFAULTS, and the
 // default KillMode is control-group; a check reading KillMode first would certify a slot that does not
 // exist. LoadState is read first.
 test fn a_not_loaded_unit_reporting_default_values_is_not_certified() -> Bool {
-  standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "not-found", reload: "no", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "not-loaded:not-found"
+  standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "not-found", reload: "no", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "not-loaded:not-found"
 }
 
 // A loaded unit whose files changed on disk still reports the OLD values; it is reload-pending, not a
 // verdict on the teardown in either direction.
 test fn a_unit_needing_reload_is_pending_whatever_it_reports() -> Bool {
-  standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "yes", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "reload-pending"
-    && standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "yes", kill: "process", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "reload-pending"
+  standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "yes", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "reload-pending"
+    && standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "yes", kill: "process", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "reload-pending"
 }
 
 // srv1's and srv2's live reading before the teardown drop-in (2026-09-11), the ExitType=cgroup drop-in
 // that replaced it (2026-09-18), and a partial kill mode alone.
 test fn the_live_reading_and_each_half_alone_are_not_effective() -> Bool {
-  standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "process", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:process:main"
-    && standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:control-group:cgroup"
-    && standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "mixed", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:mixed:main"
+  standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "no", kill: "process", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:process:main"
+    && standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:control-group:cgroup"
+    && standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "no", kill: "mixed", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:mixed:main"
 }
 
 // ── The slot population ──────────────────────────────────────────────────────────────────────────
@@ -449,6 +593,7 @@ test fn the_population_is_desired_units_then_loaded_extras() -> Bool {
   map(
     runner_slot_population_units(
       desired: ["actions-runner@srv1-01.service" as NonEmptyStr, "actions-runner@srv1-03.service" as NonEmptyStr],
+      retired: [],
       loaded: runner_slot_units_from_list_units(stdout: list_units_fixture),
     ),
     u => u as String,
@@ -459,7 +604,7 @@ data show_fixture: String = "Id=actions-runner@srv1-01.service\nLoadState=loaded
 
 fn population_wires(units: List<String>) -> List<String> {
   map(
-    classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), show_stdout: show_fixture, intent: gunbc_runner_lifecycle_intent),
+    classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), retirements: [], show_stdout: show_fixture, intent: gunbc_runner_lifecycle_intent),
     r => standing_wire_of(st: r.standing),
   )
 }
@@ -553,4 +698,389 @@ test fn observe_reports_what_apply_refuses() -> Bool {
     && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadRefused { reason: "exit=1" }, slots: good)
     && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadOwedNotAttempted { reason: "privilege refused" }, slots: good)
     && !settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: population_of(standings: [SlotUnitUnread]))
+}
+
+// ── The population joined against the retirement authority ──────────────────────────────────────
+
+// srv1's reading in run 35416072847: slots 01..12 loaded with the declared pair, 13..21 masked by
+// gunbc.runner_slot_retirement. Names come from the census authority and the retired set from the
+// width transition itself, so the control exercises the real join rather than a designed roster.
+fn srv1_unit_names(slot: Int, limit: Int) -> List<String> {
+  desired_unit_names_range(host: "srv1" as HostIdentity, slot: slot, limit: limit)
+}
+
+// THE LIVE/RETIRING BOUNDARY IS THE DECLARED WIDTH, NOT A SLOT LITERAL (DESIGN 5). The readings
+// below partition a supplied 21-slot listing into live and masked; where the cut falls is srv1's
+// declared width, which moved once already (12 -> 15) and turned every claim that spelled it as
+// `12`/`13` red for a reason none of them was about (review 68841).
+//
+// The width is a RunnerWidthResolution since #11762, not an Int: a host whose width does not resolve
+// has no live/retiring boundary to state, so every listing below is EMPTY on that arm rather than cut
+// at a fabricated zero. An empty listing must never read as "nothing to check": every claim that
+// consumes one either carries a positive conjunct that no unit can satisfy when the listing is empty
+// (every_unit_holds, population_holds, an effective population) or, where the claim is a pure
+// refusal, a `length(...) > 0` conjunct on the listing -- so an unresolved srv1 width reds each of
+// them instead of passing over an empty roster.
+fn srv1_width() -> Int? {
+  match gunbc_runner_committed_width(host: "srv1" as HostIdentity) {
+    RunnerWidthUnresolved { cause: _ } => none
+    RunnerWidthDerived { slots: w } => Present { value: w }
+  }
+}
+
+fn srv1_live_names() -> List<String> {
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: 1, limit: w) }
+}
+
+fn srv1_retiring_names(limit: Int) -> List<String> {
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: w + 1, limit: limit) }
+}
+
+// The last declared-live slot: the one the REDs below mask or lose to show that retirement never
+// excuses a live slot.
+fn srv1_last_live_names() -> List<String> {
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: w, limit: w) }
+}
+
+fn srv1_all_but_last_live_names() -> List<String> {
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: 1, limit: w - 1) }
+}
+
+fn every_unit_holds(pop: RunnerSlotPopulation, units: List<String>, wire: String) -> Bool {
+  length(units) > 0 && all(units, u => population_holds(pop: pop, unit: u, wire: wire))
+}
+
+fn show_block_of(unit: String, load: String) -> String {
+  join(["Id=", unit, "\nLoadState=", load, "\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group"], "")
+}
+
+fn srv1_show_reading(live: List<String>, masked: List<String>) -> String {
+  join(concat(map(live, u => show_block_of(unit: u, load: "loaded")), map(masked, u => show_block_of(unit: u, load: "masked"))), "\n\n")
+}
+
+fn srv1_population(units: List<String>, retirements: List<RunnerRetirementStanding>, show: String) -> RunnerSlotPopulation {
+  SlotPopulationObserved { units: classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), retirements: retirements, show_stdout: show, intent: gunbc_runner_lifecycle_intent) }
+}
+
+// The retirement authority's own verdict over the property readings `mask --now` leaves behind, for
+// every unit the real srv1 subject carries as a required retiree. The readings are the boundary; the
+// fold from readings to standing is gunbc.runner_slot_retirement's, not restated here.
+fn srv1_retirements(active: String, occupancy: CgroupOccupancy) -> List<RunnerRetirementStanding> {
+  match witness_subject() {
+    Absent => []
+    Present { value: s } => map(s.retired_units, u => runner_retirement_standing(o: retirement_observation_from_readings(unit: u, unit_file_state: "masked", active_state: active, occupancy: occupancy)))
+  }
+}
+
+fn srv1_drained() -> List<RunnerRetirementStanding> {
+  srv1_retirements(active: "inactive", occupancy: CgroupAbsent)
+}
+
+// POSITIVE CONTROL. The 21-unit reading that refused is effective once each masked unit is joined to
+// the retirement authority's COMPLETE verdict, and the route is the join: every masked unit reads
+// retired, and the same reading with no retirement standing refuses.
+test fn srv1_declared_live_and_retiring_masked_is_effective() -> Bool {
+  let units = srv1_unit_names(slot: 1, limit: 21)
+  let show = srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 21))
+  let pop = srv1_population(units: units, retirements: srv1_drained(), show: show)
+  runner_slot_population_effective(population: pop)
+    && every_unit_holds(pop: pop, units: srv1_retiring_names(limit: 21), wire: "retired")
+    && !runner_slot_population_effective(population: srv1_population(units: units, retirements: [], show: show))
+}
+
+// RED: masked is the inhibit, not the drain. A retiree masked while its worker still runs -- service
+// active, or its cgroup still populated -- is the orphan the retirement exists to prevent, and refuses.
+test fn a_masked_retiree_still_running_or_occupied_refuses() -> Bool {
+  let units = srv1_unit_names(slot: 1, limit: 21)
+  let show = srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 21))
+  let running = srv1_population(units: units, retirements: srv1_retirements(active: "deactivating", occupancy: CgroupAbsent), show: show)
+  !runner_slot_population_effective(population: running)
+    && !runner_slot_population_effective(population: srv1_population(units: units, retirements: srv1_retirements(active: "inactive", occupancy: CgroupObservedPopulated), show: show))
+    && every_unit_holds(pop: running, units: srv1_retiring_names(limit: 21), wire: "retirement-incomplete")
+}
+
+// RED: a masked slot the authority does NOT retire is a slot masked by mistake, not a retirement.
+test fn a_masked_declared_live_slot_is_not_retired_and_refuses() -> Bool {
+  let pop = srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: srv1_show_reading(live: srv1_all_but_last_live_names(), masked: concat(srv1_last_live_names(), srv1_retiring_names(limit: 21))))
+  !runner_slot_population_effective(population: pop)
+    && every_unit_holds(pop: pop, units: srv1_last_live_names(), wire: "not-loaded:masked")
+}
+
+// RED: a declared-live slot missing from the host stays a refusal, retirement notwithstanding.
+test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool {
+  let missing = join(map(srv1_last_live_names(), u => show_block_of(unit: u, load: "not-found")), "\n\n")
+  let show = join([srv1_show_reading(live: srv1_all_but_last_live_names(), masked: srv1_retiring_names(limit: 21)), missing], "\n\n")
+  length(srv1_last_live_names()) > 0
+    && !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: show))
+}
+
+// RED: a required retiree that list-units OMITS is still observed. Absence from a listing is not
+// retirement, so the population is built from the real srv1 subject's desired and retired rosters
+// (the desired range and the retirement obligation gunbc.runner_width_transition declares) over a
+// listing that names every slot but 21; slot 21 must still be a member, its retirement standing must still be joined, and
+// forty-nine healthy units must not carry the verdict.
+fn srv1_list_units_without_21() -> String {
+  join(map(concat(srv1_unit_names(slot: 1, limit: 20), srv1_unit_names(slot: 22, limit: 50)), u => concat(u, " loaded active running GitHub Actions runner")), "\n")
+}
+
+fn srv1_population_over_listing(retirements: List<RunnerRetirementStanding>, show: String) -> RunnerSlotPopulation {
+  match witness_subject() {
+    Absent => SlotPopulationUnobservable { reason: "no srv1 subject" }
+    Present { value: s } =>
+      SlotPopulationObserved {
+        units: classify_runner_slot_population(
+          units: runner_slot_population_units(desired: s.desired_units, retired: s.retired_units, loaded: runner_slot_units_from_list_units(stdout: srv1_list_units_without_21())),
+          retirements: retirements,
+          show_stdout: show,
+          intent: gunbc_runner_lifecycle_intent,
+        ),
+      }
+  }
+}
+
+fn population_holds(pop: RunnerSlotPopulation, unit: String, wire: String) -> Bool {
+  match pop {
+    SlotPopulationUnobservable { reason: _ } => false
+    SlotPopulationObserved { units: us } => any(us, r => (r.unit as String) == unit && standing_wire_of(st: r.standing) == wire)
+  }
+}
+
+test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses() -> Bool {
+  let omitted = "actions-runner@srv1-21.service"
+  let healthy = srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 50))
+  let still_running = map(srv1_drained(), st => if retirement_unit(s: st) == omitted {
+    runner_retirement_standing(o: retirement_observation_from_readings(unit: omitted as NonEmptyStr, unit_file_state: "masked", active_state: "active", occupancy: CgroupObservedPopulated))
+  } else { st })
+  let running_pop = srv1_population_over_listing(retirements: still_running, show: healthy)
+  population_holds(pop: running_pop, unit: omitted, wire: "retirement-incomplete")
+    && !runner_slot_population_effective(population: running_pop)
+}
+
+// The other half of the same omission, split because the floor prices a claim as a whole and a
+// conjunction of independent cases forces every case through one budget (DESIGN 3): the omitted
+// retiree with NO reading of its own is unread, and refuses.
+test fn an_unread_omitted_retiree_refuses() -> Bool {
+  let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: concat(srv1_retiring_names(limit: 20), srv1_unit_names(slot: 22, limit: 50))))
+  length(srv1_live_names()) > 0
+    && population_holds(pop: unread_pop, unit: "actions-runner@srv1-21.service", wire: "unread")
+    && !runner_slot_population_effective(population: unread_pop)
+}
+
+// THE POSITIVE CONTROL for the two REDs above, and what makes them discriminating: the SAME listing
+// that omits slot 21, with every retiree read and drained, IS effective.
+test fn the_same_listing_with_every_retiree_read_and_drained_is_effective() -> Bool {
+  runner_slot_population_effective(population: srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 50))))
+}
+
+// ── Every retiree read from the population's two batched reads (review 68628) ────────────────────
+
+// A SUPPLIED THREE-RETIREE ROSTER, BECAUSE THE ROSTER IS NOT THE SUBJECT HERE (DESIGN 3). These
+// claims discriminate at ONE interface -- the show block and the batched events output a retiree is
+// read from -- and paying for srv1's real roster on every one of them made the claims' cost independent
+// of their assertions, which the floor refused. The real roster is not dropped: it stays the subject
+// of the claims below that read witness_subject() directly, which is where its inhabitance belongs.
+fn srv1_retired() -> List<NonEmptyStr> {
+  match witness_subject() {
+    Absent => []
+    Present { value: s } => s.retired_units
+  }
+}
+
+fn srv1_desired() -> List<NonEmptyStr> {
+  match witness_subject() {
+    Absent => []
+    Present { value: s } => s.desired_units
+  }
+}
+
+fn three_retirees() -> List<NonEmptyStr> {
+  ["actions-runner@srv1-13.service" as NonEmptyStr, "actions-runner@srv1-14.service" as NonEmptyStr, "actions-runner@srv1-15.service" as NonEmptyStr]
+}
+
+// srv1's show block for a retiree after `mask --now`, carrying the retirement authority's three
+// readings in the same block as the teardown pair. `cg` is the ControlGroup value systemd reports.
+fn retiree_block(unit: String, active: String, cg: String) -> String {
+  join(["Id=", unit, "\nLoadState=masked\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nUnitFileState=masked\nActiveState=", active, "\nControlGroup=", cg], "")
+}
+
+fn retiree_cg(unit: String) -> String {
+  concat("/system.slice/system-actions\\x2drunner.slice/", unit)
+}
+
+fn events_line(unit: String, populated: String) -> String {
+  join(["/sys/fs/cgroup", retiree_cg(unit: unit), "/cgroup.events:populated ", populated], "")
+}
+
+fn blocks_for(units: List<NonEmptyStr>, active: String, live_cgroup: Bool) -> String {
+  join(map(units, u => retiree_block(unit: u as String, active: active, cg: if live_cgroup { retiree_cg(unit: u as String) } else { "" })), "\n\n")
+}
+
+fn events_for(units: List<NonEmptyStr>, populated: String) -> String {
+  join(map(units, u => events_line(unit: u as String, populated: populated)), "\n")
+}
+
+fn standings_for(units: List<NonEmptyStr>, show: String, batch: CgroupEventsBatch) -> List<RunnerRetirementStanding> {
+  runner_retiree_standings(readings: runner_retiree_show_readings(retired: units, show_stdout: show), batch: batch)
+}
+
+fn events_read_of(retired: List<NonEmptyStr>, show: String) -> RetireeCgroupEventsRead {
+  runner_retiree_cgroup_events_read(readings: runner_retiree_show_readings(retired: retired, show_stdout: show))
+}
+
+fn argv_or_empty(o: RetireeCgroupEventsRead) -> List<String> {
+  match o {
+    RetireeCgroupEventsArgv { argv: a } => a
+    RetireeCgroupEventsNotOwed => []
+    RetireeCgroupEventsRefused { cause: _ } => []
+  }
+}
+
+fn batch_cause(b: CgroupEventsBatch) -> String {
+  match b {
+    CgroupEventsBatchUnread { cause: c } => c
+    CgroupEventsBatchRead { stdout: _, stderr: _ } => ""
+  }
+}
+
+fn standings_of(sts: List<RunnerRetirementStanding>, unit: String) -> List<RunnerRetirementStanding> {
+  filter(sts, st => retirement_unit(s: st) == unit)
+}
+
+// COST: the retiree read is ONE argv naming a DIRECTORY, so it does not grow with the retiree count.
+// The same argv serves three retirees and one, and a population whose retirees hold no cgroup owes
+// no read at all.
+test fn the_retiree_cgroup_read_is_one_exec_whatever_the_retiree_count() -> Bool {
+  let show = blocks_for(units: three_retirees(), active: "active", live_cgroup: true)
+  let many = argv_or_empty(o: events_read_of(retired: three_retirees(), show: show))
+  many == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
+    && argv_or_empty(o: events_read_of(retired: ["actions-runner@srv1-13.service" as NonEmptyStr], show: show)) == many
+    && (match events_read_of(retired: three_retirees(), show: blocks_for(units: three_retirees(), active: "inactive", live_cgroup: false)) {
+      RetireeCgroupEventsNotOwed => true
+      RetireeCgroupEventsArgv { argv: _ } => false
+      RetireeCgroupEventsRefused { cause: _ } => false
+    })
+}
+
+// THE DECIDING BOUNDARY, EXECUTED (review 68654). The events argv is run through the SAME
+// gunbc.fleet_known_hosts_anchor portable_remote_words admission the production leg applies in
+// gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh, and must be ADMITTED -- an argv refused there
+// reads nothing, which would make SlotRetiredAsDeclared unreachable for every retiree that still
+// holds a cgroup while the observation still looked like three execs.
+test fn every_argv_the_population_observation_issues_is_admitted_by_the_transport() -> Bool {
+  let events = argv_or_empty(o: events_read_of(retired: three_retirees(), show: blocks_for(units: three_retirees(), active: "active", live_cgroup: true)))
+  let show = systemctl_show_properties_argv(units: three_retirees(), properties: runner_slot_show_properties)
+  length(events) == 7
+    && (match portable_remote_words(raws: events) { Absent => false Present { value: _ } => true })
+    && (match portable_remote_words(raws: show) { Absent => false Present { value: _ } => true })
+}
+
+// RED: the per-retiree form this replaced. A retiree's own cgroup path carries systemd's escaped
+// slice component, and the transport refuses a backslash rather than quoting it -- so an argv naming
+// those paths is NOT admitted, and a claim that supplied the batch output directly could not see it.
+test fn an_argv_naming_a_retirees_own_escaped_cgroup_path_is_refused_by_the_transport() -> Bool {
+  let path = "/sys/fs/cgroup/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-13.service/cgroup.events"
+  (match portable_remote_words(raws: ["grep", "-H", "-F", "populated", path]) { Absent => true Present { value: _ } => false })
+    && (match portable_remote_words(raws: ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]) { Absent => false Present { value: _ } => true })
+    && string_contains(s: retiree_cg(unit: "actions-runner@srv1-13.service"), pattern: "\\")
+}
+
+// POSITIVE ROUTE: stopped, masked retirees with no cgroup are complete from the show alone, and ones
+// that still hold a cgroup are complete only on their own `populated 0` line of the batched read.
+test fn batched_readings_reach_retirement_complete() -> Bool {
+  let stopped = standings_for(units: three_retirees(), show: blocks_for(units: three_retirees(), active: "inactive", live_cgroup: false), batch: CgroupEventsBatchRead { stdout: "", stderr: "" })
+  let drained = standings_for(units: three_retirees(), show: blocks_for(units: three_retirees(), active: "inactive", live_cgroup: true), batch: CgroupEventsBatchRead { stdout: events_for(units: three_retirees(), populated: "0"), stderr: "" })
+  length(stopped) == 3 && all(stopped, st => retirement_is_complete(s: st))
+    && length(drained) == 3 && all(drained, st => retirement_is_complete(s: st))
+}
+
+// RED: absence from a batched output is not retirement. A retiree whose show block is missing, or
+// whose events line is missing, reads unobserved; a populated line reads pending; a refused batch
+// leaves every live cgroup unobserved -- and the other retirees being complete changes none of it.
+test fn a_retiree_missing_from_a_batched_read_is_unobserved_never_retired() -> Bool {
+  let omitted = "actions-runner@srv1-13.service"
+  let others = filter(three_retirees(), r => (r as String) != omitted)
+  let show_all = blocks_for(units: three_retirees(), active: "inactive", live_cgroup: true)
+  let all_drained = CgroupEventsBatchRead { stdout: events_for(units: three_retirees(), populated: "0"), stderr: "" }
+  let not_shown = standings_for(units: three_retirees(), show: blocks_for(units: others, active: "inactive", live_cgroup: true), batch: all_drained)
+  let not_read = standings_for(units: three_retirees(), show: show_all, batch: CgroupEventsBatchRead { stdout: events_for(units: others, populated: "0"), stderr: "" })
+  let populated = standings_for(units: three_retirees(), show: show_all, batch: CgroupEventsBatchRead { stdout: events_for(units: three_retirees(), populated: "1"), stderr: "" })
+  let refused = standings_for(units: three_retirees(), show: show_all, batch: CgroupEventsBatchUnread { cause: "refused" })
+  all(standings_of(sts: not_shown, unit: omitted), st => retirement_is_unobserved(s: st))
+    && all(standings_of(sts: not_read, unit: omitted), st => retirement_is_unobserved(s: st))
+    && length(filter(not_read, st => retirement_is_complete(s: st))) == 2
+    && all(populated, st => !retirement_is_complete(s: st) && !retirement_is_unobserved(s: st))
+    && all(refused, st => retirement_is_unobserved(s: st))
+}
+
+// RED (review 68685): a population whose retirees sit under DISAGREEING cgroup roots is refused, and
+// the refusal NAMES the roots. The collapsed optional told exactly this population -- the only one
+// that ever read the cause -- that no read was owed, while the roots that identify the disagreement
+// were discarded. A population that owes no read says so in its own words.
+test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
+  let retired = ["actions-runner@srv1-13.service" as NonEmptyStr, "actions-runner@srv1-14.service" as NonEmptyStr]
+  let split_show = join([
+    retiree_block(unit: "actions-runner@srv1-13.service", active: "active", cg: retiree_cg(unit: "actions-runner@srv1-13.service")),
+    retiree_block(unit: "actions-runner@srv1-14.service", active: "active", cg: "/user.slice/user-1000.slice/actions-runner@srv1-14.service"),
+  ], "\n\n")
+  let refused = events_read_of(retired: retired, show: split_show)
+  let cause = batch_cause(b: runner_retiree_cgroup_events_unread(read: refused))
+  (match refused { RetireeCgroupEventsRefused { cause: _ } => true RetireeCgroupEventsNotOwed => false RetireeCgroupEventsArgv { argv: _ } => false })
+    && string_contains(s: cause, pattern: "/sys/fs/cgroup/system.slice")
+    && string_contains(s: cause, pattern: "/sys/fs/cgroup/user.slice")
+    && !string_contains(s: cause, pattern: "no read was owed")
+    && all(standings_for(units: retired, show: split_show, batch: runner_retiree_cgroup_events_unread(read: refused)), st => retirement_is_unobserved(s: st))
+    && string_contains(s: batch_cause(b: runner_retiree_cgroup_events_unread(read: events_read_of(retired: retired, show: blocks_for(units: retired, active: "inactive", live_cgroup: false)))), pattern: "no read was owed")
+}
+
+// INHABITANCE OF THE REAL ROSTER (DESIGN 3, the pairing obligation). The claims above supply a
+// three-retiree roster; this one asserts the real srv1 subject the production route carries reaches
+// the same functions: its retired roster, with the real ControlGroup paths systemd reports for those
+// units, reaches ONE transport-admitted argv covering all of them. Its red is in this module and in
+// the cgroup read batching and argv transport it composes -- not in the width transition, which the
+// sibling claim below owns.
+//
+// WHAT IS NOT ASSERTED HERE, AND WHY (review 69106). The stale count literal 38 was first replaced by
+// `retired == required_retirees_for_host(host: srv1)`, which is f(x) == f(x): the subject's
+// retired_units IS that call, so the conjunct was green by construction and its red was not
+// authorable (DESIGN 4b: a decoration). A test-side disjointness fold over retired and desired was the
+// same defect: both sets derive from gunbc_runner_slots_per_host, on opposite sides of it, so they are
+// disjoint by derivation and no production edit could make that conjunct red. A mutation run that
+// edits one side of such a comparison flips it and proves nothing about production. Neither is
+// restored, and no assertion whose two sides originate from one production call belongs here: exact
+// manifest correctness is runner_slot_retirement_witness_test's proposition, not this readback claim's.
+test fn the_real_srv1_retiree_roster_reaches_one_admitted_read() -> Bool {
+  let retired = srv1_retired()
+  let argv = argv_or_empty(o: events_read_of(retired: retired, show: blocks_for(units: retired, active: "active", live_cgroup: true)))
+  length(retired) > 0
+    && argv == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
+    && (match portable_remote_words(raws: argv) { Absent => false Present { value: _ } => true })
+}
+
+// EVERY IDENTITY THE DEPLOY CURRENTLY DESIRES IS EXCLUDED FROM THE TRANSITION OBLIGATION. This is the
+// one cross-authority relation the stale 38 concealed: that number went wrong because slots 13-15 were
+// still counted as retirees after the width authority made them desired-live. It is NOT a proof that
+// the transition manifest is exact -- that proposition, with its own positive and negative controls
+// over transition_population_agreement, lives in runner_slot_retirement_witness_test.
+//
+// THE RED IS AUTHORABLE IN PRODUCTION because the two sides are independent producers: the desired
+// roster comes from the deploy row's runner_count through desired_runner_slot_members, the obligation
+// from the transition row through transition_required_retirees_at, whose target width is the
+// RunnerWidthDerived { slots } arm of gunbc_runner_committed_width. The whole desired roster is planted
+// beside the real retirees as an observed surplus, and production's own refusal must name exactly the
+// desired roster as the units outside its manifest. Start the obligation's range at `slot: target`
+// instead of `slot: target + 1` in transition_required_retirees_at (the off-by-one that counts a
+// desired-live slot as a retiree) and the top desired unit is absorbed into the manifest,
+// vanishes from `unexpected`, and the exact-list equality fails; a later non-contiguous widening that
+// absorbed any OTHER desired unit fails it the same way, which a single planted unit could not see. An
+// always-Disagrees fold fails it too, because the list must name the desired roster alone and not the
+// retirees beside it.
+test fn every_desired_srv1_unit_is_outside_the_retirement_manifest() -> Bool {
+  let retired = srv1_retired()
+  let desired = srv1_desired()
+  match transition_population_agreement(host: operator_host_srv1, observed_surplus: concat(retired, desired)) {
+    TransitionPopulationAgrees => false
+    TransitionPopulationUndecidable { host: _, cause: _ } => false
+    TransitionPopulationDisagrees { unexpected: u } =>
+      length(desired) > 0 && map(u, x => x as String) == map(desired, x => x as String)
+  }
 }

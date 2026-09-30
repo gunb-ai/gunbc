@@ -148,24 +148,15 @@ fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
   }
 }
 
-// A STATED DIVERGENCE FROM THE COMPILER'S OWN NAMED-ARGUMENT ACCESSOR (DESIGN section 3b), not an
-// unstated fork. v2.compiler.body_lowering_fold body_lower_named_arg_value_optional decodes the same
-// `name ^dag_token_colon value` spine and is the authority for what a named argument IS, so this
-// function should consume it and does not. THE REASON IS A DEFECT IN THAT ACCESSOR, NAMED BY SYMBOL:
-// it finishes through body_lower_arg_operand_optional into body_lower_operand_ref_optional, which on
-// a sequence operand recurses into pair.left ALONE. For `left: seed + acc` that returns the operand
-// for `seed` and drops `acc` -- an under-approximation of the identifiers the argument names, which
-// is precisely the reading review 64393 caught in the first version of this repair and the silent
-// widening DESIGN section 5 forbids. Consuming the authority as it stands would reintroduce the bug
-// this function exists to avoid, so the two answer different questions today: that accessor answers
-// what operand an argument LOWERS TO, this one answers what the argument's VALUE SUBTREE is.
-//
-// The class is filed at gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand,
-// and the compiler-side repair is its own lane because body_lowering_fold is a load-bearing pipeline
-// file. TRIGGER: when body_lower_named_arg_value_optional preserves the full sequence rather than
-// narrowing to its first element, this function DISSOLVES INTO IT -- arg_value_node deletes and
-// arg_value_mentions censuses whatever that accessor returns. Until then the divergence is stated
-// here rather than argued in a review thread.
+// NOT A DIVERGENCE FROM THE COMPILER'S ARGUMENT READER, BECAUSE IT ANSWERS A DIFFERENT QUESTION.
+// v2.compiler.body_lowering_fold reads a call argument through body_lower_value_lowered and answers
+// what the argument LOWERS TO; this function answers the argument's VALUE SUBTREE, which
+// arg_value_mentions censuses for the identifiers the argument names. An earlier note here promised
+// that this function would dissolve into the compiler's accessor once that accessor carried a located
+// refusal. The refusal is now carried (v2.compiler.body_lowering_fold OperandRefRead), and the
+// dissolution is refuted rather than pending: a lowered node is not the subtree a census reads.
+// The class that motivated the note is filed at
+// gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand.
 // DELEGATES TO THE SPINE AUTHORITY rather than re-decoding it. This function used to carry its
 // own match chain over Seq(binding_name, Seq(colon, expr)) -- the third spelling of one fact in
 // the corpus -- and the decoder now lives beside the production it decodes, in
@@ -223,7 +214,7 @@ fn fold_family_carrier(call_capture: Node) -> Optional<Symbol> {
 }
 
 fn append_findings(fresh: List<v2.lens.complexity_accumulator_copy.Finding>, acc: List<v2.lens.complexity_accumulator_copy.Finding>) -> List<v2.lens.complexity_accumulator_copy.Finding> {
-  v2.std.algebra.list_append(left: acc, right: fresh)
+  std.algebra.list_append(left: acc, right: fresh)
 }
 
 fn let_expr_capture(node: Node) -> Optional<Node> {
@@ -428,7 +419,7 @@ fn projection_method_call_optional(cap: Node) -> Optional<Symbol> {
             Absent => Absent
             Present { value: repeat_elem } =>
               if v2.compiler.body_lowering_fold.body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
-                v2.compiler.body_lowering_fold.body_lower_postfix_projection_step(repeat_elem: repeat_elem)
+                v2.compiler.body_lowering_fold.body_lower_postfix_projection_step_name(repeat_elem: repeat_elem)
               } else {
                 Absent
               }
@@ -450,10 +441,14 @@ fn projection_arg_port_readings(repeat_elem: Node) -> List<v2.lens.complexity_ac
   )
 }
 
+// A lens reading a port, not lowering: an operand the reader cannot read whole (absent, or refused
+// at an operator tail) is read as its raw capture, as before; the refusal is named here rather than
+// collapsed invisibly by a projection.
 fn projection_receiver_port_reading(left: Node) -> v2.lens.complexity_accumulator_copy.PortReading {
-  match v2.compiler.body_lowering_fold.body_lower_operand_ref_optional(node: left) {
-    Present { value: receiver } => lowered_arg_port_reading(arg: receiver)
-    Absent => lowered_arg_port_reading(arg: left)
+  match v2.compiler.body_lowering_fold.body_lower_operand_ref_read(node: left) {
+    v2.compiler.body_lowering_fold.OperandRefLowered { lowered: receiver } => lowered_arg_port_reading(arg: receiver)
+    v2.compiler.body_lowering_fold.OperandRefAbsent => lowered_arg_port_reading(arg: left)
+    v2.compiler.body_lowering_fold.OperandRefRefused { diagnostics: _ } => lowered_arg_port_reading(arg: left)
   }
 }
 
@@ -470,7 +465,7 @@ fn projection_call_port_readings(cap: Node) -> List<v2.lens.complexity_accumulat
               match v2.compiler.body_lowering_fold.body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
                 Absent => std.algebra.Empty
                 Present { value: repeat_elem } =>
-                  v2.std.algebra.list_append(
+                  std.algebra.list_append(
                     left: [projection_receiver_port_reading(left: left)],
                     right: projection_arg_port_readings(repeat_elem: repeat_elem)
                   )
@@ -542,10 +537,10 @@ type LoweredTransformPortAcc {
 fn lowered_transform_combiner_optional(node: Node) -> Optional<Symbol> {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      fold(node.children, init: Absent, f: fn(acc, e) {
+      fold(v2.std.node_query.node_positional_child_targets(node: node), init: Absent, f: fn(acc, t) {
         match acc {
           Present { value: _ } => acc
-          Absent => v2.std.grammar.node_atom_identity_optional(node: e.target)
+          Absent => v2.std.grammar.node_atom_identity_optional(node: t)
         }
       })
     _ => Absent
@@ -578,15 +573,15 @@ fn lowered_transform_port_readings(node: Node) -> List<v2.lens.complexity_accumu
   match node.kind {
     ComputationNode { behavior: Transform } =>
       fold(
-        node.children,
+        v2.std.node_query.node_positional_child_targets(node: node),
         init: LoweredTransformPortAcc { saw_operator: false, readings: std.algebra.Empty },
-        f: fn(acc, e) {
+        f: fn(acc, t) {
           if acc.saw_operator {
             LoweredTransformPortAcc {
               saw_operator: true,
-              readings: v2.std.algebra.list_append(
+              readings: std.algebra.list_append(
                 left: acc.readings,
-                right: [lowered_arg_port_reading(arg: e.target)]
+                right: [lowered_arg_port_reading(arg: t)]
               )
             }
           } else {

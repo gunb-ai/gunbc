@@ -1,6 +1,7 @@
 module std.primitive_identity
 
 import std.algebra {
+  trim,
   AlgebraFieldTemplate,
   AlgebraProfile,
   AlgebraTypeTemplate,
@@ -21,7 +22,9 @@ import std.induction { CostBound, cost_linear }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
 import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import extdeps.languages.rust.emit { rt_function_registry }
+import extdeps.languages.rust.emit { RuntimeFunction, rt_function_registry }
+import gunbc.rust_item_scan { scan_rust_source, RustFileScanned, RustFileScanRefused }
+import gunbc.rust_item_identity { RustFunction, RustItemIdentity }
 import gunbc.v1_interpreter_primitive_surface {
   v1_interpreter_primitive_arms,
   v1_interpreter_row_count,
@@ -37,7 +40,7 @@ import std.primitive_projection {
   primitive_type_declarer_qualified_names,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
-  primitive_data_init_decl_facts_live,
+  primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_pure_dag_seam_unreachable,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -384,6 +387,7 @@ type PrimitiveSurfaceAuthority
   | AlgebraTemplate
   | InterpreterDispatch
   | EmitHandler
+  | RuntimeBody
 
 type PrimitiveSurfaceCensusProvenance
   = DerivedFromAuthority
@@ -1239,6 +1243,9 @@ data primitive_projection_target_canonical_names: List<String> = [
   "symbol_lexeme",
   "symbol_intern_lexeme",
   "data_init_decl_facts_live",
+  "bytes_octets",
+  "utf8_encode_bytes",
+  "pure_dag_seam_unreachable",
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
@@ -1599,6 +1606,16 @@ data primitive_symbol_intern_lexeme_traversal: PrimitiveTraversalOrderFact = Pri
 // SourcePreservingOrder is the executed reading, not CanonicalOrder.
 data primitive_data_init_decl_facts_live_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_data_init_decl_facts_live, order: SourcePreservingOrder }
 
+// bytes_octets and utf8_encode_bytes yield octets in index order -- the interpreter's arms and the
+// v1_rt realizations both map over the byte vector (or the string's UTF-8 bytes) in place -- so the
+// result's order is the input's own, SourcePreservingOrder, and no host order is consulted.
+data primitive_bytes_octets_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_bytes_octets, order: SourcePreservingOrder }
+
+data primitive_utf8_encode_bytes_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_utf8_encode_bytes, order: SourcePreservingOrder }
+
+// pure_dag_seam_unreachable produces no value at all -- it diverges -- so no order is consulted.
+data primitive_pure_dag_seam_unreachable_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_pure_dag_seam_unreachable, order: OrderFreeResult }
+
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
@@ -1615,6 +1632,9 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_symbol_lexeme_traversal,
   primitive_symbol_intern_lexeme_traversal,
   primitive_data_init_decl_facts_live_traversal,
+  primitive_bytes_octets_traversal,
+  primitive_utf8_encode_bytes_traversal,
+  primitive_pure_dag_seam_unreachable_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {
@@ -1675,4 +1695,106 @@ fn primitive_definitions_missing_traversal_fact() -> List<PrimitiveDefinition> {
 
 fn primitive_traversal_denominator_is_closed() -> Bool {
   count(primitive_definitions_missing_traversal_fact()) == 0
+}
+
+// A bridge is an emission instruction, not evidence of a definition. The body surface is
+// supplied by the runtime producer because the std census also runs in closures that do not
+// contain the v1 emitter. Keeping the observation typed prevents a refused scan becoming an
+// empty, apparently complete census. The existing five-surface query retains its denominator;
+// this query is the six-surface acceptance boundary.
+// Scope: definition presence, not behavioral equivalence or availability under every Rust cfg.
+type PrimitiveRuntimeBodyCensus
+  = PrimitiveRuntimeBodiesObserved { rows: List<PrimitiveSurfaceRow> }
+  | PrimitiveRuntimeBodyScanRefused { line: Int, detail: String }
+
+type PrimitiveRuntimeBodyViolation {
+  authored_symbol: String
+  bridge_name: String
+}
+
+type PrimitiveRuntimeBodyCheck
+  = PrimitiveRuntimeBodiesComplete
+  | PrimitiveRuntimeBodiesMissing { violations: List<PrimitiveRuntimeBodyViolation> }
+  | PrimitiveRuntimeBodiesUnreadable { line: Int, detail: String }
+
+// The item scanner also recognizes semicolon-terminated declarations. A runtime BODY must
+// close a block; a function declaration alone is no realization. Extents come from the shared
+// scanner, so comments, nested modules and impl methods cannot mint a file-level function.
+fn primitive_runtime_item_has_body(item: RustItemIdentity, lines: List<String>) -> Bool {
+  match lines |> skip(item.start_line + item.loc - 2) |> first {
+    Present { value: line } => ends_with(s: trim(s: line), suffix: "}")
+    Absent => false
+  }
+}
+
+fn primitive_runtime_body_census_in(
+  registry: List<RuntimeFunction>,
+  source: String,
+) -> PrimitiveRuntimeBodyCensus {
+  let lines = split(s: source, delimiter: "\n")
+  match scan_rust_source(repo_path: "v1_rt.rs", content: source) {
+    RustFileScanRefused { repo_path: _, line: line, line_text: text, detail: detail } =>
+      PrimitiveRuntimeBodyScanRefused { line: line, detail: concat(detail, concat(": ", text)) }
+    RustFileScanned { repo_path: _, items: items, macro_regions: _, line_count: _ } =>
+      PrimitiveRuntimeBodiesObserved {
+        rows: items
+          |> filter(item => item.kind == RustFunction && item.enclosing_module == ""
+            && primitive_runtime_item_has_body(item: item, lines: lines))
+          |> flat_map(item => primitive_runtime_body_rows_for_symbol(
+            registry: registry, symbol: item.name as String
+          ))
+      }
+  }
+}
+
+// Preserve every bridge-to-body join. Two operations targeting one body must remain visible
+// to the identity reconciliation; choosing the last registry row would erase that evidence.
+fn primitive_runtime_body_rows_for_symbol(
+  registry: List<RuntimeFunction>, symbol: String,
+) -> List<PrimitiveSurfaceRow> {
+  let bridges = registry |> filter(entry => entry.bridge_name == symbol)
+  let identities = if count(bridges) == 0 { [none] } else {
+    bridges |> map(entry => primitive_identity_for_symbol(authority: EmitHandler, authored_symbol: entry.name))
+  }
+  identities |> map(identity => surface_row(
+    authority: RuntimeBody,
+    authored_symbol: symbol,
+    authority_ref: decl_ref(module_path: "v1_rt", decl_name: symbol),
+    primitive: identity,
+    provenance: DerivedFromAuthority,
+  ))
+}
+
+// Both the regression control and the runtime producer call this same acceptance boundary.
+// Join on bridge_name: empty_map is realized by rc_empty_map, not by an empty_map definition.
+fn primitive_runtime_body_check_in(
+  registry: List<RuntimeFunction>,
+  census: PrimitiveRuntimeBodyCensus,
+) -> PrimitiveRuntimeBodyCheck {
+  match census {
+    PrimitiveRuntimeBodyScanRefused { line: line, detail: detail } =>
+      PrimitiveRuntimeBodiesUnreadable { line: line, detail: detail }
+    PrimitiveRuntimeBodiesObserved { rows: rows } => {
+      let missing = registry
+        |> filter(entry => !surface_rows_carry_symbol_on(
+          rows: rows, authority: RuntimeBody, authored_symbol: entry.bridge_name
+        ))
+        |> map(entry => PrimitiveRuntimeBodyViolation {
+          authored_symbol: entry.name, bridge_name: entry.bridge_name
+        })
+      if count(missing) == 0 { PrimitiveRuntimeBodiesComplete }
+      else { PrimitiveRuntimeBodiesMissing { violations: missing } }
+    }
+  }
+}
+
+fn primitive_surface_census_with_runtime(
+  runtime: PrimitiveRuntimeBodyCensus,
+) -> PrimitiveRuntimeBodyCensus {
+  match runtime {
+    PrimitiveRuntimeBodyScanRefused { line: line, detail: detail } =>
+      PrimitiveRuntimeBodyScanRefused { line: line, detail: detail }
+    PrimitiveRuntimeBodiesObserved { rows: rows } =>
+      PrimitiveRuntimeBodiesObserved { rows: concat(primitive_surface_census_derived(), rows) }
+  }
 }

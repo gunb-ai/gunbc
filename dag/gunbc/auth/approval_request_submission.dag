@@ -1,20 +1,25 @@
 module gunbc.auth.approval_request_submission
 
+import std.decl_ref { decl_ref }
 import std.types { Bool, Int, NonEmptyStr, String, Secret, HttpStatus }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSigning, MacSigned, MacKeyMaterialNotHex, MacVerification, MacVerified, mac_sign, mac_verify, mac_verification_reason }
 import extdeps.languages.json.emit { JsonValue, JsonString, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
-import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, NtfyPublished, NtfyPublishRefused, NtfyPublishUnreached, NtfyPublishUndecodable, ntfy_publish_outcome_of, ntfy_priority_wire, ntfy_cache_wire }
+import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, ntfy_publish_outcome_of, NtfyPublishAcceptance, NtfyAccepted, ntfy_publish_acceptance, ntfy_publish_outcome_sentence, ntfy_priority_wire, ntfy_cache_wire }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_broker { SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled, SubmissionAuthorityNotPermittedForRequester, admit_submission, BrokerApproved, BrokerDenied }
 import gunbc.auth.approval_notification { approval_notification }
 import gunbc.auth.approval_ntfy_deployment
-import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url, approval_broker_confirm_path_prefix }
 import std.algebra { trim }
+import gunbc.auth.approval_status_wire {
+  FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
+  filed_approval_status_text, submission_filed_text,
+}
 import gunbc.auth.approval_decision_store {
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal,
   StoredApprovalRequest, stored_request_json, parse_stored_record, StoredRequestParsed, StoredDecisionParsed, StoredRecordUnreadable,
@@ -53,7 +58,8 @@ import gunbc.auth.approval_decision_store {
 
 // MINTED 2026-09-17 THROUGH gunbc.auth.approval_mac_key_provision under the operator's token: the
 // container was created for attempt approval-mac-keys-2026-09-16, version 1 added from a
-// digested snapshot and read back (payload sha256 prefix 01f19b2e2c7a). Pinned to that version
+// digested snapshot and read back (payload sha256 prefix owned by
+// gunbc.auth.approval_keyring_pins approval_submission_mac_key_payload_sha256_prefix). Pinned to that version
 // for the same reason the capability key is: a keyring following `latest` would let a rotation
 // invalidate filings in flight, and the provisioning run refuses to add a version beside a pin.
 data approval_submission_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
@@ -65,10 +71,11 @@ data approval_submission_mac_key_id: MacKeyId = "approval-submission-mac-key/1" 
 
 data approval_submission_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-submission-mac-key"
 
-// THE PUBLISHER TOKEN IS THE NTFY SERVER'S, AT THE PATH ITS DEPLOYMENT WROTE
-// (gunbc.auth.approval_ntfy_deployment approval_ntfy_publisher_token_intervention): root:gunbc-ntfy
-// 0640 today, so the roadmap unit's user cannot read it until the converge step (part D) admits
-// that user to the group. An unreadable token is a typed refusal below, never a fabricated publish.
+// THE PUBLISHER TOKEN IS THE NTFY SERVER'S, DELIVERED FROM SECRET MANAGER by the custody roster
+// (gunbc.host_credential_custody_converge ApprovalNtfyPublisherToken): root:gunbc-ntfy 0640 in a
+// root:gunbc-ntfy 0750 directory, so the roadmap unit's user reads it only once
+// gunbc.auth.approval_keyring_converge admits that user to the group. An unreadable token is a
+// typed refusal below, never a fabricated publish.
 data approval_publisher_token_path: NonEmptyStr = "/etc/gunbc-ntfy/publisher-token"
 
 fn read_submission_keyring() -> ApprovalKeyringRead {
@@ -79,7 +86,10 @@ type PublisherTokenRead
   = PublisherTokenLoaded { token: Secret }
   | PublisherTokenUnavailable { path: NonEmptyStr, detail: String }
 
-fn read_publisher_token() -> PublisherTokenRead {
+fn read_publisher_token() -> PublisherTokenRead admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
+] {
   let read = Filesystem.Read(path: approval_publisher_token_path as String)
   match filesystem_exact_read(path: approval_publisher_token_path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
     FilesystemExactPathRead { path: _, content: c } =>
@@ -184,17 +194,18 @@ fn admit_parsed_submission(tag_hex: NonEmptyStr, request: StoredApprovalRequest,
 
 // ── the links and the notification ─────────────────────────────────────────────────────────────
 
-// THE LINK BASE IS THE ROADMAP SERVER'S TAILNET NAME, the same composition the ntfy address uses
-// (gunbc.auth.approval_ntfy_deployment srv1_tailnet_base_url_from) at the default TLS port, where
-// tailscale serve proxies / to the roadmap server; the approve route is served there by
-// gunbc.roadmap.roadmap_serve. The undeclared-domain arm and its `.invalid` reasoning live with
-// that function and are not restated here.
-fn approval_link_base_url() -> NonEmptyStr {
-  srv1_tailnet_base_url_from(domain: fleet_intent_network.tailnet_domain, port: none)
-}
+// THE LINK BASE IS THE APPROVAL BROKER'S FRONT DOOR, and this module no longer derives it. It used
+// to, grounded on a sentence naming the roadmap server -- "tailscale serve proxies / to the roadmap
+// server; the approve route is served there by gunbc.roadmap.roadmap_serve". The broker split makes
+// that sentence false while leaving the STRING it produced byte-identical, because the front door
+// keeps the public host and port. A grounding that has gone false while its output stayed right is
+// exactly the fact nothing reads back, so the derivation moved to the authority that now owns the
+// endpoint (gunbc.auth.approval_broker_endpoint approval_broker_base_url) rather than being left
+// here with its reason rewritten. The undeclared-domain `.invalid` arm still lives with
+// srv1_tailnet_base_url_from and is not restated at either site.
 
 fn approval_link(base: NonEmptyStr, request: StoredApprovalRequest, decision: ProposedDecision, tag_hex: NonEmptyStr) -> NonEmptyStr {
-  join([base as String, "/approve/", capability_path_segment(escalation_id: request.escalation_id, decision: decision, tag_hex: tag_hex) as String], "") as NonEmptyStr
+  join([base as String, approval_broker_confirm_path_prefix as String, capability_path_segment(escalation_id: request.escalation_id, decision: decision, tag_hex: tag_hex) as String], "") as NonEmptyStr
 }
 
 type LinkIssuance
@@ -247,15 +258,27 @@ type SubmissionOutcome
   | SubmissionRefused { refusal: SubmissionRefusal }
   | SubmissionFiledCapabilityKeyUnavailable { escalation_id: NonEmptyStr, cause: ApprovalKeyringRefusal }
 
+fn submission_outcome_admits_poll(o: SubmissionOutcome) -> Bool {
+  match o {
+    SubmissionFiledAndNotified { escalation_id: _, message_id: _ } => true
+    SubmissionFiledNotNotified { escalation_id: _, publish: _ } => true
+    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => true
+    SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => false
+    SubmissionAlreadyFiled { escalation_id: _ } => true
+    SubmissionFiledCapabilityKeyUnavailable { escalation_id: _, cause: _ } => false
+    SubmissionStoreRefused { detail: _ } => false
+    SubmissionRefused { refusal: _ } => false
+  }
+}
+
+fn submission_outcome_http_body(o: SubmissionOutcome) -> String {
+  submission_filed_text(filed: submission_outcome_admits_poll(o: o), reason: concat("approval submission: ", submission_outcome_reason(o: o)))
+}
+
 fn submission_outcome_reason(o: SubmissionOutcome) -> String {
   match o {
     SubmissionFiledAndNotified { escalation_id: e, message_id: m } => join(["filed ", e as String, " and notified (ntfy message ", m as String, ")"], "")
-    SubmissionFiledNotNotified { escalation_id: e, publish: p } => join(["filed ", e as String, " but the notification did not publish: ", match p {
-      NtfyPublished { message_id: _ } => "published"
-      NtfyPublishRefused { status: s, detail: d } => join(["refused ", to_string(s), " ", d], "")
-      NtfyPublishUnreached { cause: c } => join(["unreached: ", c], "")
-      NtfyPublishUndecodable { status: s, cause: c } => join(["undecodable ", to_string(s), ": ", c], "")
-    }], "")
+    SubmissionFiledNotNotified { escalation_id: e, publish: p } => join(["filed ", e as String, " but the notification is not confirmed published (a re-submission re-notifies the same request): ", ntfy_publish_outcome_sentence(o: p)], "")
     SubmissionFiledPublisherTokenUnavailable { escalation_id: e, detail: d } => join(["filed ", e as String, " but the publisher token is unavailable: ", d], "")
     SubmissionFiledLinksNotIssued { escalation_id: e, key_id: k } => join(["filed ", e as String, " but no link could be issued under key ", k as String], "")
     SubmissionAlreadyFiled { escalation_id: e } => join(["escalation ", e as String, " is already filed"], "")
@@ -286,29 +309,55 @@ fn notify_filed(
 ) -> SubmissionOutcome {
   match capability_keyring {
     ApprovalKeyringRefused { cause: c } => SubmissionFiledCapabilityKeyUnavailable { escalation_id: request.escalation_id, cause: c }
-    ApprovalKeyLoaded { key: key } => match issue_links(capability_key: key, base: approval_link_base_url(), request: request) {
+    ApprovalKeyLoaded { key: key } => match issue_links(capability_key: key, base: approval_broker_base_url(), request: request) {
       LinksNotIssued { key_id: k } => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: k }
       links => match approval_message(request: request, links: links) {
         Absent => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: key.id }
-        Present { value: message } => match publisher {
-          PublisherTokenUnavailable { path: _, detail: d } => SubmissionFiledPublisherTokenUnavailable { escalation_id: request.escalation_id, detail: d }
-          PublisherTokenLoaded { token: t } => {
-            let sent = ntfy.Publish.PublishMessage(
-              access_token: t,
-              topic: message.topic,
-              title: message.title,
-              body: message.body,
-              priority: ntfy_priority_wire(p: message.priority),
-              click: message.click,
-              cache: ntfy_cache_wire(c: message.cache),
-            )
-            match ntfy_publish_outcome_of(rest: sent.outcome, message_id: sent.message_id) {
-              NtfyPublished { message_id: m } => SubmissionFiledAndNotified { escalation_id: request.escalation_id, message_id: m }
-              other => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: other }
-            }
+        Present { value: message } => match publish_notification(message: message, publisher: publisher) {
+          NotificationPublisherTokenUnavailable { detail: d } => SubmissionFiledPublisherTokenUnavailable { escalation_id: request.escalation_id, detail: d }
+          NotificationAttempted { publish: p, acceptance: a } => match a {
+            NtfyAccepted { message_id: Present { value: m } } => SubmissionFiledAndNotified { escalation_id: request.escalation_id, message_id: m }
+            _ => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
           }
         }
       }
+    }
+  }
+}
+
+// THE ONE PUBLISH BINDING (review 69826 of gunbc#12013): the ntfy operation call and its outcome
+// fold live here once, beside the publisher-token read they consume, and every notifying route --
+// the filed-request notice above, the device enrolment code -- maps this result into its own
+// type. Transport is a realization bound to a shape, not a fact restated at each caller (DESIGN
+// section 3b); a new NtfyMessage field or outcome arm is one edit.
+//
+// THE ADAPTER DOES NOT DECIDE "NOT PUBLISHED". It carries the transport outcome AND its acceptance
+// standing from extdeps.ntfy.ntfy ntfy_publish_acceptance, so no consumer can read an accepted
+// publish with an unread receipt, or an indeterminate one, as a clean refusal. An earlier revision
+// folded every non-NtfyPublished outcome into one NotificationNotPublished arm (review of
+// gunbc#12013), which the enrolment-code consumer then rendered as "unknown to anyone; run again".
+type NotificationPublish
+  = NotificationAttempted { publish: NtfyPublishOutcome, acceptance: NtfyPublishAcceptance }
+  | NotificationPublisherTokenUnavailable { detail: String }
+
+fn publish_notification(message: NtfyMessage, publisher: PublisherTokenRead) -> NotificationPublish admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "notify_filed"),
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "deliver_enrolment_code"),
+] {
+  match publisher {
+    PublisherTokenUnavailable { path: _, detail: d } => NotificationPublisherTokenUnavailable { detail: d }
+    PublisherTokenLoaded { token: t } => {
+      let sent = ntfy.Publish.PublishMessage(
+        access_token: t,
+        topic: message.topic,
+        title: message.title,
+        body: message.body,
+        priority: ntfy_priority_wire(p: message.priority),
+        click: message.click,
+        cache: ntfy_cache_wire(c: message.cache),
+      )
+      let publish = ntfy_publish_outcome_of(rest: sent.outcome, message_id: sent.message_id)
+      NotificationAttempted { publish: publish, acceptance: ntfy_publish_acceptance(o: publish) }
     }
   }
 }
@@ -376,28 +425,37 @@ fn submit_parsed_submission(
 
 // WHAT A POLLING RUN MAY LEARN OVER HTTP: the slot's standing and, once decided, who decided and
 // when. Not the purpose, not the requester -- the run filed those and does not need them back --
-// and never a link. The grant itself is derived by the run from the decision it already knows it
-// is waiting for, through grant_from_store's join, once part D moves that read behind this route.
+// and never a link. The grant join is grant_from_approved_decision over these fields: the runner
+// never opens the 0600 store.
 // THE STATUS A POLLING RUN READS, with its wire status beside it: an answer about the slot --
 // not filed, pending, decided -- is 200, and a store that could not be read is 503, because the
 // HTTP status is the channel the filer reads first and a failed read on the success channel is
-// a warning where a refusal was owed.
+// a warning where a refusal was owed. The BODY is the kv grammar of approval_status_wire.
 type EscalationStatus {
   status: HttpStatus
   body: String
 }
 
+fn filed_status_of_slot(slot: EscalationSlot) -> FiledApprovalStatus {
+  match slot {
+    EscalationNotFiled => StatusNotFiled
+    EscalationUnreadable { detail: d } => StatusUnreadable { detail: d }
+    EscalationPending { request: r } => StatusPending { expires_at: r.expires_at }
+    EscalationDecided { decision: d } => match d {
+      BrokerApproved { escalation_id: _, revision: rev, decided_by: by, decided_at: at, obligation: o } =>
+        StatusApproved { revision: rev, decided_by: by, decided_at: at, execute_by: o.execute_by }
+      BrokerDenied { escalation_id: _, revision: rev, decided_by: by, decided_at: at, reason: why } =>
+        StatusDenied { revision: rev, decided_by: by, decided_at: at, reason: why }
+    }
+  }
+}
+
 fn escalation_status_of(slot: EscalationSlot) -> EscalationStatus {
   match slot {
-    EscalationNotFiled => EscalationStatus { status: 200, body: "standing=not-filed\n" }
-    EscalationUnreadable { detail: d } => EscalationStatus { status: 503, body: join(["standing=unreadable\ndetail=", d as String, "\n"], "") }
-    EscalationPending { request: r } => EscalationStatus { status: 200, body: join(["standing=pending\nexpires_at=", r.expires_at, "\n"], "") }
-    EscalationDecided { decision: d } => EscalationStatus { status: 200, body: match d {
-      BrokerApproved { escalation_id: _, revision: rev, decided_by: by, decided_at: at, obligation: o } =>
-        join(["standing=approved\nrevision=", rev as String, "\ndecided_by=", by as String, "\ndecided_at=", at, "\nexecute_by=", o.execute_by, "\n"], "")
-      BrokerDenied { escalation_id: _, revision: rev, decided_by: by, decided_at: at, reason: why } =>
-        join(["standing=denied\nrevision=", rev as String, "\ndecided_by=", by as String, "\ndecided_at=", at, "\nreason=", why as String, "\n"], "")
-    } }
+    EscalationUnreadable { detail: _ } => EscalationStatus { status: 503, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
+    EscalationNotFiled => EscalationStatus { status: 200, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
+    EscalationPending { request: _ } => EscalationStatus { status: 200, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
+    EscalationDecided { decision: _ } => EscalationStatus { status: 200, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
   }
 }
 
@@ -421,11 +479,8 @@ data approval_submission_authority_policy_frontier: DissolutionCondition = unbou
   description: "a requester -> authority policy roster (which enrolled filers may put which brokered authority in front of the operator) consumed by admit_parsed_submission in place of approval_submission_authority_permitted, with a witness whose unrostered requester answers SubmissionAuthorityRefused -- SUFFICIENT FOR the authority half of admission to refuse on the live route; triggered by the first second brokered authority or the first filer class other than the fleet-converge runner",
 )
 
-// THE RUN THAT FILES. This module is the server side; the client -- a fleet-converge mode that
-// materializes the submission key in-run, builds the request from a source-declared
-// AuthorizationRequest<Subject>, signs, POSTs, polls, and gates the boot on the grant -- is part D
-// (eager-owl-205's child lane, 2026-09-16). Until it lands, submit_parsed_submission has the serve
-// route and its witness as consumers and no filer; its first live receipt is D's first run.
+// THE FILING ROUTES ARE NOW ON THE SERVE TABLE (POST /approvals, GET /approvals/\{escalation_id\}).
+// Remaining dissolution is the same path used by every approval-gated fleet action, not one host's boot.
 data approval_submission_client_frontier: DissolutionCondition = unbound_dissolution(
-  description: "a fleet-converge mode that materializes approval-submission-mac-key in-run over WIF, signs stored_request_json of a source-declared request with sign_submission, POSTs the envelope to /approvals, polls /approvals/\{escalation_id\} bounded by the request's expires_at, and gates the actuation on grant_from_store's OperatorGrant -- SUFFICIENT FOR every approval-gated fleet action, not one host's boot; the srv3 source-declared grant dissolves into the same run.",
+  description: "every approval-gated fleet action files through POST /approvals and GET /approvals/ plus the escalation id, then joins the grant with grant_from_approved_decision over those standing fields; SUFFICIENT FOR that HTTP client path (runners never open the 0600 store), not one host's boot and not grant_from_store; the srv3 source-declared grant dissolves into the same run.",
 )

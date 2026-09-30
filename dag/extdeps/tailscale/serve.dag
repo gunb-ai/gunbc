@@ -1,5 +1,7 @@
 module extdeps.tailscale.serve
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { NonEmptyStr, Port, List, Bool, Unit }
 import std.string_type { String }
 import std.key_relation {
@@ -15,6 +17,7 @@ import product.network_topology { NetworkEndpoint }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
 }
@@ -83,8 +86,49 @@ fn tailscale_serve_status_json_argv() -> List<String> {
   ["serve", "status", "--json"]
 }
 
+// The status read as a command. The program is PATH-resolved, as the operations below spell it.
+fn tailscale_program() -> ProgramIdentity = uncataloged_program(invocation: "tailscale")
+
+fn tailscale_serve_status_json_command() -> ArgvCommand {
+  argv_command(program: tailscale_program(), arguments: tailscale_serve_status_json_argv())
+}
+
+// FUNNEL IS PUBLIC EXPOSURE. The serve config's AllowFunnel member (tailscale ipn.ServeConfig
+// AllowFunnel, map[HostPort]bool; tailscale.com/kb/1223) names each listener the node publishes to
+// the public internet; a listener absent or false there is reachable only from the tailnet. The
+// projection answers every HostPort mapped to true, or that the document could not be read -- the
+// same unreadable-is-not-empty line tailscale_serve_status_proxy_targets draws.
+type TailscaleFunnelProjection
+  = FunnelListeners { host_ports: List<String> }
+  | FunnelStatusUnreadable
+
+fn tailscale_serve_status_funnel_listeners(status_json: String) -> TailscaleFunnelProjection {
+  match parse_json_document(s: status_json) {
+    JsonDocumentUnreadable { gap: _ } => FunnelStatusUnreadable
+    JsonDocumentParsed { value: doc } =>
+      match json_unique_member_value(v: doc, key: "AllowFunnel") {
+        Absent => FunnelListeners { host_ports: [] }
+        Present { value: JsonObject { members: ms } } =>
+          FunnelListeners { host_ports: map(filter(ms, m => match m.value { JsonBool { value: b } => b  _ => true }), m => m.key) }
+        Present { value: _ } => FunnelStatusUnreadable
+      }
+  }
+}
+
+// THE BACKEND IS TAILSCALE'S OWN TARGET WORD: a loopback port, or a unix socket spelled
+// "unix:<path>" (tailscale ipn/serve.go ExpandProxyTargetValue: `unix:` is handled before URL
+// parsing and kept verbatim as the handler's Proxy; since v1.98.9 a unix target may be configured
+// only by root, TS-2026-005). So the status projection of a unix target is the target itself, and
+// of a port it is the http://127.0.0.1 URL the docs state is the only proxy form for ports.
+data tailscale_serve_unix_target_prefix: String = "unix:"
+
+fn tailscale_serve_unix_target(path: NonEmptyStr) -> NonEmptyStr {
+  concat(tailscale_serve_unix_target_prefix, path as String) as NonEmptyStr
+}
+
 fn tailscale_serve_proxy_url(endpoint: TailscaleServeEndpoint) -> String {
-  concat("http://127.0.0.1:", endpoint.backend as String)
+  if starts_with(s: endpoint.backend as String, prefix: tailscale_serve_unix_target_prefix) { endpoint.backend as String }
+  else { concat("http://127.0.0.1:", endpoint.backend as String) }
 }
 
 fn tailscale_serve_mount_status_key(mount: TailscaleServeMount) -> String {

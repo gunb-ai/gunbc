@@ -1,0 +1,99 @@
+module test.claim.machine_intake.mtcollins1_bmc_sensor_observation_witness_test
+
+import std.types { Bool, Int, List, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.optional { Present }
+import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrLineDecoded, sdr_decode_lines }
+import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation { mtcollins1_sdr_capture }
+import gunbc.machine_intake_mtcollins1_bmc_sensor_observation {
+  mtcollins1_sensor_socket, mtcollins1_socket_sensor_lines, mtcollins1_socket_unstructured_lines,
+  mtcollins1_sensor_findings, mtcollins1_sensor_table_text,
+}
+import std.measure { byte_size_count }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE INPUT IS THIS CONTROLLER'S OWN `sdr elist`, read whole from the committed capture the
+// 32-DIMM bring-up row names (mtcollins1_sdr_capture: 7899 bytes, ASCII, so its length in scalars
+// is its byte count). Both sockets were up when it was read. A missing path reads as empty on
+// this route, so every claim over it first asserts the length.
+fn table_text() -> String {
+  Filesystem.Read(path: mtcollins1_sdr_capture.artifact_path as String).content
+}
+
+fn table_read_whole() -> Bool {
+  table_text().length() == (byte_size_count(b: mtcollins1_sdr_capture.byte_count) as Int)
+}
+
+fn table() -> List<SdrLineResult> {
+  sdr_decode_lines(stdout: table_text())
+}
+
+fn socket_total(lines: List<SdrLineResult>, socket: Int) -> Int {
+  count(mtcollins1_socket_sensor_lines(lines: lines, socket: socket)) + count(mtcollins1_socket_unstructured_lines(lines: lines, socket: socket))
+}
+
+fn socket_is(name: String, expected: Int) -> Bool {
+  match mtcollins1_sensor_socket(name: name) { Present { value: k } => k == expected Absent => false }
+}
+
+fn no_socket(name: String) -> Bool {
+  match mtcollins1_sensor_socket(name: name) { Present { value: _ } => false Absent => true }
+}
+
+// ── the name prefix, and why it and not the entity ──────────────────────────────────────────
+
+test fn the_prefix_names_the_socket_and_nothing_else_does() -> Bool {
+  socket_is(name: "CPU1_0V75_PCP", expected: 1) && socket_is(name: "CPU0_SOC_Temp", expected: 0)
+    && no_socket(name: "FAN0_0_Speed") && no_socket(name: "CPU") && no_socket(name: "CPUX_Temp")
+}
+
+// The premise the prefix rests on, read from the controller's bytes: the same rail on the two
+// sockets carries ONE entity id, so grouping by entity would put both sockets in one group.
+test fn the_entity_field_does_not_separate_the_sockets_on_this_controller() -> Bool {
+  let pcp = map(filter(table(), r => match r { SdrLineDecoded { line: l } => (l.name as String) == "CPU0_0V75_PCP" || (l.name as String) == "CPU1_0V75_PCP" _ => false }),
+    r => match r { SdrLineDecoded { line: l } => l.entity_id as String _ => "" })
+  table_read_whole() && count(pcp) == 2 && join(pcp, ",") == "19.0,19.0"
+}
+
+// ── the real table: both sockets present, nothing to report ──────────────────────────────────
+
+test fn each_socket_has_its_38_sensors() -> Bool {
+  let t = table()
+  table_read_whole() && socket_total(lines: t, socket: 0) == 38 && socket_total(lines: t, socket: 1) == 38
+}
+
+test fn the_discrete_status_sensors_are_kept_per_socket() -> Bool {
+  table_read_whole() && any(mtcollins1_socket_unstructured_lines(lines: table(), socket: 1), t => starts_with(s: t, prefix: "CPU1_CPU_Status"))
+}
+
+test fn a_two_socket_table_with_every_status_ok_has_no_finding() -> Bool {
+  table_read_whole() && count(mtcollins1_sensor_findings(lines: table(), sockets: [0, 1])) == 0
+}
+
+// ── discriminating reds over the same bytes ──────────────────────────────────────────────────
+
+fn table_with(from: String, to: String) -> List<SdrLineResult> {
+  sdr_decode_lines(stdout: join(split(s: table_text(), delimiter: from), to))
+}
+
+test fn a_socket_rail_with_no_reading_is_named() -> Bool {
+  let f = mtcollins1_sensor_findings(lines: table_with(from: "CPU1_CPU_VCORE   | 58h | ok  | 19.51 | 1.03 Volts", to: "CPU1_CPU_VCORE   | 58h | ns  | 19.51 | No Reading"), sockets: [0, 1])
+  table_read_whole() && count(f) == 1 && any(f, x => starts_with(s: x, prefix: "bmc sensor CPU1_CPU_VCORE status ns"))
+}
+
+test fn a_discrete_socket_sensor_not_ok_is_named() -> Bool {
+  let f = mtcollins1_sensor_findings(lines: table_with(from: "CPU1_CPU_Status  | DAh | ok ", to: "CPU1_CPU_Status  | DAh | ns "), sockets: [0, 1])
+  table_read_whole() && count(f) == 1 && any(f, x => string_contains(s: x, pattern: "CPU1_CPU_Status"))
+}
+
+test fn a_socket_with_no_sensor_at_all_is_a_finding() -> Bool {
+  let f = mtcollins1_sensor_findings(lines: table_with(from: "CPU1_", to: "GONE_"), sockets: [0, 1])
+  table_read_whole() && join(f, ";") == "bmc sensors: no CPU1_ sensor in the table"
+}
+
+test fn the_rendering_groups_by_socket() -> Bool {
+  let t = mtcollins1_sensor_table_text(lines: table(), sockets: [0, 1])
+  table_read_whole() && string_contains(s: t, pattern: "socket 1 (CPU1_ sensors:") && string_contains(s: t, pattern: "CPU1_CPU_VCORE | 58h | ok | 19.51 | 1.03 Volts")
+}

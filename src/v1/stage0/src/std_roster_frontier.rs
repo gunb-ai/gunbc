@@ -212,19 +212,22 @@ pub fn fold_frontier_expiry(
                 present_decls.clone(),
             ) {
                 DissolutionStatus::DissolutionUnbound => FrontierExpiryReport {
-                    unbound_count: (acc.unbound_count.clone() + 1),
+                    unbound_count: v1_rt::int_add(acc.unbound_count.clone(), 1),
                     pending_count: acc.pending_count.clone(),
                     fired_still_present_count: acc.fired_still_present_count.clone(),
                 },
                 DissolutionStatus::DissolutionPending => FrontierExpiryReport {
                     unbound_count: acc.unbound_count.clone(),
-                    pending_count: (acc.pending_count.clone() + 1),
+                    pending_count: v1_rt::int_add(acc.pending_count.clone(), 1),
                     fired_still_present_count: acc.fired_still_present_count.clone(),
                 },
                 DissolutionStatus::DissolutionFired => FrontierExpiryReport {
                     unbound_count: acc.unbound_count.clone(),
                     pending_count: acc.pending_count.clone(),
-                    fired_still_present_count: (acc.fired_still_present_count.clone() + 1),
+                    fired_still_present_count: v1_rt::int_add(
+                        acc.fired_still_present_count.clone(),
+                        1,
+                    ),
                 },
             }
         },

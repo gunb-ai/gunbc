@@ -1,7 +1,7 @@
 module v2.std.text
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
-import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, any, contains, fold_list, for_all, is_empty, length, list_append, list_head, list_reverse, list_starts_with, list_tail, skip }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append }
+import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, any, contains, fold_list, for_all, is_empty, length, list_head, list_reverse, list_starts_with, list_tail, skip }
 import v2.std.logic { Bool }
 import std.types { Char }
 type String = FreeMonoid<Char>
@@ -73,9 +73,8 @@ fn char_eq(a: Char, b: Char) -> Bool {
 // them under names that do not spell string_eq exactly.
 //
 // THE CENSUS IS THE INSTRUMENT, NOT A LIST. Re-derive the residue rather than reading a count that
-// rots the moment anyone adds or removes a copy. ONE COMMAND, and it is the SAME ONE the roster
-// header in src/v1/stage0/src/namespace_wave_admission.rs names -- two spellings of one census
-// would be the second authority DESIGN section 3 forbids, and the narrower one UNDER-REPORTS:
+// rots the moment anyone adds or removes a copy. ONE COMMAND (the roster header that used to name
+// its twin is deleted with the wave-admission wall, 2026-09-19, so this is now its only home):
 //   grep -rnE '^fn [a-z_]*string_eq[a-z_]*\(' --include=*.dag dag/ src/v2
 // A LIST OR A NUMBER WRITTEN HERE WOULD BE STALE ON THE NEXT MERGE and would be cited as coverage
 // after it stopped being true, which is why neither appears in this annotation.
@@ -194,3 +193,4 @@ fn string_all_chars_in(s: String, alphabet: String) -> Bool {
 fn string_any_char_in(s: String, alphabet: String) -> Bool {
   any(xs: s, predicate: fn(c) { string_contains_char(s: alphabet, c: c) })
 }
+

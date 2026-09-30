@@ -495,7 +495,7 @@ type RowReachabilityReading
 fn parse_row_reachability(fields: List<String>, columns: ClaimCostColumns) -> RowReachabilityReading {
   match columns.preemption_reachability {
     Absent => ReachabilityColumnUnrecorded
-    Present { value: idx } => match parse_preemption_reachability(value: fields[idx]) {
+    Present { value: idx } => match (match fields.skip(n: idx).first() { Absent => none  Present { value: cell } => parse_preemption_reachability(value: cell) }) {
       Absent => ReachabilityColumnUnreadable
       Present { value: reach } => ReachabilityColumnRead { value: reach }
     }
@@ -535,7 +535,7 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
     } else {
       match parse_claim_cost_reading(fields: fields, columns: columns) {
         Absent => none
-        Present { value: reading } => match parse_verdict_reached(value: fields[columns.verdict_reached]) {
+        Present { value: reading } => match (match fields.skip(n: columns.verdict_reached).first() { Absent => none  Present { value: cell } => parse_verdict_reached(value: cell) }) {
           Absent => none
           Present { value: reached } => match parse_row_reachability(fields: fields, columns: columns) {
             ReachabilityColumnUnreadable => none
@@ -745,13 +745,15 @@ fn rows_at_or_above(rows: List<FloorCostRow>, ms: Millisecond) -> Int {
 fn cost_bands(rows: List<FloorCostRow>, edges: List<Millisecond>) -> List<CostBand> {
   enumerate(edges)
     |> flat_map(e =>
-         if e.first + 1 < count(edges) {
-           [CostBand {
-              lower_ms: e.second,
-              upper_ms: edges[e.first + 1],
-              rows: rows_in_band(rows: rows, lower_ms: e.second, upper_ms: edges[e.first + 1])
-            }]
-         } else { [] })
+         match edges.skip(n: e.first + 1).first() {
+           Present { value: upper } =>
+             [CostBand {
+                lower_ms: e.second,
+                upper_ms: upper,
+                rows: rows_in_band(rows: rows, lower_ms: e.second, upper_ms: upper)
+              }]
+           Absent => []
+         })
 }
 
 // CROSSINGS AND THE COUNTERFACTUAL REPLAY.

@@ -1,0 +1,55 @@
+module extdeps.ietf.http_semantics
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// RFC 9110 (HTTP Semantics, June 2022; obsoletes RFC 7231) section 9 METHODS, plus PATCH from
+// RFC 5789 -- the one home of the request-method set. It was declared twice before this module: std.types HttpMethod with
+// seven arms and v2.std.network HttpMethod with nine. Neither was the upstream: the method set is
+// an IETF fact, so it lives beside the other extdeps.ietf modules and both std declarations are
+// gone rather than one re-exporting the other (DESIGN section 3, external upstream decomposition).
+// The seven-arm copy was not a narrower concept but an incomplete transcription: CONNECT (9.3.6)
+// and TRACE (9.3.8) are registered methods, and a consumer that could not name them had no way to
+// refuse them by name.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110#section-9"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ietf.http_semantics",
+      decl_name: "HttpMethod",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.ietf.http_semantics.extdeps_external_authority_anchor,
+  further_citations: [rfc5789_patch_authority]
+}
+
+// PATCH is not an RFC 9110 method: it is defined by RFC 5789, which is why it is cited separately.
+data rfc5789_patch_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc5789"
+  }
+}
+
+// The eight RFC 9110 section 9.3 method definitions in the RFC's order, then RFC 5789 PATCH. The
+// IANA HTTP Method Registry also lists WebDAV and other extension methods; they are not modeled
+// here, and a consumer reading a wire label outside this set refuses it by name
+// (extdeps.http.server parse_http_method_label UnknownMethod).
+type HttpMethod
+  = GET
+  | HEAD
+  | POST
+  | PUT
+  | DELETE
+  | CONNECT
+  | OPTIONS
+  | TRACE
+  | PATCH

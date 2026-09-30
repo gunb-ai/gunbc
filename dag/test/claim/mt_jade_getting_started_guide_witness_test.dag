@@ -1,0 +1,102 @@
+module test.claim.mt_jade_getting_started_guide_witness
+
+import std.types { Bool, String, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.ampere.mt_jade_getting_started_guide.subject {
+  mt_jade_gsg_authority,
+  mt_jade_gsg_content_digest,
+  mt_jade_gsg_model_scope,
+  mt_jade_gsg_operator_drive_mirror_authority,
+  mt_jade_gsg_publication_status,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, external_model_scope_citations }
+import extdeps.publication { publication_status_is_publicly_published }
+import gunbc.upstream_document_carriage {
+  FactsMayBeCarried,
+  carriage_permits_facts,
+  upstream_fact_carriage,
+}
+import gunbc.specification_citation_read_provenance {
+  DocumentLocatorFetchedAndTextIngested,
+  DocumentMirrorLocatorFetchedAndTextIngested,
+  RecordedReadBytesAgree,
+  mt_jade_gsg_citation_read_comparison,
+  mt_jade_gsg_drive_mirror_citation_read_receipt,
+  mt_jade_gsg_publisher_citation_read_receipt,
+}
+import extdeps.cpu.ampere_altra_package { altra_ddr4_channel_count }
+import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
+  mt_jade_gsg_one_dpc_empty_slot_labels,
+  mt_jade_gsg_population_2s2p_16_dimms,
+  mt_jade_gsg_socket0_channel_pairs,
+  mt_jade_gsg_socket0_one_dpc_slot_labels,
+  mt_jade_gsg_socket1_channel_pairs,
+  mt_jade_gsg_socket1_one_dpc_slot_labels,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DECLARED DIGEST IS JOINED TO WHAT THE READS OBSERVED, not compared to its own literal. The
+// earlier form copied subject.dag's issue and hex back from subject.dag (review 68035).
+//
+// THE JOIN IS ON THE HEX, NOT ON A FORMATTED STRING, and that is deliberate. A previous revision
+// compared the receipt against sha256_digest_wire_form, which joins "sha256:" + hex with a COLON
+// while every content_digest literal in the corpus uses a SPACE -- so the claim could never be
+// true: a permanently-RED wall, the mirror image of the permanently-green one 68035 removed
+// (review 68056). The hex IS the fact being joined; the delimiter is presentation, and asserting
+// it here would pick one side of a fork this claim has no business deciding. The RED is intact: a
+// receipt recording a hex the extdeps module does not declare reddens this, which is what a
+// mirror serving different bytes produces.
+test fn w_jade_gsg_declared_digest_is_the_digest_both_reads_recorded() -> Bool {
+  match mt_jade_gsg_publisher_citation_read_receipt.provenance {
+    DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: d, detail: _ } =>
+      string_contains(s: d as String, pattern: mt_jade_gsg_content_digest.hex as String)
+    _ => false
+  }
+    && match mt_jade_gsg_drive_mirror_citation_read_receipt.provenance {
+      DocumentMirrorLocatorFetchedAndTextIngested { mirror: _, observed_on: _, http_status: _, byte_count: _, content_digest: d, detail: _ } =>
+        string_contains(s: d as String, pattern: mt_jade_gsg_content_digest.hex as String)
+      _ => false
+    }
+}
+
+test fn w_jade_gsg_table11_16_dimm_row_is_the_odd_hash_slots() -> Bool {
+  mt_jade_gsg_population_2s2p_16_dimms.dimm_count == (2 * altra_ddr4_channel_count)
+    && list_length(mt_jade_gsg_socket0_channel_pairs) == altra_ddr4_channel_count
+    && list_length(mt_jade_gsg_socket1_channel_pairs) == altra_ddr4_channel_count
+    && mt_jade_gsg_population_2s2p_16_dimms.populated_slot_labels == concat(
+      mt_jade_gsg_socket0_one_dpc_slot_labels,
+      mt_jade_gsg_socket1_one_dpc_slot_labels,
+    )
+    && list_length(mt_jade_gsg_one_dpc_empty_slot_labels) == mt_jade_gsg_population_2s2p_16_dimms.dimm_count
+    && match mt_jade_gsg_socket0_channel_pairs.first() {
+      Present { value: p } => p.one_dpc_slot_label == 1 && p.two_dpc_additional_slot_label == 2 && p.memory_controller == 0
+      Absent => false
+    }
+    && match mt_jade_gsg_socket0_channel_pairs.last() {
+      Present { value: p } => p.one_dpc_slot_label == 15 && p.two_dpc_additional_slot_label == 16 && p.memory_controller == 7
+      Absent => false
+    }
+    && match mt_jade_gsg_socket1_channel_pairs.first() {
+      Present { value: p } => p.one_dpc_slot_label == 17 && p.two_dpc_additional_slot_label == 18
+      Absent => false
+    }
+}
+
+fn jade_gsg_scope_cites(scope: ExternalModelScope, authority: ExternalAuthority) -> Bool {
+  fold(external_model_scope_citations(scope: scope), init: false, f: (acc, c) => acc || (c == authority))
+}
+
+test fn w_jade_gsg_publisher_is_first_citation_drive_is_mirror_and_carriage_admits() -> Bool {
+  mt_jade_gsg_model_scope.first_citation == mt_jade_gsg_authority
+    && jade_gsg_scope_cites(scope: mt_jade_gsg_model_scope, authority: mt_jade_gsg_operator_drive_mirror_authority)
+    && mt_jade_gsg_operator_drive_mirror_authority != mt_jade_gsg_authority
+    && publication_status_is_publicly_published(status: mt_jade_gsg_publication_status)
+    && carriage_permits_facts(carriage: upstream_fact_carriage(status: mt_jade_gsg_publication_status))
+    && (upstream_fact_carriage(status: mt_jade_gsg_publication_status) == FactsMayBeCarried)
+    && match mt_jade_gsg_citation_read_comparison.standing {
+      RecordedReadBytesAgree => true
+      RecordedReadBytesDiffer => false
+      ReadBytesNotComparable => false
+    }
+}

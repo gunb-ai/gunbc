@@ -1,0 +1,471 @@
+module v2.workflow.emitted_crate_workspace
+
+import std.types { List, String, Bool, Int, NonEmptyStr }
+import v2.std.collection { empty_map, map_get, map_insert }
+import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.compilers.compilation_unit {
+  CompilationUnitId,
+  ModuleDag,
+  ModuleDagEdge,
+  ModuleId,
+  list_unique_sorted_ids
+}
+import gunbc.rust_emitted_edge {
+  EmittedEdge,
+  EmittedEdgeProvenance,
+  EmittedModuleTarget,
+  EmittedCrateRootTarget,
+  RuntimePrelude,
+  ReexportFacade,
+  SemanticSourceReference,
+  rust_module_emit_filename,
+  rust_runtime_prelude_module
+}
+import gunbc.stage0_crate_partition_generated {
+  GeneratedPartitionCrateRow,
+  GeneratedFoundationCrate,
+  GeneratedLayeredCoreCrate
+}
+import v2.workflow.emitted_closure_crate_partition {
+  ModuleDagDerivationRefusal,
+  ModuleDagDerived,
+  ModuleDagDerivationRefused,
+  emitted_compiler_closure_module_dag
+}
+import v2.workflow.rust_crate_partition {
+  EmittedEdgeRefusal,
+  ModuleDagEmittedMerged,
+  ModuleDagEmittedRefused,
+  PartitionPolicy,
+  PolicyPartitionParam,
+  ResolvePartitionOk,
+  ResolvePartitionRefused,
+  ResolvePartitionRefusalCause,
+  Stage0FoundationCrate,
+  Stage0LayeredCoreCrate,
+  Stage0PartitionCrateRow,
+  UnitDepEdge,
+  DerivedDepPackagesOk,
+  DerivedDepPackagesUnitHasNoRow,
+  assignment_unit_dep_edges,
+  derived_dep_packages,
+  module_dag_with_emitted_edges,
+  resolve_partition_outcome,
+  rust_crate_partition_declared_core_target,
+  unit_dep_closure,
+  unit_direct_deps
+}
+
+// THE EMITTED COMPILER CLOSURE AS A CARGO WORKSPACE, DERIVED (Pkg7d render, Pkg7e build).
+//
+// Every fact here is derived, and none is read from the committed stage0 rows: the module DAG is
+// v2.workflow.emitted_closure_crate_partition's derivation from the live dependency facts; the
+// emitter's own edges (gunbc.rust_emitted_edge, returned beside the text by the emission this
+// workspace is built from) are merged into it with the typed reverse-edge refusal; the balanced
+// policy assigns modules to units; and each unit's dependency packages are the TRANSITIVE CLOSURE
+// of the unit dep edges the assignment induces (rust_crate_partition derived_dep_packages, the
+// #12035 derivation). The rows produced here have the shape v1.compiler.stage0_crates renders, so
+// the manifests and lib.rs files come from the one partition renderer, not a second one.
+//
+// WHAT THE FACADE PROVES AND WHAT IT DOES NOT. A layered crate's lib.rs re-exports every package in
+// its transitive dependency closure as `pub use <ident>::*;`, which is how an emitted
+// `crate::<module>::` path resolves in a crate that does not own the module. That is an
+// OVER-APPROXIMATION of the direct edges, deliberately: the inline paths the expression emitter
+// writes are not returned as edges (gunbc.guarantee_stall
+// emitted_inline_crate_path_edges_unreturned_stall), so the facade must cover what the edge set
+// cannot name. The plan reports whether the facade degenerates to the whole closure
+// (facade_is_whole_closure) so a green over that degenerate case is never read as a partition.
+//
+// A DAG module is placed by the basename the emitter writes for it (gunbc.rust_emitted_edge
+// rust_module_emit_filename, the one home of that rule, which the edge rows name endpoints by). The
+// caller supplies the basenames the emission actually wrote. The two closures -- the one the live
+// dependency facts derive and the one the emission compiled -- must be the SAME population: a DAG
+// module whose file the emission did not produce, and an emitted file that is neither a DAG module
+// nor the runtime, are refused together, every member named, never narrowed to the intersection.
+
+type EmittedWorkspaceRefusal
+  = EmittedWorkspaceDagRefused { cause: ModuleDagDerivationRefusal }
+  | EmittedWorkspaceBasenameShared { basename: String }
+  | EmittedWorkspaceClosuresDisagree { not_emitted: List<String>, outside_dag: List<String> }
+  | EmittedWorkspaceEdgeListsMisaligned { froms: Int, tos: Int, provenances: Int }
+  | EmittedWorkspaceEdgeProvenanceUnknown { provenance: String }
+  | EmittedWorkspaceEdgeMergeRefused { cause: EmittedEdgeRefusal }
+  | EmittedWorkspacePartitionRefused { cause: ResolvePartitionRefusalCause }
+  | EmittedWorkspaceUnitHasNoRow { unit_id: CompilationUnitId }
+  | EmittedWorkspaceNoDiscriminatingEdge
+
+// The one crate dependency the RED drops: a direct unit dep edge in the TRANSITIVE REDUCTION (no
+// other dependency of the source crate reaches the target, so no glob facade can re-export it by
+// another road) that the emitter also wrote as a use-line from a source-crate module into a
+// target-crate module, so rustc has a path that must stop resolving.
+type EmittedWorkspaceRedDrop {
+  package: String
+  dropped_package: String
+  from_module: String
+  to_module: String
+}
+
+type EmittedWorkspacePlan {
+  rows: List<GeneratedPartitionCrateRow>
+  red_rows: List<GeneratedPartitionCrateRow>
+  red: EmittedWorkspaceRedDrop
+  module_count: Int
+  crate_count: Int
+  facade_is_whole_closure: Bool
+}
+
+type EmittedWorkspaceOutcome
+  = EmittedWorkspacePlanned { plan: EmittedWorkspacePlan }
+  | EmittedWorkspaceRefused { cause: EmittedWorkspaceRefusal }
+
+data emitted_workspace_runtime_package: String = "v2-emitted-runtime"
+
+fn emitted_workspace_package(unit_id: CompilationUnitId) -> String {
+  concat("v2-emitted-", unit_id as String)
+}
+
+fn emitted_workspace_crate_dir(package: String) -> String {
+  concat("src/v1/", package)
+}
+
+fn emitted_workspace_lookup(m: Map<String, String>, key: String) -> Optional<String> {
+  match map_get(m, key) {
+    Accepted { value: found, diagnostics: _ } => found
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn emitted_workspace_provenance(name: String) -> Optional<EmittedEdgeProvenance> {
+  if name == "runtime-prelude" { optional_present(value: RuntimePrelude) }
+  else if name == "reexport-facade" { optional_present(value: ReexportFacade) }
+  else if name == "semantic-source-reference" { optional_present(value: SemanticSourceReference) }
+  else { Absent }
+}
+
+type SharedBasenameScan {
+  seen: Map<String, String>
+  shared: Optional<String>
+}
+
+// The DAG's modules by their emitted basename. Two modules projecting to one basename would write
+// one file, so that is refused rather than letting the second overwrite the first.
+fn emitted_workspace_basename_index(module_dag: ModuleDag) -> BasenameIndexBuild {
+  let scan = module_dag.modules |> fold(init: SharedBasenameScan { seen: empty_map(), shared: Absent }, f: fn(acc, m) {
+    match acc.shared {
+      Present { value: _ } => acc
+      Absent => {
+        let b = rust_module_emit_filename(module_name: m as String)
+        match emitted_workspace_lookup(m: acc.seen, key: b) {
+          Present { value: _ } => SharedBasenameScan { seen: acc.seen, shared: optional_present(value: b) }
+          Absent => SharedBasenameScan { seen: map_insert(acc.seen, b, m as String), shared: Absent }
+        }
+      }
+    }
+  })
+  match scan.shared {
+    Present { value: b } => BasenameIndexRefused { cause: EmittedWorkspaceBasenameShared { basename: b } }
+    Absent => BasenameIndexOk { module_by_basename: scan.seen }
+  }
+}
+
+type BasenameIndexBuild
+  = BasenameIndexOk { module_by_basename: Map<String, String> }
+  | BasenameIndexRefused { cause: EmittedWorkspaceRefusal }
+
+type EdgeListBuild
+  = EdgeListOk { edges: List<EmittedEdge> }
+  | EdgeListRefused { cause: EmittedWorkspaceRefusal }
+
+fn emitted_workspace_edges(froms: List<String>, tos: List<String>, provenances: List<String>) -> EdgeListBuild {
+  if ((froms |> count) != (tos |> count)) || ((froms |> count) != (provenances |> count)) {
+    EdgeListRefused { cause: EmittedWorkspaceEdgeListsMisaligned { froms: froms |> count, tos: tos |> count, provenances: provenances |> count } }
+  } else {
+    froms |> enumerate |> fold(init: EdgeListOk { edges: [] }, f: fn(acc, pair) {
+      match acc {
+        EdgeListRefused { cause: c } => EdgeListRefused { cause: c }
+        EdgeListOk { edges: edges } => {
+          let to = match tos |> get(pair.first) { Present { value: t } => t  Absent => "" }
+          let provenance_name = match provenances |> get(pair.first) { Present { value: n } => n  Absent => "" }
+          match emitted_workspace_provenance(name: provenance_name) {
+            Absent => EdgeListRefused { cause: EmittedWorkspaceEdgeProvenanceUnknown { provenance: provenance_name } }
+            Present { value: p } =>
+              EdgeListOk {
+                edges: edges |> list_push(EmittedEdge {
+                  from: pair.second,
+                  to: if to == "" { EmittedCrateRootTarget } else { EmittedModuleTarget { module: to } },
+                  provenance: p
+                })
+              }
+          }
+        }
+      }
+    })
+  }
+}
+
+// The derived DAG in BASENAME space, with the runtime module as a node, because that is the space
+// the emitter's edges and the rendered includes speak.
+type BasenameDagBuild
+  = BasenameDagOk { module_dag: ModuleDag }
+  | BasenameDagRefused { cause: EmittedWorkspaceRefusal }
+
+fn emitted_workspace_basename_dag(module_dag: ModuleDag, module_by_basename: Map<String, String>, emitted_basenames: List<String>) -> BasenameDagBuild {
+  let emitted_set = emitted_basenames |> fold(init: empty_map(), f: fn(acc, b) { map_insert(acc, b, b) })
+  let not_emitted = module_dag.modules |> filter(m =>
+    match emitted_workspace_lookup(m: emitted_set, key: rust_module_emit_filename(module_name: m as String)) { Present { value: _ } => false  Absent => true })
+  let outside = emitted_basenames |> filter(b =>
+    b != rust_runtime_prelude_module
+      && match emitted_workspace_lookup(m: module_by_basename, key: b) { Present { value: _ } => false  Absent => true })
+  if ((not_emitted |> count) + (outside |> count)) > 0 {
+    BasenameDagRefused {
+      cause: EmittedWorkspaceClosuresDisagree {
+        not_emitted: not_emitted |> map(m => m as String),
+        outside_dag: outside
+      }
+    }
+  } else {
+    BasenameDagOk {
+      module_dag: ModuleDag {
+        modules: concat(
+          module_dag.modules |> map(m => rust_module_emit_filename(module_name: m as String) as ModuleId),
+          [rust_runtime_prelude_module as ModuleId]
+        ),
+        edges: module_dag.edges |> map(e => ModuleDagEdge {
+          from: rust_module_emit_filename(module_name: e.from as String) as ModuleId,
+          to: rust_module_emit_filename(module_name: e.to as String) as ModuleId
+        }),
+        exports: empty_map(),
+        type_definitions: empty_map()
+      }
+    }
+  }
+}
+
+// The runtime is a FIXED foundation crate every unit depends on, so the policy partitions the
+// closure without it: an edge into the runtime is a dependency on the runtime package, never a
+// reason to place a closure module beside it.
+fn emitted_workspace_without_runtime(module_dag: ModuleDag) -> ModuleDag {
+  ModuleDag {
+    modules: module_dag.modules |> filter(m => (m as String) != rust_runtime_prelude_module),
+    edges: module_dag.edges |> filter(e => (e.from as String) != rust_runtime_prelude_module && (e.to as String) != rust_runtime_prelude_module),
+    exports: module_dag.exports,
+    type_definitions: module_dag.type_definitions
+  }
+}
+
+fn emitted_workspace_unit_rows(modules: List<ModuleId>, assignment: Map<ModuleId, CompilationUnitId>, unit_ids: List<CompilationUnitId>) -> List<Stage0PartitionCrateRow> {
+  unit_ids |> map(unit_id => {
+    let package = emitted_workspace_package(unit_id: unit_id)
+    Stage0PartitionCrateRow {
+      unit_id: unit_id,
+      package_name: package,
+      crate_dir: emitted_workspace_crate_dir(package: package),
+      kind: Stage0LayeredCoreCrate,
+      modules: modules |> filter(m => match map_get(assignment, m) {
+          Accepted { value: Present { value: u }, diagnostics: _ } => u == unit_id
+          Accepted { value: Absent, diagnostics: _ } => false
+          Rejected { diagnostics: _ } => false
+        }) |> map(m => m as String) |> sort_by(m => m),
+      reexport_packages: [],
+      carries_non_empty_wrappers: false
+    }
+  })
+}
+
+fn emitted_workspace_generated_row(row: Stage0PartitionCrateRow, reexports: List<String>) -> GeneratedPartitionCrateRow {
+  GeneratedPartitionCrateRow {
+    package_name: row.package_name,
+    crate_dir: row.crate_dir,
+    kind: GeneratedLayeredCoreCrate,
+    modules: row.modules,
+    reexport_packages: reexports,
+    carries_non_empty_wrappers: false
+  }
+}
+
+fn emitted_workspace_runtime_row() -> GeneratedPartitionCrateRow {
+  GeneratedPartitionCrateRow {
+    package_name: emitted_workspace_runtime_package,
+    crate_dir: emitted_workspace_crate_dir(package: emitted_workspace_runtime_package),
+    kind: GeneratedFoundationCrate,
+    modules: [rust_runtime_prelude_module],
+    reexport_packages: [],
+    carries_non_empty_wrappers: true
+  }
+}
+
+type DerivedRowsBuild
+  = DerivedRowsOk { rows: List<GeneratedPartitionCrateRow> }
+  | DerivedRowsRefused { cause: EmittedWorkspaceRefusal }
+
+fn emitted_workspace_derived_rows(unit_rows: List<Stage0PartitionCrateRow>, unit_edges: List<UnitDepEdge>) -> DerivedRowsBuild {
+  unit_rows |> fold(init: DerivedRowsOk { rows: [emitted_workspace_runtime_row()] }, f: fn(acc, row) {
+    match acc {
+      DerivedRowsRefused { cause: c } => DerivedRowsRefused { cause: c }
+      DerivedRowsOk { rows: rows } =>
+        match derived_dep_packages(edges: unit_edges, rows: unit_rows, row: row) {
+          DerivedDepPackagesUnitHasNoRow { unit_id: u } => DerivedRowsRefused { cause: EmittedWorkspaceUnitHasNoRow { unit_id: u } }
+          DerivedDepPackagesOk { packages: packages } =>
+            DerivedRowsOk {
+              rows: rows |> list_push(emitted_workspace_generated_row(
+                row: row,
+                reexports: concat([emitted_workspace_runtime_package], packages |> sort_by(p => p))
+              ))
+            }
+        }
+    }
+  })
+}
+
+fn emitted_workspace_unit_of(assignment: Map<ModuleId, CompilationUnitId>, module: String) -> Optional<CompilationUnitId> {
+  match map_get(assignment, module as ModuleId) {
+    Accepted { value: owner, diagnostics: _ } => owner
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+// An edge (from_unit -> to_unit) of the unit graph is in the TRANSITIVE REDUCTION when no OTHER
+// direct dependency of from_unit reaches to_unit. Only such an edge can be dropped without another
+// crate's glob facade re-exporting the target by a second road.
+fn emitted_workspace_edge_is_irredundant(unit_edges: List<UnitDepEdge>, from_unit: CompilationUnitId, to_unit: CompilationUnitId) -> Bool {
+  let others = unit_direct_deps(edges: unit_edges, unit_id: from_unit) |> filter(d => d != to_unit)
+  !(unit_dep_closure(edges: unit_edges, acc: others, fuel: (unit_edges |> count) + 1) |> any(u => u == to_unit))
+}
+
+fn emitted_workspace_red(
+  edges: List<EmittedEdge>,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  unit_edges: List<UnitDepEdge>
+) -> Optional<EmittedWorkspaceRedDrop> {
+  edges |> fold(init: Absent, f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match edge.provenance {
+          SemanticSourceReference =>
+            match edge.to {
+              EmittedCrateRootTarget => Absent
+              EmittedModuleTarget { module: to_module } =>
+                match emitted_workspace_unit_of(assignment: assignment, module: edge.from) {
+                  Absent => Absent
+                  Present { value: from_unit } =>
+                    match emitted_workspace_unit_of(assignment: assignment, module: to_module) {
+                      Absent => Absent
+                      Present { value: to_unit } =>
+                        if from_unit != to_unit && emitted_workspace_edge_is_irredundant(unit_edges: unit_edges, from_unit: from_unit, to_unit: to_unit) {
+                          optional_present(
+                            value: EmittedWorkspaceRedDrop {
+                              package: emitted_workspace_package(unit_id: from_unit),
+                              dropped_package: emitted_workspace_package(unit_id: to_unit),
+                              from_module: edge.from,
+                              to_module: to_module
+                            }
+                          )
+                        } else { Absent }
+                    }
+                }
+            }
+          _ => Absent
+        }
+    }
+  })
+}
+
+fn emitted_workspace_red_rows(rows: List<GeneratedPartitionCrateRow>, red: EmittedWorkspaceRedDrop) -> List<GeneratedPartitionCrateRow> {
+  rows |> map(row =>
+    if row.package_name == red.package {
+      GeneratedPartitionCrateRow {
+        package_name: row.package_name,
+        crate_dir: row.crate_dir,
+        kind: row.kind,
+        modules: row.modules,
+        reexport_packages: row.reexport_packages |> filter(p => p != red.dropped_package),
+        carries_non_empty_wrappers: row.carries_non_empty_wrappers
+      }
+    } else { row }
+  )
+}
+
+fn emitted_workspace_facade_is_whole_closure(rows: List<GeneratedPartitionCrateRow>) -> Bool {
+  let layered = rows |> filter(r => r.package_name != emitted_workspace_runtime_package)
+  layered |> all(r => (r.reexport_packages |> count) == (rows |> count) - 1)
+}
+
+fn emitted_workspace_plan_over(
+  module_dag: ModuleDag,
+  emitted_basenames: List<String>,
+  edge_froms: List<String>,
+  edge_tos: List<String>,
+  edge_provenances: List<String>,
+  target_crate_count: Int
+) -> EmittedWorkspaceOutcome {
+  match emitted_workspace_basename_index(module_dag: module_dag) {
+    BasenameIndexRefused { cause: c } => EmittedWorkspaceRefused { cause: c }
+    BasenameIndexOk { module_by_basename: module_by_basename } =>
+      match emitted_workspace_edges(froms: edge_froms, tos: edge_tos, provenances: edge_provenances) {
+        EdgeListRefused { cause: c } => EmittedWorkspaceRefused { cause: c }
+        EdgeListOk { edges: edges } =>
+          match emitted_workspace_basename_dag(module_dag: module_dag, module_by_basename: module_by_basename, emitted_basenames: emitted_basenames) {
+            BasenameDagRefused { cause: c } => EmittedWorkspaceRefused { cause: c }
+            BasenameDagOk { module_dag: basename_dag } =>
+              match module_dag_with_emitted_edges(module_dag: basename_dag, emitted: edges) {
+                ModuleDagEmittedRefused { cause: c } => EmittedWorkspaceRefused { cause: EmittedWorkspaceEdgeMergeRefused { cause: c } }
+                ModuleDagEmittedMerged { module_dag: merged } => {
+                  let closure_dag = emitted_workspace_without_runtime(module_dag: merged)
+                  match resolve_partition_outcome(
+                    parameter: PolicyPartitionParam { policy: PartitionPolicy { target_crate_count: target_crate_count } },
+                    module_dag: closure_dag
+                  ) {
+                    ResolvePartitionRefused { cause: c } => EmittedWorkspaceRefused { cause: EmittedWorkspacePartitionRefused { cause: c } }
+                    ResolvePartitionOk { assignment: assignment, provenance: _ } => {
+                      let unit_ids = list_unique_sorted_ids(items: assignment |> map_values)
+                      let unit_edges = assignment_unit_dep_edges(module_dag: closure_dag, assignment: assignment)
+                      match emitted_workspace_derived_rows(unit_rows: emitted_workspace_unit_rows(modules: closure_dag.modules, assignment: assignment, unit_ids: unit_ids), unit_edges: unit_edges) {
+                        DerivedRowsRefused { cause: c } => EmittedWorkspaceRefused { cause: c }
+                        DerivedRowsOk { rows: rows } =>
+                          match emitted_workspace_red(edges: edges, assignment: assignment, unit_edges: unit_edges) {
+                            Absent => EmittedWorkspaceRefused { cause: EmittedWorkspaceNoDiscriminatingEdge }
+                            Present { value: red } =>
+                              EmittedWorkspacePlanned {
+                                plan: EmittedWorkspacePlan {
+                                  rows: rows,
+                                  red_rows: emitted_workspace_red_rows(rows: rows, red: red),
+                                  red: red,
+                                  module_count: closure_dag.modules |> count,
+                                  crate_count: rows |> count,
+                                  facade_is_whole_closure: emitted_workspace_facade_is_whole_closure(rows: rows)
+                                }
+                              }
+                          }
+                      }
+                    }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+// THE PRODUCTION ENTRY: the live closure derivation, the emission's own basenames and edges, and
+// the declared core target the closure's policy partition already uses.
+fn emitted_workspace_plan(
+  emitted_basenames: List<String>,
+  edge_froms: List<String>,
+  edge_tos: List<String>,
+  edge_provenances: List<String>
+) -> EmittedWorkspaceOutcome {
+  match emitted_compiler_closure_module_dag() {
+    ModuleDagDerivationRefused { cause: c } => EmittedWorkspaceRefused { cause: EmittedWorkspaceDagRefused { cause: c } }
+    ModuleDagDerived { module_dag: module_dag } =>
+      emitted_workspace_plan_over(
+        module_dag: module_dag,
+        emitted_basenames: emitted_basenames,
+        edge_froms: edge_froms,
+        edge_tos: edge_tos,
+        edge_provenances: edge_provenances,
+        target_crate_count: rust_crate_partition_declared_core_target
+      )
+  }
+}

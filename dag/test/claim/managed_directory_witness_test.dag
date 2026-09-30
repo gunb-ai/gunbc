@@ -6,6 +6,8 @@ import extdeps.access.posix {
   PermissionBits,
   FileMode,
   file_mode_octal,
+  file_mode_of_octal_text,
+  permission_bits_of_octal_digit,
 }
 import std.effect_grant { Read, Write, Execute }
 import gunbc.ownership { Owned }
@@ -16,6 +18,12 @@ import gunbc.managed_directory {
   dependent_class_of,
   managed_directory_permissions,
   managed_directory_mode_octal,
+  ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
+  managed_directory_admit,
+  EntriesUnmanaged,
+  entry_class_of,
+  managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused,
+  entry_mode_add_read_symbolic,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -55,8 +63,10 @@ fn dir_with(dependents: List<DirectoryDependent>) -> ManagedDirectory {
     member: "synthetic",
     path: "/synthetic/root",
     owner: owner_user(),
+    group_principal: owner_user(),
     dependents: dependents,
     ownership: Owned,
+    entries: EntriesUnmanaged,
   }
 }
 
@@ -69,15 +79,15 @@ fn class_label(c: DependentClass) -> String {
 }
 
 test fn witness_same_uid_is_owner_class() -> Bool {
-  class_label(c: dependent_class_of(owner: owner_user(), who: owner_user())) == "owner"
+  class_label(c: dependent_class_of(owner: owner_user(), group_gid: owner_user().gid, who: owner_user())) == "owner"
 }
 
 test fn witness_shared_gid_is_group_class() -> Bool {
-  class_label(c: dependent_class_of(owner: owner_user(), who: group_mate_user())) == "group"
+  class_label(c: dependent_class_of(owner: owner_user(), group_gid: owner_user().gid, who: group_mate_user())) == "group"
 }
 
 test fn witness_unrelated_principal_is_other_class() -> Bool {
-  class_label(c: dependent_class_of(owner: owner_user(), who: stranger_user())) == "other"
+  class_label(c: dependent_class_of(owner: owner_user(), group_gid: owner_user().gid, who: stranger_user())) == "other"
 }
 
 test fn witness_sole_owner_dependent_derives_0700() -> Bool {
@@ -127,4 +137,173 @@ test fn witness_octal_renders_special_bits_digit() -> Bool {
     sticky: false,
   }
   file_mode_octal(mode: mode) == "2750"
+}
+
+// THE INVERSE IS THE SAME GRAMMAR READ BACKWARD (DESIGN section 4), so the discriminating check is
+// that the round trip preserves the mode -- not that one hand-picked string parses. stat's %a omits
+// the special digit when it is zero, so "660" and "0660" must reach the same FileMode; that pair is
+// the reason the reader slices digits from the least significant end rather than branching on
+// length.
+test fn the_octal_parse_is_the_inverse_of_the_render_for_three_and_four_digit_forms() -> Bool {
+  let setgid_mode = FileMode {
+    owner: PermissionBits { read: true, write: true, execute: true },
+    group: PermissionBits { read: true, write: false, execute: true },
+    other: PermissionBits { read: false, write: false, execute: false },
+    setuid: false,
+    setgid: true,
+    sticky: false,
+  }
+  let kvm_mode = FileMode {
+    owner: PermissionBits { read: true, write: true, execute: false },
+    group: PermissionBits { read: true, write: true, execute: false },
+    other: PermissionBits { read: false, write: false, execute: false },
+    setuid: false,
+    setgid: false,
+    sticky: false,
+  }
+  (match file_mode_of_octal_text(text: file_mode_octal(mode: setgid_mode)) {
+    Present { value: m } => file_mode_octal(mode: m) == "2750" && m.setgid && !m.group.write
+    Absent => false
+  })
+    && (match file_mode_of_octal_text(text: "660") {
+      Present { value: m } => file_mode_octal(mode: m) == file_mode_octal(mode: kvm_mode) && m.group.write
+      Absent => false
+    })
+    && (match file_mode_of_octal_text(text: "0660") {
+      Present { value: m } => file_mode_octal(mode: m) == file_mode_octal(mode: kvm_mode)
+      Absent => false
+    })
+    && (match file_mode_of_octal_text(text: "640") {
+      Present { value: m } => !m.group.write && m.group.read
+      Absent => false
+    })
+}
+
+// AN UNPARSEABLE MODE IS A REFUSAL AND NEVER A MODE WITH EVERYTHING FALSE, because the consumer is
+// deciding whether a device is delegated to a group: a fabricated all-denied mode would render as
+// "this host does not delegate", sending an operator to fix a udev rule that is fine, when what
+// actually happened is that the probe failed. An octal digit above 7 is the sharp case -- "680" is
+// digits all the way down and still not a mode.
+test fn an_unreadable_octal_mode_refuses_rather_than_reading_as_all_denied() -> Bool {
+  (match file_mode_of_octal_text(text: "") { Absent => true  Present { value: _ } => false })
+    && (match file_mode_of_octal_text(text: "rw-rw----") { Absent => true  Present { value: _ } => false })
+    && (match file_mode_of_octal_text(text: "680") { Absent => true  Present { value: _ } => false })
+    && (match file_mode_of_octal_text(text: "-1") { Absent => true  Present { value: _ } => false })
+    && (match file_mode_of_octal_text(text: "77777") { Absent => true  Present { value: _ } => false })
+    && (match permission_bits_of_octal_digit(digit: 8) { Absent => true  Present { value: _ } => false })
+    && (match permission_bits_of_octal_digit(digit: 6) {
+      Present { value: b } => b.read && b.write && !b.execute
+      Absent => false
+    })
+}
+
+// ── A SECOND WRITER'S GROUP, AND THE WRITER NOBODY COVERS ────────────────────────────────────────
+//
+// The fabric store's shape on synthetic principals: the owner writes, and one writer with its own
+// gid writes too. Naming that writer as the group principal admits it as group and sets setgid
+// (2770); leaving the group at the owner's puts it in the other class, and admission REFUSES naming
+// it -- the model-level RED for an ensure the claim principal could not write. The derivation alone
+// would have granted the other class write (0707) there, which is the world-writable arm the admission exists to close.
+
+fn writers_dir(group: PosixUser) -> ManagedDirectory {
+  ManagedDirectory {
+    member: "synthetic-store",
+    path: "/synthetic/store",
+    owner: owner_user(),
+    group_principal: group,
+    dependents: [
+      DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
+      DirectoryDependent { who: stranger_user(), needs: [Read, Write, Execute] },
+    ],
+    ownership: Owned,
+    entries: EntriesUnmanaged,
+  }
+}
+
+test fn witness_second_writer_group_derives_setgid_2770() -> Bool {
+  managed_directory_mode_octal(d: writers_dir(group: stranger_user())) == "2770"
+}
+
+test fn witness_second_writer_group_is_admitted() -> Bool {
+  match managed_directory_admit(d: writers_dir(group: stranger_user())) {
+    ManagedDirectoryAdmitted { dir: _ } => true
+    ManagedDirectoryRefused { member: _, path: _, writer: _ } => false
+  }
+}
+
+test fn witness_uncovered_writer_refuses_naming_it() -> Bool {
+  match managed_directory_admit(d: writers_dir(group: owner_user())) {
+    ManagedDirectoryAdmitted { dir: _ } => false
+    ManagedDirectoryRefused { member: _, path: _, writer } => (writer as String) == "outsider"
+  }
+}
+
+test fn witness_uncovered_writer_would_have_derived_world_write() -> Bool {
+  managed_directory_permissions(d: writers_dir(group: owner_user())).mode.other.write
+}
+
+// ── ENTRY MODE ───────────────────────────────────────────────────────────────────────────────
+//
+// writers_dir(group: stranger_user()) is the two-writer store shape: the owner and a second writer
+// whose own group is the directory's (setgid). An entry the SECOND writer creates is theirs, in their
+// group, so the directory's owner -- not a member of that group -- can read it only through OTHER.
+// The derivation must say so (0444), must say it only because a declared reader needs it (a
+// single-writer directory derives owner-read alone), and must REFUSE the moment the directory lets
+// other traverse, because the same o+r would then reach every account.
+
+fn entry_mode_octal_or_refused(d: ManagedDirectory) -> String {
+  match managed_directory_entry_mode(d: d) {
+    ManagedEntryModeDerived { mode } => file_mode_octal(mode: mode)
+    ManagedEntryModeRefused { member: _, path: _, reason: _ } => "refused"
+  }
+}
+
+test fn witness_owner_reads_second_writers_entry_through_other() -> Bool {
+  class_label(c: entry_class_of(d: writers_dir(group: stranger_user()), writer: stranger_user(), reader: owner_user())) == "other"
+}
+
+test fn witness_second_writer_reads_owners_entry_through_group() -> Bool {
+  class_label(c: entry_class_of(d: writers_dir(group: stranger_user()), writer: owner_user(), reader: stranger_user())) == "group"
+}
+
+test fn witness_two_writer_store_entries_derive_0444() -> Bool {
+  entry_mode_octal_or_refused(d: writers_dir(group: stranger_user())) == "0444"
+}
+
+test fn witness_entry_repair_adds_exactly_the_derived_read_bits() -> Bool {
+  match managed_directory_entry_mode(d: writers_dir(group: stranger_user())) {
+    ManagedEntryModeDerived { mode } => entry_mode_add_read_symbolic(mode: mode) == "u+r,g+r,o+r"
+    ManagedEntryModeRefused { member: _, path: _, reason: _ } => false
+  }
+}
+
+test fn witness_single_writer_entries_derive_owner_read_only() -> Bool {
+  entry_mode_octal_or_refused(d: dir_with(dependents: [DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] }])) == "0400"
+}
+
+// THE RED. Same store, plus one principal outside owner and group that needs only to TRAVERSE: the
+// directory now derives o+x, so the entries' o+r would publish them to that principal and to every
+// other account. The derivation must refuse, and the control above is the same store without it.
+fn store_other_can_traverse() -> ManagedDirectory {
+  ManagedDirectory {
+    member: "synthetic-store",
+    path: "/synthetic/store",
+    owner: owner_user(),
+    group_principal: stranger_user(),
+    dependents: [
+      DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
+      DirectoryDependent { who: stranger_user(), needs: [Read, Write, Execute] },
+      DirectoryDependent { who: PosixUser { name: "third", uid: 4003, gid: 4003, shell: LoginShellUnobserved }, needs: [Execute] },
+    ],
+    ownership: Owned,
+    entries: EntriesUnmanaged,
+  }
+}
+
+test fn witness_other_traverse_directory_grants_o_x() -> Bool {
+  managed_directory_permissions(d: store_other_can_traverse()).mode.other.execute
+}
+
+test fn witness_entry_other_read_refuses_when_other_can_traverse() -> Bool {
+  entry_mode_octal_or_refused(d: store_other_can_traverse()) == "refused"
 }

@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.extracting_a_collection_whose_elements_are_the_cost
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data extracting_a_collection_whose_elements_are_the_cost: RecurringFailureMode = RecurringFailureMode {
+  identity: "extracting_a_collection_whose_elements_are_the_cost" as NonEmptyStr,
+
+  receipts: [
+    "**a projection of a collection of CONSTRUCTED values buys nothing, because the projection IS the construction.** INVALID STATE: a claim reads two scalar fields off the elements of a large literal, is over its cost budget, and the repair chosen is to lift the collection out of the larger structure so the claim can read the smaller declaration. The move is correct as MODELING and worthless as COST whenever the elements are themselves constructed: forcing the extracted list forces every element, so the only saving is whatever ELSE the enclosing structure carried. Where that remainder is small, the extraction measures as noise.",
+
+    "THE TELL, and it is available before the extraction is written: ask what the collection's elements ARE. If they are function calls or record literals with bodies, the list cannot be forced more cheaply than its elements, and no projection of it can be cheap. If they are scalars -- ids, names, edges -- the projection is genuinely cheaper than whatever encloses them. The distinction is between projecting a collection OF the expensive thing and projecting the cheap FIELDS of the expensive thing; only the second changes what is forced.",
+
+    "SPECIMEN, measured on the required floor across two runs, gunbc#12011. test.claim.workflow_dispatch_input_witness fleet_converge_workflow_has_build_job_needs_release_bins reads seven job ids and their needs edges. Reading them off gunbc.fleet_converge_workflow fleet_converge_workflow: 521845 eval steps against a 72300 budget. The suspected cost was `on`, whose DispatchInput descriptions run to thousands of characters each, so the seven jobs were lifted into their own declaration and the claim was pointed at it. Reading the roster: 521510 eval steps. 335 steps, 0.06%. The jobs are seven function calls that build every step body, so the roster forced exactly what the workflow did.",
+
+    "WHY THE WRONG SUSPECT WAS PLAUSIBLE: the `on` field really is enormous in CHARACTERS -- a single description string runs to thousands -- and character size is the property a reader can see. Eval steps are not charged per character of a literal string; they are charged per node constructed, and seven jobs of many steps each construct far more nodes than a handful of long strings. The class is therefore not carelessness but a reading of cost from the wrong dimension of the source.",
+
+    "DISTINGUISHING FACT THAT MAKES THIS A CLASS: the extraction is usually RIGHT on its own terms and should be kept. In the specimen the jobs were inline in the Workflow literal, so the workflow was the only route to the job partition, and the roster is a genuine single authority. What must not survive is the COST justification: an annotation claiming a saving that was measured away is the overclaim DESIGN section 4b(1) names, in a place no reviewer rereads once the diff lands.",
+
+    "REPAIR, TWO PARTS. The measurement first: state the before and after figures on the carrier and retract the cost claim if it did not move, keeping the extraction on whatever modeling ground stands alone. Then the repair that can work -- project the cheap FIELDS rather than the collection: a roster of ids and needs edges, built independently of the elements and CONSUMED by them for those fields, so reading it forces no element body. That is a different mechanism, not a second attempt at the same one.",
+
+    "RUNG FOUND AT: mitigatable. The floor's eval-step ceiling refuses the over-budget claim, which is what prompts the repair, but it cannot tell a repair that worked from one that did not -- both report a number, and only comparing two runs distinguishes them. The author noticing is the whole mechanism.",
+
+    "ATTAINABLE CEILING: mechanically preventable. What forces what is a property of the source graph, so the cost a claim incurs by naming a declaration is derivable before it runs: a lens can price the forced set of a claim's referenced declarations and report that the extracted collection's forced set is within noise of the enclosing structure's. NEXT-RUNG TRIGGER, naming the CAPABILITY: a lens that reports the forced-node set of a declaration, sufficient to answer 'is reading X cheaper than reading Y' without executing either. A trigger naming the eval-step ceiling instead would be satisfied while the class stayed alive, because the ceiling sees totals and never the counterfactual.",
+
+    "WHAT THIS ROW DOES NOT CLAIM: that extracting a collection is a defect. It is frequently the correct authority move and was kept in the specimen. The defect is the unmeasured cost claim attached to it, and the wasted round spent on a repair whose mechanism could not have worked.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_jobs", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "new_witness_over_budget_first_remedy", field: WholeDeclaration },
+  ],
+}

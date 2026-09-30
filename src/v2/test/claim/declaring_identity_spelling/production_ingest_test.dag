@@ -4,7 +4,7 @@ import v2.compiler.declaring_identity_spelling_census {
   DeclaringIdentitySpellingCensus,
   spelling_census_from_ingest
 }
-import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
+import v2.compiler.normalized_tree { normalized_tree_roots_to_binding_sources }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.reference_site_collector { collect_reference_sites }
 import v2.compiler.resolution_provenance {
@@ -16,6 +16,7 @@ import v2.compiler.resolution_provenance {
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.std.namespace_alias { ModuleBindingSource, module_binding_source_roots }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, is_empty }
 import v2.std.artifact { Artifact, SourceFile }
@@ -153,7 +154,7 @@ type Xl3PathCensus {
 type Xl3FixtureCensuses {
   by_path: List<Xl3PathCensus>
   two_module: Optional<DeclaringIdentitySpellingCensus>
-  value_outside_call_roots: Optional<FreeMonoid<Node>>
+  value_outside_call_roots: Optional<FreeMonoid<ModuleBindingSource>>
 }
 
 fn read_for_path(reads: SourceRootIngest, path: String) -> Optional<DagSourceReadWitness> {
@@ -219,7 +220,7 @@ fn xl3_fixture_censuses() -> Xl3FixtureCensuses {
         lm: dag_language_model()
       ) {
         Accepted { value: normalized, diagnostics: _ } =>
-          Present { value: normalized_tree_roots_to_nodes(roots: normalized) }
+          Present { value: normalized_tree_roots_to_binding_sources(roots: normalized) }
         Rejected { diagnostics: _ } => Absent
       }
   }
@@ -309,12 +310,12 @@ test fn enrolled_same_module_site_binds_on_the_resolution_path_holds() -> Bool {
   }
 }
 
-fn value_outside_call_roots() -> Optional<FreeMonoid<Node>> {
+fn value_outside_call_roots() -> Optional<FreeMonoid<ModuleBindingSource>> {
   xl3_fixture_censuses().value_outside_call_roots
 }
 
-fn marker_site_fill_lookup_is_present(roots: FreeMonoid<Node>) -> Bool {
-  let collected = collect_reference_sites(roots: roots)
+fn marker_site_fill_lookup_is_present(roots: FreeMonoid<ModuleBindingSource>) -> Bool {
+  let collected = collect_reference_sites(roots: module_binding_source_roots(sources: roots))
   let index = symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots)
   fold_list(
     xs: collected.sites,
@@ -348,14 +349,17 @@ test fn ingest_fill_does_not_index_the_same_module_data_name_today() -> Bool {
   }
 }
 
-// Retracted as a compiler fact. Kept as an index-path measurement: the census
-// row is Unbound because fill missed, not because the name cannot compile.
-test fn a_bare_value_mention_outside_a_call_is_unbound_today() -> Bool {
+// FLIPPED 2026-09-19 (DESIGN 4b(4)): `marker` is a data declaration of the same module;
+// while the graft Named only fn declarations its mention in `go()` stayed IdentityUnbound.
+// gunbc#11574 Names data declarations, so the mention binds. Permanent control.
+test fn a_bare_value_mention_outside_a_call_is_bound_holds() -> Bool {
   match census_of(
     path: value_outside_call_path,
     unit: ^xl3_value_outside_call
   ) {
-    Present { value: census } => authored_unbound(census: census, spelling: "marker")
+    Present { value: census } =>
+      authored_is(census: census, spelling: "marker")
+        && !authored_unbound(census: census, spelling: "marker")
     Absent => false
   }
 }
@@ -396,16 +400,18 @@ test fn a_callee_name_reaches_the_census_holds() -> Bool {
   }
 }
 
-// Census-row spelling "Int": kernel types have no corpus declaration. Not a
-// type-position collector miss and not a lowering class.
-test fn a_kernel_type_position_name_is_absent_from_the_census_today() -> Bool {
+// FLIPPED 2026-09-19 (DESIGN 4b(4)): the kernel type `Int` reaches the census from the
+// data declaration's own type position (`data marker: Int`) once gunbc#11574 Names the
+// data declaration at its content (the `: Int = 0` remainder). Before, the data shell was
+// not a graft member and its type annotation reached no collector. Permanent control.
+test fn a_kernel_type_position_name_reaches_the_census_holds() -> Bool {
   match census_of(
     path: value_outside_call_path,
     unit: ^xl3_value_outside_call
   ) {
     Present { value: census } =>
       authored_is(census: census, spelling: "marker")
-        && !authored_is(census: census, spelling: "Int")
+        && authored_is(census: census, spelling: "Int")
     Absent => false
   }
 }
@@ -488,15 +494,22 @@ test fn a_qualified_type_position_mention_reaches_the_census_holds() -> Bool {
   }
 }
 
-// QUALIFIED field type. Still absent, and now for ONE reason rather than two:
-// qualification no longer hides a mention (the two rows above reach), so what is
-// left is field position -- the record declaration is not grafted into the
-// containment tree at all. The discriminator is field_vs_parameter.
-test fn a_qualified_field_type_mention_is_absent_from_the_census_today() -> Bool {
+// QUALIFIED field type, no call. THIS ROW WAS ENROLLED AS "IS ABSENT TODAY" AND WAS FOUND RED ON
+// MAIN (14d58480c9, 2026-09-29) WITH NOTHING HAVING RE-STATED IT: the mention reaches the census as
+// one authored spelling, the way the parameter-type row beside it does. Attributed by stage on these
+// fixtures: the parse holds the token, the normalized tree holds the whole qualified spine, and
+// v2.compiler.reference_site_collector collect_reference_sites emits exactly one site for it. The
+// gap the row recorded -- a record declaration not grafted -- closed when
+// v2.compiler.namespace_graft began Naming every type_decl unit and body lowering declared record
+// fields through body_lower_field_decl_block_payload, whose field type is read by the same
+// body_lower_type_expr_lowered_optional a parameter type is. So this is now a conserved control:
+// deleting that route makes it red. LocalParam is the positive control, as above; whether the
+// mention BINDS is the second fact the rows above leave to their own trigger.
+test fn a_qualified_field_type_mention_reaches_the_census_holds() -> Bool {
   match two_module_census() {
     Present { value: census } =>
       two_module_usable_class_probe(census: census)
-        && !authored_is(census: census, spelling: qualified_field_type_spelling)
+        && authored_is(census: census, spelling: qualified_field_type_spelling)
     Absent => false
   }
 }
@@ -508,14 +521,14 @@ fn field_vs_parameter_census() -> Optional<DeclaringIdentitySpellingCensus> {
   )
 }
 
-// SAME ingest, BARE names, no dots. Parameter type reaches; field type does not.
-// Qualification is not what the field miss measures.
-test fn a_bare_parameter_type_reaches_while_a_bare_field_type_does_not() -> Bool {
+// SAME ingest, BARE names, no dots. Residual reconstruct keeps the field type
+// spelling in the census the way the tree keeps it.
+test fn a_bare_parameter_type_reaches_and_a_bare_field_type_does_too() -> Bool {
   match field_vs_parameter_census() {
     Present { value: census } =>
       census_unreadable_roots_empty(census: census)
         && authored_is(census: census, spelling: "ParamOnly")
-        && !authored_is(census: census, spelling: "FieldOnly")
+        && authored_is(census: census, spelling: "FieldOnly")
     Absent => false
   }
 }

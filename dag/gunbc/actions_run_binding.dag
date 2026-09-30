@@ -54,6 +54,13 @@ fn actions_variable_read(name: String) -> ActionsVariableRead {
   }
 }
 
+fn actions_variable_trimmed(name: NonEmptyStr) -> String {
+  match actions_variable_read(name: name as String) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+}
+
 fn observe_actions_run_binding() -> ActionsRunBindingObservation {
   match actions_variable_read(name: github_repository_variable_name) {
     ActionsVariableAbsent { variable: v, detail: d } => ActionsRunUnbound { variable: v, detail: d }
@@ -88,6 +95,8 @@ fn observe_actions_run_binding() -> ActionsRunBindingObservation {
 // THE EXPECTED REVISION IS A WORKFLOW INPUT, NOT A DERIVED FACT. One name for every mode of the
 // transaction, so a receipt produced by any of the four runs is comparable to any other.
 data rlm_expected_revision_env_name: String = "RLM_EXPECTED_REVISION"
+
+data fleet_converge_expected_host_env_name: String = "FLEET_CONVERGE_EXPECTED_HOST"
 
 type ExpectedRevisionRead
   = ExpectedRevisionPresent { revision: String }

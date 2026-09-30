@@ -4,7 +4,6 @@ import std.types { Bool }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.host_identity_access {
@@ -175,7 +174,6 @@ fn host_toolchain_target_host_under(
 }
 
 fn host_toolchain_ensure(host: HostIdentity, kind: HostToolchainKind) -> ProcessExit
-  uses net: Network
 {
   match host_toolchain_ensure_reach(kind: kind, host: host) {
     ReachResolved { reach: reach } =>

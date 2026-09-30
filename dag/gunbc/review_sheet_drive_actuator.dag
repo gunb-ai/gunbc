@@ -1,7 +1,6 @@
 module gunbc.review_sheet_drive_actuator
 
 import std.types { NonEmptyStr, String, Bool }
-import std.resources { Network }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
@@ -57,7 +56,7 @@ type MembershipConvergeOutcome
 fn read_membership(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
-) -> DriveMembershipObservation uses net: Network {
+) -> DriveMembershipObservation {
   let read = drive.Permissions.ListPermissions(file_id: drive_id as String)
   match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
     RestExchangeSucceeded => membership_from_permissions(list: read.list, writer: writer)
@@ -87,7 +86,7 @@ fn verify_granted_membership(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
   grant_detail: NonEmptyStr,
-) -> MembershipConvergeOutcome uses net: Network {
+) -> MembershipConvergeOutcome {
   match read_membership(drive_id: drive_id, writer: writer) {
     MembershipObserved { role: r } => MembershipGrantedAndVerified { role: r }
     MembershipAbsent =>
@@ -113,7 +112,7 @@ fn verify_granted_membership(
 
 fn perform_membership_grant(
   plan: MembershipGrantPlan,
-) -> MembershipConvergeOutcome uses net: Network {
+) -> MembershipConvergeOutcome {
   let created = drive.Permissions.CreatePermission(
     file_id: plan.drive_id as String,
     role: plan.role,
@@ -155,7 +154,7 @@ fn converge_drive_membership(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
   policy: EnsurePolicy,
-) -> MembershipConvergeOutcome uses net: Network {
+) -> MembershipConvergeOutcome {
   let observed = read_membership(drive_id: drive_id, writer: writer)
   match ensure_drive_membership(
     policy: policy,

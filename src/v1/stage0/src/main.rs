@@ -46,13 +46,14 @@ enum RetainedCommands {
         measured_root_demands: Option<String>,
     },
 
-    /// Run one target by its absolute label and report the standing its own producer
-    /// answers in. The label is exact: a target PATTERN refuses, and an unbound or
-    /// unknown target refuses rather than reporting a pass.
+    /// Run a target named by an absolute label or a bazel-style target PATTERN, and
+    /// report the standing its own producer answers in. An exact label routes to its
+    /// bound producer. A set form is admitted and refused with status 2: it runs only
+    /// through the native test route, never the interpreter. An unadmitted form or an
+    /// unknown target refuses.
     Test {
-        /// Absolute label of exactly one target, e.g.
-        /// `//gunbc/instruments:heads-reading-differential`.
-        #[arg(value_name = "LABEL")]
+        /// Absolute label of one target, or a pattern denoting a set.
+        #[arg(value_name = "TARGET_PATTERN")]
         target: String,
     },
 
@@ -94,6 +95,10 @@ enum RetainedCommands {
         host: String,
         #[arg(long, default_value = "8080")]
         port: u16,
+        /// Listen on this unix socket INSTEAD of --host/--port. Each request's kernel-attested
+        /// peer (SO_PEERCRED) is handed to the handler as peer_user.
+        #[arg(long = "unix-socket")]
+        unix_socket: Option<String>,
         /// Release revision this process serves, bound ONCE at startup and immutable for the
         /// process lifetime. Required and validated before the listener binds: `gunbc serve`
         /// compiles its graph once, so the launch argument is the only fact describing what
@@ -422,6 +427,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         function: String,
         host: String,
         port: u16,
+        unix_socket: Option<String>,
         release_revision: String,
         eval_budget_cpu_ms: Option<u64>,
         eval_budget_wall_ms: Option<u64>,
@@ -433,6 +439,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
                 function,
                 host,
                 port,
+                unix_socket,
                 release_revision,
                 eval_budget_cpu_ms,
                 eval_budget_wall_ms,
@@ -673,6 +680,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             let pipeline_options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
                 analyze_complexity: false,
                 census_only_sources: Rc::new(census_only_sources.into()),
+                corpus: v1_compiler_compile::CorpusScope::CorpusUnknown,
             });
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources_with_options(
@@ -777,7 +785,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // Deliberately no mode switch and no arm per instrument: which producer a label names is
         // decided by the registry in `target_invocation_host`, mirroring
         // `gunbc.instrument_targets`, and the realization is selected one level below. A second
-        // instrument adds a row there and nothing here.
+        // instrument adds a row there and nothing here. A set PATTERN (`//pkg:all`, `//pkg/...`)
+        // is admitted by the same host's `parse_target_pattern` mirror and refused with status 2
+        // until the native test route executes it — never delegated to the interpreter.
         //
         // The status is the producer's own termination, not an aggregate verdict: 0 the reading
         // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
@@ -823,6 +833,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             function,
             host,
             port,
+            unix_socket,
             release_revision,
             eval_budget_cpu_ms,
             eval_budget_wall_ms,
@@ -833,6 +844,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 function,
                 host,
                 port,
+                unix_socket,
                 release_revision,
                 cli_run::ServeEvaluationBudget {
                     cpu_limit_ms: eval_budget_cpu_ms,
@@ -1158,6 +1170,36 @@ fn run_verb(
         };
     }
 
+    // THE WORKSPACE ROOT IS BOUND HERE, AND IT IS BOUND FIRST.
+    //
+    // Everything downstream keys module-graph facts and content indices against it, so it must be
+    // decided before the first read rather than discovered on first use -- and it is decided HERE
+    // because this is the only place that holds the request's source roots. Discovery is the
+    // incumbent authority and is asked first, so a run inside a checkout resolves exactly as it
+    // always did; the request names the base only where there is no checkout to discover one from,
+    // and a run that can name no base at all refuses with a located cause instead of aborting
+    // inside a helper thirty frames down.
+    // THE CHOICE IS REPORTED, NOT INFERRED. Two rules can name the base and they key the module
+    // graph differently, so which one answered is a fact the operator of a run is entitled to see
+    // without reconstructing it from their own cwd. A selection nobody can observe is how a
+    // fall-through becomes indistinguishable from a silent widen.
+    let bound = cli_run::pre_entry_phase::timed(
+        "workspace_discovery",
+        cli_run::pre_entry_phase::PhaseScale::Closure,
+        || cli_run::bind_process_workspace_root(source_roots),
+    );
+    match bound {
+        Ok((root, basis)) => {
+            eprintln!("[workspace-root] {} {}", basis.wire(), root.display());
+        }
+        Err(cause) => {
+            return Verdict {
+                status: 2,
+                message: Some(format!("error: {cause}")),
+            };
+        }
+    }
+
     // Refuse a malformed --arg BEFORE the compile, so the diagnostic is the first thing
     // printed rather than the last thing after a minute of resolution.
     let run_args = match decode_run_args(args) {
@@ -1190,7 +1232,14 @@ fn run_verb(
         };
     }
 
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(source_roots, entry_file) {
+    let resolve_started = std::time::Instant::now();
+    let resolved = cli_run::resolve_entry_graph(source_roots, entry_file);
+    report_pre_entry_phases(
+        resolve_started.elapsed(),
+        source_roots,
+        resolved.as_ref().ok().map(|(_, si)| si.len()),
+    );
+    let (graph, source_indices) = match resolved {
         Ok(resolved) => resolved,
         Err(cause) => {
             return Verdict {
@@ -1271,6 +1320,61 @@ fn run_verb(
         verdict.message = Some(failures.join("\n"));
     }
     verdict
+}
+
+/// Print the pre-entry phase receipt (`cli_run::pre_entry_phase`): the tree-scaled phases
+/// recorded where they ran, then the closure-scaled resolve stages from `ResolveStageNanos`,
+/// then the inclusive resolve window they sit inside. Printed whether resolve succeeded or
+/// refused, because a refusal after minutes of preparation is exactly the run whose cost
+/// the operator most needs attributed.
+fn report_pre_entry_phases(
+    resolve_inclusive: std::time::Duration,
+    source_roots: &[String],
+    closure_files: Option<usize>,
+) {
+    use cli_run::pre_entry_phase::{record, take_lines, PhaseScale};
+    let st = cli_run::resolve_stage_totals();
+    let ns = |n: u128| std::time::Duration::from_nanos(n as u64);
+    for (name, nanos) in [
+        ("closure_load", st.load),
+        ("closure_parse", st.parse),
+        ("closure_resolve", st.resolve),
+        ("closure_normalize", st.normalize),
+        ("closure_typecheck", st.typecheck_compute),
+        ("closure_parent_envs", st.parent_envs),
+        ("closure_reconcile_assembly", st.reconcile_assembly),
+        ("closure_ownership", st.ownership),
+    ] {
+        record(name, PhaseScale::Closure, ns(nanos));
+    }
+    record(
+        "resolve_entry_graph_inclusive",
+        PhaseScale::Closure,
+        resolve_inclusive,
+    );
+    for line in take_lines() {
+        eprintln!("{line}");
+    }
+    // POPULATIONS beside the times, so a reader can tell whether a row moved because its input
+    // grew or because its work per input changed: the indexed pool (every module under every
+    // --source-root) against the files of the entry's resolved closure.
+    let pool_modules = cli_run::pre_entry_phase::pool_module_count(source_roots)
+        .map_or("refused".to_string(), |n| n.to_string());
+    let closure = closure_files.map_or("refused".to_string(), |n| n.to_string());
+    eprintln!("[pre-entry] population pool_modules={pool_modules} closure_files={closure}");
+    // CPU beside wall: a phase whose wall exceeds the process's CPU is waiting, not computing.
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    // SAFETY: getrusage writes a full rusage into the pointer on success, which is checked.
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } == 0 {
+        let usage = unsafe { usage.assume_init() };
+        let ms = |t: libc::timeval| t.tv_sec as i64 * 1000 + t.tv_usec as i64 / 1000;
+        eprintln!(
+            "[pre-entry] process_cpu user_ms={} sys_ms={} max_rss_kib={}",
+            ms(usage.ru_utime),
+            ms(usage.ru_stime),
+            usage.ru_maxrss
+        );
+    }
 }
 
 fn run_one_function(

@@ -1,0 +1,219 @@
+module test.claim.machine_intake.ampere_socket_console_observation_witness_test
+
+import std.types { Bool, Int, List, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.optional { Present }
+import extdeps.ampere.ras_error_section {
+  AmpereRasGic, AmpereRasPmproFw, AmpereRasBert, AmperePayloadFirmwareSpecific, AmpereRasTypeUndefined,
+  ampere_ras_section_header_of, AmpereRasTypeDefined,
+}
+import gunbc.machine_intake_ampere_socket_console_observation {
+  AmpereSocketConsoleObservation, AmpereSummaryObserved, AmpereSummaryNotPrinted, CperFromBert,
+  ActiveSocketsDiffer, SummarySocketAbsent, InterSocketLinkAbsent, SummaryFieldDiffers, CperRecordAbsent, CperRecordAdded,
+  ampere_socket_console_observation, ampere_cper_sockets_this_boot, ampere_summary_sockets,
+  ampere_socket_console_differences, ampere_socket_console_text,
+}
+import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_census_sol_artifact_path }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE REFERENCE IS THE COMMITTED TWO-SOCKET BOOT, read whole from the tree on the production fold's
+// route: artifacts/bmc/mtcollins1-hw-census-sol.log (240475 bytes, sha256
+// 1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8), the census run of 2026-09-10
+// that reported 2 sockets and 160 CPUs. A missing path reads as empty content on this route, so every
+// reference claim first asserts the file's length. A String's length counts Unicode scalar values,
+// not bytes: the file's 240475 bytes decode (UTF-8, no replacement) to 240341 scalars.
+data reference_scalars: Int = 240341
+
+fn reference_text() -> String {
+  Filesystem.Read(path: mtcollins1_census_sol_artifact_path as String).content
+}
+
+// THE WHOLE-FILE ROUTE IS PAID ONCE (DESIGN §3, a witness discriminates at one interface): only
+// the_comparison_over_the_committed_file_names_socket_one reads the capture whole. The other
+// reference claims supply its three regions as excerpts, exact bytes of that file.
+// artifacts/bmc/mtcollins1-hw-census-sol.log lines 455-494 verbatim; excerpt sha256 969989d117ab172dca5f80995c8c0a8c23ed3c090a24dc14595f3e257f7db35c.
+data reference_summary: String = "UEFI RC version: 1.08\r\nSCP FW version    : 1.08\r\nSCP FW build date : 20210825\r\nFailsafe status                 : 0\r\nReset status                    : 3\r\nCPU info\r\n    CPU ID                      : 413FD0C1\r\n    CPU Clock                   : 2800 MHz\r\n    Number of active sockets    : 2\r\n    Number of active cores      : 160\r\n    Inter Socket Connection 0   : Width: x16 / Speed 25 GT/s\r\n    Inter Socket Connection 1   : Width: x16 / Speed 25 GT/s\r\n    Socket[0]: Core voltage     : 1065\r\n    Socket[0]: SCU ProductID    : A10001\r\n    Socket[0]: Max cores        : 80\r\n    Socket[0]: Warranty         : 0\r\n    Socket[0]: Subnuma          : 0\r\n    Socket[0]: RC disable mask  : 3\r\n    Socket[0]: AVS enabled      : 1\r\n    Socket[0]: AVS voltage      : 1027\r\n    Socket[1]: Core voltage     : 1035\r\n    Socket[1]: SCU ProductID    : A10001\r\n    Socket[1]: Max cores        : 80\r\n    Socket[1]: Warranty         : 1\r\n    Socket[1]: Subnuma          : 0\r\n    Socket[1]: RC disable mask  : 3\r\n    Socket[1]: AVS enabled      : 1\r\n    Socket[1]: AVS voltage      : 996\r\nSOC info\r\n    DDR Frequency               : 2666 MHz\r\n    Socket[0]: Soc voltage      : 750\r\n    Socket[0]: DIMM1 voltage    : 1235\r\n    Socket[0]: DIMM2 voltage    : 1235\r\n    Socket[1]: Soc voltage      : 750\r\n    Socket[1]: DIMM1 voltage    : 1235\r\n    Socket[1]: DIMM2 voltage    : 1235\r\n    PCP Clock                   : 1650 MHz\r\n    SOC Clock                   : 2000 MHz\r\n    SYS Clock                   : 400 MHz\r\n    AHB Clock                   : 200 MHz\r\n"
+
+// artifacts/bmc/mtcollins1-hw-census-sol.log lines 2112-2127 verbatim; excerpt sha256 c81890743310c383ea551cc411a876f4da7ed37a4084af340e71258d4f08b14a.
+data reference_ghes: String = "[    0.360421] {1}[Hardware Error]: Hardware error from APEI Generic Hardware Error Source: 0\r\n[    0.360430] {1}[Hardware Error]: event severity: recoverable\r\n[    0.360434] {1}[Hardware Error]:  Error 0, type: recoverable\r\n[    0.360436] {1}[Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[    0.360443] {1}[Hardware Error]:   section length: 0x30\r\n[    0.360448] {1}[Hardware Error]:   00000000: 00000005 ec30000e 00080110 80001001  ......0.........\r\n[    0.360451] {1}[Hardware Error]:   00000010: 00000300 00000000 00000000 00000000  ................\r\n[    0.360453] {1}[Hardware Error]:   00000020: 00000000 00000000 00000000 00000000  ................\r\n[    0.360507] {2}[Hardware Error]: Hardware error from APEI Generic Hardware Error Source: 3\r\n[    0.360509] {2}[Hardware Error]: event severity: recoverable\r\n[    0.360511] {2}[Hardware Error]:  Error 0, type: recoverable\r\n[    0.360512] {2}[Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[    0.360513] {2}[Hardware Error]:   section length: 0x30\r\n[    0.360515] {2}[Hardware Error]:   00000000: 40000005 ec30000e 00080110 80005001  ...@..0......P..\r\n[    0.360517] {2}[Hardware Error]:   00000010: 00000300 00000000 00000000 00000000  ................\r\n[    0.360519] {2}[Hardware Error]:   00000020: 00000000 00000000 00000000 00000000  ................\r\n"
+
+// artifacts/bmc/mtcollins1-hw-census-sol.log lines 3158-3167 verbatim; excerpt sha256 273ac5e09e0f35017ab34def365c451ad568fd3e39e90d223d5a196fe51de4c8.
+data reference_bert: String = "[   16.312983] BERT: Error records from previous boot:\r\n[   16.317851] [Hardware Error]: event severity: recoverable\r\n[   16.323242] [Hardware Error]:  Error 0, type: fatal\r\n[   16.328114] [Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[   16.336455] [Hardware Error]:   section length: 0x31\r\n[   16.341410] [Hardware Error]:   00000000: 0000007f 6e6b6e55 206e776f 6f626572  ....Unknown rebo\r\n[   16.350098] [Hardware Error]:   00000010: 7220746f 6f736165 0000006e 00000000  ot reason.......\r\n[   16.358787] [Hardware Error]:   00000020: 00000000 00000000 00000000 00000000  ................\r\n[   16.367475] [Hardware Error]:   00000030: 12                                               .\r\n[   16.375906] BERT: Total records found: 1\r\n"
+
+fn reference() -> AmpereSocketConsoleObservation {
+  ampere_socket_console_observation(lines: split(s: concat(reference_summary, reference_ghes, reference_bert), delimiter: "\n"))
+}
+
+fn reference_whole_file() -> AmpereSocketConsoleObservation {
+  ampere_socket_console_observation(lines: split(s: reference_text(), delimiter: "\n"))
+}
+
+// THE SUBJECT IS THE SOCKET-1-DEAD BOOT: SUPPLIED EXCERPTS, exact bytes of a capture that is not
+// committed, read with `gh run download 35810323032 -n mtcollins1-boot-receipts`.
+// run 35810323032, artifact mtcollins1-boot-receipts, file mtcollins1-boot-sol.capture (sha256 9c599b8e4510b1c6089dc681639c861f6ada299539ff627c2306a0633927cdef),
+// lines 90-116 verbatim including CR bytes; excerpt sha256 669738e395569af3dd6494c8b8dd40044d9287d28888dde3ec9b665759be41e7.
+data capture_35810323032_summary: String = "UEFI RC version: 1.08\r\nSCP FW version    : 1.08\r\nSCP FW build date : 20210825\r\nFailsafe status                 : 0\r\nReset status                    : 3\r\nCPU info\r\n    CPU ID                      : 413FD0C1\r\n    CPU Clock                   : 2800 MHz\r\n    Number of active sockets    : 1\r\n    Number of active cores      : 80\r\n    Socket[0]: Core voltage     : 1065\r\n    Socket[0]: SCU ProductID    : A10001\r\n    Socket[0]: Max cores        : 80\r\n    Socket[0]: Warranty         : 0\r\n    Socket[0]: Subnuma          : 0\r\n    Socket[0]: RC disable mask  : 0\r\n    Socket[0]: AVS enabled      : 1\r\n    Socket[0]: AVS voltage      : 1027\r\nSOC info\r\n    DDR Frequency               : 2666 MHz\r\n    Socket[0]: Soc voltage      : 750\r\n    Socket[0]: DIMM1 voltage    : 1235\r\n    Socket[0]: DIMM2 voltage    : 1235\r\n    PCP Clock                   : 1550 MHz\r\n    SOC Clock                   : 2000 MHz\r\n    SYS Clock                   : 400 MHz\r\n    AHB Clock                   : 200 MHz\r\n"
+
+// run 35810323032, artifact mtcollins1-boot-receipts, file mtcollins1-boot-sol.capture (sha256 9c599b8e4510b1c6089dc681639c861f6ada299539ff627c2306a0633927cdef),
+// lines 1155-1171 verbatim including CR bytes; excerpt sha256 9b2b9353172ac621b626127af5ac4a2410ff04a6be789a0d9ceb7fc0e6492a4b.
+data capture_35810323032_ghes: String = "[    0.081094] {1}[Hardware Error]: Hardware error from APEI Generic Hardware Error Source: 0\r\n[    0.081100] {1}[Hardware Error]: event severity: recoverable\r\n[    0.081102] {1}[Hardware Error]:  Error 0, type: recoverable\r\n[    0.081105] {1}[Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[    0.081109] {1}[Hardware Error]:   section length: 0x30\r\n[    0.081112] {1}[Hardware Error]:   00000000: 00000005 ec30000e 00080110 80001001  ......0.........\r\n[    0.081116] {1}[Hardware Error]:   00000010: 00000300 00000000 00000000 00000000  ................\r\n[    0.081119] {1}[Hardware Error]:   00000020: 00000000 00000000 00000000 00000000  ................\r\n[    0.081141] {2}[Hardware Error]: Hardware error from APEI Generic Hardware Error Source: 2\r\n[    0.081144] {2}[Hardware Error]: event severity: info\r\n[    0.081146] {2}[Hardware Error]:  Error 0, type: info\r\n[    0.081149] {2}[Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[    0.081152] {2}[Hardware Error]:   section length: 0x30\r\n[    0.081154] {2}[Hardware Error]:   00000000: 000003ce 22440074 00000000 00000000  ....t.D\"........\r\n[    0.081157] {2}[Hardware Error]:   00000010: 00000000 00000000 00000000 00000000  ................\r\n[    0.081161] {2}[Hardware Error]:   00000020: 00000000 00000000 00000000 00000000  ................\r\n[    0.081217] GHES: APEI firmware first mode is enabled by APEI bit.\r\n"
+
+// run 35810323032, artifact mtcollins1-boot-receipts, file mtcollins1-boot-sol.capture (sha256 9c599b8e4510b1c6089dc681639c861f6ada299539ff627c2306a0633927cdef),
+// lines 1849-1858 verbatim including CR bytes; excerpt sha256 a0894e4dda8c2d3ee6d9f9717b5b1c7581d5408406c560021cffb2b70810f6e8.
+data capture_35810323032_bert: String = "[    9.777339] BERT: Error records from previous boot:\r\n[    9.782455] [Hardware Error]: event severity: recoverable\r\n[    9.788128] [Hardware Error]:  Error 0, type: fatal\r\n[    9.793274] [Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[    9.801847] [Hardware Error]:   section length: 0x31\r\n[    9.807022] [Hardware Error]:   00000000: 0000007f 6e6b6e55 206e776f 6f626572  ....Unknown rebo\r\n[    9.815932] [Hardware Error]:   00000010: 7220746f 6f736165 0000006e 00000000  ot reason.......\r\n[    9.824842] [Hardware Error]:   00000020: 00000000 00000000 00000000 00000000  ................\r\n[    9.833747] [Hardware Error]:   00000030: 12                                               .\r\n[    9.842391] BERT: Total records found: 1\r\n"
+
+fn subject() -> AmpereSocketConsoleObservation {
+  ampere_socket_console_observation(lines: split(s: concat(capture_35810323032_summary, capture_35810323032_ghes, capture_35810323032_bert), delimiter: "\n"))
+}
+
+fn ints_equal(a: List<Int>, b: List<Int>) -> Bool {
+  join(map(a, x => to_string(x)), ",") == join(map(b, x => to_string(x)), ",")
+}
+
+fn is_count(n: Int?, expected: Int) -> Bool {
+  match n { Present { value: v } => v == expected Absent => false }
+}
+
+// ── the header decode, discriminating in both directions ──────────────────────────────────────
+
+test fn socket_bits_are_bits_14_and_15_of_the_instance_word() -> Bool {
+  match ampere_ras_section_header_of(dword: 1073741829) {
+    Absent => false
+    Present { value: h } => h.socket == 1 && h.instance == 0 && (match h.error_type { AmpereRasTypeDefined { error_type: AmpereRasGic } => true _ => false })
+  }
+}
+
+test fn socket_zero_gic_decodes_as_socket_zero() -> Bool {
+  match ampere_ras_section_header_of(dword: 5) {
+    Absent => false
+    Present { value: h } => h.socket == 0 && (match h.error_type { AmpereRasTypeDefined { error_type: AmpereRasGic } => true _ => false }) && !(match h.error_type { AmpereRasTypeDefined { error_type: AmpereRasPmproFw } => true _ => false })
+  }
+}
+
+test fn the_pmpro_fw_word_carries_payload_three_and_subtype_three() -> Bool {
+  match ampere_ras_section_header_of(dword: 974) {
+    Absent => false
+    Present { value: h } => (match h.error_type { AmpereRasTypeDefined { error_type: AmpereRasPmproFw } => true _ => false }) && h.subtype == 3 && h.socket == 0
+      && (match h.payload_type { AmperePayloadFirmwareSpecific => true _ => false })
+  }
+}
+
+test fn a_type_code_with_no_row_stays_a_number() -> Bool {
+  match ampere_ras_section_header_of(dword: 21) {
+    Absent => false
+    Present { value: h } => match h.error_type { AmpereRasTypeUndefined { code: c } => c == 21 _ => false }
+  }
+}
+
+test fn a_value_that_is_not_a_dword_refuses() -> Bool {
+  match ampere_ras_section_header_of(dword: 4294967296) { Absent => true Present { value: _ } => false }
+}
+
+// ── the reference: two sockets on both printers ───────────────────────────────────────────────
+
+test fn the_reference_capture_is_its_committed_length() -> Bool {
+  reference_text().length() == reference_scalars
+}
+
+test fn the_reference_summary_prints_two_sockets_and_two_inter_socket_links() -> Bool {
+  (match reference().summary {
+    AmpereSummaryObserved { summary: s, summaries_printed: _ } =>
+      is_count(n: s.active_sockets, expected: 2) && ints_equal(a: ampere_summary_sockets(s: s), b: [0, 1]) && count(s.inter_socket_links) == 2
+    AmpereSummaryNotPrinted => false
+  })
+}
+
+test fn the_reference_boot_raises_one_gic_record_per_socket() -> Bool {
+  let o = reference()
+  ints_equal(a: ampere_cper_sockets_this_boot(o: o.cper), b: [0, 1])
+    && all(filter(o.cper.records, r => match r.source { CperFromBert => false _ => true }), r => (match r.header.error_type { AmpereRasTypeDefined { error_type: AmpereRasGic } => true _ => false }))
+}
+
+test fn the_bert_record_is_kept_apart_from_this_boot() -> Bool {
+  any(reference().cper.records, r => (match r.source { CperFromBert => true _ => false }) && (match r.header.error_type { AmpereRasTypeDefined { error_type: AmpereRasBert } => true _ => false }))
+}
+
+// ── the subject: socket 1 absent from both printers ────────────────────────────────────────────
+
+test fn the_subject_summary_prints_one_socket_and_no_link() -> Bool {
+  match subject().summary {
+    AmpereSummaryObserved { summary: s, summaries_printed: n } =>
+      n == 1 && is_count(n: s.active_sockets, expected: 1) && ints_equal(a: ampere_summary_sockets(s: s), b: [0]) && count(s.inter_socket_links) == 0
+    AmpereSummaryNotPrinted => false
+  }
+}
+
+test fn every_subject_record_is_socket_zero() -> Bool {
+  let o = subject()
+  count(o.cper.records) == 3 && ints_equal(a: ampere_cper_sockets_this_boot(o: o.cper), b: [0])
+}
+
+// ── the comparison ─────────────────────────────────────────────────────────────────────────────
+
+fn differences_from(r: AmpereSocketConsoleObservation) -> List<String> {
+  map(ampere_socket_console_differences(reference: r, subject: subject()), d => match d {
+    ActiveSocketsDiffer { reference: _, subject: _ } => "active"
+    SummarySocketAbsent { socket: k } => concat("socket-absent ", to_string(k))
+    InterSocketLinkAbsent { link: l, reference: _ } => concat("link-absent ", to_string(l))
+    SummaryFieldDiffers { socket: k, name: n, reference: _, subject: _ } => concat("field ", to_string(k), " ", n as String)
+    CperRecordAbsent { key: k } => concat("cper-absent ", to_string(k.socket), " ", k.type_text)
+    CperRecordAdded { key: k } => concat("cper-added ", to_string(k.socket), " ", k.type_text, " ", to_string(k.subtype))
+    _ => "other"
+  })
+}
+
+fn names_socket_one(d: List<String>) -> Bool {
+  any(d, x => x == "active") && any(d, x => x == "socket-absent 1")
+    && any(d, x => x == "link-absent 0") && any(d, x => x == "link-absent 1")
+    && any(d, x => x == "cper-absent 1 GIC") && any(d, x => x == "cper-added 0 PMPRO FW 3")
+    && any(d, x => x == "field 0 RC disable mask")
+    && !any(d, x => x == "cper-absent 0 GIC")
+}
+
+test fn the_comparison_names_socket_one_on_both_printers_and_the_added_pmpro_record() -> Bool {
+  names_socket_one(d: differences_from(r: reference()))
+}
+
+// THE ONE REAL-ROUTE CLAIM: the committed capture read whole, through the production fold, shows
+// socket 1 on both printers, as the excerpts the other claims supply do. The comparison over those
+// facts is the excerpt claim above; re-running it here would pay for it twice.
+test fn the_committed_file_shows_socket_one_on_both_printers() -> Bool {
+  let o = reference_whole_file()
+  reference_text().length() == reference_scalars
+    && ints_equal(a: ampere_cper_sockets_this_boot(o: o.cper), b: [0, 1])
+    && (match o.summary {
+      AmpereSummaryObserved { summary: s, summaries_printed: _ } => is_count(n: s.active_sockets, expected: 2) && ints_equal(a: ampere_summary_sockets(s: s), b: [0, 1]) && count(s.inter_socket_links) == 2
+      AmpereSummaryNotPrinted => false
+    })
+}
+
+// A boot compared with itself differs in nothing: the comparison is not a generator of findings.
+test fn a_boot_compared_with_itself_has_no_difference() -> Bool {
+  count(ampere_socket_console_differences(reference: subject(), subject: subject())) == 0
+}
+
+// ── refusals the fold must keep ────────────────────────────────────────────────────────────────
+
+test fn an_unparsable_ampere_first_row_is_kept_as_malformed() -> Bool {
+  let o = ampere_socket_console_observation(lines: [
+    "[    0.1] {1}[Hardware Error]: Hardware error from APEI Generic Hardware Error Source: 0",
+    "[    0.1] {1}[Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f",
+    "[    0.1] {1}[Hardware Error]:   00000000: zz000005 ec30000e 00080110 80001001  ......0.........",
+  ])
+  count(o.cper.records) == 0 && count(o.cper.malformed) == 1
+}
+
+test fn a_section_of_another_type_is_counted_not_decoded() -> Bool {
+  let o = ampere_socket_console_observation(lines: [
+    "[    0.1] {1}[Hardware Error]: Hardware error from APEI Generic Hardware Error Source: 0",
+    "[    0.1] {1}[Hardware Error]:   section type: unknown, 00000000-0000-0000-0000-000000000000",
+    "[    0.1] {1}[Hardware Error]:   00000000: 40000005 ec30000e 00080110 80001001  ......0.........",
+  ])
+  count(o.cper.records) == 0 && o.cper.other_sections == 1
+}
+
+test fn the_rendering_names_the_decoded_socket() -> Bool {
+  string_contains(s: ampere_socket_console_text(o: subject()), pattern: "-> socket 0 PMPRO FW subtype 3")
+}

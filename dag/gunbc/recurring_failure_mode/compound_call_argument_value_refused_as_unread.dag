@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.compound_call_argument_value_refused_as_unread
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data compound_call_argument_value_refused_as_unread: RecurringFailureMode = RecurringFailureMode {
+  identity: "compound_call_argument_value_refused_as_unread" as NonEmptyStr,
+
+  receipts: [
+    "**a call argument whose value is compound -- a nested call, a record literal, a caret symbol, a parenthesised group or a list literal -- refuses its WHOLE MODULE at normalize as body_lowering_reason_call_argument_unread** (INVALID STATE: v2.compiler.body_lowering_fold body_lower_call_arg_value reads every argument value with the operand reader alone; after gunbc#12145 stopped that reader narrowing a sequence to its left element, those shapes answer Absent, and the Absent becomes the module-wide refusal).",
+    "HARM. Collateral regression of gunbc#12145, loud rather than silent: every module carrying such an argument is refused before resolve, so none of its references -- not only the argument's -- reaches the namespace cut's residual census. That is an undercount of the census population by whole modules, reported as refusals the census cannot attribute to a reference.",
+    "DISTINGUISHING FACTS. Not lowering_accessor_collapses_a_sequence_operand (the Optional accessor answering Absent instead of a located refusal, which is its own open half) and not list_literal_elements_dropped_at_v2_body_lowering (a list literal lowered to its bracket on the non-call routes): here the refusal is correct in kind and wrong in grain -- it names the argument as unread instead of lowering it as a value.",
+    "RUNG FOUND AT: mitigatable -- typed and loud, at module grain.",
+    "CEILING: structurally guaranteed. An argument's value capture is an ordinary value expression; lowering it with the value reader, or refusing located at the unreadable part, is decidable.",
+    "NEXT-RUNG TRIGGER, naming the capability: a call argument's value is lowered through the value reader on every compound shape named above, so a module carrying one normalizes and an undeclared name inside the argument refuses at resolve at its atom, beside a declared-value control that resolves; a shape neither reader reads refuses located at that shape, never at module grain.",
+  ],
+
+  evidence: [],
+}

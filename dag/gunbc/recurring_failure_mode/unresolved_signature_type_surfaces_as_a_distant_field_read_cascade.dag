@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.unresolved_signature_type_surfaces_as_a_distant_field_read_cascade
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unresolved_signature_type_surfaces_as_a_distant_field_read_cascade: RecurringFailureMode = RecurringFailureMode {
+  identity: "unresolved_signature_type_surfaces_as_a_distant_field_read_cascade" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a function signature names a type the declaring module never resolves (here `Optional<Node>` in a module with no import of v2.std.optional), and the module is still EVALUATED. The unresolved annotation silently becomes the error type, so every value bound out of that return (a `Present { value: x }` payload) is error-typed, and the run fails only when something reads a FIELD of it: `x.kind` refuses as `type error: error type cascade` at the READ, possibly many calls away from the annotation that caused it. A value that is only passed on to a typed parameter never trips it, so two helpers with the same defect can differ in whether they fail.",
+
+    "SPECIMEN, found 2026-09-24 by adhoc-9d86ad93-96c (gunbc#12230). v2.test.claim.body_lowering.wave1_gate1_b1_bare_call_helpers declared `fn wave1_gate1_b1_find_named_fn_arrow_body(root: Node, fn_lexeme: String) -> Optional<Node>` with no Optional import. v2.test.long.wave1_gate1_b1_bare_call_body_producer_witness wave1_gate1_b1_bare_call_lowers_to_transform_witness_holds failed on srv1 claim_batch with `runtime error [type-error]: type error: error type cascade` at the helper's `body.kind`. The sibling a1 helper had the same missing import and PASSED, because it never field-reads a payload it binds out of Optional; gunbc#12230 adds the import there too, so the defect is not left latent for the next field read.",
+
+    "THE ISOLATING PROBE. Renaming the binder (`body` to `found`) did not change the failure, which ruled out the name, and the helper already returned `tree.root`, which ruled out the NormalizedTree-for-Node confusion that had reddened the same helper. Adding `import v2.std.optional { Absent, Optional, Present }` and changing nothing else made the same read return TRANSFORM and the witness PASS (srv1, neat-boar-16, b93a0eec0a). So the import alone flips the verdict.",
+
+    "WHAT IS NOT YET ESTABLISHED, stated so this row does not inflate its rung: whether seed resolve emitted an unresolved-type diagnostic for the annotation that the claim_batch route did not treat as blocking, or emitted none at all. gunbc.recurring_failure_mode bare_reference_channel_declines_a_pull_in_silence records a compile route that DOES refuse `unresolved type <Name>` for a bare type reference in a module with imports, so the refusal exists on at least one path. This class is the path on which it did not stop the run. Rung found at: below the ladder (silent until an unrelated read, and located at the wrong place).",
+
+    "ATTAINABLE CEILING: structurally guaranteed. Whether a type name in a signature resolves is decidable from the module and its imports, so no Accepted program, and no module a claim route evaluates, should carry an unresolved annotation. NEXT-RUNG TRIGGER, at capability grain: seed resolve refuses an unbound type name in a function signature AT THE ANNOTATION, with a typed, located diagnostic, on EVERY route that evaluates the module, including the claim_batch and required-floor claim routes, so no route evaluates a function whose declared types did not resolve. Its discriminating RED is fixture source: a module declaring `fn f() -> Optional<Int>` without the import, whose refusal must name `Optional` at that signature. The positive control is the same module with the import, accepted.",
+
+    "RECOGNITION RULE: `error type cascade` at a field read whose base is a pattern-bound or let-bound value is a signature-resolution defect upstream until proven otherwise. Read the declared return type of the function that produced the value, and check that the declaring module imports every type it names, before suspecting the value or the field.",
+  ],
+
+  evidence: [],
+}

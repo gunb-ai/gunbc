@@ -1,12 +1,12 @@
 module gunbc.fabric_cell_subject
 
 import std.types { String, Bool }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.placement_supply { HostIdentity }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 
-data fabric_cell_subject_authority_disposition: Disposition = SingleAuthority
+data fabric_cell_subject_authority_disposition: ConstructionMechanism = SingleAuthority
 
 // THIS MODULE EXISTS AT THIS GRAIN SO THAT ONE TOTAL MATCH CAN SERVE BOTH FAMILIES WITHOUT A CYCLE.
 // The slot-scoped family (gunbc.fabric_cell_converge) and the host-scoped one

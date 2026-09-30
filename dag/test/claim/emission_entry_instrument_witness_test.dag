@@ -428,7 +428,7 @@ data specimen_subject: EmissionMeasurementSubject = EmissionMeasurementSubject {
   working_tree: WorkingTreeClean,
   compiler: sha256_digest(hex: "aa" as NonEmptyStr),
   assembler: sha256_digest(hex: "bb" as NonEmptyStr),
-  assembly_mode: SeedLinkedAssembly { std_bridge_dir: "dag/gunbc/instruments/self_host_std_bridge_shims" }
+  assembly_mode: SeedLinkedAssembly
 }
 
 data unreached_specimen: EmissionMeasurement = EmissionSubjectUnestablished {
@@ -628,4 +628,40 @@ test fn a_population_scopes_join_key_cannot_be_mistaken_for_its_primary_root() -
   let sc = PrimaryRootScope { primary_root: "dag/std/node.dag", dependency_pools: [] }
   emission_scope_join_key(sc: sc) != "dag/std/node.dag"
     && emission_scope_join_key(sc: sc) == emission_scope_label(sc: sc)
+}
+
+// ---------------------------------------------------------------------------------------------
+// A binary that could not be made Ready names WHICH binary, WHERE and WHY
+// ---------------------------------------------------------------------------------------------
+//
+// The refusal is supplied rather than produced: the real producer is
+// tools.host_prelude witness_bin_ensure_built_typed, whose arms are exercised on disk by
+// tools.build_step_transport's readiness probes. What is claimed here is that this instrument
+// carries the arm into its own outcome instead of collapsing it to "not both buildable". Two
+// reasons are asserted so a cause that hard-coded one spelling would go red on the other.
+
+fn emission_binaries_cause_names(reason: WitnessBinRefusalReason, reason_name: String) -> Bool {
+  match emission_binaries_unestablished(
+    entry: "probe_entry",
+    bin_name: "cssl_assemble",
+    path: "/probe/target/release/cssl_assemble",
+    reason: reason
+  ) {
+    EmissionSubjectUnestablished { entry: e, stage: s, cause: c } =>
+      e == "probe_entry"
+        && emission_stage_name(stage: s) == "binaries"
+        && string_contains(s: c, pattern: "cssl_assemble")
+        && string_contains(s: c, pattern: "/probe/target/release/cssl_assemble")
+        && string_contains(s: c, pattern: concat("(", concat(reason_name, ")")))
+    _ => false
+  }
+}
+
+test fn emission_binaries_refusal_carries_absent_reason() -> Bool {
+  emission_binaries_cause_names(reason: WitnessBinArtifactAbsent, reason_name: "artifact-absent")
+}
+
+test fn emission_binaries_refusal_carries_build_failed_reason() -> Bool {
+  emission_binaries_cause_names(reason: WitnessBinBuildFailed, reason_name: "build-failed")
+    && !emission_binaries_cause_names(reason: WitnessBinBuildFailed, reason_name: "artifact-absent")
 }

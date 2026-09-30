@@ -15,6 +15,7 @@ import product.printed_chassis.standoff_gauge {
   GaugeExceedsBuildEnvelope, GaugeLocationDuplicated, admit_standoff_gauge, gauge_edge_margin, gauge_thickness,
   altrad8ud_standoff_gauge,
 }
+import std.nat { Nat }
 
 fn margin() -> Micrometer { micrometer(count: 8000) }
 fn thickness() -> Micrometer { micrometer(count: 3000) }

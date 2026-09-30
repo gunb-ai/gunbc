@@ -1,0 +1,102 @@
+module test.claim.wiwynn_sv328r_witness
+
+import std.types { Bool, String }
+import std.measure {
+  bandwidth_count, gram_count, hertz_count, megatransfers_per_second_count,
+  micrometer_count, millimeter_count, physical_core_count_value, rack_unit_count,
+}
+import extdeps.wiwynn.sv328r.subject { wiwynn_sv328r_product }
+import extdeps.wiwynn.sv328r.specifications {
+  sv328r_bmc_manageability_network,
+  sv328r_cooling,
+  sv328r_crps_ac_inlet,
+  sv328r_dimensions,
+  sv328r_memory,
+  sv328r_ocp_slot,
+  sv328r_ocp_slot_occupancy,
+  sv328r_power,
+  sv328r_processors,
+  sv328r_stated_weight,
+  sv328r_storage,
+}
+import extdeps.cpu.ampere { ampere_altra_family_product_brief_authority }
+import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.memory.types { Registered }
+import extdeps.standards.nic_attachment { OnboardControllerUnstated, NamedOnboardController, OcpNic3 }
+import extdeps.standards.ocp_nic_3_0 { Sff, Lff }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_product_name_is_sv328r() -> Bool {
+  (wiwynn_sv328r_product.marketing_name as String) == "SV328R"
+}
+
+test fn w_chassis_is_2u_770_point_2_mm_deep() -> Bool {
+  millimeter_count(m: sv328r_dimensions.height) == 87
+    && millimeter_count(m: sv328r_dimensions.width) == 438
+    && micrometer_count(m: sv328r_dimensions.depth) == 770200
+    && rack_unit_count(u: sv328r_dimensions.rack_units) == 2
+}
+
+test fn w_stated_weight_is_14470_grams() -> Bool {
+  gram_count(g: sv328r_stated_weight) == 14470
+}
+
+test fn w_cooling_is_six_60_by_56_and_power_is_dual_crps_with_owed_inlet() -> Bool {
+  sv328r_cooling.fan_count == 6
+    && millimeter_count(m: sv328r_cooling.frame_width) == 60
+    && millimeter_count(m: sv328r_cooling.frame_thickness) == 56
+    && sv328r_power.psu_count == 2
+    && sv328r_power.redundant
+    && (sv328r_power.form_factor_label as String) == "CRPS"
+    && match sv328r_crps_ac_inlet {
+      TranscribedUncited { read_obligation } =>
+        string_contains(s: read_obligation as String, pattern: "C14 vs C20")
+      CitedToAuthority { authority: _ } => false
+    }
+}
+
+test fn w_bmc_port_is_dedicated_one_gigabit() -> Bool {
+  sv328r_bmc_manageability_network.port_count == 1
+    && bandwidth_count(b: sv328r_bmc_manageability_network.per_port_bandwidth) == 1000000000
+    && match sv328r_bmc_manageability_network.controller {
+      OnboardControllerUnstated { read_obligation: _ } => true
+      NamedOnboardController { part: _ } => false
+    }
+}
+
+test fn w_memory_is_32_rdimm_slots_ddr4_3200() -> Bool {
+  sv328r_memory.dimm_slots_total == 32
+    && sv328r_memory.dimms_per_processor == 16
+    && sv328r_memory.channels_per_processor == 8
+    && megatransfers_per_second_count(r: sv328r_memory.max_data_rate) == 3200
+    && sv328r_memory.buffering == Registered
+}
+
+test fn w_processors_are_dual_altra_80_core_class() -> Bool {
+  sv328r_processors.socket_count == 2
+    && physical_core_count_value(c: sv328r_processors.cores_per_socket_stated_max) == 80
+    && sv328r_processors.vendor == ampere_vendor
+    && sv328r_processors.altra_family_authority == ampere_altra_family_product_brief_authority
+    && sv328r_processors.architecture == Aarch64
+    && hertz_count(h: sv328r_processors.max_core_clock) == 3000000000
+}
+
+test fn w_storage_and_ocp_slot_match_the_sheet() -> Bool {
+  sv328r_storage.front_u2_bays == 24
+    && sv328r_storage.onboard_m2_nvme_slots == 2
+    && match sv328r_ocp_slot {
+      OcpNic3 { physical_variant } => match physical_variant {
+        Sff => true
+        Lff => false
+      }
+      _ => false
+    }
+    && match sv328r_ocp_slot_occupancy {
+      TranscribedUncited { read_obligation: _ } => true
+      CitedToAuthority { authority: _ } => false
+    }
+}

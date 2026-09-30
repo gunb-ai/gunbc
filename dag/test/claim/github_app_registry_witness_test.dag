@@ -25,7 +25,6 @@ import gunbc.runner_microvm_attempt {
   MicroVmCellBinding, VmUnboundCellNotOwned,
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
   microvm_attempt, bind_owned_attempt, runner_microvm_attempt_unit_name,
-  runner_microvm_attempt_jit_drive_path,
 }
 import extdeps.github.actions_jit_runner {
   JitRunnerGroupId, JitConfigMintOutcome, jit_config_mint_outcome,
@@ -35,19 +34,28 @@ import gunbc.runner.runner_jit_admission {
 }
 import gunbc.runner_jit_mint {
   JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
-  JitMintRefusedAttemptUnbound,
+  JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted,
   plan_jit_mint,
+}
+import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
+import extdeps.transports.rest { RestOk }
+import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
+import gunbc.runner_group_restriction_observation {
+  MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved,
+  observe_shakedown_runner_group_restriction, runner_group_restriction_not_yet_observed,
+  microvm_shakedown_selected_workflow, microvm_shakedown_runner_group_name,
 }
 import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused,
   JitDispatchRefusal, DispatchRefusedCellNotOwned, DispatchRefusedCredential,
   DispatchRefusedAttemptUnbound,
-  JitCredentialDelivery, JitCredentialBoundToDrive, JitCredentialNotDispatched,
+  JitCredentialDelivery, JitCredentialBoundToAttempt, JitCredentialNotDispatched,
   JitCredentialMintNotCreated,
   dispatch_jit_mint, receive_jit_mint, jit_credential_delivered,
 }
 
 import extdeps.uri { Uri, uri_https }
+import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -164,12 +172,6 @@ fn installation_holding(perms: List<GitHubAppPermission>) -> GitHubAppInstallati
   installation_of(app: gunbai_bot_declared, installation_id: bot_installation_id, perms: perms)
 }
 
-data bot_key_fingerprint: GitHubAppPublicKeyFingerprint = gunbai_bot_declared_key.fingerprint
-
-data ci_key_fingerprint: GitHubAppPublicKeyFingerprint = sha256_base64_key_fingerprint(
-  digest: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC="
-)
-
 data hypothetical_bot_pem: SecretRef = SecretRef {
   project: fleet_secrets_gcp_project,
   secret: "gunbai-bot-private-key-not-yet-provisioned",
@@ -177,43 +179,25 @@ data hypothetical_bot_pem: SecretRef = SecretRef {
   hash_state: HashPending,
 }
 
-fn signer_for(
-  app: DeclaredGitHubApp,
-  pem: SecretRef,
-  derived: GitHubAppPublicKeyFingerprint,
-  registered: GitHubAppPublicKeyFingerprint
-) -> SignerCustody {
+data witness_signing_key: JwsSigningKeyRef = HostKeyFile { path: "/nonexistent/witness-app.pem" }
+
+fn signer_accepted_as(app: DeclaredGitHubApp) -> SignerCustody {
   SignerCustodyObserved {
     signer: ObservedGitHubAppSigner {
-      app_id: app.app_id,
-      secret_version: pem,
-      secret_content_hash: content_hash_of_value(value: pem.secret),
-      derived_public_fingerprint: derived,
-      github_registered_fingerprint: registered,
+      key: witness_signing_key,
+      accepted_as: app.app_id,
+      observed_at: 1790000000,
     }
   }
 }
 
-data sealed_bot_signer: SignerCustody = signer_for(
-  app: gunbai_bot_declared,
-  pem: hypothetical_bot_pem,
-  derived: bot_key_fingerprint,
-  registered: bot_key_fingerprint
-)
+data sealed_bot_signer: SignerCustody = signer_accepted_as(app: gunbai_bot_declared)
 
-data cross_app_signer: SignerCustody = signer_for(
-  app: gunbai_ci_declared,
-  pem: gunbai_ci_app_pem_secret,
-  derived: ci_key_fingerprint,
-  registered: ci_key_fingerprint
-)
+data cross_app_signer: SignerCustody = signer_accepted_as(app: gunbai_ci_declared)
 
-data unregistered_key_signer: SignerCustody = signer_for(
-  app: gunbai_bot_declared,
-  pem: hypothetical_bot_pem,
-  derived: ci_key_fingerprint,
-  registered: bot_key_fingerprint
-)
+data unregistered_key_signer: SignerCustody = SignerReadbackFailed {
+  cause: SignerKeyRejected { status: 401, body: "{\"message\":\"A JSON web token could not be decoded\"}" },
+}
 
 data app_credential: GitHubCredentialAuthority = ManagedAppInstallationCredential {
   app: gunbai_bot_declared,
@@ -391,7 +375,8 @@ test fn witness_seal_failure_names_which_of_the_two_causes_fired() -> Bool {
       SignerReadbackFailed { cause } => match cause {
         SignerNamesDifferentApp { observed_app_id, declared_app_id } =>
           observed_app_id.value != declared_app_id.value
-        SignerFingerprintNotRegistered { derived: _, registered: _ } => false
+        SignerKeyRejected { status: _, body: _ } => false
+        SignerReadbackNotReached { detail: _ } => false
       }
       _ => false
     }
@@ -399,9 +384,9 @@ test fn witness_seal_failure_names_which_of_the_two_causes_fired() -> Bool {
   } && match observed_grant_with(custody: unregistered_key_signer, perms: full_workflow_grant) {
     SignerCustodyUnresolved { app: _, custody } => match custody {
       SignerReadbackFailed { cause } => match cause {
-        SignerFingerprintNotRegistered { derived, registered } =>
-          !key_fingerprint_eq(a: derived, b: registered)
+        SignerKeyRejected { status, body: _ } => status == 401
         SignerNamesDifferentApp { observed_app_id: _, declared_app_id: _ } => false
+        SignerReadbackNotReached { detail: _ } => false
       }
       _ => false
     }
@@ -624,7 +609,7 @@ test fn witness_key_generation_is_operator_work_only_after_discovery_fails() -> 
         AcceptInstallationPermissions => false
         ApplyAppPermissionChange => false
       }
-        && locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai"
+        && locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai-bot"
         && match postcondition {
              AppHasRegisteredSigningKey { app: a } => a.app_id.value == 3909950
              _ => false
@@ -805,7 +790,7 @@ test fn witness_registration_readback_preserves_unknown_provider_permission() ->
 }
 
 test fn witness_settings_locator_names_the_app_slug() -> Bool {
-  app_settings_permissions_locator(app: gunbai_bot_declared).locator == "github.com/organizations/gunb-ai/settings/apps/gunbai/permissions"
+  app_settings_permissions_locator(app: gunbai_bot_declared).locator == "github.com/organizations/gunb-ai/settings/apps/gunbai-bot/permissions"
 }
 
 test fn witness_fingerprint_mismatch_is_detected() -> Bool {
@@ -878,7 +863,7 @@ test fn witness_registration_gap_precedes_installation_approval() -> Bool {
   ) {
     AppRegistrationPermissionMissing { request } =>
       count(request.add) == 1
-        && request.settings_locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai/permissions"
+        && request.settings_locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai-bot/permissions"
         && fold_list(xs: request.add, empty: false, cons: fn(_a, p) { permission_axis_wire_name(axis: p.name) == "workflows" })
     _ => false
   }
@@ -1030,13 +1015,34 @@ fn jit_binding(owned: Bool) -> MicroVmCellBinding {
   }
 }
 
+// THE AUTHORIZED GROUP STANDING IS OBSERVED, NOT WRITTEN. Its arm carries a sole_constructor record
+// only gunbc.runner_group_restriction_observation can mint, so these fixtures hand that observer the
+// body GitHub returns for a group restricted to exactly the shakedown workflow and take its answer.
+fn restricted_group_1() -> MicrovmRunnerGroupStanding {
+  observe_shakedown_runner_group_restriction(
+    name: microvm_shakedown_runner_group_name,
+    listed: runner_groups_of_rest_read(outcome: RestOk, body: OrgRunnerGroupListWire {
+      total_count: 1,
+      runner_groups: [OrgRunnerGroupWire {
+        id: 1,
+        name: microvm_shakedown_runner_group_name as String,
+        visibility: "selected",
+        allows_public_repositories: false,
+        restricted_to_workflows: true,
+        selected_workflows: [microvm_shakedown_selected_workflow() as String],
+        workflow_restrictions_read_only: false,
+      }],
+    }),
+  )
+}
+
 fn planned(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintPlan {
   plan_jit_mint(
     binding: jit_binding(owned: owned),
     authority: app_credential,
     control_plane: observed_grant(perms: perms),
     organization: gunbai_org_ref,
-    runner_group_id: JitRunnerGroupId { value: 1 },
+    runner_group: restricted_group_1(),
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   )
 }
@@ -1063,23 +1069,54 @@ test fn witness_jit_mint_refuses_a_credential_missing_the_runner_permission() ->
 }
 
 // POSITIVE CONTROL. Without it both refusals above are satisfied by a planner that refuses
-// unconditionally. It also pins the two facts the mint's caller consumes: the drive destination is
-// the ATTEMPT's own path, and the runner name is the unit name rather than a second identifier.
+// unconditionally. It also pins the fact the mint's caller consumes: the runner name is the unit
+// name rather than a second identifier.
 test fn witness_jit_mint_authorizes_an_owned_cell_with_the_runner_permission() -> Bool {
   match planned(owned: true, perms: runner_grant) {
     JitMintAuthorized {
       attempt: a,
-      endpoint_path: path,
       request: req,
-      drive_destination: dest,
     } =>
-      path == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
-        && (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
-        && string_contains(s: dest, pattern: "/jit.img")
+      (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
         && runner_label_sets_equal(
              a: map(req.labels, l => l.value as String),
-             b: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv2"],
+             b: ["self-hosted", runner_microvm_attempt_unit_name(attempt: a) as String],
            )
+    _ => false
+  }
+}
+
+// THE GUEST NEVER ANSWERS TO THE HOST'S PRODUCTION LABELS. This control used to pin
+// [self-hosted, linux, arm64, gunbc-heavy, srv2] -- the set fleet-desired.yml and the host-pinned
+// fleet-converge jobs target -- so a production converge job could have run inside a shakedown
+// VM. The red is that set: none of its host, class, OS or architecture labels may appear, and the
+// only non-provenance label is the attempt's own name.
+test fn witness_jit_mint_carries_no_host_production_label() -> Bool {
+  match planned(owned: true, perms: runner_grant) {
+    JitMintAuthorized { attempt: _, request: req } =>
+      let wire = map(req.labels, l => l.value as String)
+      count(filter(wire, w => w == "srv2" || w == "gunbc-heavy" || w == "linux" || w == "arm64")) == 0
+        && count(wire) == 2
+    _ => false
+  }
+}
+
+// THE MINT REFUSES A GROUP WHOSE RESTRICTION NOBODY OBSERVED, everything else being in order. This
+// is the block gunbc.runner_jit_mint microvm_jit_runner_group_restriction_frontier states: the cell
+// is owned, the credential holds the runner permission and the attempt binding is required, so the
+// ONLY thing that can refuse is the group standing -- and the controller passes the unobserved arm
+// today, which is why no real attempt mints yet. The positive control above is the same call with
+// the restricted arm.
+test fn witness_jit_mint_refuses_a_runner_group_not_observed_restricted() -> Bool {
+  match plan_jit_mint(
+    binding: jit_binding(owned: true),
+    authority: app_credential,
+    control_plane: observed_grant(perms: runner_grant),
+    organization: gunbai_org_ref,
+    runner_group: runner_group_restriction_not_yet_observed(name: microvm_shakedown_runner_group_name),
+    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+  ) {
+    JitMintRefusedRunnerGroupUnrestricted { group: g, cause: RunnerGroupRestrictionNotYetObserved } => (g as String) == "microvm-shakedown"
     _ => false
   }
 }
@@ -1090,7 +1127,7 @@ test fn witness_jit_mint_refuses_when_attempt_binding_is_deferred() -> Bool {
     authority: app_credential,
     control_plane: observed_grant(perms: runner_grant),
     organization: gunbai_org_ref,
-    runner_group_id: JitRunnerGroupId { value: 1 },
+    runner_group: restricted_group_1(),
     attempt_binding: AxisDeferred {
       trigger: "fixture: deferred standing must refuse a mint that would not carry the attempt identity" as NonEmptyStr,
     },
@@ -1102,11 +1139,11 @@ test fn witness_jit_mint_refuses_when_attempt_binding_is_deferred() -> Bool {
 
 // ---------------------------------------------------------------------------------------------
 // JIT MINT DISPATCH AND DELIVERY. gunbc.runner.runner_jit_perform is the consumer that closed
-// plan_jit_mint's frontier, and these witnesses are FIXTURE-ONLY BY CONSTRUCTION: nothing in gunbc
-// performs a GitHubEffect, so no input here was produced by GitHub. What they establish is that the
-// fold discriminates -- and, in the delivery arms, that a credential cannot be obtained apart from
-// the drive destination the ownership proof named. They establish nothing about a live mint, and
-// runner_jit_perform's own transport frontier is what records that.
+// plan_jit_mint's frontier, and these witnesses are FIXTURE-ONLY BY CONSTRUCTION: their outcomes
+// are supplied, not produced by GitHub. What they establish is that the fold discriminates -- and,
+// in the delivery arms, that a credential cannot be obtained apart from the attempt the ownership
+// proof named. The performer is gunbc.github_effect_perform, and its consumer frontier records that
+// no production route runs it yet.
 
 fn dispatched(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintDispatch {
   dispatch_jit_mint(
@@ -1114,7 +1151,7 @@ fn dispatched(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintDispatch 
     authority: app_credential,
     control_plane: observed_grant(perms: perms),
     organization: gunbai_org_ref,
-    runner_group_id: JitRunnerGroupId { value: 1 },
+    runner_group: restricted_group_1(),
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   )
 }
@@ -1170,7 +1207,7 @@ test fn witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred() -> B
     authority: app_credential,
     control_plane: observed_grant(perms: runner_grant),
     organization: gunbai_org_ref,
-    runner_group_id: JitRunnerGroupId { value: 1 },
+    runner_group: restricted_group_1(),
     attempt_binding: AxisDeferred {
       trigger: "fixture: deferred standing must refuse a dispatch that would not carry the attempt identity" as NonEmptyStr,
     },
@@ -1181,22 +1218,22 @@ test fn witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred() -> B
 }
 
 // POSITIVE CONTROL. Without it the three reds above are satisfied by a dispatcher that refuses
-// unconditionally. It also pins the two-step shape: the installation token URL is derived from the
-// credential's own installation id rather than spelled, and the second step is the org-derived
-// generate-jitconfig path, so a dispatch cannot address another organization's runners.
+// unconditionally. It also pins the two-step shape: the App and installation the token is minted
+// for are the credential's own (not spelled at a call site), and the organization is the one the
+// plan authorized, so a dispatch cannot address another organization's runners.
 test fn witness_jit_dispatch_authorizes_and_names_both_steps_of_the_app_path() -> Bool {
   match dispatched(owned: true, perms: runner_grant) {
     JitMintDispatchAuthorized {
       attempt: a,
-      installation_token_url: token_url,
-      endpoint_path: path,
+      app: app,
+      installation: installation,
+      organization: org,
       request: req,
-      drive_destination: dest,
     } =>
-      token_url == "https://api.github.com/app/installations/999/access_tokens"
-        && path == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
+      installation.value == 999
+        && app == gunbai_bot_declared
+        && (org.login as String) == "gunb-ai"
         && (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
-        && string_contains(s: dest, pattern: "/jit.img")
     _ => false
   }
 }
@@ -1235,23 +1272,25 @@ test fn witness_an_authorized_dispatch_delivers_nothing_when_the_mint_was_not_cr
 }
 
 // DELIVERY POSITIVE CONTROL, and it pins the property the push direction rests on: the credential
-// is reachable ONLY beside the attempt's own drive destination. There is no value in this module's
+// is reachable ONLY bound to the attempt the dispatch proved. There is no value in this module's
 // vocabulary that hands a caller a credential it may address anywhere else, which is the structural
 // form of "there is no endpoint a host may ask".
-test fn witness_a_minted_credential_is_bound_to_the_attempts_own_drive_destination() -> Bool {
+test fn witness_a_minted_credential_is_bound_to_the_dispatched_attempt() -> Bool {
   let delivery = receive_jit_mint(
     dispatch: dispatched(owned: true, perms: runner_grant),
     outcome: minted_outcome,
   )
   jit_credential_delivered(delivery: delivery)
     && match delivery {
-      JitCredentialBoundToDrive {
+      JitCredentialBoundToAttempt {
         attempt: a,
-        drive_destination: dest,
         credential: c,
         runner_id: id,
       } =>
-        dest == runner_microvm_attempt_jit_drive_path(attempt: a)
+        match dispatched(owned: true, perms: runner_grant) {
+          JitMintDispatchAuthorized { attempt: d, app: _, installation: _, organization: _, request: _ } => a == d
+          _ => false
+        }
           && (c.encoded as String) == "ZmFrZS1qaXQtY29uZmln"
           && id == 4242
       _ => false

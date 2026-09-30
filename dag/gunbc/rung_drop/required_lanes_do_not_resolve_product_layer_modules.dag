@@ -1,0 +1,60 @@
+module gunbc.rung_drop.required_lanes_do_not_resolve_product_layer_modules
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// WHY THIS IS ITS OWN ROW AND NOT A FOURTH AMENDMENT OF required_gate_bankruptcy. That row's
+// 2026-09-02 amendment named "every module OUTSIDE THE REQUIRED FLOOR GATE CLOSURE" as a member
+// and argued -- correctly, for the state of that day -- that two rows behind one trigger is a
+// fork. What changed on 2026-09-20 is the TRIGGER, not the population. The gate-bankruptcy trigger
+// is a required run whose witness population is derived from the change; a run can satisfy it
+// and still hand no product-layer module's SOURCE to compile_to_resolved, because that trigger is
+// stated over witnesses and this loss is stated over modules. The floor's fourth member was
+// riding on the whole-corpus strict preparation that #11742 and gunbc.compiler_gate_workflow
+// deleted, which is the LostAsPassenger shape: nothing deleted "resolve product-layer modules";
+// the carrier it rode on was cut, and re-adding the witness fold at gate width would not restore
+// it. So this row carries its own trigger, stated at module grain, and the population is
+// enumerated by an instrument rather than transcribed.
+//
+// THE INCIDENT (2026-09-20, dashboard node adhoc-3bc1b8e0-982). gunbc.site_pxe_edge_converge
+// (#11607) did not resolve on main while all four required lanes reported SUCCESS; it carried
+// four approvals and a side-chat exact-head APPROVE and reached position 1 in the merge queue.
+// The same day #11722's witness landed importing names #11675 had renamed,
+// gunbc.fabric_required_build_cell landed passing an Optional from first() into a String
+// parameter, and test.claim.workflow_dispatch_input_witness sat on main not resolving --
+// repaired by #11839 ("two composition breaks the PR gate could not see"). DESIGN section 3's
+// sentence -- a product-layer dependent can stop resolving, stay broken, and let every required
+// lane report SUCCESS -- was the live state, not a warning.
+//
+// THE MANUAL RECEIPT WHILE THIS ROW STANDS. A PR that touches a module in the unreached
+// population, or a declaration such a module consumes, carries in its body: (1) a local
+// claim_batch (or gunbc run) at the EXACT head sha over every unreached module its diff reaches,
+// (2) the sha256 of the binary that produced it, and (3) an rc-red control -- the same driver run
+// over a subject that must refuse (a planted non-resolving fixture or `false`), shown red in the
+// same receipt. A receipt without (3) is a driver that was never shown able to go red; the two
+// instruments that approved #11607's head both lacked it (gunbc.recurring_failure_mode
+// exit_status_read_through_a_pipe_reports_the_last_stage,
+// a_planted_red_control_positioned_where_it_cannot_fire). This obligation is review diligence,
+// not a gate, and the row says so: nothing executes it, which is exactly why it is a drop.
+data required_lanes_do_not_resolve_product_layer_modules: RungDrop = RungDrop {
+  identity: "required_lanes_do_not_resolve_product_layer_modules" as NonEmptyStr,
+
+  subject: "Required lanes do not resolve product-layer modules: a module outside the nominal gate closure and the drift gate's entry closure can stop resolving on main while every required lane reports SUCCESS",
+
+  declared: "2026-09-20",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "the whole-corpus strict preparation of gunbc.witness_floor_workflow's floor lane, cut by #11742 and replaced by gunbc.compiler_gate_workflow, whose floor job prepares the nominal gate closure (v2.workflow.required_floor required_gate_prefixes plus its seeds) and whose drift gate resolves dag/gunbc/instruments/generated_artifact_gate.dag's entry closure; every other module is reached by no required step" },
+    population: [
+      "every module identity the source-root ingestion admits under dag/ and src/v2/ that is in neither the floor job's nominal prepared subject nor the drift gate's entry closure -- enumerated BY IDENTITY, not by count, by `gunbc test //gunbc/instruments:required-lane-resolution-census` (gunbc.required_lane_resolution_census_live), whose receipt prints one `unreached` line per identity; the snapshot at declaration is docs/rung-drops/required_lanes_do_not_resolve_product_layer_modules_2026-09-20.txt, a receipt of one run and not the authority",
+      "the changed-witness and touched-entry seeds do NOT narrow this population: they resolve a module on the PR that touches it, and the loss is the module nobody touched, broken by a rename in a module it depends on (the #11675 -> #11722 shape)",
+      "the `compiler` and `clippy` jobs hand no .dag source to the compiler and the `witnesses` aggregate runs none; the population is therefore a fact about the `floor` job alone (gunbc.compiler_gate_workflow compiler_gate_floor_job)",
+    ],
+    restoration_trigger: "THE CAPABILITY: on every landing revision, some required lane hands the source of EVERY module the source-root ingestion admits to compile_to_resolved under the Strict gate -- or, equivalently at the grain the incident needs, every module that consumes a declaration the revision changed -- so that a rename or a refusal in any admitted module is a red required lane on the revision that introduces it. The retiring observation is `gunbc test //gunbc/instruments:required-lane-resolution-census` holding (an EMPTY unreached population) against the required workflow as emitted, and the instrument then stays enrolled as the regression control. WHAT DOES NOT RETIRE THIS ROW: widening v2.workflow.required_floor required_gate_prefixes (that moves the population and is priced by the cost receipt); a change-derived WITNESS population on the required path (that retires required_gate_bankruptcy, whose trigger is stated over witnesses, and can fire while this row's population is still nonempty); a job added without operator sign-off (the job roster is closed to growth); or a receipt-only run outside the required path. Adding a required job that resolves every witness root's closure is the construction expected to get here and needs the operator, which is why this drop is declared now rather than that lane being built.",
+  },
+}

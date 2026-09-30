@@ -1,0 +1,209 @@
+module test.claim.native_route_member_termination
+
+import gunbc.instrument_targets { native_route_member_termination }
+import gunbc.target_invocation {
+  InvocationTermination,
+  InvocationObservationHeld, InvocationObservationDidNotHold,
+  InvocationSubjectUnreached, InvocationRefused,
+}
+import gunbc.witness_v2_native_route { NativeRouteMemberRow, NativeRouteTestIdentity }
+import v2.compiler.native_test_vocabulary {
+  NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
+  NativeTestStagePrepare, NativeTestStageEval,
+  native_test_refused_located,
+}
+import v2.std.diagnostic { Locus, Textual, WholeFile }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, List }
+
+// EVERY ROW IN THIS MODULE IS AUTHORED IN THE SOURCE, so the whole file is hermetic and says so.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHICH OF THESE ARMS HAS EXECUTED BACKING, STATED HERE SO THREE GREENS DO NOT READ AS THREE
+// EXERCISED ARMS (DESIGN section 3's pairing obligation, and the non-discriminating-input trap).
+//
+// THE SUPPLIED INPUTS ARE LEGITIMATE AND THE REASON IS THE RULE'S OWN: this fold's subject is ONE
+// INTERFACE -- a population of `NativeRouteMemberRow` in, one `InvocationTermination` out -- so its
+// inputs belong at that boundary as supplied values rather than as the output of running a compiler
+// underneath it. Deriving them would re-execute production this claim is not about.
+//
+// THE INHABITANCE CLAIM IS AN EXECUTED RUN AND IT COVERS EXACTLY ONE ARM. The real producer was run
+// end to end on `session/sharp-bear-756` at `6032d50be7d`: the emitted compiler built clean
+// (`exit_status=0 warning_count=0` under `-D warnings`), adjudicated `universe=3992 population=3992`,
+// and persisted 3,483,310 bytes of per-identity rows, byte-for-byte verified. EVERY ONE of those
+// 3992 rows carried `NativeTestRefused` -- 3322 at Prepare, 634 at Context, 36 at Eval -- and the
+// route terminated `SubjectUnreached`, exit 2. So the refused arm below is a reading of a shape the
+// real producer demonstrably emits, through the real decision, to the real output.
+//
+// THE OTHER TWO ARMS HAVE NO EXECUTED BACKING YET, AND SAYING SO IS THE POINT. No real row on any
+// head observed so far carries `NativeTestPassed`, `NativeTestReturnedFalse` or
+// `NativeTestReturnedOther`, because nothing passes natively yet. Their assertions here are
+// hypotheses about a boundary, not readings of one. TRIGGER FOR THEIR INHABITANCE, at capability
+// grain so it fires on its own: the first native run that emits a row with a non-refused verdict.
+// Nobody has to go and fetch it; the day anything passes, these arms acquire a real producer.
+
+fn identity_of(module: String, declaration: String) -> NativeRouteTestIdentity {
+  NativeRouteTestIdentity { module: module, declaration: declaration }
+}
+
+fn row_with(module: String, declaration: String, verdict: NativeTestVerdict) -> NativeRouteMemberRow {
+  NativeRouteMemberRow { identity: identity_of(module: module, declaration: declaration), verdict: verdict }
+}
+
+// THE SHAPE THE REAL RUN EMITTED, reconstructed at this boundary: a Prepare-stage refusal whose
+// located cause is the one that dominated the measured population (2727 of 3992).
+fn refused_at_prepare() -> NativeTestVerdict {
+  native_test_refused_located(
+    stage: NativeTestStagePrepare {},
+    reason: ^resolve_ambiguous_on_global_bare,
+    at: Textual { file: "src/v2/test/algebra_laws/field_patch_monoid_test.dag", extent: WholeFile {} }
+  )
+}
+
+fn refused_at_eval() -> NativeTestVerdict {
+  native_test_refused_located(
+    stage: NativeTestStageEval {},
+    reason: ^native_test_entry_declaration_not_found,
+    at: Textual { file: "src/v2/test/parse/expression_bodied_fn_decl_parse_test.dag", extent: WholeFile {} }
+  )
+}
+
+fn termination_name(t: InvocationTermination) -> String {
+  match t {
+    InvocationObservationHeld => "held"
+    InvocationObservationDidNotHold => "did_not_hold"
+    InvocationSubjectUnreached => "subject_unreached"
+    InvocationRefused => "refused"
+  }
+}
+
+// EXECUTED ARM. A population every member of which refused is SubjectUnreached, which is what the
+// 3992-row run reported. This is the arm the real producer has actually inhabited.
+test fn a_wholly_refused_population_is_subject_unreached() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: refused_at_prepare()),
+    row_with(module: "v2.test.parse", declaration: "b", verdict: refused_at_eval()),
+  ], universe: 2, file_refusals: 0)) == "subject_unreached"
+}
+
+// THE EMPTY SELECTION IS ITS OWN ARM AND IT IS NOT THE ALL-PASSED ARM. "every row passed" is
+// vacuously true of no rows, so collapsing these two would report a pattern that selected nothing
+// as a passing test. This is the arm a reviewer will suggest simplifying.
+test fn an_empty_selection_is_unreached_not_held() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [], universe: 0, file_refusals: 0)) == "subject_unreached"
+}
+
+// SUPPLIED ARM (no executed backing yet). All members passed and the population is non-empty.
+test fn a_wholly_passing_population_is_held() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
+    row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestPassed {}),
+  ], universe: 2, file_refusals: 0)) == "held"
+}
+
+// SUPPLIED ARM (no executed backing yet). One member evaluated and returned false.
+test fn one_returned_false_makes_the_selection_not_hold() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
+    row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestReturnedFalse {}),
+  ], universe: 2, file_refusals: 0)) == "did_not_hold"
+}
+
+// THE PRECEDENCE, WHICH IS THE ONE DECISION IN THIS FOLD THAT COULD HAVE GONE THE OTHER WAY. A
+// definite failure beside an unobserved sibling reports the FAILURE: ranking refusal higher would
+// hide a located defect behind a test nobody managed to run. Without this arm, an implementation
+// that checked `unobserved` first would pass every other claim in this file.
+test fn a_definite_failure_outranks_an_unobserved_sibling() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: refused_at_prepare()),
+    row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestReturnedFalse {}),
+  ], universe: 2, file_refusals: 0)) == "did_not_hold"
+}
+
+// AND AN UNOBSERVED MEMBER OUTRANKS THE PASSES AROUND IT. Without this arm, an implementation that
+// answered `held` whenever nothing failed would pass every other claim in this file.
+test fn one_unobserved_member_stops_a_passing_population_holding() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
+    row_with(module: "v2.test.parse", declaration: "b", verdict: refused_at_prepare()),
+  ], universe: 2, file_refusals: 0)) == "subject_unreached"
+}
+
+// RETURNED-OTHER IS A FAILURE, NOT AN UNOBSERVED STATE. A test that evaluated to a non-Bool WAS
+// observed; classifying it as unreached would report a real defect as an absence of evidence.
+test fn returned_other_is_a_failure_rather_than_an_absence() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestReturnedOther {}),
+  ], universe: 1, file_refusals: 0)) == "did_not_hold"
+}
+
+// THE REVIEWER'S CASE, WHICH FAILED GREEN AND IS THE REASON COMPLETENESS BECAME AN INPUT
+// (review 70091). Two tests pass and a THIRD identity of the selection emitted no row at all --
+// its file refused to parse. Folding only the printed rows sees two passes and answers "held",
+// exit 0, while the lane concurrently refuses with population_omissions_present. A non-empty row
+// list hides exactly what the empty-selection arm exists to catch.
+test fn an_omitted_identity_stops_a_passing_population_holding() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
+    row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestPassed {}),
+  ], universe: 3, file_refusals: 0)) == "subject_unreached"
+}
+
+// A FILE REFUSAL COUNTS EVEN WHEN EVERY EXPECTED ROW ARRIVED. A source that could not be read may
+// hold identities discovery never saw, so the universe itself can be short with no row missing.
+// This is the arm the real run exercises: it reported universe=3992 population=3992 and
+// file_refusals=259, so the counts AGREED and the selection was still not wholly observed.
+test fn a_file_refusal_stops_a_matching_population_holding() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
+  ], universe: 1, file_refusals: 259)) == "subject_unreached"
+}
+
+// AND A DEFINITE FAILURE STILL OUTRANKS INCOMPLETENESS. A test that evaluated and returned false
+// makes "the selection held" false whether or not its siblings were all observed; demoting that to
+// "unreached" because a file refused would bury a located defect behind a completeness problem.
+test fn a_definite_failure_outranks_an_incomplete_population() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestReturnedFalse {}),
+  ], universe: 9, file_refusals: 7)) == "did_not_hold"
+}
+
+// THE LANE'S QUALIFICATION GATES A PASS AND NOTHING ELSE (review 70107). A refused route beside an
+// all-passing population used to answer "held", exit 0, with the refusal demoted to a sentence --
+// and several qualification clauses are exactly the ones establishing the verdict surface is
+// trustworthy at all, so those rows had no established provenance.
+test fn a_refused_qualification_cannot_yield_a_pass() -> Bool {
+  termination_name(t: native_route_termination_under_qualification(
+    members: InvocationObservationHeld {},
+    lane_qualified: false
+  )) == "subject_unreached"
+}
+
+// AND A QUALIFIED ROUTE CHANGES NOTHING, which is what makes the clamp a gate rather than a
+// constant. Without this arm an implementation that always answered SubjectUnreached would pass
+// the one above.
+test fn a_qualified_route_passes_the_member_standing_through() -> Bool {
+  termination_name(t: native_route_termination_under_qualification(
+    members: InvocationObservationHeld {},
+    lane_qualified: true
+  )) == "held"
+}
+
+// A DEFINITE FAILURE PASSES THROUGH A REFUSED QUALIFICATION UNCHANGED. Its provenance does not
+// depend on the route's integrity clauses, and demoting it would bury a located defect behind an
+// infrastructure problem. This is the arm that makes the gate one-directional.
+test fn a_refused_qualification_does_not_demote_a_definite_failure() -> Bool {
+  termination_name(t: native_route_termination_under_qualification(
+    members: InvocationObservationDidNotHold {},
+    lane_qualified: false
+  )) == "did_not_hold"
+}
+
+// THE GATE CANNOT MANUFACTURE A FAILURE NOBODY REPORTED. A refused route over an unreached
+// population stays unreached rather than becoming a failing test.
+test fn a_refused_qualification_does_not_invent_a_failure() -> Bool {
+  termination_name(t: native_route_termination_under_qualification(
+    members: InvocationSubjectUnreached {},
+    lane_qualified: false
+  )) == "subject_unreached"
+}

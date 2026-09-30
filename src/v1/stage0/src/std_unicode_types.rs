@@ -29,6 +29,22 @@ pub fn unicode_scalar(code_point: i64) -> bool {
             && (code_point.clone() <= unicode_surrogate_last_code_point())))
 }
 
+pub fn unicode_scalar_utf8_octet_count(code_point: i64) -> i64 {
+    if (code_point.clone() < 128) {
+        1
+    } else {
+        if (code_point.clone() < 2048) {
+            2
+        } else {
+            if (code_point.clone() < 65536) {
+                3
+            } else {
+                4
+            }
+        }
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -99,7 +115,7 @@ pub fn char_in_class(c: i64, class: CharClass) -> bool {
 }
 
 pub fn unicode_char_code_point(c: i64) -> i64 {
-    (c.clone() + 0)
+    v1_rt::int_add(c.clone(), 0)
 }
 
 pub fn in_block(cp: i64, block: Rc<UnicodeBlock>) -> bool {

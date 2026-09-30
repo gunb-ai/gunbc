@@ -455,6 +455,31 @@ test fn witness_release_scope_empty_query_answers_both_arms_hold() -> Bool {
     && !stage0_partition_rebuild_release_scope_empty_today(host_shell_modules: [], changed_mirrors: ["std_effects.rs"], unlocatable: [])
 }
 
+// CONTROL 7b -- THE CRATE-LESS MEMBER. emitted_population.rs is declared by no lib.rs (it is
+// the population manifest, read as data), so a change to it alone is the empty release scope,
+// and a change set carrying it beside a compiled mirror scopes on the compiled mirror alone. Its
+// RED is control 4: an unowned mirror NOT named on the roster still refuses
+// MirrorHasNoOwningPackage. Measured need: on main d45ab4edd9d every regen round refused
+// MirrorHasNoOwningPackage mirror=emitted_population.rs after #12111 added a mirror.
+test fn witness_crate_less_manifest_scope_is_empty_holds() -> Bool {
+  match stage0_partition_rebuild_decision_today(host_shell_modules: [], changed_mirrors: ["emitted_population.rs"], unlocatable: []) {
+    ReleaseScopeEmpty { changed_mirrors: ms } => (count(ms) == 1) && witness_has(items: ms, item: "emitted_population.rs")
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    WholeCompilerRebuildRequired { cause: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
+test fn witness_crate_less_manifest_rides_a_compiled_change_holds() -> Bool {
+  match stage0_partition_rebuild_decision_today(host_shell_modules: [], changed_mirrors: ["emitted_population.rs", "std_effects.rs"], unlocatable: []) {
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: _, executable_assembly: _ } =>
+      (count(o) == 1) && witness_has(items: o, item: "v1-stage0-std-surface")
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
+    WholeCompilerRebuildRequired { cause: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
 // The same derived assembly arm owns compile and any other emitted shell module.
 // The controlled fixture includes an unrelated name to discriminate a file exception.
 test fn witness_host_shell_mirrors_rebuild_only_the_shell_holds() -> Bool {

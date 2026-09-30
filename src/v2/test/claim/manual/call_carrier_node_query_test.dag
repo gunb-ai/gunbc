@@ -11,13 +11,16 @@ import v2.std.node {
   Value,
   node_synthetic
 }
-import v2.std.node_query {
-  call_argument_targets,
-  call_callee_target,
-  node_is_call,
-  node_is_callee_reference
+import v2.std.compilers.body_lowering {
+  Application,
+  ApplicationRead,
+  ApplicationRefused,
+  ArrowHead,
+  AtomHead,
+  NotApplication,
+  application_read
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.std.collection { Absent, Present, list_at_optional }
 import v2.std.logic { Bool }
 
@@ -67,46 +70,80 @@ fn call_carrier_callee_free_transform() -> Node {
   )
 }
 
-test fn call_carrier_call_recognized() -> Bool {
-  node_is_call(node: call_carrier_call_node())
+// The call carrier read through v2.std.compilers.body_lowering application_read, the one reader
+// that replaced v2.std.node_query node_is_call / call_callee_target / call_argument_targets. The
+// module and test names are kept because the floor roster keys them.
+
+fn call_carrier_is_application(r: ApplicationRead) -> Bool {
+  match r {
+    Application { view: _ } => true
+    NotApplication => false
+    ApplicationRefused { diagnostics: _ } => false
+  }
 }
 
+test fn call_carrier_call_recognized() -> Bool {
+  call_carrier_is_application(r: application_read(site: call_carrier_call_node()))
+}
+
+// A Transform whose head is not a callee is REFUSED, located at the head -- not "not a call".
+// node_is_call answered false here, which is what let a malformed call drop out of every lens.
 test fn call_carrier_callee_free_not_call() -> Bool {
-  !node_is_call(node: call_carrier_callee_free_transform())
+  match application_read(site: call_carrier_callee_free_transform()) {
+    ApplicationRefused { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == ^body_view_transform_head_not_callee
+    Application { view: _ } => false
+    NotApplication => false
+  }
 }
 
 test fn call_carrier_callee_is_reference() -> Bool {
-  node_is_callee_reference(node: call_carrier_callee_ref())
+  match application_read(site: call_carrier_call_node()) {
+    Application { view: v } =>
+      match v.head_identity {
+        AtomHead { identity: id } => id == ^call_carrier_callee_add
+        ArrowHead => false
+      }
+    NotApplication => false
+    ApplicationRefused { diagnostics: _ } => false
+  }
 }
 
 test fn call_carrier_value_not_callee_reference() -> Bool {
-  !node_is_callee_reference(node: call_carrier_value_node())
+  match application_read(site: call_carrier_value_node()) {
+    NotApplication => true
+    Application { view: _ } => false
+    ApplicationRefused { diagnostics: _ } => false
+  }
 }
 
 test fn call_carrier_callee_target_matches() -> Bool {
-  match call_callee_target(node: call_carrier_call_node()) {
-    Accepted { value: callee, diagnostics: _ } => callee == call_carrier_callee_ref()
-    Rejected { diagnostics: _ } => false
+  match application_read(site: call_carrier_call_node()) {
+    Application { view: v } => v.head == call_carrier_callee_ref()
+    NotApplication => false
+    ApplicationRefused { diagnostics: _ } => false
   }
 }
 
 test fn call_carrier_callee_target_rejects_non_call() -> Bool {
-  match call_callee_target(node: call_carrier_callee_free_transform()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
-  }
+  !call_carrier_is_application(r: application_read(site: call_carrier_callee_free_transform()))
 }
 
 test fn call_carrier_arguments_match() -> Bool {
-  let args = call_argument_targets(node: call_carrier_call_node())
-  let arity_two = count(args) == 2
-  let first_is_x = match list_at_optional(xs: args, index: 0) {
-    Present { value: a0 } => a0 == call_carrier_arg_x()
-    Absent => false
+  match application_read(site: call_carrier_call_node()) {
+    Application { view: v } =>
+      let args = v.operands
+      let arity_two = count(args) == 2
+      let first_is_x = match list_at_optional(xs: args, index: 0) {
+        Present { value: a0 } => a0 == call_carrier_arg_x()
+        Absent => false
+      }
+      let second_is_y = match list_at_optional(xs: args, index: 1) {
+        Present { value: a1 } => a1 == call_carrier_arg_y()
+        Absent => false
+      }
+      arity_two && first_is_x && second_is_y
+    NotApplication => false
+    ApplicationRefused { diagnostics: _ } => false
   }
-  let second_is_y = match list_at_optional(xs: args, index: 1) {
-    Present { value: a1 } => a1 == call_carrier_arg_y()
-    Absent => false
-  }
-  arity_two && first_is_x && second_is_y
 }

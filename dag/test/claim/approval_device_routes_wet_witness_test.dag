@@ -1,0 +1,32 @@
+module test.claim.approval_device_routes_wet_witness_test
+
+import std.logic { Bool }
+import std.types { String, Timestamp, List }
+import gunbc.auth.approval_device_routes { device_pending_response_at }
+import gunbc.auth.approval_device_wire { ReadAuthentication, read_authentication_json }
+import gunbc.auth.approval_device_crypto_realization {
+  DeviceCryptoRealization, DeviceCryptoObligation, NativeDeviceCryptoBound, DeviceCryptoHandlerReceipt,
+  P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder,
+}
+
+// THE GATE'S DISCRIMINATING CONTROL, executed on the required floor's local-repo wet lane
+// (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule): under a bound realization the read
+// proceeds past the gate into the enrolment store's Filesystem.Read, which has no mock_response, and
+// the route takes no store as a parameter, so the store cannot be supplied at this interface. The
+// gate claims it pairs with stay hermetic in test.claim.approval_device_routes_witness_test.
+
+fn fx_bound(covered: List<DeviceCryptoObligation>) -> DeviceCryptoRealization {
+  NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture-native-handler", exact_revision: "0000000", covered: covered } }
+}
+
+data fx_now: Timestamp = "2026-09-21T12:00:00Z"
+data fx_auth: ReadAuthentication = ReadAuthentication { enrollment_id: "enr-482913", requested_at: "2026-09-21T12:00:30Z", assertion_b64: "omlzaWduYXR1cmU" }
+data fx_unrealized: String = "native device-crypto realization is unavailable"
+
+// The discriminating control for the four gate claims in test.claim.approval_device_routes_witness_test:
+// the SAME read under a bound realization does not answer the realization reason -- it proceeds past
+// the gate and answers from the store -- so it is the gate, not a later failure, that decided them.
+test fn a_bound_realization_passes_the_read_past_the_gate() -> Bool {
+  !string_contains(s: device_pending_response_at(realization: fx_bound(covered: [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder]), body: read_authentication_json(a: fx_auth), observed_at: fx_now).body, pattern: fx_unrealized)
+}
+

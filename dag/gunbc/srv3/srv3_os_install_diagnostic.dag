@@ -1,11 +1,6 @@
 module gunbc.srv3_os_install_diagnostic
 
 import std.types { NonEmptyStr, Bool, Int, String, Milliseconds, List }
-import std.content_hash {
-  ContentHash,
-  as_content_hash_structural,
-  fnv1a64_structural_hex_digest,
-}
 import std.measure { ByteSize, byte_size, Millisecond }
 import std.disposition { Disposition, Terminal }
 import extdeps.bmc.types {
@@ -43,8 +38,7 @@ import gunbc.network_identity_subsumption {
   srv3_post_install_lease_table_fixture,
   srv3_bmc_static_lease_row,
 }
-import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_content_hash }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuilt }
 import product.placement_supply { HostIdentity }
 import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_token_path,
@@ -120,23 +114,27 @@ type OsInstallAttemptIntent {
   actuator_host: HostIdentity
   bmc_endpoint: NonEmptyStr
   iso_path: NonEmptyStr
-  iso_content_hash: ContentHash
+  iso_sha256: NonEmptyStr
   expected_hostname: NonEmptyStr
   boot_source: RedfishBootSourceOverrideTarget
   boot_override: RedfishBootSourceOverrideEnabled
   serve_port: Int
 }
 
-data srv3_os_install_attempt_intent: OsInstallAttemptIntent = OsInstallAttemptIntent {
-  target_host: operator_host_srv3,
-  actuator_host: operator_host_srv1,
-  bmc_endpoint: asrock_srv3_live_bmc_host,
-  iso_path: srv3_actuator_virtual_media_iso_install_path,
-  iso_content_hash: srv3_seeded_install_media_content_hash,
-  expected_hostname: "srv3" as NonEmptyStr,
-  boot_source: BootTargetCd,
-  boot_override: BootOverrideOnce,
-  serve_port: srv3_nbd_proxy_local_port,
+// The attempt serves the image the actuator resolved, so the intent is a function of that image:
+// the expected digest is the built image's measured sha256, never a hash of the build's inputs.
+fn srv3_os_install_attempt_intent_for(image: UbuntuSeededInstallMediaBuilt, iso_path: NonEmptyStr) -> OsInstallAttemptIntent {
+  OsInstallAttemptIntent {
+    target_host: operator_host_srv3,
+    actuator_host: operator_host_srv1,
+    bmc_endpoint: asrock_srv3_live_bmc_host,
+    iso_path: iso_path,
+    iso_sha256: image.output_digest,
+    expected_hostname: "srv3" as NonEmptyStr,
+    boot_source: BootTargetCd,
+    boot_override: BootOverrideOnce,
+    serve_port: srv3_nbd_proxy_local_port,
+  }
 }
 
 type NbdServeProcessObservation
@@ -155,7 +153,7 @@ type BmcSessionTokenObservation
 
 type IsoServeReadinessObservation
   = IsoMissing
-  | IsoPresent { observed_content_hash: ContentHash }
+  | IsoPresent { observed_sha256: NonEmptyStr }
 
 type NbdServeReadinessVerdict
   = ServeAbsent
@@ -337,8 +335,8 @@ fn classify_nbd_serve_readiness(
         TokenPresent =>
           match iso {
             IsoMissing => IsoMissingVerdict
-            IsoPresent { observed_content_hash: observed } =>
-              if (observed as String) != (intent.iso_content_hash as String) {
+            IsoPresent { observed_sha256: observed } =>
+              if (observed as String) != (intent.iso_sha256 as String) {
                 IsoHashMismatch
               } else {
                 match port {
@@ -1184,17 +1182,21 @@ fn parse_serve_port_observation(stdout: String, intent: OsInstallAttemptIntent) 
   }
 }
 
-fn parse_observe_content_hash_observed(stdout: String) -> ContentHash? {
-  let parts = split(s: stdout, delimiter: "content_hash_observed=")
+fn parse_observe_iso_sha256_observed(stdout: String) -> NonEmptyStr? {
+  let parts = split(s: stdout, delimiter: "iso_sha256_observed=")
   if parts.length() <= 1 {
     none
   } else {
     let tail = parts.skip(n: 1).first()
     let line = split(s: tail, delimiter: "\n").first()
-    match fnv1a64_structural_hex_digest(hex: split(s: line, delimiter: " ").first()) {
-      Present { value: structural } =>
-        Present { value: as_content_hash_structural(structural: structural) }
+    match get(xs: split(s: line, delimiter: " "), index: 0) {
       Absent => none
+      Present { value: token } =>
+        if token.length() == 0 {
+          none
+        } else {
+          Present { value: token as NonEmptyStr }
+        }
     }
   }
 }
@@ -1205,11 +1207,11 @@ fn parse_serve_iso_observation(stdout: String, intent: OsInstallAttemptIntent) -
     IsoMissing
   } else {
     if string_contains(s: stdout, pattern: "iso=match") {
-      IsoPresent { observed_content_hash: intent.iso_content_hash }
+      IsoPresent { observed_sha256: intent.iso_sha256 }
     } else {
       if string_contains(s: stdout, pattern: "iso=mismatch") {
-        match parse_observe_content_hash_observed(stdout: stdout) {
-          Present { value: observed } => IsoPresent { observed_content_hash: observed }
+        match parse_observe_iso_sha256_observed(stdout: stdout) {
+          Present { value: observed } => IsoPresent { observed_sha256: observed }
           Absent => IsoMissing
         }
       } else {
@@ -1395,15 +1397,5 @@ fn srv3_install_diagnostic_recommended_action_wire(verdict: Srv3InstallDiagnosti
     KvmUntrusted => "do not use KVM as success oracle; read SOL and router lease"
     Inconclusive => "collect missing observation surfaces before next actuation"
     InconclusiveNeedsServeObservation => "collect actuator-host serve observation surfaces before next actuation"
-  }
-}
-
-fn srv3_remote_bmc_probe_diagnostic_is_needs_serve_observation() -> Bool {
-  match diagnose_srv3_install(
-    intent: srv3_os_install_attempt_intent,
-    observation: srv3_remote_bmc_probe_observation,
-  ) {
-    InconclusiveNeedsServeObservation => true
-    _ => false
   }
 }

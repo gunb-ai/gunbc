@@ -1,0 +1,126 @@
+module test.claim.runner.runner_microvm_lifecycle_realize_witness_test
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import extdeps.posix.test_utility {
+  PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable,
+  ContainedExistence, ContainedAbsent, ContainedPresent, ContainedUnreadable, contained_existence,
+}
+import gunbc.runner_microvm_lifecycle {
+  CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
+  ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
+  TeardownStop, StoppedGracefully, StoppedByForce, StopFoundAlreadyQuiescent,
+  ForceStopBoundExceeded, ForceNotAsked, ForceStopOutcomeUnobservable,
+}
+import gunbc.runner_microvm_lifecycle_realize {
+  StopQuiescence, CgroupQuiet, CgroupStillHolding, CgroupNotQuiet, CgroupHoldsTasks, CgroupHoldReadFailed,
+  force_stop_outcome_after_ask, absence_of_containment, parent_directory_of,
+}
+
+// THE REALIZE MODULE'S PURE FOLDS, CLAIMED WITHOUT A HOST.
+//
+// This module is mostly wet, and the wet receipt in test/manual covers the producers that reach the
+// host. What it could not cover is the DECIDING folds in between -- the ones that turn a reading into
+// an arm -- because a wet claim exercises them only along whichever path the host happened to take.
+// Two of the discriminators the side chat named for gunbc#11803 live exactly there, and neither was
+// authorable anywhere until this file existed.
+
+// --- the force-stop outcome: four inputs, and the ask is one of them ---
+
+fn force_label(asked: Bool, q: StopQuiescence) -> String {
+  match force_stop_outcome_after_ask(asked: asked, ask_detail: "writing cgroup.kill failed: EACCES", q: q) {
+    StoppedByForce => "by-force"
+    ForceNotAsked { reason: _ } => "not-asked"
+    ForceStopBoundExceeded { survivors: _ } => "bound-exceeded"
+    ForceStopOutcomeUnobservable { reason: _ } => "unobservable"
+    StoppedGracefully => "gracefully"
+    StopFoundAlreadyQuiescent => "already-quiescent"
+  }
+}
+
+fn populated() -> StopQuiescence {
+  CgroupStillHolding { holding: CgroupHoldsTasks { pids: [4242], cgroups: ["srv2-04.slice" as NonEmptyStr] } }
+}
+
+fn unreadable_subtree() -> StopQuiescence {
+  CgroupStillHolding { holding: CgroupHoldReadFailed { reason: "cgroup.events: EIO" as NonEmptyStr } }
+}
+
+// A FAILED cgroup.kill FOLLOWED BY A QUIET SUBTREE IS NOT A FORCE THAT WORKED.
+//
+// This is the discriminator for the defect review 69117 found and for the over-correction that
+// followed it. The write result and the readback are two facts and the arm needs both: asked and
+// quiet is the only combination that may claim StoppedByForce, because that arm says THIS
+// controller's kill ended the cell. A kill that was never asked, over a subtree that went quiet
+// anyway, is ForceNotAsked -- true, weaker, and it still lets the cgroup answer the
+// surviving-process fact.
+test fn a_kill_that_was_never_asked_never_reads_as_stopped_by_force() -> Bool {
+  force_label(asked: true, q: CgroupQuiet) == "by-force"
+    && force_label(asked: false, q: CgroupQuiet) == "not-asked"
+}
+
+// AND AN UNASKED KILL OVER A POPULATED SUBTREE IS NOT AN EXCEEDED BOUND EITHER, which is the half
+// that would otherwise send an operator hunting an unkillable task. ForceStopBoundExceeded means a
+// task the KERNEL could not end; it is reachable only when the kernel was actually asked.
+test fn an_exceeded_bound_requires_the_kill_to_have_been_asked() -> Bool {
+  force_label(asked: true, q: populated()) == "bound-exceeded"
+    && force_label(asked: false, q: populated()) == "not-asked"
+}
+
+// A SUBTREE THAT COULD NOT BE READ IS UNOBSERVABLE WHATEVER THE ASK DID, because the reading, not
+// the ask, is what would have established the fact.
+test fn an_unreadable_subtree_is_unobservable_however_the_kill_went() -> Bool {
+  force_label(asked: true, q: unreadable_subtree()) == "unobservable"
+    && force_label(asked: false, q: unreadable_subtree()) == "unobservable"
+}
+
+// --- absence by containment ---
+
+fn absence_label(parent: PathExistenceReading, child: PathExistenceReading) -> String {
+  match absence_of_containment(
+    path: "/srv/gunbc/cells/srv1-07/attempts/w-42",
+    parent: "/srv/gunbc/cells/srv1-07/attempts",
+    contained: contained_existence(
+      path: "/srv/gunbc/cells/srv1-07/attempts/w-42",
+      parent: "/srv/gunbc/cells/srv1-07/attempts",
+      parent_reading: parent,
+      child_reading: child,
+    ),
+  ) {
+    ResourceAbsent => "absent"
+    ResourcePresent { detail: _ } => "present"
+    ResourceUnreadable { reason: _ } => "unreadable"
+  }
+}
+
+// `test -e` FALSE IS NOT ABSENCE UNLESS THE PARENT WAS READ.
+//
+// POSIX gives `test` exit 1 for a path that is not there AND for one that cannot be STATTED -- a
+// parent without search permission, a dead mount, an I/O error -- and offers nothing to tell them
+// apart. ABSENT is the answer that RELEASES A CELL, so reading a bare false as absent would let a
+// directory whose parent lost +x report the previous tenant's storage as gone while the files sit
+// under it. Only a PRESENT parent makes the child's false mean absent, because then the directory was
+// searched and the child was not in it.
+//
+// THE FIRST LINE IS THE ONE THAT MUST STAY TRUE and the other three are what the repair bought: the
+// same child reading, three different parents, three different answers.
+test fn a_false_test_e_means_absent_only_under_a_parent_that_was_read() -> Bool {
+  absence_label(parent: PathPresent, child: PathAbsentOrUnstattable) == "absent"
+    && absence_label(parent: PathAbsentOrUnstattable, child: PathAbsentOrUnstattable) == "unreadable"
+    && absence_label(parent: PathExistenceUnreadable { reason: "test -e exited 126" as NonEmptyStr }, child: PathAbsentOrUnstattable) == "unreadable"
+}
+
+// A PRESENT CHILD IS PRESENT WHATEVER THE PARENT SAID, and an unreadable child is unreadable -- the
+// containment rule applies to the FALSE reading only, and a claim that did not pin these two would
+// pass against a fold that answered "unreadable" to everything.
+test fn containment_only_governs_the_false_reading() -> Bool {
+  absence_label(parent: PathPresent, child: PathPresent) == "present"
+    && absence_label(parent: PathAbsentOrUnstattable, child: PathPresent) == "present"
+    && absence_label(parent: PathPresent, child: PathExistenceUnreadable { reason: "EIO" as NonEmptyStr }) == "unreadable"
+}
+
+// THE PARENT IS THE PATH THE CONTAINMENT RULE ASKS ABOUT, and every path this controller proves
+// absent is absolute and attempt-derived, so the interesting cases are the deep one and the root.
+test fn the_parent_of_an_attempt_path_is_its_directory() -> Bool {
+  parent_directory_of(path: "/srv/gunbc/cells/srv1-07/attempts/w-42") == "/srv/gunbc/cells/srv1-07/attempts"
+    && parent_directory_of(path: "/srv") == "/"
+}

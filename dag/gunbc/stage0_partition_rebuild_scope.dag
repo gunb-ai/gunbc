@@ -133,8 +133,25 @@ data rebuild_scope_shared_build_input_mirrors: List<String> = [
 // this module exists to refuse. The host verifies the partition half by execution: under
 // ReleaseScopeEmpty every partition package is excluded, the build still runs, and a compiled
 // partition package refuses the stage.
+//
+// THE SECOND MEMBER, emitted_population.rs, IS EXCLUDED ONE LEVEL COARSER: no crate declares it
+// at all. It is the emitted population manifest (gunbc.stage0.stage0_emitted_population_manifest),
+// one `// src/<path>` comment line per emitted mirror, and no lib.rs carries a `mod
+// emitted_population` -- the manifest is read as DATA by required_regen_host, never compiled.
+// So rustc never opens it and no package's fingerprint can move with it. It is named here rather
+// than admitted by a rule, because the rule that suggests itself -- "an unowned mirror whose
+// installed bytes equal the candidate's" -- cannot go red: installation IS copying the candidate,
+// so it would equally admit an unowned mirror that a crate DOES compile (the ownership-roster
+// hole gunbc.recurring_failure_mode.mirror_population_exceeds_install_ownership rosters), which
+// is the absorbing fallback. Measured need (2026-09-23, main d45ab4edd9d): #12111 added a mirror
+// and the manifest drifted by its one line, and every regen round then refused
+// MirrorHasNoOwningPackage mirror=emitted_population.rs and restored its checkpoint, so no drift
+// anywhere in stage0 could be installed through the sanctioned route. The citation this entry
+// depends on is the absence of the mod line; a lib.rs that ever declares the file puts it
+// back under owner resolution, and this entry must leave then.
 data rebuild_scope_release_excluded_mirrors: List<String> = [
-  "compiler_tests.rs"
+  "compiler_tests.rs",
+  "emitted_population.rs"
 ]
 
 // THE EXECUTABLE THE SECOND GENERATION RUNS, stated as a typed state rather than assumed.

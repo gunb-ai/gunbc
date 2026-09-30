@@ -1,9 +1,9 @@
 module v2.std.compilers.cli_surface
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Empty }
+import std.algebra { Empty, list_snoc_item }
 import std.types { NonEmptyStr, String }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list }
 import v2.std.collection { List, Map }
 import v2.std.compilers.target_model {
   BoundToken,
@@ -141,6 +141,7 @@ fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
   admit_callers: [
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command"),
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe"),
+    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe_outcome"),
   ]
   = CliSurface {
     arguments: fold_list(

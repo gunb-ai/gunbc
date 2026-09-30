@@ -1,0 +1,157 @@
+module extdeps.apple.info_plist
+
+import std.types { String, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.apple.property_list { PlistEntry, PlistValue, PlistString, PlistArray, PlistDictionary, plist_entry }
+
+// Apple's Information Property List keys (Bundle Resources > Information Property List). Each key
+// this tree writes is one arm, carrying its documented value shape; the key's spelling is Apple's,
+// derived here once. Per-key pages are cited by info_plist_key_reference.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/documentation/bundleresources/information-property-list"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.apple.info_plist",
+      decl_name: "InfoPlistKey",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// UILaunchScreen: a dictionary; an EMPTY dictionary selects the system launch screen (default
+// background colour, no image). Declaring it at all is what tells iOS the app supports every screen
+// size -- an app that has neither it nor UILaunchStoryboardName runs letterboxed in a legacy
+// display mode. Sub-keys modeled: UIColorName and UIImageName (asset-catalog names), each omitted when
+// absent; the rest (UINavigationBar, UITabBar, ...) land with their first consumer.
+type LaunchScreen {
+  color_name: NonEmptyStr?
+  image_name: NonEmptyStr?
+}
+
+data system_default_launch_screen: LaunchScreen = LaunchScreen { color_name: Absent, image_name: Absent }
+
+fn optional_string_entry(key: String, v: NonEmptyStr?) -> List<PlistEntry> {
+  match v {
+    Present { value: s } => [plist_entry(key: key, value: PlistString { value: s })]
+    Absent => []
+  }
+}
+
+// UIBackgroundModes values, Apple's spellings. `remote-notification` lets a push wake the app.
+type BackgroundMode
+  = AudioMode
+  | LocationMode
+  | VoipMode
+  | ExternalAccessoryMode
+  | BluetoothCentralMode
+  | BluetoothPeripheralMode
+  | FetchMode
+  | RemoteNotificationMode
+  | ProcessingMode
+
+fn background_mode_token(m: BackgroundMode) -> String {
+  match m {
+    AudioMode => "audio"
+    LocationMode => "location"
+    VoipMode => "voip"
+    ExternalAccessoryMode => "external-accessory"
+    BluetoothCentralMode => "bluetooth-central"
+    BluetoothPeripheralMode => "bluetooth-peripheral"
+    FetchMode => "fetch"
+    RemoteNotificationMode => "remote-notification"
+    ProcessingMode => "processing"
+  }
+}
+
+// AppDefinedKey is a key Apple does not define: the plist carries it verbatim for the app to read
+// at runtime (Bundle.main.object(forInfoDictionaryKey:)).
+type InfoPlistKey
+  = UILaunchScreenKey
+  | NSFaceIDUsageDescriptionKey
+  | CFBundleDisplayNameKey
+  | UIBackgroundModesKey
+  | UISupportedInterfaceOrientationsKey
+  | AppDefinedKey { name: String }
+
+fn info_plist_key_token(k: InfoPlistKey) -> String {
+  match k {
+    UILaunchScreenKey => "UILaunchScreen"
+    NSFaceIDUsageDescriptionKey => "NSFaceIDUsageDescription"
+    CFBundleDisplayNameKey => "CFBundleDisplayName"
+    UIBackgroundModesKey => "UIBackgroundModes"
+    UISupportedInterfaceOrientationsKey => "UISupportedInterfaceOrientations"
+    AppDefinedKey { name: n } => n
+  }
+}
+
+fn apple_doc(locator: String) -> Uri {
+  Uri { scheme: Https, locator: locator }
+}
+
+fn info_plist_key_reference(k: InfoPlistKey) -> Uri {
+  match k {
+    UILaunchScreenKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/uilaunchscreen")
+    NSFaceIDUsageDescriptionKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/nsfaceidusagedescription")
+    CFBundleDisplayNameKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/cfbundledisplayname")
+    UIBackgroundModesKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/uibackgroundmodes")
+    UISupportedInterfaceOrientationsKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/uisupportedinterfaceorientations")
+    AppDefinedKey { name: _ } => extdeps_external_authority_anchor.uri
+  }
+}
+
+fn info_entry(k: InfoPlistKey, value: PlistValue) -> PlistEntry {
+  plist_entry(key: info_plist_key_token(k: k), value: value)
+}
+
+fn launch_screen_entry(s: LaunchScreen) -> PlistEntry {
+  info_entry(k: UILaunchScreenKey, value: PlistDictionary { entries: concat(optional_string_entry(key: "UIColorName", v: s.color_name), optional_string_entry(key: "UIImageName", v: s.image_name)) })
+}
+
+// NSFaceIDUsageDescription: the purpose string iOS shows the first time the app asks for Face ID. An
+// app that evaluates a biometric policy without it is TERMINATED by the system at that call.
+fn face_id_usage_entry(purpose: String) -> PlistEntry {
+  info_entry(k: NSFaceIDUsageDescriptionKey, value: PlistString { value: purpose })
+}
+
+fn display_name_entry(name: String) -> PlistEntry {
+  info_entry(k: CFBundleDisplayNameKey, value: PlistString { value: name })
+}
+
+fn background_modes_entry(modes: List<BackgroundMode>) -> PlistEntry {
+  info_entry(k: UIBackgroundModesKey, value: PlistArray { elements: map(modes, m => PlistString { value: background_mode_token(m: m) }) })
+}
+
+// UISupportedInterfaceOrientations values (UIInterfaceOrientation). An iPhone app that supports
+// every screen size (UILaunchScreen) and declares no orientations is warned by Xcode that "All
+// interface orientations must be supported" unless it requires full screen.
+type InterfaceOrientation
+  = PortraitOrientation
+  | PortraitUpsideDownOrientation
+  | LandscapeLeftOrientation
+  | LandscapeRightOrientation
+
+fn interface_orientation_token(o: InterfaceOrientation) -> String {
+  match o {
+    PortraitOrientation => "UIInterfaceOrientationPortrait"
+    PortraitUpsideDownOrientation => "UIInterfaceOrientationPortraitUpsideDown"
+    LandscapeLeftOrientation => "UIInterfaceOrientationLandscapeLeft"
+    LandscapeRightOrientation => "UIInterfaceOrientationLandscapeRight"
+  }
+}
+
+data all_interface_orientations: List<InterfaceOrientation> = [PortraitOrientation, PortraitUpsideDownOrientation, LandscapeLeftOrientation, LandscapeRightOrientation]
+
+fn supported_orientations_entry(orientations: List<InterfaceOrientation>) -> PlistEntry {
+  info_entry(k: UISupportedInterfaceOrientationsKey, value: PlistArray { elements: map(orientations, o => PlistString { value: interface_orientation_token(o: o) }) })
+}

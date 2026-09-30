@@ -1,0 +1,206 @@
+module v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN UNDECLARED NAME USED ONLY ON THE RIGHT OF AN OPERATOR EXPRESSION REFUSES AT RESOLVE, AT ITS ATOM.
+//
+// THE SUBJECT IS RESOLVE OVER A TREE WHOSE OPERATOR OPERANDS SURVIVED LOWERING, on the route the
+// native lane runs: native_test_context_from_ingest tokenizes, parses, normalizes and indexes the
+// supplied sources, and native_census_module_resolution resolves one module against it. Before
+// v2.compiler.body_lowering_fold body_lower_read_operator_expression read the grammar's precedence
+// tower whole, the operator reader lowered only the FIRST operator of a chain and its operand reader
+// narrowed any other sequence to its left element, so the three candidate modules below resolved
+// with no diagnostic: the name was never in the tree
+// (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand).
+//
+// THE MODULES VARY ONE THING EACH. The three candidates put an undeclared name where main dropped
+// it: the third operand of a chain, the right of an operator inside an if-arm the bottom-up fold does
+// not reach, and the operand of a prefix `!`. The declared-right module is the chain with a bound
+// name, so an operand reaching resolve is not by itself a refusal; the left-only module puts the
+// undeclared name in the first position, which main already lowered, so it refuses on both sides and
+// shows the refusal is resolve's and not an artefact of the new reader.
+data sqo_chain_right_source: String = "module v2.test.sqo_chain_right\n\nimport v2.std.logic { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { p && p && sqo_undeclared_right }\n"
+
+data sqo_branch_right_source: String = "module v2.test.sqo_branch_right\n\nimport v2.std.logic { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { if p { p && sqo_undeclared_right } else { false } }\n"
+
+data sqo_negated_source: String = "module v2.test.sqo_negated\n\nimport v2.std.logic { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { !sqo_undeclared_negated && p }\n"
+
+data sqo_declared_right_source: String = "module v2.test.sqo_declared_right\n\nimport v2.std.logic { Bool }\n\ndata sqo_declared_value: Bool = true\n\nfn sqo_probe(p: Bool) -> Bool { p && p && sqo_declared_value }\n"
+
+data sqo_left_only_source: String = "module v2.test.sqo_left_only\n\nimport v2.std.logic { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { sqo_undeclared_left && p && p }\n"
+
+fn sqo_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data sqo_ingest: SourceRootIngest = Cons {
+    head: sqo_read(source: sqo_chain_right_source, id: ^sqo_chain_right_artifact, unit: ^sqo_chain_right_cu, path: "src/v2/test/fixture/namespace_xl0/sqo_chain_right.dag"),
+    tail: Cons {
+      head: sqo_read(source: sqo_branch_right_source, id: ^sqo_branch_right_artifact, unit: ^sqo_branch_right_cu, path: "src/v2/test/fixture/namespace_xl0/sqo_branch_right.dag"),
+      tail: Cons {
+        head: sqo_read(source: sqo_negated_source, id: ^sqo_negated_artifact, unit: ^sqo_negated_cu, path: "src/v2/test/fixture/namespace_xl0/sqo_negated.dag"),
+        tail: Cons {
+          head: sqo_read(source: sqo_declared_right_source, id: ^sqo_declared_right_artifact, unit: ^sqo_declared_right_cu, path: "src/v2/test/fixture/namespace_xl0/sqo_declared_right.dag"),
+          tail: Cons {
+            head: sqo_read(source: sqo_left_only_source, id: ^sqo_left_only_artifact, unit: ^sqo_left_only_cu, path: "src/v2/test/fixture/namespace_xl0/sqo_left_only.dag"),
+            tail: Empty
+          }
+        }
+      }
+    }
+  }
+
+// ONE FRONT END FOR ALL FIVE CLAIMS, enrolled WARM in v2.workflow.floor_pure_producer_share for the
+// reason v2.test.claim.namespace_xl0.call_argument_resolve_refusal xl2_outcomes is: the stored value
+// is a verdict per module -- a reason symbol and the atom the refusal names -- with no resolution
+// context, Node or closure in it.
+type SqoVerdict
+  = SqoResolved
+  | SqoRefused { reason: Symbol, at_atom: Optional<Symbol> }
+  | SqoFileRefused
+  | SqoAbsent
+
+type SqoOutcomes
+  = SqoContextRefused
+  | SqoOutcomesDecided {
+      chain_right: SqoVerdict
+      branch_right: SqoVerdict
+      negated: SqoVerdict
+      declared_right: SqoVerdict
+      left_only: SqoVerdict
+    }
+
+fn sqo_verdict_of(outcome: NativeCensusModuleOutcome) -> SqoVerdict {
+  match outcome {
+    NativeCensusModuleResolved => SqoResolved
+    NativeCensusModuleFileRefused => SqoFileRefused
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      SqoRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn sqo_verdict_in(context: NativeTestContext, module_name: String) -> SqoVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: sqo_ingest),
+    empty: SqoAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        sqo_verdict_of(
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          )
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn sqo_outcomes() -> SqoOutcomes {
+  match native_test_context_from_ingest(ingest: sqo_ingest) {
+    Rejected { diagnostics: _ } => SqoContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      SqoOutcomesDecided {
+        chain_right: sqo_verdict_in(context: context, module_name: "v2.test.sqo_chain_right"),
+        branch_right: sqo_verdict_in(context: context, module_name: "v2.test.sqo_branch_right"),
+        negated: sqo_verdict_in(context: context, module_name: "v2.test.sqo_negated"),
+        declared_right: sqo_verdict_in(context: context, module_name: "v2.test.sqo_declared_right"),
+        left_only: sqo_verdict_in(context: context, module_name: "v2.test.sqo_left_only")
+      }
+  }
+}
+
+fn sqo_is_resolved(v: SqoVerdict) -> Bool {
+  match v {
+    SqoResolved => true
+    _ => false
+  }
+}
+
+// Refused at resolve, the first refusal is unbound, and its locus is the operand's own atom.
+fn sqo_is_unbound_at(v: SqoVerdict, spelling: Symbol) -> Bool {
+  match v {
+    SqoRefused { reason: r, at_atom: Present { value: id } } =>
+      (r == ^resolve_reason_unbound_symbol) && (id == spelling)
+    _ => false
+  }
+}
+
+test fn an_undeclared_third_operand_of_a_chain_refuses_at_resolve_at_its_atom() -> Bool {
+  match sqo_outcomes() {
+    SqoOutcomesDecided { chain_right: v, branch_right: _, negated: _, declared_right: _, left_only: _ } =>
+      sqo_is_unbound_at(v: v, spelling: ^sqo_undeclared_right)
+    SqoContextRefused => false
+  }
+}
+
+test fn an_undeclared_right_operand_inside_an_if_arm_refuses_at_resolve_at_its_atom() -> Bool {
+  match sqo_outcomes() {
+    SqoOutcomesDecided { chain_right: _, branch_right: v, negated: _, declared_right: _, left_only: _ } =>
+      sqo_is_unbound_at(v: v, spelling: ^sqo_undeclared_right)
+    SqoContextRefused => false
+  }
+}
+
+test fn an_undeclared_negated_operand_refuses_at_resolve_at_its_atom() -> Bool {
+  match sqo_outcomes() {
+    SqoOutcomesDecided { chain_right: _, branch_right: _, negated: v, declared_right: _, left_only: _ } =>
+      sqo_is_unbound_at(v: v, spelling: ^sqo_undeclared_negated)
+    SqoContextRefused => false
+  }
+}
+
+test fn a_declared_right_operand_resolves() -> Bool {
+  match sqo_outcomes() {
+    SqoOutcomesDecided { chain_right: _, branch_right: _, negated: _, declared_right: v, left_only: _ } =>
+      sqo_is_resolved(v: v)
+    SqoContextRefused => false
+  }
+}
+
+test fn an_undeclared_left_operand_refuses_at_resolve_at_its_atom() -> Bool {
+  match sqo_outcomes() {
+    SqoOutcomesDecided { chain_right: _, branch_right: _, negated: _, declared_right: _, left_only: v } =>
+      sqo_is_unbound_at(v: v, spelling: ^sqo_undeclared_left)
+    SqoContextRefused => false
+  }
+}

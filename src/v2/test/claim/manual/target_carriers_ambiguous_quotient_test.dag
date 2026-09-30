@@ -1,0 +1,36 @@
+module v2.test.manual.target_carriers_ambiguous_quotient
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fidelity_quotient_bundle(edges: List<Edge>) -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: edges)
+}
+
+fn fidelity_quotient_edge() -> Edge {
+  Edge {
+    label: Named { name: ^target_model_edge_fidelity_quotient },
+    target: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  }
+}
+
+// A target bundle carrying two fidelity-quotient edges contradicts itself: it refuses, where it
+// used to read as carrying none and decode Lossless. One edge is Present and none is Absent.
+test fn target_carriers_ambiguous_fidelity_quotient_refuses() -> Bool {
+  let none_absent = match bundle_fidelity_quotient_optional(bundle: fidelity_quotient_bundle(edges: [])) {
+    Accepted { value: Absent, diagnostics: _ } => true
+    _ => false
+  }
+  let one_present = match bundle_fidelity_quotient_optional(
+    bundle: fidelity_quotient_bundle(edges: [fidelity_quotient_edge()])
+  ) {
+    Accepted { value: Present { value: _ }, diagnostics: _ } => true
+    _ => false
+  }
+  let two_refused = match bundle_fidelity_quotient_optional(
+    bundle: fidelity_quotient_bundle(edges: [fidelity_quotient_edge(), fidelity_quotient_edge()])
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+  none_absent && one_present && two_refused
+}

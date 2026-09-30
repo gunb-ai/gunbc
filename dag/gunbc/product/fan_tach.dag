@@ -92,3 +92,33 @@ fn endpoint_names(endpoints: List<FanTachEndpointIdentity>) -> List<NonEmptyStr>
 fn window_endpoint_name(window: FanTachWindow) -> NonEmptyStr {
   window.endpoint.name
 }
+
+// THE WINDOW'S ONE PRODUCER. Until now every FanTachWindow in the tree was a hand-transcribed dated
+// specimen (gunbc.fleet_fan_tach_observation); a live collector folds its own samples through this,
+// so the counts and the spread are computed the one way. The rotation statistics are over rotating
+// samples only: a zero or an unavailable sample has no speed to rank. A window with no samples has
+// no constructor here -- an empty sample list is not a window of zero observations. When nothing
+// rotated, FanTachWindow's statistics fields still require values and carry 0; every consumer
+// (product.fan_tach_health) reads them only when rotating_count is positive.
+fn fan_tach_window_of(endpoint: FanTachEndpointIdentity, samples: List<FanTachSample>) -> FanTachWindow? {
+  let speeds = sort_by(flat_map(samples, s => match s {
+    SampleRotating { speed } => [rpm_count(speed)]
+    SampleZero => []
+    SampleUnavailable => []
+  }), n => n)
+  let rotating = count(speeds)
+  if count(samples) == 0 {
+    none
+  } else {
+    Present { value: FanTachWindow {
+      endpoint: endpoint,
+      sample_count: count(samples),
+      zero_count: count(filter(samples, s => match s { SampleZero => true _ => false })),
+      unavailable_count: count(filter(samples, s => match s { SampleUnavailable => true _ => false })),
+      rotating_count: rotating,
+      minimum: rpm(match speeds.first() { Present { value: v } => v none => rpm_count(rpm(0)) }),
+      median: rpm(match speeds.skip(n: rotating / 2).first() { Present { value: v } => v none => rpm_count(rpm(0)) }),
+      maximum: rpm(match reverse(speeds).first() { Present { value: v } => v none => rpm_count(rpm(0)) }),
+    } }
+  }
+}

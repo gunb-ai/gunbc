@@ -1,0 +1,94 @@
+module extdeps.tools.conntrack
+
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
+import std.types { String, NonEmptyStr, List, FilePath }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { apt_sbin_dir, apt_installed_bin_path, package_conntrack }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "manpages.debian.org/bookworm/conntrack/conntrack.8.en.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.conntrack",
+      decl_name: "conntrack_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// conntrack(8) from conntrack-tools, the userspace reader and writer of the kernel's connection
+// tracking table. Only deleting and listing flows by an original-tuple address are modeled. For a
+// masqueraded guest the original tuple carries the guest's own address -- the translated address
+// appears only on the reply tuple, so filtering on it would miss every flow a guest opened.
+fn conntrack_program() -> ProgramIdentity = cataloged_program(invocation: "conntrack")
+
+// A FLOW HAS TWO ADDRESSES IN ITS ORIGINAL TUPLE AND conntrack(8) FILTERS EACH SEPARATELY: `-s` is
+// the original source, `-d` the original destination. A guest that opened a flow is its original
+// source; a flow the HOST opened toward the guest has the guest as original destination. Flushing by
+// one filter leaves every flow of the other kind, so the filter is a parameter rather than a choice
+// baked into the command.
+type ConntrackOriginalAddress
+  = ConntrackOriginalSource
+  | ConntrackOriginalDestination
+
+fn conntrack_original_address_flag(f: ConntrackOriginalAddress) -> String {
+  match f {
+    ConntrackOriginalSource => "-s"
+    ConntrackOriginalDestination => "-d"
+  }
+}
+
+// `-D` WITH NO MATCHING ENTRY EXITS NONZERO ("0 flow entries have been deleted"), so its exit status
+// is not a success signal a caller may gate on. The deletion's outcome is established by the list
+// that follows it, never by this command's exit.
+fn conntrack_delete_command(filter: ConntrackOriginalAddress, address: String) -> ArgvCommand {
+  argv_command(program: conntrack_program(), arguments: ["-D", conntrack_original_address_flag(f: filter), address])
+}
+
+// `-L` prints one line per flow on stdout and a summary on stderr, so the count of stdout lines is
+// the number of surviving flows and an empty stdout with exit zero is the empty reading.
+fn conntrack_list_command(filter: ConntrackOriginalAddress, address: String) -> ArgvCommand {
+  argv_command(program: conntrack_program(), arguments: ["-L", conntrack_original_address_flag(f: filter), address])
+}
+
+// THE EXPECTATION TABLE, WHOLE. Expectations are the related-flow entries a conntrack helper creates
+// (an FTP data channel, a SIP media stream); `-L expect` prints one line per entry. The table has no
+// original-source filter in conntrack(8), so this lists every expectation on the host.
+//
+// THE ARGUMENTS ARE THEIR OWN AUTHORITY BECAUSE TWO CALLERS NEED THEM. This module builds the
+// ArgvCommand for a direct invocation; a privileged read projection prepends a sudo binary path and
+// needs the SAME words after it. Spelling `-L expect` in both places would be two sources for one
+// upstream fact (DESIGN 3), so the words are declared once here and both consumers read them.
+data conntrack_list_expectations_arguments: List<NonEmptyStr> = ["-L", "expect"]
+
+fn conntrack_list_expectations_command() -> ArgvCommand {
+  argv_command(program: conntrack_program(), arguments: map(conntrack_list_expectations_arguments, a => a as String))
+}
+
+// WHERE conntrack IS INSTALLED IS STATED ONCE, HERE. Ubuntu noble ships it in the `conntrack` package
+// at /usr/sbin/conntrack (packages.ubuntu.com/noble/amd64/conntrack/filelist). The apt row below and
+// gunbc.fleet_posix_accounts' exec path both derive from conntrack_bin_dir, so they cannot disagree.
+data conntrack_bin_dir: FilePath = apt_sbin_dir
+
+fn conntrack_installed_path() -> FilePath {
+  apt_installed_bin_path(bin_dir: conntrack_bin_dir, binary: conntrack_program().invocation)
+}
+
+data conntrack_cli_tool: CliTool = CliTool {
+  program: conntrack_program(),
+  min_version: none,
+  installable_via: [SourceApt { package: package_conntrack, bin_dir: conntrack_bin_dir }],
+}

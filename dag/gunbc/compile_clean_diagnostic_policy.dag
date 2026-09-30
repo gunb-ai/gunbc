@@ -329,6 +329,21 @@ data advisory_class_ceilings: List<AdvisoryClassCeilingRow> = [
     }
   },
   AdvisoryClassCeilingRow {
+    class_name: "TestCodeReferenceAdmitted" as NonEmptyStr,
+    ceiling: DeclaredAdmissionRoster {
+      roster: DeclarationRef {
+        module_path: "v1.compiler.compile",
+        decl_name: "test_reference_debt",
+        field: WholeDeclaration
+      }
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
     class_name: "MethodExistenceFrontierAdmitted" as NonEmptyStr,
     ceiling: DeclaredAdmissionRoster {
       roster: DeclarationRef {

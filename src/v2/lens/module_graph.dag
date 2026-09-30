@@ -5,8 +5,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { any, contains, fold_list, is_empty, list_append, list_reverse, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, is_empty, list_reverse }
 import v2.std.collection {
   List,
   Map,
@@ -239,9 +239,13 @@ type ReferenceDerivedPool {
   qn_by_path: Map<String, QualifiedName>
 }
 
+// record_declarations rides beside the root for the same reason ModuleBindingSource carries it:
+// the record rehome erased it from the root, and the pool's symbol index answers the
+// declared-payload question from it (v2.compiler.symbol_index_fill symbol_index_fill_module_root).
 type LocatedModuleRoot {
   path: String
   root: Node
+  record_declarations: FreeMonoid<Symbol>
 }
 
 type ReferenceDerivedEdgeFold {
@@ -293,7 +297,11 @@ fn located_roots_from_source_root_ingest(
           cons: fn(acc, item) {
             list_snoc_item(
               xs: acc,
-              item: LocatedModuleRoot { path: item.path, root: item.tree.root }
+              item: LocatedModuleRoot {
+                path: item.path,
+                root: item.tree.root,
+                record_declarations: item.tree.record_declarations
+              }
             )
           }
         )
@@ -392,13 +400,14 @@ fn sites_for_reference_edge_fold(root: Node) -> ReferenceSiteCollection {
 }
 
 fn emit_reference_edges_for_located_root(
-  item: LocatedModuleRoot,
+  path: String,
+  root: Node,
   pool: ReferenceDerivedPool
 ) -> ReferenceDerivedEdgeFold {
   reference_edges_for_located_root_sites(
-    item: item,
+    path: path,
     pool: pool,
-    collected: sites_for_reference_edge_fold(root: item.root)
+    collected: sites_for_reference_edge_fold(root: root)
   )
 }
 
@@ -416,11 +425,11 @@ fn emit_reference_edges_for_located_root(
 // with a body and no header) - review 66859 on gunbc#11461 read this arm as uncounted; it
 // is counted one call earlier, and counting it here again would double the roster.
 fn reference_edges_for_located_root_sites(
-  item: LocatedModuleRoot,
+  path: String,
   pool: ReferenceDerivedPool,
   collected: ReferenceSiteCollection
 ) -> ReferenceDerivedEdgeFold {
-  match map_lookup_where_rejected_unreachable(m: pool.qn_by_path, key: item.path) {
+  match map_lookup_where_rejected_unreachable(m: pool.qn_by_path, key: path) {
     Absent =>
       ReferenceDerivedEdgeFold {
         edges: no_reference_derived_edges,
@@ -429,7 +438,7 @@ fn reference_edges_for_located_root_sites(
     Present { value: module_qn } =>
       ReferenceDerivedEdgeFold {
         edges: edges_from_provenance_owners(
-          rel_path: item.path,
+          rel_path: path,
           provenance: module_dependencies_from_sites(
             index: pool.index,
             roster: pool.roster,
@@ -461,14 +470,22 @@ fn reference_derived_pool_from_located_roots(
       match qualified_name_from_module_node(root: item.root) {
         Rejected { diagnostics: _ } =>
           ReferenceDerivedPool {
-            index: symbol_index_fill_module_root(index: pool.index, root: item.root),
+            index: symbol_index_fill_module_root(
+              index: pool.index,
+              root: item.root,
+              record_declarations: item.record_declarations
+            ),
             trees: map_insert(m: pool.trees, key: item.path, value: item.root),
             roster: pool.roster,
             qn_by_path: pool.qn_by_path
           }
         Accepted { value: module_qn, diagnostics: _ } =>
           ReferenceDerivedPool {
-            index: symbol_index_fill_module_root(index: pool.index, root: item.root),
+            index: symbol_index_fill_module_root(
+              index: pool.index,
+              root: item.root,
+              record_declarations: item.record_declarations
+            ),
             trees: map_insert(m: pool.trees, key: item.path, value: item.root),
             roster: list_snoc_item(xs: pool.roster, item: module_qn),
             qn_by_path: map_insert(m: pool.qn_by_path, key: item.path, value: module_qn)
@@ -486,7 +503,7 @@ fn reference_derived_edges_from_located_roots(
     xs: items,
     empty: empty_reference_derived_edge_fold,
     cons: fn(acc, item) {
-      let piece = emit_reference_edges_for_located_root(item: item, pool: pool)
+      let piece = emit_reference_edges_for_located_root(path: item.path, root: item.root, pool: pool)
       ReferenceDerivedEdgeFold {
         edges: list_append(left: acc.edges, right: piece.edges),
         unreadable_roots: list_append(left: acc.unreadable_roots, right: piece.unreadable_roots)
@@ -518,7 +535,8 @@ fn emit_reference_edges_for_importer(
     Present { value: root } =>
       outcome_accepted(
         value: emit_reference_edges_for_located_root(
-          item: LocatedModuleRoot { path: fact.path, root: root },
+          path: fact.path,
+          root: root,
           pool: pool
         )
       )
@@ -786,19 +804,97 @@ fn import_closure(
 
 data module_graph_exclude_substrings: List<String> = []
 
+// THE KEYED READ OF THE ONE EDGE PRODUCER: the edges whose importer is `importer_path`, as the
+// population read dependency_resolution_facts_live would carry them for that path. The host groups
+// the same reference-first union by importer (v1_compiler.cli_run dependency_resolution_facts_at);
+// it is a narrowing of that authority, not a second reader.
+fn dependency_resolution_facts_at_live(
+  pool_roots: List<String>,
+  importer_path: String,
+  exclude_substrings: List<String>
+) -> List<ModuleDependencyEdge> {
+  dependency_resolution_facts_at(
+    pool_roots: pool_roots,
+    importer_path: importer_path,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+// THE LIVE CLOSURE IS EXPANDED FROM THE ENTRY, NOT READ OFF A CORPUS-WIDE ADJACENCY. The question is
+// "which modules does THIS entry reach", so the only edges it may demand are those of modules it has
+// already reached: each visited path asks the one edge producer's keyed read
+// (dependency_resolution_facts_at_live) for its own importer edges, and each target module resolves through the keyed declaration read
+// (module_declaration_facts_at_live). The previous body produced every module's edges and folded all
+// of them into an adjacency map before walking the entry's slice -- on the broker entry that
+// corpus-wide fold measured about 4.9s of a 5.4s claim (gunbc#12523's floor [cross-claim-demand]
+// line), paid for edges no walk would ever read. The edge law is unchanged: an edge whose target
+// module is undeclared contributes no path, as extend_adjacency_for_dependency_edge refuses it, and
+// the reached order is breadth-first from the entry. Visited membership is a keyed map rather than a
+// scan of the reached list, so absorbing a neighbor no longer costs the closure's size.
+type DemandClosureState {
+  reached: FreeMonoid<String>
+  seen: Map<String, Bool>
+  queue: List<String>
+}
+
+fn demand_closure_absorb(state: DemandClosureState, path: String) -> DemandClosureState {
+  match map_lookup_where_rejected_unreachable(m: state.seen, key: path) {
+    Present { value: _ } => state
+    Absent =>
+      DemandClosureState {
+        reached: list_snoc_item(xs: state.reached, item: path),
+        seen: map_insert(m: state.seen, key: path, value: true),
+        queue: list_snoc_item(xs: state.queue, item: path)
+      }
+  }
+}
+
+fn demand_edge_target_paths(edge: ModuleDependencyEdge, pool_roots: List<String>) -> List<String> {
+  map(module_declaration_facts_at_live(pool_roots: pool_roots, module_path: edge.target_module), d => d.path)
+}
+
+fn demand_closure_walk(
+  state: DemandClosureState,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> FreeMonoid<String> {
+  match state.queue |> first {
+    Present { value: importer } =>
+      let rest = state.queue |> skip(1)
+      let edges = dependency_resolution_facts_at_live(
+        pool_roots: pool_roots,
+        importer_path: importer,
+        exclude_substrings: exclude_substrings
+      )
+      let next = fold_list(
+        xs: edges,
+        empty: DemandClosureState { reached: state.reached, seen: state.seen, queue: rest },
+        cons: fn(acc, edge) {
+          fold_list(
+            xs: demand_edge_target_paths(edge: edge, pool_roots: pool_roots),
+            empty: acc,
+            cons: fn(inner, path) { demand_closure_absorb(state: inner, path: path) }
+          )
+        }
+      )
+      demand_closure_walk(state: next, pool_roots: pool_roots, exclude_substrings: exclude_substrings)
+    Absent => state.reached
+  }
+}
+
 fn dependency_closure_live_excluding(
   entry_path: String,
   pool_roots: List<String>,
   exclude_substrings: List<String>
 ) -> FreeMonoid<String> {
-  dependency_closure(
-    entry_path: entry_path,
-    edges: dependency_resolution_facts_live(
-      pool_roots: pool_roots,
-      importer_roots: pool_roots,
-      exclude_substrings: exclude_substrings
-    ),
-    nodes: module_declaration_facts_live(pool_roots: pool_roots)
+  demand_closure_walk(
+    state: DemandClosureState {
+      reached: list_snoc_item(xs: no_paths, item: entry_path),
+      seen: map_insert(m: empty_map(), key: entry_path, value: true),
+      queue: list_snoc_item(xs: no_paths, item: entry_path)
+    },
+    pool_roots: pool_roots,
+    exclude_substrings: exclude_substrings
   )
 }
 
@@ -888,10 +984,10 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 
 data reference_derived_edge_source_dissolve_on: DissolutionCondition = unbound_dissolution(description: "NAMESPACE-XL STAGE XL-6 swaps dependency_resolution_facts_live onto this producer; until then the live edge source stays the import/reference union and this body stays the unused swap target")
 
-data reference_derived_call_contents_frontier: DissolutionCondition = unbound_dissolution(description: "Call-argument and callee mentions wait on eager-raven-113 lowering, then this ingest. Instruments: v2.test.claim.reference_derived_graph_production_ingest production_route_call_contents_are_missing_today_holds, production_route_callee_with_no_arguments_is_missing_today_holds; v2.test.claim.reference_derived_graph_call_arg_tree call_argument_only_reference_is_missing_from_parse_tree_today_holds, call_argument_only_reference_is_missing_from_normalized_tree_today_holds, body_value_outside_call_is_missing_from_parse_tree_today_holds, body_value_outside_call_is_missing_from_normalized_tree_today_holds.")
+data reference_derived_call_contents_frontier: DissolutionCondition = unbound_dissolution(description: "The ARGUMENT subtree is what waits here: on eager-raven-113 lowering, then this ingest. The CALLEE half no longer waits -- a dotted callee reaches the graph since gunbc#11683. Instruments: v2.test.claim.reference_derived_graph_production_ingest production_route_call_contents_are_missing_today_holds (the callee row beside it flipped to production_route_callee_with_no_arguments_reaches_holds on gunbc#11683; arguments still wait); v2.test.claim.reference_derived_graph_call_arg_tree call_argument_only_reference_is_missing_from_parse_tree_today_holds, call_argument_only_reference_is_missing_from_normalized_tree_today_holds. (body_value_outside_call_* left this row 2026-09-19: the normalized-tree row flipped to a presence control once gunbc#11574 Named data declarations; the parse-tree row is carried by reference_derived_parse_tree_site_oracle_frontier.)")
 
-data reference_derived_qualified_mention_frontier: DissolutionCondition = unbound_dissolution(description: "The qualified / dotted SITE reaches the collector in BODY and PARAMETER-TYPE position (not FIELD-TYPE position: the graft drops the declaration, measured by v2.test.claim.namespace_xl0.qualified_site_enumerator_differential) since the dotted-reference lowering landed (2026-09-18, v2.compiler.body_lowering_fold body_lower_dotted_reference_optional; instrument v2.test.claim.reference_derived_graph_production_ingest production_route_type_position_qualified_site_is_present_holds). The EDGE still waits on the target being GRAFTED into the containment tree: a qualified mention of a type or data declaration resolves to nothing because v2.compiler.namespace_graft rehomes only fn declarations (sleek-lynx-500 case 4: v2.test.claim.namespace.cross_module_resolve_witness, head reason resolve_reason_unbound_symbol). Instruments still red-stated on that: production_route_reference_only_plain_value_is_missing_today_holds, production_route_both_plain_value_is_missing_today_holds, production_route_type_position_qualified_edge_is_missing_today_holds; v2.test.claim.reference_derived_graph_call_arg_tree type_position_only_is_missing_from_parse_tree_today_holds, type_position_only_is_missing_from_normalized_tree_today_holds. A dotted CALLEE is the call-contents frontier beside this one.")
+data reference_derived_parse_tree_site_oracle_frontier: DissolutionCondition = unbound_dissolution(description: "The PARSE-tree site oracle (v2.test.claim.reference_derived_graph_call_arg_tree ca_parse_site_count) reports no site for a qualified spelling in TYPE position or as a BODY VALUE outside a call, while the production route over the normalized tree now derives the edge for both (positive controls: type_position_only_is_present_in_normalized_tree_holds, body_value_outside_call_is_present_in_normalized_tree_holds, flipped 2026-09-19 when gunbc#11574 Named type and data declarations at the graft). Instruments still green on the absence: type_position_only_is_missing_from_parse_tree_today_holds, body_value_outside_call_is_missing_from_parse_tree_today_holds. Why the parse-only oracle misses those spellings is UNMEASURED (DESIGN 4d: a read obligation, not a fact): the discriminator is walking ca_parse_site_count and the production collector over the same fixture and naming the first node at which they diverge. Closes when that walk lands and the parse-tree rows either flip or are retired with the oracle.")
 
-data reference_derived_bare_field_type_frontier: DissolutionCondition = unbound_dissolution(description: "Bare FIELD type site is absent at the collector; tree-side census cause unverified. No collector trigger until those separate. Instruments: v2.test.claim.reference_derived_graph_production_ingest production_route_bare_field_type_site_is_missing_today_holds, production_tree_field_fixture_wrapper_name_unfindable_today_holds, production_tree_field_fixture_field_name_unfindable_today_holds, production_tree_field_fixture_field_type_unfindable_today_holds. Positive controls: production_route_bare_param_type_in_field_fixture_is_present_holds, production_tree_field_fixture_param_type_atom_is_present_holds, production_route_bare_local_type_position_site_is_present_holds.")
 
-data reference_derived_imported_bare_parameter_edge_frontier: DissolutionCondition = unbound_dissolution(description: "Imported bare parameter-type site is present and still yields no edge. Instruments: v2.test.claim.reference_derived_graph_production_ingest production_route_type_imported_bare_site_is_present_holds, production_route_type_imported_site_does_not_yield_edge_today_holds.")
+data reference_derived_bare_field_type_frontier: DissolutionCondition = unbound_dissolution(description: "Bare field type spelling survives residual reconstruct (not a silent drop). Named skip of field_decl_block type_decl is gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft. Instruments: v2.test.claim.reference_derived_graph_production_ingest production_route_bare_field_type_site_is_present_holds, production_tree_field_fixture_wrapper_name_survives_today_holds, production_tree_field_fixture_field_name_survives_today_holds, production_tree_field_fixture_field_type_survives_today_holds. Positive controls: production_route_bare_param_type_in_field_fixture_is_present_holds, production_tree_field_fixture_param_type_atom_is_present_holds, production_route_bare_local_type_position_site_is_present_holds.")
+

@@ -1,0 +1,22 @@
+module test.claim.map_literal_key_escape_witness_test
+
+// EXECUTING evidence that an emitted map-literal key is escaped before it is quoted. A key is its
+// DECODED value, so `"\"": 34` (extdeps.languages.yaml.ingest yaml_double_quoted_escapes) rendered
+// `""".to_string()` and rustc's lexer stayed inside a string for the rest of the emitted file. The
+// repair routes the key through v1.compiler.emit_core_support escape_string_literal_body in
+// v1.compiler.emit_rust emit_rust_map_literal_key.
+//
+// THE RED is the forbidden row: the unescaped `"""` key. The witness host builtin executes the
+// COMPILED stage0 mirror, so this file was red against the mirror before regeneration and green
+// after it; the plain `"q"` key is the control that the escape leaves ordinary keys unchanged.
+
+data mlk_source: String = "module esc.keys\n\ndata probe: Map<String, Int> = \{ \"\\\"\": 34, \"\\\\\": 92, \"q\": 1 }\n"
+
+test fn a_quote_or_backslash_map_key_is_escaped_and_a_plain_key_is_unchanged() -> Bool {
+  compile_dag_rust_emit_check(
+    mlk_source,
+    "src/esc_keys.rs",
+    ["__m.insert(\"\\\"\".to_string(), 34);", "__m.insert(\"\\\\\".to_string(), 92);", "__m.insert(\"q\".to_string(), 1);"],
+    ["__m.insert(\"\"\".to_string()"]
+  )
+}

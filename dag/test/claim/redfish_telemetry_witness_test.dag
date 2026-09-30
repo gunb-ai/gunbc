@@ -1,0 +1,99 @@
+module test.claim.redfish_telemetry_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.bmc.redfish_telemetry {
+  RedfishHealthCritical,
+  RedfishHealthOk,
+  RedfishLogEntry,
+  RedfishReadingNull,
+  RedfishReadingValue,
+  RedfishRotationalRpm,
+  RedfishTelemetryPoint,
+  RedfishTemperatureCelsius,
+  redfish_log_entries,
+  redfish_member_ids,
+  redfish_sensor_point,
+  redfish_thermal_points,
+}
+import std.goal_assessment { ObservationEstablished, ObservationRefused }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Responses read with the gunbc_health read-only account on 2026-09-18 and trimmed to a few members:
+// srv1 and srv2 run the ASRock 2.07 image (per-sensor Sensor resources), srv3 and srv4 run OpenBMC
+// 3.22 (legacy Thermal, and an event log that carries memory ECC records). They are specimens of each
+// image's rendering, not standing facts about those hosts.
+data srv1_fan4_sensor: String = "{\"@odata.id\":\"/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors/fantach_FAN4\",\"@odata.type\":\"#Sensor.v1_2_0.Sensor\",\"Id\":\"fantach_FAN4\",\"Name\":\"FAN4\",\"Reading\":0.0,\"ReadingRangeMax\":25000.0,\"ReadingRangeMin\":0.0,\"ReadingType\":\"Rotational\",\"ReadingUnits\":\"RPM\",\"Status\":{\"Health\":\"Critical\",\"State\":\"Enabled\"},\"Thresholds\":{\"LowerCritical\":{\"Reading\":100.0}}}"
+
+data srv1_dimm_c1_sensor: String = "{\"@odata.id\":\"/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors/temperature_TEMP_DIMM_C1\",\"@odata.type\":\"#Sensor.v1_2_0.Sensor\",\"Id\":\"temperature_TEMP_DIMM_C1\",\"Name\":\"TEMP_DIMM_C1\",\"Reading\":99.0,\"ReadingRangeMax\":255.0,\"ReadingRangeMin\":0.0,\"ReadingType\":\"Temperature\",\"ReadingUnits\":\"Cel\",\"Status\":{\"Health\":\"OK\",\"State\":\"Enabled\"},\"Thresholds\":{\"UpperCritical\":{\"Reading\":105.0}}}"
+
+data srv3_thermal: String = "{\"Temperatures\":[{\"@odata.id\":\"/redfish/v1/Chassis/ALTRAD8UD_1L2T/Thermal#/Temperatures/0\",\"@odata.type\":\"#Thermal.v1_3_0.Temperature\",\"MaxReadingRangeTemp\":127.0,\"MemberId\":\"0\",\"MinReadingRangeTemp\":-128.0,\"Name\":\"TEMP_CARD_SIDE\",\"ReadingCelsius\":51.0,\"Status\":{\"Health\":\"OK\",\"State\":\"Enabled\"},\"UpperThresholdCritical\":90.0,\"UpperThresholdNonCritical\":80.0},{\"@odata.id\":\"/redfish/v1/Chassis/ALTRAD8UD_1L2T/Thermal#/Temperatures/1\",\"@odata.type\":\"#Thermal.v1_3_0.Temperature\",\"MaxReadingRangeTemp\":255.0,\"MemberId\":\"1\",\"MinReadingRangeTemp\":0.0,\"Name\":\"TEMP_Core_VRD\",\"ReadingCelsius\":44.0,\"Status\":{\"Health\":\"OK\",\"State\":\"Enabled\"},\"UpperThresholdCritical\":105.0}],\"Fans\":[{\"@odata.id\":\"/redfish/v1/Chassis/ALTRAD8UD_1L2T/Thermal#/Fans/0\",\"@odata.type\":\"#Thermal.v1_3_0.Fan\",\"LowerThresholdCritical\":100,\"MaxReadingRange\":25000,\"MemberId\":\"0\",\"MinReadingRange\":0,\"Name\":\"FAN1\",\"Reading\":4203,\"ReadingUnits\":\"RPM\",\"Status\":{\"Health\":\"OK\",\"State\":\"Enabled\"}},{\"@odata.id\":\"/redfish/v1/Chassis/ALTRAD8UD_1L2T/Thermal#/Fans/1\",\"@odata.type\":\"#Thermal.v1_3_0.Fan\",\"LowerThresholdCritical\":100,\"MaxReadingRange\":25000,\"MemberId\":\"1\",\"MinReadingRange\":0,\"Name\":\"FAN1_1\",\"Reading\":null,\"ReadingUnits\":\"RPM\",\"Status\":{\"Health\":\"OK\",\"State\":\"Enabled\"}}]}"
+
+data srv3_log_tail: String = "{\"Members@odata.count\":3,\"Members\":[{\"Id\":\"450345\",\"Created\":\"2026-09-18T16:28:14.500+00:00\",\"Severity\":\"Critical\",\"Message\":\"OpenBMC.0.1.AmpereWarning.Warning \\n Event DIMM_HOT at DIMM0 of channel 2 of Socket 0,Deasserted.\"},{\"Id\":\"450346\",\"Created\":\"2026-09-18T16:29:10.745+00:00\",\"Severity\":\"Critical\",\"Message\":\"OpenBMC.0.1.MemoryECCCorrectable.Critical \\n 0,2,0,9\"},{\"Id\":\"450347\",\"Created\":\"2026-09-18T16:29:10.800+00:00\",\"Severity\":\"Critical\",\"Message\":\"OpenBMC.0.1.MemoryExtendedECCCEData.Warning \\n 1,140,96\"}]}"
+
+data srv1_sensors_head: String = "{\"Members\":[{\"@odata.id\":\"/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors/fantach_FAN1\"},{\"@odata.id\":\"/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors/fantach_FAN1_1\"},{\"@odata.id\":\"/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors/fantach_FAN2\"}],\"Members@odata.count\":3}"
+
+fn point_named(points: List<RedfishTelemetryPoint>, name: NonEmptyStr) -> RedfishTelemetryPoint? {
+  filter(points, p => p.name == name).first()
+}
+
+// The 2.07 image: a stopped fan is a reading of zero with the service's own Critical verdict, and a
+// hot DIMM is a temperature whose verdict is still OK -- the verdict and the reading stay apart.
+test fn a_sensor_keeps_its_reading_and_the_services_verdict_apart() -> Bool {
+  let fan = match redfish_sensor_point(body: srv1_fan4_sensor) {
+    ObservationEstablished { observed: p } =>
+      p.name == "FAN4"
+        && match p.kind { RedfishRotationalRpm => true _ => false }
+        && match p.reading { RedfishReadingValue { whole } => whole == 0 _ => false }
+        && match p.health { RedfishHealthCritical => true _ => false }
+    ObservationRefused { cause: _ } => false
+  }
+  let dimm = match redfish_sensor_point(body: srv1_dimm_c1_sensor) {
+    ObservationEstablished { observed: p } =>
+      match p.kind { RedfishTemperatureCelsius => true _ => false }
+        && match p.reading { RedfishReadingValue { whole } => whole == 99 _ => false }
+        && match p.health { RedfishHealthOk => true _ => false }
+    ObservationRefused { cause: _ } => false
+  }
+  fan && dimm
+}
+
+// The 3.22 image: Thermal carries temperatures and fans in one resource, and an empty fan header is a
+// null reading rather than zero.
+test fn thermal_decodes_both_arrays_and_keeps_a_null_reading_null() -> Bool {
+  match redfish_thermal_points(body: srv3_thermal) {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: points } =>
+      count(points) == 4
+        && match point_named(points: points, name: "TEMP_CARD_SIDE") { Present { value: p } => match p.reading { RedfishReadingValue { whole } => whole == 51 _ => false } none => false }
+        && match point_named(points: points, name: "FAN1") { Present { value: p } => match p.kind { RedfishRotationalRpm => true _ => false } none => false }
+        && match point_named(points: points, name: "FAN1_1") { Present { value: p } => match p.reading { RedfishReadingNull => true _ => false } none => false }
+  }
+}
+
+test fn the_log_decodes_in_service_order_with_its_ids() -> Bool {
+  match redfish_log_entries(body: srv3_log_tail) {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: entries } =>
+      map(entries, e => e.id) == [450345, 450346, 450347]
+        && any(entries, e => starts_with(s: e.message as String, prefix: "OpenBMC.0.1.MemoryECCCorrectable"))
+  }
+}
+
+test fn a_collection_lists_its_members_in_order() -> Bool {
+  match redfish_member_ids(body: srv1_sensors_head) {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: ids } => count(ids) == 3 && match ids.first() { Present { value: first } => ends_with(s: first as String, suffix: "fantach_FAN1") none => false }
+  }
+}
+
+// A page is not the collection, a string reading is not a number, and a member that does not name
+// itself does not shorten the collection: each refuses.
+test fn a_paginated_malformed_or_unnamed_response_refuses() -> Bool {
+  let paged = match redfish_log_entries(body: "{\"Members\":[],\"Members@odata.nextLink\":\"/next\"}") { ObservationRefused { cause: _ } => true _ => false }
+  let string_reading = match redfish_sensor_point(body: "{\"Name\":\"FAN1\",\"ReadingType\":\"Rotational\",\"Reading\":\"fast\",\"Status\":{\"Health\":\"OK\"}}") { ObservationRefused { cause: _ } => true _ => false }
+  let unnamed = match redfish_member_ids(body: "{\"Members\":[{\"@odata.id\":\"/a\"},{\"Name\":\"b\"}]}") { ObservationRefused { cause: _ } => true _ => false }
+  let not_json = match redfish_thermal_points(body: "<html>401</html>") { ObservationRefused { cause: _ } => true _ => false }
+  paged && string_reading && unnamed && not_json
+}

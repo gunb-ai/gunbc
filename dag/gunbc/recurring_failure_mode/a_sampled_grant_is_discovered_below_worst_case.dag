@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_sampled_grant_is_discovered_below_worst_case
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_sampled_grant_is_discovered_below_worst_case: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_sampled_grant_is_discovered_below_worst_case" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a work class's memory grant (gunbc.compute.work_class_grant work_class_grant) is sized from sampled peaks plus a policy-budget headroom, and some run of that class needs more than the grant. Because the reservation and the unit's MemoryMax are one figure (gunbc.compute.host_capacity), the grant is also the cap, so that run is OOM-killed by its own cgroup. HARM: the attempt's work is lost and repeated at the ceiling -- wall time and one ceiling-sized reservation -- and, if no ceiling seat is free, the request is refused for capacity after having already spent a run.",
+
+    "WHAT KEEPS IT FROM BEING SILENT, which is the whole reason it may be admitted at all (DESIGN 5): the unit's own Result is read from the launcher's summary (extdeps.systemd.systemd_run systemd_run_wait_summary), an oom-kill is never rendered as WorkFailed, the attempt is retried at the ceiling ONCE, and every exceedance is written to a per-class record on the host whose count is readable (gunbc.compute.work_provider_local compute_grant_exceeded_count) and is printed in every consumption record of that class. A non-zero count FALSIFIES that class's headroom budget and is the signal to re-derive its row. The retry is not a permanent downgrade of the class: one bad run does not silently return a class to the ceiling forever.",
+
+    "THE CLASS GRAIN IS PART OF THE HAZARD. A class is the operation kind (build per cargo profile, compile, claims), and a compile's peak depends heavily on the entry it compiles, so a grant sized from small-entry samples is below the peak of a large entry by construction. The count reports that; it does not prevent it.",
+
+    "RUNG FOUND AT: mitigatable. The state is reachable, its harm is bounded (one lost attempt per exceedance, then a ceiling retry), and it is typed and counted rather than silent. It is not reachable in production at the change that files this row: work_class_grant_rows is empty, so every class reserves the ceiling and no grant can be below it.",
+
+    "CEILING: structurally guaranteed for a class whose peak is DERIVED rather than sampled. Build peak is not a random variable to be estimated; it is roughly a function of the largest compilation unit and the parallelism the class runs at, so a class that declares its job count and the units it compiles admits a bound established by argument. Undeclared or data-dependent classes (a compile whose closure is chosen at request time) stay at this rung, where the counter is the honest mechanism.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT AN ARTIFACT: a STRUCTURAL PEAK BOUND for a work class -- a derivation, consumed by work_class_grant in place of sampled peaks plus budgeted headroom, that bounds the class's resident memory from its declared parallelism and its largest compilation unit (or the corpus it resolves), sufficient that a grant sized at that bound cannot be exceeded by any request the class admits. More samples do NOT satisfy this trigger: they would be satisfied while the class stayed at this rung forever.",
+
+    "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration; gunbc.compute.work_class_grant cites it at the class grain it concerns.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.compute.work_class_grant", decl_name: "work_class_grant"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_run_granted"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_grant_exceeded_count"),
+    decl_ref(module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_wait_summary"),
+  ],
+}

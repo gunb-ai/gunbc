@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_hand_bumped_builder_revision_keys_a_derivation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_hand_bumped_builder_revision_keys_a_derivation: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_hand_bumped_builder_revision_keys_a_derivation" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a derivation key names its builder by an AUTHORED revision string rather than by the builder's own content. An edit to the builder that changes output bytes, landed without bumping the string, leaves every existing derivation record answering for inputs the NEW builder would build differently. The record and the image it names still agree with each other, so re-measurement passes and consumers keep receiving the previous builder's output under the current key.",
+
+    "HARM: silent. Nothing refuses and nothing is mislabelled at the image level -- the bytes are a real build of those inputs -- but they are not the build the current builder would produce, so a builder fix (for example to the boot structure the replay preserves) does not reach an image that was already recorded. DESIGN section 4b places silent wrongness outside the ladder.",
+
+    "SPECIMEN, found in review 68615 on gunbc#11731: gunbc.seeded_install_media_policy seeded_install_media_builder_revision keys extdeps.provisioning.ubuntu_seeded_install_media seeded_install_media_build_key, and the row's own annotation stated that a missed bump is caught by nothing downstream.",
+
+    "RUNG FOUND AT: below mitigation -- review diligence only. The class is DECIDABLE and GROUNDED: the builder is a set of declarations whose Node trees already carry v2.std.node content_hash, so the revision is derivable rather than authored. ATTAINABLE CEILING: structurally impossible -- no authored revision field exists; the key's builder component IS the content hash of the builder's declaration closure.",
+
+    "NEXT-RUNG TRIGGER, at capability grain: an evaluation-time value for the content hash of a named declaration closure (here extdeps.provisioning.ubuntu_seeded_install_media_remaster, the xorriso replay operation it calls, and the host-capture renderer the census seed carries), consumable by a data row. When that capability lands, builder_revision is deleted from UbuntuSeededInstallMediaBuildInput and the key reads the closure hash; its discriminating RED is a builder edit that changes no authored string and still moves the key.",
+  ],
+
+  evidence: [],
+}

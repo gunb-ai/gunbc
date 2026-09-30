@@ -1,0 +1,47 @@
+module gunbc.auth.approval_cutover_posture
+
+import std.types { NonEmptyStr, String, Bool }
+
+// ── THE CUT IS ONE ROW, BECAUSE IT IS ONE TRANSACTION ───────────────────────────────────────
+// TWO ROWS MADE THE CUT A TWO-STEP, AND A TWO-STEP IS NOT A TRANSACTION. Routing (who answers the
+// public approval paths) and writer authority (who may mutate the store) were separate
+// declarations, and the argument for keeping them separate was that their mismatches are LOUD: a
+// front door repointed without the authority move is a broker refusing every decision, and an
+// authority move without the repoint is a roadmap refusing every decision. Both true, and both
+// still an outage of the approval loop between two edits somebody has to remember to make together
+// (side-chat HOLD, stage E: execute it as ONE modeled transaction).
+//
+// SO THE INTENT IS ONE DECLARATION AND BOTH FACTS DERIVE FROM IT. The mismatched states stop being
+// loud and start being unwritable, which is the difference between a failure mode that is reported
+// and one that cannot arise (DESIGN section 4b: construction over mitigation).
+//
+// WHAT THIS ROW IS NOT. It is the deployment's INTENT, not an observation of the host. tailscale
+// serve configuration and a store permission are separate effects applied by separate commands, and
+// nothing here can see whether either landed. The cutover plan observes them independently and
+// refuses on a mismatch -- that is why FrontDoorObserved and the writer readback remain evidence
+// arms rather than being derived from this row. A declaration that claimed to know what the host
+// does would be the fabricated-output arm at the one seam where it matters.
+type ApprovalCutoverPosture
+  = RoadmapServesAndWrites
+  | BrokerServesAndWrites
+  | BrokerOwnsAlone
+
+// THE LIVE VALUE, AND THE WHOLE CUT IS MOVING IT ONE STEP. Stage E is
+// RoadmapServesAndWrites -> BrokerServesAndWrites: the front door mounts move to the broker, the
+// broker gains the store, the roadmap loses it, and the boot client keeps posting to the same
+// loopback address it always did -- in one edit, with no intermediate anybody can land half of.
+// Stage G is BrokerServesAndWrites -> BrokerOwnsAlone, which removes the roadmap projection and
+// changes no routing and no authority.
+//
+// THE ROLLBACK IS THE SAME EDIT BACKWARDS, which is the property that makes this safe to schedule:
+// the roadmap route code stays mounted through BrokerServesAndWrites precisely so the posture can
+// move back without a deploy, and its store effects are gated by the authority this row derives.
+data approval_cutover_posture: ApprovalCutoverPosture = RoadmapServesAndWrites
+
+fn approval_cutover_posture_label(p: ApprovalCutoverPosture) -> NonEmptyStr {
+  match p {
+    RoadmapServesAndWrites => "roadmap serves and writes; broker deployed, unrouted, unauthorized" as NonEmptyStr
+    BrokerServesAndWrites => "broker serves and writes; roadmap rows mounted for rollback, store-refused" as NonEmptyStr
+    BrokerOwnsAlone => "broker owns the approval paths; roadmap projection retired" as NonEmptyStr
+  }
+}

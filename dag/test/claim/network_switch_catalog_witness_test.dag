@@ -1,8 +1,9 @@
 module test.claim.network_switch_catalog_witness
 
-import std.types { Bool, Int, List }
+import std.types { Bool, Int, List, String }
+import v2.std.optional { Absent, Optional, Present }
 import std.measure {
-  bandwidth, bandwidth_count,
+  Bandwidth, bandwidth, bandwidth_count,
   byte_size_count, cpu_core_count_value,
   hardware_thread_count_value,
   packet_rate_count, power_cord_count_value, usd_whole_dollars_count,
@@ -52,8 +53,20 @@ fn rates_contain(rates: List<Bandwidth>, wanted: Bandwidth) -> Bool {
   fold(rates, init: false, f: fn(acc, r) { acc || bandwidth_count(r) == bandwidth_count(wanted) })
 }
 
-fn group_port_count(group: SwitchPortGroup) -> Int {
-  group.port_count
+// A positional read of a port inventory is Optional: an index past the end is Absent, and every
+// claim over it states that absence is a failure rather than reading a field off the Optional.
+fn group_port_count_is(group: Optional<SwitchPortGroup>, n: Int) -> Bool {
+  match group {
+    Present { value: g } => g.port_count == n
+    Absent => false
+  }
+}
+
+fn group_connector_scales_to(group: Optional<SwitchPortGroup>, connector: String, top: Bandwidth, next_up: Bandwidth) -> Bool {
+  match group {
+    Present { value: g } => g.connector == connector && group_scales_to(group: g, top: top, next_up: next_up)
+    Absent => false
+  }
 }
 
 // The max rate is asserted by presence of the top rate and absence of the next rate up, rather
@@ -65,16 +78,16 @@ fn group_scales_to(group: SwitchPortGroup, top: Bandwidth, next_up: Bandwidth) -
 
 // ---------------- MikroTik CRS812-8DS-2DQ-2DDQ-RM ----------------
 
-fn crs812_group(index: Int) -> SwitchPortGroup {
+fn crs812_group(index: Int) -> Optional<SwitchPortGroup> {
   crs812_catalog.port_inventory.skip(n: index).first()
 }
 
 test fn crs812_port_groups_match_the_vendor_callouts() -> Bool {
   count(crs812_catalog.port_inventory) == 4
-    && group_port_count(crs812_group(0)) == 2
-    && group_port_count(crs812_group(1)) == 8
-    && group_port_count(crs812_group(2)) == 2
-    && group_port_count(crs812_group(3)) == 2
+    && group_port_count_is(group: crs812_group(0), n: 2)
+    && group_port_count_is(group: crs812_group(1), n: 8)
+    && group_port_count_is(group: crs812_group(2), n: 2)
+    && group_port_count_is(group: crs812_group(3), n: 2)
 }
 
 test fn crs812_total_port_count_is_fourteen() -> Bool {
@@ -82,28 +95,28 @@ test fn crs812_total_port_count_is_fourteen() -> Bool {
 }
 
 test fn crs812_rj45_ports_carry_the_supported_rates_not_the_heading() -> Bool {
-  let g = crs812_group(0)
-  g.connector == "RJ45"
-    && rates_contain(rates: g.data_rates, wanted: bandwidth(10000000))
-    && rates_contain(rates: g.data_rates, wanted: bandwidth(100000000))
-    && rates_contain(rates: g.data_rates, wanted: bandwidth(1000000000))
-    && rates_contain(rates: g.data_rates, wanted: bandwidth(10000000000))
-    && !rates_contain(rates: g.data_rates, wanted: bandwidth(2500000000))
+  match crs812_group(0) {
+    Present { value: g } =>
+      g.connector == "RJ45"
+        && rates_contain(rates: g.data_rates, wanted: bandwidth(10000000))
+        && rates_contain(rates: g.data_rates, wanted: bandwidth(100000000))
+        && rates_contain(rates: g.data_rates, wanted: bandwidth(1000000000))
+        && rates_contain(rates: g.data_rates, wanted: bandwidth(10000000000))
+        && !rates_contain(rates: g.data_rates, wanted: bandwidth(2500000000))
+    Absent => false
+  }
 }
 
 test fn crs812_sfp56_ports_scale_to_50g() -> Bool {
-  let g = crs812_group(1)
-  g.connector == "SFP56" && group_scales_to(group: g, top: bandwidth(50000000000), next_up: bandwidth(100000000000))
+  group_connector_scales_to(group: crs812_group(1), connector: "SFP56", top: bandwidth(50000000000), next_up: bandwidth(100000000000))
 }
 
 test fn crs812_qsfp56_ports_scale_to_200g() -> Bool {
-  let g = crs812_group(2)
-  g.connector == "QSFP56" && group_scales_to(group: g, top: bandwidth(200000000000), next_up: bandwidth(400000000000))
+  group_connector_scales_to(group: crs812_group(2), connector: "QSFP56", top: bandwidth(200000000000), next_up: bandwidth(400000000000))
 }
 
 test fn crs812_qsfp56_dd_ports_scale_to_400g() -> Bool {
-  let g = crs812_group(3)
-  g.connector == "QSFP56-DD" && group_scales_to(group: g, top: bandwidth(400000000000), next_up: bandwidth(800000000000))
+  group_connector_scales_to(group: crs812_group(3), connector: "QSFP56-DD", top: bandwidth(400000000000), next_up: bandwidth(800000000000))
 }
 
 test fn crs812_switching_capacity_is_honestly_absent() -> Bool {
@@ -176,11 +189,19 @@ test fn crs812_open_gaps_are_declared_and_counted() -> Bool {
 
 // ---------------- Arista DCS-7050S-52 ----------------
 
+fn arista_first_group_is_52_sfp_plus_at_10g(group: Optional<SwitchPortGroup>) -> Bool {
+  match group {
+    Present { value: g } =>
+      g.connector == "SFP+"
+        && g.port_count == 52
+        && rates_contain(rates: g.data_rates, wanted: bandwidth(10000000000))
+    Absent => false
+  }
+}
+
 test fn arista_port_group_is_fifty_two_1_10g_sfp_plus() -> Bool {
   count(arista_7050s_52_catalog.port_inventory) == 1
-    && arista_7050s_52_catalog.port_inventory.first().connector == "SFP+"
-    && arista_7050s_52_catalog.port_inventory.first().port_count == 52
-    && rates_contain(rates: arista_7050s_52_catalog.port_inventory.first().data_rates, wanted: bandwidth(10000000000))
+    && arista_first_group_is_52_sfp_plus_at_10g(group: arista_7050s_52_catalog.port_inventory.first())
 }
 
 test fn arista_switching_capacity_is_1_04_tbps() -> Bool {
@@ -259,7 +280,7 @@ test fn all_three_catalog_rows_populate_one_shared_shape() -> Bool {
   tp_link_tl_sg1024s_catalog.model == "TL-SG1024S"
     && tp_link_tl_sg1024s_catalog.fanless
     && count(tp_link_tl_sg1024s_catalog.port_inventory) == 1
-    && tp_link_tl_sg1024s_catalog.port_inventory.first().port_count == 24
+    && group_port_count_is(group: tp_link_tl_sg1024s_catalog.port_inventory.first(), n: 24)
     && !crs812_catalog.fanless
     && !arista_7050s_52_catalog.fanless
     && count(crs812_catalog.port_inventory) == 4

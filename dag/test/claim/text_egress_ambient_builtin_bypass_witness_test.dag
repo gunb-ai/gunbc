@@ -1,8 +1,8 @@
 module test.claim.text_egress_ambient_builtin_bypass_witness
 
-import v2.std.algebra { any, contains }
+import v2.std.algebra { any, contains, fold_list, length }
 import v2.std.collection { List }
-import v2.std.fn_index { FnArrowDecl, callee_texts_in_subtree, fn_arrow_decl_facts_live }
+import v2.std.fn_index { FnArrowDecl, callee_texts_in_decl, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
 import v2.std.text { String, string_eq }
 
@@ -26,26 +26,64 @@ data unswitched_module_files: List<String> = ["src/v2/workflow/floor_naming_hygi
 
 data ambient_text_builtins: List<String> = ["char_at", "string_length", "string_contains"]
 
-fn decl_reaches_ambient_text_builtin(decl: FnArrowDecl) -> Bool {
-  any(
-    xs: callee_texts_in_subtree(node: decl.output),
-    predicate: fn(callee) {
-      contains(xs: ambient_text_builtins, item: callee, eq: string_eq)
+// ONE WALK PER DECLARATION, read for both answers. A refused call is carried as a refusal, not a
+// callee, so an ABSENCE of ambient builtins is established only where the walk refused nothing; the
+// presence claim needs no such guard, since a callee found is found.
+type AmbientReach
+  = AmbientReached
+  | AmbientNotReached
+  | AmbientUndecided
+
+fn decl_ambient_reach(decl: FnArrowDecl) -> AmbientReach {
+  let scan = callee_texts_in_decl(decl: decl)
+  if any(xs: scan.texts, predicate: fn(callee) { contains(xs: ambient_text_builtins, item: callee, eq: string_eq) }) {
+    AmbientReached
+  } else if length(xs: scan.refusals) > 0 {
+    AmbientUndecided
+  } else {
+    AmbientNotReached
+  }
+}
+
+fn ambient_reach_join(acc: AmbientReach, next: AmbientReach) -> AmbientReach {
+  match acc {
+    AmbientReached => AmbientReached
+    AmbientUndecided =>
+      match next {
+        AmbientReached => AmbientReached
+        AmbientUndecided => AmbientUndecided
+        AmbientNotReached => AmbientUndecided
+      }
+    AmbientNotReached => next
+  }
+}
+
+fn module_ambient_reach(files: List<String>) -> AmbientReach {
+  fold_list(
+    xs: fn_arrow_decl_facts_live(pool_roots: no_pool_roots, pool_files: files),
+    empty: AmbientNotReached,
+    cons: fn(acc, d) {
+      match acc {
+        AmbientReached => AmbientReached
+        AmbientNotReached => ambient_reach_join(acc: acc, next: decl_ambient_reach(decl: d))
+        AmbientUndecided => ambient_reach_join(acc: acc, next: decl_ambient_reach(decl: d))
+      }
     }
   )
 }
 
-fn module_reaches_ambient_text_builtin(files: List<String>) -> Bool {
-  any(
-    xs: fn_arrow_decl_facts_live(pool_roots: no_pool_roots, pool_files: files),
-    predicate: decl_reaches_ambient_text_builtin
-  )
-}
-
 test fn switched_emit_orchestration_reaches_no_ambient_text_builtin() -> Bool {
-  !module_reaches_ambient_text_builtin(files: switched_module_files)
+  match module_ambient_reach(files: switched_module_files) {
+    AmbientNotReached => true
+    AmbientReached => false
+    AmbientUndecided => false
+  }
 }
 
 test fn the_route_reader_finds_an_ambient_text_builtin_where_one_remains() -> Bool {
-  module_reaches_ambient_text_builtin(files: unswitched_module_files)
+  match module_ambient_reach(files: unswitched_module_files) {
+    AmbientReached => true
+    AmbientNotReached => false
+    AmbientUndecided => false
+  }
 }

@@ -1,12 +1,14 @@
 module extdeps.tools.busybox
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { NonEmptyStr, String, Int, Port }
 import std.measure { Mebibyte, mebibyte_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_busybox }
+import extdeps.apt { apt_bin_dir, package_busybox }
 import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -18,10 +20,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data busybox_pinned_version: VersionConstraint = ">= 1.36"
 
+fn busybox_program() -> ProgramIdentity = cataloged_program(invocation: "busybox")
+
 data busybox_cli_tool: CliTool = CliTool {
-  name: "busybox",
+  program: busybox_program(),
   min_version: Present { value: busybox_pinned_version },
-  installable_via: [SourceApt { package: package_busybox }],
+  installable_via: [SourceApt { package: package_busybox, bin_dir: apt_bin_dir }],
 }
 
 data busybox_source_1_36_1_url: Uri = Uri {
@@ -31,7 +35,7 @@ data busybox_source_1_36_1_url: Uri = Uri {
 
 fn busybox_httpd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr, port: Port) -> ArgvCommand {
   argv_command(
-    program: busybox_bin,
+    program: cataloged_program(invocation: busybox_bin),
     arguments: ["httpd", "-p", to_string(port), "-h", document_root as String],
   )
 }
@@ -46,7 +50,7 @@ fn busybox_httpd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr, p
 // server that must never accept an upload.
 fn busybox_tftpd_over_udpsvd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr) -> ArgvCommand {
   argv_command(
-    program: busybox_bin,
+    program: cataloged_program(invocation: busybox_bin),
     arguments: [
       "udpsvd", "-E", "0.0.0.0", "69",
       busybox_bin as String,
@@ -65,7 +69,7 @@ fn busybox_dd_sparse_image_command(
   size: Mebibyte,
 ) -> ArgvCommand {
   argv_command(
-    program: busybox_bin,
+    program: cataloged_program(invocation: busybox_bin),
     arguments: [
       "dd",
       "if=/dev/zero",

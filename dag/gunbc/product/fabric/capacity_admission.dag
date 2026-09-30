@@ -22,7 +22,7 @@ import product.fabric.supply {
   Fungible, TrustDomainMismatch, CapabilitiesNotOffered, IsolationNotProvided, ShapeAxesNotCovered,
 }
 import product.fabric.node_qualification {
-  OfferDeliveryClaim, OfferDoesNotClaimNodeDelivery, OfferClaimsNodeDelivery,
+  OfferDeliveryClaim, OfferDoesNotClaimNodeDelivery, OfferClaimsNodeDelivery, OfferClaimsRunnerDelivery,
   QualificationRefusal, claimed_delivery_check, ClaimedDeliveryHolds,
   ClaimedDeliveryUnqualified, ClaimedDeliveryOfferMismatch,
 }
@@ -234,22 +234,48 @@ fn admit_delivered_offer<P>(
         sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
         facts: facts, requirements: requirements, offer: offer, exercise: exercise)
     OfferClaimsNodeDelivery { offer: named, admission: _ } =>
-      if !fabric_identity_eq(left: offer.id, right: named) {
-        CapacityRefused { refusal: CapacityDeliveryClaimNamesAnotherOffer { offer: offer.id, claim_names: named } }
-      } else {
-        match claimed_delivery_check(claim: delivery) {
-          ClaimedDeliveryHolds =>
-            admit_use_for(
-              sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
-              facts: facts, requirements: requirements, offer: offer, exercise: exercise)
-          ClaimedDeliveryUnqualified { refusals: r } =>
-            CapacityRefused { refusal: CapacityNodeNotQualified { offer: offer.id, refusals: r } }
-          ClaimedDeliveryOfferMismatch { claim_names: c, receipt_names: rec } =>
-            CapacityRefused {
-              refusal: CapacityDeliveryClaimReceiptMismatch { offer: offer.id, claim_names: c, receipt_names: rec },
-            }
+      admit_named_delivery(
+        sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+        facts: facts, requirements: requirements, offer: offer, exercise: exercise,
+        delivery: delivery, named: named)
+    OfferClaimsRunnerDelivery { offer: named, assessment: _ } =>
+      admit_named_delivery(
+        sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+        facts: facts, requirements: requirements, offer: offer, exercise: exercise,
+        delivery: delivery, named: named)
+  }
+}
+
+// A RUNNER DELIVERY CLAIM WALKS THE SAME SCREENS AS A GROUP CLAIM: the claim must name this offer,
+// the assessment must name the same offer, and its refusals refuse the node by name. One screen
+// for both arms, so the runner claim cannot drift from the group claim's admission order.
+fn admit_named_delivery<P>(
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  facts: ProviderRouteFacts,
+  requirements: ExecutionRequirements,
+  offer: SupplierOffer<P>,
+  exercise: RouteExercise?,
+  delivery: OfferDeliveryClaim<P>,
+  named: FabricIdentity<P, OfferKey>,
+) -> CapacityAdmission<P> {
+  if !fabric_identity_eq(left: offer.id, right: named) {
+    CapacityRefused { refusal: CapacityDeliveryClaimNamesAnotherOffer { offer: offer.id, claim_names: named } }
+  } else {
+    match claimed_delivery_check(claim: delivery) {
+      ClaimedDeliveryHolds =>
+        admit_use_for(
+          sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+          facts: facts, requirements: requirements, offer: offer, exercise: exercise)
+      ClaimedDeliveryUnqualified { refusals: r } =>
+        CapacityRefused { refusal: CapacityNodeNotQualified { offer: offer.id, refusals: r } }
+      ClaimedDeliveryOfferMismatch { claim_names: c, receipt_names: rec } =>
+        CapacityRefused {
+          refusal: CapacityDeliveryClaimReceiptMismatch { offer: offer.id, claim_names: c, receipt_names: rec },
         }
-      }
+    }
   }
 }
 

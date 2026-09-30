@@ -361,31 +361,27 @@ fn internal_disposition_over_current_absence(
   }
 }
 
-// THE CONSUMER FRONTIER, ENROLLED SO THE DISSOLUTION CENSUS CAN SEE IT. Nothing in the corpus reads
-// these declarations yet, and that is deliberate rather than incidental: the semantics land first so
-// the producers are written against a contract instead of inventing one inside effectful routing,
-// which is how the incident this module exists to prevent was produced.
+// THE CONSUMER FRONTIER IS EMPTY, AND THE THREE ROWS THIS MODULE LANDED WITH ARE RETIRED BY
+// EXECUTION -- which is what each of their triggers named, and not by an import:
 //
-// THE TRIGGER IS EXECUTION, NOT EXISTENCE. A Cut 2 module that merely imports these types does not
-// retire these rows; what retires them is the producer route running -- the Drive superseded-marker
-// query and the subject-bound declaration reader emitting LegacyExtentEvidence, and that evidence
-// reaching review_sheet_identity_standing on the real path. A frontier whose trigger is satisfied by
-// an import would be discharged by the weakest possible consumer.
-data review_sheet_identity_consumer_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_identity", decl_name: "review_sheet_identity_standing"),
-    reason: "the complete join. It has no caller: the superseded-marker producer that would supply its current observation and its legacy-extent evidence is the next cut, and landing that producer first would have let it decide these meanings inside effectful routing again -- the failure this module exists to close",
-    dissolution: unbound_dissolution(description: "dissolves when the Drive superseded-marker producer and the subject-bound operator-declaration reader EXECUTE against this contract -- emitting LegacyExtentEvidence and passing it with a current-marker observation into review_sheet_identity_standing on the production route. A module that imports these types without running that route does not fire this"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_identity", decl_name: "LegacyExtentEvidence"),
-    reason: "the evidence carrier the producers must emit. No producer constructs it yet, so every arm is currently inhabited only by claims",
-    dissolution: unbound_dissolution(description: "dissolves when the Cut 2 producers construct LegacySearchObserved from a live Drive query and LegacyExtentAbsentByOperator from a subject-bound declaration file, both on the production route"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_identity", decl_name: "LegacyFileSelection"),
-    reason: "an operator's choice of file, carried rather than consumed. It is deliberately NOT part of LegacyExtentEvidence -- selecting a file establishes which file was selected, never that no other lineage exists -- so nothing in this cut reads it. Its consumer is the declared-id ADMISSION, which reconciles a selection against a standing, a contradicting observation and an exact file-by-id preflight",
-    dissolution: unbound_dissolution(description: "dissolves when the declared-id admission executes: a selection reconciled against a review_sheet_identity_standing and an exact file-by-id read, producing a typed admission or refusal on the production route"),
-  ),
-]
-
+//   review_sheet_identity_standing and LegacyExtentEvidence dissolve together, because one route
+//   discharges both. gunbc.review_sheet_legacy_extent_producer emits LegacySearchObserved from a
+//   live Drive query against the superseded marker field and LegacyExtentAbsentByOperator from a
+//   subject-bound declaration file; gunbc.review_sheet_spreadsheet_actuator
+//   converge_review_spreadsheet passes that evidence with a current-marker observation into
+//   review_sheet_identity_standing, and is reached from the argv-free entry point
+//   gunbc.review_sheet_converge_cli converge_drive_half_cli.
+//
+//   LegacyFileSelection dissolves through gunbc.review_sheet_declared_id_admission, which is its
+//   only consumer and reconciles it against a standing, a contradicting observation, an exact
+//   file-by-id preflight and the intended subject. The same converge calls it, on the same route.
+//
+// THE DECLARATION HALF OF BOTH CHAINS EXECUTES IN CI, against real files on disk, at
+// test.claim.review_sheet_legacy_declaration_wet_witness; the two Drive legs -- the superseded
+// query and the file-by-id preflight -- execute on the operator's live converge run. Neither half
+// is an import, and this annotation does not claim CI runs the network legs.
+//
+// THE ROSTER STAYS AS AN EMPTY LIST rather than being deleted, because gunbc.census_closure_frontier
+// folds it by name: a module that has no frontier today may acquire one, and the row that reappears
+// should join an existing authority rather than re-create it.
+data review_sheet_identity_consumer_frontier_rows: List<FrontierRow> = []

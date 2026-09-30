@@ -1,6 +1,7 @@
 module v2.test.manual.infer_algebra_ref_grounding_anchor
 
 import v2.std.witness { Holds, Violates, Witness }
+import v2.compiler.infer { algebra_ref_is_grounded, canonical_grounding_from_inferred_facts }
 
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
@@ -52,7 +53,7 @@ fn anchor_inferred_facts_bare_atom_algebra() -> InferredFacts {
     descent: Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
-        strict: v2.std.cardinality.RankingDimension { measured: ^anchor_descent_dim_sym }
+        strict: v2.std.cardinality.RankingComponent { measured: ^anchor_descent_dim_sym }
       }
     }
   }

@@ -2,6 +2,7 @@ module test.claim.spark.serving_arm_launch_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
+import v2.std.optional { Present, Absent }
 import std.measure { token_count_value }
 import extdeps.vllm.engine_args { vllm_basis_point_fraction_wire }
 import extdeps.docker.cli { DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping }
@@ -19,12 +20,13 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.serving_arm_launch {
   ArmNode, ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch,
-  plan_arm_launch_for, arm_node, arm_container_spec,
+  plan_arm_launch, plan_arm_launch_for, plan_arm_launch_under_memory_fit, arm_node, arm_container_spec, glm_native_arm_container,
 }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
 import gunbc.spark.arm_memory_fit {
   arm_memory_fit_subject_for_launch,
   arm_memory_fit_verdict,
+  arm_memory_launch_gate,
   ArmMemorySubjectReady, ArmMemorySubjectRefused,
   ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
 }
@@ -32,12 +34,6 @@ import gunbc.spark.arm_memory_fit {
 // THE FIXTURE IS THE REAL GROUP B ARM, because the property under test is a property of THIS
 // deployment: the four ranks that were found serving on TCP sockets. A synthetic group would test
 // the renderer and say nothing about the arm that was wrong.
-//
-// THE RENDER ROWS ASK FOR THE BOUNDED-EXPERIMENT INTENT, which is what this module's own header
-// names as the plan's production consumer (the bounded transport-only relaunch), and which is now
-// the only intent the memory wall admits for this subject: the arm carries an execution receipt
-// and no memory receipt, so normal serving refuses at the memory wall (rows below) while the
-// experiment -- the thing that mints the missing receipts -- still renders.
 fn planned_lines(f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
   planned_lines_for(profile: glm_native_initial_profile, f: f)
 }
@@ -47,13 +43,14 @@ fn planned_lines(f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
 // and a profile that only ever appears inside an equality check is a row nothing produces a launch
 // from. Planning it is what makes its subject reachable.
 fn planned_lines_for(profile: ServingLaunchProfile, f: fn(List<ArmNodeLaunch>) -> Bool) -> Bool {
-  match plan_arm_launch_for(
+  match plan_arm_launch(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
     group: FabricGroupB,
-    intent: ArmBoundedExperiment,
     profile: profile,
+    deployment_env: [] as List<DockerEnvAssignment>,
+    container: glm_native_arm_container,
   ) {
     ArmLaunchRefused { cause: _ } => false
     ArmLaunchPlanned { lines: ls, master: _ } => f(ls)
@@ -156,7 +153,9 @@ test fn w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory() -> Bool 
             node: fx_socket_rank,
             master: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 21),
             crow: crow, rrow: rrow, ranks: 4,
-            profile: glm_native_initial_profile)
+            profile: glm_native_initial_profile,
+            deployment_env: [] as List<DockerEnvAssignment>,
+            container: glm_native_arm_container)
           length(spec.devices) == 0
             && length(spec.cap_add) == 0
             && !spec.memlock_unlimited
@@ -184,6 +183,8 @@ fn plan_unrun_subject(intent: ArmIntent) -> ArmLaunchPlan {
     group: FabricGroupB,
     intent: intent,
     profile: glm_native_initial_profile,
+    deployment_env: [] as List<DockerEnvAssignment>,
+    container: glm_native_arm_container,
   )
 }
 
@@ -209,16 +210,20 @@ test fn w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_ans
 // experiment and pass; this row asks for normal serving on the measured subject -- the Group B arm
 // WITH its execution receipt, the tuple that served 2026-09-13 -- and must refuse at the memory
 // wall, because no memory receipt exists for any term but the checkpoint's own bytes. Before the
-// wall, this tuple planned normal serving on the retired weights-only heuristic; the crash loop
-// since 2026-09-18 is that plan running.
+// wall, this tuple planned normal serving on the weights-only heuristic; the crash loop
+// since 2026-09-18 is that plan running. The CONTROL is the same call through the ungated
+// planner (plan_arm_launch_for), which plans normal serving for this receipted subject -- so the
+// refusal here is the wall's, not an execution wall's.
 fn plan_measured_subject(intent: ArmIntent) -> ArmLaunchPlan {
-  plan_arm_launch_for(
+  plan_arm_launch_under_memory_fit(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
     group: FabricGroupB,
     intent: intent,
     profile: glm_native_initial_profile,
+    deployment_env: [] as List<DockerEnvAssignment>,
+    container: glm_native_arm_container,
   )
 }
 
@@ -234,42 +239,59 @@ test fn w_the_measured_arm_refuses_normal_serving_at_the_memory_wall() -> Bool {
       ArmLaunchRefused { cause: _ } => false
       ArmLaunchPlanned { lines: ls, master: _ } => length(ls) == 4
     })
+    && (match plan_arm_launch_for(
+      checkpoint: Glm53NativeFp8,
+      runtime: GunbcGlm53NopeDerivedGb10,
+      topology: FourSparkTp4,
+      group: FabricGroupB,
+      intent: ArmNormalServing,
+      profile: glm_native_initial_profile,
+      deployment_env: [] as List<DockerEnvAssignment>,
+      container: glm_native_arm_container,
+    ) {
+      ArmLaunchRefused { cause: _ } => false
+      ArmLaunchPlanned { lines: ls, master: _ } => length(ls) == 4
+    })
 }
 
 // ── A REFUSED FIT REFUSES THE EXPERIMENT TOO — tp1/tp2 ARE NOT ADMISSIBLE AS EXPERIMENTS ────────
 //
 // THE BLOCKER'S CONTROL. A single-rank topology cannot hold this checkpoint under ANY reading
 // (the aggregate argument proves it before any per-rank term), so a bounded experiment there
-// measures nothing a service could use: the plan arm must refuse, with the refusal carried up
-// through the wall, not admit the shape because the word "experiment" used to bypass the fit.
-fn plan_tp1_experiment() -> ArmLaunchPlan {
-  plan_arm_launch_for(
+// measures nothing a service could use: the gate must refuse it, not admit the shape because the
+// word "experiment" used to bypass the fit. Asked of the proof and the gate directly, because on
+// the planner the aggregate screen (gunbc.spark.serving_arm serving_arm_admits_under) and the
+// roster refuse tp1 first -- a planner-level row would go green on THEIR refusal and say nothing
+// about this one.
+test fn w_a_refused_fit_refuses_the_bounded_experiment_at_the_wall() -> Bool {
+  match arm_memory_fit_subject_for_launch(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: SingleSparkTp1,
-    group: FabricGroupB,
-    intent: ArmBoundedExperiment,
     profile: glm_native_initial_profile,
-  )
-}
-
-test fn w_a_refused_fit_refuses_the_bounded_experiment_at_the_wall() -> Bool {
-  match plan_tp1_experiment() {
-    ArmLaunchRefused { cause: c } =>
-      string_contains(s: c as String, pattern: "even a bounded experiment refuses")
-    ArmLaunchPlanned { lines: _, master: _ } => false
+  ) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } => {
+      let verdict = arm_memory_fit_verdict(subject: subject)
+      (match verdict {
+        ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => true
+        ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => false
+        ArmMemoryFitUnestablished { obligations: _ } => false
+      })
+        && (match arm_memory_launch_gate(intent: ArmBoundedExperiment, verdict: verdict, experiment: none) {
+          Present { value: c } => string_contains(s: c as String, pattern: "even a bounded experiment refuses")
+          Absent => false
+        })
+    }
   }
 }
 
-// ── THE PRODUCTION SERVING PROFILE'S VERDICT IS CARRIED BY THE PROOF, NOT BY A POOL READING ─────
+// ── THE RESTORATION PROFILE'S VERDICT IS CARRIED BY THE PROOF, NOT BY A POOL READING ────────────
 //
-// The 2026-09-19 serving profile (262144 tokens, sixteen sequences, fp8 KV, 8400 basis points) is
-// the tuple whose live units have been crash-looping. The proof's verdict for it is
-// FitUnestablished and the obligations NAME the missing bounds -- the KV layout derivation, the
-// component receipts, the host reserve -- which is the repair program, not "run it and see". A
-// normal-serving plan for the exact tuple additionally refuses at the intent wall (no execution
-// receipt for this profile exists yet); the verdict row is what tells the operator what has to
-// exist BEFORE such a receipt can mean the arm is safe to serve on.
+// The proof's verdict for the Group B restoration profile is FitUnestablished and the obligations
+// NAME the missing bounds -- the KV layout derivation, the component receipts, the host reserve --
+// which is the repair program, not "run it and see"; the verdict row is what tells the operator what
+// has to exist BEFORE an execution receipt can mean the arm is safe to serve on.
 // THE RESTORATION PROFILE, unwrapped through the plain carrier the resolver seam can type (the
 // sole-constructor payload's produced identity is erased at the cross-module Present seam).
 fn w_restoration_profile() -> ServingLaunchProfile {
@@ -340,22 +362,10 @@ fn planned_experiment_lines(profile: ServingLaunchProfile, f: fn(List<ArmNodeLau
     group: FabricGroupB,
     intent: ArmBoundedExperiment,
     profile: profile,
+    deployment_env: [] as List<DockerEnvAssignment>,
+    container: glm_native_arm_container,
   ) {
     ArmLaunchRefused { cause: _ } => false
     ArmLaunchPlanned { lines: ls, master: _ } => f(ls)
   }
-}
-
-test fn w_all_serving_arm_launch_claims_hold() -> Bool {
-  w_the_group_b_arm_plans_exactly_four_ranks()
-    && w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory()
-    && w_every_rank_names_this_fleets_leg_and_hca()
-    && w_every_rank_keeps_the_transport_evidence_producer_on()
-    && w_the_engine_argv_states_the_profiles_batching_bounds()
-    && w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory()
-    && w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer()
-    && w_the_utilisation_argv_is_the_profiles_value_at_full_precision()
-    && w_the_measured_arm_refuses_normal_serving_at_the_memory_wall()
-    && w_a_refused_fit_refuses_the_bounded_experiment_at_the_wall()
-    && w_the_serving_profiles_verdict_is_unestablished_with_named_obligations()
 }

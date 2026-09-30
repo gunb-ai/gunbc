@@ -2,7 +2,7 @@ module gunbc.build_cache_provision_verdict
 
 import std.types { String, NonEmptyStr, Bool }
 import std.cache_identity { CacheInterfaceId }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
 import gunbc.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
@@ -23,7 +23,7 @@ import gunbc.build_cache_instance {
   RetiredRunnerSlot,
 }
 
-data build_cache_provision_verdict_scope_disposition: Disposition = SingleAuthority
+data build_cache_provision_verdict_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // THE ARMS ARE BuildCacheProvisionConverged / BuildCacheProvisionRefused BECAUSE THE BARE SPELLING
 // WAS A HOMONYM, and it refused the moment the fold entered a closure that already held the other
@@ -65,7 +65,7 @@ data build_cache_provision_verdict_scope_disposition: Disposition = SingleAuthor
 // DaemonPathShadowed observation), not decided by the provisioning shell. Its LIVE observation is
 // STAGED, not emitted: per the shell→dag census this module's script side is an A5 `decompose` row
 // that must not grow its emitted shell surface, so the `command -v sccache` resolve waits for the
-// typed-argv dissolve-on (#5828) rather than landing as hand-shell now (review 42343). The model
+// typed-argv dissolve-on (gunbc.host_effect_realize build_cache_provision_shell_script_dissolution_trigger) rather than landing as hand-shell now (review 42343). The model
 // carries the state and its refusal today; only the live producer is deferred.
 
 // A stats read-back CANNOT see whether the daemon it just talked to is supervised — and this is not
@@ -90,7 +90,7 @@ data build_cache_provision_verdict_scope_disposition: Disposition = SingleAuthor
 // names rather than one Ok. The LIVE observation is STAGED exactly as the PATH-shadow one is — the
 // supervisor read (`systemctl --user is-active`) is not emitted as hand-shell here, because this
 // module's script side is an A5 `decompose` census row that may shrink but must not grow (review
-// 42343); it lands with the typed-argv dissolve-on (#5828). The model carries the state and its
+// 42343); it lands with the typed-argv dissolve-on (build_cache_provision_shell_script_dissolution_trigger). The model carries the state and its
 // refusal today; only the live producer is deferred. Construction covers the case this observation
 // would catch on a host provisioned BY THIS LANE — build_cache_unit_daemon_runs_until_stopped makes
 // the self-exiting unit unwritable — so the observation's standing job is the residue construction

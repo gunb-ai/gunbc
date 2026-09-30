@@ -74,7 +74,7 @@ Not yet represented; CI need vs customer need:
 
 | Missing constructor | CI-on-microVMs | Customer-job |
 |---|---|---|
-| Live signature verification and fetch (mint is `jit_mint_http_realization_frontier`) | **Required before any production CI job on this path.** The receipted fail-open was `jitconfig-bytes=0` then launch anyway. gunbc#10923 is **merged**, but the named module `gunbc.github_effect_perform` still does not resolve in this tree; `gunbc.runner.runner_jit_perform` still performs no I/O. The frontier's trigger sentence is therefore **not satisfied by the merge alone**. | Same. |
+| Host-side JIT mint and jail staging | **Required before any production CI job on this path.** The receipted fail-open was `jitconfig-bytes=0` then launch anyway. `gunbc.github_effect_perform` `perform_organization_jit_mint` now performs the App path on the host (RS256 App JWT via openssl, installation token, generate-jitconfig), and `gunbc.runner_attempt_launch` admits only a delivered, attempt-bound, floor-to-ceiling credential: no admitted credential means no jit device and no VMM, in one plan arm. What stays open is execution by the lifecycle controller: `gunbc.github_effect_perform` `jit_mint_lifecycle_controller_consumer_frontier`. | Same. |
 | nft install/readback | **Required.** The guest must reach `github.com` (JIT register, checkout, API). A plan that cannot install or read back NAT is a guest that cannot run Actions. | Same. |
 | mkfs failure | **Required.** Checkout and toolchain isolation live on the workspace image. | Same. |
 | Live bidirectional cgroup placement census | **Defer for first CI dogfood.** Isolation is structurally the guest+jailer; a live census is evidence quality, not the class that made private exit 126. | Required before selling tenancy (`tenant-boundary-minimum`). |
@@ -151,7 +151,7 @@ Named lower-bound dispatch (not a guest): `ctrl-build --remote -- bash -lc '… 
 
 - **Shared toolchain / cargo caches across jobs on one host.** Isolation makes the deleter class unwritable. Lost *local* reuse is accepted under the working assumption: 815–1053 s still clears 3341 s and the ~61-minute cancel class. External sccache is an optimization blocked on `GuestEgressNotEstablished`, not cover for the cut.
 - **`ci_isolate_toolchain_script` / start-end filesystem probe.** Retired when microVMs make the eviction class impossible — that question belongs to **still-bear-335**, not to the process-count PR.
-- **Persistent runner registration.** Replaced by JIT per attempt. Covered only when mint HTTP + jail staging frontiers bind (`jit_mint_http_realization_frontier`, `jail_jit_device_staging_frontier`).
+- **Persistent runner registration.** Replaced by JIT per attempt. Covered only when the lifecycle controller executes the mint and staging (`jit_mint_lifecycle_controller_consumer_frontier`).
 - **Slot RAM carve / `CARGO_BUILD_JOBS` from `ci_runner_target_memory_regime`.** A guest size is a different envelope (`gunbc.runner_microvm` size decision). The flip must project through `selected_ci_runner_target`, not a literal in YAML.
 - **Canary-only capacity.** Covered by refusing to cut public until capacity is named, or by a declared §4b drop of dual-lane parallelism with a restoration trigger = a second canary host or serialized lanes that still meet the floor.
 
@@ -181,8 +181,7 @@ Three lanes, three questions. An earlier revision of this plan routed the filesy
 |---|---|
 | `host_boot_cutover_frontier` | Unbound |
 | `host_image_placeability_wet_probe_frontier` | Unbound; BMC HTTPS 200; standing still access-refused |
-| `jit_mint_http_realization_frontier` | Unbound; #10923 merged; named performer module still absent |
-| `jail_jit_device_staging_frontier` | Unbound |
+| `jit_mint_lifecycle_controller_consumer_frontier` | Unbound; mint and staging are modeled and realized, no production caller yet |
 | `toolchain_filesystem_probe_dissolution_condition` | Unbound. Proposed home of the two-conjunct bind is gunbc#10985. The 2026-09-11 specimen (run 34562801087, 34-slot overlapping registration window) **identifies** the deleter and does **not** bind this row. |
 | `dogfood-started` | Not started (public CI still on srv slots) |
 | This plan's cutover | **Not taken** — operator decision |

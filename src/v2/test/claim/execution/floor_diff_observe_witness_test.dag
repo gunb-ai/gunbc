@@ -3,7 +3,7 @@ module v2.test.execution.floor_diff_observe_witness
 import std.logic { Bool }
 import std.types { List, String }
 import std.materialization_ladder { string_list_contains }
-import gunbc.ci_spec { DiffMergeBase }
+import gunbc.ci_diff_policy { DiffMergeBase }
 import v2.std.collection { empty_map, map_insert }
 import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,

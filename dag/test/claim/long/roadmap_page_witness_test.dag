@@ -17,7 +17,7 @@ import gunbc.roadmap_launch_admission { LaunchHostStanding, LaunchAdmitted, Laun
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear, launch_fixture_with_contract, launch_fixture_doc, launch_fixture_identity }
 import gunbc.roadmap_issue_command { IssueFormContext }
 import gunbc.roadmap_page {
-  roadmap_page_launch, roadmap_daily_workspace_page_launch,
+  roadmap_page_launch, roadmap_page_launch_with_stylesheet, roadmap_daily_workspace_page_launch,
   roadmap_page_for_authority,
   roadmap_page_for_doc,
   roadmap_page,
@@ -39,8 +39,6 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
-  IntricacyLow,
-  VolumeSmall,
   section_group,
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
@@ -226,6 +224,27 @@ fn dispatch_doc_html_for(rn: RoadmapNode) -> HtmlEmitResult {
   try_serialize_html_source(node: roadmap_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing()))
 }
 
+// THE ROW CLAIMS SUPPLY THE STYLESHEET; ONE CLAIM STILL DERIVES IT (DESIGN section 3 pairing).
+// Everything these claims assert lives in the BODY -- a button, its wire label, a disclosure block --
+// and the head's style text reaches none of it. Deriving roadmap_css() to read a button cost 157,986
+// of each claim's ~163,000 eval steps. witness_ready_node_doc_emits_button_and_external_script is
+// deliberately left on roadmap_page_launch above: it is the claim that still renders a page through
+// the REAL stylesheet on the real fold, so the integration cannot be deleted without a red, and it
+// asserts the ROUTE (the external script the live page emits) rather than only a shape.
+data supplied_stylesheet_note: String = "A stylesheet no assertion reads is an input, not a subject. The supplied text is a recognizable sentinel rather than empty so that a claim accidentally asserting on head chrome reds loudly instead of matching the empty string."
+
+fn supplied_stylesheet() -> String { "/* supplied by test.claim.long.roadmap_page_witness */" }
+
+fn dispatch_doc_html_supplied(rn: RoadmapNode) -> HtmlEmitResult {
+  dispatch_doc_html_supplied_with_merged(rn: rn, merged: [])
+}
+
+fn dispatch_doc_html_supplied_with_merged(rn: RoadmapNode, merged: List<Int>) -> HtmlEmitResult {
+  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
+  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: merged, launch: dispatch_doc_standing(), stylesheet: supplied_stylesheet()))
+}
+
 fn dispatch_doc_html_for_with_merged(rn: RoadmapNode, merged: List<Int>) -> HtmlEmitResult {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
@@ -242,12 +261,14 @@ fn ready_dispatch_node() -> RoadmapNode {
   launch_fixture_with_contract(rn: gunbc.roadmap_authority.authored_wi(identity: "rnfx_7KPP33Y7P6BH9CBVKZ03", id: "roadmap-launch-canary",
     done: false,
     content: "dispatch-me",
-    intricacy: IntricacyLow,
-    volume: VolumeSmall,
     repo: "gunbc"))
 }
 
-fn unsized_open_dispatch_node() -> RoadmapNode {
+// The node this mints carries dispatch: NotDispatchable, which is why the page refuses it. It is
+// not an UNSIZED node: sizing is derived now and this fixture never had a cell. The id string
+// still reads disp-unsized and is deliberately left alone -- it is unasserted fixture data that
+// renders into the page, and changing it would alter output this branch cannot execute to check.
+fn undispatchable_open_node() -> RoadmapNode {
   gunbc.roadmap_authority.authored(identity: "rnfx_324RFH775DGZZMVETPT6", id: "disp-unsized", done: false, content: "observe-only")
 }
 
@@ -258,7 +279,7 @@ fn signed_off_dispatch_node() -> RoadmapNode {
     node: base.node,
     line: base.line,
     carriers: base.carriers,
-    sizing: base.sizing,
+    dispatch: base.dispatch,
     execution: base.execution,
     owner: base.owner,
     signoff: gunbc.roadmap_authority.signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
@@ -273,6 +294,13 @@ fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
 
 data server_zero_furniture_note: String = "The attention rule's server half (A2): a rendered row carries NO workflow furniture — no pre-rendered stage chips, no lamp strip, no hidden progress container, no 'waiting' text. Activity DOM exists only when the client paints it from the decided /workflow.json view of a live attempt. The former version of this witness pinned the seven server-rendered pending chips as a POSITIVE; the same patterns are now the discriminating negatives, so reintroducing preloaded furniture reds here."
 
+// THIS IS THE CLAIM THAT RUNS THE REAL PAGE FOLD (DESIGN section 3 pairing obligation). The three
+// row claims below supply the stylesheet at roadmap_page_launch_with_stylesheet; this one renders
+// through roadmap_page_launch, which derives it, and the last pin ASSERTS THE ROUTE rather than a
+// shape: the head must carry the stylesheet gunbc.roadmap_style actually produces, cited by calling
+// the producer instead of spelling any of its bytes (DESIGN section 3 -- cite the symbol). Stop
+// passing roadmap_css() into the page and this reds, which is exactly what makes supplying it in
+// the sibling claims a hypothesis about a boundary rather than a hole in the evidence.
 test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
   match dispatch_doc_html_for(rn: ready_dispatch_node()) {
     EmitRejected { reason: _ } => false
@@ -281,6 +309,8 @@ test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
         && string_contains(s: h, pattern: "data-availability=\"available\"")
         && string_contains(s: h, pattern: "data-node=")
         && !string_contains(s: h, pattern: "workflow-progress")
+        && string_contains(s: h, pattern: roadmap_css())
+        && !string_contains(s: h, pattern: supplied_stylesheet())
         && !string_contains(s: h, pattern: "data-workflow-stage=")
         && !string_contains(s: h, pattern: "workflow-strip")
         && !string_contains(s: h, pattern: "workflow-lamp")
@@ -358,10 +388,8 @@ test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
     prs: [7301],
     title: "review-me",
     description: "",
-    intricacy: IntricacyLow,
-    volume: VolumeSmall,
     repo: "gunbc"))
-  match dispatch_doc_html_for_with_merged(rn: node, merged: [7301]) {
+  match dispatch_doc_html_supplied_with_merged(rn: node, merged: [7301]) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"status status-review\"")
@@ -373,29 +401,33 @@ test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
   }
 }
 
-// RLM-1: the unsized row's manual out-of-order dispatch is GONE; the button is disabled with SizeMissing.
-test fn witness_unsized_open_node_dispatch_refused_size_missing() -> Bool {
-  match dispatch_doc_html_for(rn: unsized_open_dispatch_node()) {
+// RLM-1: the open row's manual out-of-order dispatch is GONE; the button is disabled carrying
+// LaunchDispatchBindingMissing. The node refuses because it has NO DISPATCH BINDING, which is a
+// fact about its WorkItemDispatch and not about a size -- sizing is derived now and this row
+// never had a cell to be missing.
+test fn witness_undispatchable_open_node_refused_dispatch_binding_missing() -> Bool {
+  match dispatch_doc_html_supplied(rn: undispatchable_open_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"workflow-controls\"")
         && string_contains(s: h, pattern: "<button class=\"dispatch-btn action-secondary\"")
-        && string_contains(s: h, pattern: "data-launch=\"size_missing\"")
+        && string_contains(s: h, pattern: "data-launch=\"dispatch_binding_missing\"")
         && string_contains(s: h, pattern: "disabled=\"\"")
   }
 }
 
-data supporting_facts_disclosure_note: String = "The A1 row-reduction wall (presentation recon, operator-signed 2026-08-01): the head row carries the row's PRIMARY facts only — status, title, state badges, the dependency line — plus the actuator; owner, sizing codes, and carrier links are SUPPORTING facts and render inside the disclosure's item-facts block. Both pins are exact-shape over a constructed fixture: a supporting fact reappearing in node-mid reds the first, the facts block dropping (rather than demoting) the fact reds the second. A row with facts but no body still discloses under the 'facts' summary label, so demotion never becomes deletion."
+data supporting_facts_disclosure_note: String = "The A1 row-reduction wall (presentation recon, operator-signed 2026-08-01): the head row carries the row's PRIMARY facts only — status, title, state badges, the dependency line — plus the actuator; owner, the repository, any derived sizing cell, and carrier links are SUPPORTING facts and render inside the disclosure's item-facts block. The pin below expects a repo fact and NO sizing fact: sizing is derived now (gunbc.roadmap_sizing) and the deriver is a stub that refuses, so the badge the fused NodeSizing used to render is absent rather than empty — a sizing span reappearing here means the deriver started answering, which is gunbc.rung_drop.roadmap_sizing_authored_to_derived retiring. Both pins are exact-shape over a constructed fixture: a supporting fact reappearing in node-mid reds the first, the facts block dropping (rather than demoting) the fact reds the second. A row with facts but no body still discloses under the 'facts' summary label, so demotion never becomes deletion."
 
 test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
-  match dispatch_doc_html_for(rn: ready_dispatch_node()) {
+  match dispatch_doc_html_supplied(rn: ready_dispatch_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "<span class=\"taskbar-title\">dispatch-me</span>")
         && string_contains(
           s: h,
-          pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary><div class=\"inspect-body\"><div class=\"item-facts\"><span class=\"sizing\">i:low v:small gunbc</span></div></div></details>")
-        && !string_contains(s: h, pattern: "class=\"taskbar-title\">dispatch-me</span><span class=\"sizing\"")
+          pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary><div class=\"inspect-body\"><div class=\"item-facts\"><span class=\"repo\">gunbc</span></div></div></details>")
+        && !string_contains(s: h, pattern: "class=\"sizing\"")
+        && !string_contains(s: h, pattern: "class=\"taskbar-title\">dispatch-me</span><span class=\"repo\"")
   }
 }
 
@@ -414,8 +446,6 @@ fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
   let blocked = launch_fixture_with_contract(rn: gunbc.roadmap_authority.authored_wi(identity: "rnfx_VRBYQ6ZVRKNMCNVXFCG6", id: "roadmap-launch-canary-followup",
     done: false,
     content: "blocked work",
-    intricacy: IntricacyLow,
-    volume: VolumeSmall,
     repo: "gunbc"))
   let edges = [
     RoadmapEdge { child: blocked.node, parent: policy_blocker.node },
@@ -473,13 +503,105 @@ test fn witness_superseded_node_marked_no_button() -> Bool {
 
 data readable_witness_enrollment_note: String = "The six readability witnesses below (raw-text style serialization, chip min-width, container centering, the <details> disclosure, the dispatch accent) were authored with the fixes they verify but never bundled into this file's only `test fn`, and discovery keys on the `test fn `/`test data ` prefix — so they had ZERO executing consumers and CI was blind to the exact regressions they were written to catch. Proven by execution rather than by reading, 2026-07-24: reverting `.status` min-width back to width (the original defect) left roadmap_page_keystone_holds returning true. That is the orphaned-enrollment shape DESIGN calls coverage by illusion, and an inert witness is a lie about coverage, so they are enrolled here. Every witness in this file is now reachable from this one entry; adding an unbundled `fn witness_*` is the defect to look for in review."
 
+// THE UPDATES NEGATIVE WAS A FACT ABOUT THE AUTHORITY'S CONTENT, NOT ABOUT THE RENDERER. When this
+// row was written no authored ticket carried an update, so "the authority page holds no
+// ticket-updates block" stood in for "a ticket with no updates renders no updates block". Tickets
+// have since gained dated notes through gunbc.roadmap_authority updated, and the page legitimately
+// renders them -- so the page-wide negative redded on correct output while saying nothing about the
+// property. The property is the renderer's (disclosure_updates_block renders nothing for an empty
+// thread and one block for a non-empty one), so it is asserted over two supplied tickets differing
+// ONLY in their updates, in both directions; the row's structure is asserted over a supplied ticket,
+// and its real-authority inhabitance lives in witness_real_ticket_row_renders_structured.
+fn updates_fixture(updates: List<gunbc.roadmap_status.TicketUpdate>) -> RoadmapNode {
+  gunbc.roadmap_authority.ticket_row(identity: "rnfx_UPD8TESFXTR3KZ0MQ7WV", id: "updates-fixture", done: false, t: TicketFields {
+    headline: "fixture",
+    brief: "a brief",
+    displaced_cost: "",
+    current_state: "",
+    first_slice: "",
+    red_control: "",
+    out_of_scope: "",
+    handback: "",
+    updates: updates,
+    authored_on: "",
+    last_verified_on: "",
+  })
+}
+
+// ONE ROW, NOT ONE PAGE. The ticket-row claims below ask what the ROW renderer emits for a row of a
+// given kind, so they supply the row and serialize it through nodes_ul -- the same route
+// witness_bold_title_renders_strong takes -- rather than paying for the whole authority page once per
+// claim (DESIGN section 3, a witness discriminates at one interface). The pairing obligation is held by
+// witness_authority_serializes_with_structure, which asserts that the REAL authority page emits a
+// ticket-row "inspect" disclosure, a ticket brief, a disclosure field and a carrier link: the route
+// these fixtures supply is still executed for real -- by witness_real_ticket_row_renders_structured,
+// which takes an AUTHORED ticket from gunbc.roadmap_authority declared_roadmap_nodes through the same
+// row route, so real authored data reaches the real renderer without paying for the whole page.
+fn row_html(rn: RoadmapNode) -> HtmlEmitResult {
+  try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0,
+    launch: gunbc.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [rn], edges: []), merged: [], launch: dispatch_doc_standing())))
+}
+
+fn is_real_structured_ticket(rn: RoadmapNode) -> Bool {
+  match line_ticket(item: rn.line) {
+    Absent => false
+    Present { value: t } => t.displaced_cost != "" && count(rn.carriers) > 0
+  }
+}
+
+// THE INHABITANCE CLAIM FOR THE SUPPLIED TICKET ROWS (DESIGN section 3 pairing). It selects the first
+// authored ticket carrying a displaced cost and a carrier rather than naming one, so it follows the
+// authority as tickets are accepted; an authority with no such ticket reds here, by name.
+test fn witness_real_ticket_row_renders_structured() -> Bool {
+  match filter(declared_roadmap_nodes(), rn => is_real_structured_ticket(rn: rn)).first() {
+    Absent => false
+    Present { value: rn } =>
+      match row_html(rn: rn) {
+        EmitRejected { reason: _ } => false
+        EmitOk { html: h } =>
+          string_contains(s: h, pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary>")
+            && string_contains(s: h, pattern: "class=\"ticket-brief\"")
+            && string_contains(s: h, pattern: ">displaced cost</span>")
+            && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/")
+      }
+  }
+}
+
+fn structured_ticket_fixture() -> RoadmapNode {
+  gunbc.roadmap_authority.active(identity: "rnfx_STRUCT7TKT0ROW4HTML9Q2", id: "structured-ticket", owner: "fixture",
+    path: "docs/plans/roadmap-workspace-ux-plan.md",
+    t: gunbc.roadmap_authority.fields(
+      headline: "fixture ticket",
+      boundary: "a brief",
+      displaced_cost: "a displaced cost",
+      first_slice: "",
+      red_control: "",
+      out_of_scope: "",
+      handback: "",
+    ))
+}
+
+fn legacy_body_fixture() -> RoadmapNode {
+  gunbc.roadmap_authority.authored(identity: "rnfx_LEGACY5BODY2ROW8KX3M0", id: "legacy-body", done: false,
+    content: "a lead. and a body past it")
+}
+
+fn renders_updates_block(rn: RoadmapNode) -> Bool {
+  match row_html(rn: rn) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } => string_contains(s: h, pattern: "class=\"ticket-updates\"")
+  }
+}
+
 test fn witness_ticket_rows_render_structured() -> Bool {
-  match authority_page_html() {
+  match row_html(rn: structured_ticket_fixture()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary>")
         && string_contains(s: h, pattern: "class=\"ticket-brief\"")
         && string_contains(s: h, pattern: ">displaced cost</span>")
+        && !renders_updates_block(rn: updates_fixture(updates: []))
+        && renders_updates_block(rn: updates_fixture(updates: [gunbc.roadmap_status.TicketUpdate { on: "2026-09-24", note: "a dated note" }]))
         && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/roadmap-workspace-ux-plan.md\"")
   }
 }
@@ -533,68 +655,26 @@ test fn witness_raw_text_close_guard_refuses() -> Bool {
 }
 
 test fn witness_item_detail_disclosure_present() -> Bool {
-  match authority_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary>")
-        && string_contains(s: h, pattern: "class=\"inspect-body\"")
+  let ticket = match row_html(rn: structured_ticket_fixture()) {
+    EmitRejected { reason: _ } => ""
+    EmitOk { html: h } => h
   }
-}
-
-// The two negatives retired from the ticket-row and item-detail witnesses above (repair
-// 2026-09-20) pinned the ACCIDENTAL state of the live document — "no ticket renders an updates
-// thread" held until an authored ticket legitimately carried one, and "no row discloses under the
-// brief label" held until an authored row's body legitimately did. Comparing the live population
-// against its own former state is a change detector, not a claim (DESIGN §5's oracle law), so the
-// DECIDED laws are pinned here on constructed fixtures whose shape cannot drift beneath them:
-// gunbc.roadmap_page disclosure_updates_block renders the thread exactly when it is non-empty, and
-// view_detail_block labels a legacy-body row 'brief'. The live-page positives above keep the
-// inhabitance half.
-
-fn updates_fixture_node(updates: List<TicketUpdate>) -> RoadmapNode {
-  gunbc.roadmap_authority.ticket_row(identity: "rnfx_7Q2MZ4KX8HT1WP9V6R3J", id: "updates-fixture", done: false, t: TicketFields {
-    headline: "updates fixture",
-    brief: "a brief comfortably inside the budget",
-    displaced_cost: "the reading this fixture displaces",
-    current_state: "",
-    first_slice: "",
-    red_control: "",
-    out_of_scope: "",
-    handback: "",
-    updates: updates,
-    authored_on: "",
-    last_verified_on: "",
-  })
-}
-
-test fn witness_ticket_updates_block_follows_the_thread() -> Bool {
-  match dispatch_doc_html_for(rn: updates_fixture_node(updates: [])) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: empty } =>
-      !string_contains(s: empty, pattern: "class=\"ticket-updates\"")
-        && string_contains(s: empty, pattern: "class=\"taskbar-inspect\"")
+  let legacy = match row_html(rn: legacy_body_fixture()) {
+    EmitRejected { reason: _ } => ""
+    EmitOk { html: h } => h
   }
-    && match dispatch_doc_html_for(rn: updates_fixture_node(updates: [ TicketUpdate { on: "2026-09-20", note: "thread note the witness looks for" } ])) {
-      EmitRejected { reason: _ } => false
-      EmitOk { html: with_update } =>
-        string_contains(s: with_update, pattern: "class=\"ticket-updates\"")
-          && string_contains(s: with_update, pattern: "thread note the witness looks for")
-    }
+  string_contains(s: ticket, pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary>")
+    && string_contains(s: ticket, pattern: "class=\"inspect-body\"")
+    && string_contains(s: legacy, pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary>")
+    && string_contains(s: legacy, pattern: "class=\"inspect-body\"")
 }
 
-fn legacy_body_fixture_node() -> RoadmapNode {
-  gunbc.roadmap_authority.authored(identity: "rnfx_3X8NV2KQ6JP9MT4RW7ZH", id: "legacy-body-fixture",
-    done: false,
-    content: "a short lead — the body continues well past the lead cut so the row carries a legacy disclosure")
-}
-
-test fn witness_disclosure_label_law_on_fixtures() -> Bool {
-  match dispatch_doc_html_for(rn: legacy_body_fixture_node()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<span class=\"disclosure-mark\">›</span>inspect</summary>")
-  }
-}
+// THE DISCLOSURE LABEL IS ONE LAW OVER EVERY ROW KIND. The page-wide negatives this replaced pinned
+// the accidental state of the live document and redded the day an authored row legitimately
+// produced the forbidden markup. gunbc.roadmap_page taskbar_inspect_nodes discloses every row --
+// ticket or legacy row with a body -- under the single "inspect" label, so the law is asserted over
+// two SUPPLIED rows of different kinds, and the real-authority inhabitance half lives in
+// witness_real_ticket_row_renders_structured.
 
 test fn witness_status_chip_min_width() -> Bool {
   match authority_page_html() {
@@ -873,11 +953,11 @@ test fn witness_prominence_and_frame_rules_present_in_css() -> Bool {
 fn fx_page_project_nodes() -> List<RoadmapNode> {
   [
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERPROJ0000000001", id: "page-project",
-      done: false, content: "page project headline", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      done: false, content: "page project headline", repo: "gunbc"),
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERPROJ0000000002", id: "page-task-one",
-      done: false, content: "page task one", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      done: false, content: "page task one", repo: "gunbc"),
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERPROJ0000000003", id: "page-task-two",
-      done: false, content: "page task two", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      done: false, content: "page task two", repo: "gunbc"),
   ]
 }
 
@@ -967,19 +1047,19 @@ test fn witness_project_disclosure_open_attribute_is_derived() -> Bool {
 fn fx_page_chain_nodes() -> List<RoadmapNode> {
   [
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000001", id: "page-chain-c1",
-      done: false, content: "chain level one", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      done: false, content: "chain level one", repo: "gunbc"),
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000002", id: "page-chain-c2",
-      done: false, content: "chain level two", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      done: false, content: "chain level two", repo: "gunbc"),
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000003", id: "page-chain-c3",
-      done: false, content: "chain level three", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      done: false, content: "chain level three", repo: "gunbc"),
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000004", id: "page-chain-c4",
-      done: false, content: "chain level four", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      done: false, content: "chain level four", repo: "gunbc"),
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000005", id: "page-chain-x1",
-      done: false, content: "chain side leaf one", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      done: false, content: "chain side leaf one", repo: "gunbc"),
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000006", id: "page-chain-x2",
-      done: false, content: "chain side leaf two", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      done: false, content: "chain side leaf two", repo: "gunbc"),
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000007", id: "page-chain-x3",
-      done: false, content: "chain side leaf three", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+      done: false, content: "chain side leaf three", repo: "gunbc"),
   ]
 }
 
@@ -1107,13 +1187,13 @@ test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
 // witness_project_disclosure_open_attribute_is_derived and the depth-cap machinery half).
 test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool {
   let top = gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00001", id: "page-collapse-top",
-    done: false, content: "collapse top", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
+    done: false, content: "collapse top", repo: "gunbc")
   let mid = gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00002", id: "page-collapse-mid",
-    done: false, content: "collapse mid", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
+    done: false, content: "collapse mid", repo: "gunbc")
   let t1 = gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00003", id: "page-collapse-t1",
-    done: false, content: "collapse task one", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
+    done: false, content: "collapse task one", repo: "gunbc")
   let t2 = gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00004", id: "page-collapse-t2",
-    done: false, content: "collapse task two", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
+    done: false, content: "collapse task two", repo: "gunbc")
   let edges = [
     gunbc.roadmap_authority.edge(child: "page-collapse-top", parent: "page-collapse-mid"),
     gunbc.roadmap_authority.edge(child: "page-collapse-mid", parent: "page-collapse-t1"),
@@ -1956,7 +2036,7 @@ fn fx_long_title_doc(long: String) -> RoadmapDocument {
       title: "Projects",
       elements: [ section_group(label: "", nodes: [
         gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGELONGTITLE00000000001", id: "page-long-title",
-          done: false, content: long, intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+          done: false, content: long, repo: "gunbc"),
       ], edges: []) ],
     } ],
   }

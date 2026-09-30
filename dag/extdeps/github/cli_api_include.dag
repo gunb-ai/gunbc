@@ -1,0 +1,106 @@
+module extdeps.github.cli_api_include
+
+import std.types { String, NonEmptyStr, Int, List }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.github.pagination { GitHubLinkHeader, LinkHeaderPresent, LinkHeaderAbsent }
+
+// WHAT `gh api --include` PRINTS, as the gh CLI documents it: the HTTP status line and response
+// headers, a blank line, then the body -- on stdout, and on an HTTP error as well as on success
+// (the process exits non-zero on an error status, but still prints the head). Observed by
+// execution 2026-09-19 against api.github.com for a 200 with a Link header and for a 403. This
+// module owns reading that framing and nothing about any endpoint: which status means what for a
+// given resource is the resource module's fact.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cli.github.com/manual/gh_api"
+  }
+}
+
+type GhApiIncludedResponse {
+  status: Int
+  link: GitHubLinkHeader
+  body: String
+}
+
+// AN UNREADABLE HEAD IS ITS OWN ARM. Stdout with no status line is not "no Link header" and not
+// "status unknown, assume 200": gh failed before any response existed (no network, no auth, a
+// refused request), so nothing about the resource was observed and the caller must say so.
+type GhApiIncludedParse
+  = GhApiIncludedParsed { response: GhApiIncludedResponse }
+  | GhApiIncludedUnreadable { reason: NonEmptyStr }
+
+fn strip_carriage_return(line: String) -> String {
+  if ends_with(s: line, suffix: "\r") {
+    substring(s: line, start: 0, end: string_length(s: line) - 1)
+  } else {
+    line
+  }
+}
+
+fn http_status_from_line(line: String) -> Int? {
+  if !starts_with(s: line, prefix: "HTTP/") {
+    none
+  } else {
+    match get(xs: filter(split(s: line, delimiter: " "), f => f != ""), index: 1) {
+      Absent => none
+      Present { value: code } => parse_int(s: code)
+    }
+  }
+}
+
+// The head ends at the first empty line. A header line named "Link" (gh canonicalises header names
+// through Go's net/http, so the spelling is exact) is carried whole to extdeps.github.pagination,
+// which owns what its value means; two Link lines are refused rather than one silently chosen.
+type HeadScan {
+  in_head: Bool
+  links: List<String>
+  body_lines: List<String>
+}
+
+fn scan_after_status_line(lines: List<String>) -> HeadScan {
+  fold(enumerate(lines), init: HeadScan { in_head: true, links: [], body_lines: [] }, f: fn(acc, p) {
+    let line = strip_carriage_return(line: p.second)
+    if p.first == 0 {
+      acc
+    } else if acc.in_head {
+      if line == "" {
+        HeadScan { in_head: false, links: acc.links, body_lines: acc.body_lines }
+      } else if starts_with(s: line, prefix: "Link:") {
+        HeadScan {
+          in_head: true,
+          links: list_push(acc.links, trim(s: substring(s: line, start: 5, end: string_length(s: line)))),
+          body_lines: acc.body_lines
+        }
+      } else {
+        acc
+      }
+    } else {
+      HeadScan { in_head: false, links: acc.links, body_lines: list_push(acc.body_lines, p.second) }
+    }
+  })
+}
+
+fn parse_gh_api_included(stdout: String) -> GhApiIncludedParse {
+  let lines = split(s: stdout, delimiter: "\n")
+  match get(xs: lines, index: 0) {
+    Absent => GhApiIncludedUnreadable { reason: "gh api --include printed nothing, so no HTTP response was observed" }
+    Present { value: first } => match http_status_from_line(line: strip_carriage_return(line: first)) {
+      Absent => GhApiIncludedUnreadable { reason: "gh api --include output does not begin with an HTTP status line, so no HTTP response was observed" }
+      Present { value: status } => {
+        let scan = scan_after_status_line(lines: lines)
+        if scan.in_head {
+          GhApiIncludedUnreadable { reason: "gh api --include output has no blank line ending the response head" }
+        } else {
+          match scan.links {
+            Empty {} => GhApiIncludedParsed { response: GhApiIncludedResponse { status: status, link: LinkHeaderAbsent, body: join(scan.body_lines, "\n") } }
+            Cons { head: only, tail: Empty {} } => GhApiIncludedParsed { response: GhApiIncludedResponse { status: status, link: LinkHeaderPresent { field_value: only }, body: join(scan.body_lines, "\n") } }
+            Cons { head: _, tail: Cons { head: _, tail: _ } } => GhApiIncludedUnreadable { reason: "the response head carries more than one Link header line" }
+          }
+        }
+      }
+    }
+  }
+}

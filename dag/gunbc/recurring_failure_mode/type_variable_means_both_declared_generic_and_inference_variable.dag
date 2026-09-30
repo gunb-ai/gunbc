@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.type_variable_means_both_declared_generic_and_inference_variable
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data type_variable_means_both_declared_generic_and_inference_variable: RecurringFailureMode = RecurringFailureMode {
+  identity: "type_variable_means_both_declared_generic_and_inference_variable" as NonEmptyStr,
+
+  receipts: [
+    "TypeVariable means both declared generic and inference variable. INVALID STATE: one name, `v1.std.core` InferredNode `TypeVariable`, carries TWO materially different facts -- (1) a DECLARED GENERIC TYPE PARAMETER, inserted into the environment by v1.compiler.infer_env env_with_type_variable_bindings, and (2) an UNRESOLVED INFERENCE VARIABLE standing for a value whose type is not yet pinned. HARM: a consumer that asks a binding whether its inferred is a TypeVariable cannot tell which fact it just learned, and the two have opposite consequences. This is the DESIGN section 3 meaning fork -- one name, two meanings -- inside the seed's own vocabulary.",
+
+    "RECEIPT, 2026-09-20, session gentle-seal-490. A new floor wall refusing a TYPE PARAMETER in value position keyed on `is_type_variable(binding.resolved.inferred)`. Because a lambda binder carries meaning (2) mid-inference, the wall refused 24 ORDINARY VALUE BINDERS across 11 corpus modules on CI: `e` in a fold lambda (gunbc.fabric.fabric_cell_effect x4), `item` in a value binder (gunbc.host.host_converge x2), plus evidence x3, s x2, p x2, and key, first, report, o, paths, path, line, seg, text, t. The wall intended to close a silent-wrongness class committed that class itself.",
+
+    "THE DISCRIMINATOR ALREADY EXISTED AND IS NOT A SPLIT OF THE FORK. v1.compiler.infer_resolve fn_type_param_names is the authority for a declaration's DECLARED type-parameter names -- it is what env_with_type_variable_bindings is handed in the first place. Asking whether a name is in the ENCLOSING DECLARATION's roster is identity-keyed against a declared list and cannot be satisfied by a binder's mid-inference provenance. The roster is carried to the check site on v1.compiler.infer InferScope, which already holds locals, body_locals, match_bound_names, lambda_param_provenance and in_flight_lambda_param_names -- the same family of scope-bound naming facts.",
+
+    "THE FIX ROUTES AROUND THE FORK AND DOES NOT CLOSE IT, stated so this row is not read as retired. TypeVariable still carries both meanings after the repair; what changed is that one consumer stopped asking it the ambiguous question. Every other consumer that asks a TypeVariable what it means is still exposed, and this row stays open until the two facts are separately representable.",
+
+    "REJECTED REPAIRS, recorded so they are not re-walked. Keying on SPELLING -- the 24 refused names are lowercase while this corpus's declared generics are N, T, R, C, U -- is a stringly proxy that fails silently the day a declaration writes `fn f<k>`. Keying on v1.compiler.infer InferScope caller_decl_name is a fail-open: that field is set from a caller's decl_name in one arm and to the literal `<unknown>` in another, so a wall keyed on it silently admits everything reaching the second arm.",
+
+    "RUNG FOUND AT: mitigatable -- the ambiguity is live and consumers must each avoid it by construction. ATTAINABLE CEILING: structurally impossible, by giving the two facts separate constructors so a consumer cannot ask one question and receive the other. NEXT-RUNG TRIGGER: InferredNode distinguishes a declared generic parameter from an unresolved inference variable -- SUFFICIENT FOR no consumer to be able to conflate them, so the discriminating question is unwritable rather than merely avoided.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer_env", decl_name: "env_with_type_variable_bindings", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_resolve", decl_name: "fn_type_param_names", field: WholeDeclaration },
+  ],
+}

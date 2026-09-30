@@ -2,7 +2,7 @@ module gunbc.runner_microvm_footprint_probe
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.measure { ByteSize, byte_size, byte_size_count, Second, second, mebibyte, mebibyte_to_byte_size, kibibyte, kibibyte_to_byte_size }
 
 // DECLARED FRONTIER, STATED RATHER THAN LEFT IMPLICIT (DESIGN 3c). NOTHING EXECUTES THIS PROBE
@@ -20,7 +20,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, Second, second, mebib
 // measure at all. This module is the shape the measurement takes once one can; it is not a second
 // answer to a question something else already answers.
 
-data runner_microvm_footprint_probe_disposition: Disposition = SingleAuthority
+data runner_microvm_footprint_probe_disposition: ConstructionMechanism = SingleAuthority
 
 // WHAT THIS MEASURES, AND THE ONE THING IT DOES NOT ESTABLISH.
 //

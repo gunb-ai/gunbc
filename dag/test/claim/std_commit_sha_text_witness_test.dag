@@ -1,0 +1,89 @@
+module test.claim.std_commit_sha_text_witness
+
+import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, List, commit_sha_text_holds }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS WHAT `std.types` `commit_sha_text_holds` ANSWERS, and it is homed here rather than
+// beside any one caller because the predicate is std's. Its callers -- gunbc.action_use_admission
+// admitting an action use, gunbc.ci_workflow_source_read admitting a ref to read at -- each have
+// their own subject, and a predicate every one of them trusts owes its own discriminating cases.
+//
+// THE CLAIM BELOW IS AN EQUALITY, NOT A COST. The declaration was respelled to remove a
+// per-character recursion from a hot, widely-shared predicate; what has to hold is that the new
+// spelling answers exactly what the per-character one answered, on every input either can be given.
+// `reference_per_character_spelling` IS that earlier spelling, kept here as the oracle, so a
+// divergence is a red rather than a review question. Nothing about eval steps is asserted anywhere
+// in this module: a step count is a property of the evaluator, and the contract is the answer.
+
+fn reference_per_character_spelling(head: String) -> Bool {
+  head.length() == 40 && all(chars(s: head), cp =>
+    (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
+  )
+}
+
+data a_real_commit: String = "cb39f95cfdee2fce8e78a73dad8887da4213c646"
+
+// Every input either spelling can be given, chosen so each refusal has a distinct cause: the two
+// lengths either side of forty, a digit outside hex, an uppercase hex letter, the letter just past
+// `f`, the characters adjacent to the digit and letter ranges on both sides (`/` 47, `:` 58,
+// backtick 96, `g` 103), and the empty string.
+data discriminating_inputs: List<String> = [
+  a_real_commit,
+  "0000000000000000000000000000000000000000",
+  "ffffffffffffffffffffffffffffffffffffffff",
+  "cb39f95cfdee2fce8e78a73dad8887da4213c64",
+  "cb39f95cfdee2fce8e78a73dad8887da4213c6466",
+  "CB39F95CFDEE2FCE8E78A73DAD8887DA4213C646",
+  "cb39f95cfdee2fce8e78a73dad8887da4213c64G",
+  "cb39f95cfdee2fce8e78a73dad8887da4213c64g",
+  "cb39f95cfdee2fce8e78a73dad8887da4213c64/",
+  "cb39f95cfdee2fce8e78a73dad8887da4213c64:",
+  "cb39f95cfdee2fce8e78a73dad8887da4213c64`",
+  "cb39f95cfdee2fce8e78a73dad8887da4213c64 ",
+  " b39f95cfdee2fce8e78a73dad8887da4213c646",
+  "",
+  "v4",
+  "main"
+]
+
+// THE CLAIM: the respelled predicate is the same function as the one it replaced.
+test fn the_respelled_predicate_answers_what_the_per_character_one_answered() -> Bool {
+  all(discriminating_inputs, h => commit_sha_text_holds(head: h) == reference_per_character_spelling(head: h))
+}
+
+test fn forty_lowercase_hex_digits_hold() -> Bool {
+  commit_sha_text_holds(head: a_real_commit)
+    && commit_sha_text_holds(head: "0000000000000000000000000000000000000000")
+    && commit_sha_text_holds(head: "ffffffffffffffffffffffffffffffffffffffff")
+}
+
+// The red controls, one per cause. Each is a string the predicate must refuse, and each refuses for
+// a different reason, so a spelling that lost one of them fails here rather than in a caller.
+test fn red_a_length_either_side_of_forty_refuses() -> Bool {
+  !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64")
+    && !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c6466")
+}
+
+test fn red_uppercase_hex_refuses() -> Bool {
+  !commit_sha_text_holds(head: "CB39F95CFDEE2FCE8E78A73DAD8887DA4213C646")
+    && !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64F")
+}
+
+// `g` is the character immediately after `f`, and `/` `:` backtick sit immediately outside the digit
+// and lowercase-hex ranges, so a spelling with an off-by-one boundary is red here.
+test fn red_a_character_outside_lowercase_hex_refuses() -> Bool {
+  !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64g")
+    && !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64/")
+    && !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64:")
+    && !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64`")
+    && !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64 ")
+}
+
+test fn red_the_empty_string_and_a_branch_name_refuse() -> Bool {
+  !commit_sha_text_holds(head: "")
+    && !commit_sha_text_holds(head: "v4")
+    && !commit_sha_text_holds(head: "main")
+}

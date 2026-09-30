@@ -28,9 +28,26 @@ type PlanRetirement
 // cannot drift from its reason; it is not an exemption list and not a shrink of the registry --
 // the plan is still rostered, generated, and refused if generation fails. Only whether its bytes
 // are expected on disk changes.
+//
+// `PlanProjectsDerivedMarkdown` is a committed projection part of whose body is DERIVED from the
+// live tree rather than authored. The derivation is a nullary function so it runs where the bytes
+// are generated and nowhere else: every reader of `all_plans` (the plan lens, the doc graph) would
+// otherwise pay a namespace read to learn a title or a slug. It either renders its blocks, which
+// follow the authored body, or refuses with a typed reason -- and a refusal refuses the artifact,
+// so the drift gate goes red instead of committing a section the derivation could not stand
+// behind.
 type PlanProjection
   = PlanProjectsCommittedMarkdown
+  | PlanProjectsDerivedMarkdown { derive: fn() -> PlanDerivation }
   | PlanIsAuthorityOnly { ruling: String }
+
+type PlanDerivation
+  = PlanDerived { blocks: List<MarkdownBlock> }
+  | PlanDerivationRefused { reason: String }
+
+type PlanGeneration
+  = PlanGenerated { content: String }
+  | PlanGenerationRefused { reason: String }
 
 type Plan {
   slug: String,
@@ -52,12 +69,12 @@ fn plan_retirement_blocks(p: Plan) -> List<MarkdownBlock> {
   }
 }
 
-fn plan_to_blocks(p: Plan) -> List<MarkdownBlock> {
-  concat(concat([plan_h1(text: p.title)], p.body), plan_retirement_blocks(p: p))
+fn plan_to_blocks(p: Plan, derived: List<MarkdownBlock>) -> List<MarkdownBlock> {
+  concat(concat(concat([plan_h1(text: p.title)], p.body), derived), plan_retirement_blocks(p: p))
 }
 
-fn plan_to_document(p: Plan) -> MarkdownDocument {
-  MarkdownDocument { blocks: plan_to_blocks(p: p) }
+fn plan_markdown(p: Plan, derived: List<MarkdownBlock>) -> String {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: plan_to_blocks(p: p, derived: derived) })
 }
 
 // Retained deliberately. The payload is a DissolutionCondition whose literal-empty form is refused
@@ -105,10 +122,20 @@ fn plan_path(p: Plan) -> String {
 fn plan_projects_committed_markdown(p: Plan) -> Bool {
   match p.projection {
     PlanProjectsCommittedMarkdown => true
+    PlanProjectsDerivedMarkdown { derive: _ } => true
     PlanIsAuthorityOnly { ruling: _ } => false
   }
 }
 
-fn expected_plan_md(p: Plan) -> String {
-  serialize_markdown_source(doc: plan_to_document(p: p))
+fn plan_generation(p: Plan) -> PlanGeneration {
+  match p.projection {
+    PlanProjectsDerivedMarkdown { derive } =>
+      match derive() {
+        PlanDerived { blocks } => PlanGenerated { content: plan_markdown(p: p, derived: blocks) }
+        PlanDerivationRefused { reason } =>
+          PlanGenerationRefused { reason: concat(concat(concat("plan ", p.slug), " refused its derived section: "), reason) }
+      }
+    PlanProjectsCommittedMarkdown => PlanGenerated { content: plan_markdown(p: p, derived: []) }
+    PlanIsAuthorityOnly { ruling: _ } => PlanGenerated { content: plan_markdown(p: p, derived: []) }
+  }
 }

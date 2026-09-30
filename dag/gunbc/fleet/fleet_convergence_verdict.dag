@@ -78,22 +78,22 @@ type HostKnobStanding
 // shipped identical host keys, so two machines CAN claim one identity until
 // host-identity-converge runs — first-wins would render that collision a verdict).
 // 0 receipts -> Unobserved; exactly 1 -> judged on its own validity; >1 -> NotConverged
-// with the ambiguity named, whatever the duplicates claim.
+// with the ambiguity named, whatever the duplicates claim. The three arms are read off
+// the list's SHAPE (first / second element present) rather than guarded by a count and
+// then unwrapped: `first()` is Optional, and eliminating it by match is what makes the
+// no-receipt arm the typed KnobUnobserved rather than a value the judge never sees.
 fn host_knob_standing(host: HostIdentity, receipts: List<ConvergeCliReceipt>) -> HostKnobStanding {
   let mine = filter(receipts, r => r.host == (host as String))
-  if length(mine) == 0 {
-    KnobUnobserved { host: host }
-  } else {
-    if length(mine) > 1 {
-      KnobNotConverged { host: host, reason: "ambiguous: multiple converge receipts claim this one host identity — a collision to investigate, never a pick" }
-    } else {
-      let r = mine.first()
-      if converge_cli_receipt_converged(r: r) {
+  match mine.first() {
+    Present { value: r } => match mine.skip(n: 1).first() {
+      Present { value: _ } => KnobNotConverged { host: host, reason: "ambiguous: multiple converge receipts claim this one host identity — a collision to investigate, never a pick" }
+      _ => if converge_cli_receipt_converged(r: r) {
         KnobConverged { host: host }
       } else {
         KnobNotConverged { host: host, reason: "converge receipt present but not converged" }
       }
     }
+    _ => KnobUnobserved { host: host }
   }
 }
 

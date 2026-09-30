@@ -74,6 +74,36 @@ type ServiceNotReady {
 // the entry's closure, at which point this number falls back to seconds without touching the margin.
 data live_deploy_roadmap_unit_expected_startup: Second = second(count: 240)
 
+// THE BROKER'S OWN EXPECTED STARTUP, DECLARED BESIDE THE ROADMAP'S SO THE TWO CANNOT BE CONFUSED,
+// AND NOW MEASURED. The first declaration was 60 s, a policy budget with no measured subject,
+// supported only by the argument that the broker serves four routes that consult no roadmap. That
+// argument was about the ROUTES and said nothing about the CLOSURE the serve loads and typechecks
+// at boot, and the closure is what the startup is made of. At 60 s x 3 the dark install refused
+// every run (fleet-converge runs 36348731046 and 36357582561: not listening across the whole
+// window). The broker then never listened at all: its 931-module closure reached the whole deploy
+// emitter and v2 compiler, and was OOM-killed at its slice after 90 min of typecheck.
+//
+// THE MEASUREMENT, after the closure cuts landed (main 6b6c35de65; gunbc#12449 cut the emitter
+// edge, gunbc#12480 and siblings cut the shell-text and fleet-revision edges): srv1 journal of
+// gunbc-approval-broker, Started 11:14:47, `resolved 422 sources` 11:16:19, listening 11:17:50.
+// That is 183 s start to listen, NRestarts=0, /livez 200. Following the roadmap's calibration practice
+// (a measured 219 s declared as 240 s), the expectation is set just above the one measured start
+// and the shared margin factor is unchanged. One observation is a thin basis, stated as such
+// (DESIGN section 4d). The next dark install's journal is the second reading, and a slower one
+// refuses loudly at the bound rather than being admitted on a lucky probe.
+//
+// MEMORY HEADROOM IS THE THINNER MARGIN AND IS NOT THIS DECLARATION'S TO FIX. The same boot
+// peaked at 9,171,927,040 B (about 8.54 GiB) against the slice's MemoryHigh
+// (gunbc.live_deploy.slice_bounds approval_broker_slice_memory_high, 9 GiB). It fits, but a closure
+// that grows by a few percent is reclaim-throttled and then OOM-killed, which presents here as
+// "not listening at the bound". The slice size is an operator decision. The durable fix is the
+// same as this number's: demand-scope the serve's load and typecheck to the entry closure.
+//
+// THE MARGIN FACTOR BELOW IS SHARED RATHER THAN RESTATED, because the uncertainty it encodes is a
+// property of polling a unit through a restart -- scheduling, disk, a cold page cache -- and not a
+// property of which unit is restarting.
+data approval_broker_expected_startup: Second = second(count: 200)
+
 data live_deploy_service_ready_poll_bound_margin_factor: Int = 3
 
 data live_deploy_service_ready_poll_bound_reason: String = "Cold-start bound for gunbc-roadmap.service after systemctl restart, and the SECOND correction of this rationale -- the previous one was measured against the wrong phase and is the reason the srv1 deploy refused on every run for a day. Recorded plainly, because the failure mode is more instructive than the number.

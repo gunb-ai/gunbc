@@ -1,0 +1,116 @@
+module test.claim.machine_intake.megarac_session_release_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import gunbc.machine_intake_megarac_media_attach {
+  SessionAbsent,
+  SessionPresent,
+  SessionPresenceUnreadable,
+  SessionReleased,
+  SessionReleaseRefused,
+  SessionCsrfParsed,
+  SessionCsrfUnreadable,
+  megarac_session_presence,
+  megarac_session_release_by_reobservation,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PRESENCE READER, on the real wire pairs: curl --fail-with-body keeps the body and the
+// write-out trailer on stdout and exits nonzero, so success=false with a trailing code is the
+// shape the controller actually produces (boot 20, run 35437393331).
+test fn a_succeeding_get_is_present() -> Bool {
+  match megarac_session_presence(get_succeeded: true, get_body: "{\"ok\":true}\n200") {
+    SessionPresent => true
+    _ => false
+  }
+}
+
+// THE ROUTE-MISSING CONTROL: 404 is what GET /api/session answered with a LIVE cookie on this
+// firmware (boots 20 and 21), so 404 is unreadable here, never absence.
+test fn http_404_after_the_trailer_is_unreadable_not_absent() -> Bool {
+  match megarac_session_presence(get_succeeded: false, get_body: "{ \"error\": \"Session not found\" }\n404") {
+    SessionPresenceUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn http_403_after_the_trailer_is_absent() -> Bool {
+  match megarac_session_presence(get_succeeded: false, get_body: "{\"error\":\"forbidden\"}\n403") {
+    SessionAbsent { code: c } => c == "403"
+    _ => false
+  }
+}
+
+test fn http_401_after_the_trailer_is_absent() -> Bool {
+  match megarac_session_presence(get_succeeded: false, get_body: "{\"error\":\"invalid session\"}\n401") {
+    SessionAbsent { code: c } => c == "401"
+    _ => false
+  }
+}
+
+test fn a_timeout_get_is_unreadable() -> Bool {
+  match megarac_session_presence(get_succeeded: false, get_body: "\n000") {
+    SessionPresenceUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn a_mid_body_401_with_a_non_401_trailer_is_unreadable() -> Bool {
+  match megarac_session_presence(get_succeeded: false, get_body: "note\n401\n200") {
+    SessionPresenceUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
+// THE TRANSITION. Released is exactly present -> absent under a parsed token.
+test fn present_then_403_is_released() -> Bool {
+  match megarac_session_release_by_reobservation(before: SessionPresent, after: SessionAbsent { code: "403" }, csrf: SessionCsrfParsed) {
+    SessionReleased => true
+    _ => false
+  }
+}
+
+test fn present_then_401_is_released() -> Bool {
+  match megarac_session_release_by_reobservation(before: SessionPresent, after: SessionAbsent { code: "401" }, csrf: SessionCsrfParsed) {
+    SessionReleased => true
+    _ => false
+  }
+}
+
+test fn a_live_get_after_close_is_not_released() -> Bool {
+  match megarac_session_release_by_reobservation(before: SessionPresent, after: SessionPresent, csrf: SessionCsrfParsed) {
+    SessionReleaseRefused { detail: d } => string_contains(s: d, pattern: "still succeeded")
+    _ => false
+  }
+}
+
+test fn an_unreadable_get_after_close_is_not_released() -> Bool {
+  match megarac_session_release_by_reobservation(before: SessionPresent, after: SessionPresenceUnreadable { detail: "\n000" }, csrf: SessionCsrfParsed) {
+    SessionReleaseRefused { detail: d } => string_contains(s: d, pattern: "unreadable")
+    _ => false
+  }
+}
+
+// THE ABSORBING-FALLBACK CONTROL: a route or cookie that answers 4xx BEFORE the close as well
+// proves nothing about release, so absent -> absent must refuse, not mint.
+test fn absent_before_the_close_is_not_released_even_if_absent_after() -> Bool {
+  match megarac_session_release_by_reobservation(before: SessionAbsent { code: "404" }, after: SessionAbsent { code: "404" }, csrf: SessionCsrfParsed) {
+    SessionReleaseRefused { detail: d } => string_contains(s: d, pattern: "BEFORE CloseSession")
+    _ => false
+  }
+}
+
+test fn an_unreadable_get_before_the_close_refuses_to_adjudicate() -> Bool {
+  match megarac_session_release_by_reobservation(before: SessionPresenceUnreadable { detail: "\n000" }, after: SessionAbsent { code: "404" }, csrf: SessionCsrfParsed) {
+    SessionReleaseRefused { detail: d } => string_contains(s: d, pattern: "before CloseSession was unreadable")
+    _ => false
+  }
+}
+
+test fn a_release_with_a_sentinel_csrf_is_not_released() -> Bool {
+  match megarac_session_release_by_reobservation(before: SessionPresent, after: SessionAbsent { code: "401" }, csrf: SessionCsrfUnreadable) {
+    SessionReleaseRefused { detail: d } => string_contains(s: d, pattern: "sentinel")
+    _ => false
+  }
+}

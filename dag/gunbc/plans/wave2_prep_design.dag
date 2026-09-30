@@ -24,9 +24,8 @@ fn section_1() -> List<MarkdownBlock> {
       li(text: "**Per-module facts:** each `compiler_frontier_row_*` carries `disposition`, `measured_probe.blocker_class`, `tractability_rank`, and `SeedRetained.migration_trigger` — the only per-module ledger."),
     ]),
     h3(text: "1.1 Wave 2 prefix (first ~11 in sweep order)"),
-    p(text: "The Wave 2 tractability frontier is the **first eleven entries** of `compiler_frontier_sweep_order` on the frontier carrier. For each path, look up the matching `compiler_frontier_row_*` roster row for `closure_reads`, `tractability_rank`, blocker class, and `migration_trigger` — do not duplicate those fields here."),
+    p(text: "The Wave 2 tractability frontier is the **first eleven entries** (the original first, `parse_engine_hooks`, has since been deleted as unconsumed, leaving ten below) of `compiler_frontier_sweep_order` on the frontier carrier. For each path, look up the matching `compiler_frontier_row_*` roster row for `closure_reads`, `tractability_rank`, blocker class, and `migration_trigger` — do not duplicate those fields here."),
     ol(items: [
-      li(text: "`src/v2/compiler/parse_engine_hooks.dag` — row `compiler_frontier_row_parse_engine_hooks`"),
       li(text: "`src/v2/compiler/use_site_verdict.dag` — row `compiler_frontier_row_use_site_verdict`"),
       li(text: "`src/v2/compiler/discovery_enumeration.dag` — row `compiler_frontier_row_discovery_enumeration`"),
       li(text: "`src/v2/compiler/self_host.dag` — row `compiler_frontier_row_self_host`"),
@@ -57,7 +56,7 @@ fn section_2() -> List<MarkdownBlock> {
     h3(text: "2.2 Wave 2 flip sequencing — three bands"),
     p(text: "Within the sweep-order prefix, flips group into three bands (not a flat serial list). Band A Wave-1-pre-flip readiness (`FlippableNow | BodyProducerGated | OtherGate`) lives on `v2.compiler.self_host.frontier_band_a_emit_readiness` (`compiler_frontier_band_a_emit_readiness_roster`, witness `compiler_frontier_band_a_emit_readiness_holds`; wired into `compiler_frontier_census_holds` on `frontier`) — cite the carrier, do not transcribe counts here."),
     ul(items: [
-      li(text: "**Band A — leaf emit modules** (`parse_engine_hooks`, `use_site_verdict`, `discovery_enumeration`, `self_host`, `materialization_carriers`, `07_target_carriers`): parallelizable after Wave 1 gate 4; receipt = cargo-green + behavioral-equivalence vs seed (NOT byte-identity). Classification on `compiler_frontier_band_a_emit_readiness_roster`."),
+      li(text: "**Band A — leaf emit modules** (`use_site_verdict`, `discovery_enumeration`, `self_host`, `materialization_carriers`, `07_target_carriers`): parallelizable after Wave 1 gate 4; receipt = cargo-green + behavioral-equivalence vs seed (NOT byte-identity). Classification on `compiler_frontier_band_a_emit_readiness_roster`."),
       li(text: "**Band B — body-lowering seam** (`fold_lowering` → `03_normalize`, serial): FLAG E row-fold **remains** (Slice 0 production-identity forward fold; `body_lowering_fold.dag` still interim until Slice 4 deletion); Stage A fn_decl → Arrow rows land."),
       li(text: "**Band C — resolution-dependent pipeline** (`03_name_resolve` → `03_resolve` → `04_infer`, serial): hard-gated on Wave 1 SymbolIndex / namespace; fill before lookup before inference."),
     ]),
@@ -70,7 +69,7 @@ fn section_3() -> List<MarkdownBlock> {
   [
     h2(text: "3. FLAG E — row-fold design (dissolve `body_lowering_fold.dag`)"),
     h3(text: "3.1 What landed vs what remains"),
-    p(text: "**LANDED (#6443) — FLAG E one table for sugar:** `SugarKey = SurfaceAtomKey | ProductionIdentityKey` (`v2.std.compilers.sugar`); `type_alias_rhs` migrated as proof row; normalize pipeline child-fold → `body_lower_finish` → `normalize_sugar_finish` (`03_normalize.dag`)."),
+    p(text: "**LANDED (#6443) — FLAG E one table for sugar:** `SugarKey = SurfaceAtomKey | ProductionIdentityKey` (`v2.std.compilers.sugar`; the SurfaceAtomKey arm was later deleted -- it had no producer and let authored text key a rule, gunbc.recurring_failure_mode authored_lexeme_read_as_a_grammar_marker); `type_alias_rhs` migrated as proof row; normalize pipeline child-fold → `body_lower_finish` → `normalize_sugar_finish` (`03_normalize.dag`)."),
     p(text: "**LANDED (ingest reparse) — token-spine forward row selection:** `grammar_relation_row_forward_selection` in `v2.compiler.ingest` (`03_ingest.dag:202`) via `ForwardRowSelection` (`ForwardRowNone` / `ForwardRowOne` / `ForwardRowMany`) → `Outcome<Node>`; live round-trip consumers. Keys on token-spine frontier — **not** the body-producer seam; do not duplicate."),
     p(text: "**LANDED (emit) — backward row selection:** `grammar_relation_row_reverse_parse_selection` in `v2.std.grammar`, consumed by `06_translate.dag`."),
     p(text: "**INTERIM — hand-walker (`v2.compiler.body_lowering_fold`, ~1.5k LOC):** production-identity dispatch in `body_lower_production_emitted` / `body_lower_finish`. Dissolution contract on carrier: **do NOT port arms into `SugarRule` rows** — dissolve into **GrammarRelationRow forward fold** (general-body-producer-design §3)."),
@@ -146,7 +145,7 @@ fn section_4() -> List<MarkdownBlock> {
       header: row(cells: [cell(text: "module (sweep prefix)"), cell(text: "SymbolIndex tier"), cell(text: "namespace flip gate?")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "parse_engine_hooks … 07_target_carriers, fold_lowering (Band A+B leaf)"), cell(text: "none"), cell(text: "no")]),
+        row(cells: [cell(text: "use_site_verdict … 07_target_carriers, fold_lowering (Band A+B leaf)"), cell(text: "none"), cell(text: "no")]),
         row(cells: [cell(text: "03_normalize"), cell(text: "indirect (fn_decl rows need module-root decl binding)"), cell(text: "yes for Slice 1 rows")]),
         row(cells: [cell(text: "03_name_resolve"), cell(text: "direct fill"), cell(text: "yes (^migrate_when_namespace_only_resolution_lands)")]),
         row(cells: [cell(text: "03_resolve"), cell(text: "direct consumer"), cell(text: "yes (^migrate_when_namespace_only_resolution_lands)")]),

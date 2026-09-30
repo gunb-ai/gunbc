@@ -7,7 +7,6 @@ import extdeps.cargo_build
 // its emitted signature also lacks the service binding the defect is pre-existing; if it carries one
 // here, the three-segment case above is a regression this branch introduced.
 fn emits_a_two_segment_call() -> String
-  uses net: std.resources.Network
 {
   r = cargo.Build.Run(package: "v1-compiler", bin: "gunbc", args: ["--version"])
   return r.stdout

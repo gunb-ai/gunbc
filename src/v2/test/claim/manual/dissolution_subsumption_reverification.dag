@@ -23,7 +23,7 @@ import v2.lens.subsumption {
   TestClaimId,
   rust_language_model_emit_subsumption
 }
-import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
   Map,
   PointwisePower
@@ -378,7 +378,7 @@ fn subsumption_interpretation() -> InterpretationAlgebra {
 fn subsumption_termination_proof() -> v2.std.cardinality.TerminationProof {
   v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: v2.std.cardinality.RankingDimension { measured: ^subsumption_descent_dimension }
+    strict: v2.std.cardinality.RankingComponent { measured: ^subsumption_descent_dimension }
   }
 }
 

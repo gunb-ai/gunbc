@@ -899,7 +899,6 @@ fn relaunch_leg(
   step: RelaunchStep,
   command: ArgvCommand,
 ) -> NonEmptyStr?
-  uses net: Network
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
     RemoteUnreachable { cause: why } =>
@@ -917,7 +916,6 @@ fn relaunch_leg(
 // The restoration is therefore a start and nothing else -- renaming it back would be renaming it to
 // the name it still has.
 fn rollback_restart_incumbent(ctx: SparkMaterializeContext, name: NonEmptyStr) -> RollbackOutcome
-  uses net: Network
 {
   match relaunch_leg(ctx: ctx, step: StepStartRestoredIncumbent, command: docker_start_command(name: name)) {
     Present { value: why } => RollbackFailed { step: StepStartRestoredIncumbent, cause: why }
@@ -1127,7 +1125,6 @@ type CaptureAcc {
 }
 
 fn capture_rank(plan: RankPlan) -> CaptureAcc
-  uses net: Network
 {
   match observe_rank_container(ctx: plan.ctx, subject: plan.subject) {
     RankInspectRefused { refusal: r } =>
@@ -1189,7 +1186,6 @@ fn preserved_name_is_free(
   subject: ObservedRankSubject,
   preserved: NonEmptyStr,
 ) -> NonEmptyStr?
-  uses net: Network
 {
   match observe_container_presence(ctx: ctx, subject: observed_rank_subject(host: subject.host, container: preserved)) {
     ContainerAbsent => none
@@ -1225,7 +1221,6 @@ fn capture_rank_agrees(c: ArmCapture) -> NonEmptyStr? {
 }
 
 fn capture_arm(ranks: List<RankPlan>) -> CaptureAcc
-  uses net: Network
 {
   let captured = fold(ranks, init: CaptureAcc { captures: [], causes: [] }, f: (acc, plan) => {
     let one = capture_rank(plan: plan)
@@ -1280,7 +1275,6 @@ fn advance_rank(
   command: ArgvCommand,
   reached: RankProgress,
 ) -> ArmProgressAcc
-  uses net: Network
 {
   match acc.failure {
     Present { value: _ } => acc
@@ -1312,7 +1306,6 @@ fn with_progress(states: List<RankState>, capture: ArmCapture, reached: RankProg
 }
 
 fn stop_and_preserve_arm(acc: ArmProgressAcc, captures: List<ArmCapture>) -> ArmProgressAcc
-  uses net: Network
 {
   let stopped = fold(stop_order(captures: captures), init: acc, f: (a, c) =>
     advance_rank(acc: a, capture: c, step: StepStopIncumbent,
@@ -1325,7 +1318,6 @@ fn stop_and_preserve_arm(acc: ArmProgressAcc, captures: List<ArmCapture>) -> Arm
 }
 
 fn create_and_start_arm(acc: ArmProgressAcc, captures: List<ArmCapture>) -> ArmProgressAcc
-  uses net: Network
 {
   fold(start_order(captures: captures), init: acc, f: (a, c) => {
     let created = advance_rank(acc: a, capture: c, step: StepCreateSuccessor,
@@ -1347,7 +1339,6 @@ fn create_and_start_arm(acc: ArmProgressAcc, captures: List<ArmCapture>) -> ArmP
 // then are the restored incumbents started, leader first. That is the same shape and the same reasons as
 // the forward path -- rank zero owns the broadcast queue, so nothing is started before it.
 fn rollback_restore_names(states: List<RankState>) -> List<RollbackOutcome>
-  uses net: Network
 {
   map(states |> sort_by(st => st.capture.rank.node_rank) |> reverse, st => rollback_restore_one(st: st))
 }
@@ -1363,7 +1354,6 @@ fn rollback_restore_names(states: List<RankState>) -> List<RollbackOutcome>
 // return is what DESIGN section 3d forbids, and this module's own header says so; the rollback leg was
 // where it was not obeyed.
 fn rollback_restore_one(st: RankState) -> RollbackOutcome
-  uses net: Network
 {
   let ctx = st.capture.rank.ctx
   let name = st.capture.rank.subject.container
@@ -1380,7 +1370,6 @@ fn rollback_restore_one(st: RankState) -> RollbackOutcome
 // exist and renaming onto a name that may be taken are both wrong, and a rollback that cannot see the
 // host is a rollback that must say so while the operator still has the preserved object.
 fn rollback_after_observing(st: RankState, ctx: SparkMaterializeContext, name: NonEmptyStr) -> RollbackOutcome
-  uses net: Network
 {
   match observe_container_presence(ctx: ctx, subject: st.capture.rank.subject) {
     ContainerAbsent => rollback_rename_back(ctx: ctx, name: name, preserved: st.capture.preserved, successor_exists: false)
@@ -1405,7 +1394,6 @@ fn rollback_rename_back(
   preserved: NonEmptyStr,
   successor_exists: Bool,
 ) -> RollbackOutcome
-  uses net: Network
 {
   let removed = if successor_exists {
     relaunch_leg(ctx: ctx, step: StepRemoveSuccessor, command: docker_remove_force_command(name: name))
@@ -1425,7 +1413,6 @@ fn rollback_rename_back(
 // A RANK WHOSE NAME COULD NOT BE RESTORED IS NOT STARTED, because starting the successor that is still
 // holding the name would bring back exactly the incarnation the rollback is undoing.
 fn rollback_start_restored(states: List<RankState>, restored: List<RollbackOutcome>) -> List<RollbackOutcome>
-  uses net: Network
 {
   map(enumerate(states |> sort_by(st => st.capture.rank.node_rank)), e =>
     match restored_outcome_at(restored: restored, index: rollback_mirror_index(count: count(states), index: e.first)) {
@@ -1453,7 +1440,6 @@ fn restored_outcome_at(restored: List<RollbackOutcome>, index: Nat) -> RollbackO
 }
 
 fn rollback_start_one(st: RankState) -> RollbackOutcome
-  uses net: Network
 {
   match st.progress {
     RankUntouched => NothingToRollBack
@@ -1465,7 +1451,6 @@ fn rollback_start_one(st: RankState) -> RollbackOutcome
 }
 
 fn rollback_arm(states: List<RankState>) -> List<RollbackOutcome>
-  uses net: Network
 {
   rollback_start_restored(states: states, restored: rollback_restore_names(states: states))
 }
@@ -1509,7 +1494,6 @@ data relaunch_announcement_poll_budget: Nat = 45
 data relaunch_announcement_poll_interval: Second = second(count: 20)
 
 fn await_rank_announcement(c: ArmCapture, remaining: Nat) -> RankTransportObservation
-  uses net: Network
 {
   match observe_rank_container(ctx: c.rank.ctx, subject: c.rank.subject) {
     RankInspectRefused { refusal: r } => RankTransportRefused { refusal: r }
@@ -1532,7 +1516,6 @@ fn await_rank_announcement(c: ArmCapture, remaining: Nat) -> RankTransportObserv
 // exhaustion as "the communicator never announced", which is a sentence about NCCL for a failure that
 // was ours. The refusal names the exit code and the step that actually failed.
 fn await_after_interval(c: ArmCapture, remaining: Nat) -> RankTransportObservation
-  uses net: Network
 {
   match sleep_seconds_argv(duration: relaunch_announcement_poll_interval) {
     SleepDurationRefused { duration: d } => RankTransportRefused { refusal: rank_observation_refusal(
@@ -1610,7 +1593,6 @@ fn verification_cause(c: ArmCapture, after: RankTransportVerdict, standing: Succ
 // first cause rather than assigned by the fold, and the overwrite that produced the wrong headline
 // has no expression left to write.
 fn verify_arm(captures: List<ArmCapture>) -> ArmVerification
-  uses net: Network
 {
   fold(start_order(captures: captures), init: ArmVerification { verdicts: [], causes: [] }, f: (acc, c) =>
     match first_cause_step(causes: acc.causes) {
@@ -1673,7 +1655,6 @@ fn verify_arm(captures: List<ArmCapture>) -> ArmVerification
 // happens -- which is the same "I could not tell" that the launch planner already refuses to read as
 // "TCP is fine", arriving one layer down and wearing a success.
 fn relaunch_arm(ranks: List<RankPlan>) -> ArmRelaunchOutcome
-  uses net: Network
 {
   let captured = capture_arm(ranks: ranks)
   if count(ranks) == 0 {

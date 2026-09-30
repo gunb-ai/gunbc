@@ -1,0 +1,155 @@
+module test.claim.spark.v41_runtime_image_produce_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import extdeps.container.oci.digest { parse_oci_content_digest_wire }
+import extdeps.flashinfer.flashinfer { flashinfer_0_6_18_post1_wheels }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.v41_runtime_image_probe { V41ProbeRead, V41ProbeRefused }
+import gunbc.spark.v41_runtime_image_converge {
+  V41ProducedRuntime, V41KernelWheelsVerified, V41KernelWheelVerificationRefused,
+  V41RuntimeProductionStopped,
+  V41ProbeIdentityJoin, V41ProbeJoinedToProducedImage, V41ProbeDescribesAnotherImage,
+  V41ProbeIdentityUnreadable, V41ProbeIdentityNotRead,
+  v41_probe_identity_join, v41_probe_identity_holds, v41_probe_identity_line,
+  v41_wheel_verification_line, v41_production_receipt, v41_production_succeeded,
+  v41_wheel_verify_script,
+}
+
+// WHY THIS FILE EXISTS AT ALL, BEFORE ANY ASSERTION IN IT.
+//
+// gunbc.spark.v41_runtime_image_converge is a FLEET-CONVERGE MODE ENTRY, and a mode entry is reached
+// only by a dispatched `gunbc run`. Until this witness, no compiled closure in the corpus imported
+// it, so the compiler never resolved it -- and it did not resolve: as merged on #12008 it constructed
+// `SparkBuildHostWork`, a sole_constructor type owned by gunbc.spark.vllm_runtime_image_build, across
+// the module boundary. Every required lane was green, because a green lane over a corpus that never
+// compiles a module says nothing about that module (DESIGN section 5: a typecheck that never ran is
+// not a consumer). The error would have surfaced on dispatch day, on a host, at the start of a
+// three-hour build.
+//
+// SO THE IMPORT ABOVE IS THE LOAD-BEARING PART OF THIS FILE and the assertions below are what makes
+// it honest: a claim whose subject is the module's own refusal vocabulary, over the real production
+// folds, rather than a bare `import` with a `true`. The next such error is a red here.
+
+fn w_stopped(step: String, cause: String) -> V41ProducedRuntime {
+  V41RuntimeProductionStopped {
+    step: step as NonEmptyStr,
+    cause: cause,
+    wheels: V41KernelWheelVerificationRefused { step: "wheel-verify" as NonEmptyStr, cause: "sha256sum -c refused" },
+  }
+}
+
+// A STOPPED PRODUCTION NEVER REPORTS SUCCESS, AND ITS RECEIPT CARRIES WHY. The entry writes this
+// receipt and then reads `v41_production_succeeded` for its exit, so a stopped run that rendered a
+// receipt and returned true would be the fabricated-plausible-output failure at the exit code.
+test fn a_stopped_production_never_reports_success() -> Bool {
+  let p = w_stopped(step: "image-readback", cause: "the daemon answered sha256:zz for the produced image")
+  !v41_production_succeeded(p: p)
+    && v41_production_receipt(p: p).contains("production STOPPED step=image-readback")
+    && v41_production_receipt(p: p).contains("the daemon answered sha256:zz for the produced image")
+    && v41_production_receipt(p: p).contains("kernel wheels REFUSED step=wheel-verify")
+}
+
+// THE WHEEL VERIFICATION LINE DISCRIMINATES, rather than rendering the same sentence either way.
+test fn the_wheel_verification_line_says_which_way_it_went() -> Bool {
+  v41_wheel_verification_line(v: V41KernelWheelsVerified { verified: 3 }).contains("kernel wheels verified=3")
+    && !v41_wheel_verification_line(v: V41KernelWheelsVerified { verified: 3 }).contains("REFUSED")
+    && v41_wheel_verification_line(v: V41KernelWheelVerificationRefused { step: "fetch" as NonEmptyStr, cause: "curl exit 22" }).contains("kernel wheels REFUSED step=fetch cause=curl exit 22")
+}
+
+// THE VERIFY SCRIPT COMPARES EVERY WHEEL TO THE DIGEST THE CANDIDATE KEYS, and fetching without
+// comparing would establish nothing -- so the digest and the `sha256sum -c -` are asserted together.
+test fn every_fetched_wheel_is_compared_to_its_keyed_digest() -> Bool {
+  let s = v41_wheel_verify_script(wheels: flashinfer_0_6_18_post1_wheels)
+  s.contains("set -e\n")
+    && s.contains("adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991")
+    && s.contains("bbacb5b8bbf429e43bf2740bb45551d981f41d0462842e36ee6fb3e3452763ab")
+    && s.contains("860ec5ce11a1d686bde04dbef4bedee15c39e3ec5e10adccb186dfee2e4113f2")
+    && s.contains("| sha256sum -c -")
+}
+
+// WHERE THE ADMISSION ITSELF IS WITNESSED. The host relation this entry takes --
+// `admit_host_held_by_subject` against PairServingUnitOn FabricGroupA -- is gunbc.spark.host_commitment's
+// interface, not this module's, so its discriminating rows live at its home in
+// test.claim.spark.spark_host_commitment_witness: a Group A host admitted, srv1 and every Group B host
+// refused with the held list rendered, and an empty held population admitting nothing. Re-running them
+// here would assert nothing new and pay for all of it again (DESIGN section 3).
+
+// ── THE PROBE MUST DESCRIBE THE IMAGE THE STANDING KEYS ───────────────────────────────────────
+//
+// THE BREAK THESE ROWS CLOSE. #12008 handed the capability probe `identity.tag`. A tag is a mutable
+// pointer, so a concurrent build, pull or retag between the build leg and the probe leg re-resolves
+// it to different bytes -- and the entry would then exit ZERO on a receipt whose standing keys one
+// image and whose capability readings describe another, each half individually true. The route is
+// now digest-pinned AND the daemon's own answer is joined back to the produced digest.
+
+data w_produced_wire: String = "sha256:11119c6c8a0b4f6e21b2e0b6f0b6e4f30d5d8a1e5f4c3b2a190807060504030a"
+data w_other_wire: String = "sha256:2222abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdef"
+
+fn w_probe_read(observed: String) -> V41ProbeRead {
+  V41ProbeRead {
+    reference: w_produced_wire as NonEmptyStr,
+    observed_config_id: observed as NonEmptyStr,
+    stdout: "",
+    readings: [],
+  }
+}
+
+fn w_join(observed: String) -> V41ProbeIdentityJoin {
+  match parse_oci_content_digest_wire(raw: w_produced_wire) {
+    Absent => V41ProbeIdentityUnreadable { observed: "the fixture digest did not parse" as NonEmptyStr }
+    Present { value: produced } => v41_probe_identity_join(produced: produced, o: w_probe_read(observed: observed))
+  }
+}
+
+// THE DISCRIMINATING RED: THE TAG MOVED BETWEEN BUILD AND PROBE. The probe read an image whose
+// configuration digest is not the one this build produced, so the join REFUSES and names both
+// digests. Before this change the same run reported success.
+test fn a_probe_that_read_another_image_breaks_the_identity_and_is_named() -> Bool {
+  let j = w_join(observed: w_other_wire)
+  !v41_probe_identity_holds(j: j)
+    && (match j {
+          V41ProbeDescribesAnotherImage { produced: p, observed: obs } =>
+            (p as String) == w_produced_wire && (obs as String) == w_other_wire
+          V41ProbeJoinedToProducedImage { digest: _ } => false
+          V41ProbeIdentityUnreadable { observed: _ } => false
+          V41ProbeIdentityNotRead { step: _, cause: _ } => false
+        })
+    && v41_probe_identity_line(j: j).contains("probe identity BROKEN")
+    && v41_probe_identity_line(j: j).contains(w_produced_wire)
+    && v41_probe_identity_line(j: j).contains(w_other_wire)
+}
+
+// THE POSITIVE CONTROL, without which the row above would be satisfied by a join that refuses
+// everything: the same fold on the produced digest joins, and says so.
+test fn a_probe_of_the_produced_image_joins() -> Bool {
+  let j = w_join(observed: w_produced_wire)
+  v41_probe_identity_holds(j: j)
+    && v41_probe_identity_line(j: j).contains("probe identity JOINED to the produced image")
+}
+
+// AN UNPARSEABLE ANSWER IS ITS OWN REFUSAL, never silently unequal and never assumed equal: the
+// daemon said something, and what it said is not a digest.
+test fn an_unparseable_daemon_answer_refuses_as_unreadable() -> Bool {
+  let j = w_join(observed: "not-a-digest")
+  !v41_probe_identity_holds(j: j)
+    && (match j {
+          V41ProbeIdentityUnreadable { observed: obs } => (obs as String) == "not-a-digest"
+          V41ProbeJoinedToProducedImage { digest: _ } => false
+          V41ProbeDescribesAnotherImage { produced: _, observed: _ } => false
+          V41ProbeIdentityNotRead { step: _, cause: _ } => false
+        })
+    && v41_probe_identity_line(j: j).contains("probe identity UNREADABLE")
+}
+
+// A PROBE THAT NEVER READ JOINS NOTHING, and is reported as that rather than as a mismatch: there
+// is no observed identity to disagree with, which is a different fact from disagreeing.
+test fn a_refused_probe_joins_nothing_and_says_which_step() -> Bool {
+  let j = match parse_oci_content_digest_wire(raw: w_produced_wire) {
+    Absent => V41ProbeIdentityUnreadable { observed: "unreachable" as NonEmptyStr }
+    Present { value: produced } =>
+      v41_probe_identity_join(produced: produced, o: V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: "No such image" })
+  }
+  !v41_probe_identity_holds(j: j)
+    && v41_probe_identity_line(j: j).contains("probe identity NOT READ")
+    && v41_probe_identity_line(j: j).contains("image-config-id")
+}

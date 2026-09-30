@@ -45,21 +45,25 @@ fn optional_env(name: NonEmptyStr) -> String? {
 fn merge_admission_context_walk_attempt_id() -> WalkAttemptId? {
   match optional_env(name: "GUNBC_WALK_ATTEMPT_ID") {
     Present { value: explicit } => compose_explicit_walk_attempt_id(explicit: explicit)
-    Absent =>
+    Absent => {
+      let run_id_read = optional_env(name: "GITHUB_RUN_ID")
+      let run_attempt_read = optional_env(name: "GITHUB_RUN_ATTEMPT")
+      let job_read = optional_env(name: "GITHUB_JOB")
       compose_walk_attempt_id(
-        run_id: match optional_env(name: "GITHUB_RUN_ID") {
+        run_id: match run_id_read {
           Present { value: value } => value
           Absent => ""
         },
-        run_attempt: match optional_env(name: "GITHUB_RUN_ATTEMPT") {
+        run_attempt: match run_attempt_read {
           Present { value: value } => value
           Absent => ""
         },
-        job: match optional_env(name: "GITHUB_JOB") {
+        job: match job_read {
           Present { value: value } => value
           Absent => ""
         },
       )
+    }
   }
 }
 

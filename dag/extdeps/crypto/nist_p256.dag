@@ -1,0 +1,83 @@
+module extdeps.crypto.nist_p256
+
+import std.types { Int, List, Bool }
+import std.bignat { BigNat, bignat_from_octets }
+import extdeps.crypto.sha2 { sha256 }
+import extdeps.crypto.nist_prime_curve {
+  PrimeCurve, prime_curve, JacobianPoint, jacobian_is_infinity, curve_affine, curve_double_scalar, curve_on_curve, curve_ecdsa_verify_octets,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// The NIST P-256 curve (SP 800-186 §3.2.1.3) and ECDSA verification over it with SHA-256
+// (FIPS 186-5 §6.4.2), computed in the substrate on std.bignat's Montgomery arithmetic. THE
+// ARITHMETIC LIVES IN extdeps.crypto.nist_prime_curve, once for the whole a = −3 family; this
+// module is P-256's parameter row and the SHA-256-bound verifier the approval device signature
+// uses (extdeps.apple.secure_enclave: the enclave signs P-256 over SHA-256 and nothing else).
+//
+// WHO CONSUMES THIS: extdeps.crypto.signature verify_signature binds p256_ecdsa_verify_octets
+// through signature_verification_from_implementation with the decoded octet sizes -- the join
+// the earlier header of this module declared as its frontier -- and extdeps.apple.app_attest
+// verifies assertion signatures and P-256-issued chain links over the family fold directly. THOSE
+// FOLDS ARE THEMSELVES THE DECLARED FRONTIER gunbc.auth.approval_device_redemption
+// ecdsa_verification_realization_frontier, reached by no served route yet: their callers outside
+// dag/test/claim land with the device routes, and their per-request execution waits on the native
+// realization that row names (review 69652 of gunbc#11989 -- the frontier is one hop outward, not
+// closed).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "csrc.nist.gov/pubs/sp/800/186/final"
+  }
+}
+
+// ── Domain parameters (SP 800-186 §3.2.1.3), as published octets ────────────────────────────
+// THE DOMAIN PARAMETERS ARE OCTETS, NOT A DECODE, BECAUSE A DECODE HAS A FAILURE ARM AND THESE MAY
+// NOT HAVE ONE (review 69034 of gunbc#11645). They were previously written as hex strings run
+// through base16_decode_lower, whose Absent arm answered bignat_small(n: 0) -- so a mistyped literal
+// would have substituted ZERO FOR THE FIELD PRIME and every verification below would have computed
+// confidently on a degenerate curve. That is the fabricated default DESIGN 5 names a hard reject,
+// and it sat on the five values the whole curve is defined by.
+//
+// GUARDING THE ARM WAS NOT THE FIX. A refusing p256_hex_nat would make every consumer of the field
+// arithmetic answer an Optional for a condition that cannot occur at runtime at all, since the input
+// is a source literal. Removing the DECODE removes the arm: each parameter is now its big-endian
+// octet encoding, read directly by bignat_from_octets, which is total. There is no longer a state in
+// which a parameter is wrong-but-accepted, rather than a check that such a state is reported.
+//
+// Values: SP 800-186 section 3.2.1.3 (P-256), big-endian, 32 octets each, as SEC1 renders them.
+data p256_p_octets: List<Int> = [255, 255, 255, 255, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
+data p256_n_octets: List<Int> = [255, 255, 255, 255, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 188, 230, 250, 173, 167, 23, 158, 132, 243, 185, 202, 194, 252, 99, 37, 81]
+data p256_b_octets: List<Int> = [90, 198, 53, 216, 170, 58, 147, 231, 179, 235, 189, 85, 118, 152, 134, 188, 101, 29, 6, 176, 204, 83, 176, 246, 59, 206, 60, 62, 39, 210, 96, 75]
+data p256_gx_octets: List<Int> = [107, 23, 209, 242, 225, 44, 66, 71, 248, 188, 230, 229, 99, 164, 64, 242, 119, 3, 125, 129, 45, 235, 51, 160, 244, 161, 57, 69, 216, 152, 194, 150]
+data p256_gy_octets: List<Int> = [79, 227, 66, 226, 254, 26, 127, 155, 142, 231, 235, 74, 124, 15, 158, 22, 43, 206, 51, 87, 107, 49, 94, 206, 203, 182, 64, 104, 55, 191, 81, 245]
+
+// The three BigNat rows the P-256 witnesses read (the base point and the order); the field prime
+// and b reach the family fold as octets through p256_curve and have no other reader.
+data p256_n: BigNat = bignat_from_octets(octets: p256_n_octets)
+data p256_gx: BigNat = bignat_from_octets(octets: p256_gx_octets)
+data p256_gy: BigNat = bignat_from_octets(octets: p256_gy_octets)
+
+// 256-bit moduli in 24-bit limbs: the family fold derives 11 from the coordinate width.
+data p256_curve: PrimeCurve = prime_curve(p_octets: p256_p_octets, n_octets: p256_n_octets, b_octets: p256_b_octets, gx_octets: p256_gx_octets, gy_octets: p256_gy_octets, coordinate_octets: 32)
+
+fn p256_affine(x: BigNat, y: BigNat) -> JacobianPoint {
+  curve_affine(c: p256_curve, x: x, y: y)
+}
+
+fn p256_double_scalar(u1: BigNat, g: JacobianPoint, u2: BigNat, q: JacobianPoint) -> JacobianPoint {
+  curve_double_scalar(c: p256_curve, u1: u1, g: g, u2: u2, q: q)
+}
+
+fn p256_on_curve(x: BigNat, y: BigNat) -> Bool {
+  curve_on_curve(c: p256_curve, x: x, y: y)
+}
+
+// ── ECDSA verification (FIPS 186-5 §6.4.2) with SHA-256 ─────────────────────────────────────
+// key: the 65-octet SEC 1 uncompressed point 0x04 || X || Y. signature: the 64-octet r || s. The
+// message is hashed here with SHA-256; 256 bits is the bit length of n, so there is no truncation
+// (§6.4.2 step 3). Answers as curve_ecdsa_verify_octets does: Present true / Present false /
+// Absent for an input that is not an admitted encoding.
+fn p256_ecdsa_verify_octets(key: List<Int>, signature: List<Int>, message: List<Int>) -> Bool? {
+  curve_ecdsa_verify_octets(c: p256_curve, key: key, signature: signature, digest: sha256(message: message))
+}

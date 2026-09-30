@@ -817,9 +817,18 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
 /// empty means the parse did not carry one; treating unknown as "not a string" would
 /// under-report exactly the survivors a census exists to find.
 fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
-    match decl.item.type_annotation.as_ref() {
+    data_item_declared_type_name(&decl.item, &decl.source_indices)
+}
+
+/// The same spelling for a data item the caller already holds, so the parse sweep can record it
+/// at ingestion (`declaration_index::record_from_module`) without a second rule beside this one.
+pub(crate) fn data_item_declared_type_name(
+    item: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match item.type_annotation.as_ref() {
         Some(ann) => {
-            let authored = authored_name_at(decl.source_indices.clone(), ann.clone());
+            let authored = authored_name_at(source_indices.clone(), ann.clone());
             if authored.is_empty() {
                 ann.name.clone()
             } else {
@@ -1913,14 +1922,25 @@ fn marshal_fn_export_signature_node(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     item: &Rc<Node>,
 ) -> InterpResult<Value> {
-    let mut edges = Vec::new();
+    // THE DOMAIN IS NAMED BINDERS, NEVER POSITIONAL TYPES (Program P, one Arrow encoding): one
+    // Named edge per value parameter, labelled with its authored name (`_` stays `_`), in authored
+    // order. The host mints no order edge and no anonymous binder: the substrate half,
+    // `v2.std.decl_index` `export_signature_declared_facts`, passes these edges through
+    // `v2.std.arrow_signature` `declared_signature`, the one constructor of a domain and its order.
+    let mut binders = Vec::new();
     for p in item.params.iter() {
         if param_is_type_param(p, si) {
             continue;
         }
+        let name = param_node_name_at(p.clone(), si.clone());
         let ty = param_node_type_expr(p.clone());
-        edges.push(edge_positional(ctx, marshal_type_expr_ref(ctx, si, &ty)?));
+        binders.push(edge_named(ctx, &name, marshal_type_expr_ref(ctx, si, &ty)?));
     }
+    let domain = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        binders,
+    );
     let ret_val = item
         .inferred
         .as_ref()
@@ -1928,11 +1948,10 @@ fn marshal_fn_export_signature_node(
         .map(|ret| marshal_type_expr_ref(ctx, si, &ret))
         .transpose()?
         .unwrap_or_else(|| unit_type_node(ctx));
-    edges.push(edge_positional(ctx, ret_val));
     Ok(node_record(
         ctx,
         node_kind_type_node(ctx, nullary_connective_variant(ctx, "Arrow")),
-        edges,
+        vec![edge_positional(ctx, domain), edge_positional(ctx, ret_val)],
     ))
 }
 

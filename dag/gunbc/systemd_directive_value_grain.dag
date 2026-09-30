@@ -1,7 +1,7 @@
 module gunbc.systemd_directive_value_grain
 
 import std.types { String, NonEmptyStr, Bool, List }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // WHAT THIS CARRIER IS FOR, AND WHY IT IS A FILING RATHER THAN A REPAIR.
@@ -51,7 +51,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // cited set. It is not a ratchet. TasksMax= carries a second, separate grain residue: its value is
 // a bare Int on both the write side and extdeps.systemd's read-side parse, and extdeps.systemd
 // declares that gap itself against feature:task-count-measure-carrier.
-data systemd_directive_value_grain_scope: Disposition = SingleAuthority
+data systemd_directive_value_grain_scope: ConstructionMechanism = SingleAuthority
 
 // Environment { assignment: NonEmptyStr } CARRIES A KEY=VALUE PAIR AS ONE OPAQUE STRING, and the
 // fusion is what makes the finding below invisible rather than being the finding itself. A

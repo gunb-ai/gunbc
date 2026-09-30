@@ -1,6 +1,8 @@
 module extdeps.github.actions_jit_runner
 
-import std.types { String, NonEmptyStr, Bool, Int, List, HttpStatus }
+import std.types { String, NonEmptyStr, Bool, Int, List, HttpStatus, Secret }
+import extdeps.github.github { default_api_base }
+import extdeps.transports.rest { RestOutcome }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -71,11 +73,6 @@ type JitConfigMintOutcome
   | JitConfigMintConflict { reason: String }
   | JitConfigMintValidationFailed { reason: String }
 
-// THE ENDPOINT PATH IS DERIVED FROM THE ORG, never concatenated at a call site, so a caller cannot
-// address a different organization's runners by assembling the path itself.
-fn org_generate_jitconfig_path(org_login: NonEmptyStr) -> String {
-  join(["/orgs/", org_login as String, "/actions/runners/generate-jitconfig"], "")
-}
 
 fn jit_runner_label_wire(l: JitRunnerLabel) -> String {
   l.value as String
@@ -120,6 +117,62 @@ fn jit_config_mint_outcome(status: HttpStatus, encoded: String, runner_id: Int, 
           JitConfigMintRefused { status: status, reason: error_body }
         }
       }
+    }
+  }
+}
+
+// THE MINT IS ONE OPERATION ON GitHub's REST SURFACE, bound to the shape above. The Bearer is an
+// INSTALLATION access token (extdeps.github.app github.AppInstallationAccessTokens), taken as a
+// Secret input and never an argv word. The body is JitRunnerConfigRequest's wire: labels arrive as
+// the JSON array the endpoint documents, projected by jit_runner_label_wire. 201 decodes the runner
+// identity and the opaque blob; every other status is RestStatusRefused and is mapped through
+// jit_config_mint_outcome, the one authority for what a non-201 means.
+type JitConfigCreatedRunner {
+  id: Int
+}
+
+type JitConfigCreatedBody {
+  runner: JitConfigCreatedRunner
+  encoded_jit_config: String
+}
+
+// THE ORGANIZATION IS AN OPERATION INPUT AND THE PATH INTERPOLATES IT, so a caller cannot address
+// another organization's runners by assembling a path: there is no path to assemble. A builder
+// function beside this template would be a second spelling of one endpoint that the transport can
+// never call -- the template language interpolates, it does not invoke -- so the citation for this
+// path is extdeps_external_authority_anchor above and this operation is its only consumer.
+service github.ActionsJitRunners {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: installation_token
+  }
+
+  operation GenerateOrganizationJitConfig {
+    input {
+      installation_token: Secret
+      org: NonEmptyStr
+      name: NonEmptyStr
+      runner_group_id: Int
+      labels: List<String>
+      work_folder: NonEmptyStr
+    }
+    output {
+      result: JitConfigCreatedBody
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/orgs/\{org\}/actions/runners/generate-jitconfig",
+      body: {
+        name: name,
+        runner_group_id: runner_group_id,
+        labels: labels,
+        work_folder: work_folder
+      }
+    }
+    response {
+      201 => JitConfigCreatedBody
     }
   }
 }

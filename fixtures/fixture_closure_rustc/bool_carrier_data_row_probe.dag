@@ -1,0 +1,20 @@
+module fixture.closure.rustc_bool_carrier_data_row_probe
+
+import std.algebra { BooleanAlgebra }
+import v2.std.logic { Bool, True, bool_boolean_algebra }
+
+// THE V2 BOOL CARRIER AT A DATA ROW'S DECLARED TYPE, POSED TO RUSTC. `v2.std.logic` declares its
+// own `Bool = True | False`, and `bool_boolean_algebra` is a `BooleanAlgebra<Bool>` over THAT
+// carrier. A second module re-exporting it as a data row with the same declared type is the shape
+// every v2 target module carries (`swift_bool_grounding`, `go_bool_grounding`, ...); the first
+// emitted closure to include one (v2.extdeps.languages.swift, via v2.cli.compile_cli) was refused by
+// rustc with E0308, `expected Rc<BooleanAlgebra<bool>>, found Rc<BooleanAlgebra<v2_std_logic::Bool>>`.
+data probe_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+fn probe_bool_grounding_top() -> Bool {
+  probe_bool_grounding.top
+}
+
+fn probe_bool_grounding_meet_top(b: Bool) -> Bool {
+  probe_bool_grounding.meet(True, b)
+}

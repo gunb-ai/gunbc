@@ -1,0 +1,12 @@
+module test.fixture.forked_spelling.alias_twin
+
+import std.types { Int }
+import std.machine_constraints { Compose, MachineWidth }
+
+// A second ALIAS declarer of the spelling. Reached only through alias_bystander, so a consumer
+// never names this module; it is the arm that falsified "a forked alias drops its line".
+type FspOctet = Compose<Int, MachineWidth<16>>
+
+fn fsp_alias_twin_answer() -> Int {
+  1
+}

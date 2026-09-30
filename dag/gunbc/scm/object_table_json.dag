@@ -235,10 +235,8 @@ import v2.std.node {
   Bind,
   Match,
   Symbol,
-}
-import v2.std.compilers.lexing {
-  symbol_lexeme,
   symbol_intern_lexeme,
+  symbol_lexeme,
 }
 import v2.std.collection {
   Map,
@@ -513,7 +511,11 @@ fn encode_connective(c: Connective) -> List<JsonKeyValue> {
         json_kv(key: "connective", value: json_string(s: connective_tag(c: c))),
         json_kv(key: "identity", value: json_string(s: symbol_lexeme(sym: id))),
       ]
-    _ => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    Conj => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    Disj => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    Arrow => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    Cardinality => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    Instantiation => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
   }
 }
 

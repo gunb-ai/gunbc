@@ -1,7 +1,7 @@
 module extdeps.github.pulls
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
-import std.types { CommitSha, EpochMs, FilePath, GitRef, NonEmptyStr, Timestamp, HttpMethod, AuthScheme }
+import std.types { CommitSha, EpochMs, FilePath, GitRef, NonEmptyStr, Timestamp, AuthScheme }
 import std.string_type { String }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
@@ -15,6 +15,7 @@ import extdeps.github.pulls_contracts {
   review_state_wire_contract,
   review_event_wire_contract
 }
+import extdeps.ietf.http_semantics { HttpMethod }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

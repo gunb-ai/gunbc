@@ -1,0 +1,64 @@
+module test.claim.approval_device_enrolment_code_wet_witness_test
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Timestamp, Int }
+import gunbc.auth.approval_device_routes {
+  issue_and_deliver_enrolment_code_until, EnrolmentCodeIssued, EnrolmentCodeIssuanceRefused, DeliveryRefused,
+  mint_enrolment_code,
+}
+import gunbc.auth.approval_request_submission { PublisherTokenUnavailable }
+import gunbc.auth.approval_device_redemption { observe_enrolment_slot, EnrolmentCodeUnspent }
+import extdeps.shell
+
+// THE TWO ENROLMENT-CODE CLAIMS WHOSE SUBJECT IS REACHED ONLY THROUGH A REAL EFFECT, executed on the
+// required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule):
+// the slot claim writes through the file CAS into a throwaway shell.Mktemp.DirWithTemplate root, and
+// the mint claim reads Urandom.ReadBytes. Neither effect has a mock_response. The mint claim is the
+// inhabitance half of the pairing: the encoding itself is witnessed hermetically over supplied octets
+// in test.claim.approval_device_enrolment_code_witness_test.
+
+data fx_code: NonEmptyStr = "9f3ac1d20b7e44c1a5d3e8f60c2b91aa"
+data fx_expires: Timestamp = "2026-09-21T20:10:00Z"
+
+// THE SLOT IS WRITTEN BEFORE ANY DELIVERY, by real execution against a fresh root: the write goes
+// through the file CAS, which the hermetic route has no arm for, so this claim runs on the wet
+// route (claim_batch --wet). Without a publisher token the outcome is IssuedNotDelivered and the
+// issued-code slot is readable afterwards; a second issuance of the same code refuses on the
+// occupied slot. Dropping the write, or publishing before it, reds this.
+test fn the_code_slot_is_written_before_delivery_by_real_execution() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_enrol.XXXXXX").path
+  let root = root_path as NonEmptyStr
+  let publisher = PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }
+  let first = issue_and_deliver_enrolment_code_until(root: root, now: "2026-09-21T20:00:00Z", expires_at: fx_expires, code: fx_code, publisher: publisher)
+  let slot = observe_enrolment_slot(root: root, code: fx_code)
+  let second = issue_and_deliver_enrolment_code_until(root: root, now: "2026-09-21T20:00:00Z", expires_at: fx_expires, code: fx_code, publisher: publisher)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  (match first {
+    EnrolmentCodeIssued { topic: _, expires_at: x, delivery: DeliveryRefused { detail: _ } } => x == fx_expires
+    _ => false
+  })
+    && (match slot {
+      EnrolmentCodeUnspent { challenge: c } => c.code == fx_code && c.expires_at == fx_expires
+      _ => false
+    })
+    && (match second {
+      EnrolmentCodeIssuanceRefused { cause: c } => string_contains(s: c, pattern: "occupied")
+      _ => false
+    })
+    && removed.success
+}
+
+// THE MINTED CODE IS 128 BITS, BY REAL EXECUTION: the real mint over the real Urandom.ReadBytes yields 32 characters, each
+// a lowercase hex digit. Shrinking approval_enrolment_code_entropy, or switching the encoding, reds
+// this.
+fn fx_all_lower_hex_from(s: String, pos: Int) -> Bool {
+  if pos >= string_length(s: s) { true }
+  else { string_contains(s: "0123456789abcdef", pattern: char_at(s: s, pos: pos)) && fx_all_lower_hex_from(s: s, pos: pos + 1) }
+}
+
+test fn the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution() -> Bool {
+  match mint_enrolment_code() {
+    Present { value: c } => string_length(s: c as String) == 32 && fx_all_lower_hex_from(s: c as String, pos: 0)
+    Absent => false
+  }
+}

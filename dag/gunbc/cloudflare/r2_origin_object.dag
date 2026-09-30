@@ -3,7 +3,6 @@ module gunbc.cloudflare.r2_origin_object
 import std.types { String, NonEmptyStr, Bool, Int, FilePath, HttpStatus, http_status_of }
 import std.citation { http_status_is_success }
 import std.algebra { trim }
-import std.resources { Network }
 import std.decl_ref { DeclarationRef }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.shell
@@ -34,6 +33,7 @@ import gunbc.cloudflare.r2_origin {
   R2OriginBucket,
   R2OriginAllocated,
   R2OriginUnallocated,
+  R2OriginStanding,
   fabric_durable_origin_standing,
   bucket_purpose_key,
   OriginCredentialStanding,
@@ -229,14 +229,25 @@ type OriginTransportStanding
   = OriginTransportPresent
   | OriginTransportAbsent { cause: NonEmptyStr }
 
-// THE TARGET RESOLUTION IS PURE so every refusal arm is reachable from the declarations alone; the
-// host observation above is consulted by the two effectful entries before it.
+// THE TARGET RESOLUTION IS PURE; the host observation above is consulted by the two effectful
+// entries before it. The origin standing is a PARAMETER of resolve_origin_target_under so every
+// credential arm stays reachable by a supplied value once the declarations no longer inhabit it --
+// the unminted-write refusal became unreachable from the declarations when the write credential
+// was pinned, and an arm only production can reach is one nobody can test.
 fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> OriginTarget {
+  resolve_origin_target_under(direction: direction, key: key, origin: fabric_durable_origin_standing())
+}
+
+fn resolve_origin_target_under(
+  direction: OriginDirection,
+  key: NonEmptyStr,
+  origin: R2OriginStanding,
+) -> OriginTarget {
   match fleet_cloudflare_account_standing() {
     CloudflareAccountUnallocated { company: _, intervention: intervention } =>
       OriginTargetRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
     CloudflareAccountAllocated { company: _, account_id: account_id } =>
-      match fabric_durable_origin_standing() {
+      match origin {
         R2OriginUnallocated { purpose: purpose } =>
           OriginTargetRefused { cause: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)) as NonEmptyStr }
         R2OriginAllocated { bucket: bucket } =>
@@ -303,7 +314,7 @@ fn put_origin_object(
   local_path: FilePath,
   key: NonEmptyStr,
   token_source: AccessTokenSource,
-) -> OriginPut uses net: Network {
+) -> OriginPut {
   match origin_transport_present() {
     OriginTransportAbsent { cause: cause } => put_without_credential_exposure(verdict: OriginPutRefused { key: key, cause: cause })
     OriginTransportPresent =>
@@ -382,7 +393,7 @@ data origin_staged_object_basename: String = "object"
 fn fetch_origin_object(
   key: NonEmptyStr,
   token_source: AccessTokenSource,
-) -> OriginFetchOutcome uses net: Network {
+) -> OriginFetchOutcome {
   match origin_transport_present() {
     OriginTransportAbsent { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
     OriginTransportPresent =>

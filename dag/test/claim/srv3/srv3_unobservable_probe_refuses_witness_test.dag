@@ -2,6 +2,7 @@ module test.claim.srv3_unobservable_probe_refuses_witness
 
 import std.logic { Bool }
 import std.types { NonEmptyStr }
+import extdeps.tools.xorriso { xorriso_cli_tool }
 import gunbc.host_effect {
   LocalShell,
   EmitArtifactThenThinRun,
@@ -65,7 +66,7 @@ fn predicate_is_fails(p: Srv3HostPredicate) -> Bool {
 // THE RED. A transport with no probe arm reports Unobserved, never Fails.
 test fn unprobeable_transport_reports_unobserved_not_absent() -> Bool {
   predicate_is_unobserved(
-    p: srv3_apt_tool_present(tool_name: "xorriso" as NonEmptyStr, transport: unprobeable_transport),
+    p: srv3_apt_tool_present(tool: xorriso_cli_tool, transport: unprobeable_transport),
   )
 }
 
@@ -74,7 +75,7 @@ test fn unprobeable_transport_reports_unobserved_not_absent() -> Bool {
 // repair that maps the unprobeable arm to Fails.
 test fn unprobeable_transport_does_not_report_absent() -> Bool {
   predicate_is_fails(
-    p: srv3_apt_tool_present(tool_name: "xorriso" as NonEmptyStr, transport: unprobeable_transport),
+    p: srv3_apt_tool_present(tool: xorriso_cli_tool, transport: unprobeable_transport),
   ) == false
 }
 

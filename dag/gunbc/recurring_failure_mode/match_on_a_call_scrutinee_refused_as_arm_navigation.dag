@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.match_on_a_call_scrutinee_refused_as_arm_navigation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data match_on_a_call_scrutinee_refused_as_arm_navigation: RecurringFailureMode = RecurringFailureMode {
+  identity: "match_on_a_call_scrutinee_refused_as_arm_navigation" as NonEmptyStr,
+
+  receipts: [
+    "**a `match` whose scrutinee is a CALL refuses its module at normalize as body_lowering_reason_match_arm_navigation_refused** (INVALID STATE: after gunbc#12145, v2 body lowering can no longer navigate the arms of a match whose scrutinee is a call expression; the arm shape is irrelevant).",
+    "RECEIPT (2026-09-23, cool-crab-649, claim_batch with program_assembly_read_to_normalized_root, residue diagnostics filtered): a one-commit differential, parent 2de78893dfe against child ada85b9452 (gunbc#12145's merge). Subject src/v2/test/claim/parse/expression_bodied_fn_decl_parse_test.dag is ACCEPTED on the parent with no refusals and REJECTED on the child with exactly body_lowering_reason_match_arm_navigation_refused at one NodeLocus. Minimal specimens, each the body of `fn probe(x: Int, c: Bool) -> Int`: `match c { true => 1  false => 2 }` is accepted on both; `match b(a: x) { true => 1  false => 2 }` and `match k(a: x) { Ok { v: v } => v  No => 0 }` are accepted on the parent and rejected on the child. Corroborated independently by another lane's file-refusal census over the same pair (+81/-0 refusal identities, 33 files carrying this reason, v2.compiler.parse among them); those figures are that census's, re-derive before quoting.",
+    "HARM. Collateral regression of gunbc#12145, loud rather than silent: every module containing a match on a call is refused before resolve, so none of its references reaches the namespace cut's residual census -- an undercount by whole modules that the census reports as refusals it cannot attribute to a reference.",
+    "DISTINGUISHING FACTS. Not compound_call_argument_value_refused_as_unread (an argument value refused) and not lowering_accessor_collapses_a_sequence_operand (the Optional accessor answering Absent): the scrutinee is read, and it is the ARM navigation that refuses when the scrutinee is a call. A literal or name scrutinee is the control and is unaffected.",
+    "RUNG FOUND AT: mitigatable -- typed and loud, at module grain. No claim on main is red for it yet.",
+    "CEILING: structurally guaranteed. Arm navigation over a match is independent of the scrutinee's shape; reading the arms whatever the scrutinee is decidable.",
+    "NEXT-RUNG TRIGGER, naming the capability: a match whose scrutinee is a call lowers with every arm navigated on the normalize route, shown by the call-scrutinee specimens above accepted, beside the literal-scrutinee control, and by an undeclared name inside an arm body refusing at resolve at its atom.",
+  ],
+
+  evidence: [],
+}

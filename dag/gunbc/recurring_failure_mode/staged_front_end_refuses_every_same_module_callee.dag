@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.staged_front_end_refuses_every_same_module_callee
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data staged_front_end_refuses_every_same_module_callee: RecurringFailureMode = RecurringFailureMode {
+  identity: "staged_front_end_refuses_every_same_module_callee" as NonEmptyStr,
+
+  receipts: [
+    "**v2.compiler.staged_front_end refuses EVERY call to a same-module fn as unbound AT THE CALLEE, so a specimen run through it cannot discriminate an argument refusal** (INVALID STATE: `fn zero() -> Int { 0 }` with a body calling `zero()` in the same module is refused by run_front_end as an unbound symbol located at `zero`; measured on the gunbc#12108 head and on main, pre-existing and not introduced there).",
+    "HARM. A fixture meant to show that an undeclared call ARGUMENT refuses at resolve refuses for the callee's reason instead, so its red is green-by-the-wrong-mechanism: the assertion 'refused' holds while the route it exists to exercise is never reached (DESIGN section 3, the inhabitance claim must assert the ROUTE and not only the answer). Every declared-callee positive control through this harness is also red, so the pair cannot separate argument loss from callee binding.",
+    "DISTINGUISHING FACTS. This is not call_expression_erased_at_v2_body_lowering: there the callee never reached resolve; here it reaches resolve and is refused although it is declared. The production census route (v2.compiler.compile native_test_context_from_ingest -> native_census_module_resolution) binds the same callee, which is why gunbc#12108 moved its discriminator there (v2.test.claim.namespace_xl0.call_argument_resolve_refusal a_callee_only_call_resolves).",
+    "RUNG FOUND AT: mitigatable -- a test-harness wrong answer, loud rather than silent, but a fixture author reading it as a refusal of the argument is silently misled.",
+    "CEILING: structurally guaranteed. Same-module fn binding is decidable and the production route already does it.",
+    "NEXT-RUNG TRIGGER, naming the capability: run_front_end resolves a same-module fn callee to its declaration exactly as the production census route does, shown by a declared-callee control that passes through run_front_end and an undeclared-argument specimen that refuses there located at the argument.",
+  ],
+
+  evidence: [],
+}

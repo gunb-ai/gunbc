@@ -57,7 +57,7 @@ data mechanism_single_authority: ConstructionMechanism = SingleAuthority
 
 data mechanism_realization_dispatch: ConstructionMechanism = RealizationDispatch
 
-data mechanism_data_ref: ConstructionMechanism = Terminal { reason: "witness-data-ref-not-variant-value" }
+data mechanism_data_ref: ConstructionMechanism = RealizationDispatch
 
 data scaffold_with_data_ref: Disposition = Scaffold {
   dissolves_to: mechanism_data_ref,
@@ -90,7 +90,7 @@ data planted_terminal_specimen: Disposition = Terminal {
   reason: "fixture terminal arm"
 }
 
-data planted_nullary_disposition_specimen: Disposition = SingleAuthority
+data planted_nullary_disposition_specimen: ConstructionMechanism = SingleAuthority
 
 data planted_named_field_ref_specimen: DeclarationRef = DeclarationRef {
   module_path: "test.fixture.decl_facts_reflection.specimens",

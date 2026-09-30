@@ -6,7 +6,7 @@ import extdeps.memory.cisco_ucs { ucs_mr_1x648ru_a }
 import gunbc.fleet_intent { srv1_memory_population, srv3_memory_population, srv4_memory_population }
 import gunbc.fleet_physical_inventory { fleet_dimm_verdicts, fleet_dimm_expectations }
 import gunbc.host_memory_qualification { srv2_failed_64gib_population_standing }
-import gunbc.ci_floor_measurement { gunbc_ci_srv3_memtotal_measured }
+import gunbc.host_memory_observation { gunbc_ci_srv3_memtotal_measured }
 import gunbc.runner_disk_reclaim {
   admit_reclaim_operation, reclaim_admission_proceeds, reclaim_operations,
   operation_requires_idle_slot, repack_admits_pack_count, review_ref_should_be_dropped,

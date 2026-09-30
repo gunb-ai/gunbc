@@ -17,18 +17,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 // feature:offset-nat-carrier — dissolve-on: when the shell transport supports
-// Measure<Time, One, Nat> (Second) interpolation, convert TimestampOffset to
-// accept offset: Second and unwrap to Nat only in the transport binder.
-// Meanwhile the operation accepts offset: Nat — still a bare scalar, but at
-// least the Nat refinement (Int where non_negative) encodes the sign constraint
-// that Int lacked, and the parameter name names the unit as a second-best signal.
+// Measure<Time, One, Nat> (Second) interpolation, convert Clock.TimestampOffset
+// AND Clock.TimestampAdd to accept offset: Second and unwrap to Nat only in the
+// transport binder. Meanwhile both operations accept offset: Nat — still a bare
+// scalar, but at least the Nat refinement (Int where non_negative) encodes the
+// sign constraint that Int lacked, and the parameter name names the unit as a
+// second-best signal. TimestampAdd is the same carrier family as TimestampOffset
+// (seconds as Nat at the operation boundary), not a second unit surface.
 
-// TimestampOffsetAhead IS THE AHEAD-READING TWIN of TimestampOffset, declared at module grain
-// because an operation's rationale cannot live inside the service body: TimestampOffset
-// subtracts (its consumer is a look-back), and bounded lifetimes — the session's and the
-// login transaction's — need now + TTL, so the ahead form is its own operation with the same
-// exit discipline rather than a signed-offset parameter (offset: Nat keeps the non-negative
-// refinement the parameter name alone used to carry).
 service Clock {
   operation Now {
     input {}
@@ -74,14 +70,14 @@ service Clock {
     }
   }
 
-  operation TimestampOffsetAhead {
+  operation TimestampAdd {
     input { timestamp: Timestamp, offset: Nat }
     output { result: Timestamp from "stdout" }
     readonly
     transport shell { argv: ["date", "-u", "-d", "{timestamp} +{offset} seconds", "+%Y-%m-%dT%H:%M:%SZ"] }
     exit {
       0 => Unit
-      nonzero => String "date offset ahead failed"
+      nonzero => String "date add failed"
     }
   }
 
@@ -121,6 +117,13 @@ fn clock_unix_millis_read() -> ClockUnixMillisRead {
         ClockUnixMillisObserved { millis: n }
       }
   }
+}
+
+// THE ONE MILLIS-TO-SECONDS CONVERSION, beside the read that produces millis. Truncation toward the
+// epoch is POSIX seconds' own rounding (date +%s truncates), and both carriers are non-negative, so
+// a reading that satisfied EpochMs yields one that satisfies EpochSecs.
+fn epoch_secs_of_millis(millis: EpochMs) -> EpochSecs {
+  millis / 1000
 }
 // SAME OUTPUT-SHAPE DISCIPLINE AS clock_unix_millis_read: the operation's
 // output stays String, and this typed wrapper parses it with proper refusal.

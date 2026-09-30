@@ -1,5 +1,6 @@
 module gunbc.cli_run_workspace_root_scaffold
 
+import std.types { String, Int }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 
@@ -14,9 +15,46 @@ data cli_run_workspace_root_discovery_scaffold: Disposition = Scaffold {
 
 data cli_run_workspace_root_discovery_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust (#6484 .git-ancestor kernel); DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP 5-dissolve-patches cli_run.rs shrink retires HAND path-dependent root entirely")
 
+// THE CHECKOUT ROOT RECEIVED AT SPAWN, the dissolution the scaffold above names, landed for the
+// release-locus population (parent ruling 2026-09-21): the seed reads ONE environment name at one
+// site (workspace_root_resolve, consumed by workspace_root and process_workspace_root), treats it as
+// the authority when set -- no walk, a typed refusal naming the path and the missing member when it
+// holds no dag/ or no tree receipt -- and walks exactly as before when unset. Both unit emitters
+// (gunbc.live_deploy.emit: the approval broker's serve unit and the microVM slot unit) set it from
+// THIS row, and so does the SEED -- gunbc.release_locus_seed_constants_emit projects both rows into
+// release_locus_seed_constants_generated.rs and cli_run.rs consumes them, so there is no second
+// authoring of either spelling to drift. The discriminators below name the executed controls. v1 admission (gunbc.v1_maintenance_standing): this is SEED GROWTH,
+// not a v2 self-host step -- 87 hand-Rust lines on the existing workspace_root_from scaffold, rostered
+// as that row's census (cli_run_workspace_root_discovery_loc_delta_net, 12 -> 99) and retired by
+// that row's dissolve trigger, not by anything this change adds. Its purpose link is the release
+// locus the slot controller runs from; it is admitted as bounded growth on a tracked row, not as
+// serving self-hosting.
+data gunbc_workspace_root_env_name: String = "GUNBC_WORKSPACE_ROOT"
+
+data release_locus_tree_receipt_name: String = ".gunbc-tree-receipt"
+
+data cli_run_workspace_root_spawn_test_discriminator_authority: String = "spawn_root_is_authority_and_the_walk_is_not_consulted"
+
+data cli_run_workspace_root_spawn_test_discriminator_refusal: String = "spawn_root_without_receipt_refuses_instead_of_walking"
+
 data cli_run_workspace_root_hand_rust_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
 
-data cli_run_workspace_root_discovery_loc_delta_net: Int = 12
+// RE-DERIVED FOR THE SPAWN ARM, because the row is bound to `workspace_root_from` at
+// WholeDeclaration and this change grows exactly that declaration's hand-Rust. It was 12 -- the
+// .git-ancestor kernel alone -- and a row left at 12 while the declaration it binds gained the
+// spawn arm would be the parallel-ledger DESIGN section 6 refuses, stating a figure the tree
+// contradicts while its only consumer (`... > 0`) cannot see it move.
+//
+// THE INSTRUMENT, named rather than the count alone (DESIGN section 6): the added non-blank lines
+// of this scaffold's hand-Rust in cli_run.rs, excluding its `#[test]` module, re-derive with
+//   git diff -w <merge-base>...HEAD -U0 -- src/v1/stage0/src/cli_run.rs \
+//     | awk '/^@@/{h=$0} /^\+[^+]/{c[h]++} END{for (k in c) print c[k], k}'
+// with -w because re-indentation is not growth. After main's gunbc#11960 made the process root a
+// bound (root, basis) pair, the spawn root joins it as its own basis (Spawned) in both the
+// panicking resolver and the typed bind, so the report never calls a spawned locus discovered; the
+// instrument then reports 87 outside the test module (42 more inside it, excluded on the same
+// basis the 12 excluded its own tests). 12 + 87 = 99.
+data cli_run_workspace_root_discovery_loc_delta_net: Int = 99
 
 data cli_run_workspace_root_discovery_test_discriminator_git_toplevel: String = "from_subdirectory_matches_git_toplevel"
 
@@ -40,3 +78,24 @@ data cli_run_source_root_anchor_loc_delta_net: Int = 43
 data cli_run_source_root_anchor_test_discriminator_present_root: String = "try_anchor_source_root_resolves_declared_present_root"
 
 data cli_run_source_root_anchor_test_discriminator_absent_root: String = "try_anchor_source_root_skips_declared_absent_root"
+
+data cli_run_workspace_root_selection_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "bind_process_workspace_root",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_workspace_root_selection_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bind_process_workspace_root — the two-rule workspace-root SELECTION (discovery is the incumbent authority; where no checkout exists the request names the base, strictly, and neither rule applying refuses at exit 2) is authored in HAND-Rust beside the discovery walk it wraps, and a selection is policy rather than plumbing, so it owes a .dag authority that the walk alone did not. It exists because discovery cannot answer for an executor handed an immutable source snapshot by content identity (gunbc.fabric_source_snapshot) — it panicked there, so source without a repository was unrunnable rather than unsupported. DISSOLVES WHEN the workspace root reaches the compiler as a MODELED FIELD OF THE REQUEST decided in .dag — v2.cli.compile_cli's plan naming the base the way it already names the source roots and the verb — at which point this selection is a fold over that plan and the Rust retains no rule. NOT dissolved by the discovery walk moving, by the refusal being reworded, or by Chunk F landing the roots walk without carrying the root itself: the trigger is the CAPABILITY of a request-carried root, not any artifact that would contribute to one")
+
+data cli_run_workspace_root_selection_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
+
+data cli_run_workspace_root_selection_loc_delta_measure: String = "code lines -- comments, blank lines and tests excluded -- of the declarations this scaffold binds: declared_workspace_root, declared_workspace_root_from, bind_process_workspace_root, try_resolve_process_workspace_root, bind_checkout_root, WorkspaceRootBasis and its impl, and the verb's binding in main.rs. It INCLUDES the 25 lines of the discovery walk relocated into try_resolve_process_workspace_root, which are not net-new to the seed: the measure is stated so the figure can be checked rather than trusted, because a bare count invites a reader to compare it with the rows above, whose measure is not recorded"
+
+data cli_run_workspace_root_selection_loc_delta_net: Int = 107
+
+data cli_run_workspace_root_selection_test_discriminator_declared: String = "declared_workspace_root_names_cwd_when_every_root_is_under_it"
+
+data cli_run_workspace_root_selection_test_discriminator_escapes_cwd: String = "declared_workspace_root_refuses_a_root_that_escapes_cwd"

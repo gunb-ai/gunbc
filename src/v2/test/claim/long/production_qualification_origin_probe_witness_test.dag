@@ -93,7 +93,7 @@ test fn witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_r
     xs: derived_production_qualification_mint_sites_live(
       pool_roots: origin_probe_subject_roots,
       pool_files: origin_probe_subject_files
-    ),
+    ).sites,
     predicate: fn(row) {
       string_contains(
         s: row.qualified_name,

@@ -5,98 +5,35 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use v1_compiler::cli_run::PhaseProfile;
 
-// HAND-RUST GATE explicit deferral. Lane: required-ci-measurement-host-realization. The authority
-// is `v2.workflow.required_ci_measurement`; this seed code realizes its filesystem write, JSON
-// transport, process exit and existing required-phase host diagnostics because required CI runs
-// the bootstrapped `claim_executor` before a generated replacement owns those effects. This adds
-// no competing domain model: the coproduct, blocker fields and build-unreached JSON originate in
-// `.dag`. It dissolves at the concrete ROADMAP row `v1-zero-hand-maintained-rust`, whose boundary
-// requires every tracked Rust file to be generated or deleted; at that row this realization is
-// generated from the measurement model or removed with the v1 seed. Until then this is counted
-// hand-maintained bootstrap surface, not a terminal Rust authority.
-const REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION: u8 = 1;
+// THE REQUIRED-CI MEASUREMENT RECEIPT AND ITS ADMISSION RELATION NOW LIVE IN THE LIBRARY,
+// `v1_compiler::cli_run::required_ci_measurement`, which carries the hand-Rust deferral note
+// this block used to. They moved for one reason: the relation that decides a required lane's
+// exit status was wrong on at least two landed runs and nothing executed it. A library module
+// has a documented execution route (`cargo test --release -p v1-compiler --lib`); a module
+// beside this binary has none. What stays here is what only a process can do -- print the
+// located lines and set the status.
+use v1_compiler::cli_run::required_ci_measurement::{
+    adjudicate_required_ci_measurement_receipt_file, completed_required_ci_measurement_receipt,
+    synthesize_phase_blockers, write_required_ci_measurement_receipt, RequiredCiAdmission,
+    RequiredCiBlocker, RequiredCiMeasurementReceipt,
+};
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(tag = "standing", rename_all = "snake_case")]
-enum RequiredCiMeasurementReceipt {
-    MeasurementCompleted { blockers: Vec<RequiredCiBlocker> },
-    MeasurementUnreached { cause: String },
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
-struct RequiredCiBlocker {
-    phase: String,
-    identity: String,
-    cause: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct VersionedRequiredCiMeasurementReceipt {
-    version: u8,
-    receipt: RequiredCiMeasurementReceipt,
-}
-
-fn completed_required_ci_measurement_receipt(
-    blockers: Vec<RequiredCiBlocker>,
-) -> RequiredCiMeasurementReceipt {
-    RequiredCiMeasurementReceipt::MeasurementCompleted { blockers }
-}
-
-fn write_required_ci_measurement_receipt(
-    path: &str,
-    receipt: RequiredCiMeasurementReceipt,
-) -> Result<(), String> {
-    let encoded = serde_json::to_vec_pretty(&VersionedRequiredCiMeasurementReceipt {
-        version: REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION,
-        receipt,
-    })
-    .map_err(|e| format!("encode required CI measurement receipt: {e}"))?;
-    std::fs::write(path, encoded)
-        .map_err(|e| format!("write required CI measurement receipt {path}: {e}"))
+// ONE RELATION, ONE EXIT. Both consumers -- the separate `--adjudicate-measurement-receipt`
+// mode and the measuring process reading back its own receipt -- reach the process exit through
+// THIS function, so no second mapping from an admission verdict to a status can exist to drift.
+fn required_ci_admission_exit(admission: RequiredCiAdmission) -> Result<ExitCode, ExitCode> {
+    for line in admission.diagnostics() {
+        eprintln!("{line}");
+    }
+    if admission.is_admitted() {
+        Ok(ExitCode::SUCCESS)
+    } else {
+        Err(ExitCode::from(1))
+    }
 }
 
 fn adjudicate_required_ci_measurement_receipt(path: &str) -> Result<ExitCode, ExitCode> {
-    let body = std::fs::read(path).map_err(|e| {
-        eprintln!("required-ci: adjudication REFUSED receipt unreadable path={path} cause={e}");
-        ExitCode::from(1)
-    })?;
-    let versioned: VersionedRequiredCiMeasurementReceipt =
-        serde_json::from_slice(&body).map_err(|e| {
-            eprintln!("required-ci: adjudication REFUSED receipt malformed path={path} cause={e}");
-            ExitCode::from(1)
-        })?;
-    if versioned.version != REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION {
-        eprintln!(
-            "required-ci: adjudication REFUSED receipt version={} expected={}",
-            versioned.version, REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION
-        );
-        return Err(ExitCode::from(1));
-    }
-    match versioned.receipt {
-        RequiredCiMeasurementReceipt::MeasurementUnreached { cause } => {
-            eprintln!(
-                "required-ci: adjudication REFUSED standing=measurement_unreached cause={cause}"
-            );
-            Err(ExitCode::from(1))
-        }
-        RequiredCiMeasurementReceipt::MeasurementCompleted { blockers } if blockers.is_empty() => {
-            eprintln!("required-ci: adjudication PASSED standing=measurement_completed blockers=0");
-            Ok(ExitCode::SUCCESS)
-        }
-        RequiredCiMeasurementReceipt::MeasurementCompleted { blockers } => {
-            for blocker in &blockers {
-                eprintln!(
-                    "required-ci: adjudication BLOCKING phase={} identity={} cause={}",
-                    blocker.phase, blocker.identity, blocker.cause
-                );
-            }
-            eprintln!(
-                "required-ci: adjudication REFUSED standing=measurement_completed blockers={}",
-                blockers.len()
-            );
-            Err(ExitCode::from(1))
-        }
-    }
+    required_ci_admission_exit(adjudicate_required_ci_measurement_receipt_file(path))
 }
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -499,11 +436,11 @@ fn run() -> Result<ExitCode, ExitCode> {
     // and the absence of those flags is the point rather than an omission. `run_required_floor`
     // refuses when planned, executed and terminal identity counts disagree, so a silently short
     // roster cannot report as a pass.
-    // THE COMPOSED CI RUN — one process per LANE. The roster is five phases: the .dag parse
-    // sweep, namespace wave admission, one generated-artifact comparison over registry
-    // projections and stage0 mirrors, its fixed-point comparison, and the witness floor.
+    // THE COMPOSED CI RUN — one process per LANE. The roster includes the runtime-body gate and the retained .dag parse
+    // sweep, one generated-artifact comparison over registry projections and stage0 mirrors,
+    // its fixed-point comparison, and the witness floor.
     // `--required-lane` selects which of them
-    // this process owns; with no lane, it owns all five, which is what a local run wants.
+    // this process owns; with no lane, it owns the whole roster.
     //
     // WHAT IT IS AND IS NOT. Sequencing a program's phases is the program's job (DESIGN §3: the
     // workflow is a realization of the intent, not the place the intent lives), so the order
@@ -537,7 +474,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     // paragraph's re-add queue), so nothing is admitted by the absence — but the three
     // measurements above are simply not taken, which is a declared rung drop, not a silent one.
     //
-    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The five phases are independent —
+    // THE NAMESPACE WAVE-ADMISSION WALL LEFT THE SAME WAY, LATER (operator ruling, 2026-09-19).
+    // The phase measured closure, subject-membership and binding deltas between the merge base
+    // and the head and refused unadjudicated motion; its consumed-row bookkeeping loop refused
+    // 100% of merge_group runs on a clean floor (run 35461710214), so the gate was deleted
+    // outright rather than repaired. The drop is declared at `gunbc.rung_drop`
+    // `namespace_wave_admission_wall_removed`; the baseline-reconstruction machinery the floor's
+    // planning row shares survives as `cli_run::namespace_baseline`.
+    //
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The phases are independent —
     // the one real data dependency, the fixed point's need for regen's pass-1 digest, went with
     // the phase that consumed it — so every phase RUNS EVEN AFTER AN EARLIER FAILURE and the run
     // reports the complete ledger instead of letting the first defect hide the rest. The line
@@ -547,11 +492,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut measurement_blockers: Vec<RequiredCiBlocker> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
-        // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The wave-admission phase below reads
-        // the index the parse phase built rather than acquiring the corpus again; holding it
-        // in an `Option` also keeps `the parse refused` distinguishable from `the parse ran
-        // and found nothing`, which is what the wall's own `NotEvaluated` arm exists to keep
-        // apart one level down.
+        // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The floor's planning row below reads
+        // the index the parse phase built (its base-side reconstruction starts from it) rather
+        // than acquiring the corpus again; holding it in an `Option` also keeps `the parse
+        // refused` distinguishable from `the parse ran and found nothing`, which the floor's
+        // own NotEvaluated arm keeps apart one level down.
         let mut head_index: Option<v1_compiler::cli_run::declaration_index::DeclarationIndex> =
             None;
 
@@ -575,6 +520,16 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
 
+        // THE RUNTIME-BODY CHILD STARTS HERE AND IS JUDGED AT ITS PHASE'S PLACE BELOW. It is
+        // already a separate process with its own roots and caches, it reads the tree and writes
+        // nothing, and no phase in front of it reads its answer -- so waiting for the lane
+        // roster, the parse sweep and its riders to finish before starting it only lengthened
+        // the lane by the child's whole wall (154 s on merge-queue run 36339106604). It is still
+        // waited on before the floor phase, so the floor's memory peak never overlaps it.
+        let primitive_runtime_body =
+            required_ci_phase_selected(RequiredCiPhase::PrimitiveRuntimeBody, required_ci_lane)
+                .then(spawn_required_primitive_runtime_body);
+
         // THE (PHASE, LANE) PAIR JOIN RUNS IN EVERY LANE, BEFORE ANY PHASE. The variant-set
         // join rides the parse phase's index, but a match arm is not a declaration, so lane
         // ownership is joined by evaluating the roster authority's
@@ -583,6 +538,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         // (leaving the native job selecting zero phases), or a selected lane owning zero
         // phases in the authority, stops the line here rather than greening over an
         // unmeasured population.
+        v1_compiler::cli_run::floor_seam("lane-roster");
         let authority_lane_rows =
             match v1_compiler::cli_run::authority_lane_phase_rows(&source_roots) {
                 Ok(rows) => Some(rows),
@@ -602,11 +558,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
 
-        // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
+        // PHASE 1 — the .dag parse sweep, over the authored roots in DAG_PARSE_SWEEP_ROOTS.
         // Independent of everything below it. The roster is
         // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
         // local check and this phase cover the same files.
         if required_ci_phase_selected(RequiredCiPhase::Parse, required_ci_lane) {
+            // THE PHASES BEFORE THE FLOOR ARE SEAMS TOO: the floor enters holding whatever the
+            // parse and its riders left resident, so a beat at their boundaries is what separates
+            // that inheritance from the floor's own growth (gunbc.floor_demand).
+            v1_compiler::cli_run::floor_seam("parse");
             eprintln!(
                 "required-ci: phase parse (.dag: {})",
                 v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS.join(", ")
@@ -621,6 +581,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                         sweep.parse_clean
                     );
                     head_index = Some(sweep.index.clone());
+                    v1_compiler::cli_run::floor_seam("declarations");
                     // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
                     //
                     // They are reported inside this phase rather than as a phase of their own
@@ -678,8 +639,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                     // THE PHASE ROSTER JOIN RIDES THE SAME INGESTION. The substrate authority
                     // for phase identity is `gunbc.required_ci_phase_roster` `RequiredCiPhase`;
                     // this enum is its declared parallel realization, and the two are joined by
-                    // variant-set equality in both directions on every required run — the same
-                    // shape as the wave wall's vocabulary join, for the same DESIGN §3 reason.
+                    // variant-set equality in both directions on every required run, the DESIGN
+                    // §3 answer to a second representation.
                     // A phase declared and not realized, or realized and not declared, stops
                     // the line here rather than diverging silently.
                     let roster_findings = phase_roster_findings(&sweep.index);
@@ -769,82 +730,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("parse");
         }
 
-        // PHASE — THE NAMESPACE WAVE-ADMISSION WALL.
-        //
-        // WHAT IT GATES AND WHY IT IS REQUIRED. `gunbc.compiler_frontend_program_interlock`
-        // (operator ruling, 2026-08-26) makes the import/namespace plan's disclosed "no CI
-        // mechanism" gap a BLOCKER rather than a disclosure: no change that can alter which
-        // modules enter a subject, or what an occurrence denotes, may merge before this wall
-        // exists, and `milestone_prerequisites` gates `NamespaceFirstSemanticWave` on
-        // `NamespaceWaveAdmissionEnrolled` by name.
-        //
-        // IT REPORTS ITS OWN NON-VERDICTS UNDER THEIR OWN NAMES. `NoSubject` (a push whose
-        // baseline is its own head) and `NotEvaluated` (a baseline that does not resolve) are
-        // printed as themselves and never as an admission -- and only the first of them
-        // passes, because "nothing to compare" and "could not compare" are the two zeros this
-        // repository has already been corrected for once.
-        if required_ci_phase_selected(RequiredCiPhase::NamespaceWaveAdmission, required_ci_lane) {
-            eprintln!("required-ci: phase namespace-wave-admission (closure, subject membership, binding)");
-            match &head_index {
-                // THE PARSE REFUSED, SO THERE IS NO HEAD TO ADJUDICATE AGAINST. This is not
-                // silence: the parse phase has already stopped the line, and adjudicating a
-                // corpus half of which failed to parse would report a smaller delta than the
-                // one that exists.
-                None => {
-                    eprintln!(
-                        "required-ci: namespace-wave-admission NOT RUN — the parse phase did not \
-                         produce an index (it refused, or this lane does not own it)"
-                    );
-                    phase_failures.push("namespace-wave-admission (no head index)".to_string());
-                }
-                Some(index) => {
-                    // THE VOCABULARY JOIN RUNS FIRST, because every verdict below is stated in
-                    // that vocabulary: adjudicating against a superseded disposition set would
-                    // produce answers that look like verdicts and are not.
-                    let vocabulary =
-                        v1_compiler::cli_run::namespace_wave_admission::vocabulary_findings(index);
-                    for finding in &vocabulary {
-                        eprintln!("required-ci: namespace-wave-admission VOCABULARY {finding}");
-                    }
-                    if !vocabulary.is_empty() {
-                        phase_failures.push(format!(
-                            "namespace-wave-admission vocabulary ({} finding(s))",
-                            vocabulary.len()
-                        ));
-                    }
-                    let event_name = std::env::var("GITHUB_EVENT_NAME").ok();
-                    let adjudicated = v1_compiler::cli_run::namespace_wave_admission::adjudication_event_from_name(
-                        event_name.as_deref(),
-                    )
-                    // THE EVENT IS VALIDATED AND DISCARDED, AND THE VALIDATION IS THE POINT --
-                    // BUT NOT FOR THE REASON THIS COMMENT FIRST GAVE (review 67027). It said the
-                    // call guards against applying the pull_request policy to an unmodelled event.
-                    // There is no event-selected policy left to mis-apply: gunbc#11481 removed the
-                    // arms that were it. What the call still does is refuse a GITHUB_EVENT_NAME
-                    // wave admission does not model, which is now a tripwire on the WORKFLOW'S
-                    // TRIGGER SET -- add a trigger nobody sized this wall against and the required
-                    // run stops instead of quietly producing a verdict for it. Its RED is authored
-                    // and executing (`adjudication_event_from_name(Some("schedule")).is_err()`), so
-                    // this is a live refusal and not a decoration. Dropping the call drops it.
-                    .and_then(|_event| {
-                        v1_compiler::cli_run::namespace_wave_admission::run_required_wave_admission(
-                            index,
-                        )
-                    });
-                    match adjudicated {
-                        Ok(outcome) => {
-                            if let Some(failure) = report_wave_admission_outcome(&outcome) {
-                                phase_failures.push(failure);
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("required-ci: namespace-wave-admission FAIL {e}");
-                            phase_failures.push("namespace-wave-admission".to_string());
-                        }
-                    }
-                }
+        // A separate source universe: the runtime producer is in src/v1, whose module-name
+        // collisions must not widen the floor's prepared subject. The .dag door owns both
+        // the population verdict and the permanent missing-body mutation control.
+        if let Some(spawned) = primitive_runtime_body {
+            eprintln!("required-ci: phase primitive-runtime-body (live emitted source + mutation control)");
+            if !finish_required_primitive_runtime_body(spawned) {
+                phase_failures.push("primitive-runtime-body".to_string());
             }
-            ran.push("namespace-wave-admission");
+            ran.push("primitive-runtime-body");
         }
 
         // PHASE — ONE adjudication over BOTH declared generated-artifact populations: every
@@ -859,43 +753,30 @@ fn run() -> Result<ExitCode, ExitCode> {
             );
             let failures_before = phase_failures.len();
 
-            // MIRROR HALF. Production still precedes adjudication so a missing/stale mirror leaves
-            // the candidate needed to repair it. A refusal remains distinct from a mismatch, but
-            // both are failures of this one generated-artifact phase.
-            match v1_compiler::cli_run::run_required_regen(
-                &regen_candidate_dir,
-                &regen_receipt_path,
-            ) {
-                Ok(outcome) => {
-                    let fge = outcome
-                        .receipt
-                        .first_generation_equal()
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "unmeasured".to_string());
-                    let candidate = outcome.receipt.candidate_artifact().unwrap_or("unmeasured");
-                    eprintln!(
-                        "required-ci: generated-artifact population=stage0-mirrors \
-                         first_generation_equal={fge} candidate={candidate}"
-                    );
-                    for failure in &outcome.failures {
-                        eprintln!(
-                            "required-ci: generated-artifact population=stage0-mirrors FAIL {failure}"
-                        );
-                    }
-                    if !outcome.failures.is_empty() {
-                        phase_failures.push(format!(
-                            "generated-artifact stage0-mirrors ({} failure(s))",
-                            outcome.failures.len()
-                        ));
-                    }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "required-ci: generated-artifact population=stage0-mirrors REFUSED {e}"
-                    );
-                    phase_failures.push(format!("generated-artifact stage0-mirrors refused: {e}"));
-                }
-            }
+            // MIRROR HALF, AS A CHILD BESIDE THE OTHER TWO. The stage0 regeneration reads the src/v1
+            // universe and writes only its candidate and receipt under target/; the docs and
+            // registry halves below read dag and src/v2 and write nothing, and neither reads the
+            // other. Run in series they made the merge queue's generated job wait for their sum
+            // (merge-queue run 36357621284: regen 13 min, then docs 5.8 and registry 3.1). The
+            // regen is `claim_executor --required-regen` -- the same producer, candidate and
+            // receipt paths -- judged by its exit status once the in-process halves finish, so the
+            // phase still records ONE verdict after all three adjudicators ran, and the
+            // fixed-point phase after it still reads the receipt this child wrote.
+            // The child's argv validation requires the parent's source roots; the
+            // unscoped regeneration reads its own fixed v1 sweep, not these roots.
+            let mut stage0_regen_args: Vec<String> = source_roots
+                .iter()
+                .flat_map(|root| ["--source-root".to_string(), root.clone()])
+                .collect();
+            stage0_regen_args.extend([
+                "--required-regen".to_string(),
+                "--regen-candidate-dir".to_string(),
+                regen_candidate_dir.clone(),
+                "--regen-receipt".to_string(),
+                regen_receipt_path.clone(),
+            ]);
+            let stage0_regen =
+                spawn_required_child("stage0-regen", "claim_executor", &stage0_regen_args);
 
             // DOCS LEDGER HALF. A dedicated ProcessExit entry whose closure is the two ledger
             // renderers, not gunbc.generated_artifact_emit. Run even after a mirror refusal, and
@@ -994,6 +875,17 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 phase_failures.push("generated-artifact (not clean, unnamed cause)".to_string());
             }
+            // The mirror half's verdict, joined after the in-process halves. Production still
+            // precedes adjudication inside the child, so a stale mirror leaves the candidate
+            // needed to repair it.
+            if !finish_required_child(stage0_regen, "stage0-regen") {
+                eprintln!(
+                    "required-ci: generated-artifact population=stage0-mirrors FAIL (the \
+                     regeneration child reported failures above or did not complete)"
+                );
+                phase_failures.push("generated-artifact stage0-mirrors".to_string());
+            }
+
             if phase_failures.len() == failures_before {
                 eprintln!(
                     "required-ci: generated-artifact OK populations=registry-projections,stage0-mirrors"
@@ -1116,16 +1008,42 @@ fn run() -> Result<ExitCode, ExitCode> {
         // The subject is the SAME PRODUCER the cargo board runs
         // (cli_run::compile_entry_emission, which `gunbc compile --entry` also calls), so
         // a green here and an emitting board are one fact rather than two.
+        // THE WHOLE POOL'S BARE-REFERENCE OBLIGATION. An entry resolve judges only the files its
+        // closure reaches; this phase is where every import-less pool file is judged, on every
+        // pull_request and merge_group, so the narrowing an entry run is allowed never becomes a
+        // pool nobody judged. Before the floor, on the index the floor reuses.
+        if required_ci_phase_selected(RequiredCiPhase::BareReferenceAdmission, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase bare-reference-admission (every pool file, one judgment)"
+            );
+            let phase_started = std::time::Instant::now();
+            let judgment =
+                v1_compiler::cli_run::run_required_bare_reference_admission(&source_roots);
+            let phase_wall_ms = phase_started.elapsed().as_millis();
+            match judgment {
+                Ok(coverage) => eprintln!(
+                    "required-ci: bare-reference-admission OK {coverage} wall_ms={phase_wall_ms}"
+                ),
+                Err(e) => {
+                    eprintln!(
+                        "required-ci: bare-reference-admission REFUSED wall_ms={phase_wall_ms} {e}"
+                    );
+                    phase_failures.push(format!("bare-reference-admission refused: {e}"));
+                }
+            }
+            ran.push("bare-reference-admission");
+        }
+
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
+            v1_compiler::cli_run::floor_seam("floor-entry");
             eprintln!("required-ci: phase floor (one prepared subject, one fold)");
             let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
-            // THE PARSE PHASE'S INDEX IS LENT TO THE FLOOR'S PLANNING ROW, the same way the
-            // wave-admission phase reads it: the match-bearing consumers of a coproduct whose
-            // arm set changed are derived from that index and its base-side reconstruction,
-            // never from a second corpus walk. `None` here means the parse refused (the line
-            // is already stopped) and the floor refuses the planning row rather than planning
-            // blind.
+            // THE PARSE PHASE'S INDEX IS LENT TO THE FLOOR'S PLANNING ROW: the match-bearing
+            // consumers of a coproduct whose arm set changed are derived from that index and
+            // its base-side reconstruction, never from a second corpus walk. `None` here means
+            // the parse refused (the line is already stopped) and the floor refuses the
+            // planning row rather than planning blind.
             match v1_compiler::cli_run::run_required_floor(
                 &source_roots,
                 &commit,
@@ -1145,6 +1063,21 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("floor");
+        }
+
+        // THE WHOLE-POOL ADMISSION'S COMPLETION IS THE PRODUCER'S RECORD, NOT THE MARKER. The
+        // ran-set below compares literals this driver pushes; for this phase the evidence that the
+        // judgment happened is what the producer recorded, so a driver that kept the marker and
+        // lost the call refuses here, under this phase's own name.
+        if required_ci_phase_selected(RequiredCiPhase::BareReferenceAdmission, required_ci_lane) {
+            if let Some(failure) =
+                v1_compiler::cli_run::required_bare_reference_admission_completion_failure(
+                    &source_roots,
+                )
+            {
+                eprintln!("required-ci: {failure}");
+                phase_failures.push(failure);
+            }
         }
 
         // THE OBSERVED RAN SET IS THE AUTHORITY-EXPECTED SET, EXACTLY. The census below prints
@@ -1210,26 +1143,17 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("required-ci: FAILED PHASE {failure}");
         }
         if let Some(path) = required_ci_measurement_receipt {
+            // EVERY REPORTED FAILURE MUST REACH THE BLOCKER SET, because the blocker set is
+            // what the exit is derived from below AND what the separate adjudicating consumer
+            // prints. The fold lives in the library beside the admission relation, with its own
+            // controls, because it has now been wrong twice in two different directions and
+            // neither was visible from the process status -- see
+            // `required_ci_measurement::synthesize_phase_blockers`, which states both.
+            //
             // Dissolve this compatibility boundary when every required phase returns its own
             // `Vec<RequiredCiBlocker>`: a human diagnostic must not remain the authority for a
             // blocker's phase and identity.
-            for failure in &phase_failures {
-                if !measurement_blockers
-                    .iter()
-                    .any(|b| b.phase == failure.as_str())
-                    && failure != "floor"
-                {
-                    measurement_blockers.push(RequiredCiBlocker {
-                        phase: failure
-                            .split_whitespace()
-                            .next()
-                            .unwrap_or("unknown")
-                            .to_string(),
-                        identity: "<phase>".to_string(),
-                        cause: failure.clone(),
-                    });
-                }
-            }
+            synthesize_phase_blockers(&phase_failures, &mut measurement_blockers);
             // Reaching this branch means the measurement process returned after running every
             // selected phase. A phase refusal is therefore a completed measurement carrying
             // blockers, never MeasurementUnreached. The latter is sealed by the workflow's
@@ -1241,7 +1165,26 @@ fn run() -> Result<ExitCode, ExitCode> {
                 return Err(ExitCode::from(1));
             }
             eprintln!("required-ci: measurement completed receipt={path}");
-            return Ok(ExitCode::SUCCESS);
+            // THE WRITE IS NOT THE VERDICT. This branch used to return SUCCESS here because the
+            // D0 design published the receipt and let a SEPARATE adjudicating step decide. That
+            // step no longer exists: `gunbc.compiler_gate_workflow`
+            // `compiler_gate_floor_run_step` carries no `continue-on-error` and is followed by
+            // no adjudicator -- "here a refused claim refuses the lane", as its own note says --
+            // while the command it runs still asks for a receipt. So the measuring process is
+            // now the only authority left standing, and it was answering SUCCESS for a phase it
+            // had just refused (runs 35503853026 and 35510547600, both green on a declined
+            // changed-witness observation).
+            //
+            // It adjudicates the FILE it just wrote rather than the value it meant to write, so
+            // the readback, the JSON transport and the version agreement are all inside the
+            // verdict, and it reaches the exit through the same function the separate
+            // `--adjudicate-measurement-receipt` mode uses: one relation, one exit. Restoring
+            // the published/adjudicated split costs nothing here -- a step carrying
+            // `continue-on-error` absorbs this status and its own adjudicator reads the same
+            // receipt to the same verdict.
+            return required_ci_admission_exit(adjudicate_required_ci_measurement_receipt_file(
+                &path,
+            ));
         }
         return if phase_failures.is_empty() {
             Ok(ExitCode::SUCCESS)
@@ -1256,7 +1199,13 @@ fn run() -> Result<ExitCode, ExitCode> {
         } else {
             source_roots.clone()
         };
-        let probe_root = v1_compiler::cli_run::local_emit_compile_probe_root();
+        let probe_root = match v1_compiler::cli_run::local_emit_compile_probe_root() {
+            Ok(root) => root,
+            Err(e) => {
+                eprintln!("required-emit-compile: probe root not created: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
         match v1_compiler::cli_run::run_required_emit_compile(&roots, &probe_root) {
             Ok(outcomes) => {
                 let mut not_passed = 0usize;
@@ -1288,6 +1237,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                 for line in report {
                     eprintln!("{line}");
                 }
+                // The report printed this root and the retention file inside it, so it is kept
+                // for the reader rather than removed with the value.
+                let _ = probe_root.retain();
                 return if not_passed == 0 && retention_error.is_none() {
                     Ok(ExitCode::SUCCESS)
                 } else {
@@ -1310,10 +1262,24 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!(
             "v2-native-route: emitted-native compiler executes the derived v2.test.* universe (operator-invoked; not a required lane)"
         );
-        return match v1_compiler::cli_run::run_required_v2_native(&roots) {
-            Ok(()) => Ok(ExitCode::SUCCESS),
-            Err(e) => {
-                eprintln!("v2-native-route: refused: {e}");
+        // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern -- read from
+        // the ONE seed-side accessor rather than spelled as a literal here, so this caller and the
+        // `gunbc test` verb cannot drift about what the native universe is. A narrower pattern
+        // reaches the same runner through `gunbc test <operand>`.
+        let default_pattern =
+            v1_compiler::cli_run::target_invocation_host::native_route_default_pattern_text();
+        return match v1_compiler::cli_run::run_required_v2_native(&roots, &default_pattern) {
+            v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationHeld { .. } => {
+                Ok(ExitCode::SUCCESS)
+            }
+            v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationRefused {
+                summary, ..
+            } => {
+                eprintln!("v2-native-route: refused: LaneQualificationRefused — {summary}");
+                Err(ExitCode::from(1))
+            }
+            v1_compiler::cli_run::NativeRouteOutcome::Unreached { cause } => {
+                eprintln!("v2-native-route: refused: {cause}");
                 Err(ExitCode::from(1))
             }
         };
@@ -1706,12 +1672,130 @@ impl RequiredCiLane {
     }
 }
 
+// A REQUIRED-CI CHECK RUN AS A CHILD PROCESS BESIDE THE PHASES AROUND IT. Two checks use it: the
+// primitive-runtime-body gate and the stage0 mirror regeneration. Each is already a whole process
+// of its own elsewhere (`gunbc run`, `claim_executor --required-regen`), reads the tree, and is
+// read by no phase that runs while it does, so starting it early and judging it at its phase's
+// place changes when it runs and nothing it decides.
+//
+// Its output goes to a log under target/ rather than to the job's streams, so the lines it prints
+// while other phases run are replayed whole under its own phase header instead of interleaving
+// with theirs. A child still running when the parent unwinds is killed rather than orphaned.
+struct SpawnedRequiredChild {
+    label: &'static str,
+    child: Option<std::process::Child>,
+    log: PathBuf,
+}
+
+impl Drop for SpawnedRequiredChild {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+fn spawn_required_child(
+    label: &'static str,
+    executable: &str,
+    args: &[String],
+) -> Result<SpawnedRequiredChild, String> {
+    let executable = std::env::current_exe()
+        .map(|path| path.with_file_name(executable))
+        .map_err(|error| format!("cannot locate sibling {executable}: {error}"))?;
+    let log_dir = v1_compiler::cli_run::workspace_root().join("target");
+    fs::create_dir_all(&log_dir)
+        .map_err(|error| format!("cannot create {}: {error}", log_dir.display()))?;
+    let log = log_dir.join(format!("required-ci-{label}.log"));
+    let stdout = fs::File::create(&log)
+        .map_err(|error| format!("cannot create {}: {error}", log.display()))?;
+    let stderr = stdout
+        .try_clone()
+        .map_err(|error| format!("cannot share {}: {error}", log.display()))?;
+    let child = std::process::Command::new(&executable)
+        .args(args)
+        .stdout(stdout)
+        .stderr(stderr)
+        .spawn()
+        .map_err(|error| format!("{} did not execute: {error}", executable.display()))?;
+    Ok(SpawnedRequiredChild {
+        label,
+        child: Some(child),
+        log,
+    })
+}
+
+/// Wait for the child, replay its log, and answer whether it exited zero. The exit status is the
+/// verdict; an unreadable log loses the child's diagnostics but not its verdict.
+fn finish_required_child(spawned: Result<SpawnedRequiredChild, String>, label: &str) -> bool {
+    let mut spawned = match spawned {
+        Ok(spawned) => spawned,
+        Err(error) => {
+            eprintln!("{label}: {error}");
+            return false;
+        }
+    };
+    let Some(mut child) = spawned.child.take() else {
+        eprintln!(
+            "{}: the child was already reaped, so no verdict exists",
+            spawned.label
+        );
+        return false;
+    };
+    let status = child.wait();
+    match fs::read_to_string(&spawned.log) {
+        Ok(text) => eprint!("{text}"),
+        Err(error) => eprintln!(
+            "{}: the child's log at {} could not be read ({error}); its exit status below is still the verdict",
+            spawned.label,
+            spawned.log.display()
+        ),
+    }
+    match status {
+        Ok(status) => status.success(),
+        Err(error) => {
+            eprintln!("{}: the child did not complete: {error}", spawned.label);
+            false
+        }
+    }
+}
+
+// Transport only: gunbc returns the .dag ProcessExit, including the permanent control.
+// The witnesses job already builds this sibling binary. Use a child so the extra src/v1
+// preparation and its process-wide caches are released before the ordinary floor starts.
+fn spawn_required_primitive_runtime_body() -> Result<SpawnedRequiredChild, String> {
+    let mut args = vec!["run".to_string()];
+    for root in v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS {
+        args.push("--source-root".to_string());
+        args.push(root.to_string());
+    }
+    // The producer spans v1 and v2. Keep it outside both default floor roots and
+    // the v1-only stage0 regeneration sweep. Its root is enrolled in the shared
+    // parse/declaration universe above so the carrier citation is also checked.
+    args.extend(
+        [
+            "--entry",
+            "test/primitive_runtime_body/producer.dag",
+            "--function",
+            "check",
+        ]
+        .map(String::from),
+    );
+    spawn_required_child("primitive-runtime-body", "gunbc", &args)
+}
+
+fn finish_required_primitive_runtime_body(spawned: Result<SpawnedRequiredChild, String>) -> bool {
+    finish_required_child(spawned, "primitive-runtime-body")
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RequiredCiPhase {
     Parse,
-    NamespaceWaveAdmission,
+    PrimitiveRuntimeBody,
     GeneratedArtifact,
     RegenFixedPoint,
+    BareReferenceAdmission,
     Floor,
 }
 
@@ -1719,9 +1803,10 @@ impl RequiredCiPhase {
     fn name(self) -> &'static str {
         match self {
             RequiredCiPhase::Parse => "parse",
-            RequiredCiPhase::NamespaceWaveAdmission => "namespace-wave-admission",
+            RequiredCiPhase::PrimitiveRuntimeBody => "primitive-runtime-body",
             RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
+            RequiredCiPhase::BareReferenceAdmission => "bare-reference-admission",
             RequiredCiPhase::Floor => "floor",
         }
     }
@@ -1735,11 +1820,11 @@ impl RequiredCiPhase {
             // lane means the cheapest total refusal over the witness corpus arrives from the
             // job that owns that corpus.
             RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
-            // THE WALL CONSUMES THE PARSE THAT PHASE JUST RAN, so it is in the same lane by
-            // necessity and not by preference: its head index IS the sweep's index, and a
-            // lane boundary between them would mean parsing the corpus twice to answer a
-            // question one parse already reached.
-            RequiredCiPhase::NamespaceWaveAdmission => RequiredCiLane::Witnesses,
+            RequiredCiPhase::PrimitiveRuntimeBody => RequiredCiLane::Witnesses,
+            // THE POOL'S BARE-REFERENCE OBLIGATION RIDES WITH THE FLOOR because they share one
+            // subject and one index: the phase judges the whole pool on the process-shared index
+            // the floor then prepares from, so the heads census is read once.
+            RequiredCiPhase::BareReferenceAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
             // THE FIXED POINT RIDES WITH GENERATED-ARTIFACT BY NECESSITY, NOT PREFERENCE. It reads
             // the receipt that phase's stage0-mirror adjudicator wrote at
@@ -1752,19 +1837,24 @@ impl RequiredCiPhase {
     }
 }
 
-// THE REQUIRED GATE IS FIVE PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
+// The runtime-body phase adds a live definition-presence check to the retained roster.
+// The original four phases are the 2026-08-29 compiler-floor bankruptcy roster;
 // generated-artifact returned after its declared exposure produced a real stale projection on
 // main, and now also owns the former regen phase's stage0-mirror population. Keeping two phase
 // identities would preserve the independently-green outcomes this composition removes. The other
 // three removed phases remain outside required CI and inside the declared drop. The v2-native
 // phase (2026-09-09 to 2026-09-11) left required CI by operator ruling — its ~4h wall on every
 // push starved the gating lanes; the route stays reachable as `--v2-native-route` and the drop
-// is gunbc.rung_drop v2_native_route_off_the_merge_path.
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
+// is gunbc.rung_drop v2_native_route_off_the_merge_path. The namespace wave-admission phase
+// (2026-08-26 to 2026-09-19) left by operator ruling 2026-09-19 — its consumed-row bookkeeping
+// refused every merge_group run on a clean floor; the drop is gunbc.rung_drop
+// namespace_wave_admission_wall_removed.
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 6] = [
     RequiredCiPhase::Parse,
-    RequiredCiPhase::NamespaceWaveAdmission,
+    RequiredCiPhase::PrimitiveRuntimeBody,
     RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::RegenFixedPoint,
+    RequiredCiPhase::BareReferenceAdmission,
     RequiredCiPhase::Floor,
 ];
 
@@ -1777,19 +1867,20 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 6] = [
     "ParsePhase",
-    "NamespaceWaveAdmissionPhase",
+    "PrimitiveRuntimeBodyPhase",
     "GeneratedArtifactPhase",
     "RegenFixedPointPhase",
+    "BareReferenceAdmissionPhase",
     "FloorPhase",
 ];
 
-/// Refuse if the host phase enum and the `.dag` phase roster disagree — the same both-directions
-/// variant-set join `namespace_wave_admission::vocabulary_findings` executes against its own
-/// authority, for the same reason: a second representation diverges on the first amendment, and
-/// nothing else joins these two. An absent authority module refuses too — that is the state in
-/// which nothing is checking the roster, not permission to proceed.
+/// Refuse if the host phase enum and the `.dag` phase roster disagree — a both-directions
+/// variant-set join against the authority's own declaration, because a second representation
+/// diverges on the first amendment, and nothing else joins these two. An absent authority module
+/// refuses too — that is the state in which nothing is checking the roster, not permission to
+/// proceed.
 ///
 /// WHAT THIS JOIN DOES NOT COVER: lane ownership. A match arm is not a declaration, so the
 /// index this join reads cannot see which lane owns a phase. That half is joined by evaluation
@@ -1900,93 +1991,6 @@ fn required_ci_phase_selected(phase: RequiredCiPhase, lane: Option<RequiredCiLan
     match lane {
         None => true,
         Some(selected) => phase.lane() == selected,
-    }
-}
-
-/// Print one wave-admission run, and return the phase failure it carries, if any.
-///
-/// EVERY GREEN NAMES ITS DENOMINATORS. A run that admitted nothing because it compared
-/// nothing and a run that compared a corpus and found no motion render identically unless the
-/// population is printed beside the verdict, and rendering them alike is the
-/// execution-provenance loss DESIGN names.
-fn report_wave_admission_outcome(
-    outcome: &v1_compiler::cli_run::namespace_wave_admission::WaveAdmissionOutcome,
-) -> Option<String> {
-    use v1_compiler::cli_run::namespace_wave_admission as nwa;
-    match outcome {
-        nwa::WaveAdmissionOutcome::NoSubject { head } => {
-            eprintln!(
-                "required-ci: namespace-wave-admission NO SUBJECT — the merge base against \
-                 origin/main IS {head}, so this run has no diff to adjudicate. Nothing was \
-                 compared and nothing is admitted."
-            );
-            None
-        }
-        nwa::WaveAdmissionOutcome::NotEvaluated { reason } => {
-            eprintln!("required-ci: namespace-wave-admission NotEvaluated — {reason}");
-            nwa::wave_admission_refusal(outcome)
-        }
-        nwa::WaveAdmissionOutcome::Adjudicated {
-            base,
-            head,
-            report,
-            roster_touched: _,
-        } => {
-            let p = &report.population;
-            eprintln!(
-                "required-ci: namespace-wave-admission base={base} head={head} \
-                 modules_compared={} modules_added={} modules_removed={} \
-                 membership_edges_head={} binding_rows_compared={} closure_rows_moved={} \
-                 deltas={}",
-                p.modules_compared,
-                p.modules_added,
-                p.modules_removed,
-                p.membership_edges_head,
-                p.binding_rows_compared,
-                p.closure_rows_moved,
-                report.deltas.len(),
-            );
-            for delta in &report.deltas {
-                eprintln!(
-                    "required-ci: namespace-wave-admission {}",
-                    nwa::render_delta(delta)
-                );
-            }
-            for stale in &report.stale_admissions {
-                eprintln!("required-ci: namespace-wave-admission STALE ADMISSION {stale}");
-            }
-            for consumed in &report.consumed_admissions {
-                eprintln!("required-ci: namespace-wave-admission CONSUMED ADMISSION {consumed}");
-            }
-            for owed in &report.used_without_follow_up {
-                eprintln!("required-ci: namespace-wave-admission FOLLOW-UP ABSENT {owed}");
-            }
-            for receipt in &report.owned_consumed_receipts {
-                eprintln!(
-                    "required-ci: namespace-wave-admission CONSUMED ROW RECEIPT row={:?} \
-                     owner=gunbc#{} follow_up=gunbc#{} -- follow-up number declared; its \
-                     existence, state, and deletion scope are not established by this run, and \
-                     whether this run refuses is wave_admission_refusal's verdict, not this \
-                     receipt's; no executing route in this repository reads the follow-up's forge \
-                     state",
-                    receipt.label,
-                    receipt.owner_pull_request,
-                    receipt.deletion_follow_up_pull_request
-                );
-            }
-            // THE VERDICT IS THE WALL'S, NOT THE PRINTER'S. This function owns the receipts
-            // because it owns a stderr; `wave_admission_refusal` owns whether the run refuses,
-            // so the arm that decides it can be exercised by a test on the path CI runs rather
-            // than only from inside this binary.
-            let refusal = nwa::wave_admission_refusal(outcome);
-            if refusal.is_none() {
-                eprintln!(
-                    "required-ci: namespace-wave-admission ADMITTED — every delta is \
-                     auto-admitted or named by a transition admission"
-                );
-            }
-            refusal
-        }
     }
 }
 
@@ -2402,7 +2406,24 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(code) => code,
     };
-    emit_worker_terminal_before_return(code)
+    // THE TERMINAL RECEIPT IS EMITTED FIRST, AND THE ORDER IS THE WHOLE POINT OF THESE TWO LINES.
+    // `emit_worker_terminal_before_return` is the worker's fail-closed channel: when the receipt is
+    // absent the parent substitutes "worker returned before producing a walk terminal receipt" and
+    // the real, located detail is gone. The first revision of this change called the instrument
+    // BEFORE it, inserting a ~168-second window -- this PR's own measured figure -- between a
+    // failure and the emission of its receipt, so a worker killed by an outer step cap during
+    // teardown would have downgraded a located failure into the generic no-receipt arm. That window
+    // did not exist when the drops ran after `main` returned, so the instrument would have created
+    // the regression it was added to measure (review 68459; DESIGN section 5, "every path succeeds
+    // fully or fails with a typed, located diagnostic"). Nothing in the instrument reads the
+    // receipt, so emitting first costs nothing.
+    let code = emit_worker_terminal_before_return(code);
+    // THE CORPUS CACHES ARE RELEASED WITH THE PROCESS, NOT FREED ONE NODE AT A TIME. The receipt
+    // above is already out, and nothing reads those caches again; see
+    // `release_process_caches_at_exit` for what it forgets, why that is safe, and the residue it
+    // leaves measured rather than assumed.
+    v1_compiler::cli_run::release_process_caches_at_exit();
+    code
 }
 
 #[cfg(test)]
@@ -2420,11 +2441,18 @@ mod tests {
     fn standing_authority_rows() -> Vec<v1_compiler::cli_run::LanePhaseRow> {
         vec![
             lane_phase_row("witnesses", "parse"),
-            lane_phase_row("witnesses", "namespace-wave-admission"),
+            lane_phase_row("witnesses", "primitive-runtime-body"),
             lane_phase_row("build", "generated-artifact"),
             lane_phase_row("build", "regen-fixed-point"),
             lane_phase_row("witnesses", "floor"),
         ]
+    }
+
+    #[test]
+    fn primitive_runtime_body_phase_executes_the_live_gate() {
+        assert!(finish_required_primitive_runtime_body(
+            spawn_required_primitive_runtime_body()
+        ));
     }
 
     #[test]
@@ -2484,7 +2512,13 @@ mod tests {
             .into_iter()
             .collect()
         );
-        assert_eq!(expected_lane_phases(&rows, None).len(), 5);
+        assert_eq!(
+            expected_lane_phases(&rows, None),
+            REQUIRED_CI_PHASES
+                .iter()
+                .map(|phase| phase.name().to_string())
+                .collect()
+        );
     }
 
     #[test]

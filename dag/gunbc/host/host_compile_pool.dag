@@ -2,7 +2,7 @@ module gunbc.host_compile_pool
 
 import std.types { String, NonEmptyStr, Bool }
 import std.measure { ByteSize, byte_size_count }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import gunbc.build_cache_instance { CgroupMemoryLimits, EndpointObservationUnavailableReason, unavailable_reason_detail }
 import gunbc.host_layout {
   CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
@@ -14,7 +14,7 @@ import gunbc.fleet_host_budget {
 import gunbc.runner_activation { HostCompilePoolReady }
 import product.placement_supply { HostIdentity }
 
-data host_compile_pool_scope_disposition: Disposition = SingleAuthority
+data host_compile_pool_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // THE PRODUCER FOR HostCompilePoolReady, AND DELIBERATELY NOT A SECOND COMPILE-POOL MODEL.
 // Everything about how large the pool is and where compile RSS is charged already has an authority:

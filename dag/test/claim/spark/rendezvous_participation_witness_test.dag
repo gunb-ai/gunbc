@@ -1,0 +1,201 @@
+module test.claim.spark.rendezvous_participation_witness
+
+import std.types { String, Bool, NonEmptyStr, Int }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import extdeps.systemd.unit_file {
+  SystemdServiceMode, SimpleMode, ExecMode, ForkingMode, OneshotMode, DbusMode, NotifyMode,
+  NotifyReloadMode, IdleMode,
+  ActiveStateEstablishes, ExecStarted, ExecCompleted, ServiceAnnouncedReady,
+  ReadinessEstablishedByService, ReadinessNotEstablished,
+  systemd_active_state_establishes, systemd_readiness_from_active_state, systemd_service_mode_wire,
+}
+import gunbc.spark.rendezvous_participation {
+  RendezvousEpoch, rendezvous_epoch,
+  DeclaredRankRendezvousReach, DeclaredRankHostConnected, DeclaredRankHostNotConnected, DeclaredRankHostReachUnread,
+  ServingGroupRendezvousReach, GroupHostsAllConnected, GroupHostsNotAllConnected, GroupRendezvousReachUnobserved,
+  ArmLivenessBasis, LivenessFromServiceAnnouncement, LivenessNeedsIndependentReading,
+  ArmRecoveryPosture, SelfHealingOnFault, ConvergeRecovered, ConvergeRecoveredUnnoticed,
+  arm_liveness_basis, arm_recovery_is_noticed, glm_native_arm_recovery_posture,
+  declared_rank_host_is_connected, serving_group_rendezvous_reach_line,
+}
+import gunbc.spark.serving_group_launch { serving_group_rendezvous }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import extdeps.iproute2.ss { ss_established_to_peer_argv, ss_enumeration_line_count }
+
+// THE CLASS UNDER TEST IS `A SUPERVISOR'S LIVENESS READING CONSUMED AS PARTICIPATION`, and it is
+// tested here rather than at the serving route because the discriminating fact is a pure function of
+// the declared unit type. Every assertion below is authorable red: the readiness fold could have
+// answered "established" for a simple unit, the group fold could have returned a yes on a partial
+// roster, and the recovery row could have carried no noticer. Each of those was the shape the corpus
+// actually had before this change.
+
+data t_host_a: HostIdentity = "srv9" as HostIdentity
+data t_host_b: HostIdentity = "srv10" as HostIdentity
+data t_peer: NonEmptyStr = "192.168.110.17:29501" as NonEmptyStr
+
+fn t_epoch() -> RendezvousEpoch {
+  rendezvous_epoch(head: t_host_a, head_invocation: "de1a7e0c" as NonEmptyStr, master_endpoint: t_peer)
+}
+
+// A Type=simple UNIT'S ACTIVE STATE CANNOT ESTABLISH READINESS, which is the whole category error.
+// The four modes systemd starts on exec must all refuse, and the three that carry a statement from
+// the service must all pass -- asserting only the one mode group B happens to use would leave the
+// fold free to be wrong about the rest.
+test fn only_the_announcing_modes_establish_readiness_from_active_state() -> Bool {
+  let refused = [SimpleMode, ExecMode, ForkingMode, IdleMode, OneshotMode]
+  let established = [DbusMode, NotifyMode, NotifyReloadMode]
+  all(refused, m => match systemd_readiness_from_active_state(mode: m) {
+        ReadinessEstablishedByService => false
+        ReadinessNotEstablished { mode: w, establishes: _ } => (w as String) == (systemd_service_mode_wire(mode: m) as String)
+      })
+    && all(established, m => match systemd_readiness_from_active_state(mode: m) {
+        ReadinessEstablishedByService => true
+        ReadinessNotEstablished { mode: _, establishes: _ } => false
+      })
+}
+
+// THE THREE FACTS STAY THREE. oneshot establishes completion rather than a started exec, and
+// collapsing it into the simple group would lose the distinction the type exists to carry.
+test fn oneshot_establishes_completion_and_simple_establishes_only_a_started_exec() -> Bool {
+  (match systemd_active_state_establishes(mode: OneshotMode) {
+      ExecCompleted => true
+      ExecStarted => false
+      ServiceAnnouncedReady => false
+    })
+    && (match systemd_active_state_establishes(mode: SimpleMode) {
+      ExecStarted => true
+      ExecCompleted => false
+      ServiceAnnouncedReady => false
+    })
+    && (match systemd_active_state_establishes(mode: NotifyMode) {
+      ServiceAnnouncedReady => true
+      ExecStarted => false
+      ExecCompleted => false
+    })
+}
+
+// THE MODE IS WHY AN INDEPENDENT READING IS OWED, and the refusal names it. A reader handed
+// LivenessNeedsIndependentReading learns which mode forced it, which is what makes the next move
+// (observe participation, or climb the unit to Type=notify) decidable rather than a guess.
+test fn a_simple_unit_owes_an_independent_reading_and_the_cause_names_the_mode() -> Bool {
+  (match arm_liveness_basis(mode: SimpleMode) {
+      LivenessFromServiceAnnouncement => false
+      LivenessNeedsIndependentReading { because: b } =>
+        contains(b as String, "Type=simple") && contains(b as String, "not that the service is participating")
+    })
+    && (match arm_liveness_basis(mode: NotifyMode) {
+      LivenessFromServiceAnnouncement => true
+      LivenessNeedsIndependentReading { because: _ } => false
+    })
+}
+
+// A PARTIAL ROSTER IS NOT A WEAKER YES. This is the live failure in fold form: one attached rank and
+// three detached ones is the exact state that held for most of an hour on 2026-09-16, and the fold
+// must produce the adrift arm naming those three rather than a yes with a caveat.
+test fn one_attached_rank_out_of_four_is_adrift_and_not_a_yes() -> Bool {
+  let readings = [
+    DeclaredRankHostConnected { host: t_host_a, declared_rank: 0, connections: 1 },
+    DeclaredRankHostNotConnected { host: t_host_b, declared_rank: 1, peer: t_peer },
+    DeclaredRankHostNotConnected { host: "srv11" as HostIdentity, declared_rank: 2, peer: t_peer },
+    DeclaredRankHostNotConnected { host: "srv12" as HostIdentity, declared_rank: 3, peer: t_peer },
+  ]
+  let adrift = filter(readings, p => declared_rank_host_is_connected(p: p) == false)
+  length(adrift) == 3
+    && (match t_adrift_verdict(readings: readings) {
+      GroupHostsAllConnected { epoch: _, ranks: _ } => false
+      GroupRendezvousReachUnobserved { cause: _ } => false
+      GroupHostsNotAllConnected { epoch: _, adrift: ds, attached: a, expected: x } =>
+        length(ds) == 3 && a == 1 && x == 4
+    })
+}
+
+// AN UNREADABLE RANK COUNTS AS NOT ESTABLISHED, which is the fail-closed direction. The tempting arm
+// is to treat an ssh failure as "probably fine" and keep the roster green; that is the absorbing
+// fallback, and it would hide exactly the case where the host is gone.
+test fn a_rank_whose_reading_refused_is_not_counted_as_attached() -> Bool {
+  declared_rank_host_is_connected(p: DeclaredRankHostReachUnread { host: t_host_b, declared_rank: 1, cause: "ssh refused" }) == false
+    && declared_rank_host_is_connected(p: DeclaredRankHostNotConnected { host: t_host_b, declared_rank: 1, peer: t_peer }) == false
+    && declared_rank_host_is_connected(p: DeclaredRankHostConnected { host: t_host_b, declared_rank: 1, connections: 2 })
+}
+
+// THE FOLD IS RE-DERIVED HERE RATHER THAN CALLED, because serving_group_rendezvous_reach takes an ssh
+// context and this claim is about the JOIN, not about the legs. The inhabitance obligation that the
+// real legs produce these readings is discharged by the executing serving path, which reads them on
+// every harness bind -- and by the ss argv assertion below, which pins the exact command that ran.
+fn t_adrift_verdict(readings: List<DeclaredRankRendezvousReach>) -> ServingGroupRendezvousReach {
+  let adrift = filter(readings, p => declared_rank_host_is_connected(p: p) == false)
+  if length(adrift) == 0 {
+    GroupHostsAllConnected { epoch: t_epoch(), ranks: readings }
+  } else {
+    GroupHostsNotAllConnected {
+      epoch: t_epoch(),
+      adrift: adrift,
+      attached: length(filter(readings, p => declared_rank_host_is_connected(p: p))),
+      expected: length(readings),
+    }
+  }
+}
+
+// THE DIAGNOSIS NAMES THE EPOCH AND THE HOSTS, not a count. An operator reading this line can act on
+// it; "3 ranks adrift" cannot be acted on without a second lookup.
+test fn the_adrift_line_names_the_epoch_and_every_detached_host() -> Bool {
+  let line = serving_group_rendezvous_reach_line(p: t_adrift_verdict(readings: [
+    DeclaredRankHostConnected { host: t_host_a, declared_rank: 0, connections: 1 },
+    DeclaredRankHostNotConnected { host: t_host_b, declared_rank: 1, peer: t_peer },
+  ]))
+  contains(line, "de1a7e0c") && contains(line, "192.168.110.17:29501") && contains(line, "srv10")
+}
+
+// THE ARGV IS THE ARGV THAT RAN. The query below was executed against srv10 and srv9 on 2026-09-16
+// before it was modeled: exit 0 with no lines on the detached rank, exit 0 with one line on the head.
+// Pinning the flags matters because dropping `state established` would count listening sockets and
+// dropping the port from the peer would count an ssh session as participation.
+test fn the_participation_query_asks_for_established_connections_to_the_exact_peer() -> Bool {
+  let argv = ss_established_to_peer_argv(peer: t_peer)
+  argv.length() == 8
+    && argv.first() == "/usr/bin/ss"
+    && any(argv, a => a == "-H")
+    && any(argv, a => a == "state")
+    && any(argv, a => a == "established")
+    && argv.skip(n: 7).first() == (t_peer as String)
+}
+
+// AN EMPTY COMPLETED ENUMERATION IS ZERO, NOT A REFUSAL. This is the boundary the head/rank pair
+// demonstrated live, and it is the one a line counter gets wrong by counting the empty string as a line.
+test fn an_empty_enumeration_counts_zero_and_a_single_line_counts_one() -> Bool {
+  ss_enumeration_line_count(stdout: "") == 0
+    && ss_enumeration_line_count(stdout: "\n") == 0
+    && ss_enumeration_line_count(stdout: "0 0 [::ffff:192.168.110.17]:40286 [::ffff:192.168.110.17]:29501\n") == 1
+    && ss_enumeration_line_count(stdout: "a\nb\n") == 2
+}
+
+// THE ARM DECLARES HOW IT RECOVERS AND NAMES WHO NOTICES. The unnoticed arm exists so that state is
+// representable -- it was the true state until this change -- and the production row must not be in
+// it. A row that recovered only by converge with nobody watching is silently broken between the
+// fault and whenever a person happens to look, which is what happened.
+test fn the_native_arms_recovery_posture_is_declared_and_has_a_noticer() -> Bool {
+  arm_recovery_is_noticed(posture: glm_native_arm_recovery_posture)
+    && (match glm_native_arm_recovery_posture {
+      SelfHealingOnFault { because: _ } => false
+      ConvergeRecoveredUnnoticed { obligation: _ } => false
+      ConvergeRecovered { noticer: n, converge_entry: e } =>
+        contains(n as String, "serving_group_rendezvous_reach") && contains(e as String, "native_serving_apply")
+    })
+    && arm_recovery_is_noticed(posture: ConvergeRecoveredUnnoticed { obligation: "nobody" as NonEmptyStr }) == false
+}
+
+// ONLY THE ARM WITH A MODELED RENDEZVOUS CARRIES A ROSTER, and group A's `none` is UNASKED rather
+// than intact. Asserting both directions is what keeps a later edit from quietly giving group A a
+// TCPStore roster it does not have, or dropping group B's.
+test fn the_rendezvous_roster_is_group_bs_and_group_a_has_none() -> Bool {
+  (match serving_group_rendezvous(group: FabricGroupA) {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && (match serving_group_rendezvous(group: FabricGroupB) {
+      Absent => false
+      Present { value: r } => r.ranked_hosts.length() == 4 && contains(r.master_endpoint as String, ":29501")
+    })
+}

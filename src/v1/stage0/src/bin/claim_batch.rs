@@ -844,6 +844,30 @@ fn run() -> Result<ExitCode, ExitCode> {
     // consumer rather than to policy installation order.
     let index = process_shared_index(&source_roots);
 
+    // THE ENTRY ROUTE'S HALF OF THE UNIMPORTED-BARE-PROVIDER RULE, the same judgment the floor
+    // applies to a touched file (`v2.workflow.floor_unimported_bare_provider_debt`): a file that
+    // declares imports and bare-references a declaration outside its import closure refuses HERE,
+    // at the file and naming the import to add, rather than later as a registry-row error at every
+    // call site. Rostered debt is admitted on both routes alike.
+    let entry_paths: Vec<String> = entry_groups.iter().map(|g| g.entry.clone()).collect();
+    match v1_compiler::cli_run::unimported_bare_provider_entry_refusals(
+        &index,
+        &source_roots,
+        &entry_paths,
+    ) {
+        Ok(refusals) if refusals.is_empty() => {}
+        Ok(refusals) => {
+            for r in &refusals {
+                eprintln!("claim_batch: {r}");
+            }
+            return Err(ExitCode::from(1));
+        }
+        Err(e) => {
+            eprintln!("claim_batch: unimported-bare-provider check failed: {e}");
+            return Err(ExitCode::from(1));
+        }
+    }
+
     let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(&source_roots) {
         Ok(keys) => {
             emit_rss_measurement("post-mock-precompute-rss");

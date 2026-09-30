@@ -5,7 +5,6 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.body_lowering_fold {
-  body_lower_fn_decl_ident_from_captured,
   body_lower_try_infix_transform,
   body_lower_unwrap_captured
 }
@@ -18,11 +17,13 @@ import v2.extdeps.languages.dag {
   dag_canonical_literal_from_node,
   dag_language_model,
   dag_node_is_fn_decl,
+  dag_surface_kw_then_ident_from_captured,
   parse_subtree_find_production_captured
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import v2.std.algebra { count_where, Empty, length, list_append }
+import v2.std.algebra { count_where, Empty, length }
+import std.algebra { list_append }
 import v2.std.collection { List, list_at_optional }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
@@ -448,7 +449,7 @@ fn vacuity_fn_decl_name_optional(fn_decl: Node) -> Symbol? {
   match body_lower_unwrap_captured(shell: fn_decl) {
     Absent => optional_absent()
     Present { value: captured } =>
-      body_lower_fn_decl_ident_from_captured(captured: captured)
+      dag_surface_kw_then_ident_from_captured(captured: captured)
   }
 }
 
@@ -556,9 +557,10 @@ fn vacuity_bool_witness_fn_body_evidence(fn_decl: Node) -> VacuityEvidence {
         Present { value: stmt_seq } =>
           if vacuity_stmt_seq_is_single_statement(stmt_seq: stmt_seq) {
             match body_lower_try_infix_transform(node: stmt_seq) {
-              Absent => Unknown
-              Present { value: transform } =>
+              Accepted { value: Present { value: transform }, diagnostics: _ } =>
                 vacuity_bool_witness_body_evidence(transform: transform)
+              Accepted { value: Absent, diagnostics: _ } => Unknown
+              Rejected { diagnostics: _ } => Unknown
             }
           } else {
             Unknown

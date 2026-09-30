@@ -25,7 +25,6 @@ module gunbc.instruments.scm_write_spine_canary
 import std.types { String, NonEmptyStr, Int, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count, CasUnreadableObservationBoundExceeded }
-import gunbc.durable_cas_file_store { cas_max_generation_probe }
 import gunbc.scm.repository_slot {
   RepositorySlot, LoadedRepositoryGeneration,
   RepositoryPublication, RepositoryPublished,

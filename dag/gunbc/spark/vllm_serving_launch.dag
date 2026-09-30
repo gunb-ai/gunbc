@@ -224,14 +224,22 @@ data serving_launch_join_consumer_frontier: DissolutionCondition = unbound_disso
 // named -- an observation binding the answering endpoint to a VllmServingLaunch incarnation,
 // SUFFICIENT FOR gunbc.harness.harness_seat harness_serving_realization to carry
 // EndpointIncarnationObserved -- has landed.
+// THE OBSERVATION ALSO CARRIES THE ANSWERING CONTAINER'S EFFECTIVE ENVIRONMENT. The inspect leg
+// that binds the image digest returns the whole object under the same grant, and Config.Env is the
+// one further field with a declared consumer: the serving route's telemetry standing can only be
+// discharged by a reading of the environment of the container that ANSWERED, bound to this launch
+// (gunbc.spark.first_party_serving spark_serving_usage_stats_declared_environment_obligation). The
+// assignments are opaque NAME=value strings here; what any of them MEANS is the consumer's cited
+// reading, not this type's.
 type EndpointIncarnationObservation sole_constructor {
   endpoint: VllmEndpointProcessLaunch
   launch: VllmServingLaunch
+  container_env: List<String>
   receipt: ObservationReceiptRef
 }
 
-fn endpoint_incarnation_observation(endpoint: VllmEndpointProcessLaunch, launch: VllmServingLaunch, receipt: ObservationReceiptRef) -> EndpointIncarnationObservation {
-  EndpointIncarnationObservation { endpoint: endpoint, launch: launch, receipt: receipt }
+fn endpoint_incarnation_observation(endpoint: VllmEndpointProcessLaunch, launch: VllmServingLaunch, container_env: List<String>, receipt: ObservationReceiptRef) -> EndpointIncarnationObservation {
+  EndpointIncarnationObservation { endpoint: endpoint, launch: launch, container_env: container_env, receipt: receipt }
 }
 
 type EndpointIncarnationStanding

@@ -20,7 +20,7 @@ import gunbc.fleet_intent { srv1_host }
 import std.realization_reconcile { NotConverged }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
-import extdeps.apt { apt_installed_bin_path }
+import extdeps.apt { apt_installed_bin_path, apt_bin_dir }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import v2.std.optional { Present, Absent }
 
@@ -76,7 +76,7 @@ test fn shell_test_is_executable_argv_shapes_a_test_dash_x_invocation() -> Bool 
 
 test fn fleet_ssh_apt_tool_presence_argv_is_portable() -> Bool {
   match portable_remote_words(
-    raws: shell_test_is_executable_argv(path: apt_installed_bin_path(binary: "sshpass" as NonEmptyStr)),
+    raws: shell_test_is_executable_argv(path: apt_installed_bin_path(bin_dir: apt_bin_dir, binary: "sshpass" as NonEmptyStr)),
   ) {
     Present { value: _ } => true
     Absent => false

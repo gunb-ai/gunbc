@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { MemoryControllerCount, memory_controller_count, memory_controller_count_value }
 import v2.std.optional { Absent, Present }
 import std.string_type { String }
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, Unit }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

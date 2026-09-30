@@ -1,0 +1,35 @@
+module gunbc.rung_drop.admit_callers_discarded_on_the_native_route
+
+import std.types { List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-09-22 (Pkg11b batch 2, ruling via neat-boar-16). `admit_callers: [decl_ref(..)]`
+// on a fn names the only declarations allowed to call it; the seed parses it as a property of the
+// fn node (v1.compiler.parse parse_optional_admit_callers). The native front end now parses the
+// clause (v2.extdeps.languages.dag dag_grammar_admit_callers_clause_expr) and DISCARDS it when the
+// fn lowers to an Arrow, so caller admission is not enforced on the native route. It is not carried
+// on the Arrow because nothing would read it: v2.std.node arrow_signature_edges_conform admits only
+// arrow_body_edge, and widening a load-bearing substrate type for an edge with no consumer would be
+// a dangling declaration. The stage that checks caller admission adds that carrier with its consumer.
+// The empty-list refusal (`admit_callers: []`) is kept.
+
+data admit_callers_discarded_on_the_native_route_population: List<String> = [
+  "the native lane (std.compiler_entry SourceRootEvalDriver) -- every fn declaring admit_callers, the clause parsed and discarded at fn lowering",
+]
+
+data admit_callers_discarded_on_the_native_route: RungDrop = RungDrop {
+  identity: "admit_callers_discarded_on_the_native_route" as NonEmptyStr,
+  subject: "native route enforces admit_callers: a call from a declaration outside a fn's admitted caller list refuses",
+  declared: "2026-09-22",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "a v2 stage checks caller admission; that stage adds the Arrow carrier with its consumer"
+    },
+    population: admit_callers_discarded_on_the_native_route_population,
+    restoration_trigger: "a v2 stage checks caller admission on the native route from the fn's declared admit_callers list, refusing a call from a declaration outside it; that stage adds the Arrow carrier together with its consumer. Parsing the clause, or carrying the list with nothing reading it, does not retire this row."
+  }
+}

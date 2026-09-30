@@ -1,5 +1,6 @@
 module v2.test.manual.go_language_model_anchor
 
+import v2.extdeps.languages.go { go_language_model, go_int_inhabitant_node }
 
 type go_anchor_language_model = LanguageModel
 

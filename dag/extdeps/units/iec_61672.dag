@@ -46,6 +46,26 @@ fn dba_tenths(level: AWeightedSoundPressureLevel) -> Int {
   level.tenths_dba
 }
 
+// A DIFFERENCE OF LEVELS IS NOT A LEVEL, which the block above already states as the reason no
+// arithmetic is offered on the level type. This is the other half of that statement, added when a
+// consumer needed to report HOW FAR over a ceiling a reading sat and had nowhere to put the answer
+// but a bare Int with the unit spelled into the field name.
+//
+// The split is affine and it is not pedantry. Adding two levels is meaningless; SUBTRACTING two is
+// perfectly meaningful and yields a decibel difference, which may then be added to a level to get a
+// level. So the difference type exists, subtraction of levels produces it, and there is deliberately
+// no way to construct a LEVEL from one - that would be the operation that lets a caller treat "6 dB
+// over" as though it were "6 dBA".
+type AWeightedLevelDifference { tenths_dba: Int }
+
+fn dba_level_minus(a: AWeightedSoundPressureLevel, b: AWeightedSoundPressureLevel) -> AWeightedLevelDifference {
+  AWeightedLevelDifference { tenths_dba: a.tenths_dba - b.tenths_dba }
+}
+
+fn dba_difference_tenths(d: AWeightedLevelDifference) -> Int {
+  d.tenths_dba
+}
+
 fn dba_le(a: AWeightedSoundPressureLevel, b: AWeightedSoundPressureLevel) -> Bool {
   a.tenths_dba <= b.tenths_dba
 }

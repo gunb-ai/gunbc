@@ -1,5 +1,6 @@
 module gunbc.host_identity_knob
 
+import product.placement_supply { HostIdentity }
 
 type HostIdentityHostnameField
   = HostnameShort

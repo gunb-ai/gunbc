@@ -4,7 +4,7 @@ import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, content_hash_equal }
 import extdeps.uri { Uri }
 import extdeps.crypto.mac { MacKeyId }
 import extdeps.toolchain.types { Architecture, Aarch64 }
@@ -20,7 +20,7 @@ import extdeps.provisioning.dhcp_client_arch {
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, DhcpBootDirection, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
 import product.placement_supply { SiteIdentity, site_identity_eq }
 import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
-import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
+import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
 
 // THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3,
 // namespace ruling). Its four evidence axes have independent producers — client firmware mode,

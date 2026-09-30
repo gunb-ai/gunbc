@@ -29,7 +29,7 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
 pub fn go_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
-            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "int64", "grounding_type": "int64", "default_expr": "0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Float", "target_type": "float64", "grounding_type": "float64", "default_expr": "0.0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "grounding_type": "bool", "default_expr": "false", "is_copy": null, "literal_suffix": null}, {"dag_name": "Unit", "target_type": "struct{}", "grounding_type": "struct{}", "default_expr": "struct{}{}", "is_copy": null, "literal_suffix": null}, {"dag_name": "String", "target_type": "string", "grounding_type": "string", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bytes", "target_type": "[]byte", "grounding_type": "[]byte", "default_expr": "nil", "is_copy": null, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "string", "grounding_type": "string", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Json", "target_type": "interface{}", "grounding_type": "interface{}", "default_expr": "nil", "is_copy": null, "literal_suffix": null}]))
+            serde_json::from_str("[{\"dag_name\": \"Int\", \"target_type\": \"int64\", \"grounding_type\": \"int64\", \"default_expr\": \"0\", \"is_copy\": null, \"literal_suffix\": null}, {\"dag_name\": \"Float\", \"target_type\": \"float64\", \"grounding_type\": \"float64\", \"default_expr\": \"0.0\", \"is_copy\": null, \"literal_suffix\": null}, {\"dag_name\": \"Bool\", \"target_type\": \"bool\", \"grounding_type\": \"bool\", \"default_expr\": \"false\", \"is_copy\": null, \"literal_suffix\": null}, {\"dag_name\": \"Unit\", \"target_type\": \"struct{}\", \"grounding_type\": \"struct{}\", \"default_expr\": \"struct{}{}\", \"is_copy\": null, \"literal_suffix\": null}, {\"dag_name\": \"String\", \"target_type\": \"string\", \"grounding_type\": \"string\", \"default_expr\": \"\\\"\\\"\", \"is_copy\": null, \"literal_suffix\": null}, {\"dag_name\": \"Bytes\", \"target_type\": \"[]byte\", \"grounding_type\": \"[]byte\", \"default_expr\": \"nil\", \"is_copy\": null, \"literal_suffix\": null}, {\"dag_name\": \"Secret\", \"target_type\": \"string\", \"grounding_type\": \"string\", \"default_expr\": \"\\\"\\\"\", \"is_copy\": null, \"literal_suffix\": null}, {\"dag_name\": \"Json\", \"target_type\": \"interface{}\", \"grounding_type\": \"interface{}\", \"default_expr\": \"nil\", \"is_copy\": null, \"literal_suffix\": null}]")
                 .expect("valid data definition")
         };
     }
@@ -39,7 +39,7 @@ pub fn go_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
 pub fn go_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<InhabitantDecl>>> = {
-            serde_json::from_value(serde_json::json!([{"algebra": "FreeMonoid", "template": "[]{0}", "arity": 1, "identity_expr": "nil", "import_path": null, "is_copy": null}, {"algebra": "FinitePowerSet", "template": "map[{0}]struct{}", "arity": 1, "identity_expr": "nil", "import_path": null, "is_copy": null}, {"algebra": "PartialFunction", "template": "map[{0}]{1}", "arity": 2, "identity_expr": "nil", "import_path": null, "is_copy": null}, {"algebra": "FinitelySupportedFunction", "template": "map[{0}]{1}", "arity": 2, "identity_expr": "nil", "import_path": null, "is_copy": null}, {"algebra": "OrderedRing", "template": "int64", "arity": 0, "identity_expr": "0", "import_path": null, "is_copy": null}, {"algebra": "ApproximateField", "template": "float64", "arity": 0, "identity_expr": "0.0", "import_path": null, "is_copy": null}]))
+            serde_json::from_str("[{\"algebra\": \"FreeMonoid\", \"template\": \"[]{0}\", \"arity\": 1, \"identity_expr\": \"nil\", \"import_path\": null, \"is_copy\": null}, {\"algebra\": \"FinitePowerSet\", \"template\": \"map[{0}]struct{}\", \"arity\": 1, \"identity_expr\": \"nil\", \"import_path\": null, \"is_copy\": null}, {\"algebra\": \"PartialFunction\", \"template\": \"map[{0}]{1}\", \"arity\": 2, \"identity_expr\": \"nil\", \"import_path\": null, \"is_copy\": null}, {\"algebra\": \"FinitelySupportedFunction\", \"template\": \"map[{0}]{1}\", \"arity\": 2, \"identity_expr\": \"nil\", \"import_path\": null, \"is_copy\": null}, {\"algebra\": \"OrderedRing\", \"template\": \"int64\", \"arity\": 0, \"identity_expr\": \"0\", \"import_path\": null, \"is_copy\": null}, {\"algebra\": \"ApproximateField\", \"template\": \"float64\", \"arity\": 0, \"identity_expr\": \"0.0\", \"import_path\": null, \"is_copy\": null}]")
                 .expect("valid data definition")
         };
     }
@@ -49,7 +49,7 @@ pub fn go_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
 pub fn go_callable() -> Rc<CallableRepr> {
     thread_local! {
         static CACHED: Rc<CallableRepr> = {
-            serde_json::from_value(serde_json::json!({"template": "func({params}) {return}", "param_separator": ", ", "return_separator": " ", "import_path": null}))
+            serde_json::from_str("{\"template\": \"func({params}) {return}\", \"param_separator\": \", \", \"return_separator\": \" \", \"import_path\": null}")
                 .expect("valid data definition")
         };
     }
@@ -162,7 +162,7 @@ pub fn type_conversion_template() -> String {
 pub fn go_cast_syntax() -> Rc<CastSyntax> {
     thread_local! {
         static CACHED: Rc<CastSyntax> = {
-            serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "cast_rules": [{"from_type": "int64", "to_type": "int64"}, {"from_type": "int64", "to_type": "float64"}, {"from_type": "float64", "to_type": "int64"}, {"from_type": "float64", "to_type": "float64"}, {"from_type": "string", "to_type": "[]byte"}, {"from_type": "[]byte", "to_type": "string"}]}))
+            serde_json::from_str("{\"template\": \"{type}({expr})\", \"cast_rules\": [{\"from_type\": \"int64\", \"to_type\": \"int64\"}, {\"from_type\": \"int64\", \"to_type\": \"float64\"}, {\"from_type\": \"float64\", \"to_type\": \"int64\"}, {\"from_type\": \"float64\", \"to_type\": \"float64\"}, {\"from_type\": \"string\", \"to_type\": \"[]byte\"}, {\"from_type\": \"[]byte\", \"to_type\": \"string\"}]}")
                 .expect("valid data definition")
         };
     }

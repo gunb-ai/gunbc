@@ -3,11 +3,9 @@ module v2.extdeps.languages.bash
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_right, list_flat_map, list_map }
-import v2.std.grammar {
+import v2.std.grammar { derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
-  derive_grammar_relation_row_node,
-  formal_production_for_lhs_exact,
   grammar_formal_production,
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
@@ -27,7 +25,7 @@ import v2.std.compilers.target_model {
   EmitSpellingQuote,
   EmitSpellingWrap,
   TokenClassEmitTransform,
-  apply_emit_spelling_transform,
+  apply_emit_spelling_quote,
   ConcreteSyntaxToken,
   FixedToken,
   TargetModel,
@@ -114,19 +112,7 @@ fn bash_lhs_exact_relation_row_witness(
 ) -> Witness<Node> {
   let production = bash_formal_production_from_fixture(lhs: lhs, tokens: tokens)
   let productions = [production]
-  match formal_production_for_lhs_exact(
-    productions: productions,
-    lhs: lhs,
-    child: emitted
-  ) {
-    Holds { value: selected } =>
-      derive_grammar_relation_row_node(
-        production: selected,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 fn bash_empty_translation_rules_node() -> Node {
@@ -249,11 +235,6 @@ fn bash_concrete_tokens() -> List<ConcreteSyntaxToken> {
 data bash_emitted_command: Node = bash_conj_emitted_from_tokens(
   tokens: bash_concrete_tokens()
 )
-
-fn bash_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-
-  concrete_syntax_token_to_node(token: token)
-}
 
 fn bash_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
@@ -717,21 +698,23 @@ fn bash_binding_spellings() -> Map<Symbol, String> {
 // extdeps.posix.shell_command_language and this transform row derives from them rather than
 // re-spelling the encoding here.
 
+fn bash_posix_single_quote_escapes() -> List<EmitSpellingEscape> {
+  [EmitSpellingEscape { from: chars(s: posix_single_quote_delimiter), to: chars(s: posix_single_quote_escape_encoding) }]
+}
+
 fn bash_posix_single_quote_transform(prefix: String) -> TokenClassEmitTransform {
   EmitSpellingQuote {
     prefix: prefix,
     open: posix_single_quote_delimiter,
     close: posix_single_quote_delimiter,
-    escapes: [
-      EmitSpellingEscape { from: chars(s: posix_single_quote_delimiter), to: chars(s: posix_single_quote_escape_encoding) }
-    ]
+    escapes: bash_posix_single_quote_escapes()
   }
 }
 
 // Derived from the same transform row the emit map carries, so the directive text builders and
 // the token-class rendering cannot disagree on the encoding.
 fn bash_single_quote_spaced(spelling: String) -> String {
-  apply_emit_spelling_transform(transform: bash_posix_single_quote_transform(prefix: " "), spelling: spelling)
+  apply_emit_spelling_quote(prefix: " ", open: posix_single_quote_delimiter, close: posix_single_quote_delimiter, escapes: bash_posix_single_quote_escapes(), spelling: spelling)
 }
 
 fn bash_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
@@ -740,94 +723,32 @@ fn bash_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   map_insert(m1, ^bash_token_var_ref, EmitSpellingWrap { prefix: "\"$", suffix: "\"" })
 }
 
-fn bash_serialize_source_node(
-  source_text_binding: Symbol,
-  production_binding: Symbol,
-  tokens: List<ConcreteSyntaxToken>
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^serialize_source_field_source_text,
-        target: bash_word_atom(id: source_text_binding)
-      ),
-      bash_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: bash_word_atom(id: production_binding)
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: tokens,
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
-fn bash_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
+fn bash_target_model_bundle(rules: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       bash_named_edge(
         name: ^target_model_edge_translation_rules,
         target: rules
-      ),
-      bash_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: serialize_source
       )
     ],
     occurrence_id: OccurrenceSynthetic
   }
 }
 
-fn bash_add_serialize_source_node() -> Node {
-  bash_serialize_source_node(
-    source_text_binding: ^bash_source_literal,
-    production_binding: ^bash_production_command,
-    tokens: bash_concrete_tokens()
-  )
-}
-
-fn bash_bound_words_serialize_source_node() -> Node {
-  bash_serialize_source_node(
-    source_text_binding: ^bash_bound_words_source_literal,
-    production_binding: ^bash_production_bound_words,
-    tokens: bash_bound_words_concrete_tokens()
-  )
-}
-
-fn bash_embedded_quote_serialize_source_node() -> Node {
-  bash_serialize_source_node(
-    source_text_binding: ^bash_embedded_quote_source_literal,
-    production_binding: ^bash_production_embedded_quote_lit,
-    tokens: bash_embedded_quote_concrete_tokens()
-  )
-}
-
 fn bash_add_target_model_bundle() -> Node {
   bash_target_model_bundle(
-    rules: bash_translation_rules_node(),
-    serialize_source: bash_add_serialize_source_node()
-  )
+    rules: bash_translation_rules_node())
 }
 
 fn bash_bound_words_target_model_bundle() -> Node {
   bash_target_model_bundle(
-    rules: bash_bound_words_translation_rules_node(),
-    serialize_source: bash_bound_words_serialize_source_node()
-  )
+    rules: bash_bound_words_translation_rules_node())
 }
 
 fn bash_embedded_quote_target_model_bundle() -> Node {
   bash_target_model_bundle(
-    rules: bash_embedded_quote_translation_rules_node(),
-    serialize_source: bash_embedded_quote_serialize_source_node()
-  )
+    rules: bash_embedded_quote_translation_rules_node())
 }
 
 fn bash_lex() -> LexRules {
@@ -867,19 +788,9 @@ fn bash_embedded_quote_target_model() -> TargetModel {
   )
 }
 
-fn bash_source_root_ingest_gate_serialize_source_node() -> Node {
-  bash_serialize_source_node(
-    source_text_binding: ^bash_source_root_ingest_gate_source_literal,
-    production_binding: ^bash_production_source_root_ingest_gate,
-    tokens: bash_source_root_ingest_gate_concrete_tokens()
-  )
-}
-
 fn bash_source_root_ingest_gate_target_model_bundle() -> Node {
   bash_target_model_bundle(
-    rules: bash_source_root_ingest_gate_translation_rules_node(),
-    serialize_source: bash_source_root_ingest_gate_serialize_source_node()
-  )
+    rules: bash_source_root_ingest_gate_translation_rules_node())
 }
 
 fn bash_source_root_ingest_gate_lex() -> LexRules {
@@ -907,13 +818,7 @@ fn bash_make_fixed_tokens_target_model(
 ) -> TargetModel {
   target_model_make_with_emit_transforms(
     bundle: bash_target_model_bundle(
-      rules: rules,
-      serialize_source: bash_serialize_source_node(
-        source_text_binding: source_literal,
-        production_binding: production_name,
-        tokens: tokens
-      )
-    ),
+      rules: rules),
     lex: lex,
     binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
@@ -933,13 +838,7 @@ fn bash_make_bound_tokens_target_model(
 ) -> TargetModel {
   target_model_make_with_emit_transforms(
     bundle: bash_target_model_bundle(
-      rules: rules,
-      serialize_source: bash_serialize_source_node(
-        source_text_binding: source_literal,
-        production_binding: production_name,
-        tokens: tokens
-      )
-    ),
+      rules: rules),
     lex: lex,
     binding_spellings: binding_spellings,
     token_class_emit_transforms: bash_token_class_emit_transforms(),

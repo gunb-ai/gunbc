@@ -3,7 +3,6 @@ module gunbc.instruments.pair_incumbent_identity_standing
 import std.types { String, Bool, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
@@ -51,7 +50,6 @@ type GroupIdentityStanding {
 // The launch the route answers with is read from its metrics the way the harness reads it, so the
 // incarnation this instrument binds is the one a seat would be bound to.
 fn group_identity_standing(group: FabricGroup) -> GroupIdentityStanding
-  uses net: Network
 {
   let declared = declared_pair_realization(group: group)
   let observed = match serving_route(group: group) {
@@ -96,7 +94,6 @@ fn pair_incumbent_identity_verdict(standings: List<GroupIdentityStanding>, body:
 }
 
 fn pair_incumbent_identity_standing() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   let standings = map(spark_pair_serving_authorities, a => group_identity_standing(group: pair_serving_authority_group(a: a)))

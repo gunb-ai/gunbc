@@ -1,10 +1,10 @@
 module gunbc.runner.runner_host_image_placeability
 
 import std.types { Bool, Int, NonEmptyStr }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-data runner_host_image_placeability_disposition: Disposition = SingleAuthority
+data runner_host_image_placeability_disposition: ConstructionMechanism = SingleAuthority
 
 // §3c: host_image_placeability_standing is the typed access-refusal census. A wet fleet-converge
 // image probe is a different observation, not a correction of this arm.

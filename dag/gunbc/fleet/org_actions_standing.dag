@@ -2,15 +2,21 @@ module gunbc.fleet.org_actions_standing
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.github.org_actions { org_admin_scope_refusal_fragment }
+import v2.std.cardinality { Never }
+import std.goal_assessment { GoalAssessment, assess_by_deviations }
 
-// ORG ACTIONS SETTINGS AS A CONVERGED SURFACE (operator direction 2026-08-30: "we need
+// ORG ACTIONS SETTINGS AS AN ASSESSED SURFACE (operator direction 2026-08-30: "we need
 // to connect the org github settings via fleet converge - basically this is all
 // unmodeled right now"). The org's runner-group access policy decides which repositories
-// reach the fleet, and until now it lived only in the GitHub settings UI - actuated by
-// hand, observed by nobody. This module declares the DESIRED state, the OBSERVATIONS
-// typed by channel, and the derived standing; the convergence binding is a typed
-// dissolution row below, not prose.
+// reach the fleet, and until then it lived only in the GitHub settings UI - actuated by
+// hand, observed by nobody. This module declares the DESIRED state, the shape of one
+// observed group, and the assessment; the observer is gunbc.fleet.org_actions_inspection,
+// and write authority is a typed dissolution row below, not prose.
+//
+// An earlier per-repository standing (settings read vs behavioral receipt vs unobserved, over a
+// frozen refused-read literal) was deleted with the rebind onto std.goal_assessment: once a live
+// observer existed, it answered the same two questions as the assessment with no production
+// consumer, so it would have stood as a second authority for one fact.
 
 // ---------------------------------------------------------------------------------------------
 // Desired state - fleet policy.
@@ -42,10 +48,7 @@ data desired_repo_access: List<RepoRunnerAccess> = [access_gunbc, access_gunbc_p
 data desired_allows_public_repositories: Bool = false
 
 // ---------------------------------------------------------------------------------------------
-// Observations - typed by HOW they were seen. A successful settings read carries the
-// JOINED admission data (groups x their repository lists, flattened to the admitted set,
-// plus the public-repositories flag) because that is exactly what per-repo standing
-// needs - a read that carried less could not answer without fabricating.
+// Observation - one row per runner group, as gunbc.fleet.org_actions_inspection reads it.
 // ---------------------------------------------------------------------------------------------
 
 // The read observation preserves the GROUP grain the upstream stores (review 57611: a
@@ -60,137 +63,90 @@ type ObservedGroupAccess {
   repositories: List<NonEmptyStr>
 }
 
-type OrgSettingsObservation
-  = SettingsRead { groups: List<ObservedGroupAccess>, observed_on: NonEmptyStr }
-  | SettingsReadRefusedTokenScope { refusal_fragment: NonEmptyStr, observed_on: NonEmptyStr }
-
-// run_id carried as decimal digits verbatim per the standing ruling in
-// extdeps.github.workflow_run_event (identity join, never arithmetic - no decode).
-type BehavioralReceipt {
-  repository: NonEmptyStr
-  runner_name: NonEmptyStr
-  run_id: NonEmptyStr
-  observed_on: NonEmptyStr
-}
-
-data settings_observation_current: OrgSettingsObservation = SettingsReadRefusedTokenScope {
-  refusal_fragment: org_admin_scope_refusal_fragment,
-  observed_on: "2026-08-30",
-}
-
-// A fleet runner EXECUTED a gunbc-private job - behavior proves the access policy admits
-// the repository today, even while the settings surface is unreadable to this credential.
-data receipt_private_on_fleet: BehavioralReceipt = BehavioralReceipt {
-  repository: "gunb-ai/gunbc-private",
-  runner_name: "srv4-01-1788089189-1873877",
-  run_id: "33309109321",
-  observed_on: "2026-08-30",
-}
-
-data behavioral_receipts: List<BehavioralReceipt> = [receipt_private_on_fleet]
-
-// ---------------------------------------------------------------------------------------------
-// Standing - derived, honest about the observation channel. The SettingsRead arm CONSULTS
-// its payload: membership admits, absence REFUSES - never a green from the read's mere
-// success. The derivation is pure in its observation so the witness can exercise every
-// arm; the data rows below bind it to the current observation.
-// ---------------------------------------------------------------------------------------------
-
-type OrgAccessStanding
-  = HoldsBySettingsRead { observed_on: NonEmptyStr }
-  | DivergesBySettingsRead { observed_admitted: Bool, desired: Bool, observed_on: NonEmptyStr }
-  | HoldsByBehavior { run_id: NonEmptyStr, observed_on: NonEmptyStr }
-  | Unobserved
-
 fn observed_admits(groups: List<ObservedGroupAccess>, repository: NonEmptyStr) -> Bool {
   fold(groups, init: false, f: fn(acc, g) {
     acc || count(filter(g.repositories, x => x == repository)) >= 1
   })
 }
 
-// The read arm compares OBSERVED membership against the DESIRED boolean (review 57611:
-// membership alone reported a must_reach_fleet:false row's forbidden state as holding).
-// Agreement in either direction holds - admitted-and-required, or absent-and-forbidden -
-// and any mismatch is a typed divergence carrying both sides.
-fn standing_from(obs: OrgSettingsObservation, r: RepoRunnerAccess) -> OrgAccessStanding {
-  match obs {
-    SettingsRead { groups, observed_on } =>
-      if observed_admits(groups: groups, repository: r.repository) == r.must_reach_fleet {
-        HoldsBySettingsRead { observed_on: observed_on }
-      } else {
-        DivergesBySettingsRead { observed_admitted: observed_admits(groups: groups, repository: r.repository), desired: r.must_reach_fleet, observed_on: observed_on }
-      },
-    SettingsReadRefusedTokenScope { refusal_fragment, observed_on } =>
-      fold(behavioral_receipts, init: Unobserved, f: fn(acc, b) {
-        if b.repository == r.repository { HoldsByBehavior { run_id: b.run_id, observed_on: b.observed_on } } else { acc }
-      }),
-  }
+fn exposing_groups_for(groups: List<ObservedGroupAccess>, repository: NonEmptyStr) -> List<ObservedGroupAccess> {
+  filter(groups, g => g.allows_public_repositories && count(filter(g.repositories, x => x == repository)) >= 1)
 }
 
-fn repo_access_standing(r: RepoRunnerAccess) -> OrgAccessStanding {
-  standing_from(obs: settings_observation_current, r: r)
+// THE ASSESSMENT, BOUND TO std.goal_assessment. This replaced a local Converged/Diverged/Refused
+// diff whose refused arm answered a question the assessor is never asked: an unread settings
+// surface is an OBSERVATION refusal, owned by gunbc.fleet.org_actions_inspection's observer, and
+// inspect_goal guarantees this function only ever sees a completed read. So the input here is the
+// group rows themselves, not an observation coproduct with an arm this function would have to
+// invent an answer for.
+//
+// Each deviation names its repository and carries both sides, where the diff it replaced carried
+// two counts: a count says that something drifted and not what, and the remedy is per repository.
+type OrgActionsGoal {
+  access: List<RepoRunnerAccess>
+  allows_public_repositories: Bool
 }
 
-// Public-fork exposure is PER REPOSITORY over the group join: the desired-false policy is
-// violated exactly when some group that ADMITS this repository allows public
-// repositories - a non-serving group's flag can neither convict nor acquit.
-type PublicForkPolicyStanding
-  = MatchesDesired { observed_on: NonEmptyStr }
-  | DivergesFromDesired { exposing_groups: List<NonEmptyStr>, observed_on: NonEmptyStr }
-  | UnobservableUntilSettingsRead
-
-fn public_exposure_standing(obs: OrgSettingsObservation, r: RepoRunnerAccess) -> PublicForkPolicyStanding {
-  match obs {
-    SettingsRead { groups, observed_on } =>
-      match filter(groups, g => g.allows_public_repositories && count(filter(g.repositories, x => x == r.repository)) >= 1) {
-        exposing =>
-          if count(exposing) == 0 || desired_allows_public_repositories {
-            MatchesDesired { observed_on: observed_on }
-          } else {
-            DivergesFromDesired { exposing_groups: map(exposing, g => g.group_name), observed_on: observed_on }
-          },
-      },
-    SettingsReadRefusedTokenScope { refusal_fragment, observed_on } => UnobservableUntilSettingsRead,
-  }
+data desired_org_actions_goal: OrgActionsGoal = OrgActionsGoal {
+  access: desired_repo_access,
+  allows_public_repositories: desired_allows_public_repositories,
 }
 
-type OrgActionsSettingsDiff
-  = OrgActionsSettingsConverged { observed_on: NonEmptyStr }
-  | OrgActionsSettingsDiverged {
-      access_divergence_count: Int,
-      public_exposure_divergence_count: Int,
-      observed_on: NonEmptyStr
+type OrgActionsDeviation
+  = RepoAdmissionDiverges { repository: NonEmptyStr, observed_admitted: Bool, desired: Bool }
+  | RepoPublicExposureDiverges { repository: NonEmptyStr, exposing_groups: List<NonEmptyStr> }
+
+// What agreement was established over: the rows compared. It is the evidence rather than a label,
+// because a satisfied verdict over zero desired rows would be vacuous and this is where it shows.
+type OrgActionsAgreement { repositories_checked: Int }
+
+fn admission_deviations(goal: OrgActionsGoal, groups: List<ObservedGroupAccess>) -> List<OrgActionsDeviation> {
+  flat_map(goal.access, r => {
+    let admitted = observed_admits(groups: groups, repository: r.repository)
+    if admitted == r.must_reach_fleet { [] } else {
+      [RepoAdmissionDiverges { repository: r.repository, observed_admitted: admitted, desired: r.must_reach_fleet }]
     }
-  | OrgActionsSettingsDiffRefused { reason: NonEmptyStr }
+  })
+}
 
-fn org_actions_settings_diff(obs: OrgSettingsObservation) -> OrgActionsSettingsDiff {
-  match obs {
-    SettingsReadRefusedTokenScope { refusal_fragment: _, observed_on: _ } =>
-      OrgActionsSettingsDiffRefused { reason: "organization Actions settings were not read" }
-    SettingsRead { groups: _, observed_on } => {
-      let access_divergence_count = count(filter(desired_repo_access, r => match standing_from(obs: obs, r: r) {
-        DivergesBySettingsRead { observed_admitted: _, desired: _, observed_on: _ } => true
-        _ => false
-      }))
-      let public_exposure_divergence_count = count(filter(desired_repo_access, r => match public_exposure_standing(obs: obs, r: r) {
-        DivergesFromDesired { exposing_groups: _, observed_on: _ } => true
-        _ => false
-      }))
-      if access_divergence_count == 0 && public_exposure_divergence_count == 0 {
-        OrgActionsSettingsConverged { observed_on: observed_on }
-      } else {
-        OrgActionsSettingsDiverged {
-          access_divergence_count: access_divergence_count,
-          public_exposure_divergence_count: public_exposure_divergence_count,
-          observed_on: observed_on
-        }
+// Exposure is per repository over the group join: only a group that ADMITS the repository can
+// expose it, so a non-serving group's flag neither convicts nor acquits.
+fn exposure_deviations(goal: OrgActionsGoal, groups: List<ObservedGroupAccess>) -> List<OrgActionsDeviation> {
+  if goal.allows_public_repositories { [] } else {
+    flat_map(goal.access, r => {
+      let exposing = exposing_groups_for(groups: groups, repository: r.repository)
+      if count(exposing) == 0 { [] } else {
+        [RepoPublicExposureDiverges { repository: r.repository, exposing_groups: map(exposing, g => g.group_name) }]
       }
-    }
+    })
   }
 }
 
-// The converge binding, as a typed dissolution row (not prose): HoldsByBehavior is weaker
-// than HoldsBySettingsRead - behavior proves admission today, not group shape - and the
-// diff is the deliverable while apply stays gated, because a settings surface converged
-// by silent overwrite would erase an operator's deliberate UI change.
-data org_converge_binding_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the read-only half has landed in gunbc.fleet.org_actions_converge and consumes org_actions_settings_diff through the existing fleet-converge workflow; this condition now retains only authorized write convergence. It retires when operator-approved write authority lets that same phase apply a typed settings diff and read it back. Until then divergence refuses and the UI remains the hand-actuated write authority.")
+fn assess_org_actions(
+  goal: OrgActionsGoal,
+  observed: List<ObservedGroupAccess>,
+) -> GoalAssessment<OrgActionsAgreement, OrgActionsDeviation, Never, Never> {
+  assess_by_deviations(
+    evidence: OrgActionsAgreement { repositories_checked: count(goal.access) },
+    deviations: concat(admission_deviations(goal: goal, groups: observed), exposure_deviations(goal: goal, groups: observed)),
+  )
+}
+
+fn admitted_wire(admitted: Bool) -> String {
+  if admitted { "admitted" } else { "not_admitted" }
+}
+
+fn org_actions_deviation_text(d: OrgActionsDeviation) -> String {
+  match d {
+    RepoAdmissionDiverges { repository, observed_admitted, desired } =>
+      join(["admission:", repository as String, ":observed=", admitted_wire(admitted: observed_admitted), ",desired=", admitted_wire(admitted: desired)], "")
+    RepoPublicExposureDiverges { repository, exposing_groups } =>
+      join(["public_exposure:", repository as String, ":groups=", join(map(exposing_groups, g => g as String), "|")], "")
+  }
+}
+
+// Write authority, as a typed dissolution row (not prose). The located deviations
+// (RepoAdmissionDiverges, RepoPublicExposureDiverges) are the deliverable while apply stays
+// gated, because a settings surface converged by silent overwrite would erase an operator's
+// deliberate UI change.
+data org_converge_binding_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the read-only half has landed in gunbc.fleet.org_actions_inspection and consumes assess_org_actions through std.goal_assessment inspect_goal in the existing fleet-converge workflow; this condition now retains only authorized write convergence. It retires when operator-approved write authority lets that same phase apply a typed settings diff and read it back. Until then divergence refuses and the UI remains the hand-actuated write authority.")

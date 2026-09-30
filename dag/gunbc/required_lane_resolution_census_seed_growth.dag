@@ -1,0 +1,46 @@
+module gunbc.required_lane_resolution_census_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that realizes the three compiler queries the
+// required-lane resolution census (gunbc.required_lane_resolution_census_live, `gunbc test
+// //gunbc/instruments:required-lane-resolution-census`) consumes. Same shape and owner as
+// gunbc.primitive_egress_census_seed_growth, whose builtins are this change's precedent.
+//
+// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). The census asks, for every module the
+// source-root ingestion admits, whether a required lane hands its source to compile_to_resolved.
+// The three populations are products of the seed's own producers -- the module index, the floor's
+// prepared-subject assembly over its nominal seeds, and the entry loader closure -- and none has a
+// substrate representation a .dag fold could read. A .dag re-derivation of any of them would be a
+// second authority for what the lane prepares, drifting the first time a seed kind or a closure
+// rule changed in the seed and not in the copy (DESIGN section 3); so the census asks the seed.
+//
+// WHAT IS NOT NETTED. The generated dispatch rows in v1_interpreter_dispatch_generated.rs are
+// projections of gunbc.v1.v1_interpreter_primitive_surface; the BuiltinSignature inserts in
+// v1_compiler_infer_method are the mirror of src/v1/04_method.dag; the TargetProducer variant and
+// its registry row in target_invocation_host extend existing rosters. run_cli_wire_census is the
+// generalisation of run_primitive_egress_census (one runner for every instrument whose entry
+// answers a CliWireResponse, parameterised by entry and function) and is enrolled here because
+// this change introduces the name. required_floor_nominal_subject_seeds and
+// required_floor_nominal_closure_module_seeds are EXTRACTED from run_required_floor, not added:
+// the floor now consumes them too, which is what makes the census's reading of the nominal
+// subject the floor's own reading by construction.
+data required_lane_resolution_census_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ModuleIdentityPopulation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_lane_resolution_census", decl_name: "source_root_ingest_module_identities", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_lane_resolution_census", decl_name: "required_floor_nominal_subject_module_identities", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_lane_resolution_census", decl_name: "entry_closure_module_identities", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "RequiredFloorNominalSubjectSeeds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "required_floor_nominal_subject_seeds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "required_floor_nominal_closure_module_seeds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "module_identity_population_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "run_cli_wire_census", field: WholeDeclaration }
+  ],
+  reason: "The required-lane resolution census asks the seed three population questions it alone can answer: which module identities the source-root ingestion admits (source_root_ingest_module_identities, the producer claim_executor --required-ci prints as admitted-module-identities), which modules the required floor's NOMINAL prepared subject contains (required_floor_nominal_subject_module_identities: the gate's prefix, authored-module, runtime-authority and wet-schedule seeds through assemble_prepared_subject_closure, with no diff seeds, read from the same required_floor_nominal_subject_seeds the floor itself consumes), and which modules a `gunbc run --entry` step's loader closure reaches (entry_closure_module_identities: load_sources_for_entry_with_pool, the call resolve_entry_graph makes). Each answers ModuleIdentityPopulation and refuses with a typed cause rather than an empty list. module_identity_population_value lifts the carrier into interpreter values; run_cli_wire_census is the target_invocation_host runner behind the label. The enrolled instrument is gunbc.required_lane_resolution_census_live required_lane_resolution_census_exit, reached as gunbc test //gunbc/instruments:required-lane-resolution-census.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these items when the floor exposes its prepared subject and the entry loader its closure as substrate facts a .dag fold can read (the same capability gunbc.primitive_egress_census_seed_growth names for its edge query), or when a required lane resolves every admitted module -- at which point the census's unreached population is empty by construction and the instrument is the regression control that keeps it so.",
+  current_boundary: "Reachable only as .dag free-calls. The queries read the source roots they are given through the process-shared index, assemble the floor's nominal subject read-and-fold only (no strict preparation is paid), load one entry's closure, write nothing, and substitute no value for a refused population."
+}

@@ -3236,7 +3236,7 @@ pub fn section13_roster_has_duplicate_law(
                     0,
                     |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
                         match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
-                            true => (count.clone() + 1),
+                            true => v1_rt::int_add(count.clone(), 1),
                             false => count.clone(),
                         }
                     },
@@ -3258,7 +3258,7 @@ pub fn section13_first_duplicate_law(
                     0,
                     |count: i64, other: Rc<Section13PopulationLawRosterRow>| {
                         match section13_population_law_id_eq(row.law.clone(), other.law.clone()) {
-                            true => (count.clone() + 1),
+                            true => v1_rt::int_add(count.clone(), 1),
                             false => count.clone(),
                         }
                     },

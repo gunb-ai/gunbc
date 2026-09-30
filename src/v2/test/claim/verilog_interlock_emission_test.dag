@@ -21,7 +21,7 @@ import v2.extdeps.languages.verilog {
   verilog_emission_rules_for_row,
   verilog_conj,
 }
-import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
+import v2.compiler.target_serialize { target_serialize_relation_row_from_model_bounded }
 import v2.compiler.ingest { row_token_spine_tokens, grammar_relation_row_forward_token_selection }
 import v2.std.compilers.target_model { render_target_text }
 

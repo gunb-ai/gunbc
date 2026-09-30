@@ -3,7 +3,6 @@ module gunbc.fleet_probe_identity_observe
 import std.types { String, Bool, List }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
@@ -58,7 +57,6 @@ fn observe_authorized_keys_line(home: String) -> String {
 // rather than reading /.ssh/authorized_keys off a fabricated root.
 
 fn fleet_probe_identity_observe_wet() -> ProcessExit
-  uses net: Network
 {
   let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
   let passwd_home = run_shell_command_capture(

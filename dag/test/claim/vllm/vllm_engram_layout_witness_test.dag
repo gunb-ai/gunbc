@@ -1,0 +1,96 @@
+module test.claim.vllm.vllm_engram_layout_witness
+
+import std.types { Bool, List, Int }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.engram_layout {
+  vllm_engram_is_prime, vllm_engram_primes_above, vllm_engram_layers_of_primes, vllm_engram_heads_per_layer,
+  vllm_engram_rank_rows, vllm_engram_sum, vllm_engram_every_rank_has_heads,
+}
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_engram }
+
+// THE DRAW, SUPPLIED ONCE AND PAIRED WITH ITS PRODUCER (DESIGN §3, a witness discriminates at one
+// interface). The 48 primes below are what vLLM's EngramLayout draws for this checkpoint's config
+// (two layers x three n-gram orders x eight heads, above vocab_size - 1). Every claim about the rank
+// ranges or the row-store spec consumes this value rather than re-running a Miller-Rabin search, and
+// the six order claims below run the real producer, vllm_engram_primes_above, over each eight-prime
+// order from the previous order's last prime -- so the supplied value is a reading of the producer,
+// not a design. Sizing: one order's search fits a new-witness budget; the whole draw does not.
+data w_published_primes: List<Int> = [
+  16000057, 16000079, 16000081, 16000097, 16000121, 16000129, 16000133, 16000183,
+  16000189, 16000207, 16000211, 16000253, 16000277, 16000289, 16000307, 16000321,
+  16000339, 16000381, 16000393, 16000399, 16000403, 16000409, 16000447, 16000463,
+  16000477, 16000487, 16000499, 16000507, 16000511, 16000573, 16000609, 16000627,
+  16000667, 16000669, 16000693, 16000697, 16000711, 16000729, 16000759, 16000769,
+  16000781, 16000799, 16000813, 16000819, 16000841, 16000877, 16000879, 16000889,
+]
+
+fn w_per_layer() -> Nat {
+  vllm_engram_heads_per_layer(max_ngram_size: deepseek_v4_1_flash_engram.max_ngram_size, n_heads: deepseek_v4_1_flash_engram.n_heads)
+}
+
+fn w_published_head_sizes() -> List<List<Int>> {
+  vllm_engram_layers_of_primes(primes: w_published_primes, layer_count: length(deepseek_v4_1_flash_engram.layer_ids), per_layer: w_per_layer())
+}
+
+// ONE ORDER OF THE DRAW: the n_heads primes after `start` are exactly the supplied order.
+fn w_order_is_drawn(start: Int, order: List<Int>) -> Bool {
+  length(order) == deepseek_v4_1_flash_engram.n_heads && vllm_engram_primes_above(start: start, count: deepseek_v4_1_flash_engram.n_heads) == order
+}
+
+fn w_order(k: Nat) -> List<Int> {
+  w_published_primes |> skip(n: k * deepseek_v4_1_flash_engram.n_heads) |> take(n: deepseek_v4_1_flash_engram.n_heads)
+}
+
+fn w_order_start(k: Nat) -> Int {
+  match get(xs: w_published_primes, index: k * deepseek_v4_1_flash_engram.n_heads - 1) {
+    Present { value: p } => p
+    Absent => 0 - 1
+  }
+}
+
+test fn draw_order_0_is_the_real_producer() -> Bool { w_order_is_drawn(start: deepseek_v4_1_flash_engram.vocab_size - 1, order: w_order(k: 0)) }
+test fn draw_order_1_is_the_real_producer() -> Bool { w_order_is_drawn(start: w_order_start(k: 1), order: w_order(k: 1)) }
+test fn draw_order_2_is_the_real_producer() -> Bool { w_order_is_drawn(start: w_order_start(k: 2), order: w_order(k: 2)) }
+test fn draw_order_3_is_the_real_producer() -> Bool { w_order_is_drawn(start: w_order_start(k: 3), order: w_order(k: 3)) }
+test fn draw_order_4_is_the_real_producer() -> Bool { w_order_is_drawn(start: w_order_start(k: 4), order: w_order(k: 4)) }
+test fn draw_order_5_is_the_real_producer() -> Bool { w_order_is_drawn(start: w_order_start(k: 5), order: w_order(k: 5)) }
+
+// THE DERIVATION AGAINST THE PUBLISHER'S INDEPENDENT FACT: cut into layers, each layer's heads sum to
+// exactly that layer's published table rows (config.json unpadded_embeddings).
+test fn the_derived_head_sizes_sum_to_the_published_table_rows() -> Bool {
+  let sizes = w_published_head_sizes()
+  length(sizes) == 2
+    && all(sizes, l => length(l) == 24)
+    && map(sizes, l => vllm_engram_sum(xs: l)) == deepseek_v4_1_flash_engram.unpadded_embeddings
+}
+
+// RED: a draw that restarts per layer (reusing primes across layers, a plausible misreading of
+// upstream's `seen`) gives layer 14 layer 1's primes, whose sum is not layer 14's published rows.
+test fn a_draw_that_reuses_primes_across_layers_misses_the_published_rows() -> Bool {
+  match first(w_published_head_sizes()) {
+    Absent => false
+    Present { value: layer1 } => match get(xs: deepseek_v4_1_flash_engram.unpadded_embeddings, index: 1) {
+      Present { value: layer14 } => vllm_engram_sum(xs: layer1) != layer14
+      Absent => false
+    }
+  }
+}
+
+// TP4: each rank owns six contiguous hash heads; the ranges tile the table with no gap or overlap.
+test fn tp4_rank_ranges_tile_each_layer_contiguously() -> Bool {
+  all(w_published_head_sizes(), l => {
+    let rows = vllm_engram_rank_rows(head_sizes: l, tp_size: 4)
+    length(rows) == 4
+      && all(rows, r => r.start < r.end)
+      && match first(rows) { Present { value: r0 } => r0.start == 0  Absent => false }
+      && match first(reverse(rows)) { Present { value: r3 } => r3.end == vllm_engram_sum(xs: l)  Absent => false }
+      && all(enumerate(rows |> skip(n: 1)), p => match get(xs: rows, index: p.first) { Present { value: prev } => prev.end == p.second.start  Absent => false })
+  }) && vllm_engram_every_rank_has_heads(n_hash_cols: 24, tp_size: 4)
+    && !vllm_engram_every_rank_has_heads(n_hash_cols: 3, tp_size: 4)
+}
+
+test fn the_primality_test_agrees_with_small_cases() -> Bool {
+  vllm_engram_is_prime(n: 2) && vllm_engram_is_prime(n: 37) && vllm_engram_is_prime(n: 16000057)
+    && !vllm_engram_is_prime(n: 1) && !vllm_engram_is_prime(n: 16000000) && !vllm_engram_is_prime(n: 25326001)
+}

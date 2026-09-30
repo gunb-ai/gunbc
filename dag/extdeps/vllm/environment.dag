@@ -1,0 +1,68 @@
+module extdeps.vllm.environment
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.runtime_defaults { defaults_source_revision, Vllm8d09804 }
+
+// The revision is read from its one minting row rather than re-spelled here: a locator whose hash
+// drifts from the revision it claims to cite is the wrong-source class runtime_defaults records.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: join(["github.com/vllm-project/vllm/blob/", defaults_source_revision(r: Vllm8d09804).full_revision as String, "/vllm/envs.py"], "")
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.environment",
+      decl_name: "VllmEnvironmentVariable",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ── WHY THE NAMES ARE HERE AND THE VALUES ARE NOT ────────────────────────────────────────────
+//
+// VLLM_ENGINE_READY_TIMEOUT_S and VLLM_SPARSE_INDEXER_MAX_LOGITS_MB are read by vLLM's server, so
+// their NAMES are an interface fact and live here, one row each. Their VALUES carried
+// rows in extdeps.vllm.server until 2026-09-18, and those rows' own annotations already conceded what was wrong with
+// them: vLLM publishes neither figure as a default, nothing in this repository derives either, and a
+// launch wanting a different timeout is a change to its own spec rather than a value this module hands
+// out. A figure no upstream publishes and no upstream derives is not an upstream fact -- it is a
+// deployment's decision modelled one layer above where it was made, which is the inversion DESIGN
+// section 3 names.
+//
+// IT WAS NOT MERELY UNTIDY. The one arm that set them had TWO renderers, and they read the figures
+// from two homes -- extdeps.vllm.server's rows and gunbc.spark.native_serving_realization's own -- so the layer
+// inversion was what made the drift between the two Group-B launch authorities possible at all. Both
+// figures now live with the deployment that chose them, at gunbc.spark.glm_group_b_launch, where the
+// one launch specification reads them.
+
+// ── vLLM'S ENVIRONMENT VARIABLES, AS vLLM NAMES THEM ──────────────────────────────────────────
+//
+// The variable NAMES are an interface fact about vLLM -- vllm/envs.py reads both at the cited
+// revision, the one gunbc.spark.vllm_image_identity's base recipe builds -- so they live here, one
+// named member each; the VALUES a deployment sets are that deployment's decision and live with it.
+// Adding a variable is a row here; spelling one as a string at a call site is the second authority
+// this closes. extdeps.vllm.usage_stats keeps its own two variables because it models the telemetry
+// contract they belong to.
+type VllmEnvironmentVariable
+  = VllmEngineReadyTimeoutSeconds
+  | VllmSparseIndexerMaxLogitsMb
+
+fn vllm_environment_variable_name(v: VllmEnvironmentVariable) -> NonEmptyStr {
+  match v {
+    VllmEngineReadyTimeoutSeconds => "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr
+    VllmSparseIndexerMaxLogitsMb => "VLLM_SPARSE_INDEXER_MAX_LOGITS_MB" as NonEmptyStr
+  }
+}
+
+fn vllm_environment_assignment_wire(variable: VllmEnvironmentVariable, value: String) -> String {
+  join([vllm_environment_variable_name(v: variable) as String, "=", value], "")
+}

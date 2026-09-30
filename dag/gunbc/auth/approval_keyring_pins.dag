@@ -1,0 +1,34 @@
+module gunbc.auth.approval_keyring_pins
+
+import std.types { String, NonEmptyStr }
+import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref }
+import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
+import gunbc.auth.approval_store_receipt { approval_store_receipt_mac_key_secret_ref }
+import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
+
+data approval_submission_mac_key_path_env: NonEmptyStr = "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE"
+
+data approval_capability_mac_key_path_env: NonEmptyStr = "GUNBC_APPROVAL_CAPABILITY_MAC_KEY_FILE"
+
+data approval_mac_key_payload_sha256_prefix: NonEmptyStr = "113a3274bd95"
+
+data approval_submission_mac_key_payload_sha256_prefix: NonEmptyStr = "01f19b2e2c7a"
+
+data approval_store_receipt_mac_key_path_env: NonEmptyStr = "GUNBC_APPROVAL_STORE_RECEIPT_MAC_KEY_FILE"
+
+// MINTED 2026-09-28 by gunbc.auth.approval_mac_key_provision provision_approval_mac_keys on srv1 from
+// gunbc#12502 head 23de3bd3d9 (operator-authorized, operator-supplied token): version 1, accessor
+// bound for the fleet convergence principal; the run printed this payload digest prefix.
+data approval_store_receipt_mac_key_payload_sha256_prefix: NonEmptyStr = "d36ebaa4e653"
+
+fn approval_capability_mac_access_url() -> String {
+  secret_ref_access_url(ref: approval_mac_key_secret_ref)
+}
+
+fn approval_submission_mac_access_url() -> String {
+  secret_ref_access_url(ref: approval_submission_mac_key_secret_ref)
+}
+
+fn approval_store_receipt_mac_access_url() -> String {
+  secret_ref_access_url(ref: approval_store_receipt_mac_key_secret_ref)
+}

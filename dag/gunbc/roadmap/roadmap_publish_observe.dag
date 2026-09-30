@@ -257,7 +257,7 @@ fn observe_pull_requests(
       match lease {
         QuotaFull { wire: w } => PullRequestsUnreadable { cause: PullRequestQuotaWithheld { repository: repo.full_name, detail: w } }
         QuotaLeaseRefused { detail: d } => PullRequestsUnreadable { cause: PullRequestQuotaWithheld { repository: repo.full_name, detail: d } }
-        QuotaLeased { grant: _, partition: _, layout: _ } => {
+        QuotaLeased { grant: _, partition: _, store: _ } => {
       let result = github.Pulls.List(
         auth_token: source,
         owner: repo.owner,
@@ -339,12 +339,14 @@ fn observe_publication_for_subject(
   subject: RoadmapPublicationSubject,
 ) -> PublicationOutcome {
   let remote = publication_subject_remote(subject: subject)
+  let pulls = observe_pull_requests(
+    credential: credential,
+    repo: subject.repository,
+  )
+  let remotes = observe_remote_branches(remote: remote)
   adjudicate_publication(
-    pulls: observe_pull_requests(
-      credential: credential,
-      repo: subject.repository,
-    ),
-    remotes: observe_remote_branches(remote: remote),
+    pulls: pulls,
+    remotes: remotes,
     remote: remote,
     branch: subject.branch,
     expected_base: subject.expected_base,

@@ -71,7 +71,7 @@ pub fn default_rust_edition() -> RustEdition {
 pub fn min_cargo_version() -> CargoToolVersionFloor {
     thread_local! {
         static CACHED: CargoToolVersionFloor = {
-            serde_json::from_value(serde_json::json!(">= 1.56"))
+            serde_json::from_str("\">= 1.56\"")
                 .expect("valid data definition")
         };
     }

@@ -102,6 +102,12 @@ fn transport_plan_interface(p: CollectiveTransportPlan) -> NonEmptyStr {
   }
 }
 
+// THE RAIL'S GID SELECTION IS A FABRIC FACT, NOT A PAIR FACT: RoCEv2 over IPv4, the same on both
+// cages' rails. It lived in pair_serving_realization as spark_pair_rail_gid_selection until
+// 2026-09-17, when the GLM native arm took the RoCE plan and the name's "pair" became a second
+// authority for a shared value. The pair route imports it from here now.
+data spark_rail_gid_selection: NcclRoceGidSelection = NcclGidByAddressFamily { family: NcclAfInet, version: NcclRoceV2 }
+
 data nccl_socket_ifname_env: NonEmptyStr = "NCCL_SOCKET_IFNAME" as NonEmptyStr
 data gloo_socket_ifname_env: NonEmptyStr = "GLOO_SOCKET_IFNAME" as NonEmptyStr
 data nccl_ib_hca_env: NonEmptyStr = "NCCL_IB_HCA" as NonEmptyStr

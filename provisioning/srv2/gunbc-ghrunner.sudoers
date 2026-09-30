@@ -1,5 +1,5 @@
 # GENERATED from dag/gunbc/runner/runner_host_grants.dag into provisioning/srv2/gunbc-ghrunner.sudoers — do not hand-edit; regenerate through gunbc.generated_artifact_emit artifact_generate
-# WIDTH REFUSED: this host's admitted runner width resolved to zero, which is a REFUSAL to derive a population rather than a request for no slots; no operational deploy row is constructed for it
+# WIDTH REFUSED: the committed runner width of srv2 is UNRESOLVED, not zero: its session reservation is unestablished, so the memory envelope has no subtraction to perform and no width is derivable for it. Cause on file at gunbc.session_reservation_policy: the complete session denominator on this host is unestablished, so the managed-slice peak cannot be read as a whole-host aggregate and no allowance can be chosen from it
 # No slot-install or slot-activation grants are rendered: both derive from a desired runner
 # population, and this host has none. Teardown and host-wide rows are retained -- they are
 # bounded by the host slot grammar and by the executor's own operation, not by a width.

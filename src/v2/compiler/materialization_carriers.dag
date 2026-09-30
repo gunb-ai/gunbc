@@ -14,13 +14,17 @@ import std.measure { Nano }
 import std.realization_schedule { cost_account_predicted_zero }
 import std.effects { ReadEffect }
 import std.materialization_ladder {
-  Frame, FrameKind, SharedStateFrame, IsolatedChildrenFrame,
+  Frame, FrameKind, SharedStateFrame, IsolatedChildrenFrame, UnboundedSiblingsFrame,
   FrameDemand, DemandNature, PureComputation,
   CacheProvider, CoversAllComputations,
   LadderVerdict,
   materialization_ladder, materialization_ladder_holds,
+  ladder_verdict_prescribes,
+  ladder_verdict_for,
+  ladder_verdict_is_green,
   empty_frame_path, no_cost_floor_exemptions, no_cache_providers,
   verdict_is_accepted_single_recompute,
+  verdict_is_discharged_by,
   verdict_is_refused_no_provider,
   verdict_is_refused_scope_too_narrow,
 }
@@ -31,13 +35,18 @@ import extdeps.realization.parse_table_memo { parse_table_memo_facts, parse_tabl
 import extdeps.realization.compile_stage_memo { compile_stage_memo_facts, compile_stage_memo_id }
 import std.disposition { Disposition, Terminal }
 import v2.std.staging { CacheProbe, resolve_probe }
-import v2.std.diagnostic { Outcome }
+import v2.std.diagnostic {
+  Accepted, Rejected, Outcome, None,
+  Diagnostic, Correction, Unavailable, ExternalContractUnknown,
+  diagnostics_singleton, invariant_port_locus,
+}
+import v2.std.node { Symbol }
 
 data v2_compiler_materialization_memo_gate_predicate_contract: Disposition = Terminal {
   reason: "Structural coproduct reader over std.realization.Materialization (materialization_allows_memo_store — Memoize => store permitted, Recompute/Share => refused) — closed by the three declared Materialization variants; .dag authority for parse_table_lookup/insert and cached_stage_governed; discriminating corpus: parse_table_memo_governed_witness_test.dag + compiler_materialization_witness_test.dag."
 }
 
-data v2_compiler_materialization_note: String = "The .dag-substrate demonstration lane (duplicate-work-graph-lens-design.md section 10b): ParseTable and cached_stage memoization flows through the governed carrier door — Memoize verdict consumed (non-Memoize refuses store), ContentKeyed law at parse_table_subject (grammar_digest × token_stream_digest × position × production). std.realization.reconcile-as-lookup-path is the following increment (no v2 runtime dispatch yet). Seed-side memo interceptor: extdeps/realization/parse_table_memo.dag parse_table_memo_seed_handler_dissolution_trigger (Scaffold dissolves_to RealizationDispatch on materialization_allows_memo_store; v1_interpreter.rs try_parse_table_memo_dispatch is the seed handler). In-process memo cannot span runs: RefusedScopeTooNarrow at IsolatedChildren LCA; persistent-tier discharge belongs to resolved_graph_cache-class rows. Collapsing plural sites into one process frame → AuthoredDuplication (rule 1). Dissolve-on: demands derive from the DependencyView and the transport folds into materialize (Half A)."
+data v2_compiler_materialization_note: String = "The .dag-substrate demonstration lane (duplicate-work-graph-lens-design.md section 10b): ParseTable and cached_stage memoization flows through the governed carrier door — Memoize verdict consumed (non-Memoize refuses store), ContentKeyed law at parse_table_subject (grammar_digest × token_stream_digest × position × production). std.realization.reconcile-as-lookup-path is the following increment (no v2 runtime dispatch yet). Seed-side memo interceptor: extdeps/realization/parse_table_memo.dag parse_table_memo_seed_handler_dissolution_trigger (Scaffold dissolves_to RealizationDispatch on materialization_allows_memo_store; v1_interpreter.rs try_parse_table_memo_dispatch is the seed handler). In-process memo cannot span runs: RefusedScopeTooNarrow at IsolatedChildren LCA; persistent-tier discharge belongs to resolved_graph_cache-class rows. Collapsing plural sites into one process frame → AuthoredDuplication (rule 1). The parse demand's site is derived per grammar (ParseMemoRecurrence, computed in v2.compiler.parse compute_grammar_first_analysis_given) and carried on the table; the compile-stage demand is still authored. Dissolve-on: the remaining demands derive from demand-engine carriers (docs/plans/demand-engine-program.md M1) and the transport folds into materialize (Half A)."
 
 // TAIL probe 2026-07-17 (cssl_assemble, smart-newt-39): execution-measured Gate-A-shaped rustc
 // refusal (UNRESOLVED_CompilerError on emitter Rc/Optional surface) — NOT materialize-spine.
@@ -63,12 +72,150 @@ fn v2_compile_process_site() -> List<std.materialization_ladder.Frame> {
 data parse_table_memo_demand_identity: String = "parse-nonterminal-memo"
 data compile_stage_memo_demand_identity: String = "compile-pipeline-stage"
 
-fn parse_table_memo_demand() -> FrameDemand {
+// THE PARSE DEMAND CASE IS DERIVED FROM THE GRAMMAR, NOT AUTHORED. The identity is one
+// (nonterminal, position) parse under one grammar and one token stream -- the ContentKeyed
+// preimage parse_table_subject already names. Whether that identity is demanded MORE THAN ONCE
+// within one parse is a structural fact of the grammar, and ParseMemoRecurrence is its census,
+// computed once per grammar by v2.compiler.parse compute_grammar_first_analysis_given.
+//
+// Why the census and not dependency_lens: a DependencyView is a (source, dependent, kind,
+// usage_site) edge over a Node. It records THAT a production references a nonterminal; it
+// carries no position, no ordered-choice retry and no nullability, and those three are exactly
+// what decide whether one (nonterminal, position) is asked twice. A reference-edge count is the
+// "import edge / lookup count" the demand case must not be equated with -- a grammar with a
+// nonterminal referenced from forty sites can still ask each (nonterminal, position) once.
+//
+// The two sources of within-parse recurrence, and why there is no third:
+//  - a DISCARDING backtrack site: an ordered Choice's left branch, or an Optional / Repeat
+//    element, whose attempt can fail after demanding a nonterminal. The failed attempt's
+//    result is thrown away and the continuation resumes at the SAME position, so any
+//    nonterminal it demanded can be demanded again there.
+//  - a NULLABLE nonterminal: it can succeed consuming nothing, so the next demand on the same
+//    successful path starts at the same position and may be the same nonterminal.
+// WHY THESE TWO ARE EXHAUSTIVE -- an argument over the constructors, so a new construct is
+// checked against it rather than against a list. A second demand of one (N, p) needs two demand
+// events for N at the same position p. Take any two such events in one parse's execution and
+// ask how the parse got from the first to the second. Either
+//  (a) the first event's subtree was ABANDONED and execution resumed at a position <= p: that
+//      needs a construct that attempts a branch and continues after its failure. In GrammarExpr
+//      only three do -- Choice (tries left, then right from the same position), Optional and
+//      Repeat (try the element, then continue from the same position). Terminal, LiteralTerminal
+//      and Nonterminal never resume after failure (they propagate it), and Sequence fails as a
+//      whole when either side fails, so the resuming point is always an enclosing
+//      Choice/Optional/Repeat. The abandoned subtree must contain the N demand, hence the
+//      "attempted branch demands a nonterminal" condition. Or
+//  (b) both events are on the SURVIVING path: then either one is an ancestor of the other at the
+//      same position, which is left recursion (refused by grammar_has_left_recursion_given), or
+//      they are ordered in the token stream and everything demanded between the first N's start
+//      and the second consumed zero tokens -- which requires the first N itself to consume
+//      nothing, i.e. N is nullable.
+// So (a) is a discarding backtrack site and (b) a nullable nonterminal; there is no third route.
+// THE TWO CODE FACTS (a) RESTS ON, named rather than inferred, because they are what a future
+// reader has to re-check and what a falsifier is aimed at. Both are in v2.compiler.parse.
+//  - parse_expr_sequence: when the RIGHT side rejects, the whole sequence returns
+//    ParseExprRejected. It never re-invokes the left side, so a failure downstream of a
+//    construct does not re-execute that construct or anything before it.
+//  - parse_expr_repeat_step: on a rejected element it sets done and KEEPS acc.remaining -- a
+//    successful iteration is never given back. Repeat is greedy and possessive, so it cannot
+//    shift the position at which a later nonterminal is demanded by yielding iterations. (It
+//    also stops on a zero-consumption iteration rather than looping at one position.)
+// Without those two, a Choice or Repeat branch containing NO Nonterminal could still cause a
+// later nonterminal to be re-demanded at the same position, and the syntactic site test would
+// not see it. That is the hole this argument would have.
+//
+// THE FALSIFIER, stated so this is an argument someone can kill rather than one they must
+// accept: either a parse_expr path that re-executes a continuation after a downstream failure,
+// or a demand of a nonterminal from inside a Choice / Optional / Repeat branch that contains no
+// Nonterminal node. Either one breaks (a) and the no-recurrence arm with it.
+//
+// WHO ACTUALLY TAKES THE NO-RECURRENCE ARM TODAY: no real grammar. It requires zero discarding
+// sites AND zero nullable nonterminals, and the .dag grammar has both, so it derives Memoize --
+// the same value the literal it replaced gave. The direct-computation arm is inhabited only by
+// synthetic fixtures (v2.test.provenance.parse_memo_frame_replay linear_root, and the
+// one-Terminal grammar in v2.test.claim.compiler_materialization_witness). That is declared
+// rather than left to be discovered: the arm is admitted and executed, but its only inhabitants
+// are fixtures, and a reader asking which real grammar recomputes should get "none today" from
+// here rather than from a search.
+// THE OBLIGATION ON A NEW CONSTRUCT: if it can resume after a failed attempt, it is a discarding
+// site and expr_parse_demand_fold in v2.compiler.parse must count it; if it can succeed consuming
+// nothing, the nullable fixpoint must include it. Parser error recovery (sync tokens) is outside
+// this argument: it is assumed to resume strictly later, and a recovery mode that re-enters at
+// the failed position is a third route that must be counted before it lands.
+//
+// Counting a Choice whose left branch token dispatch would never enter is a structural
+// over-approximation computed AS the answer (DESIGN section 5's admitted neighbour of the
+// absorbing fallback): it can only claim recurrence where none occurs, which costs a store and
+// never a wrong tree.
+type ParseMemoRecurrence {
+  discarding_backtrack_sites: Int
+  nullable_nonterminals: Int
+}
+
+fn parse_memo_recurrence_is_possible(r: ParseMemoRecurrence) -> Bool {
+  (r.discarding_backtrack_sites > 0) || (r.nullable_nonterminals > 0)
+}
+
+// Within-parse recurrence is a replay whose count the INPUT decides, so the emergent frame is
+// UnboundedSiblingsFrame -- it names the input-driven retry at one position, and it sits BELOW the
+// process frame: within-parse sharing is not cross-run reuse, and a run-spanning demand is a
+// different site (parse_table_memo_plural_demands below), refused, not discharged, by the
+// in-process provider.
+fn parse_backtrack_replay_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame {
+    name: "parse-backtrack-replay",
+    kind: UnboundedSiblingsFrame
+  }
+}
+
+fn parse_table_memo_site_for(r: ParseMemoRecurrence) -> List<std.materialization_ladder.Frame> {
+  if parse_memo_recurrence_is_possible(r: r) {
+    [v2_compile_process_frame(), parse_backtrack_replay_frame()]
+  } else {
+    v2_compile_process_site()
+  }
+}
+
+fn parse_table_memo_demand_for(r: ParseMemoRecurrence) -> FrameDemand {
   FrameDemand {
     identity: parse_table_memo_demand_identity,
-    site: v2_compile_process_site(),
+    site: parse_table_memo_site_for(r: r),
     nature: PureComputation
   }
+}
+
+fn parse_table_memo_verdicts_for(r: ParseMemoRecurrence) -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: [parse_table_memo_demand_for(r: r)],
+    providers: v2_compiler_cache_providers(),
+    cost_floor_exempt: no_cost_floor_exemptions
+  )
+}
+
+// ONCE PER GRAMMAR, ADMITTED AND THEN CARRIED. prepare_grammar asks this once, on the census the
+// grammar's own analysis derived, and a refused admission refuses the prepare; every ParseTable
+// built from that analysis carries the admitted value, so parse_table_lookup and parse_table_insert
+// read it and never re-run the ladder. It goes through admitted_prescription_in -- THE SAME DOOR
+// BODY the compile-stage demand uses -- so the green-only test and the preserved refusal are one
+// rule over two verdict lists, not a rule and a copy of it.
+//
+// WHICH ARMS THIS DOOR CAN REACH TODAY, stated deliberately rather than discovered: the ladder is
+// run here over exactly [parse_table_memo_demand_for(r)], so it always rules on this identity and
+// the Absent arm is unreachable from the parse path -- a refusal here would have to be a REFUSED
+// verdict, not a missing one. With the in-process provider both census outcomes are green:
+// recurrence Discharged (Memoize) and no recurrence AcceptedSingleRecompute (Recompute). So no
+// live parse behaviour moves; what changes is that an identity the ladder refuses now refuses the
+// prepare instead of quietly recomputing.
+fn parse_table_memo_materialization_for(r: ParseMemoRecurrence) -> Outcome<Materialization> {
+  admitted_prescription_in(
+    verdicts: parse_table_memo_verdicts_for(r: r),
+    identity: parse_table_memo_demand_identity,
+    port: ^parse_table_memo_demand_port
+  )
+}
+
+data parse_memo_no_recurrence: ParseMemoRecurrence = ParseMemoRecurrence {
+  discarding_backtrack_sites: 0,
+  nullable_nonterminals: 0
 }
 
 fn compile_stage_memo_demand() -> FrameDemand {
@@ -79,8 +226,10 @@ fn compile_stage_memo_demand() -> FrameDemand {
   }
 }
 
+// The parse demand is not in this list: its site depends on the grammar, so it is ruled per
+// grammar by parse_table_memo_verdicts_for rather than once here for a grammar nobody named.
 fn v2_compiler_materialization_demands() -> List<FrameDemand> {
-  [parse_table_memo_demand(), compile_stage_memo_demand()]
+  [compile_stage_memo_demand()]
 }
 
 fn parse_table_memo_provider() -> CacheProvider {
@@ -131,12 +280,99 @@ fn v2_compiler_materialization_ladder_holds() -> Bool {
   )
 }
 
-fn parse_table_memo_materialization() -> Materialization {
-  Memoize
+// DERIVED, NOT DECLARED. These two returned the literal Memoize while the ladder standing
+// beside them in this same module ruled on the same two identities, and nothing compared the
+// two answers -- one witness pinned the literal, another pinned the verdict, and both were
+// green while they disagreed. That is the fork this module exists to prevent (DESIGN section
+// 3), so the prescription is now read from the verdict for this demand's own identity.
+//
+// Absent -- no verdict for this identity -- is the fail-closed arm: a demand the ladder never
+// ruled on has no admission to consume, so the store is not permitted. It is deliberately NOT
+// the same answer as a ruled Recompute, which is why ladder_verdict_for hands back the VERDICT
+// and leaves the reading to this door instead of flattening it into a prescription.
+// A REFUSED VERDICT IS NOT AN ADMISSION, and this is the correction review 69770 asked for.
+// std.materialization_ladder.ladder_verdict_prescribes answers what materialization each verdict
+// IMPLIES, and for five of the six Refused arms it answers Memoize -- deliberately, because a
+// refusal is an UNMET OBLIGATION and the standing ruling is that it is not a licence to delete
+// the store. That table is right for what it is. What it is NOT is a door's admission, and this
+// module is what turned it into one: read as permission, "the obligation is unmet" became
+// "permission granted", which is DESIGN section 5's widen -- a failure arm must refuse.
+//
+// So admission is green-or-nothing. The obligation, the provider and the store all remain --
+// nothing here deletes them, and the refusal verdict stays enrolled and readable -- but an
+// unmet obligation does not open the door. Today the parse-table demand is Discharged, so no
+// live behaviour changes; what changes is that it is admitted BECAUSE it is green rather than
+// because every Refused arm happened to answer Memoize too.
+// A REFUSAL IS PRESERVED, NOT RE-ENCODED AS Recompute, and this is the correction the delta
+// review asked for. Green-or-nothing was first written as "green or Recompute", which prevented
+// a refused verdict from opening the store and then handed back a perfectly valid operational
+// materialization -- so the caller continued, unmemoized, with the obligation still unmet and
+// nothing anywhere saying so. DESIGN section 2 is explicit that a demand whose identity finds no
+// provider of sufficient scope, coverage, key and retention is refused WITH A TYPED CAUSE, and
+// section 5 is explicit that a failure arm refuses rather than widening. Recompute-as-fallback
+// widened: the answer was operationally fine and the deficit it stood on became unobservable,
+// which is exactly the absorbing fallback -- the signal that would have made the missing provider
+// rank for fixing is destroyed by the arm that papers over it. It was also inconsistent with this
+// package's own Share frontier, which rules that silently treating Share as recomputation is
+// wrong and that the door must refuse with a typed diagnostic; RefusedNoProvider is the stronger
+// case, since the ladder has already said the required realization is unavailable.
+// So the door answers Outcome<Materialization>: green admits its prescription, and every other
+// result -- refused, non-green, or an identity the ladder never ruled on -- is Rejected with a
+// located diagnostic. Absent is refused for the same reason and not a weaker one: a demand with
+// no ruling has no admission to consume, and the port symbol each named demand passes is what
+// keeps the two refusals distinguishable at their own sites.
+// ONE BODY, and the verdict list is a parameter so that a control can exercise THE DOOR rather
+// than a copy of it. Review 69791 caught the previous shape: refused_scope_prescription had this
+// body inlined with only the verdict source swapped, so deleting the green test HERE -- the
+// production door, which parse_table_memo_materialization_for and compile_stage_memo_materialization
+// consume -- left the control that exists to catch that deletion green. A control evaluating its
+// own copy of the property it guards cannot fail, which is the forged control DESIGN section
+// 4b(1) refuses: the discriminating RED has to run on the real acceptance path.
+// That parameter is also what makes this ONE ADMISSION RULE over whichever verdict list ruled the
+// identity: the compile-stage demand is ruled once in v2_compiler_materialization_verdicts, the
+// parse demand once per grammar in parse_table_memo_verdicts_for, and both doors are this body.
+fn materialization_obligation_unmet_diagnostic(port: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^materialization_obligation_unmet,
+    at: invariant_port_locus(port: port, invariant: ^materialization_obligation_unmet),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
 
-fn compile_stage_memo_materialization() -> Materialization {
-  Memoize
+fn admitted_prescription_in(
+  verdicts: List<LadderVerdict>,
+  identity: String,
+  port: Symbol
+) -> Outcome<Materialization> {
+  match ladder_verdict_for(verdicts: verdicts, identity: identity) {
+    Absent =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: materialization_obligation_unmet_diagnostic(port: port))
+      }
+    Present { value: chosen } =>
+      if ladder_verdict_is_green(v: chosen) {
+        Accepted { value: ladder_verdict_prescribes(v: chosen), diagnostics: None }
+      } else {
+        Rejected {
+          diagnostics: diagnostics_singleton(d: materialization_obligation_unmet_diagnostic(port: port))
+        }
+      }
+  }
+}
+
+fn admitted_prescription(identity: String, port: Symbol) -> Outcome<Materialization> {
+  admitted_prescription_in(
+    verdicts: v2_compiler_materialization_verdicts(),
+    identity: identity,
+    port: port
+  )
+}
+
+fn compile_stage_memo_materialization() -> Outcome<Materialization> {
+  admitted_prescription(
+    identity: compile_stage_memo_demand_identity,
+    port: ^compile_stage_memo_demand_port
+  )
 }
 
 type CachedStageRealization {
@@ -144,10 +380,21 @@ type CachedStageRealization {
   materialization: Materialization
 }
 
-fn cached_stage_realization() -> CachedStageRealization {
-  CachedStageRealization {
-    provider_id: compile_stage_memo_provider_id(),
-    materialization: compile_stage_memo_materialization(),
+// THE REALIZATION CARRIES AN ADMITTED MATERIALIZATION OR IT DOES NOT EXIST. Constructing a
+// CachedStageRealization out of a refused admission would put the refusal back inside a value
+// the stage spine consumes as though it had been admitted, so the refusal is answered here,
+// at the constructor, and compile_ingest_staging returns it as the stage outcome it already is.
+fn cached_stage_realization() -> Outcome<CachedStageRealization> {
+  match compile_stage_memo_materialization() {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: m, diagnostics: residue } =>
+      Accepted {
+        value: CachedStageRealization {
+          provider_id: compile_stage_memo_provider_id(),
+          materialization: m,
+        },
+        diagnostics: residue
+      }
   }
 }
 
@@ -164,21 +411,28 @@ fn cached_stage_governed<A, B>(
   }
 }
 
-fn parse_table_realized_step() -> RealizedStep<Nano> {
+fn realized_step_for(m: Materialization) -> RealizedStep<Nano> {
   RealizedStep {
     shape: ReadEffect,
     placement: LocalInProcess,
-    materialization: parse_table_memo_materialization(),
+    materialization: m,
     cost: cost_account_predicted_zero()
   }
 }
 
-fn compile_stage_realized_step() -> RealizedStep<Nano> {
-  RealizedStep {
-    shape: ReadEffect,
-    placement: LocalInProcess,
-    materialization: compile_stage_memo_materialization(),
-    cost: cost_account_predicted_zero()
+fn parse_table_realized_step(r: ParseMemoRecurrence) -> Outcome<RealizedStep<Nano>> {
+  match parse_table_memo_materialization_for(r: r) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: m, diagnostics: residue } =>
+      Accepted { value: realized_step_for(m: m), diagnostics: residue }
+  }
+}
+
+fn compile_stage_realized_step() -> Outcome<RealizedStep<Nano>> {
+  match compile_stage_memo_materialization() {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: m, diagnostics: residue } =>
+      Accepted { value: realized_step_for(m: m), diagnostics: residue }
   }
 }
 
@@ -195,11 +449,93 @@ fn compile_stage_memo_retention_preserved() -> Bool {
   compile_stage_memo_provider().retention == compile_stage_memo_facts.placement.retention
 }
 
-fn parse_table_memo_verdict_is_single_recompute() -> Bool {
-  v2_compiler_materialization_verdicts()
+// The two arms the parse demand can reach from the grammar, each read off the verdict rather
+// than off the prescription, so a verdict that changed arm while keeping the same Materialization
+// (a refusal also prescribes Memoize) cannot pass for a discharge.
+fn parse_table_memo_verdict_is_discharged_for(r: ParseMemoRecurrence) -> Bool {
+  parse_table_memo_verdicts_for(r: r)
+    |> fold(init: false, f: (acc, v) =>
+      acc || verdict_is_discharged_by(
+        v: v,
+        identity: parse_table_memo_demand_identity,
+        provider_id: extdeps.realization.parse_table_memo.parse_table_memo_id
+      )
+    )
+}
+
+fn parse_table_memo_verdict_is_single_recompute_for(r: ParseMemoRecurrence) -> Bool {
+  parse_table_memo_verdicts_for(r: r)
     |> fold(init: false, f: (acc, v) =>
       acc || verdict_is_accepted_single_recompute(v: v, identity: parse_table_memo_demand_identity)
     )
+}
+
+// A REFUSED ADMISSION IS A Rejected OUTCOME, and these controls now discriminate that rather
+// than the weaker property they used to. Asking only whether the store was permitted could not
+// tell a refusal apart from an admitted Recompute -- both answer false -- which is precisely how
+// the collapsed arm survived: the control that existed to catch it agreed with it.
+fn materialization_admission_is_refused(a: Outcome<Materialization>) -> Bool {
+  match a {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn materialization_admission_admits_store(a: Outcome<Materialization>) -> Bool {
+  match a {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: m, diagnostics: _ } => materialization_allows_memo_store(m: m)
+  }
+}
+
+// The discriminating RED for the fail-closed arm: an identity the ladder never ruled on has no
+// admitted decision, so the door must refuse rather than inherit the permissive answer.
+// Deleting the Absent arm of admitted_prescription_in makes this admit.
+data unruled_demand_identity: String = "identity-the-ladder-never-ruled-on"
+
+fn unruled_identity_prescription() -> Outcome<Materialization> {
+  admitted_prescription(
+    identity: unruled_demand_identity,
+    port: ^parse_table_memo_demand_port
+  )
+}
+
+// THE RED REVIEW 69770 ASKED FOR, now at the strength the delta review asked for: a REFUSED
+// identity must not be ADMITTED AT ALL. The plural parse-table demands refuse with
+// RefusedScopeTooNarrow against the very provider that discharges the single-site demand --
+// same identity, same provider, refused on scope rather than absence, which is exactly an arm
+// ladder_verdict_prescribes answers Memoize for. It runs through admitted_prescription_in, THE
+// DOOR'S OWN BODY, so dropping the green test there makes this admit and the control dies with
+// it; re-encoding the refusal as Recompute makes it admit too, which the old store-only form
+// could not see.
+fn refused_scope_prescription() -> Outcome<Materialization> {
+  admitted_prescription_in(
+    verdicts: parse_table_memo_plural_verdicts(providers: v2_compiler_cache_providers()),
+    identity: parse_table_memo_demand_identity,
+    port: ^parse_table_memo_demand_port
+  )
+}
+
+fn refused_scope_is_not_admitted() -> Bool {
+  materialization_admission_is_refused(a: refused_scope_prescription())
+}
+
+// The positive control that keeps the pair honest: the SAME fold over the SAME provider admits
+// the recurrent-grammar demand. Without this, refused_scope_is_not_admitted would also pass if
+// admitted_prescription_in simply never admitted anything.
+data parse_memo_one_discarding_site: ParseMemoRecurrence = ParseMemoRecurrence {
+  discarding_backtrack_sites: 1,
+  nullable_nonterminals: 0
+}
+
+fn discharged_scope_admits_store() -> Bool {
+  materialization_admission_admits_store(
+    a: parse_table_memo_materialization_for(r: parse_memo_one_discarding_site)
+  )
+}
+
+fn unruled_identity_is_not_admitted() -> Bool {
+  materialization_admission_is_refused(a: unruled_identity_prescription())
 }
 
 fn compile_stage_memo_verdict_is_single_recompute() -> Bool {
@@ -212,7 +548,6 @@ fn compile_stage_memo_verdict_is_single_recompute() -> Bool {
 fn parse_table_carrier_grounded_on_catalog() -> Bool {
   (parse_table_memo_artifact_kind() == parse_table_artifact_kind)
     && (parse_table_memo_provider_id() == extdeps.realization.parse_table_memo.parse_table_memo_id)
-    && (parse_table_memo_materialization() == Memoize)
 }
 
 fn v2_compile_workflow_frame() -> std.materialization_ladder.Frame {

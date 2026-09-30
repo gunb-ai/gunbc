@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_planted_red_control_positioned_where_it_cannot_fire
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_planted_red_control_positioned_where_it_cannot_fire: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_planted_red_control_positioned_where_it_cannot_fire" as NonEmptyStr,
+
+  receipts: [
+    "**a planted red control positioned where it cannot fire** (an instrument folds a verdict into an accumulator -- `failures=0; for ...; failures=$((failures+1))` -- and the author splices the planted red control ABOVE the line that resets the accumulator, or before the fold's first read, so the control's contribution is discarded before the verdict is taken. The instrument then reports green on the control and on the subject alike, and the control is cited as proof the instrument can go red.",
+
+    "INVALID STATE: a control whose effect on the verdict is unreachable from the position it was planted at -- reset after it, scoped outside the fold, written to a variable the verdict does not read. HARM: the control is the only thing that distinguishes an instrument that measures from one that prints green, so a control that cannot fire converts every later green from that instrument into a decoration cited as coverage (DESIGN section 4b: ask whether the check's RED is authorable before writing the check -- and here it was authored, but could not reach the verdict).",
+
+    "DISCRIMINATOR: trace the data path from the control's plant site to the verdict's read site and find an assignment, reset, `local`, subshell boundary or pipeline stage between them that the control's value does not survive. The positive control ON THE PLANT (the same session's memory carries this as its own rule -- a planted red needs a positive control on the plant): run the instrument with ONLY the control planted and confirm the verdict is red; a control that returns green when it is the only input is not a control.",
+
+    "RECEIPT (2026-09-20, dashboard node adhoc-3bc1b8e0-982): the second of two session evidence instruments that reported green over gunbc.site_pxe_edge_converge not resolving carried a red control spliced above its accumulator reset, so it could only return green; both instruments failed toward green on one defect and the head carried four approvals on that evidence. The drivers were session-authored shell and are not in-tree; no in-tree driver of this shape was found, and the in-tree walls against the sibling shape (a control asserted rather than produced; coverage read per call site rather than per argument) are rostered as their own rows.",
+
+    "REPAIR SHAPE: the control is planted at the subject's own input, downstream of every reset and inside every scope the verdict reads, and the receipt records the red it produced BESIDE the green the subject produced -- two runs, two statuses, or the receipt is one run and one status and establishes nothing about the instrument.",
+
+    "Rung: mitigatable -- the positive control on the plant exposes it when run. Ceiling: mechanically preventable, not structural: a verdict fold whose accumulator is a value threaded through the fold rather than a mutable shell variable has no reset to splice above, and an instrument rendered from a typed fold (gunbc.cli_wire, the claim executor's per-claim outcome rows) cannot be authored in this shape; a session's ad-hoc shell can, and is outside the modeled guarantee.",
+
+    "Next-rung trigger: the manual receipt `gunbc.rung_drop` `required_gate_bankruptcy` obliges every PR to carry while that drop stands names an rc-red control as a required part, and the control is required to be shown red in the same receipt -- a receipt whose control did not print red is refused as a receipt by review, which is the executing consumer of this row until the receipt itself is a typed carrier.",
+  ],
+
+  evidence: [],
+}

@@ -10,7 +10,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // one member to reach NativeTestPassed where the floor expects pass. The body is deliberately
 // the grounded fragment only: a Bool literal, the shape the lane's live-verdict control pair
 // (v2.native_lane_fixture.control) already proves reaches a verdict — every richer body today
-// meets the node grounding frontier (v2.compiler.infer node_grounding_frontier_note) at the
+// meets the node grounding frontier (v2.compiler.inferred_tree NodeGrounding) at the
 // eval gate, measured 2026-09-10 at 261 members across 110 modules. This member is the
 // route's canary, not a stand-in for the frontier: the census's typed exclusion counts carry
 // the frontier's size, and as grounding derivation covers more node kinds the positive

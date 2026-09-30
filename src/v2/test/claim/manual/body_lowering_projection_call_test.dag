@@ -1,7 +1,7 @@
 module v2.test.manual.body_lowering_projection_call
 
 import v2.compiler.body_lowering_fold {
-  body_lower_try_postfix_projection,
+  body_lower_dotted_chain_lowered_optional,
   body_lower_unwrap_captured
 }
 import v2.compiler.normalize { normalize }
@@ -74,7 +74,7 @@ test fn body_lowering_projection_lowers_to_transform() -> Bool {
         Present { value: postfix } =>
           match body_lower_unwrap_captured(shell: postfix) {
             Present { value: captured } =>
-              match body_lower_try_postfix_projection(node: captured) {
+              match body_lower_dotted_chain_lowered_optional(node: captured) {
                 Rejected { diagnostics: _ } => false
                 Accepted { value: found, diagnostics: _ } =>
                   match found {
@@ -94,7 +94,14 @@ test fn body_lowering_projection_lowers_to_transform() -> Bool {
 
 data body_lowering_field_access_source: String = "module fa\n\nfn f(x: Int) -> Int { x.field }\n"
 
-test fn body_lowering_field_access_postfix_rejects() -> Bool {
+// `x.field` IS A BARE CHAIN, AND A BARE CHAIN IS THE SPINE. This row used to assert that the
+// single-step postfix reader REFUSED it (postfix_field_access_refused), which was that reader
+// answering for a shape the dotted door above it already lowers: on the production route the door
+// is consulted first and `x.field` reaches it as one qualified name, so the refusal was only ever
+// reachable by calling the reader directly, as this row did. gunbc#12033's PR2 deleted the reader,
+// and the row now asserts what the one door actually answers. What the chain DENOTES stays the
+// resolver's question (v2.compiler.resolve try_resolve_qualified_name_node), not lowering's.
+test fn body_lowering_field_access_lowers_whole() -> Bool {
   let lm = dag_language_model()
   match tokenize(
     text: body_lowering_field_access_source,
@@ -111,9 +118,13 @@ test fn body_lowering_field_access_postfix_rejects() -> Bool {
             Present { value: postfix } =>
               match body_lower_unwrap_captured(shell: postfix) {
                 Present { value: captured } =>
-                  match body_lower_try_postfix_projection(node: captured) {
-                    Rejected { diagnostics: _ } => true
-                    Accepted { value: _, diagnostics: _ } => false
+                  match body_lower_dotted_chain_lowered_optional(node: captured) {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: found, diagnostics: _ } =>
+                      match found {
+                        Present { value: _ } => true
+                        Absent => false
+                      }
                   }
                 Absent => false
               }

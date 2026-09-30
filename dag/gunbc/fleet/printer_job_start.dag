@@ -1,7 +1,6 @@
 module gunbc.fleet.printer_job_start
 
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
-import std.resources { Network }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, env_prefixed_command }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -176,7 +175,6 @@ type CaBundleAcquisition
 // verification, which is the absorbing fallback DESIGN section 5 forbids -- a failure arm that
 // widens instead of stopping. The bytes either match what was recorded or the leg ends.
 fn acquire_pinned_ca_bundle() -> CaBundleAcquisition
-  uses net: Network
 {
   let created = shell.Mktemp.Dir()
   if created.success == false {
@@ -336,7 +334,6 @@ fn start_print_on_printer(
   token_source: AccessTokenSource,
   materializations: List<VerifiedVersionForAttempt>,
 ) -> PrintStart
-  uses net: Network
 {
   match printer_serial(printer: printer) {
     PrinterSerialUnknown { printer: p } =>
@@ -419,7 +416,6 @@ fn publish_start_with_credential(
   remote_name: NonEmptyStr,
   credential: Secret,
 ) -> PrintStart
-  uses net: Network
 {
   match acquire_pinned_ca_bundle() {
     CaBundleRefused { cause: cause } => PrintStartRefused { printer: printer, cause: cause }

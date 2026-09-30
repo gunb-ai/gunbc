@@ -1,9 +1,10 @@
 module v2.test.long.door_real_module_probe
 
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
+import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.compiler.name_resolve { resolve_with_admission_policy }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -72,7 +73,7 @@ fn quad_subject_with_import_use() -> Node {
       Edge {
         label: Named { name: ^list_append },
         target: Node {
-          kind: TypeNode { connective: Atom { identity: ^dag_c3_surface_sugar_service } },
+          kind: TypeNode { connective: Atom { identity: ^dag_token_ident } },
           children: [],
           occurrence_id: OccurrenceSynthetic
         }
@@ -83,14 +84,14 @@ fn quad_subject_with_import_use() -> Node {
 }
 
 fn quad_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: quad_subject_with_import_use(),
     tail: Cons {
       head: quad_module_root(
         seg: ^minialg,
         export_sym: ^list_append,
-        export_atom: ^dag_c3_surface_sugar_type
+        export_atom: ^dag_token_colon
       ),
       tail: Empty
     }

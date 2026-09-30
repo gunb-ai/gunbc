@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.route_scoped_qualification_read_as_one_members_verdict
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data route_scoped_qualification_read_as_one_members_verdict: RecurringFailureMode = RecurringFailureMode {
+  identity: "route_scoped_qualification_read_as_one_members_verdict" as NonEmptyStr,
+
+  receipts: [
+    "a verdict carrier whose subject is a WHOLE ROUTE is consumed as the verdict of ONE SUBJECT SELECTED WITHIN that route (INVALID STATE: a consumer reads an aggregate qualification bit -- one that conjoins route-integrity clauses having nothing to do with any particular member -- and maps it onto a per-member termination, so the member is reported as observed when it was never individually adjudicated. The route and the member are both real and both reached, and the carrier is accurate about its own subject; what is wrong is the SCOPE of the question it is taken to answer.)",
+
+    "MEASURED, gunbc#12036, 2026-09-22, found in review over three rounds. `gunbc test <operand>` routed an operand into the native test route and consumed `run.terminal.admitted` -- `gunbc.witness_v2_native_route` `native_route_admission_with`, a conjunction over roughly twenty clauses including JobNameMismatch, PreparationSeedUnrecorded, EmittedBuildNotClean, MalformedControlAcceptedByRoute, PositivePopulationEmpty and RequiredNativePassRegressed -- as that operand's own three-way termination.",
+
+    "BOTH ARMS ARE WRONG AND THEY ARE NOT EQUALLY DANGEROUS, which is the part worth carrying. The REFUSED arm mapped to ObservationDidNotHold, exit 1: a typo naming no module inside the selected universe completes, refuses with positive_population_empty, and a NONEXISTENT TARGET is reported as a test that ran and failed. That is loud, wrong, and sends a reader to debug a test that does not exist. The HELD arm mapped to ObservationHeld, exit 0: the operator's targets reported as PASSING when what passed is the lane's route integrity. That is SILENT WRONGNESS, which DESIGN section 4b puts BELOW the ladder rather than on it, and it is the arm a reviewer is least likely to reach for because green attracts no scrutiny. A class like this is found from its loud arm and is dangerous through its quiet one.",
+
+    "THE DISCRIMINATOR IS MECHANICAL AND DOES NOT REQUIRE READING THE CONSUMER'S INTENT: take the carrier's own refusal-cause vocabulary and ask whether EVERY cause is a statement about the member the consumer will attribute the verdict to. If any cause can fire while the member is untouched -- a job name, a build cleanliness, an identity recording, an empty selection -- the carrier's subject is the route and a per-member attribution is unsound. One cause of the wrong scope is sufficient; the conjunction cannot be narrowed by the consumer.",
+
+    "WHY IT SURVIVED THREE REVIEW ROUNDS, recorded because the survival is the reusable part. The carrier was named `admitted` and its wrapper arms were named AdmissionHeld / AdmissionRefused -- vocabulary that reads as a verdict about whatever the caller just asked for, with nothing in the name carrying the SCOPE. Two earlier rounds on the same function repaired genuinely different defects on the adjacent lines (a substring sniff over a rendered cause, and a second spelling of the universe) without either reviewer or author asking what the bit's subject was. The repair renamed the arms to LaneQualificationHeld / LaneQualificationRefused, which is the construction-over-validation move for a naming defect: a consumer can still misuse it, but it can no longer do so while reading naturally.",
+
+    "THE REPAIR WHEN NO PER-MEMBER VERDICT IS AVAILABLE IS TO REFUSE, NOT TO APPROXIMATE. The seed had no per-operand verdict at that boundary -- the terminal carries rows, universe and the qualification bit, while the per-identity verdict rows are the binary's own evidence surface and are not decoded there -- so the route now answers SubjectUnreached in every arm: the route was entered and no observation of the operand was obtained, which is exactly true. Substituting the nearest available bit would have been the absorbing fallback DESIGN section 5 names, with a false green as its worst case.",
+
+    "BOUNDARY AGAINST [[instrument_refusal_before_subject_reads_as_a_subject_verdict]], the nearest row: there the instrument NEVER REACHED its subject and a pre-subject admission refusal became the report. Here the route is fully reached and fully adjudicated -- the carrier is correct about the route -- and the defect is purely one of SCOPE at the consumption site. Repairing that row (reaching the subject) changes nothing here.",
+
+    "BOUNDARY AGAINST [[upstream_carrier_substituted_for_the_consumer_selected_subject]]: that class substitutes a producer's artifact for a consumer's subject ACROSS a transformation boundary, and is repaired by binding a receipt to what the consumer actually processed. This class has no transformation and no boundary crossing -- one value, one process, correct about the aggregate -- and is repaired by refusing to attribute an aggregate to a member at all.",
+
+    "CEILING AND NEXT TRIGGER. Found at mitigatable: the repair is a consumer that refuses, plus arm names that carry their scope, and nothing prevents the next consumer writing the same attribution. It is STRUCTURALLY PREVENTABLE and the climb is a type that carries its subject's scope, so a route-scoped verdict cannot be passed where a member-scoped one is expected -- at which point the attribution fails to compile rather than being caught by a reviewer. NEXT TRIGGER: the per-identity rows decoded into a member-scoped termination through a modeled total function from the producer's verdict vocabulary, so a member verdict EXISTS to be demanded and the aggregate is no longer the nearest available answer.",
+  ],
+
+  evidence: [],
+}

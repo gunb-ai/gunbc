@@ -1,0 +1,208 @@
+module test.claim.spark.v41_produced_runtime_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, serialize_content_hash }
+import extdeps.container.oci.digest { OciContentDigest, oci_sha256_content_digest }
+import extdeps.vllm.source_build { VllmContainerBuildRecipe, vllm_8d09804_sm121_recipe, vllm_deepseek_v4_1_sm12_revision }
+import gunbc.spark.vllm_image_identity { vllm_image_tag_for_key }
+import gunbc.spark.vllm_runtime_image_build { BuiltByThisRun, AdoptedUnderExpectedTag, VllmImageProvenance }
+import gunbc.spark.v41_source_patch_converge { V41ObservedSourceIdentity, v41_observed_source_identity_of, v41_patched_image_build_key }
+import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels }
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
+import gunbc.spark.v41_runtime_candidate {
+  V41RuntimeArtifactInputs,
+  V41EnginePatch, v41_engine_patch, V41PatchesObserved, PartitionByLaunchConfiguration,
+  v41_candidate_recipe, v41_candidate_partition,
+}
+import gunbc.spark.v41_runtime_realized {
+  V41ProducedRuntimeImage, V41ProducedRuntimeStanding,
+  V41RuntimeProduced, V41RuntimeProductionUnestablished, V41RuntimeProductionRefused,
+  v41_produced_runtime_image, v41_admit_produced_runtime, v41_runtime_was_produced,
+}
+
+// ── KEYED IS NOT PRODUCED, AND THIS MODULE IS THE WALL BETWEEN THEM ───────────────────────────
+//
+// gunbc.spark.v41_runtime_candidate keys a runtime artifact from a recipe, a wheel population and a
+// patch population. Nothing in that key is bytes. The produced standing says a particular image on a
+// particular host WAS built from those inputs, and the only thing that makes that statement worth
+// more than the sentence is that a produced record which did not come from them REFUSES. Every claim
+// below is that refusal under one substitution, against a positive control that differs in exactly
+// the substituted field -- so a green here is evidence about the discriminator and not about the
+// fixture being unadmittable.
+
+fn w_diff_sha() -> Sha256Digest {
+  Sha256Digest { hex: "4d2c1f0e9b8a7766554433221100ffeeddccbbaa99887766554433221100abcd" as Sha256DigestHex }
+}
+
+fn w_observed_at_recipe_revision() -> V41ObservedSourceIdentity {
+  v41_observed_source_identity_of(
+    revision_head: v41_candidate_recipe().source.full_revision,
+    worktree_diff_sha256: w_diff_sha(),
+  )
+}
+
+fn w_config_digest() -> OciContentDigest? {
+  oci_sha256_content_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111")
+}
+
+// THE RUNTIME INPUTS ARE SUPPLIED, NOT COMPUTED, AND THE REASON IS A ROUTE AND NOT A PREFERENCE.
+// v41_candidate_inputs.runtime reaches v41_storage_backed_patch_population(), which DIGESTS THE TWO
+// PATCH FILES through sha256sum -- an effect the hermetic envelope has no arm for, so every claim
+// below would refuse as a route gap before touching its subject rather than returning a verdict.
+// The supplied population is two patches at the recipe's own revision with fixture digests, which is
+// the shape that population produces; what these claims discriminate is the KEY RELATION over those
+// inputs, and that relation does not read a patch's bytes -- it reads the digest the population
+// already carries.
+//
+// THE PAIRED INHABITANCE OBLIGATION IS NOT DISCHARGED HERE AND IS NAMED RATHER THAN LEFT SILENT. The
+// real producer is v41_candidate_inputs.runtime, exercised by test.claim.spark.v41_runtime_candidate
+// over the same boundary and under the same hermetic limit, and the only route that runs the live
+// population end to end is the wet one: the spark_v41_runtime_image_build mode, whose fold supplies
+// v41_candidate_inputs.runtime to this very admission. That is where deleting the integration makes
+// something fail.
+fn w_fixture_patches() -> List<V41EnginePatch> {
+  flat_map(
+    [WPatchSpec { path: "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch", c: "1" },
+     WPatchSpec { path: "dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch", c: "2" }],
+    x => match v41_engine_patch(
+      path: x.path as NonEmptyStr,
+      applies_to: v41_candidate_recipe().source,
+      sha256_hex: w_fixture_sha(c: x.c).hex as String,
+      purpose: "fixture" as NonEmptyStr,
+    ) {
+      Present { value: p } => [p]
+      Absent => [] as List<V41EnginePatch>
+    })
+}
+
+type WPatchSpec {
+  path: String
+  c: String
+}
+
+fn w_fixture_sha(c: String) -> Sha256Digest {
+  Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }
+}
+
+fn w_inputs() -> V41RuntimeArtifactInputs {
+  V41RuntimeArtifactInputs {
+    recipe: v41_candidate_recipe(),
+    kernel_acquisition: flashinfer_0_6_18_post1,
+    kernel_wheels: flashinfer_0_6_18_post1_wheels,
+    patches: V41PatchesObserved { patches: w_fixture_patches(), partition: PartitionByLaunchConfiguration },
+  }
+}
+
+// THE RECORD A CONVERGED BUILD OF THIS CANDIDATE WOULD HAND OVER: the tag and the key the build ran
+// under, both derived from the candidate's own recipe over the tree the build observed, and
+// BuiltByThisRun because those bytes were produced rather than found.
+fn w_produced(
+  observed: V41ObservedSourceIdentity,
+  build_key: ContentHash,
+  tag: NonEmptyStr,
+  provenance: VllmImageProvenance,
+) -> V41ProducedRuntimeImage? {
+  match w_config_digest() {
+    Absent => none
+    Present { value: d } => Present { value: v41_produced_runtime_image(
+      tag: tag,
+      local_config_digest: d,
+      build_key: build_key,
+      observed: observed,
+      provenance: provenance,
+    ) }
+  }
+}
+
+fn w_expected_key(observed: V41ObservedSourceIdentity) -> ContentHash {
+  v41_patched_image_build_key(r: v41_candidate_recipe(), observed: observed)
+}
+
+fn w_admit(image: V41ProducedRuntimeImage?) -> V41ProducedRuntimeStanding {
+  match image {
+    Absent => V41RuntimeProductionRefused { defects: ["fixture: the configuration digest did not parse" as NonEmptyStr] }
+    Present { value: i } => v41_admit_produced_runtime(inputs: w_inputs(), partition: v41_candidate_partition, image: i)
+  }
+}
+
+fn w_refused_with(s: V41ProducedRuntimeStanding, fragment: String) -> Bool {
+  match s {
+    V41RuntimeProductionRefused { defects: d } => any(d, x => (x as String).contains(fragment))
+    V41RuntimeProduced { specification_runtime_key: _, image: _ } => false
+    V41RuntimeProductionUnestablished { obligations: _ } => false
+  }
+}
+
+fn w_faithful() -> V41ProducedRuntimeImage? {
+  let observed = w_observed_at_recipe_revision()
+  let key = w_expected_key(observed: observed)
+  w_produced(observed: observed, build_key: key, tag: vllm_image_tag_for_key(r: v41_candidate_recipe(), key: key), provenance: BuiltByThisRun)
+}
+
+// THE POSITIVE CONTROL. Without it every refusal below is satisfiable by a fixture that could never
+// be admitted at all, which is the accident that makes a negative control green for the wrong reason.
+test fn an_image_built_from_this_candidates_recipe_and_tree_is_produced() -> Bool {
+  match w_admit(image: w_faithful()) {
+    V41RuntimeProduced { specification_runtime_key: _, image: i } =>
+      (i.observed.revision_head as String) == (v41_candidate_recipe().source.full_revision as String)
+    V41RuntimeProductionRefused { defects: _ } => false
+    V41RuntimeProductionUnestablished { obligations: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED THE LANE EXISTS FOR: a produced digest whose build key did not come from
+// this candidate's recipe and patched tree. The substituted key is a real one -- the GLM 5.3 SM121
+// recipe over the same observed tree -- so this is not a malformed value being rejected for being
+// malformed; it is another image's honest key being refused for being another image's.
+test fn a_produced_image_keyed_from_another_recipe_refuses() -> Bool {
+  let observed = w_observed_at_recipe_revision()
+  let foreign_key = v41_patched_image_build_key(r: vllm_8d09804_sm121_recipe, observed: observed)
+  (serialize_content_hash(hash: foreign_key) as String) != (serialize_content_hash(hash: w_expected_key(observed: observed)) as String)
+    && w_refused_with(
+      s: w_admit(image: w_produced(observed: observed, build_key: foreign_key, tag: vllm_image_tag_for_key(r: v41_candidate_recipe(), key: w_expected_key(observed: observed)), provenance: BuiltByThisRun)),
+      fragment: "is not this candidate's runtime")
+}
+
+// A TREE AT ANOTHER REVISION IS ANOTHER RUNTIME, even when the key recomputes consistently over it:
+// the key would be self-consistent and the bytes would still be a build of something else, so the
+// head is compared to the recipe's revision rather than only folded into the hash.
+test fn a_produced_image_built_from_another_revision_refuses() -> Bool {
+  let wrong = v41_observed_source_identity_of(
+    revision_head: vllm_deepseek_v4_1_sm12_revision.full_revision,
+    worktree_diff_sha256: w_diff_sha(),
+  )
+  let key = w_expected_key(observed: wrong)
+  (wrong.revision_head as String) != (v41_candidate_recipe().source.full_revision as String)
+    && w_refused_with(
+      s: w_admit(image: w_produced(observed: wrong, build_key: key, tag: vllm_image_tag_for_key(r: v41_candidate_recipe(), key: key), provenance: BuiltByThisRun)),
+      fragment: "this candidate's recipe names")
+}
+
+// A NAME IS NOT PRODUCTION. Everything about this record is the faithful one except that the image
+// was FOUND under the expected tag rather than built, which is the one fact a recomputation over the
+// tag and the key can never catch -- an adopted image carries exactly the right key by construction.
+test fn an_image_adopted_under_the_expected_tag_is_not_produced() -> Bool {
+  let observed = w_observed_at_recipe_revision()
+  let key = w_expected_key(observed: observed)
+  w_refused_with(
+    s: w_admit(image: w_produced(observed: observed, build_key: key, tag: vllm_image_tag_for_key(r: v41_candidate_recipe(), key: key), provenance: AdoptedUnderExpectedTag)),
+    fragment: "is not bytes this run produced")
+    && w_runtime_was_produced_of_faithful()
+}
+
+fn w_runtime_was_produced_of_faithful() -> Bool {
+  v41_runtime_was_produced(s: w_admit(image: w_faithful()))
+}
+
+// THE TAG IS DERIVED FROM THE KEY, so an image wearing a tag the key does not derive is an image
+// whose name and whose contents disagree -- and the name is what a launch would be pinned to.
+test fn a_produced_image_wearing_another_tag_refuses() -> Bool {
+  let observed = w_observed_at_recipe_revision()
+  let key = w_expected_key(observed: observed)
+  let other_tag = vllm_image_tag_for_key(r: v41_candidate_recipe(), key: v41_patched_image_build_key(r: vllm_8d09804_sm121_recipe, observed: observed))
+  (other_tag as String) != (vllm_image_tag_for_key(r: v41_candidate_recipe(), key: key) as String)
+    && w_refused_with(
+      s: w_admit(image: w_produced(observed: observed, build_key: key, tag: other_tag, provenance: BuiltByThisRun)),
+      fragment: "this candidate's key derives")
+}

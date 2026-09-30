@@ -952,7 +952,7 @@ pub fn kahn_drain(
                             v1_rt::rc_map_insert(
                                 deg_map.clone(),
                                 neighbor.clone(),
-                                (current.clone() - 1),
+                                v1_rt::int_sub(current.clone(), 1),
                             )
                         },
                     );
@@ -1016,7 +1016,7 @@ pub fn kahn_drain(
             let __tco_1 = batch_result.sorted.clone();
             let __tco_2 = batch_result.in_degree_map.clone();
             let __tco_3 = adjacency;
-            let __tco_4 = (fuel - 1);
+            let __tco_4 = v1_rt::int_sub(fuel, 1);
             __tco_loop_queue = __tco_0;
             __tco_loop_sorted = __tco_1;
             __tco_loop_in_degree_map = __tco_2;

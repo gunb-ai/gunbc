@@ -3,7 +3,6 @@ module gunbc.spark.managed_access_apply
 import std.types { String, Bool, List, NonEmptyStr, Int, Secret }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -464,7 +463,6 @@ fn spark_managed_access_apply_with_resolved_credentials(
 // Administrator password and fleet SSH private key material resolve inside this boundary via
 // Secret Manager — never as argv parameters on gunbc run.
 fn spark_managed_access_apply_wet(attempt_raw: String, host: String) -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   let token_source = GcloudPrintToken
@@ -521,7 +519,6 @@ fn spark_managed_access_apply_wet(attempt_raw: String, host: String) -> ProcessE
 data spark_bootstrap_ci_attempt_raw: String = "spark-bootstrap-ci"
 
 fn spark_managed_access_bootstrap_ci_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match prepare_fleet_ssh_agent_context(attempt_raw: spark_bootstrap_ci_attempt_raw) {

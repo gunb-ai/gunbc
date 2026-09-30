@@ -8,9 +8,12 @@ import gunbc.fleet_capacity_panel {
   fleet_committed_slot_total,
   fleet_committed_slot_total_ignoring_withdrawals,
   fleet_capacity_withdrawn_line,
+  fleet_capacity_withdrawn_line_over,
+  FleetCommittedSlotTotal,
 }
 import gunbc.runner_slot_allocation {
-  gunbc_runner_slots_per_host, host_binding_width_axes, host_width_binding_label,
+  gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  host_binding_width_axes, host_width_binding_label,
   width_axis_binds_at,
 }
 import gunbc.fleet_intent_network {
@@ -93,7 +96,7 @@ test fn the_panel_labels_its_widths_as_committed_not_observed() -> Bool {
 
 // THE SUMMARY IS DERIVED FROM THE ALLOCATION AUTHORITY, NOT TRANSCRIBED.
 //
-// Asserted as the relation against gunbc_runner_slots_per_host rather than against the literal 22.
+// Asserted as the relation against gunbc_runner_committed_width rather than against the literal 22.
 // A literal would be a change detector that goes red on a correct width ruling and stays green if
 // the panel silently stopped reading the authority at all.
 // THE TOTAL JOINS TO THE ALLOCATION AUTHORITY PER HOST, AND NAMES EVERY HOST TO DO IT.
@@ -111,26 +114,98 @@ test fn the_panel_labels_its_widths_as_committed_not_observed() -> Bool {
 // per-host widths) while carrying no assumption about which hosts resemble each other. It also
 // stays a genuine oracle rather than measure() == measure(): the right side reads
 // gunbc_runner_slot_allocation, a different authority from the panel fold on the left.
-test fn the_slot_total_sums_the_allocation_authority() -> Bool {
-  fleet_committed_slot_total_ignoring_withdrawals()
-    == gunbc_runner_slots_per_host(host: operator_host_srv1)
-       + gunbc_runner_slots_per_host(host: operator_host_srv2)
-       + gunbc_runner_slots_per_host(host: operator_host_srv3)
-       + gunbc_runner_slots_per_host(host: operator_host_srv4)
-    && fleet_committed_slot_total() > 0
+// ZERO HERE IS THE PRODUCTION RULE BEING ASSERTED, NOT A SUBSTITUTION FOR AN UNKNOWN. The total
+// under test adds nothing for an unresolved host BY DESIGN and records it in unresolved_hosts
+// instead; this reproduces that summand independently so the two can be compared. The conjunct that
+// makes the comparison non-vacuous is the unresolved-set equality below -- without it, this would
+// be an agreement between two zeros.
+fn width_contribution_to_the_total(host: HostIdentity) -> Int {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => 0
+    RunnerWidthDerived { slots: n } => n
+  }
 }
 
-// WITH NOTHING WITHDRAWN THE TWO TOTALS AGREE AND THE WITHDRAWN LINE IS ABSENT.
+fn host_width_is_unresolved(host: HostIdentity) -> Bool {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => true
+    RunnerWidthDerived { slots: _ } => false
+  }
+}
+
+// THE TOTAL STILL SUMS THE AUTHORITY, AND NOW IT ALSO CARRIES WHICH HOSTS IT COULD NOT SUM. The
+// summand for an unresolved host is zero on both sides -- that part is unchanged and would be the
+// same vacuous agreement as before on its own -- so the row also asserts that the host appears in
+// `unresolved_hosts`. That is the conjunct a total which silently dropped srv2 would fail.
+test fn the_slot_total_sums_the_allocation_authority() -> Bool {
+  let total = fleet_committed_slot_total_ignoring_withdrawals()
+  total.slots
+    == width_contribution_to_the_total(host: operator_host_srv1)
+       + width_contribution_to_the_total(host: operator_host_srv2)
+       + width_contribution_to_the_total(host: operator_host_srv3)
+       + width_contribution_to_the_total(host: operator_host_srv4)
+    && fleet_committed_slot_total().slots > 0
+    && all(total.unresolved_hosts, h => host_width_is_unresolved(host: h))
+    && ((total.unresolved_hosts |> count) > 0) == (
+         host_width_is_unresolved(host: operator_host_srv1)
+           || host_width_is_unresolved(host: operator_host_srv2)
+           || host_width_is_unresolved(host: operator_host_srv3)
+           || host_width_is_unresolved(host: operator_host_srv4)
+       )
+}
+
+fn withdrawn_line_text(all_hosts: FleetCommittedSlotTotal, active: FleetCommittedSlotTotal) -> String {
+  match fleet_capacity_withdrawn_line_over(all_hosts: all_hosts, active: active) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+// WITH NOTHING WITHDRAWN AND BOTH TOTALS COMPLETE, THE LINE IS ABSENT.
 //
 // The absent line is the point: a standing "0 withdrawn" row is noise on every ordinary day and
-// trains the reader to skip the row where a non-zero number finally matters.
+// trains the reader to skip the row where a non-zero number finally matters. The totals are
+// SUPPLIED because the complete case is not authorable against the live fleet -- srv2's width does
+// not resolve, so every live total carries an unresolved host -- and a claim that can only be made
+// about one of the three answers is not a claim about the decision.
 test fn nothing_withdrawn_means_no_withdrawn_line() -> Bool {
-  let line_absent = match fleet_capacity_withdrawn_line() {
-    Present { value: _ } => false
-    Absent => true
+  let complete_5 = FleetCommittedSlotTotal { slots: 5, unresolved_hosts: [] }
+  withdrawn_line_text(all_hosts: complete_5, active: complete_5) == ""
+    && string_contains(
+         s: withdrawn_line_text(
+           all_hosts: FleetCommittedSlotTotal { slots: 5, unresolved_hosts: [] },
+           active: FleetCommittedSlotTotal { slots: 3, unresolved_hosts: [] },
+         ),
+         pattern: "2 slots withdrawn by operator control",
+       )
+}
+
+// AN INCOMPLETE TOTAL REPORTS THAT THE WITHDRAWN AMOUNT IS UNESTABLISHED, AND THIS IS THE ROW THE
+// LIVE FLEET TAKES. A withdrawn host whose width does not resolve contributes zero to BOTH totals,
+// so the difference is zero and the previous shape rendered nothing at all -- "nothing is
+// withdrawn" over a host the operator withdrew and the model cannot size. RED: a projection that
+// went back to subtracting the two `.slots` produces "" for the first case here and no
+// "unestablished" for the second.
+test fn an_incomplete_total_reports_the_withdrawn_amount_as_unestablished() -> Bool {
+  let incomplete = FleetCommittedSlotTotal { slots: 5, unresolved_hosts: [operator_host_srv2] }
+  let line = withdrawn_line_text(all_hosts: incomplete, active: incomplete)
+  string_contains(s: line, pattern: "withdrawn capacity is unestablished")
+    && string_contains(s: line, pattern: operator_host_srv2 as String)
+    && !string_contains(s: line, pattern: "slots withdrawn by operator control")
+    && string_contains(
+         s: withdrawn_line_text(all_hosts: incomplete, active: FleetCommittedSlotTotal { slots: 5, unresolved_hosts: [] }),
+         pattern: "withdrawn capacity is unestablished",
+       )
+}
+
+// THE LIVE PANEL INHABITS THAT PATH, which is what keeps the supplied-value rows above from being a
+// claim about a function nothing calls: the real fleet carries an unresolved host today, so the
+// rendered line is the unestablished one.
+test fn the_live_withdrawn_line_is_the_unestablished_one_while_a_host_is_unresolved() -> Bool {
+  match fleet_capacity_withdrawn_line() {
+    Absent => false
+    Present { value: v } => string_contains(s: v, pattern: "withdrawn capacity is unestablished")
   }
-  fleet_committed_slot_total() == fleet_committed_slot_total_ignoring_withdrawals()
-    && line_absent
 }
 
 test fn the_summary_line_names_both_axes() -> Bool {
@@ -170,12 +245,18 @@ test fn an_unmeasured_axis_is_not_reported_as_binding() -> Bool {
 // relieves a held width, only re-grounding the denominator does. A label function that named one
 // axis for the whole fleet still fails here, and so does one that renders the held width as though
 // some axis bound it.
-test fn srv1_is_axis_bound_while_srv2_is_held() -> Bool {
+// THE AXIS IS NOT NAMED HERE ANY MORE, AND srv2 IS UNRESOLVED RATHER THAN HELD. Two literals in
+// this row had gone stale in opposite ways. "bound by cores" was true of srv1 only while
+// cores_per_slot was derived from the slot ceiling; the 2026-09-19 policy of one core per slot
+// moved srv1 back onto memory, so the row was asserting a fleet whose binding axis had changed
+// under it -- and WHICH axis binds srv1 is not this row's subject, which is that a bound host and
+// an unbindable host render differently. "width held" named the deleted held arm.
+test fn srv1_is_axis_bound_while_srv2_width_is_unresolved() -> Bool {
   let one = host_width_binding_label(host: operator_host_srv1)
   let two = host_width_binding_label(host: operator_host_srv2)
   one != two
-    && string_contains(s: one, pattern: "bound by cores")
-    && string_contains(s: two, pattern: "width held, no axis binds")
+    && string_contains(s: one, pattern: "bound by ")
+    && string_contains(s: two, pattern: "width unresolved, no axis binds")
     && !string_contains(s: two, pattern: "bound by")
 }
 
@@ -187,15 +268,19 @@ test fn srv1_is_axis_bound_while_srv2_is_held() -> Bool {
 // using a cause that did not produce it.
 test fn the_binding_axis_sits_at_the_committed_width() -> Bool {
   all([operator_host_srv1, operator_host_srv3], h =>
-    all(host_binding_width_axes(host: h), a =>
-      width_axis_binds_at(standing: a, committed: gunbc_runner_slots_per_host(host: h))))
+    match gunbc_runner_committed_width(host: h) {
+      RunnerWidthUnresolved { cause: _ } => false
+      RunnerWidthDerived { slots: committed } =>
+        all(host_binding_width_axes(host: h), a =>
+          width_axis_binds_at(standing: a, committed: committed))
+    })
 }
 
-// THE PANEL RENDERS A WIDTH PROVENANCE FOR EVERY HOST, AND "bound by memory" IS NO LONGER ONE OF
-// THEM. srv2 was the only memory-bound host in the fleet: gunbc.fleet_capacity_panel's own
-// fleet_capacity_panel_binding_axis_note says the other three go core-bound once the CPU axis
-// lands, and that is measured to have happened. So once srv2's memory axis became honestly
-// unmeasured, no host renders that phrase at all.
+// THE PANEL RENDERS A WIDTH PROVENANCE FOR EVERY HOST, AND THE ROW NO LONGER NAMES WHICH ONE. An
+// earlier revision asserted that "bound by memory" appears nowhere, which was true only between the
+// CPU axis landing and the 2026-09-19 one-core-per-slot ruling that put every derived host back on
+// memory. Naming an axis here made the row a change detector for allocation policy rather than a
+// check on the panel.
 //
 // The conjunct is replaced by the held phrase rather than deleted, because dropping it would leave
 // the assertion satisfiable by a panel rendering one story for the whole fleet -- the defect this
@@ -204,8 +289,8 @@ test fn the_binding_axis_sits_at_the_committed_width() -> Bool {
 // prefix, so it goes red exactly on the regression this change repairs and on nothing else.
 test fn the_panel_renders_a_width_provenance_for_every_host() -> Bool {
   let h = empty_workspace_html()
-  string_contains(s: h, pattern: "bound by cores")
-    && string_contains(s: h, pattern: "width held, no axis binds")
+  string_contains(s: h, pattern: "bound by ")
+    && string_contains(s: h, pattern: "width unresolved, no axis binds")
     && string_contains(s: h, pattern: "unmeasured")
     && !string_contains(s: h, pattern: "bound by  ")
 }

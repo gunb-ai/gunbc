@@ -72,7 +72,11 @@ data fixture_stall: DeclarationRef = decl_ref(
 
 // TWO REAL SUBJECTS FROM OPPOSITE SIDES OF THE LIVE ROSTERS, chosen because each is decided by a
 // DIFFERENT authority. The mandatory-tag entry is covered by gunbc.witness_deferral_freeze AND sits
-// under the "test/claim/long/" exclusion pattern; the fact-density entry is subtracted by neither.
+// under the "test/claim/long/" exclusion pattern; the occurrence-binding entry (gate_admitted_subject) is
+// subtracted by neither and is admitted by the required gate's `test.claim.occurrence_binding_` row. The survivor
+// was a v2.test. fact-density witness until the 2026-09-19 nominal-roster ruling withdrew
+// `v2.test.`; it then failed the gate subtraction, and the arms that needed a survivor went red
+// off-gate. A survivor must be one the gate admits, so it is chosen from the gate's own roster.
 // If either roster changes underneath this file, one of these two arms flips — which is the whole
 // point of asking rather than asserting.
 fn frozen_and_excluded_subject() -> WitnessSubject {
@@ -83,6 +87,19 @@ fn frozen_and_excluded_subject() -> WitnessSubject {
   )
 }
 
+fn gate_admitted_subject() -> WitnessSubject {
+  witness_subject(
+    entry: "dag/test/claim/occurrence_binding_witness_test.dag",
+    function: "occurrence_binding_root_only_path_is_nonempty_holds",
+    module_path: "test.claim.occurrence_binding_witness_test"
+  )
+}
+
+// THE NATIVE-LANE SUBJECT IS A DIFFERENT FIXTURE BECAUSE IT IS A DIFFERENT POPULATION. The native
+// lane's universe is `v2.test.` and the required gate's roster no longer carries `v2.test.`, so no
+// single subject is both the gate's survivor and a native-lane member; one fixture serving both
+// roles is what let the gate arms rot unseen. This subject is discovered, not frozen, not excluded,
+// and inside the native lane -- and outside the required gate.
 fn discovered_subject() -> WitnessSubject {
   witness_subject(
     entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses_test.dag",
@@ -144,11 +161,11 @@ fn guarantee_rung_is(r: GuaranteeRung, expected: String) -> Bool {
 // answer right through the exclusion pattern alone and nobody would notice the missing half.
 test fn v2_compile_obligation_per_pr_standing_is_derived_from_the_live_rosters_holds() -> Bool {
   !witness_subject_survives_every_subtraction(w: frozen_and_excluded_subject())
-    && witness_subject_survives_every_subtraction(w: discovered_subject())
+    && witness_subject_survives_every_subtraction(w: gate_admitted_subject())
     && witness_subject_is_frozen(w: frozen_and_excluded_subject())
     && witness_subject_is_excluded(w: frozen_and_excluded_subject())
-    && !witness_subject_is_frozen(w: discovered_subject())
-    && !witness_subject_is_excluded(w: discovered_subject())
+    && !witness_subject_is_frozen(w: gate_admitted_subject())
+    && !witness_subject_is_excluded(w: gate_admitted_subject())
 }
 
 // THE ROUTE-COVERAGE RUNG READS THE TWO STANDINGS AND NOTHING ELSE, and it is exercised through
@@ -272,7 +289,7 @@ fn over_ceiling_fixture_row() -> V2CompileObligation {
 // gunbc.v2_compile_obligation_census entry_existence_verification_trigger.
 test fn v2_compile_obligation_unverified_entry_debt_is_counted_holds() -> Bool {
   obligation_executes_on_an_unverified_entry(
-    o: fixture_row(subject: discovered_subject())
+    o: fixture_row(subject: gate_admitted_subject())
   )
     && !obligation_executes_on_an_unverified_entry(
       o: fixture_row(subject: frozen_and_excluded_subject())
@@ -282,7 +299,10 @@ test fn v2_compile_obligation_unverified_entry_debt_is_counted_holds() -> Bool {
 // THE GATE-CLOSURE SUBTRACTION, WITH THIS FILE'S OWN MODULE AS THE NEGATIVE CONTROL. The required
 // floor prepares the import closure of v2.workflow.required_floor required_gate_prefixes, not the
 // corpus, so a discovered witness outside that roster is dispositioned DeclinedOutsideGateClosure
-// and does not run. Every witness the census names is under v2.test., which the roster admits.
+// and does not run. Since the 2026-09-19 nominal-roster ruling withdrew `v2.test.`, that includes
+// every witness the census names: the second arm asserts it of the v2.test. mandatory-tag subject,
+// so if `v2.test.` returns to the roster this arm goes red and says so, instead of a comment going
+// stale again.
 //
 // AND THIS WITNESS IS NOT. test.claim.v2_compile_obligation_census_witness_test matches no prefix in
 // the roster, so the arm below asserts its own dormancy on ordinary required floors. What selects it
@@ -293,8 +313,8 @@ test fn v2_compile_obligation_unverified_entry_debt_is_counted_holds() -> Bool {
 // that answered "inside" to everything would pass the first conjunct and fail the second, and using
 // any other module as the control would have let this file avoid stating its own standing.
 test fn v2_compile_obligation_gate_closure_subtraction_is_asked_holds() -> Bool {
-  witness_subject_is_inside_gate_closure(w: discovered_subject())
-    && witness_subject_is_inside_gate_closure(w: frozen_and_excluded_subject())
+  witness_subject_is_inside_gate_closure(w: gate_admitted_subject())
+    && !witness_subject_is_inside_gate_closure(w: frozen_and_excluded_subject())
     && !witness_subject_is_inside_gate_closure(w: this_witnesss_own_subject())
 }
 

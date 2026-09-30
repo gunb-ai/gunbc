@@ -1,0 +1,388 @@
+module gunbc.review_sheet_declared_id_admission
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.resources { Network }
+import extdeps.transports.rest {
+  RestReadExchange,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_outcome,
+}
+import extdeps.google.drive
+import extdeps.google.drive { DriveFile, google_sheet_mime_type }
+import gunbc.review_sheet_identity {
+  ReviewSheetIdentitySubject,
+  LegacyFileSelection,
+  ReviewSheetIdentityDisposition,
+  ReviewSheetIdentityAbsent,
+  ReviewSheetSingleLineage,
+  ReviewSheetLegacyOnlyLineage,
+  ReviewSheetConflictingLineages,
+  CurrentMarkerObservedLegacyExtentUnresolved,
+  ReviewSheetIdentityUnreadable,
+  LegacyExtentVerdict,
+  LegacyExtentSettledEmpty,
+  LegacyExtentFound,
+  LegacyExtentUnsettled,
+}
+import gunbc.review_sheet_legacy_extent_producer {
+  OperatorLegacyDeclaration,
+  OperatorDeclaredLegacyAbsent,
+  OperatorDeclaredLegacyFileSelected,
+  OperatorLegacyDeclarationUnavailable,
+}
+
+// THE DECLARED-ID ADMISSION. An operator may name the file that is really the review sheet, and
+// this module decides whether that naming may be acted on. It is the only consumer of
+// gunbc.review_sheet_identity's LegacyFileSelection, and it exists because a selection is not
+// evidence: selecting file A establishes which file the operator selected and nothing else, so it
+// has to be reconciled against what was actually observed before anything adopts it.
+//
+// FOUR THINGS ARE RECONCILED, AND THE ORDER IS THE CHEAP-REFUSAL-FIRST ORDER. The intended SUBJECT,
+// because a selection written about another drive or another marker generation is not about this
+// one; the STANDING, because a selection is an adjudication and there has to be something to
+// adjudicate; a CONTRADICTING OBSERVATION, because naming a file no observation returned is not a
+// choice between lineages but an assertion about a file nobody saw; and only then an exact
+// FILE-BY-ID PREFLIGHT, which costs a request and is therefore last.
+//
+// THE REFUSAL THIS MODULE EXISTS FOR IS THE ONE PEOPLE WILL WANT TO WIDEN. A selection beside an
+// UNRESOLVED extent stays unresolved, on EVERY standing that carries one -- whether one
+// current-marked file was observed or several. It is tempting to read the selection as settling the
+// question -- the operator has looked, after all -- but the operator has said which file they
+// choose, not that no other lineage exists, and the whole incident this lane closes is a
+// conclusion assigned to a reading that had not established it. Admitting here would be that
+// failure with a human's name on it.
+
+type DeclaredIdCandidacy
+  = SelectionStandsForAdjudication { file_id: NonEmptyStr }
+  | SelectionNotOffered
+  | SelectionRejected { cause: NonEmptyStr }
+
+type DeclaredIdAdmission
+  = DeclaredIdAdmitted { file_id: NonEmptyStr }
+  | DeclaredIdRefused { cause: NonEmptyStr }
+  | NoDeclaredIdOffered
+
+// AN ABSENCE DECLARATION IS NOT A SELECTION AND IS NOT THIS MODULE'S BUSINESS. It has its own
+// consumer -- it becomes LegacyExtentAbsentByOperator and settles the extent -- so it arrives here
+// as "nothing was selected" rather than as a refusal, and a run carrying one takes the ordinary
+// converge path.
+fn declared_id_candidacy(
+  subject: ReviewSheetIdentitySubject,
+  disposition: ReviewSheetIdentityDisposition,
+  declaration: OperatorLegacyDeclaration,
+) -> DeclaredIdCandidacy {
+  match declaration {
+    OperatorLegacyDeclarationUnavailable { cause: _ } => SelectionNotOffered
+    OperatorDeclaredLegacyAbsent { subject: _, basis: _ } => SelectionNotOffered
+    OperatorDeclaredLegacyFileSelected { selection: sel } =>
+      if subject == sel.subject {
+        selection_against_standing(selection: sel, disposition: disposition)
+      } else {
+        SelectionRejected {
+          cause: join(
+            [
+              "the operator declaration selects file ",
+              sel.file_id as String,
+              " for a different identity subject, so it establishes nothing about this one; a declaration that outlives its subject still reads as authoritative, which is why the subject is carried in its content",
+            ],
+            "",
+          ) as NonEmptyStr,
+        }
+      }
+  }
+}
+
+// WHICH STANDINGS ADMIT A SELECTION AT ALL. THREE DO, and this sentence used to say one, which was
+// already false when it was written and is corrected here rather than left for the next reader to
+// trip over (side-chat review, 2026-09-21). ReviewSheetConflictingLineages is the adjudication the
+// sentence had in mind -- two or more lineages OBSERVED, an operator choosing between them -- and
+// it is the only arm where a choice is between rivals. ReviewSheetSingleLineage and
+// ReviewSheetLegacyOnlyLineage each admit a selection too, but only a CONFIRMING one: the
+// declaration must name the very file that was observed, and naming any other id is rejected. That
+// is why they route through selection_against_sole_observed_file rather than through the
+// adjudication fold -- there is nothing to choose between, so the declaration can only agree with
+// the observation or be wrong about it.
+//
+// Everything else either has nothing to adjudicate (absent) or has not established enough for a
+// choice to mean anything (unreadable, and a current file beside an unresolved extent).
+fn selection_against_standing(
+  selection: LegacyFileSelection,
+  disposition: ReviewSheetIdentityDisposition,
+) -> DeclaredIdCandidacy {
+  match disposition {
+    ReviewSheetConflictingLineages { current_file_ids: current, legacy: legacy } =>
+      selection_against_conflicting_lineages(
+        selection: selection,
+        current: current,
+        legacy: legacy,
+      )
+    CurrentMarkerObservedLegacyExtentUnresolved { file_id: f, cause: c } =>
+      SelectionRejected {
+        cause: join(
+          [
+            "the operator declaration selects file ",
+            selection.file_id as String,
+            " while the superseded-marker extent is unresolved (",
+            c as String,
+            "), and a current-marked file ",
+            f as String,
+            " was found. A selection says which file the operator chose, never that no other lineage exists, so it cannot settle an extent no reading settled. Declare the extent absent for this subject if that is what you can establish",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    ReviewSheetIdentityUnreadable { cause: c } =>
+      SelectionRejected {
+        cause: join(
+          [
+            "the operator declaration selects file ",
+            selection.file_id as String,
+            " against an identity that could not be read: ",
+            c as String,
+            ". A selection is an adjudication between observed lineages and there is no observation here to adjudicate",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    ReviewSheetIdentityAbsent =>
+      SelectionRejected {
+        cause: join(
+          [
+            "the operator declaration selects file ",
+            selection.file_id as String,
+            ", and both marker generations were read as holding nothing. The selection and the observations contradict each other, and a declaration does not overrule a settled reading",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    ReviewSheetSingleLineage { file_id: f } =>
+      selection_against_sole_observed_file(selection: selection, observed: f)
+    ReviewSheetLegacyOnlyLineage { file_id: f } =>
+      selection_against_sole_observed_file(selection: selection, observed: f)
+  }
+}
+
+// ONE LINEAGE WAS OBSERVED, SO A SELECTION EITHER AGREES WITH IT OR CONTRADICTS IT. Disagreement
+// refuses: the declaration names a file the observation did not return, and preferring the
+// declaration there is exactly how a converge comes to act on a file nobody looked at.
+//
+// AGREEMENT IS ADMITTED, AND WHAT THAT BUYS IS NOT THE SAME ON THE TWO ARMS IT SERVES -- which is
+// worth spelling, because an earlier revision of this annotation said it was. On
+// ReviewSheetSingleLineage the admission changes nothing the converge would not have done:
+// ensure_review_spreadsheet_on_identity answers Noop for that disposition, so the file is adopted
+// either way and the declaration only spares an operator a refusal for saying something true.
+//
+// ON ReviewSheetLegacyOnlyLineage IT IS A REAL ADJUDICATION, because the ensure REFUSES there. The
+// file carries only the superseded marker, no current-marker query can reach it, and stamping the
+// current marker onto it is the separately roadmapped write cut -- so without a declaration the
+// converge stops. A declaration admits it, and the admission is narrow rather than a widening of
+// that refusal: the extent is SETTLED on this arm (a legacy-only lineage is reached only through a
+// positive find, which is self-proving), the id is one that observation returned, and the
+// file-by-id preflight confirms the selected id names a readable spreadsheet before anything acts
+// on it.
+//
+// WHAT IT AUTHORIZES IS AN ADOPTION -- A READ AND A FORMAT -- AND THE FORMAT IS A WRITE TO THAT
+// FILE. An earlier draft of this sentence said "never a write to it", which was false and is the
+// reason it is spelled out here (review 69620). SpreadsheetAdoptedByDeclaredId reaches
+// gunbc.review_sheet_converge_cli format_converged_spreadsheet, which formats through
+// gunbc.review_sheet_format_actuator converge_review_sheet_format, and that issues Sheets
+// batchUpdate operations against the selected id. On base this route was unreachable for a
+// legacy-only lineage because the ensure refused and formatting was skipped; this change opens it,
+// and that is the only behavioural widening in the diff.
+//
+// IT IS ACCEPTABLE ON THIS ARM AND ON NO OTHER, and the reason is the settled extent rather than
+// the operator's say-so. A legacy-only lineage is reached only through a POSITIVE FIND, which is
+// self-proving, so there is no unread generation this write could be landing on by mistake -- the
+// file being formatted is the file observation returned and the operator then named by id. The
+// adjacent unsettled case has no such proof and therefore admits no selection at all. Formatting
+// is also what adoption MEANS on every other arm; withholding it here would adopt a sheet and
+// leave it unformatted, which is a half-converged state nobody asked for.
+//
+// THE CONTAINMENT THAT DOES HOLD, and the one this lane exists for: never a CREATE beside the
+// file. The duplicate stays impossible -- that claim is about minting a second lineage, not about
+// touching the one the operator adjudicated.
+fn selection_against_sole_observed_file(
+  selection: LegacyFileSelection,
+  observed: NonEmptyStr,
+) -> DeclaredIdCandidacy {
+  if (selection.file_id as String) == (observed as String) {
+    SelectionStandsForAdjudication { file_id: selection.file_id }
+  } else {
+    SelectionRejected {
+      cause: join(
+        [
+          "the operator declaration selects file ",
+          selection.file_id as String,
+          " while the only observed review sheet is ",
+          observed as String,
+          "; the declaration contradicts the observation rather than adjudicating between lineages",
+        ],
+        "",
+      ) as NonEmptyStr,
+    }
+  }
+}
+
+// THE LEGACY VERDICT IS CONSULTED BEFORE ANY SELECTION IS ACCEPTED, AND THAT ORDER IS THE WHOLE
+// REPAIR. An earlier shape asked one question -- does some observed population name this id? --
+// with the UNSETTLED side contributing no candidates to that population. That is true and it is
+// not enough: a selected CURRENT id still named a population, so a selection beside an unresolved
+// superseded extent was admitted through the current side while the module's own law refused it
+// one arm away. More observed CURRENT files cannot settle an unread LEGACY namespace; they are a
+// different marker field with a different visibility, which is the entire content of this lane.
+//
+// SO THE UNSETTLED CASE HAS NO PATH TO SelectionStandsForAdjudication AT ALL rather than a guard
+// that re-checks one: the constructor is absent from that arm, so re-admitting it is an edit a
+// reader has to write rather than a condition they can loosen (DESIGN §4b -- construction over
+// validation, and a failure arm refuses rather than widens).
+fn selection_against_conflicting_lineages(
+  selection: LegacyFileSelection,
+  current: List<String>,
+  legacy: LegacyExtentVerdict,
+) -> DeclaredIdCandidacy {
+  match legacy {
+    LegacyExtentUnsettled { cause: c } =>
+      SelectionRejected {
+        cause: join(
+          [
+            "the operator declaration selects file ",
+            selection.file_id as String,
+            " while the superseded-marker extent is unresolved (",
+            c as String,
+            "), and the current-marker observation returned [",
+            join(current, ", "),
+            "]. A selection says which file the operator chose, never that no other lineage exists, and adjudicating between the current-marked files says nothing about a superseded generation nobody read. Declare the extent absent for this subject if that is what you can establish",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    LegacyExtentSettledEmpty =>
+      selection_within_observed_ids(
+        selection: selection,
+        observed: current,
+        current: current,
+        legacy_text: "which was declared to hold nothing",
+      )
+    LegacyExtentFound { file_ids: ids } =>
+      selection_within_observed_ids(
+        selection: selection,
+        observed: concat(current, ids),
+        current: current,
+        legacy_text: join(["which returned [", join(ids, ", "), "]"], ""),
+      )
+  }
+}
+
+// THE OBSERVED POPULATION A SELECTION MAY CHOOSE FROM, reached only from a legacy side that was
+// SETTLED. The two sides are still named separately in the refusal rather than concatenated,
+// because an operator reading it needs to know WHICH observation failed to return their file.
+fn selection_within_observed_ids(
+  selection: LegacyFileSelection,
+  observed: List<String>,
+  current: List<String>,
+  legacy_text: String,
+) -> DeclaredIdCandidacy {
+  if lineage_ids_name(ids: observed, file_id: selection.file_id) {
+    SelectionStandsForAdjudication { file_id: selection.file_id }
+  } else {
+    SelectionRejected {
+      cause: join(
+        [
+          "the operator declaration selects file ",
+          selection.file_id as String,
+          ", which no observation saw: neither the current-marker observation [",
+          join(current, ", "),
+          "] nor the superseded-marker one, ",
+          legacy_text,
+          ". Choosing between observed lineages is an adjudication; naming a file no observation returned is an assertion this converge cannot check against anything",
+        ],
+        "",
+      ) as NonEmptyStr,
+    }
+  }
+}
+
+fn lineage_ids_name(ids: List<String>, file_id: NonEmptyStr) -> Bool {
+  count(filter(ids, i => i == (file_id as String))) > 0
+}
+
+// ── THE EXACT FILE-BY-ID PREFLIGHT ────────────────────────────────────────────────────────────
+
+type DeclaredIdPreflight
+  = PreflightFileRead { file: DriveFile }
+  | PreflightFileUnreadable { cause: NonEmptyStr }
+
+// A SEARCH AND AN EXACT READ ARE DIFFERENT QUESTIONS, which is why this preflight is a GetFile and
+// not another ListFiles. The search answers what matches a query this client can write; the read
+// answers whether this id names a file this credential can actually open. The selection is an id,
+// so the read is the question that matches it.
+fn preflight_file_by_id(file_id: NonEmptyStr) -> DeclaredIdPreflight uses net: Network {
+  let read = drive.Files.GetFile(file_id: file_id as String)
+  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
+    RestExchangeSucceeded => PreflightFileRead { file: read.file }
+    RestExchangeStatusRefused { status, body } =>
+      PreflightFileUnreadable {
+        cause: join(["the file-by-id preflight for ", file_id as String, " refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      PreflightFileUnreadable {
+        cause: join(["the file-by-id preflight for ", file_id as String, " never reached Drive: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      PreflightFileUnreadable {
+        cause: join(["the file-by-id preflight for ", file_id as String, " answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      PreflightFileUnreadable {
+        cause: join(["the file-by-id preflight for ", file_id as String, " reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+// THE READBACK IS BOUND TO THE ID, NOT TO A SUCCESS CODE. A 200 says the request worked; it does
+// not say it worked on the file that was asked for, and a response whose id differs from the
+// requested one is exactly the shape a redirect, a proxy or a shortcut resolution produces. The
+// mime type is checked for the same reason the search query carries it: adopting a folder or a doc
+// as the review sheet is a silent wrong answer.
+fn admit_preflighted_file(file_id: NonEmptyStr, file: DriveFile) -> DeclaredIdAdmission {
+  if file.id != (file_id as String) {
+    DeclaredIdRefused {
+      cause: join(
+        ["the file-by-id preflight for ", file_id as String, " answered for a different file (", file.id, "), so nothing here establishes that the selected id names a readable file"],
+        "",
+      ) as NonEmptyStr
+    }
+  } else if file.mimeType != (google_sheet_mime_type as String) {
+    DeclaredIdRefused {
+      cause: join(
+        ["the operator declaration selects ", file_id as String, ", which is a ", file.mimeType, " and not ", google_sheet_mime_type as String],
+        "",
+      ) as NonEmptyStr
+    }
+  } else {
+    DeclaredIdAdmitted { file_id: file_id }
+  }
+}
+
+// THE WHOLE ADMISSION, AND THE NETWORK CALL HAPPENS ONLY AFTER EVERY FREE REFUSAL HAS BEEN TAKEN.
+// A declaration that names another subject, or that stands against a standing this module cannot
+// adjudicate, is refused without spending a request discovering that.
+fn admit_declared_id(
+  subject: ReviewSheetIdentitySubject,
+  disposition: ReviewSheetIdentityDisposition,
+  declaration: OperatorLegacyDeclaration,
+) -> DeclaredIdAdmission uses net: Network {
+  match declared_id_candidacy(subject: subject, disposition: disposition, declaration: declaration) {
+    SelectionNotOffered => NoDeclaredIdOffered
+    SelectionRejected { cause: c } => DeclaredIdRefused { cause: c }
+    SelectionStandsForAdjudication { file_id: f } =>
+      match preflight_file_by_id(file_id: f) {
+        PreflightFileUnreadable { cause: c } => DeclaredIdRefused { cause: c }
+        PreflightFileRead { file: file } => admit_preflighted_file(file_id: f, file: file)
+      }
+  }
+}

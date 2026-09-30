@@ -4,7 +4,6 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.types { Secret, NonEmptyStr, Bool, String }
 import std.algebra { trim }
-import std.resources { Network }
 import std.upsert_decision {
   Absent,
   Apply,
@@ -157,7 +156,6 @@ fn access_token_upsert_required_reason(plan: AccessEnsurePlan) -> String {
 }
 
 fn ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
-  uses net: Network
 {
   match source {
     GcloudPrintToken => {
@@ -329,7 +327,7 @@ fn select_access_token_source() -> AccessTokenSourceSelection {
 // exactly the arms a caller has to distinguish, and an unavailable SOURCE is a refused ENSURE from
 // where a caller stands: nothing downstream acts differently on "no variable was set" than on "the
 // variable was set and empty", and both must refuse rather than proceed.
-fn resolve_access_token() -> AccessTokenResolution uses net: Network {
+fn resolve_access_token() -> AccessTokenResolution {
   match select_access_token_source() {
     AccessTokenSourceUnavailable { cause: cause } => AccessTokenEnsureRefused { reason: cause }
     AccessTokenSourceSelected { source: source } => ensure_access_token(source: source)

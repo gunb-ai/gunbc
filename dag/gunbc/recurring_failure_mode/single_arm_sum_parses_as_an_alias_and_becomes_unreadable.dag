@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.single_arm_sum_parses_as_an_alias_and_becomes_unreadable
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data single_arm_sum_parses_as_an_alias_and_becomes_unreadable: RecurringFailureMode = RecurringFailureMode {
+  identity: "single_arm_sum_parses_as_an_alias_and_becomes_unreadable" as NonEmptyStr,
+
+  receipts: [
+    "single-arm sum parses as an alias and becomes unreadable. INVALID STATE: an author writes a one-member roster as `type K = A`, intending a sum with one arm, and the ARM COUNT SILENTLY DECIDES WHAT KIND OF DECLARATION IT IS -- one arm parses as a TYPE ALIAS, two or more as a coproduct. HARM: the alias reaches a consumer as a bare nominal node carrying NO resolved target and NO children, so any consumer that reads a declaration's members reads nothing, and there is no diagnostic anywhere saying the declaration is not the shape that was written.",
+
+    "RECEIPT, 2026-09-20, session gentle-seal-490, printed by the refusal itself rather than inferred. A kind annotation `type MachineWidth<bits: WidthResolution>` was given a one-arm roster, `type WidthResolution = PointerWidth`. The wall that checks kind inhabitance then refused the kind's OWN declared inhabitant, twice, on the real corpus, and the self-diagnosing message carried the cause: `'PointerWidth [decl=WidthResolution inferred=absent resolved_target= children=0]'`. Changing the roster to two arms (`= StaticWidthIndex | PointerWidth`) made the same declaration a coproduct with readable children and the same check correct.",
+
+    "THE SECOND HALF, because the obvious rescue does not work: resolving the declaration instead of reading it does NOT recover the target. The kind node a parser synthesizes for an annotation carries no `ident`, and lookup_type_for keys on `node.ident`, so node-keyed resolution returns the node unchanged. Both the read route and the resolve route fail, for two different reasons, and neither reports anything.",
+
+    "WHY READING THE SOURCE DID NOT PREDICT IT, which is the part worth carrying: v1.compiler.infer local_binding_for_item's alias arm carries `inferred: item.inferred`, and v1.compiler.infer_env lookup_type_by_name returns `binding.resolved`. BOTH STATEMENTS ARE TRUE. Neither predicts this call site, because the single-arm parse has already made the declaration an alias before either applies. TRUE-BUT-NOT-PREDICTIVE is the failure, not a misreading, and it cost three build cycles before an instrument built into the refusal settled it in one. A related note already existed saying a single-arm coproduct is a type alias; it was filed against breakage at the IMPORT site, was read as being about that consumer, and the single-arm form was written anyway -- a note correct about the mechanism but filed under one consumer reads as covered and is worse than no note.",
+
+    "RUNG FOUND AT: below the ladder -- silent wrongness at the declaration, with the author's intent and the parsed shape diverging and nothing reporting it. ATTAINABLE CEILING: structurally guaranteed. The parser knows the arm count and the `=` form at the moment it chooses between alias and coproduct, so it can refuse a one-arm sum outright, or admit it as a one-arm coproduct, rather than silently reclassifying it. NEXT-RUNG TRIGGER: v1.compiler.parse distinguishes an intended one-arm sum from an alias -- SUFFICIENT FOR no declaration to change kind as a function of its arm count without a located diagnostic, so a consumer reading a roster either reads it or is told why it cannot. STRUCTURALLY IMPOSSIBLE would additionally require the surface to make the two forms unconfusable, which is a language-design question this row does not decide.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.machine_constraints", decl_name: "WidthResolution", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_resolve", decl_name: "type_arg_kind_inhabitance", field: WholeDeclaration },
+  ],
+}

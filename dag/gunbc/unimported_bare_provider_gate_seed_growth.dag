@@ -1,0 +1,43 @@
+module gunbc.unimported_bare_provider_gate_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that applies the unimported-bare-provider rule on both
+// routes (`v2.workflow.floor_unimported_bare_provider_debt`). Same owner and precedent as
+// gunbc.bare_reference_channel_outcome_seed_growth, which asks the same loader the same question.
+//
+// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing): it serves v2 witness evaluation. A
+// partial-import witness's claims refused on the entry route as a registry-row error at every call
+// site while the whole-pool floor admitted the same file; the rule makes both routes refuse at the
+// file, from one judgment.
+//
+// WHAT IS SEED AND WHY. The pairs are derived by `visit_bare_reference_providers`, the loader's own
+// provider selection, which is seed code; a .dag re-derivation would be a second authority for
+// what the loader pulls (DESIGN section 3). EVERY DECISION about the roster is .dag
+// (`v2.workflow.floor_unimported_bare_provider_debt`: coherence, the edit against the base, and the
+// standing against the tree). The host only reads facts a fold cannot: which roster files exist,
+// the pairs each checked file carries, and the roster's bytes at the diff base.
+// unimported_bare_provider_base_roster_decoded is the base read's decode, split out so a unit test
+// can drive it: it matches the two arms of the .dag's UnimportedBareProviderBaseRoster coproduct by
+// name (gunbc#12205's reader destructured it as a Record, so every roster-editing change refused).
+data unimported_bare_provider_gate_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "UnimportedBareProvider", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "unimported_bare_providers", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_authority", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "RosterRow", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "UnimportedBareProviderRosterReading", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_standing_refusals", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_gate", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_entry_refusals", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_roster_source_at_base", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_base_roster_decoded", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "unimported_bare_provider_base_reading", field: WholeDeclaration }
+  ],
+  reason: "The rule refuses, on the required floor and on the claim_batch entry route alike, a (file, name) pair where a file declaring an import line bare-references a declaration outside its own import closure. The pairs come from the loader's own seed-only provider selection (visit_bare_reference_providers). The host reads the committed roster (and its base copy, evaluated standalone), supplies the facts only it can read -- which roster files exist and which pairs each checked file carries -- and passes them to the .dag judgments, which decide every refusal; it prints what they return.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these items when the loader carries its bare-channel decision as a substrate fact a .dag fold can read -- per file, each declined name and its declaring module -- which is the capability gunbc.recurring_failure_mode.bare_reference_channel_declines_a_pull_in_silence names as its ceiling trigger. That is sufficient for a .dag fold to derive the pairs and to own the per-file judgment and the retirement truth, leaving the host only the reads it cannot perform.",
+  current_boundary: "Runs inside the floor's diff projection over the touched .dag files and once per claim_batch run over its entry files. It reads the committed roster, never writes it, and writes only a scratch copy of the base roster under the ignored build tree, removed after the read. Every failure refuses; nothing substitutes an empty roster or a default."
+}

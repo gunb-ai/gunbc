@@ -1,6 +1,7 @@
 module gunbc.auth.session
 
 import std.types { NonEmptyStr, String, Bool, Timestamp, Email }
+import std.nat { Nat }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
 import extdeps.uri { Uri }
@@ -314,7 +315,7 @@ fn session_cookie_id_of_value(value: String) -> SessionCookieIdParse {
 // and cannot drift from the rows the witness checks. Max-Age is the bounded lifetime in whole
 // seconds; the caller supplies it because the lifetime bound is the login policy's fact
 // (gunbc.auth.oidc_deployment_config), not this module's.
-fn session_cookie_set_cookie_line(session_id: NonEmptyStr, max_age_seconds: Int) -> String {
+fn session_cookie_set_cookie_line(session_id: NonEmptyStr, max_age_seconds: Nat) -> String {
   join(
     [
       "Set-Cookie: ",

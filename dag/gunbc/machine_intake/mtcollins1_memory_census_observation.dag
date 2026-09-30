@@ -621,7 +621,7 @@ data mtcollins1_media_redirection_samples: List<MtCollins1MediaRedirectionSample
 // boot-type/architecture pair are the migration's to model, not a unit receipt's to prescribe.
 //
 // THE MODEL SAID THE HANDOFF SUCCEEDED EVERY TIME, WHICH IS THE DEEPER DEFECT AND THE REASON THIS
-// SURVIVED. oob_boot_handoff mints BootHandoffCompleted once the override reads back with the
+// SURVIVED. oob_boot_handoff mints BootControlIssued once the override reads back with the
 // expected rendering and the power action is accepted. Both were true on every failed attempt: the
 // selector really did say "Force Boot from CD/DVD", and the power cycle really was accepted. The
 // arm confirms a PRECONDITION and reports it as an EFFECT, so a handoff that provably never booted

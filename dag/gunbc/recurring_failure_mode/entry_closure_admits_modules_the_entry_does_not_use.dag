@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.entry_closure_admits_modules_the_entry_does_not_use
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data entry_closure_admits_modules_the_entry_does_not_use: RecurringFailureMode = RecurringFailureMode {
+  identity: "entry_closure_admits_modules_the_entry_does_not_use" as NonEmptyStr,
+
+  receipts: [
+    "entry closure admits modules the entry does not use (the seed's per-entry closure for gunbc.live_deploy.repository_convergence_placement -- a git ref transition -- resolves 547 modules, and they include v2.compiler.parse, v2.compiler.tokenize, v2.std.grammar and v2.extdeps.languages.python, none of which the convergence program depends on. Measured by `gunbc compile --source-root dag --source-root src/v2 --entry dag/gunbc/live_deploy/repository_convergence_placement.dag --target rust`, whose own summary line reports the resolved-source count.)",
+    "INVALID STATE: a closure containing modules outside the entry's dependency set, so membership is not the resolved dependency relation. HARM: every consumer of that closure -- the host's interpreted `gunbc run` in gunbc-tree-sync.service, and any ahead-of-time emission of the same entry -- pays to resolve, typecheck and emit modules the program never reaches. Receipt: srv1 run 36032847731 spent 38 min wall (4 min CPU, reclaim-throttled at 27.9G under MemoryHigh 24G) converging a repository.",
+    "NOT YET ATTRIBUTED, stated as a bet and not a finding: which closure edge admits these modules. The candidates are the three channels v1_compiler.cli_run extend_sources_to_both_closure_fixpoint runs to a joint fixpoint -- import edges, dotted-reference edges and the bare-name census, which admits a module that DECLARES a name an import-free module spells bare. The discriminator is a per-module 'pulled by' reading over this entry's closure (v1_compiler.cli_run bare_reference_channel_readings reads the bare channel's outcome per entry and is the nearest existing instrument).",
+    "RUNG FOUND AT: mitigatable (TimeoutStartSec on the unit, gunbc#12246, only bounds the harm). CEILING: structurally guaranteed -- closure membership derived from resolved bindings is decidable and fully modeled once binding precedes closure. NEXT TRIGGER: the attribution above, then closure membership derived from resolved occurrence bindings rather than from name matches. Filed as a finding for a later lane (session crisp-lark-489, 2026-09-24); nothing here is fixed.",
+  ],
+
+  evidence: [],
+}

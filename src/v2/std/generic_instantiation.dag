@@ -1,4 +1,6 @@
 module v2.std.generic_instantiation
+
+import v2.std.collection { empty_map }
 type GenericSubstitution = Map<String, Node>
 
 data generic_substitution_bind_once_port: Symbol = generic_substitution_bind_once_port

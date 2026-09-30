@@ -1,6 +1,7 @@
 module extdeps.linux.proc_pid_stat
 
-import std.types { Int, List, NonEmptyStr }
+import std.types { Int, List, NonEmptyStr, EpochSecs }
+import std.measure { Hertz, hertz_count }
 import std.string_type { String }
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -101,4 +102,13 @@ fn proc_pid_stat_start_time(content: String) -> ProcPidStatStartTime {
       }
     }
   }
+}
+
+// THE START INSTANT OF A PROCESS ON THE EPOCH CLOCK (proc(5)): starttime (field 22, above) counts clock
+// ticks since boot, so the instant is /proc/stat btime + starttime / CLK_TCK, the division flooring to
+// a whole second. The one home for this derivation; callers supply btime (extdeps.linux.proc_stat) and
+// CLK_TCK as Hertz (extdeps.posix.getconf). The result is an Int so a caller can refuse a start before
+// the epoch rather than have it clamped.
+fn process_start_epoch_seconds(boot_epoch_seconds: EpochSecs, ticks_per_second: Hertz, start_ticks: Int) -> Int {
+  boot_epoch_seconds + (start_ticks / hertz_count(h: ticks_per_second))
 }
