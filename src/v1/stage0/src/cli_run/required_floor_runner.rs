@@ -2528,7 +2528,15 @@ pub(crate) fn floor_index_controls(
     root_sets: &[(&str, Vec<String>)],
 ) -> Result<(), String> {
     for (which, roots) in root_sets {
-        let index = process_shared_index(roots);
+        // Looked up, never built: an absent index is a control with nothing to inspect, and
+        // building one here would report on a population the control made itself.
+        let index =
+            super::entry_resolve::memoized_process_shared_index(roots).ok_or_else(|| {
+                format!(
+                "REQUIRED-FLOOR REFUSAL at={at} roots={which} cause=IndexControlsWithoutIndex -- \
+                 no shared index was built over these roots before the control ran"
+            )
+            })?;
         let (files, parses) = super::reference_reading_parse_control(&index)
             .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} roots={which} {e}"))?;
         eprintln!(
