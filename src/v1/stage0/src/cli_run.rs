@@ -46631,6 +46631,26 @@ mod serve_unix_socket_door_tests {
         assert_eq!(names(&unix).last().map(|s| s.as_str()), Some("peer_user"));
     }
 
+    #[test]
+    fn cookie_context_does_not_manufacture_a_tcp_peer() {
+        let args = serve_handler_args(
+            "GET".into(),
+            "/allocations".into(),
+            String::new(),
+            String::new(),
+            "revision".into(),
+            Some("session=opaque".into()),
+            None,
+        );
+        assert!(args
+            .iter()
+            .any(|(name, value)| name.as_deref() == Some("cookie_header")
+                && format!("{value:?}").contains("session=opaque")));
+        assert!(!args
+            .iter()
+            .any(|(name, _)| name.as_deref() == Some("peer_user")));
+    }
+
     // A TCP listener attests nothing: its peer is empty, which the fabric door refuses to admit.
     #[test]
     fn a_tcp_listener_attests_no_peer() {
