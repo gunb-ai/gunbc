@@ -605,7 +605,15 @@ pub fn rust_refusing_int_operator_helper(op: BinOp) -> Option<String> {
         BinOp::Mul => Some("v1_rt::int_mul".to_string()),
         BinOp::Div => Some("v1_rt::int_div".to_string()),
         BinOp::Mod => Some("v1_rt::int_rem".to_string()),
-        _ => std::option::Option::None,
+        BinOp::Eq => std::option::Option::None,
+        BinOp::Ne => std::option::Option::None,
+        BinOp::Lt => std::option::Option::None,
+        BinOp::Gt => std::option::Option::None,
+        BinOp::Le => std::option::Option::None,
+        BinOp::Ge => std::option::Option::None,
+        BinOp::And => std::option::Option::None,
+        BinOp::Or => std::option::Option::None,
+        BinOp::NullCoalesce => std::option::Option::None,
     }
 }
 

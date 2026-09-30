@@ -183,12 +183,12 @@ fn known_drop_shape_eq(a: KnownDropShape, b: KnownDropShape) -> Bool {
     WhereRefinementPredicate =>
       match b {
         WhereRefinementPredicate => true
-        _ => false
+        StatementLetBinder => false
       }
     StatementLetBinder =>
       match b {
+        WhereRefinementPredicate => false
         StatementLetBinder => true
-        _ => false
       }
   }
 }
