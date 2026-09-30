@@ -302,16 +302,16 @@ test fn an_else_less_if_that_falls_through_still_refuses_as_unlowered() -> Bool 
   }
 }
 
-test fn an_else_less_if_as_the_last_statement_refuses_at_its_return() -> Bool {
+test fn an_else_less_if_as_the_last_statement_still_refuses_as_unlowered() -> Bool {
   match rtp_outcomes() {
-    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: v, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_return_not_in_tail_position)
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: v, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_else_less_if_unlowered)
     RtpContextRefused => false
   }
 }
 
-test fn a_guard_in_a_non_tail_spine_refuses_at_its_return() -> Bool {
+test fn a_guard_in_a_non_tail_spine_still_refuses_as_unlowered() -> Bool {
   match rtp_outcomes() {
-    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: v, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_return_not_in_tail_position)
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: v, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_else_less_if_unlowered)
     RtpContextRefused => false
   }
 }
