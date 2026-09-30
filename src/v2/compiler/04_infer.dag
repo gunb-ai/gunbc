@@ -892,7 +892,7 @@ fn infer_product_facts_from_entries(
 fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, tree: Node, index: SymbolIndex) -> Outcome<InferredFacts> {
   match parameter_reference_path_optional(node: n) {
     Present { value: path } => infer_parameter_reference_facts(n: n, path: path, index: index)
-    Absent => infer_term_node_facts(n: n, partials: partials, kinds: kinds, tree: tree, index: index)
+    Absent => infer_term_node_facts(n: n, partials: partials, kinds: kinds, tree: tree)
   }
 }
 
@@ -915,7 +915,7 @@ fn infer_parameter_reference_facts(n: Node, path: QualifiedName, index: SymbolIn
   }
 }
 
-fn infer_term_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, tree: Node, index: SymbolIndex) -> Outcome<InferredFacts> {
+fn infer_term_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, tree: Node) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: n, partials: partials) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: _, diagnostics: cd } =>
@@ -1647,7 +1647,7 @@ fn infer_match_bool(
   node: Node,
   partials: List<Node>,
   entries: List<InferredFactsEntry>,
-  tree: Node, index: SymbolIndex,
+  tree: Node,
 ) -> Outcome<InferredFacts> {
   let positional_targets = node_positional_child_targets(node: node)
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
@@ -1845,7 +1845,7 @@ fn infer_unify_transform_operand_types(
   left_facts: InferredFacts,
   right_node: Node,
   right_facts: InferredFacts,
-  tree: Node, index: SymbolIndex,
+  tree: Node,
 ) -> Outcome<Node> {
   match infer_branch_operand_resolved_type_in_tree(node: left_node, facts: left_facts, tree: tree) {
     Violates { diagnostic: d } => outcome_rejected(d)
@@ -2286,7 +2286,7 @@ fn infer_transform_binary_infix(
   node: Node,
   partials: List<Node>,
   entries: List<InferredFactsEntry>,
-  tree: Node, index: SymbolIndex,
+  tree: Node,
 ) -> Outcome<InferredFacts> {
   let positional_targets = node_positional_child_targets(node: node)
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
@@ -2319,7 +2319,7 @@ fn infer_transform_binary_infix(
                                 left_facts: left_facts,
                                 right_node: right_target,
                                 right_facts: right_facts,
-                                tree: tree, index: index
+                                tree: tree
                               ) {
                                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                                 Accepted { value: unified_type, diagnostics: ud } =>
@@ -2482,9 +2482,9 @@ fn infer_gather_match_row_on_entries(
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,
   partials: List<Node>,
-  tree: Node, index: SymbolIndex,
+  tree: Node,
 ) -> InferGatherFoldAcc {
-  match infer_match_bool(node: node, partials: partials, entries: entries, tree: tree, index: index) {
+  match infer_match_bool(node: node, partials: partials, entries: entries, tree: tree) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -2641,7 +2641,7 @@ fn infer_type_equal_ignoring_provenance(a: Node, b: Node) -> Bool {
   exact_structural_equality_zip_fold(source_facts: a, candidate: b)
 }
 
-fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, tree: Node, index: SymbolIndex) -> Outcome<Node> {
+fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, tree: Node) -> Outcome<Node> {
   match lookup_inferred_facts_in_entries(entries: entries, key: element) {
     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: element))
     Present { value: facts } =>
@@ -2657,16 +2657,16 @@ fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, tre
 fn infer_list_elements_unified_type(
   elements: List<Node>,
   entries: List<InferredFactsEntry>,
-  tree: Node, index: SymbolIndex
+  tree: Node
 ) -> Optional<Outcome<Node>> {
   match elements {
     Empty => Absent
     Cons { head: first, tail: rest } =>
       Present {
-        value: bind_outcome(o: infer_list_element_type(element: first, entries: entries, tree: tree, index: index), f: fn(t) {
+        value: bind_outcome(o: infer_list_element_type(element: first, entries: entries, tree: tree), f: fn(t) {
           fold(rest, init: outcome_accepted(value: t), f: fn(acc, element) {
             bind_outcome(o: acc, f: fn(unified) {
-              bind_outcome(o: infer_list_element_type(element: element, entries: entries, tree: tree, index: index), f: fn(et) {
+              bind_outcome(o: infer_list_element_type(element: element, entries: entries, tree: tree), f: fn(et) {
                 if infer_type_equal_ignoring_provenance(a: unified, b: et) {
                   outcome_accepted(value: unified)
                 } else {
@@ -2696,9 +2696,9 @@ fn infer_transform_freemonoid_introduction(
   node: Node,
   elements: List<Node>,
   entries: List<InferredFactsEntry>,
-  tree: Node, index: SymbolIndex
+  tree: Node
 ) -> Optional<Outcome<InferredFacts>> {
-  match infer_list_elements_unified_type(elements: elements, entries: entries, tree: tree, index: index) {
+  match infer_list_elements_unified_type(elements: elements, entries: entries, tree: tree) {
     Absent => Absent
     Present { value: unified } =>
       Present {
@@ -2729,7 +2729,7 @@ fn infer_gather_transform_row_on_entries(
     Absent =>
       infer_gather_application_row_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, tree: tree, index: index)
     Present { value: elements } =>
-    match infer_transform_freemonoid_introduction(node: node, elements: elements, entries: entries, tree: tree, index: index) {
+    match infer_transform_freemonoid_introduction(node: node, elements: elements, entries: entries, tree: tree) {
       Absent =>
         infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, tree: tree, index: index)
       Present { value: introduced } =>
@@ -2798,7 +2798,7 @@ fn infer_gather_application_row_on_entries(
         node: node,
         partials: partials,
         entries: entries,
-        tree: tree, index: index,
+        tree: tree,
         arguments_decided: infer_diagnostics_none(d: id)
       ) {
         Present { value: derived } =>
@@ -2950,11 +2950,11 @@ fn infer_transform_derived_optional(
   node: Node,
   partials: List<Node>,
   entries: List<InferredFactsEntry>,
-  tree: Node, index: SymbolIndex,
+  tree: Node,
   arguments_decided: Bool,
 ) -> Optional<Outcome<InferredFacts>> {
   if infer_transform_is_binary_infix_int_add_shape(node: node) {
-    optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree, index: index))
+    optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree))
   } else if infer_transform_is_cast(node: node) {
     infer_transform_cast_optional(node: node, entries: entries)
   } else if arguments_decided {
@@ -3579,7 +3579,7 @@ fn infer_gather_fold_step_merged(
       entries: merged_entries,
       pending: merged_pending,
       partials: partials,
-      tree: tree, index: index
+      tree: tree
     )
   } else if acc.await_loop_row && children_remaining == 0 {
     infer_gather_loop_row_on_entries(
