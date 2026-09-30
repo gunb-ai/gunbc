@@ -157,7 +157,7 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
 }
-import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, cast_target_optional, declaration_binder_edge, edge_is_type_params, type_annotation_optional, type_decl_view, type_param_names }
+import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, cast_target_optional, declaration_binder_edge, edge_is_type_params, parameter_reference_spine_parent, type_annotation_optional, type_decl_view, type_param_names }
 import v2.std.coercion { coercion_cast_crossing }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
@@ -893,17 +893,6 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
   match parameter_reference_path_optional(node: n) {
     Present { value: path } => infer_parameter_reference_facts(n: n, path: path, index: index)
     Absent => infer_term_node_facts(n: n, partials: partials, kinds: kinds, tree: tree, index: index)
-  }
-}
-
-// A PARAMETER REFERENCE'S SPINE IS ITS PATH, NOT A SUBTERM. The reference is grounded whole
-// (infer_parameter_reference_facts); the qualified-name cells under its marker name where the
-// parameter is declared and have no type of their own, so none of them is entered as a fact -- one
-// entered underived would refuse every consumer that gates a subtree on derived grounding.
-fn infer_parameter_reference_path_edge(parent: Node) -> Bool {
-  match parameter_reference_path_optional(node: parent) {
-    Present { value: _ } => true
-    Absent => false
   }
 }
 
@@ -3489,7 +3478,7 @@ fn infer_gather_fold_step(
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
-  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge) || infer_declaration_binder_edge(parent: acc.node, edge: edge) || infer_parameter_reference_path_edge(parent: acc.node) {
+  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge) || infer_declaration_binder_edge(parent: acc.node, edge: edge) || parameter_reference_spine_parent(parent: acc.node) {
     infer_gather_fold_step_merged(
       acc: acc,
       merged_entries: acc.entries,

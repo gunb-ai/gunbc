@@ -90,10 +90,16 @@ fn pr_assemble(src: String) -> Outcome<ResolvedTree> {
   )
 }
 
-// Every parameter-reference path in an accepted tree, in walk order; a refused tree yields a sentinel
-// that no expected list equals, so a refusal can never read as "no parameter references".
-fn pr_parameter_paths(o: Outcome<ResolvedTree>) -> Optional<FreeMonoid<QualifiedName>> {
-  match o {
+// ONE PROGRAM, EVERY ROUTE CASE, ONE FRONT END. Each route row asks a different question of the SAME
+// resolved program, so the program is resolved once by a nullary producer the floor serves warm
+// (v2.workflow.floor_pure_producer_share), and each row reads only the portable values it inspects:
+// the parameter-reference paths, and the grounded and declared types at two paths.
+data pr_program_source: String = "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x\n}\n\nfn g(x: Int) -> Int {\n  x\n}\n\nfn h(x: Int) -> Int {\n  let x = 1\n  x\n}\n\nfn k(a: Int) -> fn(Int) -> Int {\n  fn(y) { y }\n}\n"
+
+// Every parameter-reference path in the resolved program, in walk order; a refused program answers
+// Absent, which no row reads as "no parameter references".
+fn pr_program_parameter_paths() -> Optional<FreeMonoid<QualifiedName>> {
+  match pr_assemble(src: pr_program_source) {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: t, diagnostics: _ } =>
       optional_present(value: fold(node_subtree_nodes(root: t.root), init: Empty, f: fn(acc, n) {
@@ -109,29 +115,41 @@ fn pr_qn(dotted: String) -> QualifiedName {
   qualified_name_from_dotted_string(dotted: dotted)
 }
 
-// (1) BESIDE fn positive(x: Int), `x` IN fn f(x: Pos) IS f's PARAMETER, BY PATH. The scope search this
-// replaces walked the tree for the first Arrow naming `x`; the path p.f.x names f's own domain entry,
-// and v2.compiler.infer grounds it there (infer_parameter_reference_facts) -- the cast rows 15 and 16
-// of v2.test.claim.body_cast_node are the grounding controls over this same shape.
+fn pr_paths_hold(pred: fn(FreeMonoid<QualifiedName>) -> Bool) -> Bool {
+  match pr_program_parameter_paths() {
+    Present { value: paths } => pred(paths)
+    Absent => false
+  }
+}
+
+fn pr_paths_contain(paths: FreeMonoid<QualifiedName>, path: QualifiedName) -> Bool {
+  fold(paths, init: false, f: fn(acc, q) { acc || (q == path) })
+}
+
+// (1) BESIDE fn positive(x: Int), `x` IN fn f(x: Pos) AND fn g(x: Int) ARE EACH FN'S OWN PARAMETER, BY
+// PATH. positive's body does not mention x, so no p.positive.x appears -- the scope search this
+// replaces walked the tree for the first Arrow naming `x`.
 test fn pr_named_fn_parameter_is_a_parameter_reference_holds() -> Bool {
-  pr_parameter_paths(o: pr_assemble(src: "module p\n\nfn positive(x: Int) -> Int { x }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x as Pos\n}\n"))
-    == optional_present(value: Cons { head: pr_qn(dotted: "p.positive.x"), tail: Cons { head: pr_qn(dotted: "p.f.x"), tail: Empty } })
+  pr_paths_hold(pred: fn(paths) {
+    pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.f.x"))
+      && pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.g.x"))
+      && !pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.positive.x"))
+  })
 }
 
-// (2) A `let` NAMED LIKE A PARAMETER STILL BINDS LEXICALLY. The body's `x` is the let binder, so no
-// parameter reference is minted: had the ParameterFrame answered it, p.f.x would appear here.
+// (2) A `let` NAMED LIKE A PARAMETER STILL BINDS LEXICALLY. h's body `x` is the let binder, so no
+// p.h.x is minted: had the ParameterFrame answered it, p.h.x would appear.
 test fn pr_let_shadowing_a_parameter_binds_lexically_holds() -> Bool {
-  pr_parameter_paths(o: pr_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let x = 1\n  x\n}\n"))
-    == optional_present(value: Empty)
+  pr_paths_hold(pred: fn(paths) { !pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.h.x")) })
 }
 
-// (3) A LAMBDA'S PARAMETER STAYS ON THE LEXICAL ROUTE. Its Arrow is met below a declaration's body, so
-// its frame is Lexical: resolve accepts and mints no parameter reference for it (the declared frontier
-// on v2.compiler.resolve FrameKind). A parameter reference here would name a path the index does not
-// hold.
+// (3) A LAMBDA'S PARAMETER STAYS ON THE LEXICAL ROUTE. Its Arrow is met below k's body, so its frame is
+// Lexical and resolve mints nothing under k (the declared frontier on v2.compiler.resolve FrameKind).
 test fn pr_lambda_parameter_binds_lexically_holds() -> Bool {
-  pr_parameter_paths(o: pr_assemble(src: "module p\n\nfn k(a: Int) -> fn(Int) -> Int {\n  fn(y) { y }\n}\n"))
-    == optional_present(value: Empty)
+  pr_paths_hold(pred: fn(paths) {
+    !pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.k.y"))
+      && !pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.k.a"))
+  })
 }
 
 // (4) A PARAMETER FRAME WHOSE PATH THE INDEX DOES NOT HOLD REFUSES AT RESOLVE, never falls back to the
@@ -228,50 +246,57 @@ test fn pr_parameter_and_declaration_markers_are_disjoint_holds() -> Bool {
 
 
 // (8) THE GROUNDING, THROUGH THE INDEX: `x` in fn f(x: Pos) grounds as exactly the resolved declared
-// type the index holds at p.f.x, and that is not what it holds at p.positive.x (Int) -- the unscoped
-// walk once answered positive's Int here. Real ingest, resolve and infer.
-fn pr_grounded_parameter_type(path: QualifiedName) -> Optional<Node> {
-  match pr_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x\n}\n\nfn g(x: Int) -> Int {\n  x\n}\n") {
-    Rejected { diagnostics: _ } => Absent
+// type the index holds at p.f.x, `x` in fn g(x: Int) as the one at p.g.x, and the two differ -- the
+// unscoped walk once answered positive's Int for f. Real ingest, resolve and infer, once, served warm.
+type PrGrounding {
+  f_grounded: Optional<Node>
+  g_grounded: Optional<Node>
+  f_declared: Optional<Node>
+  g_declared: Optional<Node>
+}
+
+fn pr_grounded_in(inferred: InferredTree, path: QualifiedName) -> Optional<Node> {
+  fold(node_subtree_nodes(root: inferred.root), init: Absent, f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if parameter_reference_path_optional(node: n) == optional_present(value: path) {
+          match inferred_facts_witness_for_node(tree: inferred, node: n) {
+            Holds { value: facts } =>
+              match inferred_facts_resolved_type(facts: facts) {
+                Holds { value: ty } => optional_present(value: ty)
+                Violates { diagnostic: _ } => Absent
+              }
+            Violates { diagnostic: _ } => Absent
+          }
+        } else { acc }
+    }
+  })
+}
+
+fn pr_program_grounding() -> PrGrounding {
+  let ungrounded = PrGrounding { f_grounded: Absent, g_grounded: Absent, f_declared: Absent, g_declared: Absent }
+  match pr_assemble(src: pr_program_source) {
+    Rejected { diagnostics: _ } => ungrounded
     Accepted { value: resolved, diagnostics: _ } =>
       match infer_and_discharge(tree: resolved) {
-        Rejected { diagnostics: _ } => Absent
+        Rejected { diagnostics: _ } => ungrounded
         Accepted { value: inferred, diagnostics: _ } =>
-          fold(node_subtree_nodes(root: inferred.root), init: Absent, f: fn(acc, n) {
-            match acc {
-              Present { value: _ } => acc
-              Absent =>
-                if parameter_reference_path_optional(node: n) == optional_present(value: path) {
-                  match inferred_facts_witness_for_node(tree: inferred, node: n) {
-                    Holds { value: facts } =>
-                      match inferred_facts_resolved_type(facts: facts) {
-                        Holds { value: ty } => optional_present(value: ty)
-                        Violates { diagnostic: _ } => Absent
-                      }
-                    Violates { diagnostic: _ } => Absent
-                  }
-                } else { acc }
-            }
-          })
+          PrGrounding {
+            f_grounded: pr_grounded_in(inferred: inferred, path: pr_qn(dotted: "p.f.x")),
+            g_grounded: pr_grounded_in(inferred: inferred, path: pr_qn(dotted: "p.g.x")),
+            f_declared: symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: pr_qn(dotted: "p.f.x")),
+            g_declared: symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: pr_qn(dotted: "p.g.x"))
+          }
       }
   }
 }
 
-fn pr_declared_type(path: QualifiedName) -> Optional<Node> {
-  match pr_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x\n}\n\nfn g(x: Int) -> Int {\n  x\n}\n") {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: resolved, diagnostics: _ } => symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path)
-  }
-}
-
 test fn pr_parameter_grounds_through_the_index_holds() -> Bool {
-  let f_type = pr_grounded_parameter_type(path: pr_qn(dotted: "p.f.x"))
-  let g_type = pr_grounded_parameter_type(path: pr_qn(dotted: "p.g.x"))
-  match f_type {
+  let g = pr_program_grounding()
+  match g.f_grounded {
     Present { value: _ } =>
-      (f_type == pr_declared_type(path: pr_qn(dotted: "p.f.x")))
-        && (g_type == pr_declared_type(path: pr_qn(dotted: "p.g.x")))
-        && (f_type != g_type)
+      (g.f_grounded == g.f_declared) && (g.g_grounded == g.g_declared) && (g.f_grounded != g.g_grounded)
     Absent => false
   }
 }
