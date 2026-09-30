@@ -3189,6 +3189,157 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The outcome, the rooted projection, the adjudication boundary, durable cadence state, and witnesses for the red controls."
       )
     ),
+
+    // THE NATIVE-SCM AUTHORITY PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The
+    // dag-scm-design rows are one program (operator ruling 2026-09-13): native SCM becomes the
+    // authority for authoring, proposals, integration and history, with Git and GitHub demoted to
+    // compatibility projections. The three upstream models pin each system's own vocabulary, the
+    // compatibility shape extracts their shared roles, the P0 landing spine and P1 proof kernel
+    // make submit-to-landed real, and the native-authority rows cut the bridge over. This node is
+    // that shared alignment level; the bound row attaches to it, and the remaining rows attach as
+    // their execution contracts land.
+    active_small(
+      identity: "rn_1317A022JY9TLMSN5C9F142XA",
+      id: "dag-scm-program",
+      owner: "source-intent",
+      path: "docs/plans/dag-scm-design.md",
+      t: fields(
+        headline: "Make native SCM the authority, Git a projection",
+        boundary: "The native-SCM program: describe Git, Mercurial, and Pijul on their own terms and extract the compatibility realization shape from those receipts; carry one submitted change from result-finding through permission checks, committing, independent read-back, and compatibility projection; prove one bounded reconciliation rule for directly authored changes with data-driven invariants and certificates; and land the native authority -- CAS slot consumers, Git import wall, bridge cutover -- so authoring, proposals, integration and history no longer route through Git. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "While Git stays the hidden authority, every native refusal has a fallback that makes the PR the source of truth exactly when the native path is under stress, and the SCM domain model stays without a production authoring, submission, or landing route.",
+        first_slice: "Read the rows in the program's authored order: the three upstream models, the claim-indexed evidence carrier, the compatibility shape, the P0 landing spine, the P1 proof kernel, then the native write-spine acceptance and native-authority rows.",
+        red_control: "A dag-scm row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted dag-scm chain, every attached child's edge contribution readable against this intent, and no dag-scm row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE NAMESPACE PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The namespace lane's rows
+    // -- occurrence transport, binding kernel, structural observations, reference-derived closure,
+    // ambiguity discharge, the canonical changeover, and the consumer/import/retirement rows -- are
+    // one functional decomposition of a single claim: what a name means is worked out from where it
+    // is written and decided one canonical way. This node is that shared alignment level; the bound
+    // rows attach to it, and the remaining rows attach as their execution contracts land.
+    active_small(
+      identity: "rn_4K7LFFQ3V1B0NIZA5HUGNWWUD",
+      id: "namespace-unique-on-chain",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Decide every name one canonical way",
+        boundary: "The namespace program: carry occurrences exactly; decide none/one/many with one kernel handed the candidates; observe what a name can see on ordinary compiles; derive what each file depends on from those answers; discharge the genuinely-many cases from real compilation; land the canonical changeover and retire the older deciding mechanisms. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "Several mechanisms deciding the same name differently is how a program silently comes to mean something other than what was written; one reviewable decision is the correctness surface every later guarantee reads through.",
+        first_slice: "Read the rows in the lane's authored order: namespace-occurrence-transport, namespace-binding-kernel, namespace-structural-observations, namespace-reference-derived-closure, namespace-ambiguity-discharge, namespace-canonical-binding, then the consumer, import, and retirement rows.",
+        red_control: "A namespace row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted namespace chain, every attached child's edge contribution readable against this intent, and no namespace row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE V1 DELETION PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The v1_deletion_plan
+    // rows are one program: enumerate what still depends on the old interpreter and old emitter,
+    // observe the hand-written population from the host instead of transcribing it, carry test
+    // coverage across migration, and record the trust ruling that gates removal -- so deletion is a
+    // derived population and a recorded decision, never a judgment call. This node is that shared
+    // alignment level; the bound rows attach to it, and the remaining rows attach as their
+    // execution contracts land.
+    active_small(
+      identity: "rn_WNFHYN3C1DA917SQJMLCTUFX3",
+      id: "v1-deletion-program",
+      owner: "self-host",
+      path: "dag/gunbc/v1/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Delete the old compiler honestly",
+        boundary: "The v1 deletion program: the interpreter's primitive surface becomes enumerable and then model-authoritative; the hand-written Rust population is read from the repository at a known revision rather than transcribed; deleting old tests loses no coverage; the products build and run with the old directory absent; and the seed-honesty ruling records whether independent rebuild must precede removal. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "'Mostly migrated' is not a state anyone can verify; without a derived frontier and a recorded trust ruling, deletion either waits forever or lands silently incomplete.",
+        first_slice: "Read the rows in dependency order: the primitive-surface roster and dispatch authority, the host source observation, the honest-frontier census, test migration, the seed-honesty decision, then the queue drain, emitter deletion, and the v1-free product builds.",
+        red_control: "A deletion-program row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted deletion chain, every attached child's edge contribution readable against this intent, and no v1-deletion row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE V2 EMITTER PRODUCTION LANE (review 5358022153 lane B, 2026-09-30). The self-host claim has
+    // a measurable half: the v2 compiler writes the Rust the factory is built from, and every
+    // produced result records which generator made it. The two bound rows of that lane attach
+    // here; the remaining self-host rows attach as their execution contracts land.
+    active_small(
+      identity: "rn_YYXCOYJGPXICGC4YYL8TPFQH9",
+      id: "v2-emitter-production",
+      owner: "self-host",
+      path: "src/v2/compiler/self_host/candidate_generation.dag",
+      t: fields(
+        headline: "The new compiler writes its own Rust, with provenance",
+        boundary: "The emitter production lane: the v2 compiler reads source, works out the types, translates, and writes real Rust without the old generator deciding any of it; and every produced result says which generator made it and how far it got, as two separate facts that cannot be claimed ahead of their receipts. This node is the lane's decomposition level; the executable rows are its children.",
+        displaced_cost: "Until the new compiler can write Rust on its own, every improvement routes through the generator this lane exists to delete; and without per-generator provenance the transition cannot be measured, only asserted.",
+        first_slice: "Read the rows in dependency order: the producer-provenance roster, the direct-rust-door production walk, then the behavioral-module, compatible-corpus, native-crate-partition, and native-bootstrap rows.",
+        red_control: "An emitter row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this lane.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted emitter chain, every attached child's edge contribution readable against this intent, and no emitter row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE CI END-TO-END EXECUTION PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The
+    // ci-process-end-to-end rows are one program: CI owns its execution, and a verdict names the
+    // work that produced it. The bound row attaches here; the remaining rows attach as their
+    // execution contracts land.
+    active_small(
+      identity: "rn_GG8OZ558D0UB3R98N5MQCDPKB",
+      id: "ci-end-to-end-execution",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "CI owns its execution end to end",
+        boundary: "The CI process program: every required check carries the population it actually executed -- which witnesses, which corpus, how many -- a run that executed nothing refuses to report any verdict, and a failure ahead of the corpus is its own outcome, distinct from the corpus running and disagreeing. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "A check that spent days reporting failures while executing no corpus at all looked exactly like a real disagreement from outside; without the executed population on the verdict, CI output is evidence about pipeline health rather than about the corpus, and a genuine signal is invisible.",
+        first_slice: "Read the rows in authored order: the executed-coverage receipt, the check projection, actions-runner retirement, and remote-build containment.",
+        red_control: "A CI-program row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted CI chain, every attached child's edge contribution readable against this intent, and no CI-program row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE PROGRESS-OBSERVATION PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The
+    // progress-observation-design rows are one program: progress reaches operators through typed,
+    // classified observations derived from described operations, with the legacy raw-print channel
+    // inventoried to zero. The bound row attaches here; the remaining rows attach as their
+    // execution contracts land.
+    active_small(
+      identity: "rn_YLLQF42HU2BZ52OXASZVS77F9",
+      id: "progress-observation",
+      owner: "ci-observation",
+      path: "docs/plans/progress-observation-design.md",
+      t: fields(
+        headline: "One trustworthy progress-observation channel",
+        boundary: "The progress-observation program: progress is emitted as classified observation rows derived from described operations; every place that printed progress directly is inventoried and either moved onto described operations or declared real program output; and scoped-run reach-throughs into hand-written code carry their seed-growth justification and dissolution trigger. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "Two competing status channels means neither can be trusted and formatting decisions scatter across the codebase; one typed channel is how a distant operator supervises an autonomous factory without reading every attempt.",
+        first_slice: "Read the rows in authored order: the raw-print retirement census, the scoped-run consumer, and the scoped-run seed-growth justification.",
+        red_control: "An observation row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted observation chain, every attached child's edge contribution readable against this intent, and no observation row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE ROADMAP ACCEPTANCE-INTEGRITY PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The
+    // roadmap-workspace-ux rows governing acceptance records are one program: what the roadmap has
+    // accepted stays accepted unless a named revocation withdraws it exactly, and the append-only
+    // carrier's replay projection is the only authority over that history. The bound row attaches
+    // here; the remaining rows attach as their execution contracts land.
+    active_small(
+      identity: "rn_PJKPB0BU0MRQ1ILRI1D4GOK1M",
+      id: "roadmap-acceptance-integrity",
+      owner: "roadmap-runtime",
+      path: "docs/plans/roadmap-workspace-ux-plan.md",
+      t: fields(
+        headline: "Roadmap acceptance records are durable and derived",
+        boundary: "The roadmap-runtime acceptance program: acceptance history is one append-only JSONL carrier; the receipt projection is a replay of that carrier and nothing else; and a record that was valid refuses to quietly become unaccepted -- any withdrawal names the exact item, the exact record being withdrawn, a reason, and what follows from it. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "An accepted fact that goes missing puts an item back on the board as if it had never been done; the only detector was a person redoing the work, and that already happened once.",
+        first_slice: "Read the rows in authored order: the receipt-continuity comparison, then the workspace UX rows that consume the replayed projection.",
+        red_control: "A roadmap-runtime row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted acceptance-integrity chain, every attached child's edge contribution readable against this intent, and no roadmap-runtime row whose walk ends anywhere else."
+      )
+    ),
   ], guarantee_ladder_nodes())
 }
 
