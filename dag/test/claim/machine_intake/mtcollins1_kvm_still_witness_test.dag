@@ -27,7 +27,7 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmJournalText, KvmJournalAbsent, KvmJournalUnread, kvm_journal_events_of,
   kvm_journal_event, kvm_journal_events, kvm_journal_line, KvmJournalRender, KvmJournalRendered, KvmJournalRenderRefused,
   KvmJournalEstablished, KvmJournalConnectionRequested, KvmJournalConnectionRefused, KvmJournalConnectionOpen, KvmJournalConnectionError,
-  KvmJournalRefused, KvmJournalFailed, KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped, KvmJournalTriggerScanFailed, KvmJournalNavigated,
+  KvmJournalRefused, KvmJournalFailed, KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped, KvmJournalTriggerScanFailed, KvmJournalNavigated, KvmJournalPageConsole, KvmJournalPageError,
   KvmLoginRefused, KvmNoKvmService, KvmNoFrame, KvmToolchainUnavailable, KvmCredentialUnreadable, KvmRefusedOther, KvmAcquisitionOther, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
   mtcollins1_kvm_observer_start, mtcollins1_bmc_firmware, mtcollins1_kvm_observer_dir, kvm_observer_trigger,
   KvmJournalWord, kvm_journal_event_words, kvm_journal_cause_words, mtcollins1_kvm_observer_script,
@@ -281,6 +281,8 @@ fn kvm_event_sample() -> List<KvmJournalEvent> {
     KvmJournalStopped { at: kvm_at(ms: 1790000000023), session: "released", browser: "closed" },
     KvmJournalTriggerScanFailed { at: kvm_at(ms: 1790000000024), detail: "\"EACCES\"" },
     KvmJournalNavigated { at: kvm_at(ms: 1790000000025), seq: "2", phase: "held", url: "\"https://192.168.1.30/#login\"" },
+    KvmJournalPageConsole { at: kvm_at(ms: 1790000000026), phase: "viewer", level: "error", detail: "\"WebSocket connection to wss://192.168.1.30/kvm failed\"" },
+    KvmJournalPageError { at: kvm_at(ms: 1790000000027), phase: "viewer", detail: "\"TypeError: Cannot read properties of null (reading 'garc')\"" },
   ]
 }
 

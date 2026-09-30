@@ -5,13 +5,15 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.durable_compare_and_set { CasGeneration }
 import v2.std.optional { Present, Absent }
 import std.durable_exclusive_hold {
-  DurableHoldOwnerRef, DurableHoldReleaseRef,
+  DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldObservation, DurableHoldReleaseRefusal,
   HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+  HoldReleaseSlotAbsent, HoldReleaseAlreadyFree, HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
+  HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
 }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
   FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
-  FileHoldReleasePlanned, FileHoldReleaseNotEligible,
+  FileHoldReleasePlanned, FileHoldReleaseNotEligible, FileHoldReleaseOutcome,
   FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit, observe_file_hold,
 }
@@ -222,6 +224,96 @@ fn mtcollins1_kvm_observer_acquire_unit_hold(run_id: NonEmptyStr) -> UnitHoldAcq
   ]
 {
   unit_hold_acquire(root: unit_hold_store_root, key: mtcollins1_unit_hold_key, owner: unit_hold_owner_ref(o: KvmObserverProbe { run_id: run_id }))
+}
+
+// THE PROBE'S always() RELEASE, SCOPED TO ITS OWN RUN (eager-owl-205, 2026-09-30). A cancel or a step
+// timeout after the probe acquired leaves the hold with no proof in hand, so a separate step that runs
+// under always() observes the slot and frees it ONLY when the holder decodes to
+// KvmObserverProbe { run_id } for THIS run, releasing at the generation it observed (the store's
+// compare-and-set). A free slot, another owner -- an operator, a boot, another probe run -- or an
+// unreadable slot is a reported no-op, never a release; a slot that moved between the observation and
+// the commit is stale, and is left as it is.
+//
+// DECLARED FRONTIER: a runner that dies, or a job cancelled at its backstop, runs no always() step, so
+// its probe hold survives until someone clears it. TRIGGER: gunbc#12555's observed-dead holder recovery
+// landing on main, which frees a hold whose holding run is observed to have ended.
+type ProbeHoldReleaseDecision
+  = ProbeHoldReleaseAt { owner: DurableHoldOwnerRef, generation: CasGeneration }
+  | ProbeHoldFreeNoop
+  | ProbeHoldForeignNoop { holder: String }
+  | ProbeHoldUnobservable { cause: String }
+
+fn probe_hold_release_decision(observed: DurableHoldObservation, run_id: NonEmptyStr) -> ProbeHoldReleaseDecision {
+  match observed {
+    HoldSlotAbsent => ProbeHoldFreeNoop
+    HoldSlotFree { generation: _, released_by: _ } => ProbeHoldFreeNoop
+    HoldSlotUndecodable { generation: _, detail: d } => ProbeHoldUnobservable { cause: concat("slot undecodable: ", d as String) }
+    HoldObservationUnavailable { cause: _ } => ProbeHoldUnobservable { cause: "the store could not be read" }
+    HoldSlotHeld { generation: g, owner: o } =>
+      match decode_unit_hold_owner(owner: o) {
+        UnitHoldOwnerDecoded { owner: KvmObserverProbe { run_id: r } } =>
+          if (r as String) == (run_id as String) { ProbeHoldReleaseAt { owner: o, generation: g } }
+          else { ProbeHoldForeignNoop { holder: unit_hold_owner_label(o: KvmObserverProbe { run_id: r }) } }
+        UnitHoldOwnerDecoded { owner: other } => ProbeHoldForeignNoop { holder: unit_hold_owner_label(o: other) }
+        UnitHoldOwnerUnrecognized { raw: raw } => ProbeHoldForeignNoop { holder: raw }
+      }
+  }
+}
+
+type ProbeHoldReleaseOutcome
+  = ProbeHoldReleased
+  | ProbeHoldAlreadyFree
+  | ProbeHoldNotOurs { holder: String }
+  | ProbeHoldStale { detail: String }
+  | ProbeHoldUnreleased { cause: String }
+
+// A RELEASE ASSESSED AGAINST THE OBSERVATION AND REFUSED: every refusal but the slot having been freed
+// meanwhile means the slot moved since this run looked, so it is stale and left alone.
+fn probe_hold_release_refused(refusal: DurableHoldReleaseRefusal) -> ProbeHoldReleaseOutcome {
+  match refusal {
+    HoldReleaseSlotAbsent => ProbeHoldAlreadyFree
+    HoldReleaseAlreadyFree { generation: _, released_by: _ } => ProbeHoldAlreadyFree
+    HoldReleaseHeldByAnotherOwner { generation: _, holder: h } => ProbeHoldNotOurs { holder: h as String }
+    HoldReleaseAgainstAnotherGeneration { acquired: _, observed: _ } => ProbeHoldStale { detail: "the slot moved to another generation after it was observed" }
+    HoldReleaseSlotUndecodable { generation: _, detail: d } => ProbeHoldUnreleased { cause: concat("slot undecodable: ", d as String) }
+    HoldReleaseObservationUnavailable { cause: _ } => ProbeHoldUnreleased { cause: "the store could not be read" }
+  }
+}
+
+fn probe_hold_release_committed(outcome: FileHoldReleaseOutcome) -> ProbeHoldReleaseOutcome {
+  match outcome {
+    FileHoldReleased { slot_key: _, generation: _ } => ProbeHoldReleased
+    FileHoldReleaseLost { slot_key: _ } => ProbeHoldStale { detail: "the slot moved before the release committed" }
+    FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => ProbeHoldUnreleased { cause: "the store refused the release; the unit is STILL held" }
+    FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => ProbeHoldUnreleased { cause: "the key is not slot-addressable" }
+  }
+}
+
+fn probe_hold_release_outcome_text(o: ProbeHoldReleaseOutcome) -> String {
+  match o {
+    ProbeHoldReleased => "released this run's probe hold"
+    ProbeHoldAlreadyFree => "no hold to release (the slot was free)"
+    ProbeHoldNotOurs { holder: h } => concat("left alone: the unit is held by ", h)
+    ProbeHoldStale { detail: d } => concat("left alone, stale: ", d)
+    ProbeHoldUnreleased { cause: c } => concat("NOT released: ", c)
+  }
+}
+
+fn mtcollins1_kvm_observer_release_unit_hold(run_id: NonEmptyStr) -> ProbeHoldReleaseOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_release_wet"),
+  ]
+{
+  match probe_hold_release_decision(observed: observe_file_hold(root: unit_hold_store_root, key: mtcollins1_unit_hold_key), run_id: run_id) {
+    ProbeHoldFreeNoop => ProbeHoldAlreadyFree
+    ProbeHoldForeignNoop { holder: h } => ProbeHoldNotOurs { holder: h }
+    ProbeHoldUnobservable { cause: c } => ProbeHoldUnreleased { cause: c }
+    ProbeHoldReleaseAt { owner: o, generation: g } =>
+      match file_hold_release_assess(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, owner: o, acquired_generation: g, released_by: concat("mtcollins1-kvm-observer-always-release:", run_id as String) as DurableHoldReleaseRef) {
+        FileHoldReleaseNotEligible { slot_key: _, refusal: r } => probe_hold_release_refused(refusal: r)
+        FileHoldReleasePlanned { plan: p } => probe_hold_release_committed(outcome: file_hold_release_commit(plan: p))
+      }
+  }
 }
 
 // THE RELEASE CONSUMES THE PROOF AND KEEPS THE STEP'S OWN OUTCOME, saying when the hold was left: a

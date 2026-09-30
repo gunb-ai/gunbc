@@ -10,12 +10,16 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
 import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet }
-import gunbc.owned_process { OwnedReleased, OwnedAlreadyGone }
+import gunbc.owned_process { OwnedRelease, OwnedReleased, OwnedAlreadyGone, OwnedReleaseNotOwned, OwnedNotRecorded, OwnedForeign, owned_process_release, owned_release_text }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
 import gunbc.machine_intake_mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
-import gunbc.machine_intake_mtcollins1_maintenance_hold { UnitHeld, UnitHoldRefused, mtcollins1_kvm_observer_acquire_unit_hold, unit_hold_release }
+import gunbc.machine_intake_mtcollins1_maintenance_hold {
+  UnitHeld, UnitHoldRefused, mtcollins1_kvm_observer_acquire_unit_hold, unit_hold_release,
+  ProbeHoldReleased, ProbeHoldAlreadyFree, ProbeHoldNotOurs, ProbeHoldStale, ProbeHoldUnreleased,
+  mtcollins1_kvm_observer_release_unit_hold, probe_hold_release_outcome_text,
+}
 import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverRecord, KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted,
   KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission,
@@ -174,5 +178,44 @@ fn mtcollins1_kvm_observer_observe_wet() -> ProcessExit
             UnitHeld { proof: proof } => unit_hold_release(proof: proof, outcome: mtcollins1_kvm_observer_observe_held(username: username, password_file: p, run_id: run_id as NonEmptyStr))
           }
       }
+  }
+}
+
+// WHETHER THE OBSERVER PROCESS THIS RUN STARTED IS GONE, by the release's arm: released or already
+// exited; no record at all (the probe stopped before launching); or a recorded pid now naming another
+// process's start time (ours exited and the pid was reused). A failed or unresolved release, or a record
+// that cannot be read or parsed, is not let go.
+fn kvm_probe_process_let_go(process: OwnedRelease) -> Bool {
+  match process {
+    OwnedReleased { pid: _ } => true
+    OwnedAlreadyGone { pid: _ } => true
+    OwnedReleaseNotOwned { standing: s } => match s { OwnedNotRecorded { detail: _ } => true  OwnedForeign { pid: _, observed_start: _ } => true  _ => false }
+    _ => false
+  }
+}
+
+// THE always() RELEASE (a separate step after the probe's, run whatever the probe step did: success,
+// failure, cancel or its own timeout). First the observer process this run started, by its recorded
+// (pid, start time) -- so the viewer seat and the web session it holds are let go -- then the unit hold,
+// only if THIS run holds it (gunbc.machine_intake_mtcollins1_maintenance_hold
+// mtcollins1_kvm_observer_release_unit_hold). A probe that finished cleanly left nothing, and both
+// halves report that as a no-op. It fails loudly only when something this run owns stays held.
+fn mtcollins1_kvm_observer_release_wet() -> ProcessExit
+{
+  let run_id = match actions_variable_read(name: github_run_id_variable_name) {
+    ActionsVariablePresent { value: v } => trim(s: v)
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  if run_id == "" {
+    return exit_failure(reason: concat(concat("mtcollins1 kvm observer release: ", github_run_id_variable_name as String), " is unset or empty, so this run cannot name the hold it may release"))
+  }
+  let pid_path = concat(mtcollins1_kvm_observer_dir(attempt: mtcollins1_kvm_observer_probe_attempt(run_id: run_id as NonEmptyStr)), "/observer.pid")
+  let process = owned_process_release(pid_path: pid_path)
+  let hold = mtcollins1_kvm_observer_release_unit_hold(run_id: run_id as NonEmptyStr)
+  let line = join(["mtcollins1 kvm observer release: process ", owned_release_text(r: process), "; unit hold ", probe_hold_release_outcome_text(o: hold)], "")
+  let process_let_go = kvm_probe_process_let_go(process: process)
+  match hold {
+    ProbeHoldUnreleased { cause: _ } => exit_failure(reason: line)
+    _ => if process_let_go { ExitSuccess } else { exit_failure(reason: line) }
   }
 }

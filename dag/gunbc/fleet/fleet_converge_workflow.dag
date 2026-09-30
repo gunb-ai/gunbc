@@ -28,7 +28,8 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
 import gunbc.machine_intake_mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
-import gunbc.machine_intake_mtcollins1_ui_bundle_observe { mtcollins1_ui_bundle_bytes_path, mtcollins1_ui_bundle_receipt_path, mtcollins1_ui_bundle_read_bound }
+import gunbc.machine_intake_mtcollins1_kvm_still { mtcollins1_kvm_observer_release_allowance }
+import gunbc.machine_intake_mtcollins1_ui_bundle_observe { mtcollins1_ui_bundle_artifact_glob, mtcollins1_ui_bundle_read_bound }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
@@ -127,6 +128,7 @@ import gunbc.ci_spec {
   gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_mtcollins1_ui_bundle_observe_invoke,
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
+  gunbc_ci_mtcollins1_kvm_observer_release_invoke,
   gunbc_ci_fabric_writer_identity_observe_invoke,
   gunbc_ci_mtcollins1_census_image_publish_invoke,
   gunbc_ci_mtcollins1_census_member_readback_invoke,
@@ -2092,14 +2094,13 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
 // function is implicitly success() and would drop exactly that receipt.
 // A READ-ONLY MT. COLLINS PROBE STEP'S BUDGET IS A FOLD, NEVER A LITERAL, over the step's phases in
 // order, each counted once and rounded once: gunbc run's load of the probe's closure, whose authority is
-// the measured resolve budget (gunbc.fleet_workflow_steps gunbc_ci_gunbc_run_resolve_step_timeout_minutes);
-// the credential prelude's one bounded Secret Manager read (gunbc.ci_spec gunbc_ci_sm_max_time -- the
-// prelude's other lines are local file writes); and the probe's own declared bound. The flat aux budget
+// the measured resolve budget (gunbc.fleet_workflow_steps gunbc_ci_gunbc_run_resolve_step_timeout_minutes),
+// then the step's own phases -- for a probe, the credential prelude's one bounded Secret Manager read
+// (gunbc.ci_spec gunbc_ci_sm_max_time; the prelude's other lines are local file writes) and the probe's
+// declared bound; for the always() release, the owned release alone. The flat aux budget
 // is what killed the UI bundle's first wet run (36759368077) while it was still typechecking.
-fn fleet_converge_mtcollins1_probe_step_timeout_minutes(probe_bound: Second) -> Int {
-  let secs = gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60
-    + (second_count(s: gunbc_ci_sm_max_time) as Int)
-    + (second_count(s: probe_bound) as Int)
+fn fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: List<Second>) -> Int {
+  let secs = fold(phases, gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60, (acc, p) => acc + (second_count(s: p) as Int))
   (secs + 59) / 60
 }
 
@@ -2107,7 +2108,7 @@ data fleet_converge_mtcollins1_ui_bundle_observe_step_if: String = fleet_converg
 
 fn fleet_converge_mtcollins1_ui_bundle_observe_step() -> Step {
   RunStep {
-    name: Present { value: "Mt. Collins UI bundle: firmware revision, then the served source.min.js and its sha256 (reads only)" },
+    name: Present { value: "Mt. Collins served UI: firmware revision, then source.min.js, viewer.html and every script they load, each with its sha256 (reads only)" },
     id: Present { value: "mtcollins1_ui_bundle_observe" },
     run: gunbc_ci_mtcollins1_ui_bundle_observe_invoke(),
     shell: none,
@@ -2117,16 +2118,16 @@ fn fleet_converge_mtcollins1_ui_bundle_observe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_ui_bundle_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(probe_bound: mtcollins1_ui_bundle_read_bound()) }
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_ui_bundle_read_bound()]) }
   }
 }
 
 fn fleet_converge_mtcollins1_ui_bundle_observe_upload_step() -> Step {
   fleet_converge_receipt_upload_step(
     id: "mtcollins1_ui_bundle_observe_upload",
-    name: "Upload Mt. Collins UI bundle bytes and receipt",
+    name: "Upload Mt. Collins served UI files and receipt",
     artifact: "mtcollins1-ui-bundle",
-    path: "target/mtcollins1-ui-bundle-*",
+    path: mtcollins1_ui_bundle_artifact_glob,
     if_condition: join(["always() && ", fleet_converge_mtcollins1_ui_bundle_observe_step_if], "")
   )
 }
@@ -2153,7 +2154,25 @@ fn fleet_converge_mtcollins1_kvm_observer_observe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_kvm_observer_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(probe_bound: mtcollins1_kvm_observer_probe_bound()) }
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_kvm_observer_probe_bound()]) }
+  }
+}
+
+// THE PROBE'S always() RELEASE (gunbc.machine_intake_mtcollins1_kvm_observer_observe
+// mtcollins1_kvm_observer_release_wet): after the probe step whatever it did -- success, failure, cancel,
+// or its own timeout -- release the observer process this run started and the unit hold only if this run
+// holds it. It needs no credential, so it has no prelude and no token.
+fn fleet_converge_mtcollins1_kvm_observer_release_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins KVM observer: release this run's observer and its unit hold (always; a no-op if nothing is held)" },
+    id: Present { value: "mtcollins1_kvm_observer_release" },
+    run: gunbc_ci_mtcollins1_kvm_observer_release_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_mtcollins1_kvm_observer_observe_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [mtcollins1_kvm_observer_release_allowance]) }
   }
 }
 
@@ -3522,6 +3541,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_mtcollins1_ui_bundle_observe_step(),
         fleet_converge_mtcollins1_ui_bundle_observe_upload_step(),
         fleet_converge_mtcollins1_kvm_observer_observe_step(),
+        fleet_converge_mtcollins1_kvm_observer_release_step(),
         fleet_converge_mtcollins1_kvm_observer_observe_upload_step(),
         fleet_converge_fabric_writer_identity_observe_step(),
         fleet_converge_fabric_writer_identity_observe_receipt_upload_step(),
