@@ -73,6 +73,22 @@ fn mtcollins1_boot_matrix_enrolment_dead_band_observed_only() -> List<EnrolmentD
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted",
     reason: "the real boot entry end to end over the dry realization through a stop, a replace and a full boot, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication) observed 473 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
   },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_presentation_lost_after_readiness_stops_the_handoff",
+    reason: "the real boot entry end to end over the dry realization up to the handoff gate, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); it straddles the margin between runners at identical eval_steps -- PR required floor run 36775473983 of gunbc#12800 at b907f7dc0c3 (srv3) observed 303 ms CPU, strictly above the 302 ms margin and under the 500 ms line, and run 36765162766 at 6cac35eb1a6 (srv1) observed 287 ms, inside the runner envelope below the margin (EnrolmentDeadBandWithinRunnerEnvelope)" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_stale_lane_image_with_a_code_the_stop_does_not_clear_refuses_after_the_replace",
+    reason: "the real boot entry end to end over the dry realization up to the handoff gate, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); it straddles the margin between runners at identical eval_steps -- PR required floor run 36775473983 of gunbc#12800 at b907f7dc0c3 (srv3) observed 307 ms CPU, strictly above the 302 ms margin and under the 500 ms line, and run 36765162766 at 6cac35eb1a6 (srv1) observed 290 ms, inside the runner envelope below the margin (EnrolmentDeadBandWithinRunnerEnvelope)" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_16_with_nothing_presented_refuses_before_the_handoff",
+    reason: "the real boot entry end to end over the dry realization up to the handoff gate, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); it straddles the margin between runners at identical eval_steps -- PR required floor run 36775473983 of gunbc#12800 at b907f7dc0c3 (srv3) observed 308 ms CPU, strictly above the 302 ms margin and under the 500 ms line, and run 36765162766 at 6cac35eb1a6 (srv1) observed 276 ms, inside the runner envelope below the margin (EnrolmentDeadBandWithinRunnerEnvelope)" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_appearing_with_readiness_refuses_before_the_handoff",
+    reason: "the real boot entry end to end over the dry realization up to the handoff gate, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); it straddles the margin between runners at identical eval_steps -- PR required floor run 36775473983 of gunbc#12800 at b907f7dc0c3 (srv3) observed 318 ms CPU, strictly above the 302 ms margin and under the 500 ms line, and run 36765162766 at 6cac35eb1a6 (srv1) observed 290 ms, inside the runner envelope below the margin (EnrolmentDeadBandWithinRunnerEnvelope)" as NonEmptyStr,
+  },
   ]
 }
 
