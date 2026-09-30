@@ -788,8 +788,8 @@ fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookup
     let graph = Rc::new(ResolvedGraph {
         modules,
         item_registry: decoded.item_registry.clone(),
+        item_leaf_owner_modules: decoded.item_leaf_owner_modules.clone(),
         diagnostics: decoded.diagnostics.clone(),
-        emit_graph_info: decoded.emit_graph_info.clone(),
     });
     record_decode();
     CacheLookupResult::Hit(CachedResolvedGraph {
@@ -1292,8 +1292,8 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
         graph: Rc::new(ResolvedGraph {
             modules,
             item_registry: decoded.item_registry.clone(),
+            item_leaf_owner_modules: decoded.item_leaf_owner_modules.clone(),
             diagnostics: decoded.diagnostics.clone(),
-            emit_graph_info: decoded.emit_graph_info.clone(),
         }),
         source_indices,
         compile_clean_diags: Rc::new(Vector::new()),
