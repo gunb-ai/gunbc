@@ -3970,3 +3970,122 @@ mod heads_parse_count {
         assert!(over.is_empty(), "heads parsed more than once: {over:?}");
     }
 }
+
+/// THE MODULE-LEVEL CLASSES A LEAVE-ONE-OUT READING CAN REMOVE WHOLE. Each is one field of every
+/// `TypedModule`, dropped for ALL modules at once, so a structure one module links from another
+/// (a TypeEnv parent, an interface import) goes with its class rather than surviving through the
+/// link. A field INSIDE one of these (a TypeEnv map) cannot be removed this way: every environment
+/// holds its own copy and other environments reach it through their parent links, so its exclusive
+/// bytes are not observable by dropping, and its enclosing class's figure is their upper bound.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TypedModuleClass {
+    TypeEnv,
+    TypeEnvCache,
+    FuncEnv,
+    Interface,
+    ModuleItemRegistry,
+    Items,
+    ModuleNodes,
+    OccurrenceTransport,
+}
+
+impl TypedModuleClass {
+    pub(crate) const ALL: [TypedModuleClass; 8] = [
+        TypedModuleClass::TypeEnv,
+        TypedModuleClass::TypeEnvCache,
+        TypedModuleClass::FuncEnv,
+        TypedModuleClass::Interface,
+        TypedModuleClass::ModuleItemRegistry,
+        TypedModuleClass::Items,
+        TypedModuleClass::ModuleNodes,
+        TypedModuleClass::OccurrenceTransport,
+    ];
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            TypedModuleClass::TypeEnv => "type_env",
+            TypedModuleClass::TypeEnvCache => "type_env_cache",
+            TypedModuleClass::FuncEnv => "func_env",
+            TypedModuleClass::Interface => "interface",
+            TypedModuleClass::ModuleItemRegistry => "module_item_registry",
+            TypedModuleClass::Items => "items",
+            TypedModuleClass::ModuleNodes => "module_nodes",
+            TypedModuleClass::OccurrenceTransport => "occurrence_transport",
+        }
+    }
+}
+
+/// One leave-one-out reading: the graph's live bytes with every class held, and the bytes freed by
+/// dropping ONE class first while every other class is still held -- that class's EXCLUSIVE bytes,
+/// what removing it from the graph would save. A graph or module list another owner keeps refuses,
+/// because dropping it would free nothing and a zero would read as a class that costs nothing.
+pub(crate) struct ExclusiveBytesReading {
+    pub modules: usize,
+    pub in_use_all: u64,
+    pub exclusive: u64,
+}
+
+pub(crate) fn typed_module_class_exclusive_bytes(
+    graph: Rc<v1_compiler_compile::ResolvedGraph>,
+    class: TypedModuleClass,
+) -> Result<ExclusiveBytesReading, String> {
+    let graph = Rc::try_unwrap(graph)
+        .map_err(|g| format!("the graph has {} other owner(s)", Rc::strong_count(&g) - 1))?;
+    let modules = Rc::try_unwrap(graph.modules).map_err(|m| {
+        format!(
+            "the module list has {} other owner(s)",
+            Rc::strong_count(&m) - 1
+        )
+    })?;
+    let module_count = modules.len();
+    let mut owned = Vec::with_capacity(module_count);
+    for m in modules {
+        owned.push(Rc::try_unwrap(m).map_err(|m| {
+            format!(
+                "module {} has {} other owner(s)",
+                m.type_env.module_path,
+                Rc::strong_count(&m) - 1
+            )
+        })?);
+    }
+    // Every class of every module is moved into its own column, so the chosen column is the only
+    // thing dropped and the rest -- including the graph-level registry and diagnostics -- stays held.
+    let mut chosen: Vec<Box<dyn std::any::Any>> = Vec::with_capacity(module_count);
+    let mut kept: Vec<Box<dyn std::any::Any>> = Vec::with_capacity(module_count * 8);
+    for m in owned {
+        let fields: [(TypedModuleClass, Box<dyn std::any::Any>); 8] = [
+            (TypedModuleClass::TypeEnv, Box::new(m.type_env)),
+            (TypedModuleClass::TypeEnvCache, Box::new(m.type_env_cache)),
+            (TypedModuleClass::FuncEnv, Box::new(m.func_env)),
+            (TypedModuleClass::Interface, Box::new(m.interface)),
+            (
+                TypedModuleClass::ModuleItemRegistry,
+                Box::new(m.item_registry),
+            ),
+            (TypedModuleClass::Items, Box::new(m.items)),
+            (TypedModuleClass::ModuleNodes, Box::new(m.module)),
+            (
+                TypedModuleClass::OccurrenceTransport,
+                Box::new(m.occurrence_transport),
+            ),
+        ];
+        for (k, v) in fields {
+            if k == class {
+                chosen.push(v);
+            } else {
+                kept.push(v);
+            }
+        }
+    }
+    let in_use_all = floor_heap_in_use().ok_or("no allocator reading on this target")?;
+    drop(chosen);
+    let after = floor_heap_in_use().ok_or("no allocator reading on this target")?;
+    drop(kept);
+    drop(graph.item_registry);
+    drop(graph.diagnostics);
+    Ok(ExclusiveBytesReading {
+        modules: module_count,
+        in_use_all,
+        exclusive: in_use_all.saturating_sub(after),
+    })
+}
