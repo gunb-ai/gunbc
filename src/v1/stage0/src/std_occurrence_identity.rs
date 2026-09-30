@@ -8,6 +8,7 @@ use self::OccurrenceCategoryModuleScopeExposureVerdict::*;
 use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
+use self::ProjectedOccurrenceDerivation::*;
 pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_dissolution::unbound_dissolution;
@@ -424,6 +425,136 @@ pub fn node_occurrence_identity_projected(
         id: id.clone(),
         caused_by: caused_by.clone(),
     })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceAllocatorSnapshot {
+    pub ordinal_space: Rc<AuthoredTokenOrdinalSpace>,
+    pub scope: Rc<Fnv1a64Structural>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ProjectedOccurrenceDerivation {
+    ProjectedOccurrenceDerived {
+        identity: Rc<NodeOccurrenceIdentity>,
+    },
+    ProjectedSourceNotAuthoredInSnapshot {
+        source: OccurrenceId,
+        bound: i64,
+    },
+    ProjectedOrdinalOutOfRange {
+        source: OccurrenceId,
+        ordinal: i64,
+    },
+}
+
+pub fn occurrence_derivation_operand_bound() -> i64 {
+    1073741824
+}
+
+pub fn occurrence_derived_span() -> i64 {
+    occurrence_cantor_pair(
+        occurrence_derivation_operand_bound(),
+        occurrence_derivation_operand_bound(),
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceAllocatorSeal {
+    pub snapshot: Rc<OccurrenceAllocatorSnapshot>,
+    pub continuation: OccurrenceIdAllocator,
+}
+
+pub fn occurrence_allocator_seal(
+    alloc: OccurrenceIdAllocator,
+    scope: Rc<Fnv1a64Structural>,
+) -> Rc<OccurrenceAllocatorSeal> {
+    Rc::new(OccurrenceAllocatorSeal {
+        snapshot: Rc::new(OccurrenceAllocatorSnapshot {
+            ordinal_space: authored_token_ordinal_space_from_allocator(alloc.clone()),
+            scope: scope.clone(),
+        }),
+        continuation: OccurrenceIdAllocator {
+            next_id: v1_rt::int_add(alloc.next_id.clone(), occurrence_derived_span()),
+        },
+    })
+}
+
+pub fn occurrence_cantor_pair(a: i64, b: i64) -> i64 {
+    {
+        let s = v1_rt::int_add(a.clone(), b.clone());
+        v1_rt::int_add(
+            v1_rt::int_div(v1_rt::int_mul(s.clone(), v1_rt::int_add(s.clone(), 1)), 2),
+            b.clone(),
+        )
+    }
+}
+
+pub fn derive_projected_occurrence(
+    snapshot: Rc<OccurrenceAllocatorSnapshot>,
+    source: OccurrenceId,
+    ordinal: i64,
+) -> Rc<ProjectedOccurrenceDerivation> {
+    {
+        let n = snapshot
+            .ordinal_space
+            .clone()
+            .allocator
+            .clone()
+            .next_id
+            .clone();
+        if (((source.value.clone() < 0) || (source.value.clone() >= n.clone()))
+            || (n.clone() >= occurrence_derivation_operand_bound()))
+        {
+            Rc::new(
+                ProjectedOccurrenceDerivation::ProjectedSourceNotAuthoredInSnapshot {
+                    source: source.clone(),
+                    bound: n.clone(),
+                },
+            )
+        } else {
+            if ((ordinal.clone() < 1) || (ordinal.clone() >= occurrence_derivation_operand_bound()))
+            {
+                Rc::new(ProjectedOccurrenceDerivation::ProjectedOrdinalOutOfRange {
+                    source: source.clone(),
+                    ordinal: ordinal.clone(),
+                })
+            } else {
+                Rc::new(ProjectedOccurrenceDerivation::ProjectedOccurrenceDerived {
+                    identity: Rc::new(NodeOccurrenceIdentity::OccurrenceProjected {
+                        id: OccurrenceId {
+                            value: v1_rt::int_add(
+                                n.clone(),
+                                occurrence_cantor_pair(source.value.clone(), ordinal.clone()),
+                            ),
+                        },
+                        caused_by: Rc::new(ScopedOccurrenceRef {
+                            scope: snapshot.scope.clone(),
+                            occurrence: source.clone(),
+                        }),
+                    }),
+                })
+            }
+        }
+    }
+}
+
+pub fn occurrence_identity_in_image_of(
+    identity: Rc<NodeOccurrenceIdentity>,
+    source: OccurrenceId,
+    snapshot: Rc<OccurrenceAllocatorSnapshot>,
+) -> bool {
+    match (*identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceSynthetic => false,
+        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => {
+            (id.value.clone() == source.value.clone())
+        }
+        NodeOccurrenceIdentity::OccurrenceProjected { caused_by, .. } => {
+            ((caused_by.occurrence.clone().value.clone() == source.value.clone())
+                && scoped_occurrence_ref_in_scope(caused_by.clone(), snapshot.scope.clone()))
+        }
+    }
 }
 
 pub fn occurrence_containment_matches_occurrence(

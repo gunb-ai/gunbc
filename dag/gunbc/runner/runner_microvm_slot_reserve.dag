@@ -340,8 +340,18 @@ fn shakedown_broker_outcome_text(slot: RunnerSlotIdentity, outcome: ShakedownBro
 // the receipt says which of the route's answers it was.
 fn shakedown_broker_reserved(outcome: ShakedownBrokerOutcome) -> Bool {
   match outcome {
-    ShakedownBrokerDecided { reservation: CellReserved { offer: _, slot_key: _, generation: _, account: _ } } => true
-    _ => false
+    ShakedownBrokerDecided { reservation: r } =>
+      match r {
+        CellReserved { offer: _, slot_key: _, generation: _, account: _ } => true
+        NoCellAdmissible { considered: _, refused: _ } => false
+        CellSelectionTieUnresolved { digest: _, considered: _ } => false
+        BudgetRefused { slot_key: _, refusal: _ } => false
+        ReservationLost { slot_key: _ } => false
+        PermitNamesAnotherUseForCell { standing: _ } => false
+        StoreUnavailable { slot_key: _, cause: _ } => false
+        AttemptRefused { slot_key: _, detail: _ } => false
+      }
+    ShakedownBrokerRosterRefused { binding: _ } => false
   }
 }
 
