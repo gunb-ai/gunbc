@@ -360,12 +360,6 @@ fn head_closes_on_its_own_line(text: String) -> Bool {
   }
 }
 
-fn ends_with(s: String, suffix: String) -> Bool {
-  let n = string_length(s: s)
-  let m = string_length(s: suffix)
-  n >= m && substring(s: s, start: n - m, end: n) == suffix
-}
-
 fn hash_run_from(s: String, at: Int, acc: Int) -> Int {
   if at >= string_length(s: s) {
     acc
