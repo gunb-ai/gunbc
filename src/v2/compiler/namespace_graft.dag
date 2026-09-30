@@ -18,6 +18,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node {
+  close_lowered_image,
   Atom,
   Cardinality,
   Conj,
@@ -631,7 +632,13 @@ fn namespace_graft_atom_node(id: Symbol) -> Node {
   }
 }
 
+// Closes the image namespace_graft_wrap_module_shell_image builds: its returned node is the named root (v2.std.node
+// close_lowered_image).
 fn namespace_graft_wrap_module_shell(captured: Node, source: Node) -> Node {
+  close_lowered_image(root: namespace_graft_wrap_module_shell_image(captured: captured, source: source))
+}
+
+fn namespace_graft_wrap_module_shell_image(captured: Node, source: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [

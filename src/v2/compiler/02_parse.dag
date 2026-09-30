@@ -62,7 +62,7 @@ import v2.std.occurrence_id {
   occurrence_id_allocator_advance_to,
   occurrence_id_allocator_initial
 }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceIdAllocator, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, node_occurrence_identity_minted }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceIdAllocator, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, node_occurrence_identity_minted }
 import std.source_annotation {
   AnnotationAttachmentRefusal,
   AnnotationAttachmentResult,
@@ -1064,6 +1064,7 @@ fn parse_minted_id_snoc(acc: List<OccurrenceId>, n: Node) -> List<OccurrenceId> 
     OccurrenceMinted { id: id } => list_snoc_item(xs: acc, item: id)
     OccurrenceSynthetic => acc
     OccurrenceProjected { id: _, caused_by: _ } => acc
+    OccurrencePending { caused_by: _ } => acc
   }
 }
 

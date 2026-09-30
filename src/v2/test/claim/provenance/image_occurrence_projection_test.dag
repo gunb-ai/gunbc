@@ -1,52 +1,47 @@
 module v2.test.provenance.image_occurrence_projection
 
 import std.types { Bool, Int }
-import v2.std.collection { Absent, Present, list_at_optional }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
-  OccurrenceAllocatorSnapshot,
   OccurrenceId,
   OccurrenceIdAllocator,
   OccurrenceMinted,
+  OccurrencePending,
   OccurrenceProjected,
   OccurrenceSynthetic,
-  ProjectedOccurrenceDerived,
-  ProjectedOrdinalOutOfRange,
-  ProjectedSourceNotAuthoredInSnapshot,
-  ScopedOccurrenceRef,
-  alloc_occurrence_id,
-  occurrence_allocator_seal,
-  occurrence_derived_span,
-  derive_projected_occurrence,
+  ScopedOccurrenceAllocator,
+  scoped_occurrence_allocator,
   scoped_occurrence_ref_in_scope,
 }
+import v2.std.collection { Absent, Map, Present, empty_map, list_at_optional, map_insert, map_lookup }
 import v2.std.node {
-  Atom,
   Conj,
   Edge,
-  ImageDerivationRefused,
-  ImageOccurrencesProjected,
-  ImageRootIsAlreadyProjected,
   Node,
   Positional,
   TypeNode,
+  allocate_pending_occurrences,
+  close_lowered_image,
   node_with_occurrence_id,
-  project_image_occurrences,
 }
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_parse }
+import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import std.algebra { Empty }
 
-// Fixture: the parse allocator has handed out [0, 10), and the lowered source is authored occurrence
-// 5. Derived ids are 10 + cantor(5, k): k=1 -> 32, k=2 -> 40, k=3 -> 49.
+// Fixture: the graph allocator has handed out [0, 10), so the first allocated member gets 10, the
+// next 11, and so on, in pre-order. The lowered source is authored occurrence 5.
 fn iop_scope() -> Fnv1a64Structural {
   structural_content_hash(digest: "aaaaaaaaaaaaaaaa")
 }
 
-fn iop_foreign_scope() -> Fnv1a64Structural {
-  structural_content_hash(digest: "bbbbbbbbbbbbbbbb")
-}
-
-fn iop_snapshot() -> OccurrenceAllocatorSnapshot {
-  occurrence_allocator_seal(alloc: OccurrenceIdAllocator { next_id: 10 }, scope: iop_scope()).snapshot
+fn iop_allocator() -> ScopedOccurrenceAllocator {
+  scoped_occurrence_allocator(alloc: OccurrenceIdAllocator { next_id: 10 }, scope: iop_scope())
 }
 
 fn iop_minted(id: Int) -> NodeOccurrenceIdentity {
@@ -62,7 +57,7 @@ fn iop_node(occurrence: NodeOccurrenceIdentity, children: List<Node>) -> Node {
 }
 
 // An absent child reads as minted -1, which no assertion here accepts, so a missing position fails
-// every check instead of passing the synthetic one.
+// every check instead of passing a negative one.
 fn iop_child(n: Node, i: Int) -> Node {
   match list_at_optional(xs: n.children, index: i) {
     Present { value: e } => e.target
@@ -77,6 +72,16 @@ fn iop_is_projected(n: Node, id: Int, source: Int) -> Bool {
         && cause.occurrence.value == source
         && scoped_occurrence_ref_in_scope(occurrence_ref: cause, scope: iop_scope())
     OccurrenceMinted { id: _ } => false
+    OccurrencePending { caused_by: _ } => false
+    OccurrenceSynthetic => false
+  }
+}
+
+fn iop_is_pending(n: Node, source: Int) -> Bool {
+  match n.occurrence_id {
+    OccurrencePending { caused_by: cause } => cause.value == source
+    OccurrenceMinted { id: _ } => false
+    OccurrenceProjected { id: _, caused_by: _ } => false
     OccurrenceSynthetic => false
   }
 }
@@ -84,173 +89,200 @@ fn iop_is_projected(n: Node, id: Int, source: Int) -> Bool {
 fn iop_is_minted(n: Node, id: Int) -> Bool {
   match n.occurrence_id {
     OccurrenceMinted { id: got } => got.value == id
+    OccurrencePending { caused_by: _ } => false
     OccurrenceProjected { id: _, caused_by: _ } => false
     OccurrenceSynthetic => false
   }
 }
 
-fn iop_is_synthetic(n: Node) -> Bool {
-  match n.occurrence_id {
-    OccurrenceSynthetic => true
-    OccurrenceMinted { id: _ } => false
-    OccurrenceProjected { id: _, caused_by: _ } => false
-  }
-}
-
-// Every node of this image is stamped with source 5, as every lowering stamps today: a root, a
-// member with a nested member, a sub-image of ANOTHER source (7) that itself contains a source-5
-// member, and a synthetic node.
-fn iop_stamped_image() -> Node {
+// A builder's output before it closes: the root and three members all stamped with source 5, one of
+// them under a synthetic node.
+fn iop_unclosed_image() -> Node {
   iop_node(occurrence: iop_minted(id: 5), children: [
     iop_node(occurrence: iop_minted(id: 5), children: [iop_node(occurrence: iop_minted(id: 5), children: [])]),
-    iop_node(occurrence: iop_minted(id: 7), children: [iop_node(occurrence: iop_minted(id: 5), children: [])]),
-    iop_node(occurrence: OccurrenceSynthetic, children: []),
+    iop_node(occurrence: OccurrenceSynthetic, children: [iop_node(occurrence: iop_minted(id: 5), children: [])]),
   ])
 }
 
-// THE DISCRIMINATING CONTROL. Three derived members receive three distinct ids, each projected with
-// the source as its cause, and only the named root keeps OccurrenceMinted. A pass that stamped the
-// source back onto the members (the rule this change retires) leaves them minted with id 5 and goes red.
-test fn image_projection_three_derived_members_get_distinct_caused_ids_holds() -> Bool {
-  match project_image_occurrences(root: iop_stamped_image(), snapshot: iop_snapshot()) {
-    ImageOccurrencesProjected { root: r } =>
-      iop_is_minted(n: r, id: 5)
-        && iop_is_projected(n: iop_child(n: r, i: 0), id: 32, source: 5)
-        && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 0), i: 0), id: 40, source: 5)
-        && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 1), i: 0), id: 49, source: 5)
-    ImageRootIsAlreadyProjected { observed: _ } => false
-    ImageDerivationRefused { refusal: _ } => false
+// CLOSING IS PURE AND NAMES THE ROOT. The root the builder returns keeps OccurrenceMinted; every other
+// member becomes OccurrencePending with the source as its cause. Nothing is allocated yet.
+test fn image_close_marks_members_pending_and_keeps_the_root_minted_holds() -> Bool {
+  let r = close_lowered_image(root: iop_unclosed_image())
+  iop_is_minted(n: r, id: 5)
+    && iop_is_pending(n: iop_child(n: r, i: 0), source: 5)
+    && iop_is_pending(n: iop_child(n: iop_child(n: r, i: 0), i: 0), source: 5)
+    && iop_is_pending(n: iop_child(n: iop_child(n: r, i: 1), i: 0), source: 5)
+}
+
+// THE DISCRIMINATING CONTROL. After closing and the one allocation pass, three members hold three
+// distinct allocated ids in pre-order, each projected with the source as its cause, and the
+// allocator comes back advanced past them. A builder that stamped the source and did not close --
+// the rule this program retires -- leaves them minted with id 5 and goes red.
+test fn image_allocation_gives_three_members_distinct_caused_ids_holds() -> Bool {
+  let allocated = allocate_pending_occurrences(root: close_lowered_image(root: iop_unclosed_image()), allocator: iop_allocator())
+  let r = allocated.root
+  iop_is_minted(n: r, id: 5)
+    && iop_is_projected(n: iop_child(n: r, i: 0), id: 10, source: 5)
+    && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 0), i: 0), id: 11, source: 5)
+    && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 1), i: 0), id: 12, source: 5)
+    && allocated.allocator.alloc.next_id == 13
+}
+
+// THE ALLOCATION PASS IS IDEMPOTENT: a second run over an allocated tree allocates nothing.
+test fn image_allocation_is_idempotent_holds() -> Bool {
+  let once = allocate_pending_occurrences(root: close_lowered_image(root: iop_unclosed_image()), allocator: iop_allocator())
+  let twice = allocate_pending_occurrences(root: once.root, allocator: once.allocator)
+  twice.allocator.alloc.next_id == once.allocator.alloc.next_id
+    && iop_is_projected(n: iop_child(n: twice.root, i: 0), id: 10, source: 5)
+}
+
+// THE ALLOCATION PASS NEVER MINTS AND NEVER REPAIRS. A tree nobody closed has no pending member, so the
+// pass allocates nothing and leaves every duplicated minted id where it is -- for the wall to refuse.
+test fn image_allocation_leaves_an_unclosed_image_minted_holds() -> Bool {
+  let allocated = allocate_pending_occurrences(root: iop_unclosed_image(), allocator: iop_allocator())
+  allocated.allocator.alloc.next_id == 10
+    && iop_is_minted(n: iop_child(n: allocated.root, i: 0), id: 5)
+}
+
+// NESTED SAME-SOURCE. An inner builder closed its image of source 5; the outer builder wraps it with
+// another source-5 root and closes again. The inner root becomes a member, the inner pending member
+// stays pending once, and allocation gives every member a distinct id.
+test fn image_nested_same_source_allocates_distinct_ids_holds() -> Bool {
+  let inner = close_lowered_image(root: iop_node(occurrence: iop_minted(id: 5), children: [iop_node(occurrence: iop_minted(id: 5), children: [])]))
+  let outer = close_lowered_image(root: iop_node(occurrence: iop_minted(id: 5), children: [inner]))
+  let r = allocate_pending_occurrences(root: outer, allocator: iop_allocator()).root
+  iop_is_minted(n: r, id: 5)
+    && iop_is_projected(n: iop_child(n: r, i: 0), id: 10, source: 5)
+    && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 0), i: 0), id: 11, source: 5)
+}
+
+// CLOSING STOPS AT ANOTHER SOURCE. A subtree lowered for source 7 is that source's image to close, so
+// it is not entered: a source-5 node hidden beneath it stays minted, and the wall refuses it.
+test fn image_close_does_not_enter_another_sources_subtree_holds() -> Bool {
+  let r = close_lowered_image(root: iop_node(occurrence: iop_minted(id: 5), children: [
+    iop_node(occurrence: iop_minted(id: 7), children: [iop_node(occurrence: iop_minted(id: 5), children: [])]),
+  ]))
+  iop_is_minted(n: iop_child(n: r, i: 0), id: 7)
+    && iop_is_minted(n: iop_child(n: iop_child(n: r, i: 0), i: 0), id: 5)
+}
+
+// DETERMINISM. Two allocations of one input from one allocator state give identical ids.
+test fn image_allocation_is_deterministic_holds() -> Bool {
+  let closed = close_lowered_image(root: iop_unclosed_image())
+  let first = allocate_pending_occurrences(root: closed, allocator: iop_allocator()).root
+  let second = allocate_pending_occurrences(root: closed, allocator: iop_allocator()).root
+  iop_is_projected(n: iop_child(n: first, i: 0), id: 10, source: 5)
+    && iop_is_projected(n: iop_child(n: second, i: 0), id: 10, source: 5)
+    && iop_is_projected(n: iop_child(n: iop_child(n: first, i: 1), i: 0), id: 12, source: 5)
+    && iop_is_projected(n: iop_child(n: iop_child(n: second, i: 1), i: 0), id: 12, source: 5)
+}
+
+fn iop_admit(root: Node) -> Outcome<NormalizedTree> {
+  admit_normalized_tree(root: root, test_markers: test_marker_channel_empty(), import_bindings: Empty, record_declarations: Empty, diagnostics: None)
+}
+
+fn iop_refused_for(o: Outcome<NormalizedTree>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-// A sub-image of another source and a synthetic node are walked through but never rewritten.
-test fn image_projection_leaves_other_sources_and_synthetic_nodes_untouched_holds() -> Bool {
-  match project_image_occurrences(root: iop_stamped_image(), snapshot: iop_snapshot()) {
-    ImageOccurrencesProjected { root: r } =>
-      iop_is_minted(n: iop_child(n: r, i: 1), id: 7) && iop_is_synthetic(n: iop_child(n: r, i: 2))
-    ImageRootIsAlreadyProjected { observed: _ } => false
-    ImageDerivationRefused { refusal: _ } => false
+// THE WALL, RED: A BUILDER THAT SKIPS CLOSING. Its image reaches admission with the source's minted id on
+// several nodes, and admission refuses it as a duplicated minted occurrence.
+test fn occurrence_wall_refuses_an_unclosed_image_holds() -> Bool {
+  iop_refused_for(o: iop_admit(root: iop_unclosed_image()), reason: ^normalize_reason_minted_occurrence_duplicated)
+}
+
+// THE WALL, RED: A PENDING OCCURRENCE PLANTED PAST NORMALIZATION. Admission refuses it rather than
+// admitting a node with a cause and no id.
+test fn occurrence_wall_refuses_a_surviving_pending_occurrence_holds() -> Bool {
+  iop_refused_for(o: iop_admit(root: close_lowered_image(root: iop_unclosed_image())), reason: ^normalize_reason_pending_occurrence_survived)
+}
+
+// THE WALL, GREEN: the same image closed and allocated is admitted.
+test fn occurrence_wall_admits_a_closed_allocated_image_holds() -> Bool {
+  match iop_admit(root: allocate_pending_occurrences(root: close_lowered_image(root: iop_unclosed_image()), allocator: iop_allocator()).root) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
-// NESTED SAME-SOURCE. An inner builder closed its own image of source 5, and the outer builder then
-// wraps it with another source-5 node and closes again. The inner image's ids are renumbered over
-// the whole outer image rather than restarting at k=1, so every id stays distinct.
-test fn image_projection_nested_same_source_images_yield_distinct_ids_holds() -> Bool {
-  match project_image_occurrences(
-    root: iop_node(occurrence: iop_minted(id: 5), children: [iop_node(occurrence: iop_minted(id: 5), children: [])]),
-    snapshot: iop_snapshot(),
-  ) {
-    ImageOccurrencesProjected { root: inner } =>
-      match project_image_occurrences(
-        root: iop_node(occurrence: iop_minted(id: 5), children: [iop_node(occurrence: iop_minted(id: 5), children: []), inner]),
-        snapshot: iop_snapshot(),
-      ) {
-        ImageOccurrencesProjected { root: r } =>
-          iop_is_minted(n: r, id: 5)
-            && iop_is_projected(n: iop_child(n: r, i: 0), id: 32, source: 5)
-            && iop_is_projected(n: iop_child(n: r, i: 1), id: 40, source: 5)
-            && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 1), i: 0), id: 49, source: 5)
-        ImageRootIsAlreadyProjected { observed: _ } => false
-        ImageDerivationRefused { refusal: _ } => false
-      }
-    ImageRootIsAlreadyProjected { observed: _ } => false
-    ImageDerivationRefused { refusal: _ } => false
-  }
+// THE REAL PATH. One module exercising several multi-node lowerings -- a function declaration with
+// parameters, a data declaration, a type with a where clause, an optional instantiated type, a list
+// literal and a postfix chain -- through tokenize, parse and normalize. It must be admitted (so the
+// wall found no duplicated minted id), and the ROUTE is asserted: it must hold projected occurrences,
+// each caused by an occurrence still minted in the same tree. A normalize that reached admission
+// without closing any image would be refused; one whose builders stamped nothing derived would hold
+// no projected occurrence and fail the count.
+data iop_real_module: String = "module iop.real
+
+type Port = Int where range(min: 1, max: 46)
+
+type Holder {
+  items: List<Int>?
 }
 
-// IDEMPOTENT. Closing an already-closed image yields the same identities.
-test fn image_projection_is_idempotent_holds() -> Bool {
-  match project_image_occurrences(root: iop_stamped_image(), snapshot: iop_snapshot()) {
-    ImageOccurrencesProjected { root: once } =>
-      match project_image_occurrences(root: once, snapshot: iop_snapshot()) {
-        ImageOccurrencesProjected { root: twice } =>
-          iop_is_projected(n: iop_child(n: twice, i: 0), id: 32, source: 5)
-            && iop_is_projected(n: iop_child(n: iop_child(n: twice, i: 0), i: 0), id: 40, source: 5)
-            && iop_is_projected(n: iop_child(n: iop_child(n: twice, i: 1), i: 0), id: 49, source: 5)
-        ImageRootIsAlreadyProjected { observed: _ } => false
-        ImageDerivationRefused { refusal: _ } => false
-      }
-    ImageRootIsAlreadyProjected { observed: _ } => false
-    ImageDerivationRefused { refusal: _ } => false
-  }
+data seeds: List<Int> = [1, 2, 3]
+
+fn pick(a: Int, b: Int, c: Int) -> Int {
+  a
 }
 
-// A projection from ANOTHER allocator domain that happens to name ordinal 5 is not a member of this
-// image: membership is scoped, not ordinal equality.
-test fn image_projection_ignores_a_foreign_scope_cause_with_an_equal_ordinal_holds() -> Bool {
-  let foreign = node_with_occurrence_id(
-    kind: TypeNode { connective: Atom { identity: ^iop_foreign_probe } },
-    children: [],
-    occurrence_id: OccurrenceProjected {
-      id: OccurrenceId { value: 3 },
-      caused_by: ScopedOccurrenceRef { scope: iop_foreign_scope(), occurrence: OccurrenceId { value: 5 } },
-    },
+fn reach(h: Holder) -> List<Int>? {
+  h.items
+}
+"
+
+fn iop_real_normalized() -> Outcome<NormalizedTree> {
+  bind_outcome(
+    o: bind_outcome(
+      o: tokenize(text: iop_real_module, file: ^image_occurrence_real_probe, rules: dag_lex()),
+      f: fn(tokens) { supplied_stream_parse(tokens: tokens) }
+    ),
+    f: fn(tree) { normalize(parse_tree: tree) }
   )
-  match project_image_occurrences(root: iop_node(occurrence: iop_minted(id: 5), children: [foreign]), snapshot: iop_snapshot()) {
-    ImageOccurrencesProjected { root: r } =>
-      match iop_child(n: r, i: 0).occurrence_id {
-        OccurrenceProjected { id: got, caused_by: _ } => got.value == 3
-        OccurrenceMinted { id: _ } => false
-        OccurrenceSynthetic => false
+}
+
+fn iop_projected_count(n: Node) -> Int {
+  let here = match n.occurrence_id {
+    OccurrenceProjected { id: _, caused_by: _ } => 1
+    OccurrenceMinted { id: _ } => 0
+    OccurrencePending { caused_by: _ } => 0
+    OccurrenceSynthetic => 0
+  }
+  fold(n.children, init: here, f: (acc, e) => acc + iop_projected_count(n: e.target))
+}
+
+fn iop_minted_ids(n: Node, acc: Map<Int, Bool>) -> Map<Int, Bool> {
+  let here = match n.occurrence_id {
+    OccurrenceMinted { id: id } => map_insert(m: acc, key: id.value, value: true)
+    OccurrenceProjected { id: _, caused_by: _ } => acc
+    OccurrencePending { caused_by: _ } => acc
+    OccurrenceSynthetic => acc
+  }
+  fold(n.children, init: here, f: (inner, e) => iop_minted_ids(n: e.target, acc: inner))
+}
+
+fn iop_causes_are_minted(n: Node, minted: Map<Int, Bool>) -> Bool {
+  let here = match n.occurrence_id {
+    OccurrenceProjected { id: _, caused_by: cause } =>
+      match map_lookup(m: minted, key: cause.occurrence.value) {
+        Present { value: _ } => true
+        Absent => false
       }
-    ImageRootIsAlreadyProjected { observed: _ } => false
-    ImageDerivationRefused { refusal: _ } => false
+    OccurrenceMinted { id: _ } => true
+    OccurrencePending { caused_by: _ } => false
+    OccurrenceSynthetic => true
   }
+  fold(n.children, init: here, f: (acc, e) => acc && iop_causes_are_minted(n: e.target, minted: minted))
 }
 
-// THE BOUND IS A TYPED REFUSAL. A source the snapshot's allocator never handed out cannot cause a
-// derived id, because N + cantor(source, k) is collision-free only over sources below N.
-test fn image_projection_refuses_a_source_outside_the_snapshot_holds() -> Bool {
-  match project_image_occurrences(
-    root: iop_node(occurrence: iop_minted(id: 12), children: [iop_node(occurrence: iop_minted(id: 12), children: [])]),
-    snapshot: iop_snapshot(),
-  ) {
-    ImageDerivationRefused { refusal: ProjectedSourceNotAuthoredInSnapshot { source: s, bound: b } } =>
-      s.value == 12 && b == 10
-    ImageDerivationRefused { refusal: _ } => false
-    ImageOccurrencesProjected { root: _ } => false
-    ImageRootIsAlreadyProjected { observed: _ } => false
-  }
-}
-
-test fn image_projection_derivation_refuses_ordinal_zero_holds() -> Bool {
-  match derive_projected_occurrence(snapshot: iop_snapshot(), source: OccurrenceId { value: 5 }, ordinal: 0) {
-    ProjectedOrdinalOutOfRange { source: s, ordinal: o } => s.value == 5 && o == 0
-    ProjectedSourceNotAuthoredInSnapshot { source: _, bound: _ } => false
-    ProjectedOccurrenceDerived { identity: _ } => false
-  }
-}
-
-// An image root that is itself projected has no authored source to keep, so closing it is refused.
-test fn image_projection_refuses_a_projected_root_holds() -> Bool {
-  let root = node_with_occurrence_id(
-    kind: TypeNode { connective: Conj },
-    children: [],
-    occurrence_id: OccurrenceProjected {
-      id: OccurrenceId { value: 32 },
-      caused_by: ScopedOccurrenceRef { scope: iop_scope(), occurrence: OccurrenceId { value: 5 } },
-    },
-  )
-  match project_image_occurrences(root: root, snapshot: iop_snapshot()) {
-    ImageRootIsAlreadyProjected { observed: _ } => true
-    ImageOccurrencesProjected { root: _ } => false
-    ImageDerivationRefused { refusal: _ } => false
-  }
-}
-
-// THE SEAL RESERVES THE DERIVED RANGE. The first id the continuation allocator hands out lies above
-// the largest id the derivation can produce for this snapshot, so allocation after the seal cannot
-// collide with a derived id. A seal that returned the original allocator would hand out 10, the
-// first id of the derived range, and this control would go red.
-test fn image_projection_seal_continuation_allocates_above_every_derived_id_holds() -> Bool {
-  let seal = occurrence_allocator_seal(alloc: OccurrenceIdAllocator { next_id: 10 }, scope: iop_scope())
-  let first_after = alloc_occurrence_id(alloc: seal.continuation).id.value
-  match derive_projected_occurrence(snapshot: seal.snapshot, source: OccurrenceId { value: 9 }, ordinal: 1073741823) {
-    ProjectedOccurrenceDerived { identity: OccurrenceProjected { id: largest, caused_by: _ } } =>
-      first_after > largest.value && first_after == 10 + occurrence_derived_span()
-    ProjectedOccurrenceDerived { identity: _ } => false
-    ProjectedSourceNotAuthoredInSnapshot { source: _, bound: _ } => false
-    ProjectedOrdinalOutOfRange { source: _, ordinal: _ } => false
+test fn image_real_module_normalizes_with_distinct_occurrences_holds() -> Bool {
+  match iop_real_normalized() {
+    Accepted { value: t, diagnostics: _ } =>
+      iop_projected_count(n: t.root) >= 3
+        && iop_causes_are_minted(n: t.root, minted: iop_minted_ids(n: t.root, acc: empty_map()))
+    Rejected { diagnostics: _ } => false
   }
 }

@@ -6,15 +6,20 @@ import v2.compiler.body_lowering_fold {
 }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostic,
   diagnostics_singleton,
   Diagnostics,
+  node_locus,
   Outcome,
   Rejected,
-  rejected_with_pending
+  rejected_with_pending,
+  UserInputBoundary
 }
+import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, map_lookup }
+import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra { fold_list }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Edge, Hash, LabeledChildHash, Node, Symbol, content_hash_of_children }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 
@@ -102,6 +107,86 @@ fn no_record_declarations() -> FreeMonoid<Symbol> {
   Empty
 }
 
+// THE OCCURRENCE WALL. Within one admitted tree an occurrence names ONE node. Two refusals, each
+// located at the node that breaks it:
+//   * a node still OccurrencePending -- a lowering image was closed and never allocated, so its
+//     member has a cause and no id. Normalization allocates every pending member before admission,
+//     so reaching here means a tree was assembled outside that route.
+//   * a minted id carried by a second, STRUCTURALLY DIFFERENT node -- a lowering built several nodes
+//     from one source and its builder did not close the image (v2.std.node close_lowered_image). The
+//     allocation pass never repairs this: it converts only pending members, so a forgotten close
+//     stays visible here.
+// A structurally identical node reached at two positions is one node shared, not two nodes: a
+// function type's Arrow carries its codomain value twice, and both positions are the same authored
+// type. So the comparison is the structural hash (v2.std.node content_hash_of_children, which ignores
+// occurrences), computed bottom-up once, and the walk is post-order: the refusal names the first
+// offending node in that order.
+fn occurrence_wall_refusal(root: Node) -> Optional<Diagnostic> {
+  occurrence_wall_walk(node: root, state: OccurrenceWallState { seen: empty_map(), refusal: Absent }).state.refusal
+}
+
+type OccurrenceWallState {
+  seen: Map<Int, Hash>
+  refusal: Optional<Diagnostic>
+}
+
+type OccurrenceWallStep {
+  hash: Hash
+  state: OccurrenceWallState
+}
+
+type OccurrenceWallChildren {
+  hashes: List<LabeledChildHash>
+  state: OccurrenceWallState
+}
+
+fn occurrence_wall_walk(node: Node, state: OccurrenceWallState) -> OccurrenceWallStep {
+  let children = fold(
+    node.children,
+    init: OccurrenceWallChildren { hashes: [], state: state },
+    f: (acc, e) => {
+      let child = occurrence_wall_walk(node: e.target, state: acc.state)
+      OccurrenceWallChildren {
+        hashes: list_snoc_item(xs: acc.hashes, item: LabeledChildHash { label: e.label, hash: child.hash }),
+        state: child.state,
+      }
+    },
+  )
+  let hash = content_hash_of_children(kind: node.kind, children: children.hashes)
+  OccurrenceWallStep { hash: hash, state: occurrence_wall_check(node: node, hash: hash, state: children.state) }
+}
+
+fn occurrence_wall_check(node: Node, hash: Hash, state: OccurrenceWallState) -> OccurrenceWallState {
+  match state.refusal {
+    Present { value: _ } => state
+    Absent =>
+      match node.occurrence_id {
+        OccurrencePending { caused_by: _ } =>
+          OccurrenceWallState { seen: state.seen, refusal: Present { value: occurrence_wall_diagnostic(reason: ^normalize_reason_pending_occurrence_survived, n: node) } }
+        OccurrenceMinted { id: id } =>
+          match map_lookup(m: state.seen, key: id.value) {
+            Present { value: first } =>
+              if first.digest == hash.digest {
+                state
+              } else {
+                OccurrenceWallState { seen: state.seen, refusal: Present { value: occurrence_wall_diagnostic(reason: ^normalize_reason_minted_occurrence_duplicated, n: node) } }
+              }
+            Absent => OccurrenceWallState { seen: map_insert(m: state.seen, key: id.value, value: hash), refusal: Absent }
+          }
+        OccurrenceProjected { id: _, caused_by: _ } => state
+        OccurrenceSynthetic => state
+      }
+  }
+}
+
+fn occurrence_wall_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
 fn admit_normalized_tree(
   root: Node,
   test_markers: TestMarkerChannel,
@@ -109,14 +194,19 @@ fn admit_normalized_tree(
   record_declarations: FreeMonoid<Symbol>,
   diagnostics: Diagnostics
 ) -> Outcome<NormalizedTree> {
-  Accepted {
-    value: NormalizedTree {
-      root: root,
-      test_markers: test_markers,
-      import_bindings: import_bindings,
-      record_declarations: record_declarations
-    },
-    diagnostics: diagnostics
+  match occurrence_wall_refusal(root: root) {
+    Present { value: d } =>
+      Rejected { diagnostics: rejected_with_pending(pending: diagnostics, rejected: diagnostics_singleton(d: d)) }
+    Absent =>
+      Accepted {
+        value: NormalizedTree {
+          root: root,
+          test_markers: test_markers,
+          import_bindings: import_bindings,
+          record_declarations: record_declarations
+        },
+        diagnostics: diagnostics
+      }
   }
 }
 
@@ -154,13 +244,18 @@ fn admit_census_tree(
   record_declarations: FreeMonoid<Symbol>,
   diagnostics: Diagnostics
 ) -> Outcome<CensusTree> {
-  Accepted {
-    value: CensusTree {
-      root: root,
-      import_bindings: import_bindings,
-      record_declarations: record_declarations
-    },
-    diagnostics: diagnostics
+  match occurrence_wall_refusal(root: root) {
+    Present { value: d } =>
+      Rejected { diagnostics: rejected_with_pending(pending: diagnostics, rejected: diagnostics_singleton(d: d)) }
+    Absent =>
+      Accepted {
+        value: CensusTree {
+          root: root,
+          import_bindings: import_bindings,
+          record_declarations: record_declarations
+        },
+        diagnostics: diagnostics
+      }
   }
 }
 

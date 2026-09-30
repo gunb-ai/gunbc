@@ -106,6 +106,8 @@ import v2.std.symbol_index {
   symbol_index_lookup
 }
 import v2.std.node {
+  close_lowered_image,
+  close_lowered_image_of,
   Arrow,
   is_positional,
   Atom,
@@ -769,7 +771,13 @@ fn body_lower_where_predicate_atom(where_clause: Node) -> Node {
 // Conj is LabeledEdges: every child must be Named. A parse-shell captured of
 // `where brand("...")` is not admitted by well_formed, so the clause is a
 // production-shaped Conj whose captured child is a bare predicate Atom.
+// Closes the image body_lower_kept_where_clause_image builds: its returned node is the named root (v2.std.node
+// close_lowered_image).
 fn body_lower_kept_where_clause(where_clause: Node) -> Node {
+  close_lowered_image(root: body_lower_kept_where_clause_image(where_clause: where_clause))
+}
+
+fn body_lower_kept_where_clause_image(where_clause: Node) -> Node {
   let production = node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
@@ -2010,7 +2018,13 @@ fn body_lower_type_generic_args_optional(generic_capture: Node) -> Optional<List
   }
 }
 
+// Closes the image body_lower_type_wrap_instantiation_image builds: its returned node is the named root (v2.std.node
+// close_lowered_image).
 fn body_lower_type_wrap_instantiation(head: Node, args: List<Node>, source: Node) -> Node {
+  close_lowered_image(root: body_lower_type_wrap_instantiation_image(head: head, args: args, source: source))
+}
+
+fn body_lower_type_wrap_instantiation_image(head: Node, args: List<Node>, source: Node) -> Node {
   if count(args) == 0 {
     head
   } else {
@@ -2036,11 +2050,11 @@ fn body_lower_type_wrap_cardinality(base: Node, question_capture: Node, source: 
         match q == ^dag_token_question {
           true =>
             optional_present(
-              value: node_with_occurrence_id(
+              value: close_lowered_image(root: node_with_occurrence_id(
                 kind: TypeNode { connective: Cardinality },
                 children: [Edge { label: Positional, target: base }],
                 occurrence_id: source.occurrence_id
-              )
+              ))
             )
           false => optional_absent()
         }
@@ -3205,6 +3219,9 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
 // The wrap stands at the same authored text as the arrow it wraps -- one `fn` declaration -- so it
 // takes that declaration's occurrence rather than being a fresh anonymous node between the module
 // body and the arrow.
+// THE WRAP IS A CARRIER, NOT THE IMAGE ROOT. It names the member for the namespace graft, which
+// dissolves it and re-hangs the Arrow under the module; the Arrow is what stands for the authored
+// declaration in the admitted tree, so the Arrow's builder closes the image and names it root.
 fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol, source: Node) -> Node {
   node_lowered_from(
     kind: TypeNode { connective: Conj },
@@ -3444,8 +3461,8 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                   o: body_lower_wrapper_retained_shell(shell: shell)
                                 )
                                 Present { value: data_name } =>
-                                  let signature = declared_signature(params: [], source: type_expr)
-                                  let arrow = node_lowered_from(
+                                  let signature = declared_signature(params: [], source: shell)
+                                  let arrow = close_lowered_image(root: node_lowered_from(
                                     source: shell,
                                     kind: TypeNode { connective: Arrow },
                                     children: [
@@ -3458,7 +3475,7 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                         target: body_lower_position_function_values(node: reified_body, path: body_lower_unpositioned_path())
                                       }
                                     ]
-                                  )
+                                  ))
                                   body_lowering_lowered(
                                     o: outcome_with_diagnostics(
                                       value: body_lower_fn_decl_named_member_wrap(
@@ -3498,7 +3515,7 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
     right: body_lower_fn_decl_type_params_edges(sig: sig)
   )
   body_lower_fn_decl_named_member_wrap(
-    arrow: node_lowered_from(
+    arrow: close_lowered_image(root: node_lowered_from(
       source: shell,
       kind: TypeNode { connective: Arrow },
       children: match body {
@@ -3509,7 +3526,7 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
             right: [Edge { label: Named { name: ^arrow_body_edge }, target: body_lower_position_function_values(node: b, path: body_lower_unpositioned_path()) }]
           )
       }
-    ),
+    )),
     fn_name: sig.fn_name,
     source: shell
   )
@@ -4325,7 +4342,7 @@ fn body_lower_function_value_arrow(
           [type_params_edge(conj: node_lowered_from(kind: TypeNode { connective: Conj }, children: type_params, source: shell))]
       }
       outcome_with_diagnostics(
-        value: node_lowered_from(
+        value: close_lowered_image(root: node_lowered_from(
           source: shell,
           kind: TypeNode { connective: Arrow },
           children: list_append(
@@ -4343,7 +4360,7 @@ fn body_lower_function_value_arrow(
             ),
             right: [Edge { label: Named { name: ^arrow_body_edge }, target: reified }]
           )
-        ),
+        )),
         diagnostics: bd
       )
   }
@@ -5341,7 +5358,7 @@ fn body_lower_postfix_chain_fold_from(
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: state, diagnostics: d } =>
       outcome_with_diagnostics(
-        value: optional_present(value: body_lower_postfix_accum_node(acc: state, source: source)),
+        value: optional_present(value: close_lowered_image_of(root: body_lower_postfix_accum_node(acc: state, source: source), source: source)),
         diagnostics: d
       )
   }
@@ -7993,7 +8010,7 @@ fn body_lower_list_literal(literal: Node, items_capture: Node) -> Outcome<Node> 
             })
           })
         }),
-        f: fn(elements) { outcome_accepted(value: lower_list_introduction(elements: elements, source: literal)) }
+        f: fn(elements) { outcome_accepted(value: close_lowered_image(root: lower_list_introduction(elements: elements, source: literal))) }
       )
     }
   )
@@ -8327,7 +8344,13 @@ fn body_lower_alias_rhs_optional(rhs: Node) -> Optional<Node> {
 }
 
 // A declaration edge `Conj { Name: target }` whose target is already a v2.std.type_binder wrapper.
+// Closes the image body_lower_type_decl_declared_image builds: its returned node is the named root (v2.std.node
+// close_lowered_image).
 fn body_lower_type_decl_declared(shell: Node, type_name: Symbol, target: Node) -> Node {
+  close_lowered_image(root: body_lower_type_decl_declared_image(shell: shell, type_name: type_name, target: target))
+}
+
+fn body_lower_type_decl_declared_image(shell: Node, type_name: Symbol, target: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [Edge { label: Named { name: type_name }, target: target }],
@@ -8729,7 +8752,7 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
                 value: BodyLowerOperation {
                   edge: Edge {
                     label: Named { name: op_name },
-                    target: node_with_occurrence_id(
+                    target: close_lowered_image(root: node_with_occurrence_id(
                       kind: TypeNode { connective: Arrow },
                       children: [
                         signature.domain,
@@ -8737,7 +8760,7 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
                         signature.order
                       ],
                       occurrence_id: shell.occurrence_id
-                    )
+                    ))
                   },
                   set_aside: a.set_aside
                 }
@@ -8884,7 +8907,13 @@ fn body_lower_service_second_operation_shell(operations: List<Edge>, shells: Lis
   }
 }
 
+// Closes the image body_lower_service_node_image builds: its returned node is the named root (v2.std.node
+// close_lowered_image).
 fn body_lower_service_node(shell: Node, service_name: Symbol, operations: List<Edge>) -> Node {
+  close_lowered_image(root: body_lower_service_node_image(shell: shell, service_name: service_name, operations: operations))
+}
+
+fn body_lower_service_node_image(shell: Node, service_name: Symbol, operations: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [

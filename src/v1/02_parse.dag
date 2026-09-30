@@ -57,6 +57,7 @@ import std.occurrence_identity {
   AuthoredTokenOrdinalSpace,
   NodeOccurrenceIdentity,
   OccurrenceMinted,
+  OccurrencePending,
   OccurrenceProjected,
   OccurrenceSynthetic,
   OccurrenceId,
@@ -1278,6 +1279,7 @@ fn occurrence_allocator_after_identity(
       } else {
         alloc
       }
+    OccurrencePending { caused_by: _ } => alloc
     OccurrenceSynthetic => alloc
   }
 }
@@ -1846,6 +1848,11 @@ fn stamp_parsed_node(
       node: node,
       ctx: ctx,
       err: Present { value: parse_error(msg: "projected occurrence identity is invalid at the authored parser boundary", span: node.span) },
+    }
+    OccurrencePending { caused_by: _ } => return ParsedNodeStampResult {
+      node: node,
+      ctx: ctx,
+      err: Present { value: parse_error(msg: "pending occurrence identity is invalid at the authored parser boundary", span: node.span) },
     }
   }
   let effective_role = parsed_occurrence_role_for_node(
