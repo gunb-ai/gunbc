@@ -1,6 +1,7 @@
 module v2.lens.fact_density
 
 import v2.std.node { Authored, StructuralLabel }
+import v2.lens.common.construction_justification { ConstructionJustification }
 
 import v2.std.witness { Holds }
 import v2.std.diagnostic { outcome_accepted, outcome_rejected, node_locus }
