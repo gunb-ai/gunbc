@@ -144,6 +144,48 @@ data kvm_cause_canvas_unreadable: KvmJournalWord = KvmJournalWord { id: "canvasU
 data kvm_journal_event_words: List<KvmJournalWord> = [kvm_event_established, kvm_event_connection_requested, kvm_event_connection_refused, kvm_event_connection_open, kvm_event_connection_lost, kvm_event_connection_error, kvm_event_still, kvm_event_acquisition_failed, kvm_event_session_release, kvm_event_browser_close, kvm_event_refused, kvm_event_failed, kvm_event_stop_requested, kvm_event_stopped, kvm_event_trigger_scan_failed]
 data kvm_journal_cause_words: List<KvmJournalWord> = [kvm_cause_seat_busy, kvm_cause_login, kvm_cause_no_kvm_service, kvm_cause_no_frame, kvm_cause_no_kvm_frame, kvm_cause_no_kvm_websocket, kvm_cause_toolchain, kvm_cause_credential_unreadable, kvm_cause_not_connected, kvm_cause_connection_changed_during_acquisition, kvm_cause_canvas_unreadable]
 
+// THE LINE LAYOUT, DECLARED ONCE PER EVENT: the key=value fields an event word carries, in the order
+// the observer script writes them. kvm_journal_event reads its fields through these rows and
+// kvm_journal_line writes them through the same rows, so a key name or order lives here and nowhere
+// else. The refusal line's keys depend on its cause and are the cause rows below.
+type KvmJournalLayout {
+  event: KvmJournalWord
+  keys: List<String>
+}
+
+data kvm_layout_established: KvmJournalLayout = KvmJournalLayout { event: kvm_event_established, keys: ["host", "session", "attempt", "gen"] }
+data kvm_layout_connection_requested: KvmJournalLayout = KvmJournalLayout { event: kvm_event_connection_requested, keys: [] }
+data kvm_layout_connection_refused: KvmJournalLayout = KvmJournalLayout { event: kvm_event_connection_refused, keys: [] }
+data kvm_layout_connection_open: KvmJournalLayout = KvmJournalLayout { event: kvm_event_connection_open, keys: ["gen"] }
+data kvm_layout_connection_lost: KvmJournalLayout = KvmJournalLayout { event: kvm_event_connection_lost, keys: ["gen"] }
+data kvm_layout_connection_error: KvmJournalLayout = KvmJournalLayout { event: kvm_event_connection_error, keys: ["gen", "detail"] }
+data kvm_layout_still: KvmJournalLayout = KvmJournalLayout { event: kvm_event_still, keys: ["seq", "reason", "gen", "file"] }
+data kvm_layout_acquisition_failed: KvmJournalLayout = KvmJournalLayout { event: kvm_event_acquisition_failed, keys: ["seq", "reason", "gen", "cause", "detail"] }
+data kvm_layout_failed: KvmJournalLayout = KvmJournalLayout { event: kvm_event_failed, keys: ["detail"] }
+data kvm_layout_stop_requested: KvmJournalLayout = KvmJournalLayout { event: kvm_event_stop_requested, keys: ["by"] }
+data kvm_layout_session_release: KvmJournalLayout = KvmJournalLayout { event: kvm_event_session_release, keys: ["result"] }
+data kvm_layout_browser_close: KvmJournalLayout = KvmJournalLayout { event: kvm_event_browser_close, keys: ["result"] }
+data kvm_layout_stopped: KvmJournalLayout = KvmJournalLayout { event: kvm_event_stopped, keys: ["session", "browser"] }
+data kvm_layout_trigger_scan_failed: KvmJournalLayout = KvmJournalLayout { event: kvm_event_trigger_scan_failed, keys: ["detail"] }
+
+// THE REFUSED LINE'S KEYS, PER CAUSE: `cause` first, then the cause's own field.
+type KvmRefusalLayout {
+  cause: KvmJournalWord
+  keys: List<String>
+}
+
+data kvm_refusal_layout_seat_busy: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_seat_busy, keys: ["cause", "viewer_count"] }
+data kvm_refusal_layout_login: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_login, keys: ["cause", "http"] }
+data kvm_refusal_layout_no_kvm_service: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_no_kvm_service, keys: ["cause"] }
+data kvm_refusal_layout_no_frame: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_no_frame, keys: ["cause", "detail"] }
+data kvm_refusal_layout_toolchain: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_toolchain, keys: ["cause", "detail"] }
+data kvm_refusal_layout_credential_unreadable: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_credential_unreadable, keys: ["cause", "detail"] }
+data kvm_refusal_other_keys: List<String> = ["cause", "detail"]
+
+fn kvm_key(keys: List<String>, i: Int) -> String {
+  match keys.skip(n: i).first() { Present { value: k } => k  Absent => "" }
+}
+
 fn kvm_journal_words_js(name: String, words: List<KvmJournalWord>) -> String {
   concat(concat(concat("const ", name), "=\{"), concat(join(map(words, w => concat(concat(w.id, ":'"), concat(w.word, "'"))), ","), "};"))
 }
@@ -252,10 +294,10 @@ fn kvm_field(rest: String, key: String) -> String {
 }
 
 fn kvm_refusal_of(rest: String) -> KvmObserverRefusal {
-  let cause = kvm_field(rest: rest, key: "cause")
-  let detail = kvm_field(rest: rest, key: "detail")
-  if cause == kvm_cause_seat_busy.word { KvmSeatBusy { viewer_count: kvm_field(rest: rest, key: "viewer_count") } }
-  else if cause == kvm_cause_login.word { KvmLoginRefused { detail: concat("http ", kvm_field(rest: rest, key: "http")) } }
+  let cause = kvm_field(rest: rest, key: kvm_key(keys: kvm_refusal_other_keys, i: 0))
+  let detail = kvm_field(rest: rest, key: kvm_key(keys: kvm_refusal_other_keys, i: 1))
+  if cause == kvm_cause_seat_busy.word { KvmSeatBusy { viewer_count: kvm_field(rest: rest, key: kvm_key(keys: kvm_refusal_layout_seat_busy.keys, i: 1)) } }
+  else if cause == kvm_cause_login.word { KvmLoginRefused { detail: concat("http ", kvm_field(rest: rest, key: kvm_key(keys: kvm_refusal_layout_login.keys, i: 1))) } }
   else if cause == kvm_cause_no_kvm_service.word { KvmNoKvmService }
   else if cause == kvm_cause_no_frame.word || cause == kvm_cause_no_kvm_frame.word || cause == kvm_cause_no_kvm_websocket.word { KvmNoFrame { detail: if detail == "" { cause } else { detail } } }
   else if cause == kvm_cause_toolchain.word { KvmToolchainUnavailable { detail: detail } }
@@ -264,11 +306,12 @@ fn kvm_refusal_of(rest: String) -> KvmObserverRefusal {
 }
 
 fn kvm_acquisition_cause_of(rest: String) -> KvmAcquisitionCause {
-  let cause = kvm_field(rest: rest, key: "cause")
+  let cause = kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_acquisition_failed.keys, i: 3))
+  let detail = kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_acquisition_failed.keys, i: 4))
   if cause == kvm_cause_not_connected.word { KvmNotConnected }
   else if cause == kvm_cause_connection_changed_during_acquisition.word { KvmConnectionChangedDuringAcquisition }
-  else if cause == kvm_cause_canvas_unreadable.word { KvmCanvasUnreadable { detail: kvm_field(rest: rest, key: "detail") } }
-  else { KvmAcquisitionOther { cause: cause, detail: kvm_field(rest: rest, key: "detail") } }
+  else if cause == kvm_cause_canvas_unreadable.word { KvmCanvasUnreadable { detail: detail } }
+  else { KvmAcquisitionOther { cause: cause, detail: detail } }
 }
 
 fn kvm_journal_event(line: String) -> KvmJournalEvent {
@@ -282,22 +325,21 @@ fn kvm_journal_event(line: String) -> KvmJournalEvent {
     Absent => KvmJournalUnparsed { line: line }
     Present { value: ms } => {
       let at = KvmInstant { since_epoch: millisecond(count: ms), iso: iso }
-      let gen = kvm_field(rest: rest, key: "gen")
-      if event == kvm_event_established.word { KvmJournalEstablished { at: at, host: kvm_field(rest: rest, key: "host"), session: kvm_field(rest: rest, key: "session"), attempt: kvm_field(rest: rest, key: "attempt"), gen: gen } }
+      if event == kvm_event_established.word { KvmJournalEstablished { at: at, host: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_established.keys, i: 0)), session: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_established.keys, i: 1)), attempt: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_established.keys, i: 2)), gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_established.keys, i: 3)) } }
       else if event == kvm_event_connection_requested.word { KvmJournalConnectionRequested { at: at } }
       else if event == kvm_event_connection_refused.word { KvmJournalConnectionRefused { at: at } }
-      else if event == kvm_event_connection_open.word { KvmJournalConnectionOpen { at: at, gen: gen } }
-      else if event == kvm_event_connection_lost.word { KvmJournalConnectionLost { at: at, gen: gen } }
-      else if event == kvm_event_connection_error.word { KvmJournalConnectionError { at: at, gen: gen, detail: kvm_field(rest: rest, key: "detail") } }
-      else if event == kvm_event_still.word { KvmJournalStill { at: at, seq: kvm_field(rest: rest, key: "seq"), reason: kvm_field(rest: rest, key: "reason"), file: kvm_field(rest: rest, key: "file"), gen: gen } }
-      else if event == kvm_event_acquisition_failed.word { KvmJournalAcquisitionFailed { at: at, seq: kvm_field(rest: rest, key: "seq"), reason: kvm_field(rest: rest, key: "reason"), cause: kvm_acquisition_cause_of(rest: rest), gen: gen } }
-      else if event == kvm_event_session_release.word { KvmJournalSessionRelease { at: at, result: kvm_field(rest: rest, key: "result") } }
-      else if event == kvm_event_browser_close.word { KvmJournalBrowserClose { at: at, result: kvm_field(rest: rest, key: "result") } }
+      else if event == kvm_event_connection_open.word { KvmJournalConnectionOpen { at: at, gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_connection_open.keys, i: 0)) } }
+      else if event == kvm_event_connection_lost.word { KvmJournalConnectionLost { at: at, gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_connection_lost.keys, i: 0)) } }
+      else if event == kvm_event_connection_error.word { KvmJournalConnectionError { at: at, gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_connection_error.keys, i: 0)), detail: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_connection_error.keys, i: 1)) } }
+      else if event == kvm_event_still.word { KvmJournalStill { at: at, seq: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_still.keys, i: 0)), reason: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_still.keys, i: 1)), file: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_still.keys, i: 3)), gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_still.keys, i: 2)) } }
+      else if event == kvm_event_acquisition_failed.word { KvmJournalAcquisitionFailed { at: at, seq: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_acquisition_failed.keys, i: 0)), reason: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_acquisition_failed.keys, i: 1)), cause: kvm_acquisition_cause_of(rest: rest), gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_acquisition_failed.keys, i: 2)) } }
+      else if event == kvm_event_session_release.word { KvmJournalSessionRelease { at: at, result: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_session_release.keys, i: 0)) } }
+      else if event == kvm_event_browser_close.word { KvmJournalBrowserClose { at: at, result: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_browser_close.keys, i: 0)) } }
       else if event == kvm_event_refused.word { KvmJournalRefused { at: at, refusal: kvm_refusal_of(rest: rest) } }
-      else if event == kvm_event_failed.word { KvmJournalFailed { at: at, detail: kvm_field(rest: rest, key: "detail") } }
-      else if event == kvm_event_stop_requested.word { KvmJournalStopRequested { at: at, by: kvm_field(rest: rest, key: "by") } }
-      else if event == kvm_event_stopped.word { KvmJournalStopped { at: at, session: kvm_field(rest: rest, key: "session"), browser: kvm_field(rest: rest, key: "browser") } }
-      else if event == kvm_event_trigger_scan_failed.word { KvmJournalTriggerScanFailed { at: at, detail: kvm_field(rest: rest, key: "detail") } }
+      else if event == kvm_event_failed.word { KvmJournalFailed { at: at, detail: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_failed.keys, i: 0)) } }
+      else if event == kvm_event_stop_requested.word { KvmJournalStopRequested { at: at, by: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_stop_requested.keys, i: 0)) } }
+      else if event == kvm_event_stopped.word { KvmJournalStopped { at: at, session: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_stopped.keys, i: 0)), browser: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_stopped.keys, i: 1)) } }
+      else if event == kvm_event_trigger_scan_failed.word { KvmJournalTriggerScanFailed { at: at, detail: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_trigger_scan_failed.keys, i: 0)) } }
       else { KvmJournalUnparsed { line: line } }
     }
   }
@@ -308,66 +350,104 @@ fn kvm_journal_events(text: String) -> List<KvmJournalEvent> {
 }
 
 // ── THE JOURNAL, WRITTEN ─────────────────────────────────────────────────────────────────────────
-// THE ONE GRAMMAR READ IN THE OTHER DIRECTION: the line kvm_journal_event parses, rendered from the
-// event it parses to, over the same KvmJournalWord rows -- so a modeled observer (the boot matrix's
-// dry realization) writes what the parser reads without a second spelling of the line. The layout is
-// the observer script's j(): "<epoch-ms> <iso> <event word>" then its key=value fields in the order
-// the script writes them. Values are written as the parser returns them, so a JSON-quoted host or
-// detail stays quoted. KEYS THE PARSER DOES NOT READ ARE NOT WRITTEN: the script also emits url= on
-// the connection lines, started_ms= on a still and an acquisition failure, and bytes= on a still; an
-// event does not carry them, so a rendered line omits them and parses to the same event. An unparsed
-// line renders as the line it carried.
+// THE LAYOUT ROWS ABOVE, READ IN THE OTHER DIRECTION. kvm_journal_line writes "<epoch-ms> <iso> <event
+// word>" and then the event's values under the SAME kvm_layout_* / kvm_refusal_layout_* keys the parser
+// reads, in the observer script's order; no key name or order is spelled here. Keys the parser does not
+// read (url on the connection lines, started_ms on a still and an acquisition failure, bytes on a still)
+// are not written.
+//
+// IT REFUSES RATHER THAN WRITE A LINE THAT READS AS ANOTHER EVENT. The event fields are free Strings,
+// so some events have no line that parses back to them -- a word field holding a space, a login detail
+// that is not "http <status>", a no-frame refusal with an empty detail (the parser substitutes the cause
+// word), an "other" cause spelled like a declared one, a newline anywhere. The renderer parses its own
+// line and answers Rendered only when that is structurally the event it was given; otherwise it is
+// Refused with the line it would have written, so no plausible wrong line is ever produced (DESIGN s5).
+//
+// CONSUMER, A DECLARED FRONTIER (DESIGN s3c): the boot acceptance matrix's dry KVM observer in
+// gunbc#12533, which writes the journal the boot gates its handoff on; it lands in that change.
+type KvmJournalRender
+  = KvmJournalRendered { line: String }
+  | KvmJournalRenderRefused { event_word: String, would_write: String }
+
 fn kvm_journal_head(at: KvmInstant, word: KvmJournalWord) -> String {
   concat(concat(to_string(millisecond_count(m: at.since_epoch)), concat(" ", at.iso)), concat(" ", word.word))
 }
 
-fn kvm_journal_kv(head: String, fields: List<String>) -> String {
-  if count(fields) == 0 { head } else { concat(head, concat(" ", join(fields, " "))) }
+fn kvm_journal_fields(head: String, keys: List<String>, values: List<String>) -> String {
+  let pairs = fold(keys, init: [], f: fn(acc, k) {
+    match values.skip(n: count(acc)).first() {
+      Present { value: v } => list_append(acc, concat(concat(k, "="), v))
+      Absent => list_append(acc, concat(k, "="))
+    }
+  })
+  if count(pairs) == 0 { head } else { concat(head, concat(" ", join(pairs, " "))) }
 }
 
-fn kvm_kv(key: String, value: String) -> String {
-  concat(concat(key, "="), value)
+fn kvm_layout_line(at: KvmInstant, layout: KvmJournalLayout, values: List<String>) -> String {
+  kvm_journal_fields(head: kvm_journal_head(at: at, word: layout.event), keys: layout.keys, values: values)
 }
 
-fn kvm_refusal_fields(refusal: KvmObserverRefusal) -> List<String> {
+fn kvm_refusal_line(at: KvmInstant, refusal: KvmObserverRefusal) -> String {
+  let head = kvm_journal_head(at: at, word: kvm_event_refused)
   match refusal {
-    KvmSeatBusy { viewer_count: v } => [kvm_kv(key: "cause", value: kvm_cause_seat_busy.word), kvm_kv(key: "viewer_count", value: v)]
-    KvmLoginRefused { detail: d } => [kvm_kv(key: "cause", value: kvm_cause_login.word), kvm_kv(key: "http", value: if starts_with(s: d, prefix: "http ") { join(split(s: d, delimiter: " ").skip(n: 1), " ") } else { d })]
-    KvmNoKvmService => [kvm_kv(key: "cause", value: kvm_cause_no_kvm_service.word)]
-    KvmNoFrame { detail: d } => [kvm_kv(key: "cause", value: kvm_cause_no_frame.word), kvm_kv(key: "detail", value: d)]
-    KvmToolchainUnavailable { detail: d } => [kvm_kv(key: "cause", value: kvm_cause_toolchain.word), kvm_kv(key: "detail", value: d)]
-    KvmCredentialUnreadable { detail: d } => [kvm_kv(key: "cause", value: kvm_cause_credential_unreadable.word), kvm_kv(key: "detail", value: d)]
-    KvmRefusedOther { cause: c, detail: d } => if d == "" { [kvm_kv(key: "cause", value: c)] } else { [kvm_kv(key: "cause", value: c), kvm_kv(key: "detail", value: d)] }
+    KvmSeatBusy { viewer_count: v } => kvm_journal_fields(head: head, keys: kvm_refusal_layout_seat_busy.keys, values: [kvm_cause_seat_busy.word, v])
+    KvmLoginRefused { detail: d } => kvm_journal_fields(head: head, keys: kvm_refusal_layout_login.keys, values: [kvm_cause_login.word, if starts_with(s: d, prefix: "http ") { join(split(s: d, delimiter: " ").skip(n: 1), " ") } else { d }])
+    KvmNoKvmService => kvm_journal_fields(head: head, keys: kvm_refusal_layout_no_kvm_service.keys, values: [kvm_cause_no_kvm_service.word])
+    KvmNoFrame { detail: d } => kvm_journal_fields(head: head, keys: kvm_refusal_layout_no_frame.keys, values: [kvm_cause_no_frame.word, d])
+    KvmToolchainUnavailable { detail: d } => kvm_journal_fields(head: head, keys: kvm_refusal_layout_toolchain.keys, values: [kvm_cause_toolchain.word, d])
+    KvmCredentialUnreadable { detail: d } => kvm_journal_fields(head: head, keys: kvm_refusal_layout_credential_unreadable.keys, values: [kvm_cause_credential_unreadable.word, d])
+    KvmRefusedOther { cause: c, detail: d } => kvm_journal_fields(head: head, keys: kvm_refusal_other_keys, values: [c, d])
   }
 }
 
-fn kvm_acquisition_cause_fields(cause: KvmAcquisitionCause) -> List<String> {
+fn kvm_acquisition_values(seq: String, reason: String, gen: String, cause: KvmAcquisitionCause) -> List<String> {
   match cause {
-    KvmNotConnected => [kvm_kv(key: "cause", value: kvm_cause_not_connected.word)]
-    KvmConnectionChangedDuringAcquisition => [kvm_kv(key: "cause", value: kvm_cause_connection_changed_during_acquisition.word)]
-    KvmCanvasUnreadable { detail: d } => [kvm_kv(key: "cause", value: kvm_cause_canvas_unreadable.word), kvm_kv(key: "detail", value: d)]
-    KvmAcquisitionOther { cause: c, detail: d } => if d == "" { [kvm_kv(key: "cause", value: c)] } else { [kvm_kv(key: "cause", value: c), kvm_kv(key: "detail", value: d)] }
+    KvmNotConnected => [seq, reason, gen, kvm_cause_not_connected.word]
+    KvmConnectionChangedDuringAcquisition => [seq, reason, gen, kvm_cause_connection_changed_during_acquisition.word]
+    KvmCanvasUnreadable { detail: d } => [seq, reason, gen, kvm_cause_canvas_unreadable.word, d]
+    KvmAcquisitionOther { cause: c, detail: d } => [seq, reason, gen, c, d]
   }
 }
 
-fn kvm_journal_line(event: KvmJournalEvent) -> String {
+fn kvm_acquisition_keys(cause: KvmAcquisitionCause) -> List<String> {
+  match cause {
+    KvmNotConnected => kvm_layout_acquisition_failed.keys.take(n: 4)
+    KvmConnectionChangedDuringAcquisition => kvm_layout_acquisition_failed.keys.take(n: 4)
+    _ => kvm_layout_acquisition_failed.keys
+  }
+}
+
+fn kvm_journal_candidate_line(event: KvmJournalEvent) -> String {
   match event {
-    KvmJournalEstablished { at: a, host: h, session: se, attempt: t, gen: g } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_established), fields: [kvm_kv(key: "host", value: h), kvm_kv(key: "session", value: se), kvm_kv(key: "attempt", value: t), kvm_kv(key: "gen", value: g)])
-    KvmJournalConnectionRequested { at: a } => kvm_journal_head(at: a, word: kvm_event_connection_requested)
-    KvmJournalConnectionRefused { at: a } => kvm_journal_head(at: a, word: kvm_event_connection_refused)
-    KvmJournalConnectionOpen { at: a, gen: g } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_connection_open), fields: [kvm_kv(key: "gen", value: g)])
-    KvmJournalConnectionLost { at: a, gen: g } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_connection_lost), fields: [kvm_kv(key: "gen", value: g)])
-    KvmJournalConnectionError { at: a, gen: g, detail: d } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_connection_error), fields: [kvm_kv(key: "gen", value: g), kvm_kv(key: "detail", value: d)])
-    KvmJournalStill { at: a, seq: n, reason: r, file: f, gen: g } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_still), fields: [kvm_kv(key: "seq", value: n), kvm_kv(key: "reason", value: r), kvm_kv(key: "gen", value: g), kvm_kv(key: "file", value: f)])
-    KvmJournalAcquisitionFailed { at: a, seq: n, reason: r, cause: c, gen: g } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_acquisition_failed), fields: concat([kvm_kv(key: "seq", value: n), kvm_kv(key: "reason", value: r), kvm_kv(key: "gen", value: g)], kvm_acquisition_cause_fields(cause: c)))
-    KvmJournalRefused { at: a, refusal: r } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_refused), fields: kvm_refusal_fields(refusal: r))
-    KvmJournalFailed { at: a, detail: d } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_failed), fields: [kvm_kv(key: "detail", value: d)])
-    KvmJournalStopRequested { at: a, by: b } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_stop_requested), fields: [kvm_kv(key: "by", value: b)])
-    KvmJournalSessionRelease { at: a, result: r } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_session_release), fields: [kvm_kv(key: "result", value: r)])
-    KvmJournalBrowserClose { at: a, result: r } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_browser_close), fields: [kvm_kv(key: "result", value: r)])
-    KvmJournalStopped { at: a, session: se, browser: b } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_stopped), fields: [kvm_kv(key: "session", value: se), kvm_kv(key: "browser", value: b)])
-    KvmJournalTriggerScanFailed { at: a, detail: d } => kvm_journal_kv(head: kvm_journal_head(at: a, word: kvm_event_trigger_scan_failed), fields: [kvm_kv(key: "detail", value: d)])
+    KvmJournalEstablished { at: a, host: h, session: se, attempt: t, gen: g } => kvm_layout_line(at: a, layout: kvm_layout_established, values: [h, se, t, g])
+    KvmJournalConnectionRequested { at: a } => kvm_layout_line(at: a, layout: kvm_layout_connection_requested, values: [])
+    KvmJournalConnectionRefused { at: a } => kvm_layout_line(at: a, layout: kvm_layout_connection_refused, values: [])
+    KvmJournalConnectionOpen { at: a, gen: g } => kvm_layout_line(at: a, layout: kvm_layout_connection_open, values: [g])
+    KvmJournalConnectionLost { at: a, gen: g } => kvm_layout_line(at: a, layout: kvm_layout_connection_lost, values: [g])
+    KvmJournalConnectionError { at: a, gen: g, detail: d } => kvm_layout_line(at: a, layout: kvm_layout_connection_error, values: [g, d])
+    KvmJournalStill { at: a, seq: n, reason: r, file: f, gen: g } => kvm_layout_line(at: a, layout: kvm_layout_still, values: [n, r, g, f])
+    KvmJournalAcquisitionFailed { at: a, seq: n, reason: r, cause: c, gen: g } => kvm_journal_fields(head: kvm_journal_head(at: a, word: kvm_event_acquisition_failed), keys: kvm_acquisition_keys(cause: c), values: kvm_acquisition_values(seq: n, reason: r, gen: g, cause: c))
+    KvmJournalRefused { at: a, refusal: r } => kvm_refusal_line(at: a, refusal: r)
+    KvmJournalFailed { at: a, detail: d } => kvm_layout_line(at: a, layout: kvm_layout_failed, values: [d])
+    KvmJournalStopRequested { at: a, by: b } => kvm_layout_line(at: a, layout: kvm_layout_stop_requested, values: [b])
+    KvmJournalSessionRelease { at: a, result: r } => kvm_layout_line(at: a, layout: kvm_layout_session_release, values: [r])
+    KvmJournalBrowserClose { at: a, result: r } => kvm_layout_line(at: a, layout: kvm_layout_browser_close, values: [r])
+    KvmJournalStopped { at: a, session: se, browser: b } => kvm_layout_line(at: a, layout: kvm_layout_stopped, values: [se, b])
+    KvmJournalTriggerScanFailed { at: a, detail: d } => kvm_layout_line(at: a, layout: kvm_layout_trigger_scan_failed, values: [d])
     KvmJournalUnparsed { line: l } => l
+  }
+}
+
+fn kvm_journal_event_word(event: KvmJournalEvent) -> String {
+  match split(s: kvm_journal_candidate_line(event: event), delimiter: " ").skip(n: 2).first() { Present { value: w } => w  Absent => "" }
+}
+
+fn kvm_journal_line(event: KvmJournalEvent) -> KvmJournalRender {
+  let line = kvm_journal_candidate_line(event: event)
+  if !string_contains(s: line, pattern: "\n") && kvm_journal_event(line: line) == event {
+    KvmJournalRendered { line: line }
+  } else {
+    KvmJournalRenderRefused { event_word: kvm_journal_event_word(event: event), would_write: line }
   }
 }
 
