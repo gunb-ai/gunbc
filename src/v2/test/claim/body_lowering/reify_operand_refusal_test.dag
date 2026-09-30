@@ -22,11 +22,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // lowering routes keep their own witnesses (the pairing of DESIGN section 3).
 //
 // THE RED ON MAIN (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand, the
-// reify route #12615 named): for `a + ^s` the operand reader refuses caret_symbol_not_lowered, and
-// main mapped that refusal to Absent. As a Transform argument the refusal fell through to the shell
-// reader and surfaced as unsupported_form at the operand -- the cause replaced; as a Branch target it
-// was KEPT AS IF READ and the Branch was Accepted with an unlowered operand in it. Both now refuse
-// with the operand's own cause. `a + b` is the control: it reads whole and reifies on both sides.
+// reify route #12615 named): for `a + g(p: { })` the operand reader refuses -- the empty block argument
+// is a statement spine with no head, statement_spine_headless -- and the reify route mapped that
+// refusal to Absent. As a Transform argument the refusal fell through to the shell reader and surfaced
+// as unsupported_form at the operand -- the cause replaced; as a Branch target it was KEPT AS IF READ
+// and the Branch was Accepted with an unlowered operand in it. Both now refuse with the operand's own
+// cause. `a + b` is the control: it reads whole and reifies on both sides.
+//
+// THE SPECIMEN MOVED ONCE: it was `a + ^s`, refusing caret_symbol_not_lowered, until MQ-1 PR-2
+// (gunbc#12420) gave the caret a lowered form and that operand stopped refusing. A refusal specimen is
+// only as good as the refusal it stands on, so this one stands on an empty block argument, which no
+// planned form lowers.
 
 type RorVerdict
   = RorAccepted
@@ -105,7 +111,7 @@ fn ror_branch(operand: Optional<Node>) -> RorVerdict {
 // ONE FRONT END FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share: the stored
 // value is four verdicts, no Node and no closure.
 fn ror_verdicts() -> RorVerdicts {
-  let refused = ror_operand(expr: "a + ^s")
+  let refused = ror_operand(expr: "a + g(p: \{ })")
   let read = ror_operand(expr: "a + b")
   RorVerdicts {
     refused_transform: ror_transform(operand: refused),
@@ -117,7 +123,7 @@ fn ror_verdicts() -> RorVerdicts {
 
 fn ror_refuses_with_the_operands_cause(v: RorVerdict) -> Bool {
   match v {
-    RorRefused { reason: r } => r == ^body_lowering_reason_caret_symbol_not_lowered
+    RorRefused { reason: r } => r == ^body_lowering_reason_statement_spine_headless
     _ => false
   }
 }
