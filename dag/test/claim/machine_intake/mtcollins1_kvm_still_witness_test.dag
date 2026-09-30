@@ -25,7 +25,8 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmStillGap, KvmGapOverCadence, KvmClockStepBack, KvmFinalGapUnclosed,
   KvmStillHashed, KvmStillUnhashed, KvmInstant,
   KvmJournalText, KvmJournalAbsent, KvmJournalUnread, kvm_journal_events_of,
-  kvm_journal_event, kvm_journal_events, kvm_journal_line, KvmJournalRender, KvmJournalRendered, KvmJournalRenderRefused,
+  kvm_journal_event, kvm_journal_events, kvm_journal_line, KvmJournalRender,
+  KvmJournalLayout, kvm_layout_established, kvm_layout_connection_open, kvm_layout_connection_lost, kvm_layout_connection_error, kvm_layout_still, kvm_layout_acquisition_failed, kvm_layout_failed, kvm_layout_stop_requested, kvm_layout_session_release, kvm_layout_browser_close, kvm_layout_stopped, kvm_layout_trigger_scan_failed, KvmJournalRendered, KvmJournalRenderRefused,
   KvmJournalEstablished, KvmJournalConnectionRequested, KvmJournalConnectionRefused, KvmJournalConnectionOpen, KvmJournalConnectionError,
   KvmJournalRefused, KvmJournalFailed, KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped, KvmJournalTriggerScanFailed,
   KvmLoginRefused, KvmNoKvmService, KvmNoFrame, KvmToolchainUnavailable, KvmCredentialUnreadable, KvmRefusedOther, KvmAcquisitionOther, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
@@ -337,4 +338,39 @@ test fn an_event_no_line_can_carry_is_refused_not_written() -> Bool {
 test fn free_text_the_grammar_can_carry_is_rendered() -> Bool {
   let e = KvmJournalConnectionError { at: kvm_at(ms: 1790000000105), gen: "1", detail: "a gen=9 b" }
   !refused(r: kvm_journal_line(event: e)) && kvm_journal_event(line: rendered(r: kvm_journal_line(event: e))) == e
+}
+
+// THE LAYOUT ROWS FOLLOW THE OBSERVER'S OWN WRITE ORDER (review 73178's watch point). The parser and the
+// renderer index the same rows, so a reordered row would shift both and keep the round trip green. The
+// script is the authority for write order: for every row, some j(EV.<event>, ...) call in the observer
+// script names the row's keys in the row's order (a call may carry keys the parser does not read). A
+// call's text runs to the next j(EV. call, whatever punctuation closes it (the still call ends `)}`).
+fn script_call_segments(event_id: String) -> List<String> {
+  let parts = split(s: mtcollins1_kvm_observer_script, delimiter: concat(concat("j(EV.", event_id), ","))
+  map(parts.skip(n: 1), p => match split(s: p, delimiter: "j(EV.").first() { Present { value: seg } => seg  Absent => p })
+}
+
+fn keys_in_order(segment: String, keys: List<String>) -> Bool {
+  let rest = fold(keys, init: Present { value: segment }, f: fn(acc, k) {
+    match acc {
+      Absent => acc
+      Present { value: r } => match split(s: r, delimiter: concat(k, "=")).skip(n: 1).first() {
+        Present { value: _ } => Present { value: join(split(s: r, delimiter: concat(k, "=")).skip(n: 1), concat(k, "=")) }
+        Absent => none
+      }
+    }
+  })
+  match rest { Present { value: _ } => true  Absent => false }
+}
+
+fn layout_follows_script(layout: KvmJournalLayout) -> Bool {
+  !all(script_call_segments(event_id: layout.event.id), seg => !keys_in_order(segment: seg, keys: layout.keys))
+}
+
+test fn every_layout_row_follows_the_observer_scripts_write_order() -> Bool {
+  let rows = [kvm_layout_established, kvm_layout_connection_open, kvm_layout_connection_lost, kvm_layout_connection_error, kvm_layout_still, kvm_layout_failed, kvm_layout_stop_requested, kvm_layout_session_release, kvm_layout_browser_close, kvm_layout_stopped, kvm_layout_trigger_scan_failed]
+  let swapped = KvmJournalLayout { event: kvm_layout_still.event, keys: ["file", "seq", "reason", "gen"] }
+  all(rows, r => layout_follows_script(layout: r))
+    && layout_follows_script(layout: KvmJournalLayout { event: kvm_layout_acquisition_failed.event, keys: kvm_layout_acquisition_failed.keys.take(n: 4) })
+    && !layout_follows_script(layout: swapped)
 }
