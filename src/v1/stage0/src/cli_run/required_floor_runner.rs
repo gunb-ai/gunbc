@@ -885,7 +885,7 @@ pub(crate) fn floor_base_file_read(path: &str) -> Result<Option<String>, String>
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let args = [
         (Some("base".to_string()), str_value(comparison.base())),
-        (Some("path".to_string()), str_value(path.to_string())),
+        (Some("path".to_string()), str_value(path)),
     ];
     let result =
         v1_interpreter::run_in_context_with_args(&ctx, "floor_run_base_file_read", &args, false)
