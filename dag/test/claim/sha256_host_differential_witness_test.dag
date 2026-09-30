@@ -1,0 +1,56 @@
+module test.claim.sha256_host_differential_witness
+
+import std.logic { Bool }
+import std.types { String }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE HOST SHA-256 AGAINST ITS DIFFERENTIAL ORACLE. sha256_hex_of_text (the host seam, RustCrypto
+// sha2) must equal the pure fold (extdeps.crypto.sha2 sha256_hex over the same UTF-8 octets) AND the
+// known answer, computed independently (Python hashlib) and, for the empty, "abc" and 448-bit texts,
+// the FIPS 180-4 published values. The lengths are the padding boundaries: 55 octets is the last that
+// fits one block with its length field, 56 forces a second block, 63/64/65 straddle the block edge,
+// and 130 is three blocks. One claim per vector, so each pays one pure fold.
+fn differential(text: String, known: String) -> Bool {
+  let host = sha256_hex_of_text(text: text)
+  host == known && host == sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: text)))
+}
+
+test fn the_host_digest_of_the_empty_text_equals_the_pure_fold_and_the_known_answer() -> Bool {
+  differential(text: "", known: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+}
+
+test fn the_host_digest_of_abc_equals_the_pure_fold_and_the_known_answer() -> Bool {
+  differential(text: "abc", known: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+}
+
+test fn the_host_digest_of_a_55_octet_text_equals_the_pure_fold_and_the_known_answer() -> Bool {
+  differential(text: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", known: "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318")
+}
+
+test fn the_host_digest_of_a_56_octet_text_equals_the_pure_fold_and_the_known_answer() -> Bool {
+  differential(text: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", known: "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a")
+}
+
+test fn the_host_digest_of_a_63_octet_text_equals_the_pure_fold_and_the_known_answer() -> Bool {
+  differential(text: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", known: "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34")
+}
+
+test fn the_host_digest_of_a_64_octet_text_equals_the_pure_fold_and_the_known_answer() -> Bool {
+  differential(text: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", known: "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb")
+}
+
+test fn the_host_digest_of_a_65_octet_text_equals_the_pure_fold_and_the_known_answer() -> Bool {
+  differential(text: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", known: "635361c48bb9eab14198e76ea8ab7f1a41685d6ad62aa9146d301d4f17eb0ae0")
+}
+
+test fn the_host_digest_of_a_130_octet_three_block_text_equals_the_pure_fold_and_the_known_answer() -> Bool {
+  differential(text: "gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-gunbc-abcd", known: "3de7e15aa1b453dc3833d796643b52713e80cdff8bf8738fece1c2d4a352a052")
+}
+
+test fn the_host_digest_of_the_nist_448_bit_text_equals_the_pure_fold_and_the_known_answer() -> Bool {
+  differential(text: "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", known: "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")
+}
