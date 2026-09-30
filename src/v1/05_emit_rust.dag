@@ -9969,7 +9969,54 @@ fn variant_pattern_shape_str(qualified: String, rust_name: String, resolved_pare
   else if is_fielded { concat(qualified, " { .. }") } else { qualified }
 }
 
+// A VARIANT PATTERN WHOSE PARENT ENUM DOES NOT RESOLVE REFUSES; IT NEVER RENDERS BARE. In Rust a
+// bare identifier in pattern position that names no unit struct or in-scope variant is a fresh
+// BINDING, so `Add => ...` with no `BinOp::*` in scope matches every scrutinee and the first such
+// arm silently takes all of them (wrong-arm execution; rustc only warns). rust_variant_path_opt's
+// Absent arm was that silent widen for every non-optional variant pattern (DESIGN section 5: a
+// failure arm must refuse, never widen). Optional variants are exempt: their Absent-parent residue
+// lowers to Some/None by the host optional's own spelling authority. Only the BARE-IDENTIFIER
+// rendering is the hazard: a fielded or positional render (`Named { .. }`, `Wrap(_)`) is a struct or
+// tuple-struct pattern Rust resolves by path and never binds as a variable, and an unresolved parent
+// there already fails loudly if the name is not in scope (measured: v2.std.node EdgeLabel `Named`
+// patterns over unstamped scrutinees in v2.std.compilers.body_lowering and
+// v2.compiler.emit_produced render `Named { .. }` and resolve through the authored import). The
+// refusal is emitted as
+// compile_error! at the arm, so the build stops at the emitted location with the variant and
+// scrutinee named. Class: gunbc.recurring_failure_mode
+// unresolved_variant_pattern_renders_as_a_catch_all_binding.
+fn variant_pattern_parent_unresolved(name: String, parent_enum: String?, scrut_type: String, emit_info: EmitGraphInfo) -> Bool {
+  let bare_name = qualified_last_segment(name: name)
+  let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
+  resolved_parent == none && !is_optional_variant_name(name: bare_name)
+}
+
+fn rust_pattern_is_bare_identifier(rendered: String) -> Bool {
+  !string_contains(s: rendered, pattern: "{") && !string_contains(s: rendered, pattern: "(") && !string_contains(s: rendered, pattern: "::")
+}
+
+fn refuse_unresolved_bare_variant_pattern(name: String, parent_enum: String?, scrut_type: String, emit_info: EmitGraphInfo, rendered: String) -> String {
+  if variant_pattern_parent_unresolved(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info) && rust_pattern_is_bare_identifier(rendered: rendered) {
+    unresolved_variant_pattern_refusal(name: name, scrut_type: scrut_type)
+  } else {
+    rendered
+  }
+}
+
+fn unresolved_variant_pattern_refusal(name: String, scrut_type: String) -> String {
+  let scrut = if scrut_type == "" { "an unstamped scrutinee" } else { concat("scrutinee type `", scrut_type, "`") }
+  emit_rust_compile_error_expr(message: concat(
+    "v1.compiler.emit_rust will not render the variant pattern `", qualified_last_segment(name: name),
+    "` against ", scrut,
+    ": its parent enum does not resolve, and a bare identifier pattern binds as a catch-all variable in Rust"))
+}
+
 fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  refuse_unresolved_bare_variant_pattern(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info,
+    rendered: emit_resolved_variant_pattern(name: name, parent_enum: parent_enum, field_bindings: field_bindings, path_prefix: path_prefix, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info))
+}
+
+fn emit_resolved_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let bare_name = qualified_last_segment(name: name)
   let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
   let optional_variant = is_optional_variant_name(name: bare_name)
@@ -10221,6 +10268,11 @@ fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_an
 }
 
 fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  refuse_unresolved_bare_variant_pattern(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info,
+    rendered: emit_resolved_variant_pattern_rc_aware(name: name, parent_enum: parent_enum, field_bindings: field_bindings, path_prefix: path_prefix, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info))
+}
+
+fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let bare_name = qualified_last_segment(name: name)
   let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
   let optional_variant = is_optional_variant_name(name: bare_name)
@@ -10323,6 +10375,11 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
 }
 
 fn variant_pattern_shape_for(name: String, parent_enum: String?, scrut_type: String, emit_info: EmitGraphInfo) -> String {
+  refuse_unresolved_bare_variant_pattern(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info,
+    rendered: resolved_variant_pattern_shape_for(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info))
+}
+
+fn resolved_variant_pattern_shape_for(name: String, parent_enum: String?, scrut_type: String, emit_info: EmitGraphInfo) -> String {
   let bare_name = qualified_last_segment(name: name)
   let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
   let optional_variant = is_optional_variant_name(name: bare_name)
