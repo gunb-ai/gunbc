@@ -41,6 +41,7 @@ import v2.workflow.floor_grandfathered_roster {
   floor_grandfathered_holds, grandfathered_cut_holds, floor_grandfathered_cut_size,
   floor_grandfathered_removals,
 }
+import std.algebra { Cons, Empty }
 
 // THE REQUIRED FLOOR'S CLAIM CEILING IS TWO-TIER, GATES ON EVAL STEPS, AND ITS CPU READING IS
 // OBSERVED ONLY (operator ruling via fierce-lark-661, 2026-09-12 and 2026-09-13). This module is
