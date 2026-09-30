@@ -129,6 +129,10 @@ import v2.std.node {
   construct_tag_marker,
   symbol_eq,
   well_formed,
+  Loop,
+  LoopBoundMeasure,
+  LoopCarrierBinder,
+  loop_edge_role,
 }
 import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
@@ -261,6 +265,159 @@ fn direct_atom_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, S
       acc
     }
   }
+}
+
+// THE ONE ADMISSION FOR A VALUE BINDER, whatever spelling introduced it: an Arrow's parameters, a
+// `let`, a match-arm binder, a loop carrier. Before this, each site harvested its own names straight
+// into a ScopeFrame and no site judged them, so two questions had no owner at all -- whether a frame
+// binds one name twice, and whether a binder hides a value that is already visible. The type-parameter
+// frame already answered the second for TYPE binders
+// (resolve_reason_type_parameter_shadows_visible_name, refused at the binder); this is the same
+// discipline for value binders, in one place rather than four.
+//
+// WHAT COUNTS AS HIDING IS A LEXICAL FACT, AND ONLY A LEXICAL FACT. The chain answers BoundInFrame for
+// an enclosing binder and BoundAtRoot for a module-namespace binding (lookup_chain / ScopeBinding), and
+// ONLY BoundInFrame refuses. So a binder spelled like a declaration in some other module -- imported or
+// not -- is admitted: an unrelated declaration elsewhere in the corpus may not decide whether a local
+// binder is legal, which is the defect this slice was opened on. A binder spelled like a name at the
+// module root is likewise admitted; shadowing a root declaration is ordinary, hiding an enclosing
+// BINDER is not.
+//
+// IT RETURNS A VERDICT RATHER THAN A MAP, so a refusal is located at the binder and cannot be silently
+// widened into an empty frame -- an empty frame would leave the binder unbound and send its uses to the
+// global lookup, which is exactly how `found` in a fold step came to be read as a name declared in
+// several modules.
+type BinderAdmission
+  = BindersAdmitted { locals: Map<Symbol, Symbol> }
+  | BinderDuplicateInFrame { binder: Symbol }
+  | BinderHidesVisibleValue { binder: Symbol }
+
+fn admit_value_binders(names: List<Symbol>, outer: Scope) -> BinderAdmission {
+  fold(names, init: BindersAdmitted { locals: empty_map() }, f: fn(acc, name) {
+    match acc {
+      BinderDuplicateInFrame { binder: b } => BinderDuplicateInFrame { binder: b }
+      BinderHidesVisibleValue { binder: b } => BinderHidesVisibleValue { binder: b }
+      BindersAdmitted { locals: m } =>
+        match v2.std.collection.map_lookup(m: m, key: name) {
+          Present { value: _ } => BinderDuplicateInFrame { binder: name }
+          Absent => admit_one_value_binder(locals: m, name: name, outer: outer)
+        }
+    }
+  })
+}
+
+fn admit_one_value_binder(locals: Map<Symbol, Symbol>, name: Symbol, outer: Scope) -> BinderAdmission {
+  match lookup_chain(s: outer, name: name) {
+    Rejected { diagnostics: _ } => BindersAdmitted { locals: map_insert(locals, name, name) }
+    Accepted { value: bound, diagnostics: _ } =>
+      match bound {
+        BoundInFrame { canonical: _ } => BinderHidesVisibleValue { binder: name }
+        BoundAtRoot { canonical: _ } => BindersAdmitted { locals: map_insert(locals, name, name) }
+        ScopeUnbound => BindersAdmitted { locals: map_insert(locals, name, name) }
+      }
+  }
+}
+
+fn binder_duplicate_in_frame_diagnostic(binder: Symbol, at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_binder_duplicate_in_frame,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn binder_hides_visible_value_diagnostic(binder: Symbol, at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_binder_hides_visible_value,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A LOOP'S CARRIER IS A BINDER, SO IT OPENS A FRAME AND IS NOT WALKED AS A REFERENCE. v2.std.node says
+// it outright -- "^loop_carrier_edge targets the loop-carried state's BINDER, never a value" -- and
+// resolve did neither: a Loop fell to resolve_children_homogeneous_scope, which opens a frame only for
+// an Arrow domain, so the carrier bound nothing and the iterated body's uses of it reached the bare-name
+// census. That is the whole of the `found` refusal in `fold(xs, init: false, f: fn(found, e) { ... })`:
+// v2.compiler.fold_lowering destructures the step literal into an iteration body and ONE carrier symbol
+// and builds this Loop, so the step's Arrow is never constructed and its second binder is dropped.
+//
+// The carrier edge is carried UNWALKED for the same reason the Arrow's declared-order edge is
+// (resolve_arrow_node_in): its target names a binder, not a reference, so resolving it would ask the
+// scope to answer for a name the scope is being opened to introduce.
+fn resolve_loop_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  match resolve_loop_carrier_binder(n: n) {
+        Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
+        Present { value: carrier } =>
+          let binder = carrier.node
+          match Present { value: carrier.name } {
+            Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
+            Present { value: name } =>
+          match admit_value_binders(names: [name], outer: ctx.scope) {
+            BinderDuplicateInFrame { binder: b } =>
+              resolve_walk_refused_one(chain: diagnostics_singleton(d: binder_duplicate_in_frame_diagnostic(binder: b, at: binder)))
+            BinderHidesVisibleValue { binder: b } =>
+              resolve_walk_refused_one(chain: diagnostics_singleton(d: binder_hides_visible_value_diagnostic(binder: b, at: binder)))
+            BindersAdmitted { locals: locals } =>
+              resolve_loop_children(
+                ctx: resolve_ctx_with_scope(ctx: ctx, scope: ScopeFrame { locals: locals, outer: ctx.scope }),
+                n: n
+              )
+          }
+          }
+      }
+}
+
+// THE CARRIER IS FOUND BY ITS ROLE, not by a named-edge lookup: v2.std.node loop_edge_role is the one
+// reader of what each of a Loop's edges means, and asking it here keeps this walk from being a second
+// place that knows the edge's spelling. (The named-edge lookup would also drag NamedEdgeTargetLookup's
+// own `Absent` into this module, where it collides with Optional's.)
+type ResolveLoopCarrier {
+  name: Symbol
+  node: Node
+}
+
+fn resolve_loop_carrier_binder(n: Node) -> Optional<ResolveLoopCarrier> {
+  fold(n.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        match loop_edge_role(e: e) {
+          LoopCarrierBinder =>
+            match e.target.kind {
+              TypeNode { connective: Atom { identity: id } } =>
+                Present { value: ResolveLoopCarrier { name: id, node: e.target } }
+              _ => Absent
+            }
+          _ => Absent
+        }
+    }
+  })
+}
+
+// A LOOP'S BINDER AND ITS MEASURE ARE CARRIED UNWALKED; ITS BODY AND ITS DOMAIN ARE RESOLVED. This is
+// v2.std.node's own role model read back: the carrier "targets the loop-carried state's BINDER, never a
+// value", and the bound edge targets "the termination measure". Neither is a value reference, so asking
+// the scope to answer for them is the same category error the Arrow's declared-order edge avoids
+// (resolve_arrow_node_in carries it unwalked for exactly this reason). The fold seam's measure is the
+// marker ^dag_surface_fold_iteration_measure, which names no value and resolved to nothing -- that
+// refusal, not the carrier, is what a Loop walk hit first once the carrier's frame existed.
+//
+// DECLARED FRONTIER: a measure that is a real expression rather than a marker would need resolving, and
+// this walk does not do it. No producer emits one today (v2.compiler.fold_lowering
+// fold_iteration_measure_atom is the only measure in the corpus), and the trigger is the first producer
+// that emits a computed measure -- at which point the measure gets a role-specific walk rather than
+// being carried.
+fn resolve_loop_children(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    match loop_edge_role(e: e) {
+      LoopCarrierBinder =>
+        child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
+      LoopBoundMeasure =>
+        child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
+      _ => child_walk_step(w: acc, e: e, r: resolve_node_walk(ctx: ctx, n: e.target))
+    }
+  }))
 }
 
 fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
@@ -1902,6 +2059,8 @@ fn resolve_node_walk(
       resolve_bind_node(ctx: ctx, n: n)
     ComputationNode { behavior: Match } =>
       resolve_match_node_walk(ctx: ctx, n: n)
+    ComputationNode { behavior: Loop } =>
+      resolve_loop_node(ctx: ctx, n: n)
     ComputationNode { behavior: Transform } =>
       resolve_transform_children(ctx: ctx, n: n)
     TypeNode { connective: Conj } =>
