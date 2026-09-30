@@ -328,7 +328,7 @@ fn ampere_summary_sockets(s: AmpereFirmwareBootSummary) -> List<Int> {
 }
 
 fn ampere_cper_is_this_boot(r: AmpereCperRecord) -> Bool {
-  match r.source { CperFromBert => false _ => true }
+  match r.source { CperFromBert => false CperFromGhes { source_index: _ } => true CperSourceUnstated => true }
 }
 
 // The sockets that raised at least one of THIS boot's Ampere records (BERT excluded).
