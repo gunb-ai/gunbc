@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.else_arm_lowered_as_an_if_nested_inside_it
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data else_arm_lowered_as_an_if_nested_inside_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "else_arm_lowered_as_an_if_nested_inside_it" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: an `else` arm lowered to an `if` nested INSIDE it, as though the arm were `else if`. `v2.compiler.body_lowering_fold` `body_lower_if_else_capture_optional` answered what follows `else` with the first if_expr found by a DEEP search of the else part (`body_lower_find_production_shell_optional`), so `if u == 0 { .. } else { match k { A => x  B { v: w } => if c { w } else { u } } }` lowered its else arm to the nested `if c {..} else {..}` alone: the match's scrutinee, its other arms and its patterns were dropped with no refusal.",
+    "SPECIMEN, MEASURED ON MAIN 5bffaa1e82f (2026-09-30), PRE-EXISTING: `dag/gunbc/machine_intake/boot_image_export_ownership.dag` `export_ownership_standing` -- seven atoms absent (`observed_key`, `Absent`, `ExportOwnershipUnrecognizedAccount`, `observed_name`, `Present`, `value`, `k`). The module was refused on main for an unrelated guard; the structured-tail change (gunbc#12713) admitted it, and that PR's reference-conservation census surfaced the drop. A minimal fixture drops identically under main's fold, so the defect is independent of that change.",
+    "RUNG FOUND AT: below the floor (silent wrongness, and a correct program refused when a pattern binder the dropped arm bound is read in the kept if). RUNG NOW: structurally guaranteed at this link -- `body_lower_else_part_if_expr_optional` reads the else part's FIRST production shell without descending into any production (`body_lower_first_production_shell_optional`), which the grammar makes either an if_expr (an `else if`) or a fn_body, so an if nested inside the else body cannot be taken for the else part. CEILING: the same.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if", decl_name: "the_scrutinee_of_a_match_in_an_else_arm_is_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if", decl_name: "the_first_arm_of_a_match_in_an_else_arm_is_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if", decl_name: "the_if_nested_in_the_match_arm_is_still_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if", decl_name: "a_real_else_if_chain_still_reads_its_nested_else", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if", decl_name: "the_declared_shape_resolves", field: WholeDeclaration },
+  ],
+}

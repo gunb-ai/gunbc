@@ -36,6 +36,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  positional_prefix_then_labeled_conform,
   is_empty_conj_root,
   node_synthetic,
   symbol_eq
@@ -321,7 +322,7 @@ fn application_refused(reason: Symbol, at: Node) -> ApplicationRead {
 // whether its OPERANDS are whole: a residue operand is marked here rather than refused. That split
 // exists for the no_dual_representation scan, which reads the first operand and must tell residue
 // from a value; readers whose question is the head alone take the head layer below and classify
-// nothing; application_read refuses the first residue operand. Every other defect -- a named edge,
+// nothing; application_read refuses the first residue operand. Every other defect -- a named head or a malformed named mix,
 // a missing or non-callee head, a residue head -- refuses here.
 type OperandSlot
   = WholeOperand { node: Node }
@@ -338,24 +339,28 @@ type ApplicationSlotsRead
   | ApplicationSlotsFound { slots: ApplicationSlots }
   | ApplicationSlotsRefused { diagnostics: NonEmptyDiagnostics }
 
-// A cast's <cast-target> (v2.std.type_binder) is the one Named edge an application carries, and it
-// is a type, never an operand, so it is passed over; any other Named edge still refuses.
+// The application's targets in authored order: the head first, then every actual, positional or
+// named (v2.std.node Transform discipline PositionalPrefixThenLabeled). A cast's <cast-target>
+// (v2.std.type_binder) is a type, never an operand, so it is passed over. The head must be
+// positional; a named edge before a positional one, or a repeated label, is the malformed mix that
+// discipline refuses, and refuses here too. Which parameter each actual binds is not a view's
+// question -- that is v2.std.arrow_signature application_binding_plan.
 fn application_positional_targets(site: Node) -> Outcome<List<Node>> {
-  fold(site.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
-    match acc {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: xs, diagnostics: _ } =>
-        match e.label {
-          Named { name: _ } =>
-            if edge_is_cast_target(e: e) {
-              acc
-            } else {
-              view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
-            }
-          Positional => outcome_accepted(value: list_snoc_item(xs: xs, item: e.target))
+  if !positional_prefix_then_labeled_conform(children: site.children) {
+    view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
+  } else {
+    match list_at_optional(xs: site.children, index: 0) {
+      Absent => outcome_accepted(value: Empty)
+      Present { value: first } =>
+        match first.label {
+          Named { name: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
+          Positional =>
+            outcome_accepted(value: fold(site.children, init: Empty, f: fn(acc, e) {
+              if edge_is_cast_target(e: e) { acc } else { list_snoc_item(xs: acc, item: e.target) }
+            }))
         }
     }
-  })
+  }
 }
 
 // THE ONE CLASSIFIER of "is this node surface residue", answered as the coproduct every site

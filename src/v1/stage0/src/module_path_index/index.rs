@@ -1,11 +1,8 @@
-use im::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 
-use crate::v1_compiler_parse::parse_heads_with_table;
 use crate::v1_std_core::{
-    diagnostic_to_message, diagnostic_to_span, empty_intern_table, node_name_span,
-    CompilerDiagnostic, SourceSpan,
+    diagnostic_to_message, diagnostic_to_span, node_name_span, CompilerDiagnostic, SourceSpan,
 };
 
 /// One parse-derived module⇄path row for manifest emission (host binding authority).
@@ -127,11 +124,6 @@ pub fn parse_module_binding(
     let key = source_key(path);
     // One acquisition, not one per walk -- see `cli_run::pool_acquire`. Identical bytes and
     // identical spelling, so identical tokens; this walk keeps its own collector and policy.
-    let tokens = crate::cli_run::pool_acquire::tokens_for(&key, content);
-    let source_index = crate::cli_run::pool_acquire::newline_index_for(&key, content);
-    let mut indices = HashMap::new();
-    indices.insert(key.clone(), source_index);
-    let source_indices = Rc::new(indices);
     // THE DECLARATION HEADS ARE THE WHOLE SUBJECT, so this is the heads reading of the
     // grammar rather than the full one. Every item HEAD is parsed by the same productions,
     // and both facts this walk projects -- `module.name` and its span -- are heads.
@@ -148,9 +140,10 @@ pub fn parse_module_binding(
     // `v1.compiler.parse.parse_heads_with_table`. Building an index was full-parsing the
     // corpus as a side effect, which coupled every pool-derived resolve in the process to
     // the grammaticality of every body in the tree (DESIGN §3: one fact, one authority).
-    let result = parse_heads_with_table(tokens, source_indices, empty_intern_table())
-        .result
-        .clone();
+    //
+    // The reading is the file-local one `pool_acquire::heads_reading_for` holds, which the pool
+    // census projects rather than re-parses: one heads reading per file per process.
+    let result = crate::cli_run::pool_acquire::heads_reading_for(&key, content);
     if let Some(err) = result.error.as_ref() {
         if module_declaration_line_present(content) {
             return Err(ModuleBindingRefusal {

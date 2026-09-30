@@ -441,10 +441,14 @@ fn projection_arg_port_readings(repeat_elem: Node) -> List<v2.lens.complexity_ac
   )
 }
 
+// A lens reading a port, not lowering: an operand the reader cannot read whole (absent, or refused
+// at an operator tail) is read as its raw capture, as before; the refusal is named here rather than
+// collapsed invisibly by a projection.
 fn projection_receiver_port_reading(left: Node) -> v2.lens.complexity_accumulator_copy.PortReading {
-  match v2.compiler.body_lowering_fold.body_lower_operand_ref_optional(node: left) {
-    Present { value: receiver } => lowered_arg_port_reading(arg: receiver)
-    Absent => lowered_arg_port_reading(arg: left)
+  match v2.compiler.body_lowering_fold.body_lower_operand_ref_read(node: left) {
+    v2.compiler.body_lowering_fold.OperandRefLowered { lowered: receiver } => lowered_arg_port_reading(arg: receiver)
+    v2.compiler.body_lowering_fold.OperandRefAbsent => lowered_arg_port_reading(arg: left)
+    v2.compiler.body_lowering_fold.OperandRefRefused { diagnostics: _ } => lowered_arg_port_reading(arg: left)
   }
 }
 

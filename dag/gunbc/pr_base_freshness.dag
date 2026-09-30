@@ -19,6 +19,7 @@ import extdeps.github.commits {
   Diverged,
   Identical,
 }
+import std.algebra { Cons, Empty }
 
 // WHAT THIS MEASURES, AND WHAT IT DELIBERATELY IS NOT. This module answers ONE question about an
 // open pull request: WHICH BASE COMMIT DID ITS CHECK RUN ACTUALLY TEST, and where does that commit

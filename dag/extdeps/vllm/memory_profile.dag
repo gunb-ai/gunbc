@@ -117,12 +117,19 @@ type VllmMemoryProfileParse
 // under-report CUDAGraph memory by a factor of ten. The fractional part is scaled by its own length.
 fn parse_gib_hundredths(text: String) -> Nat? {
   let fields = split(s: trim(s: text), delimiter: ".")
-  if fields.length() == 1 {
-    parse_gib_whole_only(whole_text: fields.first())
-  } else if fields.length() == 2 {
-    parse_gib_whole_and_fraction(whole_text: fields.first(), fraction_text: fields.skip(n: 1).first())
-  } else {
-    none
+  match fields.first() {
+    Absent => none
+    Present { value: whole_text } =>
+      if fields.length() == 1 {
+        parse_gib_whole_only(whole_text: whole_text)
+      } else if fields.length() == 2 {
+        match fields.skip(n: 1).first() {
+          Absent => none
+          Present { value: fraction_text } => parse_gib_whole_and_fraction(whole_text: whole_text, fraction_text: fraction_text)
+        }
+      } else {
+        none
+      }
   }
 }
 
@@ -201,12 +208,19 @@ fn parse_kv_recommendation_bytes(text: String, occurrence: Nat) -> Nat? {
 // written to avoid.
 fn parse_basis_points(text: String) -> Nat? {
   let fields = split(s: trim(s: text), delimiter: ".")
-  if fields.length() == 1 {
-    parse_bp_whole_only(whole_text: fields.first())
-  } else if fields.length() == 2 {
-    parse_bp_whole_and_fraction(whole_text: fields.first(), fraction_text: fields.skip(n: 1).first())
-  } else {
-    none
+  match fields.first() {
+    Absent => none
+    Present { value: whole_text } =>
+      if fields.length() == 1 {
+        parse_bp_whole_only(whole_text: whole_text)
+      } else if fields.length() == 2 {
+        match fields.skip(n: 1).first() {
+          Absent => none
+          Present { value: fraction_text } => parse_bp_whole_and_fraction(whole_text: whole_text, fraction_text: fraction_text)
+        }
+      } else {
+        none
+      }
   }
 }
 
