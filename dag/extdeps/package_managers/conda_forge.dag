@@ -1,5 +1,7 @@
 module extdeps.package_managers.conda_forge
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -25,7 +27,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data micromamba_program: NonEmptyStr = "micromamba"
+fn micromamba_program() -> ProgramIdentity = uncataloged_program(invocation: "micromamba")
 
 data conda_forge_channel: NonEmptyStr = "conda-forge"
 
@@ -65,7 +67,7 @@ fn conda_requirement_spec(r: CondaPackageRequirement) -> String {
 // workflow layer and keeps it out of extdeps.
 fn micromamba_create_command(prefix: String, requirements: List<CondaPackageRequirement>) -> ArgvCommand {
   argv_command(
-    program: micromamba_program,
+    program: micromamba_program(),
     arguments: concat(
       ["create", "--yes", "--prefix", prefix, "--channel", conda_forge_channel as String],
       map(requirements, r => conda_requirement_spec(r: r)),

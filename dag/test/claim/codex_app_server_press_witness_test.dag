@@ -18,7 +18,11 @@ import gunbc.provider_interface_binding {
   ProviderInterfaceResolved,
   ProviderControlInterface,
 }
+import extdeps.languages.json.emit { JsonNumber, json_object, json_kv }
+import extdeps.languages.json.grammar { json_number_lexeme_unchecked }
 import gunbc.codex_app_server_press {
+  disposition_from_structured_rpc_error,
+  AccountTripNativeCauseNumericCode,
   codex_press_method_itinerary,
   codex_press_account_trip_methods,
   codex_press_outcome_wire_status,
@@ -649,6 +653,27 @@ test fn unknown_frame_is_digested_not_silent() -> Bool {
   )
   match evidence.classification {
     AccountStandingAuthenticatedRateLimitsReadable => count(evidence.unknown_frame_digests) == 1
+    _ => false
+  }
+}
+
+// A JSON-RPC error `code` is a JSON number, which need not be an integer: `1e3` is a valid JSON
+// number that parse_int does not read. It must NOT become a numeric-code cause (that would need a
+// fabricated Int); it falls through to the message-based cause like any unreadable code. Review
+// 73175 on gunbc#12677.
+test fn structured_rpc_error_with_a_non_integer_numeric_code_is_not_a_numeric_code() -> Bool {
+  let err = json_object(members: [json_kv(key: "code", value: JsonNumber { lexeme: json_number_lexeme_unchecked(s: "1e3") })])
+  match disposition_from_structured_rpc_error(err: err) {
+    AccountTripNativeCauseNumericCode { code: _ } => false
+    _ => true
+  }
+}
+
+// POSITIVE CONTROL: an integer code is carried as the numeric cause, with its value.
+test fn structured_rpc_error_with_an_integer_numeric_code_is_a_numeric_code() -> Bool {
+  let err = json_object(members: [json_kv(key: "code", value: JsonNumber { lexeme: json_number_lexeme_unchecked(s: "-32600") })])
+  match disposition_from_structured_rpc_error(err: err) {
+    AccountTripNativeCauseNumericCode { code: c } => c == -32600
     _ => false
   }
 }

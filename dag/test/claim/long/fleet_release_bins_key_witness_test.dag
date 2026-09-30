@@ -12,9 +12,10 @@ import gunbc.fleet_release_bins_key {
   lit, var, words, cmd, cmdl, assign_sub, test_words, seq,
   release_bins_emitted, release_bins_transport,
   release_bins_key_statements, release_bins_pack_statements, release_bins_outcome_statements,
-  release_bins_consumer_statements, release_bins_main_lookup_ref, lookup_decode_statements,
+  release_bins_consumer_statements, release_bins_download_dir, release_bins_main_lookup_ref, lookup_decode_statements,
   release_bins_lookup_file, release_bins_staging_dir, release_bins_manifest_name,
   release_bins_preimage_name, source_closure_statements, release_bins_environment_statements,
+  release_bins_credential_pattern,
 }
 import gunbc.ci_spec { ci_release_bins_archive_name }
 import v2.extdeps.languages.bash_build {
@@ -51,14 +52,25 @@ fn fake_tool(name: String, lines: List<String>) -> List<Node> {
 
 // The fixture: every variable the runners read, refused-override names cleared so the host running
 // the claim cannot leak them in, and a committed tree with fake members in target/release.
+// The runner's own credential-shaped variables (release_bins_credential_pattern) are cleared too, and
+// the temp root is pinned under /tmp rather than wherever TMPDIR points: both are premises about the
+// runner (gunbc.recurring_failure_mode wet_witness_keyed_to_the_runner_not_its_subject), and left in
+// place a runner exporting a registry token, or a TMPDIR under a home holding .cargo/config.toml,
+// turned every positive claim into CredentialInBuildEnvironment or AncestorCargoConfigPresent. The
+// RED claims that export a credential or plant an ancestor config do so after this, so they still
+// discriminate.
 // The checkout and environment every claim needs; fixture() adds the fake toolchain the key runner
 // probes, which the pack and lookup claims never reach.
 fn fixture_env() -> List<Node> {
   seq(parts: [
     [
-      assign_sub(name: "T", body: cmdl(ls: ["mktemp", "-d"])),
+      assign_sub(name: "T", body: cmdl(ls: ["mktemp", "-d", "/tmp/gunbc_release_bins.XXXXXX"])),
       cmdl(ls: ["trap", "rm -rf \"$T\"", "EXIT"]),
       cmdl(ls: ["unset", "RUSTC", "RUSTC_WORKSPACE_WRAPPER", "RUSTC_WRAPPER", "CARGO_TARGET_DIR", "CARGO_BUILD_TARGET", "CARGO_BUILD_TARGET_DIR", "CARGO_BUILD_RUSTC", "CARGO_BUILD_RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"]),
+      cmd(ws: [lit(t: "unset"), bash_build_word_cmdsubst(body: bash_build_pipe(
+        left: bash_build_pipe(left: cmdl(ls: ["env"]), right: cmd(ws: [lit(t: "grep"), lit(t: "-oE"), lit(t: release_bins_credential_pattern)])),
+        right: cmdl(ls: ["cut", "-d=", "-f1"]),
+      ))]),
       cmd(ws: [fx(t: "mkdir"), fx(t: "-p"), in_t(path: "/bin"), in_t(path: "/rt"), in_t(path: "/ws/target/release")]),
       cmd(ws: [fx(t: "export"), words(ws: [fx(t: "RUNNER_TEMP="), in_t(path: "/rt")])]),
       cmd(ws: [fx(t: "export"), words(ws: [fx(t: "GITHUB_OUTPUT="), in_t(path: "/rt/output")])]),
@@ -186,9 +198,14 @@ data part_restore_prep: Outcome<String> = e(statements: [
   cmdl(ls: ["export", "LOOKUP_STANDING=present", "LOOKUP_ENTRY=fixture", "CACHE_HIT=true"]),
 ])
 data part_outcome: Outcome<String> = e(statements: release_bins_outcome_statements())
+// THE DOWNLOAD LANDS WHERE THE DOWNLOAD STEP PUTS IT, under the runner temp root, and never in the
+// checkout (gunbc.fleet_release_bins_key release_bins_download_dir). The positive control therefore
+// also shows that the consumer reads from there: a consumer reading the checkout root finds nothing and
+// refuses ConsumerFileMissing.
 data part_consume_prep: Outcome<String> = e(statements: [
   cmd(ws: [fx(t: "rm"), fx(t: "-rf"), fx(t: "target")]),
-  cmd(ws: [fx(t: "cp"), in_t(path: join(["/store/", release_bins_preimage_name], "")), in_t(path: join(["/store/", release_bins_manifest_name], "")), in_t(path: join(["/store/", ci_release_bins_archive_name], "")), fx(t: ".")]),
+  cmd(ws: [fx(t: "mkdir"), fx(t: "-p"), words(ws: [var(n: "RUNNER_TEMP"), fx(t: join(["/", release_bins_download_dir], ""))])]),
+  cmd(ws: [fx(t: "cp"), in_t(path: join(["/store/", release_bins_preimage_name], "")), in_t(path: join(["/store/", release_bins_manifest_name], "")), in_t(path: join(["/store/", ci_release_bins_archive_name], "")), words(ws: [var(n: "RUNNER_TEMP"), fx(t: join(["/", release_bins_download_dir, "/"], ""))])]),
 ])
 data part_consumer: Outcome<String> = e(statements: release_bins_consumer_statements())
 data part_supplied_key: Outcome<String> = e(statements: supplied_key())

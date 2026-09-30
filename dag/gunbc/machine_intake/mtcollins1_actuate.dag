@@ -166,7 +166,16 @@ fn mtcollins1_drive_handoff(
             outcome: mtcollins1_render_outcome(label: label, outcome: outcome),
             start: match outcome {
               BootControlIssued { selected: _, power: p } => mtcollins1_boot_start_of(transition: p)
-              _ => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootSelectionRefused => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootSelectionNotApplied { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootSelectionUnverifiable { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootSelectionFlagInvalid { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootSelectionNotOneShot { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootSelectionFirmwareMismatch { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              PowerStateReadFailed { selected: _, observed_state: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              PowerCommandRefused { selected: _, action: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              PowerCommandAcceptedNoTransition { selected: _, action: _, progress: _, last_observed: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootHandoffNotAdmitted { admission: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
             },
           }
         }

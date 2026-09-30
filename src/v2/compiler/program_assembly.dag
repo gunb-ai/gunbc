@@ -22,6 +22,7 @@ import v2.compiler.parse {
 import v2.std.compilers.lexing { TokenStream, token_stream_remaining_count }
 import v2.std.integer { Int }
 import v2.compiler.normalize { normalize }
+import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.name_resolve {
   Admission,
   resolve_with_admission,
@@ -525,7 +526,7 @@ fn assemble_program_from_module_roots(
   roots: FreeMonoid<NormalizedTree>,
   admission: Admission,
   lm: LanguageModel
-) -> Outcome<Node> {
+) -> Outcome<ResolvedTree> {
   bind_outcome(
     o: validate_module_roots(roots: roots),
     f: fn(validated_roots) {
@@ -552,7 +553,7 @@ fn assemble_program_from_module_roots(
 // renderer degrades to "no file" instead of to a wrong file.
 type IngestAssembly {
   spans: SpanIndex,
-  program: Outcome<Node>
+  program: Outcome<ResolvedTree>
 }
 
 fn assemble_program_from_ingest_located(
@@ -586,7 +587,7 @@ fn assemble_program_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
   lm: LanguageModel
-) -> Outcome<Node> {
+) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest_located(
     ingest: ingest,
     admission: admission,

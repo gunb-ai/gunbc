@@ -222,6 +222,10 @@ type Xl2Prerequisite
   | ElseLessIfStatementLowering
   | WildcardMatchArmResolution
   | QualifiedFieldTypeVisibility
+  | MatchEveryArmLowered
+  | EnclosingExpressionLoweredWhole
+  | DataInitializerMatchScrutineeLowering
+  | MatchArmStatementBodyLowering
 
 type Xl2PrerequisiteEvidence {
   pr: Int
@@ -262,6 +266,10 @@ data xl2_prerequisites: List<Xl2Prerequisite> = [
   ElseLessIfStatementLowering,
   WildcardMatchArmResolution,
   QualifiedFieldTypeVisibility,
+  MatchEveryArmLowered,
+  EnclosingExpressionLoweredWhole,
+  DataInitializerMatchScrutineeLowering,
+  MatchArmStatementBodyLowering,
 ]
 
 fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
@@ -285,6 +293,10 @@ fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
     WildcardMatchArmResolution => "a wildcard match arm `_` is a pattern form resolve does not look up, so a correct match is not refused as an unbound name"
     QualifiedFieldTypeVisibility => "a QUALIFIED field-position type name reaches the census, so field position is established as a whole, not only for bare names"
     LoweringOccurrenceProjection => "every lowered node built from an authored atom keeps that atom's minted occurrence, so a census row locates back to one source occurrence"
+    MatchEveryArmLowered => "a match lowers every arm, the third and later arms included, in source order"
+    EnclosingExpressionLoweredWhole => "an expression that contains a match or if (an operator, call or record around the block) lowers to itself with the block as one part, not to the block alone or its scrutinee"
+    DataInitializerMatchScrutineeLowering => "a match in a data initializer reads its scrutinee from the scrutinee position, not from an arm"
+    MatchArmStatementBodyLowering => "a match arm whose body is a statement block lowers the whole block, not its first expression"
   }
 }
 
@@ -303,7 +315,7 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     BareFieldTypeVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_bare_parameter_type_reaches_and_a_bare_field_type_does_too"),
       evidence: Xl2PrerequisiteEvidence { pr: 11574, merge_sha: "b705d17c45" as NonEmptyStr, measured_at: "b705d17c45" as NonEmptyStr },
-      qualification: "BARE field types only. A QUALIFIED field-type mention is still absent from the census (v2.test.claim.declaring_identity_spelling.production_ingest a_qualified_field_type_mention_is_absent_from_the_census_today), so this does not establish field position as a whole." as NonEmptyStr,
+      qualification: "BARE field types only. The QUALIFIED form is its own row, QualifiedFieldTypeVisibility (v2.test.claim.declaring_identity_spelling.production_ingest a_qualified_field_type_mention_reaches_the_census_holds); together the two establish field position at reach grain." as NonEmptyStr,
     }
     WholeTreeResolveCensus => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.native_census.whole_tree_census_resolve", decl_name: "census_unbound_module_is_resolve_refused_holds"),
@@ -369,13 +381,34 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
       evidence: Xl2PrerequisiteEvidence { pr: 12297, merge_sha: "0579afae7f" as NonEmptyStr, measured_at: "0579afae7f" as NonEmptyStr },
       qualification: "delivered at RESOLVE grain: v2.compiler.resolve resolve_pattern_node_walk recognizes `_` at every pattern depth, so resolve no longer emits a spurious unbound row at `_`; an undeclared name in a wildcard arm's body is still the sole refusal at its own atom (an_undeclared_name_in_a_wildcard_arm_body_is_the_sole_refusal_at_its_atom). NOT claimed: a distinct lowered wildcard form -- none exists, the wildcard reaches resolve as the atom `_` and resolve declines to look it up -- so gunbc.recurring_failure_mode.a_wildcard_match_arm_resolves_as_an_unbound_name stays OPEN until the pattern has its own lowered form." as NonEmptyStr,
     }
-    QualifiedFieldTypeVisibility => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_qualified_field_type_mention_is_absent_from_the_census_today"),
-      why: "a qualified field-type mention is absent from the census: qualification no longer hides a mention (a qualified parameter type reaches, a_qualified_type_position_mention_reaches_the_census_holds), but a record declaration's qualified field type is not grafted into the containment tree, so its import-dependent reference never reaches the residual. BareFieldTypeVisibility bounds itself to bare names for this reason. Tracked by the claim that asserts the absence, which reddens when the mention reaches. No fix has merged." as NonEmptyStr,
+    QualifiedFieldTypeVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_qualified_field_type_mention_reaches_the_census_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12033, merge_sha: "10e01b1169" as NonEmptyStr, measured_at: "14d58480c9" as NonEmptyStr },
+      qualification: "delivered SILENTLY and found by execution, not by a fix aimed at it: the row that tracked it asserted the ABSENCE and was red on main 14d58480c9 with nothing restating it. Attributed by stage on the row's own two-module fixtures (a scratch probe, not committed): the parse holds the token, the normalized tree holds the whole qualified spine, and v2.compiler.reference_site_collector collect_reference_sites emits exactly one site for it, as for the qualified parameter-type control. The landing cited is the one whose change the probe points at -- gunbc#12033 lowers record fields into declared field identities, whose field type is read by the same body_lower_type_expr_lowered_optional a parameter type is -- located by git log -S and NOT re-executed at its parent, so it is the likely flip, not a measured one. Claimed at REACH grain: the mention reaches the census; whether it BINDS is the second fact the neighbouring rows leave to declaration grafting." as NonEmptyStr,
     }
     LoweringOccurrenceProjection => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_rebuilds_an_authored_atom_without_its_occurrence", decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence"),
-      why: "reference-position atoms that lowering rebuilds do not keep their minted occurrence through normalize: record-literal tags and pattern constructors are lowered from their enclosing shell (v2.std.node_query construct_tag_edge), and dotted-spine segments are rebuilt as node_synthetic (v2.std.qualified_name qualified_name_spine_node). Their census rows therefore cannot be located back to a source occurrence, and XL-5's waves are exact occurrence rewrites. Binders and labels are also locus-erased but are outside the XL-2 residual. Design and ranked sites: docs/plans/lowering-occurrence-projection-design.md. The per-module count is the conservation check's, re-derived by v2.compiler.reference_conservation_census reference_conservation_stratified_sample_census rather than transcribed here. No fix has merged." as NonEmptyStr,
+      why: "Reference-position atoms that lowering rebuilds now carry their authored token's occurrence at the two sites that rebuilt them: record-literal tags and pattern constructors are lowered from their tag token (gunbc#12305, 6c3c84f7f3), and dotted-spine segments from their own tokens (gunbc#12314, b40c7f6067). The occurrence-role producer (gunbc#12317, 3ae62b426c) and the conservation census that consumes it (gunbc#12334, 60ef76cc5a) route an erased atom with a recorded DeclarationRole, or a ReferenceRole whose category is not module-scope, to `role_excluded` and a module-header segment to `header_channel` -- all outside the XL-2 residual -- so `locus_erased` counts only references that lost their locus FOR ROLE-READ PRODUCTIONS: an erased atom with no role entry is classified ErasedReference by v2.compiler.reference_conservation erased_atom_disposition and still counts in `locus_erased`, and the binders under NameRoleNotYetRead productions (below) are counted separately as `role_not_yet_read` (a reader refusal as `role_reader_refused`) without leaving it; the census sample's rule is one fold checked against its pin at the pin's revision (gunbc#12475, 987c55d26c), and every token after a line comment is located at its real source position since the lexer locus fix (gunbc#12313, 285ea309cf). The per-module count is re-derived by v2.compiler.reference_conservation_census reference_conservation_stratified_sample_census rather than transcribed here. Design: docs/plans/lowering-occurrence-projection-design.md. The rehearsal's excluded populations stand as gunbc.namespace_xl2_rehearsal_census Xl2ExcludedPopulation HeaderSegmentsNotRefusalSites (no resolve refusal locates at a header segment; counted by the census header_channel) and NestingScopedReferencesUncounted (as that arm states it; the nesting-scope ruling is pending). STILL OUTSTANDING: v2.compiler.occurrence_role dag_name_production_rows types ten binder-bearing productions NameRoleNotYetRead -- param_list, field_decl_block, generic_params, let_expr, fn_literal, arrow_lambda, operation, transport, input_block, output_block -- so a binder under any of them is still counted in locus_erased rather than role-separated, and the arm cannot be delivered until each has its reader." as NonEmptyStr,
+    }
+    MatchEveryArmLowered => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.match_arm_list_structure", decl_name: "a_four_arm_match_lowers_exactly_four_arms"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12383, merge_sha: "8ebd8b671d" as NonEmptyStr, measured_at: "8ebd8b671d" as NonEmptyStr },
+      qualification: "the arm list is read by the one comma-list reader, so a match lowers every arm in source order with each pattern keeping its own body (the_arms_keep_source_order_and_each_pattern_keeps_its_own_body), and a malformed later arm refuses rather than shortening the list (a_malformed_third_arm_refuses_rather_than_shortening_the_list); the MatchLaterArm accepted drop is retired (gunbc.recurring_failure_mode.match_arms_after_the_second_are_dropped_at_v2_body_lowering, rostered by gunbc#12309, 15bcbfa95e). Bounded to the arm LIST: what an arm's body and a data initializer's scrutinee lower to are MatchArmStatementBodyLowering and DataInitializerMatchScrutineeLowering." as NonEmptyStr,
+    }
+    EnclosingExpressionLoweredWhole => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.enclosing_expression_structure", decl_name: "an_operand_beside_a_match_lowers_as_the_operator_over_both_operands"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12436, merge_sha: "d28bf20f0e" as NonEmptyStr, measured_at: "d28bf20f0e" as NonEmptyStr },
+      qualification: "two links repaired in v2.compiler.body_lowering_fold: the body walker descends only through what does not change the expression, so a control form is lowered as the whole value only where it IS the value; and a primary whose capture is already lowered core substrate is that node, so the primary reducer no longer answers a lowered match with its scrutinee atom. `t && match w {..}` lowers as the operator over both operands and `h(a: match .., b: s)` as the call over every argument, on the value reader and on the body walker (a_call_with_a_match_argument_lowers_as_the_call_over_every_argument, the_body_walker_lowers_an_operand_beside_a_match_as_the_operator_over_both_operands, the_body_walker_lowers_a_call_with_a_match_argument_as_the_call_over_every_argument); this closes the `call(..) && match g(..) {..}` operand-collapse route. Delivers the trigger capability of gunbc.recurring_failure_mode.expression_enclosing_a_block_headed_operand_lowers_to_that_block_at_v2_body_lowering (rostered by gunbc#12309, 15bcbfa95e). NOT claimed: body_lower_operand_ref_optional's own first-match fallback, which remains OptionalAccessorLocatedRefusal." as NonEmptyStr,
+    }
+    DataInitializerMatchScrutineeLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.match_position_structure", decl_name: "a_data_initializer_match_lowers_its_scrutinee_from_the_match_position_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12510, merge_sha: "b768b0f431" as NonEmptyStr, measured_at: "b768b0f431" as NonEmptyStr },
+      qualification: "v2.compiler.body_lowering_fold reads a match scrutinee from its grammar position (the binary_expr after `match`) rather than the first binary_expr found in the match subtree, so a data initializer's scrutinee, folded bottom-up before its declaration is dispatched, is no longer read from the first arm; the same match as a fn body lowers identically (the_same_match_as_a_fn_body_lowers_its_scrutinee_from_the_match_position_holds), and a spine not headed by `match` refuses as match_arm_navigation_refused. Delivers the trigger capability of gunbc.recurring_failure_mode.data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering (rostered by gunbc#12364, b1b7aea9aa). Bounded to the scrutinee position: an expression enclosing the match is EnclosingExpressionLoweredWhole." as NonEmptyStr,
+    }
+    MatchArmStatementBodyLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.match_position_structure", decl_name: "a_match_arm_statement_body_lowers_to_the_let_binding_its_continuation_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12510, merge_sha: "b768b0f431" as NonEmptyStr, measured_at: "b768b0f431" as NonEmptyStr },
+      qualification: "a match arm's body is read from the right of its `=>` and a statement body lowers through the statement authority body_lower_stmt_spine that fn bodies and if-arms already use, so `X =>` then `let t = v` then `e` lowers to the let binding with its continuation instead of to `v`. Delivers the trigger capability of gunbc.recurring_failure_mode.match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering (rostered by gunbc#12364, b1b7aea9aa). Bounded to the arm body: the arm list is MatchEveryArmLowered." as NonEmptyStr,
     }
   }
 }

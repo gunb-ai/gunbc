@@ -29,13 +29,16 @@ import gunbc.runner_throughput_qualification {
 // Only the collect stage is observation.
 //
 // A ROUTE IS EXECUTABLE ONLY WHEN EVERY EFFECTFUL LEG IS BOUND. `route_is_executable` is false
-// today and the witness asserts that it is false: the boot leg's authority is on gunbc#11484, the
-// image leg's on gunbc#11731, the JIT registration authority on main
-// (`gunbc.runner.runner_jit_perform dispatch_jit_mint`) is shaped for a MicroVmCellBinding and
-// must generalize to a transient-unit slot, and `extdeps.github.workflows CreateDispatch` has no
-// production caller and a heal-specific input contract. Each leg names the capability its landing
-// must be SUFFICIENT FOR (section 4b(3)); a DeclarationRef to an unmerged authority would stop the
-// parse phase, which is why the legs are typed standings rather than refs.
+// today and the witness asserts that it is false. The image leg IS bound: the seeded-media
+// derivation takes its payload as a parameter. The boot leg is not, and not for want of a landing:
+// the boot run on main (`gunbc.machine_intake_mtcollins1_boot_run`) boots exactly two media, the
+// census image and the stock installer, and its terminal is the census program's, so it cannot boot a
+// runner and observe it ready. The JIT registration authority
+// (`gunbc.runner.runner_jit_perform dispatch_jit_mint`) is shaped for a MicroVmCellBinding, and
+// `extdeps.github.workflows CreateDispatch` has no production caller and a heal-specific input
+// contract. Each unbound leg names the CAPABILITY missing now and what it must be SUFFICIENT FOR
+// (section 4b(3)), never a pull request, because a pull request can merge while the capability stays
+// missing -- which is exactly what happened to the boot leg.
 
 // ── THE STAGES ────────────────────────────────────────────────────────────────────────────────
 
@@ -146,6 +149,7 @@ type QualificationInstrument
   | ClaimCostArtifactEvalSteps
   | CalibrationSpecimenWitnessLine
   | GuestIdleMeminfoAndNproc
+  | ConcurrentCohortSeatWindows
 
 fn qualification_instrument_producer(i: QualificationInstrument) -> DeclarationRef {
   match i {
@@ -159,6 +163,8 @@ fn qualification_instrument_producer(i: QualificationInstrument) -> DeclarationR
       decl_ref(module_path: "v2.workflow.floor_eval_step_calibration", decl_name: "floor_eval_step_calibration")
     GuestIdleMeminfoAndNproc =>
       decl_ref(module_path: "extdeps.linux.proc_meminfo", decl_name: "meminfo_field_names")
+    ConcurrentCohortSeatWindows =>
+      decl_ref(module_path: "product.capacity.cohort_observation", decl_name: "seal_cohort")
   }
 }
 
@@ -170,6 +176,7 @@ fn qualification_instrument_wire(i: QualificationInstrument) -> NonEmptyStr {
     ClaimCostArtifactEvalSteps => "the required-floor-claim-cost artifact, eval_steps summed over the floor phase, parsed by"
     CalibrationSpecimenWitnessLine => "the calibration specimen's [witness] line (cpu=..ms eval_steps=..), the sample behind"
     GuestIdleMeminfoAndNproc => "the guest's idle MemTotal and MemAvailable (fields of) plus nproc and uname -m, read before the job starts:"
+    ConcurrentCohortSeatWindows => "every seat's ready, start and end instants and settlement against the barrier and the host window, sealed by"
   }
   join([what, " ", producer.module_path as String, " ", producer.decl_name as String], "") as NonEmptyStr
 }
@@ -180,6 +187,7 @@ data qualification_instruments: List<QualificationInstrument> = [
   ClaimCostArtifactEvalSteps,
   CalibrationSpecimenWitnessLine,
   GuestIdleMeminfoAndNproc,
+  ConcurrentCohortSeatWindows,
 ]
 
 // ── THE mtcollins1 ROUTE ──────────────────────────────────────────────────────────────────────
@@ -203,13 +211,12 @@ data qualification_instruments: List<QualificationInstrument> = [
 data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmpfs
 
 data mtcollins1_boot_leg: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "gunbc#11484 (approval loop D): gunbc.machine_intake_mtcollins1_boot_run and the fleet-converge mode mtcollins1_boot" as NonEmptyStr,
-  sufficient_for: "booting mtcollins1 from the derived diskless image under grant_from_store with the SOL collector attached before the BMC stimulus and no controller write on deny, expiry or an unfiled request" as NonEmptyStr,
+  lands_with: "a runner-payload arm of gunbc.machine_intake_mtcollins1_boot_authorization MtCollins1BootMedium (today only MtCollins1CensusMedium and MtCollins1StockInstallerMedium) whose terminal in gunbc.machine_intake_mtcollins1_boot_run is the runner host observed ready rather than the census program's terminal" as NonEmptyStr,
+  sufficient_for: "booting mtcollins1 from the derived runner image under grant_from_store with the SOL collector attached before the BMC stimulus, no controller write on deny, expiry or an unfiled request, and a terminal that says the runner host is up" as NonEmptyStr,
 }
 
-data mtcollins1_image_leg: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "gunbc#11731 (CENSUS-IMAGE 0A): extdeps.provisioning.ubuntu_seeded_install_media UbuntuSeededInstallMediaBuildInput, whose NoCloud payload is a parameter, with the built identity measured off the written ISO" as NonEmptyStr,
-  sufficient_for: "one image derivation whose seed payload is a parameter, so the runner stage is rendered user-data and NoCloudSeedFile rows after the census's end stage rather than a second ISO authority" as NonEmptyStr,
+data mtcollins1_image_leg: RouteLegStanding = LegBoundToAuthority {
+  authority: decl_ref(module_path: "extdeps.provisioning.ubuntu_seeded_install_media", decl_name: "UbuntuSeededInstallMediaBuildInput"),
 }
 
 // THE THREE GITHUB CONTROL-PLANE LEGS. Registration and deregistration are one JIT contract --
