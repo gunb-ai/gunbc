@@ -45,6 +45,7 @@ import product.fabric.contention {
   admit_demand_for_offer, select_demand_for_offer,
   admitted_buyer_headroom, admitted_billed_occupancy, admitted_identity,
 }
+import std.algebra { Cons, Empty }
 
 fn c_offer(key: NonEmptyStr, quote: OfferQuote, quantum: Second) -> SupplierOffer<NonEmptyStr> {
   SupplierOffer {
