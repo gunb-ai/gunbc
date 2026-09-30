@@ -91,6 +91,7 @@ import v2.compiler.resolve {
   ResolveWalkAccepted,
   ResolveWalkRefused,
   resolve,
+  resolved_tree_of,
   ResolvedTree
 }
 import v2.compiler.tokenize { tokenize }
@@ -3247,7 +3248,7 @@ fn native_module_resolve_verdict(
           ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
             match step.context.resolution {
               Accepted { value: shared, diagnostics: _ } =>
-                NativeModuleResolveAccepted { resolved: ResolvedTree { root: resolved, symbol_index: shared.symbol_index } }
+                NativeModuleResolveAccepted { resolved: resolved_tree_of(root: resolved, symbol_index: shared.symbol_index) }
               Rejected { diagnostics: r } =>
                 NativeModuleResolveRefused {
                   first: r,
