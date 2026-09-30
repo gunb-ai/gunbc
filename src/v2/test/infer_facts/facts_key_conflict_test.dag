@@ -1,6 +1,6 @@
 module v2.test.infer_facts.facts_key_conflict
 
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
 import v2.compiler.infer {
   facts_map_from_entries,
@@ -9,7 +9,7 @@ import v2.compiler.infer {
 }
 import v2.compiler.inferred_tree { GroundingNotDerived, InferredFacts, InferredFactsEntry }
 import v2.std.diagnostic { Accepted, Rejected, Some, diagnostics_has_reason }
-import v2.std.node { Atom, Node, TypeNode }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.optional { Absent, Present }
 import v2.std.witness { Violates }
 
@@ -67,4 +67,56 @@ test fn fkc_equal_facts_under_one_key_merge() -> Bool {
 // Positive control for the discriminator: the two supplied facts really differ.
 test fn fkc_supplied_facts_differ() -> Bool {
   fkc_facts_a() != fkc_facts_b()
+}
+
+// THE KEY IS THE WHOLE STRUCTURAL NODE, OCCURRENCE INCLUDED. A node reached twice -- same minted
+// occurrence, same structure -- is ONE subject: its equal facts are admitted as one entry, never
+// refused. Two structurally DIFFERENT nodes that share a minted occurrence are two keys here; whether
+// such a pair may exist at all is the occurrence admission's question (v2.compiler.inferred_tree
+// authored_occurrence_collisions), not this table's, so the table must not refuse it as a conflict.
+fn fkc_minted_atom(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: name } },
+    children: [],
+    occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 7 } }
+  }
+}
+
+fn fkc_minted_entry(node: Node) -> InferredFactsEntry {
+  InferredFactsEntry {
+    node: node,
+    facts: InferredFacts {
+      grounding: GroundingNotDerived { node: node },
+      descent: Violates { diagnostic: infer_facts_lookup_miss_diagnostic(key: node) }
+    }
+  }
+}
+
+test fn fkc_same_minted_node_reached_twice_is_one_subject() -> Bool {
+  let n = fkc_minted_atom(name: ^fkc_same)
+  match facts_map_from_entries(entries: [fkc_minted_entry(node: n), fkc_minted_entry(node: n)]) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: table, diagnostics: _ } =>
+      match table.lookup(n) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+test fn fkc_different_nodes_sharing_a_minted_id_are_two_keys() -> Bool {
+  let a = fkc_minted_atom(name: ^fkc_left)
+  let b = fkc_minted_atom(name: ^fkc_right)
+  match facts_map_from_entries(entries: [fkc_minted_entry(node: a), fkc_minted_entry(node: b)]) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: table, diagnostics: _ } =>
+      match table.lookup(a) {
+        Present { value: fa } =>
+          match table.lookup(b) {
+            Present { value: fb } => fa != fb
+            Absent => false
+          }
+        Absent => false
+      }
+  }
 }
