@@ -1,0 +1,104 @@
+module gunbc.workspace_commissioning_apply_readback
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.algebra { filter }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop }
+import gunbc.runner_microvm_slot_controller { slot_controller_receipt_prefix, outcome_text, SlotControllerCommissioned }
+import gunbc.runner_microvm_slot_start {
+  MicrovmSlotStartRun, SlotStartCompleted, UnitPropertyRead, ControllerReceiptRead,
+  MicrovmUnitStartSubject, microvm_unit_start_observed, microvm_invocation_observe, InvocationTerminated,
+}
+import gunbc.workspace_commissioning_transaction {
+  WorkspaceCommissioningProvenance, WorkspaceCommissioningRecordRead, WorkspaceCommissioningCommitted,
+}
+import gunbc.workspace_commissioning_store {
+  workspace_commissioning_store_root, workspace_commissioning_store_observe,
+  WorkspaceCommissioningStoreObserved, WorkspaceCommissioningStoreRefused,
+}
+import gunbc.workspace_commissioning_runtime { workspace_commissioning_runtime_refusal }
+import gunbc.workspace_commissioning_admission_observe { workspace_commissioning_no_hold_refusal }
+import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback }
+import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
+import gunbc.runner_microvm_cell_readiness { CellReadinessStoreRead, StoreRead, StoreRootOwned, CellSettled, record_cell }
+import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
+import product.fabric.sanitation { CellReady }
+
+// This readback is necessary before credential removal, not a fleet-apply terminal. Its caller
+// must retain the shared mutation exclusion through removal, absence readback and settlement.
+// Only actual host reads can construct it; fixture observations cannot mint the result.
+type WorkspaceCommissioningApplyReadback sole_constructor {
+  provenance: WorkspaceCommissioningProvenance
+  invocation: NonEmptyStr
+}
+
+type WorkspaceCommissioningApplyReadbackResult
+  = WorkspaceCommissioningApplyObserved { readback: WorkspaceCommissioningApplyReadback }
+  | WorkspaceCommissioningApplyReadbackRefused { reason: String }
+
+fn workspace_commissioning_terminal_succeeded(slot: RunnerSlotIdentity,
+  invocation: NonEmptyStr, result: MicrovmSlotStartRun) -> Bool {
+  match result {
+    SlotStartCompleted { unit, invocation_id, exec_main_status: UnitPropertyRead { value: "0" },
+      controller_receipt: ControllerReceiptRead { path: _, text } } =>
+      unit == microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: slot) as String)
+        && invocation_id == invocation && text == outcome_text(o: SlotControllerCommissioned)
+    _ => false
+  }
+}
+
+// Initial apply must reread generation ZERO. The ordinary supply reader permits later settled
+// generations for subsequent allocations and therefore cannot discharge this commissioning gate.
+fn workspace_commissioning_initial_ready(slot: RunnerSlotIdentity, reading: CellReadinessStoreRead) -> Bool {
+  let cell = runner_slot_instance_name(slot: slot) as String
+  match reading {
+    StoreRead { ownership: StoreRootOwned, records } => {
+      let own = filter(records, r => (record_cell(record: r) as String) == cell)
+      own.count() == 1 && (match own.first() {
+        Present { value: CellSettled { cell: _, generation: 0, readiness: CellReady { cell: ready } } } => (ready as String) == cell
+        _ => false
+      })
+    }
+    _ => false
+  }
+}
+
+fn workspace_commissioning_apply_observe(provenance: WorkspaceCommissioningProvenance,
+  release_dir: NonEmptyStr, login: NonEmptyStr, network: SlotNetworkSanitationSubject,
+  invocation: NonEmptyStr) -> WorkspaceCommissioningApplyReadbackResult {
+  let instance = runner_slot_instance_name(slot: provenance.slot) as String
+  let subject = MicrovmUnitStartSubject {
+    unit: microvm_slot_unit_instance_name(slot_instance: instance),
+    receipt_prefix: slot_controller_receipt_prefix(instance: instance), bound: microvm_slot_unit_timeout_stop(),
+  }
+  let terminal = microvm_unit_start_observed(subject: subject, invocation: invocation)
+  if !workspace_commissioning_terminal_succeeded(slot: provenance.slot, invocation: invocation, result: terminal) {
+    WorkspaceCommissioningApplyReadbackRefused { reason: "the exact controller invocation has no successful commissioning terminal" }
+  } else { match workspace_commissioning_runtime_refusal(provenance: provenance, release_dir: release_dir, login: login) {
+    Present { value: reason } => WorkspaceCommissioningApplyReadbackRefused { reason: reason }
+    Absent => match workspace_commissioning_no_hold_refusal(provenance: provenance) {
+      Present { value: reason } => WorkspaceCommissioningApplyReadbackRefused { reason: reason }
+      Absent => match workspace_observe_initial_sanitation(subject: network) {
+        WorkspaceInitialSanitationReadback { observation } => if observation.slot != provenance.slot
+          || observation.observation_identity != provenance.sanitation_observation {
+          WorkspaceCommissioningApplyReadbackRefused { reason: "post-controller sanitation does not match the reviewed slot subject" }
+        } else { match workspace_commissioning_store_observe(root: workspace_commissioning_store_root, provenance: provenance) {
+          WorkspaceCommissioningStoreRefused { reason } => WorkspaceCommissioningApplyReadbackRefused { reason: reason }
+          WorkspaceCommissioningStoreObserved { snapshot } => match snapshot.reading {
+            WorkspaceCommissioningRecordRead { record: WorkspaceCommissioningCommitted { provenance: stored } } =>
+              if stored != provenance || !workspace_commissioning_initial_ready(slot: provenance.slot, reading: read_cell_readiness_store()) {
+                WorkspaceCommissioningApplyReadbackRefused { reason: "committed provenance and generation-zero readiness do not agree" }
+              } else { match microvm_invocation_observe(unit: subject.unit, invocation: invocation) {
+                InvocationTerminated => WorkspaceCommissioningApplyObserved { readback: WorkspaceCommissioningApplyReadback {
+                  provenance: provenance, invocation: invocation,
+                } }
+                _ => WorkspaceCommissioningApplyReadbackRefused { reason: "controller invocation changed or became unreadable during protected readback" }
+              } }
+            _ => WorkspaceCommissioningApplyReadbackRefused { reason: "commissioning journal is not committed" }
+          }
+        } }
+        _ => WorkspaceCommissioningApplyReadbackRefused { reason: "post-controller sanitation is unreadable" }
+      }
+    }
+  } }
+}

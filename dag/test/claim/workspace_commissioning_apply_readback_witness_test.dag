@@ -1,0 +1,38 @@
+module test.claim.workspace_commissioning_apply_readback_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.workspace_commissioning_apply_readback { workspace_commissioning_terminal_succeeded, workspace_commissioning_initial_ready }
+import gunbc.runner_microvm_slot_start { SlotStartCompleted, UnitPropertyRead, UnitPropertyUnread, ControllerReceiptRead }
+import gunbc.runner_microvm_slot_controller { outcome_text, SlotControllerCommissioned }
+import test.claim.workspace_commissioning_transaction_witness { transaction_fixture_provenance, transaction_fixture_ready }
+
+data expected_invocation: NonEmptyStr = "fixture-invocation" as NonEmptyStr
+
+fn observed_terminal(text: String, status: String, invocation: NonEmptyStr) -> Bool {
+  workspace_commissioning_terminal_succeeded(slot: transaction_fixture_provenance().slot, invocation: expected_invocation,
+    result: SlotStartCompleted { unit: "gunbc-microvm-slot@srv1-13.service" as NonEmptyStr,
+      invocation_id: invocation, exec_main_status: UnitPropertyRead { value: status },
+      controller_receipt: ControllerReceiptRead { path: "fixture-receipt", text: text } })
+}
+
+test fn readable_refusal_is_not_successful_commissioning() -> Bool {
+  !observed_terminal(text: "refused: CellNotBound x", status: "0", invocation: expected_invocation)
+    && observed_terminal(text: outcome_text(o: SlotControllerCommissioned), status: "0", invocation: expected_invocation)
+}
+
+test fn failed_or_other_invocation_cannot_complete_commissioning() -> Bool {
+  !observed_terminal(text: outcome_text(o: SlotControllerCommissioned), status: "1", invocation: expected_invocation)
+    && !observed_terminal(text: outcome_text(o: SlotControllerCommissioned), status: "0", invocation: "other-invocation" as NonEmptyStr)
+}
+
+test fn unreadable_exit_status_cannot_complete_commissioning() -> Bool {
+  !workspace_commissioning_terminal_succeeded(slot: transaction_fixture_provenance().slot, invocation: expected_invocation,
+    result: SlotStartCompleted { unit: "gunbc-microvm-slot@srv1-13.service" as NonEmptyStr,
+      invocation_id: expected_invocation, exec_main_status: UnitPropertyUnread { property: "ExecMainStatus" as NonEmptyStr, detail: "unreadable" },
+      controller_receipt: ControllerReceiptRead { path: "fixture-receipt", text: outcome_text(o: SlotControllerCommissioned) } })
+}
+
+test fn advanced_readiness_is_not_initial_commissioning_readback() -> Bool {
+  workspace_commissioning_initial_ready(slot: transaction_fixture_provenance().slot, reading: transaction_fixture_ready(generation: 0))
+    && !workspace_commissioning_initial_ready(slot: transaction_fixture_provenance().slot, reading: transaction_fixture_ready(generation: 1))
+}
