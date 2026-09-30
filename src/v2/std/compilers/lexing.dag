@@ -181,7 +181,7 @@ fn token_stream_new(all: List<Token>) -> TokenStream {
 
 // The tokenizer's constructor: the tokens together with the exact scalar sequence they were lexed
 // from, whose UTF-8 octet offsets their `start`/`end` name.
-fn token_stream_lexed(all: List<Token>, source: String) -> TokenStream {
+fn token_stream_lexed(all: List<Token>, source: v2.std.text.String) -> TokenStream {
   TokenStream { all: all, pos: 0, layout: optional_present(value: stream_layout_of(tokens: all, source: source)) }
 }
 
@@ -212,7 +212,7 @@ type StreamLayoutWalk {
   answers: Map<Int, Bool>
 }
 
-fn stream_layout_of(tokens: List<Token>, source: String) -> StreamLayout {
+fn stream_layout_of(tokens: List<Token>, source: v2.std.text.String) -> StreamLayout {
   let walked = fold_list(
     xs: source,
     empty: StreamLayoutWalk { octet: 0, ahead: tokens, last_end: 0, seen: false, starts: Empty, answers: empty_map() },
