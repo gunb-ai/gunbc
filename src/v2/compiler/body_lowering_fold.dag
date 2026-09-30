@@ -6876,7 +6876,9 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
 
 
 // AN ADMITTED GUARD LOWERS TO A BRANCH WHOSE ELSE IS THE REST OF THE SPINE: `if c { ..; return e }`
-// followed by statements is Branch(c, <arm>, <rest>). The arm is a statement sequence ending in a
+// followed by statements is Branch(c, <arm>, <rest>). The spine matches it through
+// body_lower_admitted_guard_optional itself, and refuses any other else-less `if` it meets, so the
+// lowering owns the admission rule rather than relying on the wall having run first. The arm is a statement sequence ending in a
 // return, which the statement spine lowers to its operand; the wall
 // (body_lower_exit_outside_tail_optional) admits a guard only in a tail spine, so the arm's value
 // and the rest's value are both the function's result.
@@ -6910,8 +6912,11 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
           match body_lower_stmt_spine_head_optional(spine: rest) {
             Absent => body_lower_tail_statement_read(stmt: head)
             Present { value: _ } =>
-              match body_lower_guard_optional(stmt: head) {
+              match body_lower_admitted_guard_optional(stmt: head) {
                 Present { value: guard } => body_lower_guard_branch(guard: guard, rest: rest)
+                Absent =>
+              match body_lower_guard_optional(stmt: head) {
+                Present { value: unadmitted } => body_lower_else_less_if_reject(shell: unadmitted.shell)
                 Absent =>
               match body_lower_statement_let_captured_optional(stmt: head) {
                 Absent =>
@@ -6968,6 +6973,7 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                           )
                       }
                   }
+              }
               }
               }
           }
