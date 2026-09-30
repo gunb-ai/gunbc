@@ -1,0 +1,58 @@
+module v2.test.claim.parse.admit_callers_trailing_comma
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN admit_callers LIST MAY END IN A COMMA (v2.extdeps.languages.dag
+// dag_grammar_admit_callers_clause_expr), as a comma list does everywhere else and as v1 reads it;
+// the list still needs a first element, so a list that is only a comma still refuses.
+fn admit_source(list: String) -> String {
+  "module probe.admit\n\nfn sealed(n: Int) -> Int\n  admit_callers: [" + list + "]\n  = n\n"
+}
+
+fn admit_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^admit_trailing_comma_probe, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn admit_parses(list: String) -> Bool {
+  match admit_parse(text: admit_source(list: list)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_trailing_comma_in_admit_callers_parses_holds() -> Bool {
+  admit_parses(list: "decl_ref(module_path: \"m\", decl_name: \"a\"),\n    decl_ref(module_path: \"m\", decl_name: \"b\"),\n  ")
+}
+
+test fn an_admit_callers_list_without_a_trailing_comma_parses_holds() -> Bool {
+  admit_parses(list: "decl_ref(module_path: \"m\", decl_name: \"a\"), decl_ref(module_path: \"m\", decl_name: \"b\")")
+}
+
+test fn an_admit_callers_list_of_only_a_comma_refuses_holds() -> Bool {
+  match admit_parses(list: ",") {
+    true => false
+    false => true
+  }
+}
