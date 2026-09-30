@@ -517,25 +517,20 @@ type DagStringLiteralDecode {
   scalars: List<String>
 }
 
-fn dag_string_escape_decoded(c: String) -> String {
-  if c == "n" { "\n" } else if c == "t" { "\t" } else { c }
-}
-
-// A lexeme of the string-literal class: it opens with the class's delimiter (char 34, the open of
-// dag_string_literal_lex_rule). No other token class of this language admits that scalar outside a
-// string, so the first scalar decides the class.
-fn dag_string_literal_lexeme(lexeme: String) -> Bool {
-  starts_with(lexeme, "\"")
+// The scalar an escape's second code point stands for: `n` (110) is line feed (10), `t` (116) is
+// tab (9), and every other escapable scalar (`"`, `\`, `{`, `}`) stands for itself.
+fn dag_string_escape_decoded(cp: Int) -> Int {
+  if cp == 110 { 10 } else if cp == 116 { 9 } else { cp }
 }
 
 fn dag_string_literal_decoded_text(lexeme: String) -> String {
-  let decoded = fold(chars(s: lexeme), init: DagStringLiteralDecode { escaped: false, scalars: [] }, f: fn(acc, c) {
+  let decoded = fold(chars(s: lexeme), init: DagStringLiteralDecode { escaped: false, scalars: [] }, f: fn(acc, cp) {
     if acc.escaped {
-      DagStringLiteralDecode { escaped: false, scalars: list_snoc_item(xs: acc.scalars, item: dag_string_escape_decoded(c: c)) }
-    } else if c == "\\" {
+      DagStringLiteralDecode { escaped: false, scalars: list_snoc_item(xs: acc.scalars, item: from_code_point(cp: dag_string_escape_decoded(cp: cp))) }
+    } else if cp == 92 {
       DagStringLiteralDecode { escaped: true, scalars: acc.scalars }
     } else {
-      DagStringLiteralDecode { escaped: false, scalars: list_snoc_item(xs: acc.scalars, item: c) }
+      DagStringLiteralDecode { escaped: false, scalars: list_snoc_item(xs: acc.scalars, item: from_code_point(cp: cp)) }
     }
   })
   join(decoded.scalars, "")

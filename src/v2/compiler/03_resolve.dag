@@ -1840,7 +1840,13 @@ fn resolve_map_key_type_is_string_literal_type(ctx: ResolveContext, position: Qu
 // An entry edge's target is a tag-elided construct carrying `key` and `value` (body lowering
 // body_lower_map_literal_entry_edge); these read them back.
 fn resolve_map_entry_field(entry: Node, field: Symbol) -> Optional<Node> {
-  fold(skip(xs: entry.children, n: 1), init: optional_absent(), f: fn(acc, e) {
+  resolve_named_edge_target_optional(edges: skip(xs: entry.children, n: 1), field: field)
+}
+
+// The target of the first edge labelled `field`. One reader for a record declaration's field list
+// and a map entry's two fields.
+fn resolve_named_edge_target_optional(edges: List<Edge>, field: Symbol) -> Optional<Node> {
+  fold(edges, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
       Absent =>
@@ -1965,17 +1971,7 @@ fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName
       }
       match member {
         Absent => optional_absent()
-        Present { value: m } =>
-          fold(m.children, init: optional_absent(), f: fn(acc, fe) {
-            match acc {
-              Present { value: _ } => acc
-              Absent =>
-                match fe.label {
-                  Named { name: sym } => if symbol_eq(a: sym, b: field) { optional_present(value: fe.target) } else { optional_absent() }
-                  Positional => optional_absent()
-                }
-            }
-          })
+        Present { value: m } => resolve_named_edge_target_optional(edges: m.children, field: field)
       }
   }
 }
