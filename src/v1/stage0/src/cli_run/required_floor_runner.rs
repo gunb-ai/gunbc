@@ -2107,17 +2107,17 @@ impl UnimportedBareProviderRosterReading {
     /// judgment compares in `.dag`, so the host never spells a base row's fields -- a base written
     /// before a view field existed (`not_a_reference`, gunbc#12609) is still a readable base.
     fn read(
-        roots: &[String],
+        index: &MultiEntryIndex,
         entry: &str,
         function: &str,
         decode_host_rows: bool,
     ) -> Result<Self, String> {
-        // ITS OWN INDEX, NOT THE SHARED SLOT. The only reader is the base roster in a one-file
-        // scratch root; resolving it through `resolve_entry_graph_shared` put that pool in the
-        // thread's shared slot, evicting the head tree's index, which the floor then rebuilt
-        // from scratch (neat-boar-16, #12761 subject: gen1 evicted at the base read, rebuilt as
-        // gen5). A scratch pool is a separate demand; its index lives for this read and drops.
-        let (graph, indices) = resolve_entry_with_index(&build_multi_entry_index(roots), entry)
+        // THE CALLER SUPPLIES THE INDEX: the head reads the floor tree's shared index, and the
+        // base reads its one-file scratch pool through an index of its own. Resolving the base
+        // through `resolve_entry_graph_shared` put that pool in the thread's shared slot,
+        // evicting the head tree's index, which the floor then rebuilt from scratch
+        // (neat-boar-16, #12761 subject: gen1 evicted at the base read, rebuilt as gen5).
+        let (graph, indices) = resolve_entry_with_index(index, entry)
             .map_err(|e| format!("unimported-bare-provider roster resolve ({entry}): {e}"))?;
         let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
         let rows_value = Self::call(&ctx, function, &[])?;
@@ -2171,8 +2171,9 @@ impl UnimportedBareProviderRosterReading {
     }
 
     fn head(source_roots: &[String]) -> Result<Self, String> {
+        let index: Rc<MultiEntryIndex> = try_process_shared_index(source_roots)?;
         Self::read(
-            source_roots,
+            &index,
             &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
             "unimported_bare_provider_head_rows",
             true,
@@ -2507,8 +2508,9 @@ fn unimported_bare_provider_base_reading(
     std::fs::write(&entry, base_source)
         .map_err(|e| format!("base roster write {}: {e}", entry.display()))?;
     let root = dir.to_string_lossy().to_string();
+    // A scratch pool is its own demand: its index lives for this read and drops with it.
     let reading = UnimportedBareProviderRosterReading::read(
-        &[root],
+        &build_multi_entry_index(&[root]),
         &entry.to_string_lossy(),
         "unimported_bare_provider_roster_rows",
         false,
