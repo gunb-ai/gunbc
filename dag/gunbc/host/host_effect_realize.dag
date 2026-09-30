@@ -69,7 +69,7 @@ import std.realization_reconcile {
 }
 import v2.std.algebra { fold_list, list_map }
 import extdeps.shell
-import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
+import extdeps.shell { posix_command_v_check_argv, posix_command_v_check_local, shell_test_is_executable_argv }
 import extdeps.shell.exec
 import extdeps.tools.id { id_uid_argv, id_gid_argv, id_binary_path }
 import extdeps.tools.mkdir { mkdir_parents_argv }
@@ -1799,8 +1799,10 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
   }
 }
 
-// TRANSPORT-CONDITIONED PRESENCE, not a silent fork of one question. LocalShell and SshShell keep
-// posix_command_v_check_argv / shell.PosixCommandV.Check: PRESENT ON PATH. FleetSsh cannot carry that
+// TRANSPORT-CONDITIONED PRESENCE, not a silent fork of one question. LocalShell answers PRESENT ON
+// PATH through posix_command_v_check_local — the modeled PATH walk, zero child processes (census
+// §0b, operator decision 2026-09-30, arm B); SshShell keeps posix_command_v_check_argv /
+// shell.PosixCommandV.Check over ssh: PRESENT ON PATH on the remote host. FleetSsh cannot carry that
 // argv -- the -c payload is not a PortableRemoteWord (spaces, quotes, `$`) -- so it answers a
 // different, named question: shell.Test.IsExecutable over extdeps.tools apt_binary_path_of,
 // PRESENT AT THE PATH THE TOOL'S SourceApt ROW DECLARES (its bin_dir + binary). Before bin_dir was
@@ -1829,7 +1831,7 @@ fn srv3_undeclared_apt_path_reason(tool: CliTool) -> String {
 fn srv3_apt_tool_present(tool: CliTool, transport: HostEffectTransport) -> Srv3HostPredicate {
   match transport {
     LocalShell =>
-      if shell.PosixCommandV.Check(command: tool.name).exists {
+      if posix_command_v_check_local(command: tool.name).exists {
         Srv3PredicateHolds
       } else {
         Srv3PredicateFails
@@ -1852,15 +1854,16 @@ fn srv3_apt_tool_present(tool: CliTool, transport: HostEffectTransport) -> Srv3H
 }
 
 // FleetSsh resolved path is the same question as srv3_apt_tool_present: executable at
-// the declared apt_binary_path_of path, not PATH stdout from command -v. LocalShell and
-// SshShell still resolve via command -v. This arm is in scope because srv3_apt_tool_version_ok
+// the declared apt_binary_path_of path, not PATH stdout from command -v. LocalShell resolves
+// through the modeled local PATH walk and SshShell still resolves via command -v over ssh. This
+// arm is in scope because srv3_apt_tool_version_ok
 // (and srv3_run_tool_by_name) read the path from here; leaving FleetSsh on posix_command_v_check_argv
 // would make version_ok Unobserved after a successful path-presence probe -- the install arm would
 // never be able to prove the version on FleetSsh. A binary only elsewhere still reads absent.
 fn srv3_tool_bin_path(tool: CliTool, transport: HostEffectTransport) -> Srv3ObservedToken {
   match transport {
     LocalShell => {
-      let found = shell.PosixCommandV.Check(command: tool.name)
+      let found = posix_command_v_check_local(command: tool.name)
       if found.exists {
         match found.path {
           Present { value: tool_path } => Srv3TokenObserved { value: tool_path as String }

@@ -4,6 +4,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
 import std.types { FilePath, NonEmptyStr }
+import extdeps.shell { posix_command_v_check_local }
 import extdeps.shell
 import extdeps.tools.gnu_coreutils
 import extdeps.rustup { rustup_install_url }
@@ -154,7 +155,7 @@ fn apt_binary_path_of(tool: CliTool) -> FilePath? {
 // the straddle is undischarged debt rather than an observed WET failure.
 
 fn resolve(tool: CliTool) -> ResolveResult {
-  let check = shell.PosixCommandV.Check(command: tool.name)
+  let check = posix_command_v_check_local(command: tool.name)
   match check.path {
     Present { value: p } => Resolved { resolved: { tool: tool, path: p } }
     Absent => NotFound { tool: tool, hint: install_hint(sources: tool.installable_via) }

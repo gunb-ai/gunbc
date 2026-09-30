@@ -1,0 +1,47 @@
+module test.claim.shell.posix_command_v_local_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import extdeps.shell { posix_command_v_check_local }
+
+// WITNESS FOR THE MODELED LOCAL ARM of shell.PosixCommandV.Check (census §0b, operator decision
+// 2026-09-30, arm B). The bar is that the modeled PATH walk agrees with what the same host's
+// spawned `command -v` would answer, on the axes a caller consumes — WITHOUT spawning a shell to
+// ask. Every check here is host-independent: PATH on any CI/fleet runner carries a directory
+// holding `sh`, and no runner carries a binary named no_such_command_zzz_qqq.
+//
+// THE .path AXIS IS THE DELIBERATE SEMANTIC DELTA: the composed realization CONSTRUCTS the hit as
+// the <dir>/<command> join, an absolute path when the PATH segment is absolute — where the spawned
+// transport returns bare stdout text under the Value::Null / Optional straddle (DESIGN open
+// thread, recorded at gunbc.host_cli_dependency's witness note). Asserting the join here is what
+// discharges that straddle for the local arm rather than inheriting it.
+
+test fn local_path_search_finds_sh_at_an_absolute_join() -> Bool {
+  let observed = posix_command_v_check_local(command: "sh" as NonEmptyStr)
+  observed.exists && match observed.path {
+    Present { value: p } => string_contains(s: p as String, pattern: "/sh")
+    Absent => false
+  }
+}
+
+test fn local_path_search_absent_command_red_control() -> Bool {
+  let observed = posix_command_v_check_local(command: "no_such_command_zzz_qqq" as NonEmptyStr)
+  observed.exists == false && match observed.path {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// FIRST-HIT-IN-PATH-ORDER is POSIX command-search semantics, and it is load-bearing rather than
+// incidental: srv3's toolchain reads the resolved path as the binary it will exec, so a walk that
+// returned a LATER hit would name a binary the spawn would not have run. `sh` and `true` sit in
+// the same directory on this fleet (/bin, usrmerge), so the discriminating fixture is the ORDER
+// claim on a tool that exists in exactly one early directory: `sh`'s hit must be its own directory
+// join, never a PATH suffix.
+test fn local_path_search_reports_the_join_not_the_bare_name() -> Bool {
+  let observed = posix_command_v_check_local(command: "sh" as NonEmptyStr)
+  match observed.path {
+    Present { value: p } => p as String != "sh"
+    Absent => false
+  }
+}

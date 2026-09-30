@@ -435,6 +435,7 @@ import gunbc.roadmap_presentation {
   session_facts_json_value,
 }
 import extdeps.gunbc
+import extdeps.shell { posix_command_v_check_local }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -508,10 +509,11 @@ type BeltExecOutcome
   | ExecFailed { program: String, exit_code: Int, stderr: String }
   | ExecRefused { program: String, reason: String }
 
-// Probe via shell.PosixCommandV.Check exit_success (Bool), NOT .path: the .path realization is a
-// bare-stdout string wet (the Optional-over-Value::Null realization fork — DESIGN open thread), so
-// the belt keys on the exit Bool and lets WitnessBin.Run's `env -C {workdir} {bin_path} args`
-// resolve the bare program via PATH (env execvp). 'program missing' (refuse) stays distinct from
+// Probe via posix_command_v_check_local.exists — the modeled local PATH walk (census §0b,
+// operator decision 2026-09-30, arm B) — whose Bool is a CONSTRUCTED value, so the
+// Optional-over-Value::Null realization fork that once made .path unreliable wet does not touch
+// this axis. The belt still lets WitnessBin.Run's `env -C {workdir} {bin_path} args` resolve the
+// bare program via PATH (env execvp), so probe and exec agree on the search. 'program missing' (refuse) stays distinct from
 // 'present, exited nonzero' (fail) without touching the Optional straddle. Migrated off
 // shell.Which.Check (crisp-wren-896, PR #8590): srv1's OperatingSystemSurface has
 // distro_or_product: none, so `which` was never an established fact; command -v's strictly weaker
@@ -527,7 +529,7 @@ type BeltExecOutcome
 // BeltObserve — never unit. Dispatch failure is not an exit code, stays anomalous, and does not
 // travel this arm.
 fn belt_program_available(program: String) -> Bool {
-  shell.PosixCommandV.Check(command: program as NonEmptyStr, expect: OutcomeIsData).exists
+  posix_command_v_check_local(command: program as NonEmptyStr).exists
 }
 
 fn belt_exec(cmd: HostExecArgv, workdir: String) -> BeltExecOutcome {

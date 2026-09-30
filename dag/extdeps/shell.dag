@@ -1,10 +1,11 @@
 module extdeps.shell
 
-import std.types { FilePath, NonEmptyStr, Secret, List, Unit }
+import std.types { FilePath, NonEmptyStr, Secret, List, Unit, Bool }
 import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.uri { Uri, Https }
+import v2.std.optional { Optional, Present, Absent, optional_present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -193,6 +194,59 @@ service shell.PosixCommandV {
 
 fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
   ["sh", "-c", "command -v \"$1\"", "sh", command as String]
+}
+
+// THE LOCAL ARM OF THE SAME QUESTION, MODELED RATHER THAN SPAWNED (shell-to-dag residual census
+// §0b, operator decision 2026-09-30, arm B). A local `command -v` is a PATH walk probing each
+// <dir>/<command> candidate — and every operation it composes is itself native for OnTarget
+// locality (shell.Env.Get, census §0b LANDED a607d79f72b; shell.Test.IsExecutable via the
+// shell.Test.* native handler), so the whole walk reaches ZERO child processes where the shell
+// transport spawns one sh. The declared `sh -c` transport above remains the realization for a
+// REMOTE target; a caller holding a HostEffectTransport picks this fn for LocalShell and the argv
+// row above for the ssh arms — the transport decomposition the census names ("same operation, two
+// handlers, native chosen when locality is OnTarget"), spelled at the call site because locality
+// is a fact of the CALLER's transport, not of the interface.
+//
+// THREE SEMANTIC CHOICES, each POSIX-faithful where POSIX speaks and honest where it does not:
+// - FIRST HIT WINS, in PATH order, and the reported path is the JOIN <dir>/<command> — what
+//   `command -v` prints for a PATH-found external command. A shell builtin would print the bare
+//   name; this composition cannot see builtins (they are a fact of a shell we never enter), and
+//   every caller probes an external binary, so the divergence is named rather than hidden.
+// - An EMPTY PATH SEGMENT is the current working directory under POSIX (the leading/trailing/doubled
+//   colon rule): the candidate is the bare command, which IsExecutable reads CWD-relative, exactly
+//   as a spawned shell would.
+// - An UNSET PATH answers ABSENT rather than probing a confstr default: a default search path is an
+//   execvp(3) behavior, not an observation of this process, and reporting hits from a path set the
+//   process does not hold is DESIGN §5's fabricated plausible output.
+type PosixCommandVLocalObservation {
+  exists: Bool
+  path: FilePath?
+}
+
+fn posix_command_v_check_local(command: NonEmptyStr) -> PosixCommandVLocalObservation {
+  match shell.Env.Get(name: "PATH" as NonEmptyStr).value {
+    Absent => PosixCommandVLocalObservation { exists: false, path: none }
+    Present { value: path_var } =>
+      match posix_command_v_first_hit(dirs: split(s: path_var, delimiter: ":"), command: command as String) {
+        Present { value: hit } => PosixCommandVLocalObservation { exists: true, path: optional_present(value: hit as FilePath) }
+        Absent => PosixCommandVLocalObservation { exists: false, path: none }
+      }
+  }
+}
+
+fn posix_command_v_first_hit(dirs: List<String>, command: String) -> String? {
+  fold(dirs, init: none, f: (acc, dir) =>
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => {
+        let candidate = if dir == "" { command } else { concat(dir, "/", command) }
+        if shell.Test.IsExecutable(path: candidate).executable {
+          optional_present(value: candidate)
+        } else {
+          none
+        }
+      }
+    })
 }
 
 // IsSticky IS POSIX `test -k`, AND ITS RATIONALE SITS HERE because only module-item grain is

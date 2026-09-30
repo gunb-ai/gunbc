@@ -1,5 +1,6 @@
 module test.claim.compute.manager_unaskable_wet_witness
 
+import extdeps.shell { posix_command_v_check_local }
 import extdeps.shell
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended }
@@ -43,7 +44,7 @@ import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 data unaskable_identity: String = "ffffffffffffffff"
 
 fn manager_present() -> Bool {
-  shell.PosixCommandV.Check(command: "systemctl" as NonEmptyStr).exists
+  posix_command_v_check_local(command: "systemctl" as NonEmptyStr).exists
 }
 
 fn termination_unavailable(t: UnitTermination) -> Bool {

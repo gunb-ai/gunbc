@@ -1,6 +1,7 @@
 module tools.interpreter_dispatch_bijection_real_roster_transport
 
 import extdeps.git.inspect
+import extdeps.shell { posix_command_v_check_local }
 import extdeps.shell
 import extdeps.cargo_build
 import gunbc.cargo_execution_placement {
@@ -88,11 +89,13 @@ fn real_roster_test_extra_args(exact_test_name: String) -> List<String> {
 // here is a typed refusal carrying what was observed.
 // WHAT IS OBSERVED, AND WHAT IS NOT — stated because the gap is load-bearing.
 //
-// Only EXISTENCE is observed. `shell.PosixCommandV.Check` also declares `path: FilePath?`, and
-// that field is NOT consumed here on purpose: under wet execution it comes back as a bare
-// stdout String rather than an Optional, so matching Present/Absent raises a non-exhaustive
-// pattern match on the path itself. That is the Value::Null / Optional realization straddle
-// DESIGN carries as an open thread, sitting at the service-output boundary.
+// Only EXISTENCE is observed, still on purpose — but the reason changed (census §0b, operator
+// decision 2026-09-30, arm B): this now reads posix_command_v_check_local, the modeled local PATH
+// walk, whose fields are CONSTRUCTED values, so the Value::Null / Optional realization straddle
+// no longer binds — the .path it reports is the absolute <dir>/<cargo> join and COULD seed the
+// locality observation the dissolve-on below asks for. That seed is deliberately NOT taken in
+// this change: establishing locality changes decide_cargo_placement's input contract and is its
+// own witnessed work, not a ride-along.
 //
 // Migrated off shell.Which.Check to shell.PosixCommandV.Check (crisp-wren-896, PR #8590): the
 // falsifier runner this resolves on carries the identical distro_or_product: none as srv1-4, so
@@ -107,11 +110,12 @@ fn real_roster_test_extra_args(exact_test_name: String) -> List<String> {
 // and witnessed; what is missing is the observation that would let the decision be made
 // about a NAMED executable instead of a name.
 //
-// 🟡 dissolve-on: when the Value::Null split lands and `T? from "stdout"` decodes as a real
-// Optional, this reads the observed absolute path, hands it to decide_cargo_placement, and
-// the locality claim becomes established rather than assumed.
+// 🟡 dissolve-on: the modeled local arm (posix_command_v_check_local) already reports the
+// absolute join, so the split this row waited on has a realized producer; what remains is
+// reading that path here, handing it to decide_cargo_placement, and witnessing the established
+// locality claim rather than the assumed one.
 fn real_roster_cargo_decision() -> CargoPlacementDecision {
-  let observed = shell.PosixCommandV.Check(command: "cargo")
+  let observed = posix_command_v_check_local(command: "cargo" as NonEmptyStr)
   if observed.exists {
     decide_cargo_placement(
       requirement: real_roster_placement_requirement,
