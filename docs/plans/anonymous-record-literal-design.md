@@ -154,6 +154,64 @@ A tag-elided construct that survives resolve is unwritable downstream. The emit,
 readers gate on a reference target, and the elision marker is not one. So a missed elaboration
 refuses at their existing gates, and cannot emit an anonymous struct.
 
+## As built in PR2 (gunbc#12740)
+
+The model above was refined while the cut was reviewed. Each refinement below is the authority that
+the PR2 code cites by section name.
+
+### One reader of the construct tag
+
+`v2.std.node_query` `construct_tag_reading` answers
+`ConstructTagAuthored { reference } | ConstructTagElided | NotAConstruct`. Every reader (body
+lowering's core-substrate test, resolve's construct-tag writer, the claims) matches on that one
+answer. `construct_tag_optional` is its projection. The elision is carried as an EDGE LABEL
+(`construct_tag_elided_marker`) on the tag's target, the mechanism the tag marker itself uses. A
+marker carried as an atom's identity did not survive to resolve. And body lowering must count an
+elided construct as core substrate, or its fold re-lowers the literal to its first atom.
+
+### The string key is a grammar production
+
+`dag_grammar_field_init_expr` is a choice between a name alternative and a production of its own,
+`^dag_production_field_init_string_key` (emitted `^dag_surface_field_init_string_key`), whose key is
+the class-stamped string terminal that gunbc#12759 decodes. So the key's kind is a fact of the parse
+tree, read by its production identity (`body_lower_field_init_is_string_keyed`), and never recovered
+from a spelling. A record literal refuses a string key at the item (`field_init_unlowered`). The
+occurrence-role row of the new production reads its names as references, and the field-init reader
+answers `NoNameHere` for it. The map arm (gunbc#12758) dispatches on the same identity. Admitting a
+quoted key whose DECODED text names a declared field is a declared frontier. It is a follow-up in the
+record arm, and it also carries the quoted-key round trip; the first lane that admits quoted keys
+(gunbc#12758) carries that round trip for maps.
+
+### The head resolves the way the annotation resolves
+
+An annotation written in the literal's own module resolves its head through `resolve_atom` in the
+literal's context, the same route the annotation itself takes, so the two cannot bind different
+declarations. A field type is written in the record's own module, so it is read at the record's path
+through the index's lexical lookup.
+
+### The list-element rule
+
+A list literal passes its element type to its elements only when the annotation's head reaches the
+declaration infer types list literals with (`v2.std.list_introduction`
+`list_introduction_head_path`, `std.algebra.FreeMonoid`).
+
+### Pure-renaming aliases
+
+`List` is an alias (`type List<element> = FreeMonoid<element>`), so the list rule needs one kind of
+alias to be followed. Exactly one kind is followed: a PURE RENAMING, `type A<p1..pn> = H<p1..pn>`
+(the aliased expression is a head applied to exactly the alias's own binders, in declared order) or
+`type A = H`. Following one substitutes nothing, because the annotation's arguments stay in the
+positions they were written.
+
+- Purity is decided ONCE, on the declaration (`v2.std.type_binder` `type_alias_renaming`). It is
+  recorded when the index records the declaration (`v2.std.symbol_index` `renaming_aliases`,
+  `symbol_index_renaming_alias_at`), and resolve reads the recorded fact, never re-deriving it at a
+  use.
+- Chains are followed transitively, each renamed head read at the alias's own position. A revisited
+  path refuses located (`resolve_anonymous_record_alias_cycle`).
+- A reordering, constant or partially applied alias is not a renaming. It is the declaration the head
+  names, so the literal refuses.
+
 ## Consumers (producers, readers, rewriters)
 
 Stated as a delta on #12701's census. Every row there still applies; the rows here are the ones

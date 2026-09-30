@@ -426,8 +426,8 @@ fn type_binder_first_mislabelled(root: Node) -> Optional<Node> {
   })
 }
 
-// WHETHER AN ALIAS DECLARATION IS A PURE RENAMING, decided once, on the declaration (ruling,
-// neat-boar-16, gunbc#12740). `type A<p1..pn> = H<p1..pn>` -- the aliased expression is a head applied
+// WHETHER AN ALIAS DECLARATION IS A PURE RENAMING, decided once, on the declaration
+// (docs/plans/anonymous-record-literal-design.md, section Pure-renaming aliases). `type A<p1..pn> = H<p1..pn>` -- the aliased expression is a head applied
 // to exactly the alias's own binders, in declared order, or `type A = H` with none -- denotes H with
 // the same arguments in the same positions, so a reader that follows it substitutes nothing. Every
 // other declaration is not a renaming: a reordering, constant or partially applied alias, a

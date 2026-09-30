@@ -4,8 +4,7 @@ import std.algebra { ordered_ring_templates, free_monoid_scalar_templates }
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
 
-// THE REAL CORPUS'S HEADLESS LIST ROWS ELABORATE ON THE NATIVE ROUTE (ruling, neat-boar-16, for
-// gunbc#12740). std.algebra writes its algebra templates as headless records inside list literals
+// THE REAL CORPUS'S HEADLESS LIST ROWS ELABORATE ON THE NATIVE ROUTE (docs/plans/anonymous-record-literal-design.md, Pure-renaming aliases). std.algebra writes its algebra templates as headless records inside list literals
 // under `-> List<AlgebraFieldTemplate>`, and List is the pure-renaming alias
 // `type List<element> = FreeMonoid<element>`. On the native route this module's closure resolves
 // std.algebra, so if those rows did not elaborate -- no expectation through the alias, or a wrong

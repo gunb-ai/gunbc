@@ -1753,7 +1753,8 @@ fn resolve_expected_head_path(ctx: ResolveContext, x: ResolveExpectation) -> Exp
   }
 }
 
-// A PURE-RENAMING ALIAS IS FOLLOWED; NO OTHER ALIAS IS (ruling, neat-boar-16). Whether an alias is a
+// A PURE-RENAMING ALIAS IS FOLLOWED; NO OTHER ALIAS IS (docs/plans/anonymous-record-literal-design.md,
+// section Pure-renaming aliases). Whether an alias is a
 // pure renaming -- `type A<p1..pn> = H<p1..pn>`, or `type A = H` -- was decided once, on its
 // declaration, and recorded in the index (v2.std.type_binder type_alias_renaming,
 // v2.std.symbol_index symbol_index_renaming_alias_at); this reads that fact and does not re-derive
