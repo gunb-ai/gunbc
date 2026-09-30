@@ -573,12 +573,12 @@ pub(crate) fn load_sources_for_entry_with_pool(
 }
 
 pub(crate) fn load_sources_for_entry_with_index(
-    index: &ModuleSourceIndex,
-    facts: &ModuleGraphFactsLive,
+    index: &MultiEntryIndex,
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let sources = load_import_closure_for_entry(index, facts, entry_path)?;
-    let mut sources = extend_with_reference_closure(sources, index, facts)?;
+    let sources =
+        load_import_closure_for_entry(&index.source_files, &index.module_graph_facts, entry_path)?;
+    let mut sources = extend_with_reference_closure(sources, index)?;
     sources.sort_by(|a, b| a.path.cmp(&b.path));
     sources.dedup_by(|a, b| a.path == b.path);
     Ok(sources)
@@ -1089,6 +1089,7 @@ pub(crate) fn new_multi_entry_index_shell(
         closure_name_censuses: RefCell::new(HashMap::new()),
         bare_reference_admission: RefCell::new(HashMap::new()),
         pool_module_names: std::cell::OnceCell::new(),
+        pool_path_lookup: std::cell::OnceCell::new(),
         parsed_references: RefCell::new(HashMap::new()),
         live_read_manifest: RefCell::new(None),
     }
