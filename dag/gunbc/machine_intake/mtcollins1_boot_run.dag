@@ -1294,7 +1294,10 @@ fn sol_channel_reading(collector: SolCollectorObservation, client_diagnostics: S
 fn sol_collector_exit_established(collector: SolCollectorObservation) -> Bool {
   match collector {
     SolCollectorExited { evidence: _ } => true
-    _ => false
+    SolCollectorHeld => false
+    SolCollectorUnrecorded => false
+    SolCollectorUnobservable { cause: _ } => false
+    SolCollectorPathUnset => false
   }
 }
 
@@ -2001,7 +2004,10 @@ fn sol_release_is_clean(outcome: SolReleaseOutcome) -> Bool {
   match outcome {
     SolReleased { evidence: _ } => true
     SolReleaseNoRecord => true
-    _ => false
+    SolReleaseForeignRecord { record: _, receipt: _ } => false
+    SolReleaseStillHeld => false
+    SolReleaseUnobservable { cause: _ } => false
+    SolReleaseRetireFailed { detail: _ } => false
   }
 }
 
