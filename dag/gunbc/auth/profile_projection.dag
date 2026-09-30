@@ -5,6 +5,8 @@ import extdeps.filesystem.filesystem_io {
   Filesystem,
   filesystem_read_outcome,
   filesystem_listing_observation,
+  filesystem_listing_entry_names,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
   filesystem_file_observation,
   FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
@@ -343,13 +345,15 @@ type ProfileStoreReadAll
 // inspection).
 fn profile_store_read_all(layout: ProfileStoreLayout) -> ProfileStoreReadAll {
   let listing_result = Filesystem.List(path: layout.root as String)
-  if !listing_result.success {
-    ProfileStoreUnread { step: "list", reason: listing_result.error }
-  } else {
-    let decoded = profile_store_decode_entries(layout: layout, entries: listing_result.entries, acc: [], skipped_acc: [])
-    ProfileStoreRead {
-      profiles: decoded.profiles,
-      skipped: decoded.skipped,
+  match filesystem_listing_observation(directory: layout.root as String, success: listing_result.success, entries: listing_result.entries, error: listing_result.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => ProfileStoreUnread { step: "list", reason: c }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => ProfileStoreUnread { step: "list", reason: e }
+    FilesystemDirectoryListed(listing) => {
+      let decoded = profile_store_decode_entries(layout: layout, entries: filesystem_listing_entry_names(listing: listing), acc: [], skipped_acc: [])
+      ProfileStoreRead {
+        profiles: decoded.profiles,
+        skipped: decoded.skipped,
+      }
     }
   }
 }
