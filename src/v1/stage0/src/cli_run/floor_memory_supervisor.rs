@@ -323,22 +323,214 @@ pub fn reset_or_baseline_peak(dir: &Path) -> Result<u64, QualificationRefusal> {
 pub fn run_child_in_own_cgroup(
     program: &str,
     args: &[String],
-) -> Result<SupervisedTermination, QualificationRefusal> {
+) -> Result<(SupervisedTermination, Vec<String>), QualificationRefusal> {
+    use std::io::{BufRead, Write};
     use std::os::unix::process::ExitStatusExt;
-    let mut child = Command::new(program).args(args).spawn().map_err(|e| {
-        QualificationRefusal::ChildNotSpawned {
+    let mut child = Command::new(program)
+        .args(args)
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| QualificationRefusal::ChildNotSpawned {
             detail: format!("{program}: {e}"),
+        })?;
+    // THE CHILD'S STDERR PASSES THROUGH UNCHANGED, AND ITS SEAM BEATS ARE KEPT. The per-phase
+    // attribution (`gunbc.floor_demand` `floor_phase_attribution`) is a fold over the heartbeat's
+    // own `[floor-cgroup] when=` lines, so the supervisor that already owns the child reads them
+    // as they are written rather than a second process scraping a log afterwards. Every line is
+    // forwarded first, so the log a reader sees is the log the child wrote. Read on a thread: a
+    // child blocked on a full pipe while this thread waits on its exit would never exit.
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| QualificationRefusal::ChildNotSpawned {
+            detail: format!("{program}: stderr was not captured"),
+        })?;
+    let reader = std::thread::spawn(move || {
+        let mut beats = Vec::new();
+        let mut out = std::io::stderr();
+        for line in std::io::BufReader::new(stderr).lines() {
+            let Ok(line) = line else { break };
+            let _ = writeln!(out, "{line}");
+            if line.contains("[floor-cgroup] when=") {
+                beats.push(line);
+            }
         }
-    })?;
+        beats
+    });
     let status = child
         .wait()
         .map_err(|e| QualificationRefusal::ChildNotWaited {
             detail: e.to_string(),
         })?;
+    let beats = reader
+        .join()
+        .map_err(|_| QualificationRefusal::ChildNotWaited {
+            detail: "the stderr reader thread panicked".to_string(),
+        })?;
     if let Some(signal) = status.signal() {
-        return Ok(SupervisedTermination::Signalled { signal });
+        return Ok((SupervisedTermination::Signalled { signal }, beats));
     }
-    Ok(SupervisedTermination::Exited {
-        code: status.code().unwrap_or(-1),
-    })
+    Ok((
+        SupervisedTermination::Exited {
+            code: status.code().unwrap_or(-1),
+        },
+        beats,
+    ))
+}
+
+/// ONE HEARTBEAT BEAT AS PRIMITIVES, the host half of `gunbc.floor_demand` `FloorBeatReading`.
+/// Transcription only: what a token is, what the held set is and where a phase begins are the
+/// fold's decisions, not this reader's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FloorBeatLine {
+    pub beat: usize,
+    pub opens_phase: bool,
+    pub seam_before: String,
+    pub seam_after: String,
+    pub stall_per_min: Option<u64>,
+    pub swap_bytes: Option<u64>,
+    pub charge: u64,
+    /// `memory_stat=[...]` in the order the heartbeat prints it, which is the order of
+    /// `FLOOR_BEAT_STAT_KEYS`.
+    pub stat: [u64; 11],
+}
+
+pub const FLOOR_BEAT_STAT_KEYS: [&str; 11] = [
+    "anon",
+    "file",
+    "shmem",
+    "unevictable",
+    "slab_unreclaimable",
+    "slab_reclaimable",
+    "kernel_stack",
+    "pagetables",
+    "percpu",
+    "sock",
+    "file_dirty",
+];
+
+fn beat_field<'a>(line: &'a str, name: &str) -> Option<&'a str> {
+    let needle = format!(" {name}=");
+    let at = line.find(&needle)? + needle.len();
+    let rest = &line[at..];
+    Some(rest.split(' ').next().unwrap_or(rest))
+}
+
+/// Transcribes the heartbeat's `[floor-cgroup] when=` lines into beats, pairing each
+/// `stat_level=` line with the `swap_current=` line the heartbeat prints for the same `when=`
+/// just before it. The other `when=` lines (the envelope's `path=` and `level=` walk) carry no
+/// beat and are passed over by shape.
+///
+/// A COUNTER THE LINE PRINTED AS `na` REFUSES THE TRANSCRIPTION, with the line named. The stat
+/// counters have no unread arm in the typed beat, and a zero would read as memory the run did not
+/// hold -- the fabricated small demand `beat_held_set` exists to refuse. Stall and swap DO have
+/// unread arms, so `na` there is carried as `None`.
+pub fn transcribe_floor_beats(lines: &[String]) -> Result<Vec<FloorBeatLine>, String> {
+    let mut swap_by_when: std::collections::HashMap<String, Option<u64>> =
+        std::collections::HashMap::new();
+    let mut beats = Vec::new();
+    for line in lines {
+        let Some(when) = beat_field(line, "when") else {
+            continue;
+        };
+        if let Some(swap) = beat_field(line, "swap_current") {
+            swap_by_when.insert(when.to_string(), swap.parse::<u64>().ok());
+            continue;
+        }
+        if beat_field(line, "stat_level").is_none() {
+            continue;
+        }
+        let refuse = |what: &str| format!("floor beat line unreadable ({what}): {line}");
+        let seam = beat_field(line, "seam").ok_or_else(|| refuse("no seam="))?;
+        let (seam_before, seam_after) = match seam.strip_prefix("transition:") {
+            Some(moved) => {
+                let (a, b) = moved
+                    .split_once('>')
+                    .ok_or_else(|| refuse("transition without '>'"))?;
+                (a.to_string(), b.to_string())
+            }
+            None => (seam.to_string(), seam.to_string()),
+        };
+        let charge = beat_field(line, "current")
+            .and_then(|v| v.parse::<u64>().ok())
+            .ok_or_else(|| refuse("current="))?;
+        let body = line
+            .split_once("memory_stat=[")
+            .and_then(|(_, rest)| rest.split_once(']'))
+            .map(|(body, _)| body)
+            .ok_or_else(|| refuse("memory_stat="))?;
+        let parts: Vec<&str> = body.split(',').collect();
+        let mut stat = [0u64; 11];
+        for (i, key) in FLOOR_BEAT_STAT_KEYS.iter().enumerate() {
+            let (k, v) = (parts.get(2 * i), parts.get(2 * i + 1));
+            if k != Some(key) {
+                return Err(refuse(&format!("memory_stat key {i} is not {key}")));
+            }
+            stat[i] = v
+                .and_then(|v| v.parse::<u64>().ok())
+                .ok_or_else(|| refuse(&format!("memory_stat {key}")))?;
+        }
+        beats.push(FloorBeatLine {
+            beat: beats.len(),
+            opens_phase: when.starts_with("seam-"),
+            seam_before,
+            seam_after,
+            stall_per_min: beat_field(line, "stall_per_min").and_then(|v| v.parse::<u64>().ok()),
+            swap_bytes: swap_by_when.remove(when).flatten(),
+            charge,
+            stat,
+        });
+    }
+    Ok(beats)
+}
+
+#[cfg(test)]
+mod transcription_tests {
+    use super::*;
+
+    fn stat_line(when: &str, seam: &str, anon: &str) -> String {
+        format!(
+            "[floor-cgroup] when={when} stat_level=/sys/fs/cgroup/x seam={seam} stall_per_min=na \
+             current=100 memory_stat=[anon,{anon},file,2,shmem,3,unevictable,4,\
+             slab_unreclaimable,5,slab_reclaimable,6,kernel_stack,7,pagetables,8,percpu,9,sock,10,\
+             file_dirty,11]"
+        )
+    }
+
+    #[test]
+    fn a_seam_beat_opens_a_phase_and_carries_its_paired_swap() {
+        let lines = vec![
+            "[floor-cgroup] when=seam-parse path=/sys/fs/cgroup/x".to_string(),
+            "[floor-cgroup] when=seam-parse seam=parse unix_ms=1 swap_current=4096 events_local=[] pressure=[] procs=[]".to_string(),
+            stat_line("seam-parse", "parse", "1"),
+            "[floor-cgroup] when=beat-3 seam=parse unix_ms=2 swap_current=na events_local=[] pressure=[] procs=[]".to_string(),
+            stat_line("beat-3", "transition:parse>declarations", "12"),
+        ];
+        let beats = transcribe_floor_beats(&lines).expect("transcribes");
+        assert_eq!(
+            beats.len(),
+            2,
+            "the path= envelope line is not a beat: {beats:?}"
+        );
+        assert!(beats[0].opens_phase && !beats[1].opens_phase);
+        assert_eq!(beats[0].swap_bytes, Some(4096));
+        assert_eq!(beats[1].swap_bytes, None, "`na` swap is unread, not zero");
+        assert_eq!(
+            beats[0].stall_per_min, None,
+            "`na` stall is unread, not zero"
+        );
+        assert_eq!(
+            (beats[1].seam_before.as_str(), beats[1].seam_after.as_str()),
+            ("parse", "declarations")
+        );
+        assert_eq!(beats[1].stat[0], 12);
+        assert_eq!(beats[0].stat[10], 11);
+    }
+
+    #[test]
+    fn an_unread_stat_counter_refuses_rather_than_reading_zero() {
+        let lines = vec![stat_line("seam-parse", "parse", "na")];
+        let refused = transcribe_floor_beats(&lines).expect_err("an `na` anon must refuse");
+        assert!(refused.contains("memory_stat anon"), "{refused}");
+    }
 }

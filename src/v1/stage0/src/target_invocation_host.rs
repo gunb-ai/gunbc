@@ -1693,6 +1693,142 @@ fn floor_memory_qualification_lane() -> String {
 /// number. An unbounded run and a bounded one are indistinguishable in everything the workload
 /// itself emits, which is the class
 /// `gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained`.
+/// THE MEASURED RUN BY PHASE: the child's seam beats, transcribed by the supervisor and folded by
+/// `gunbc.floor_demand` `floor_phase_attribution`, one line per phase in the order the run entered
+/// them. `entry` is the held set the phase inherited, `peak` the largest over its own beats, and
+/// `left` what it left resident -- the next phase's entry, read from that row, so this renderer
+/// does no arithmetic of its own. A phase whose held set could not be represented prints the arm.
+///
+/// This is a reading beside the verdict, never a verdict: a run with no beats (a lane that owns no
+/// floor phase) or a transcription refusal says so here and leaves the qualification unchanged.
+fn floor_phase_attribution_rendered(
+    ctx: &crate::v1_interpreter::InterpContext,
+    beat_lines: &[String],
+) -> String {
+    use crate::v1_interpreter::Value;
+    use cli_run::floor_memory_supervisor as sup;
+    let beats = match sup::transcribe_floor_beats(beat_lines) {
+        Ok(beats) if beats.is_empty() => {
+            return "floor-phase-attribution: no seam beats were printed by the measured child"
+                .to_string();
+        }
+        Ok(beats) => beats,
+        Err(refusal) => return format!("floor-phase-attribution: refused: {refusal}"),
+    };
+    let int = |v: u64| Value::Int(i64::try_from(v).unwrap_or(i64::MAX));
+    let readings: Vec<Value> = beats
+        .iter()
+        .map(|b| {
+            let mut fields = vec![
+                (ctx.sym("beat"), Value::Int(b.beat as i64)),
+                (ctx.sym("opens_phase"), Value::Bool(b.opens_phase)),
+                (
+                    ctx.sym("seam_before"),
+                    crate::v1_interpreter::str_value(&b.seam_before),
+                ),
+                (
+                    ctx.sym("seam_after"),
+                    crate::v1_interpreter::str_value(&b.seam_after),
+                ),
+                (
+                    ctx.sym("stall_read"),
+                    Value::Bool(b.stall_per_min.is_some()),
+                ),
+                (ctx.sym("stall_per_min"), int(b.stall_per_min.unwrap_or(0))),
+                (ctx.sym("swap_read"), Value::Bool(b.swap_bytes.is_some())),
+                (ctx.sym("swap_bytes"), int(b.swap_bytes.unwrap_or(0))),
+                (ctx.sym("charge"), int(b.charge)),
+            ];
+            for (key, value) in sup::FLOOR_BEAT_STAT_KEYS.iter().zip(b.stat.iter()) {
+                fields.push((ctx.sym(key), int(*value)));
+            }
+            Value::Record {
+                type_name: ctx.sym("FloorBeatReading"),
+                fields: std::rc::Rc::new(fields),
+            }
+        })
+        .collect();
+    let args = vec![(
+        Some("readings".to_string()),
+        crate::v1_interpreter::list_value(readings),
+    )];
+    let attributed = match crate::v1_interpreter::run_in_context_with_args(
+        ctx,
+        "floor_phase_attribution_from_readings",
+        &args,
+        true,
+    ) {
+        Ok(v) => v,
+        Err(cause) => return format!("floor-phase-attribution: not reached: {cause}"),
+    };
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &attributed
+    else {
+        return format!(
+            "floor-phase-attribution: unrecognised result {}",
+            ctx.format_value(&attributed)
+        );
+    };
+    if !ctx.sym_eq(*variant_name, "FloorPhasesAttributed") {
+        return format!("floor-phase-attribution: {}", ctx.format_value(&attributed));
+    }
+    let Some(Value::List(rows)) = ctx.field(fields, "phases") else {
+        return format!(
+            "floor-phase-attribution: unrecognised result {}",
+            ctx.format_value(&attributed)
+        );
+    };
+    let held = |v: Option<&Value>| -> String {
+        match v {
+            Some(Value::Variant {
+                variant_name,
+                fields,
+                ..
+            }) if ctx.sym_eq(*variant_name, "HeldSetPeakAt") => match ctx.field(fields, "bytes") {
+                Some(Value::Record { fields, .. }) => match ctx.field(fields, "count") {
+                    Some(Value::Int(n)) => n.to_string(),
+                    other => format!("{other:?}"),
+                },
+                other => format!("{other:?}"),
+            },
+            Some(other) => ctx.format_value(other),
+            None => "<absent>".to_string(),
+        }
+    };
+    let rows: Vec<&Value> = rows.iter().collect();
+    let mut out = vec![format!(
+        "floor-phase-attribution: phases={} beats={} (held set per gunbc.floor_demand beat_held_set, bytes)",
+        rows.len(),
+        beats.len()
+    )];
+    for (i, row) in rows.iter().enumerate() {
+        let Value::Record { fields, .. } = row else {
+            out.push(format!("  unrecognised row {}", ctx.format_value(row)));
+            continue;
+        };
+        let left = match rows.get(i + 1) {
+            Some(Value::Record { fields: next, .. }) => held(ctx.field(next, "entry")),
+            _ => "end-of-run".to_string(),
+        };
+        out.push(format!(
+            "  phase={} opened_at_beat={} entry={} peak={} left={}",
+            ctx.field(fields, "seam")
+                .map(|v| ctx.format_value(v))
+                .unwrap_or_default(),
+            ctx.field(fields, "opened_at")
+                .map(|v| ctx.format_value(v))
+                .unwrap_or_default(),
+            held(ctx.field(fields, "entry")),
+            held(ctx.field(fields, "peak")),
+            left,
+        ));
+    }
+    out.join("\n")
+}
+
 fn run_floor_memory_qualification() -> InvocationOutcome {
     use cli_run::floor_memory_supervisor as sup;
 
@@ -1799,15 +1935,16 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
         args.push(root);
     }
 
-    let termination = match sup::run_child_in_own_cgroup(&exe.to_string_lossy(), &args) {
-        Ok(t) => t,
-        Err(refusal) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
-            };
-        }
-    };
+    let (termination, beat_lines) =
+        match sup::run_child_in_own_cgroup(&exe.to_string_lossy(), &args) {
+            Ok(t) => t,
+            Err(refusal) => {
+                return InvocationOutcome {
+                    termination: Termination::Refused,
+                    message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+                };
+            }
+        };
 
     let read = match sup::read_cgroup_memory(&cgroup) {
         Ok(r) => r,
@@ -1921,6 +2058,8 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
         }
     };
 
+    let phases = floor_phase_attribution_rendered(&ctx, &beat_lines);
+
     // The supervisor shares the cgroup with the child, so its own few MiB are inside this peak.
     // Stated rather than netted out: subtracting an estimate would replace a measured number with
     // an adjusted one.
@@ -1928,7 +2067,7 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
         "floor-memory-qualification: cgroup={} peak={} memory.max={} memory.high={} \
          events=[high {} / max {} / oom_kill {}] termination={} lane={} \
          (the supervisor shares this cgroup with the measured child, so its own footprint — a few \
-         MiB — is included in the peak rather than subtracted)",
+         MiB — is included in the peak rather than subtracted)\n{phases}",
         read.dir,
         read.peak,
         read.limit_max,

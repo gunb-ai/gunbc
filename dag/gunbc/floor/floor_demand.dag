@@ -10,7 +10,7 @@ import std.measure {
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic {
-  CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_add, checked_add_results,
+  CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_add, checked_add_results, nat_magnitude,
 }
 import extdeps.storage.types { Ephemeral }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
@@ -280,6 +280,7 @@ type FloorSeam
   | SeamNominalSubjectSeeds
   | SeamPrepareClosureResolve
   | SeamPreparedSubjectWarm
+  | SeamBareReferenceEdgeIndexWarm
   | SeamPublication
   | SeamStrictPreparation
   | SeamPublishedMockProjection
@@ -327,6 +328,7 @@ data floor_seam_tokens: List<FloorSeamToken> = [
   FloorSeamToken { token: "nominal-subject-seeds", seam: SeamNominalSubjectSeeds },
   FloorSeamToken { token: "prepare-closure-resolve", seam: SeamPrepareClosureResolve },
   FloorSeamToken { token: "prepared-subject-warm", seam: SeamPreparedSubjectWarm },
+  FloorSeamToken { token: "bare-reference-edge-index-warm", seam: SeamBareReferenceEdgeIndexWarm },
   FloorSeamToken { token: "publication", seam: SeamPublication },
   FloorSeamToken { token: "strict-preparation", seam: SeamStrictPreparation },
   FloorSeamToken { token: "published-mock-projection", seam: SeamPublishedMockProjection },
@@ -632,6 +634,7 @@ fn receipt_peak_seam(r: FloorHeldSetReceipt) -> PeakSeamAttribution {
         SeamNominalSubjectSeeds => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamPrepareClosureResolve => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamPreparedSubjectWarm => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamBareReferenceEdgeIndexWarm => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamPublication => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamStrictPreparation => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamPublishedMockProjection => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
@@ -1562,4 +1565,158 @@ data gunbc_floor_job_wall_receipt_2026_09_19: FloorJobWallReceipt = FloorJobWall
   whole_job_wall: second(count: 2788),
   build_step_wall: second(count: 198),
   sccache_reachable: true,
+}
+
+// THE HELD SET BY PHASE, DERIVED FROM A RUN'S OWN BEATS RATHER THAN TRANSCRIBED INTO A RECEIPT.
+// Every receipt above was a hand transcription of one job log, so a phase's share of the demand
+// could be read only by someone willing to transcribe a run. The heartbeat already prints what a
+// per-phase reading needs -- one beat at every seam (`floor_seam`) and one on each watchdog tick,
+// each naming the seam it was taken in -- so the attribution is a fold over those lines, run by
+// the instrument that ran the floor (`//gunbc/instruments:floor-memory-qualification`).
+//
+// THE HOST TRANSCRIBES, THIS FOLD DECIDES. A reading is the beat line's fields as primitives:
+// the interpreter admits no constructed measure across the boundary and has no string parsing, so
+// the host splits a `transition:A>B` seam into its two tokens and reads each counter as an integer,
+// and everything that says what a reading MEANS -- which arm a token is, what the held set is,
+// where a phase begins -- is decided here, through `floor_seam_of_token` and `beat_held_set`, the
+// same two authorities every receipt in this module is read through.
+//
+// A PHASE IS OPENED BY ITS SEAM BEAT, NOT BY A CHANGE OF SEAM NAME. The seam beat is taken at the
+// boundary, so it is the phase's ENTRY held set -- what the phase inherited -- and every watchdog
+// beat that follows until the next seam beat is inside the phase. The phase's PEAK is the largest
+// held set over its own beats, and what a phase LEFT RESIDENT is the next phase's entry: the fold
+// states entry and peak and leaves retained to the reader of the ordered list, because it is the
+// next row's field and not a second quantity.
+type FloorBeatReading {
+  beat: Int
+  opens_phase: Bool
+  seam_before: String
+  seam_after: String
+  stall_read: Bool
+  stall_per_min: Int
+  swap_read: Bool
+  swap_bytes: Int
+  charge: Int
+  anon: Int
+  file: Int
+  shmem: Int
+  unevictable: Int
+  slab_unreclaimable: Int
+  slab_reclaimable: Int
+  kernel_stack: Int
+  pagetables: Int
+  percpu: Int
+  sock: Int
+  file_dirty: Int
+}
+
+type FloorPhaseHeldSet {
+  seam: FloorSeam
+  opened_at: Int
+  entry: HeldSetPeak
+  peak: HeldSetPeak
+}
+
+// A TOKEN NO ROW NAMES REFUSES THE ATTRIBUTION rather than being read as a neighbouring arm or
+// skipped: a phase whose beats were dropped would report a smaller peak than it held.
+type FloorPhaseAttribution
+  = FloorPhasesAttributed { phases: List<FloorPhaseHeldSet> }
+  | FloorPhaseSeamUnknown { beat: Int, token: String }
+
+type FloorPhaseFold
+  = PhaseFoldRunning { closed: List<FloorPhaseHeldSet>, open: FloorPhaseHeldSet? }
+  | PhaseFoldRefused { beat: Int, token: String }
+
+// THE SLOT'S OWN SPELLINGS FIRST: `none` is the unset slot and `unreadable` a poisoned lock, both
+// printed by the heartbeat and neither a row of floor_seam_tokens.
+fn floor_seam_of_spelling(spelling: String) -> FloorSeam? {
+  if spelling == "none" {
+    Present { value: SeamNotYetEntered }
+  } else if spelling == "unreadable" {
+    Present { value: SeamUnreadable }
+  } else {
+    floor_seam_of_token(token: spelling)
+  }
+}
+
+fn floor_seam_of_reading(r: FloorBeatReading) -> FloorSeam? {
+  if r.seam_before == r.seam_after {
+    floor_seam_of_spelling(spelling: r.seam_before)
+  } else {
+    Present { value: SeamMovedDuringSample { before: r.seam_before as NonEmptyStr, after: r.seam_after as NonEmptyStr } }
+  }
+}
+
+fn floor_beat_of_reading(r: FloorBeatReading, seam: FloorSeam) -> FloorMemoryStatBeat {
+  FloorMemoryStatBeat {
+    beat: r.beat,
+    seam: seam,
+    charge: byte_size(count: nat_magnitude(a: r.charge)),
+    anon: byte_size(count: nat_magnitude(a: r.anon)),
+    file: byte_size(count: nat_magnitude(a: r.file)),
+    shmem: byte_size(count: nat_magnitude(a: r.shmem)),
+    unevictable: byte_size(count: nat_magnitude(a: r.unevictable)),
+    slab_unreclaimable: byte_size(count: nat_magnitude(a: r.slab_unreclaimable)),
+    slab_reclaimable: byte_size(count: nat_magnitude(a: r.slab_reclaimable)),
+    kernel_stack: byte_size(count: nat_magnitude(a: r.kernel_stack)),
+    pagetables: byte_size(count: nat_magnitude(a: r.pagetables)),
+    percpu: byte_size(count: nat_magnitude(a: r.percpu)),
+    sock: byte_size(count: nat_magnitude(a: r.sock)),
+    file_dirty: byte_size(count: nat_magnitude(a: r.file_dirty)),
+    stall: if r.stall_read { StallRead { rate: events_per_minute(count: nat_magnitude(a: r.stall_per_min)) } } else { StallUnread },
+    swap: if r.swap_read { SwapRead { bytes: byte_size(count: nat_magnitude(a: r.swap_bytes)) } } else { SwapUnread },
+  }
+}
+
+fn floor_phase_opened_by(b: FloorMemoryStatBeat) -> FloorPhaseHeldSet {
+  FloorPhaseHeldSet {
+    seam: b.seam,
+    opened_at: b.beat,
+    entry: held_set_peak_step(acc: HeldSetPeakNoBeats, b: b),
+    peak: held_set_peak_step(acc: HeldSetPeakNoBeats, b: b),
+  }
+}
+
+fn floor_phase_closed(closed: List<FloorPhaseHeldSet>, open: FloorPhaseHeldSet?) -> List<FloorPhaseHeldSet> {
+  match open {
+    Present { value: p } => concat(closed, [p])
+    Absent => closed
+  }
+}
+
+fn floor_phase_step(acc: FloorPhaseFold, r: FloorBeatReading) -> FloorPhaseFold {
+  match acc {
+    PhaseFoldRefused { beat: n, token: t } => PhaseFoldRefused { beat: n, token: t }
+    PhaseFoldRunning { closed: closed, open: open } =>
+      match floor_seam_of_reading(r: r) {
+        Absent => PhaseFoldRefused { beat: r.beat, token: r.seam_before }
+        Present { value: seam } =>
+          if r.opens_phase {
+            PhaseFoldRunning {
+              closed: floor_phase_closed(closed: closed, open: open),
+              open: Present { value: floor_phase_opened_by(b: floor_beat_of_reading(r: r, seam: seam)) },
+            }
+          } else {
+            match open {
+              Absent => PhaseFoldRunning { closed: closed, open: Present { value: floor_phase_opened_by(b: floor_beat_of_reading(r: r, seam: seam)) } }
+              Present { value: p } => PhaseFoldRunning {
+                closed: closed,
+                open: Present { value: FloorPhaseHeldSet {
+                  seam: p.seam,
+                  opened_at: p.opened_at,
+                  entry: p.entry,
+                  peak: held_set_peak_step(acc: p.peak, b: floor_beat_of_reading(r: r, seam: seam)),
+                } },
+              }
+            }
+          }
+      }
+  }
+}
+
+fn floor_phase_attribution(readings: List<FloorBeatReading>) -> FloorPhaseAttribution {
+  match fold(readings, init: PhaseFoldRunning { closed: [], open: none }, f: (acc, r) => floor_phase_step(acc: acc, r: r)) {
+    PhaseFoldRefused { beat: n, token: t } => FloorPhaseSeamUnknown { beat: n, token: t }
+    PhaseFoldRunning { closed: closed, open: open } => FloorPhasesAttributed { phases: floor_phase_closed(closed: closed, open: open) }
+  }
 }
