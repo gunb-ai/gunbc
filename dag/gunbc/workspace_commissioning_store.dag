@@ -61,6 +61,7 @@ fn workspace_commissioning_record_text(record: WorkspaceCommissioningRecord) -> 
     json_kv(key: "slot", value: json_string(s: runner_slot_instance_name(slot: provenance.slot) as String)),
     json_kv(key: "plan_hash", value: json_string(s: provenance.plan_hash as String)),
     json_kv(key: "source_revision", value: json_string(s: provenance.source_revision as String)),
+    json_kv(key: "installed_tree_digest", value: json_string(s: provenance.installed_tree_digest as String)),
     json_kv(key: "controller_digest", value: json_string(s: provenance.controller_digest as String)),
     json_kv(key: "guest_image_digest", value: json_string(s: provenance.guest_image_digest as String)),
     json_kv(key: "cpu_budget", value: json_int(n: hardware_thread_count_value(t: provenance.cpu_budget))),

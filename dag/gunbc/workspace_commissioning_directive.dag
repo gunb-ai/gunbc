@@ -26,6 +26,16 @@ fn workspace_commissioning_directive_from_text(text: String) -> WorkspaceCommiss
 }
 
 fn workspace_commissioning_directive_decode(body: JsonValue) -> WorkspaceCommissioningDirectiveRead {
+  match json_field_string(obj: body, key: "installed_tree_digest") {
+    FieldRead { value: digest } => match sha256_hex_digest(hex: digest) {
+      Present { value: _ } => workspace_commissioning_directive_decode_with_tree(body: body, tree_digest: digest as NonEmptyStr)
+      Absent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning installed tree digest is invalid" }
+    }
+    _ => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique installed_tree_digest" }
+  }
+}
+
+fn workspace_commissioning_directive_decode_with_tree(body: JsonValue, tree_digest: NonEmptyStr) -> WorkspaceCommissioningDirectiveRead {
   match json_field_string(obj: body, key: "slot") {
     FieldRead { value: slot_name } => {
       match json_field_string(obj: body, key: "plan_hash") {
@@ -55,7 +65,7 @@ fn workspace_commissioning_directive_decode(body: JsonValue) -> WorkspaceCommiss
                                             Absent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning slot is not designated for workspace use" }
                                             Present { value: slot } => {
                                               let provenance = WorkspaceCommissioningProvenance {
-                                                slot: slot, plan_hash: plan_hash as NonEmptyStr, source_revision: revision as NonEmptyStr,
+                                                slot: slot, plan_hash: plan_hash as NonEmptyStr, source_revision: revision as NonEmptyStr, installed_tree_digest: tree_digest,
                                                 controller_digest: controller_digest as NonEmptyStr, guest_image_digest: image_digest as NonEmptyStr,
                                                 cpu_budget: hardware_thread_count(count: cpu), attempt_envelope: byte_size(memory),
                                                 no_swap: no_swap, sanitation_observation: sanitation as NonEmptyStr,

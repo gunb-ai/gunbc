@@ -1,0 +1,22 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 4 seconds
+[pre-entry] phase=workspace_discovery ms=14 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=18 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=4834 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1706 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1928 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=31 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=47 scale=closure
+[pre-entry] phase=closure_load ms=2414 scale=closure
+[pre-entry] phase=closure_parse ms=8919 scale=closure
+[pre-entry] phase=closure_resolve ms=322 scale=closure
+[pre-entry] phase=closure_normalize ms=1006 scale=closure
+[pre-entry] phase=closure_typecheck ms=86787 scale=closure
+[pre-entry] phase=closure_parent_envs ms=10 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=175 scale=closure
+[pre-entry] phase=closure_ownership ms=1262 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=137506 scale=closure
+[pre-entry] population pool_modules=782 closure_files=782
+[pre-entry] process_cpu user_ms=134517 sys_ms=2427 max_rss_kib=5234712

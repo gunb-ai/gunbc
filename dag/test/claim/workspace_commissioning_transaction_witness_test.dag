@@ -27,6 +27,7 @@ fn transaction_fixture_provenance() -> WorkspaceCommissioningProvenance {
     slot: RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 13 },
     plan_hash: "fixture-plan" as NonEmptyStr,
     source_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr,
+    installed_tree_digest: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" as NonEmptyStr,
     controller_digest: "fixture-controller" as NonEmptyStr,
     guest_image_digest: "fixture-image" as NonEmptyStr,
     cpu_budget: hardware_thread_count(count: 4), attempt_envelope: gunbc_microvm_shakedown_slot_memory_max,

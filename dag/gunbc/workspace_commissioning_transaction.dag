@@ -18,6 +18,7 @@ type WorkspaceCommissioningProvenance {
   slot: RunnerSlotIdentity
   plan_hash: NonEmptyStr
   source_revision: NonEmptyStr
+  installed_tree_digest: NonEmptyStr
   controller_digest: NonEmptyStr
   guest_image_digest: NonEmptyStr
   cpu_budget: HardwareThreadCount

@@ -2,6 +2,7 @@ module gunbc.workspace_commissioning_runtime
 
 import std.types { String, NonEmptyStr, Bool, CommitSha }
 import std.algebra { trim }
+import gunbc.auth.approval_broker_cutover { BrokerTreeReceiptRead, observe_broker_tree_receipt, TreeReceiptObserved }
 import std.measure { byte_size_count }
 import extdeps.systemd { MemoryMax, MemorySwapMax }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -13,7 +14,7 @@ import gunbc.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_gunbc_binary, microvm_controller_slice_unit_name,
   microvm_slot_reserve_unit_name, microvm_slot_unit_path, microvm_slot_unit_text, microvm_slot_unit_timeout_stop_sec,
 }
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_tree_receipt_path_for, RevisionBoundAtEmission }
 import gunbc.runner_microvm_cell_readiness { StoreRootOwned }
 import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead }
 import gunbc.fabric_cell_acquire { fabric_cell_read_boundary, fabric_cell_boundary_address_probe, fabric_cell_read_boundary_property, PropertyRead }
@@ -88,6 +89,7 @@ fn workspace_commissioning_locus_matches(provenance: WorkspaceCommissioningProve
     })
     && (match read_store_ownership(path: unit_path as String) { OwnershipRead { ownership: StoreRootOwned } => true _ => false })
     && workspace_commissioning_unit_bytes_match(release_dir: release_dir)
+    && workspace_commissioning_installed_tree_matches(provenance: provenance)
 }
 
 fn workspace_commissioning_unit_bytes_match(release_dir: NonEmptyStr) -> Bool {
@@ -105,4 +107,30 @@ fn workspace_commissioning_prior_broker_withdrawn() -> Bool {
   let pid = systemd.Systemctl.ShowProperty(unit: microvm_slot_reserve_unit_name, property: "MainPID")
   loaded.success && active.success && pid.success
     && trim(s: loaded.value) == "not-found" && trim(s: active.value) == "inactive" && trim(s: pid.value) == "0"
+}
+
+
+// A revision-shaped directory and the gunbc binary do not identify the interpreted DAG tree.
+// Consume the installer's root-owned tree receipt and bind both recorded fields to the plan.
+fn workspace_commissioning_installed_tree_matches(provenance: WorkspaceCommissioningProvenance) -> Bool {
+  let path = approval_broker_tree_receipt_path_for(root: microvm_controller_root,
+    revision: RevisionBoundAtEmission { revision: provenance.source_revision as CommitSha })
+  match read_store_ownership(path: path) {
+    OwnershipRead { ownership: StoreRootOwned } => {
+      let read = Filesystem.Read(path: path)
+      workspace_commissioning_tree_receipt_matches(provenance: provenance,
+        receipt: observe_broker_tree_receipt(success: read.success, body: read.content,
+          error: "installed controller tree receipt is unreadable" as NonEmptyStr))
+    }
+    _ => false
+  }
+}
+
+fn workspace_commissioning_tree_receipt_matches(provenance: WorkspaceCommissioningProvenance,
+  receipt: BrokerTreeReceiptRead) -> Bool {
+  match receipt {
+    TreeReceiptObserved { revision, installed_digest } => revision == provenance.source_revision
+      && installed_digest == provenance.installed_tree_digest
+    _ => false
+  }
 }
