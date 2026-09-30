@@ -274,7 +274,7 @@ test fn a_layout_question_without_source_refuses_holds() -> Bool {
 
 // THE MEMO CANNOT SERVE ONE LAYOUT'S ANSWER TO THE OTHER. `x - 1` and `x` newline `- 1` lex to the
 // same tokens at the same octets, so a stream digest over tokens alone would key them together and a
-// warm memo entry could replay a same-line acceptance for a next-line refusal. The source is part of
+// warm memo entry could replay a same-line acceptance for a next-line refusal. The layout (its line-break-preceded starts) is part of
 // the stream's digest (v2.compiler.parse parse_token_stream_layout_digest): same tokens, different
 // digest; and the token-only digest, which is what a sourceless stream keys by, is unchanged.
 test fn same_tokens_different_layout_have_different_stream_digests_holds() -> Bool {
