@@ -6,7 +6,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.ipmi
 import std.decl_ref { decl_ref }
 import gunbc.machine_intake_mtcollins1_maintenance_hold { UnitHoldProof, unit_hold_proof_refusal, mtcollins1_unit_hold_key }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_ipmi_read_deadline, mtcollins1_ipmi_kill_after }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootSubject, mtcollins1_boot_medium, mtcollins1_boot_medium_image_name, mtcollins1_boot_medium_image_sha256,
@@ -21,8 +21,6 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1MediaAttachRecord,
   media_attach_outcome_reason,
   mtcollins1_boot_chassis_power,
-  mtcollins1_boot_ipmi_read_deadline,
-  mtcollins1_boot_ipmi_kill_after,
   session_release_text,
   StaleMediumPowerOff,
   StalePowerOffNotNeeded,
@@ -263,7 +261,7 @@ data mtcollins1_stale_power_off_interval: Second = second(count: 5)
 // WHAT THE POWER-OFF ARM MAY SPEND, DERIVED: one look, the power-down command and the fresh reading
 // (each at the IPMI read ceiling), and every read-back sample with its pacing interval.
 fn mtcollins1_stale_power_off_allowance() -> Second {
-  let read = (second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)) as Int
+  let read = (second_count(s: mtcollins1_ipmi_read_deadline) + second_count(s: mtcollins1_ipmi_kill_after)) as Int
   second(count: (second_count(s: megarac_presentation_look_allowance()) as Int)
     + 2 * read
     + mtcollins1_stale_power_off_samples * (read + (second_count(s: mtcollins1_stale_power_off_interval) as Int)))

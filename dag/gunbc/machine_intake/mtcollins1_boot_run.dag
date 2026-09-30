@@ -62,7 +62,7 @@ import extdeps.bootloader.grub {
   GrubConsoleReport, GrubNothingStated, GrubBannerOnly, GrubStillTrying, GrubBootFailed, grub_console_report,
   GrubError, grub_error_text,
 }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row, mtcollins1_ipmi_read_deadline, mtcollins1_ipmi_kill_after }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import v2.std.optional { Present }
 import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
@@ -81,7 +81,6 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
   SensorsNotTaken, mtcollins1_boot_sensors, SmproProbed, SmproNotTaken,
-  mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after,
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
@@ -154,7 +153,7 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
     + second_count(s: megarac_convergence_allowance())
     + second_count(s: mtcollins1_stale_power_off_allowance())
     + 3 * second_count(s: megarac_presentation_look_allowance())
-    + second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)
+    + second_count(s: mtcollins1_ipmi_read_deadline) + second_count(s: mtcollins1_ipmi_kill_after)
     + second_count(s: oob_power_readback_allowance())
     + second_count(s: mtcollins1_boot_in_run_smpro_allowance())
     + second_count(s: mtcollins1_boot_actuation_allowance)
@@ -1792,7 +1791,7 @@ fn mtcollins1_boot_smpro_pass(password_file: String) -> SmproReading {
   match mtcollins1_bmc_username {
     Absent => SmproNotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
     Present { value: user } =>
-      SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: password_file as NonEmptyStr, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+      SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: password_file as NonEmptyStr, deadline: mtcollins1_ipmi_read_deadline, kill_after: mtcollins1_ipmi_kill_after) }
   }
 }
 
@@ -1806,7 +1805,7 @@ data mtcollins1_boot_power_after_samples: Int = 6
 data mtcollins1_boot_power_after_interval: Second = second(count: 5)
 
 fn mtcollins1_boot_in_run_smpro_allowance() -> Second {
-  let read = (second_count(s: mtcollins1_boot_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_boot_ipmi_kill_after) as Int)
+  let read = (second_count(s: mtcollins1_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_ipmi_kill_after) as Int)
   second(count: (2 * mtcollins1_smpro_probe_count() + 2 + 2 + mtcollins1_boot_power_after_samples) * read
     + mtcollins1_boot_power_after_samples * (second_count(s: mtcollins1_boot_power_after_interval) as Int))
 }
@@ -2456,10 +2455,10 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         sensors: mtcollins1_boot_sensors(username: user, password_file: pf, sdr: sdr),
         smpro: match power_after {
           PoweredOffAfterCensusEnd => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
-          PoweredOffWithoutCensusEnd => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
-          PoweredOnAfterAttempt => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
-          PowerAfterUnobserved { observation: _ } => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
-          PowerAfterNotTaken { reason: _ } => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+          PoweredOffWithoutCensusEnd => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_ipmi_read_deadline, kill_after: mtcollins1_ipmi_kill_after) }
+          PoweredOnAfterAttempt => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_ipmi_read_deadline, kill_after: mtcollins1_ipmi_kill_after) }
+          PowerAfterUnobserved { observation: _ } => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_ipmi_read_deadline, kill_after: mtcollins1_ipmi_kill_after) }
+          PowerAfterNotTaken { reason: _ } => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_ipmi_read_deadline, kill_after: mtcollins1_ipmi_kill_after) }
         },
         inventory: mtcollins1_boot_inventory(username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),

@@ -10,10 +10,9 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.bmc.megarac { megarac_ui_bundle_path }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_ipmi_read_deadline, mtcollins1_ipmi_kill_after }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
 import gunbc.machine_intake_mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.machine_intake_megarac_media_attach { megarac_media_read_max_time_operand }
 import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }
 
@@ -117,8 +116,8 @@ fn mtcollins1_ui_bundle_observe_with(username: NonEmptyStr, password_file: NonEm
     bmc_host: mtcollins1_endpoint.host,
     username: username,
     password_file: password_file,
-    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
-    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+    deadline: coreutils_duration_operand(d: mtcollins1_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_ipmi_kill_after) as NonEmptyStr,
   )
   let firmware = ui_bundle_firmware_standing(success: mc.success, stdout: mc.stdout, exit_code: mc.exit_code, stderr: mc.transport_stderr)
   let fw_line = concat("firmware=", ui_bundle_firmware_text(f: firmware))

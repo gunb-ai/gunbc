@@ -27,7 +27,6 @@ import v2.std.algebra { filter }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
-import gunbc.machine_intake_sol_hold
 
 // THE BMC KVM SCREEN AS BOOT EVIDENCE (operator ruling 2026-09-27; route A, eager-owl-205 the same
 // day). On run 36335369059 the SOL collector died about 12 s into Linux and the watch went blind,
