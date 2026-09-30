@@ -199,9 +199,13 @@ fn ingested_staging_inferred_tree_from_source(source: String) -> Outcome<Inferre
   ingested_staging_inferred_tree_from_arrow(arrow: ingested_arrow_from_source(source: source))
 }
 
-fn ingested_emit_shape_frontier_tree_from_source(source: String) -> Outcome<InferredTree> {
+// Takes the ARROW, not the source: the emit claims supply the rostered
+// ingested_classical_not_arrow_with_body rather than re-ingesting per claim (DESIGN §3 witness
+// rule). ingested_classical_not_arrow_has_match_holds stays the inhabitance claim that runs the
+// real tokenize->parse->normalize->resolve->find-arrow path from the source and asserts its route.
+fn ingested_emit_shape_frontier_tree_from_arrow(arrow: Outcome<Node>) -> Outcome<InferredTree> {
   bind_outcome(
-    o: ingested_arrow_from_source(source: source),
+    o: arrow,
     f: fn(arrow) {
       outcome_accepted(
         value: InferredTree {
@@ -531,7 +535,7 @@ test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Boo
 }
 
 test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool {
-  match ingested_emit_shape_frontier_tree_from_source(source: ingested_classical_not_source) {
+  match ingested_emit_shape_frontier_tree_from_arrow(arrow: ingested_classical_not_arrow_with_body()) {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
         Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
@@ -545,7 +549,7 @@ test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool {
 }
 
 test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool {
-  match ingested_emit_shape_frontier_tree_from_source(source: ingested_classical_not_source) {
+  match ingested_emit_shape_frontier_tree_from_arrow(arrow: ingested_classical_not_arrow_with_body()) {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
         Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
@@ -628,7 +632,7 @@ test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
 }
 
 test fn ingested_classical_not_emit_accepts_holds() -> Bool {
-  match ingested_emit_shape_frontier_tree_from_source(source: ingested_classical_not_source) {
+  match ingested_emit_shape_frontier_tree_from_arrow(arrow: ingested_classical_not_arrow_with_body()) {
     Accepted { value: tree, diagnostics: _ } =>
       match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
         Accepted { value: _, diagnostics: _ } => true
@@ -699,7 +703,7 @@ test fn ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds() 
 // per-PR and never masquerades as canonical infer output.
 
 // KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): per-PR layer-boundary mock proof for
-// the classical_not cutover's emit-to-text half — ingested_emit_shape_frontier_tree_from_source
+// the classical_not cutover's emit-to-text half — ingested_emit_shape_frontier_tree_from_arrow
 // (orch-emit-compatible empty facts map) -> assert emitted Rust TEXT (string compare, no compile).
 // ingested_canonical_inferred_tree_from_arrow is the pure infer carrier.
 // FRONTIER CLOSED (2026-09-06, grounding-frontier branch): the specimen's real-infer tree fully

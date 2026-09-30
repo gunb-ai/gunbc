@@ -9,7 +9,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_boot_ma
 // matrix, msg_83af891b). The DECLARATION lives here; the POPULATION's authority is
 // `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_boot_matrix_rows`.
 //
-// WHAT IS LOST IS ONE WALL, AND THE CLAIMS ARE UNTOUCHED. The seventeen identities are planned, executed
+// WHAT IS LOST IS ONE WALL, AND THE CLAIMS ARE UNTOUCHED. The eighteen identities are planned, executed
 // and measured on every pull request that edits them; a semantic red and a wall-clock crossing still
 // block. Only the eval-step overrun is reported as `EvalStepsOverBudgetUnderDeclaredDrop` rather than
 // refusing. The budget is not raised. Their CPU stays under the enrolment margin, so they enrol
@@ -27,14 +27,19 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_boot_ma
 // healthy world the cases vary, and it is already the section 3 remedy: a SUPPLIED value, constructed
 // directly rather than derived by executing production. MEASURED (claim_batch, 2026-09-29, review
 // 72606): building that world with its census console and the frame costs 1,687 to 3,793 eval steps,
-// against 73,643 to 177,924 for the member cases (re-measured after #12434's route was bound); with it removed even the cheapest member stays over
+// against 73,957 to 180,722 for the member cases (re-measured after #12434's route was bound); with it removed even the cheapest member stays over
 // the 72,300 budget. So hoisting it neither retires this drop nor removes a member, and none is owed.
 data mtcollins1_boot_matrix_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_boot_matrix_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_boot_matrix_rows; measured by "), m.measured_by))
+
+// THE ONE CAPABILITY that retires both matrix cost drops -- this one and
+// `gunbc.rung_drop.mtcollins1_boot_matrix_enrolment_dead_band_observed_only` -- named once so the two
+// cannot drift apart: the cost of both is the seed interpreter running the real entry.
+data mtcollins1_boot_matrix_native_witness_capability: String = "witnesses emitted to native code with the emitted runtime realizing v2.std.witness_evaluation evaluate_in_witness_frame and its v2.std.operation_realization modeled realization, EXECUTING ON THE MERGE PATH as a phase of a required lane whose red blocks a merge, running the mtcollins1 boot acceptance matrix with the real mtcollins1_boot_wet_on_srv1 entry"
 
 data mtcollins1_boot_matrix_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "mtcollins1_boot_matrix_new_witness_eval_step_cost" as NonEmptyStr,
 
-  subject: "new-witness eval-step cost gate over the seventeen mtcollins1 boot acceptance matrix cases that run the real boot entry end to end over the dry operation realization: they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+  subject: "new-witness eval-step cost gate over the eighteen mtcollins1 boot acceptance matrix cases that run the real boot entry end to end over the dry operation realization: they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
 
   declared: "2026-09-28",
 
@@ -47,6 +52,6 @@ data mtcollins1_boot_matrix_new_witness_eval_step_cost: RungDrop = RungDrop {
       replacement: "the evaluation frame and its modeled operation realization realized by the natively emitted runtime, so the boot entry runs as emitted code rather than in the seed interpreter",
     },
     population: mtcollins1_boot_matrix_new_witness_eval_step_cost_population,
-    restoration_trigger: "THE CAPABILITY: witnesses emitted to native code with the emitted runtime realizing v2.std.witness_evaluation evaluate_in_witness_frame and its v2.std.operation_realization modeled realization, EXECUTING ON THE MERGE PATH as a phase of a required lane whose red blocks a merge, running these seventeen identities with the real mtcollins1_boot_wet_on_srv1 entry; WHAT THAT MUST BE SUFFICIENT FOR: each case measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, with its route and outcome assertions unchanged. Hoisting the shared world construction or the route prefix lowers the bill and retires nothing on its own; supplying a decided value in place of the entry, or deleting the identities, satisfies neither.",
+    restoration_trigger: concat(concat("THE CAPABILITY: ", mtcollins1_boot_matrix_native_witness_capability), "; WHAT THAT MUST BE SUFFICIENT FOR: each of these eighteen identities measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, with its route and outcome assertions unchanged. Hoisting the shared world construction or the route prefix lowers the bill and retires nothing on its own; supplying a decided value in place of the entry, or deleting the identities, satisfies neither."),
   }
 }

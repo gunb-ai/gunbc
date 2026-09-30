@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.generic_optional_over_a_type_application_argument_loses_the_optional
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data generic_optional_over_a_type_application_argument_loses_the_optional: RecurringFailureMode = RecurringFailureMode {
+  identity: "generic_optional_over_a_type_application_argument_loses_the_optional" as NonEmptyStr,
+
+  receipts: [
+    "**CLASS: a pattern binding of a generic optional `T?` is typed `T`, not `T?`, when `T` is instantiated with a TYPE APPLICATION -- an alias such as `Nat` (= `CommutativeSemiring<Magnitude>`) or a generic record such as `CohortSeatReading<K>`.** Primitive arguments (`Int`, `String`) and bare type parameters keep the optional. INVALID STATE: with `type StaircaseOutcome<L, S> = StaircaseStopped { last_sustained: L?, stop: S } | ...` (std.staircase), `match o { StaircaseStopped { last_sustained: l, stop: _ } => match l { Absent => true Present { value: _ } => false } _ => false }` over `o: StaircaseOutcome<Nat, S>` refuses at resolve with `dag/std/nat.dag:7:12: error: variant 'Absent' not found in type 'Nat'` (and the same for Present). `Nat` is the alias `CommutativeSemiring<Magnitude>`. The error is located at the alias declaration, not the use site.",
+
+    "CONTROLS (2026-09-29, claim_batch at /cargo-target/release/claim_batch built 2026-09-29T04:12). The identical match over `StaircaseOutcome<Int, S>` PASSES. `run_staircase` over Nat levels that completes, matched on `StaircaseCompleted { last_sustained: l } => l == ...`, PASSES. A generic record `Holder<L> { last: L? }` at `Holder<Nat>` matched directly on a function parameter PASSES. The same `Holder<Nat>` reached through an outer constructor's field pattern (`OuterHas { inner: Holder { last: l } }`) FAILS with the same error. Repros were written as throwaway witness files by proud-wolf-311 and handed to the compiler lane the parent dispatched for the fix.",
+
+    "SECOND SIGHTING, WHICH WIDENED THE CLASS (2026-09-29, product.capacity.cohort_observation on gunbc#12689's branch): `first_duplicate_by_key(xs: seats, key: ...)` with `seats: List<CohortSeatReading<K>>` returns `T?`, and `match ... { Present { value: d } => ... d.seat ... }` refused with `variant 'Present' not found in type 'CohortSeatReading'`, located at the parameter's declared type, not the match. No alias is involved, so the row's first name (`generic_optional_field_over_an_alias_argument_loses_the_optional`) named too narrow a class and was renamed before landing. That module is written with single-pass folds over sum-typed accumulators that never wrap a seat record in an optional, which is also its cheaper shape, so it carries no workaround to retire.",
+
+    "HARM: an author who meets this refuses nothing typed. The error names a std declaration the author did not touch, so the natural reading is that the edit broke `std.nat`; the natural move is to reshape the caller until the error goes away. proud-wolf-311 spent three resolve cycles restructuring V4.1 production code on a wrong theory of the defect before bisecting it. A workaround that binds the value through a function parameter declared `L?` resolves, which hides the deficit if it is not named.",
+
+    "WORKAROUND IN PLACE (named, bounded): test.claim.spark.v41_capacity_measurement_witness `w_nothing_sustained(l: Nat?)` receives the binding and matches it; the one claim that inspects `last_sustained` over Nat levels calls it. Population: that one call site. Production (gunbc.spark.v41_capacity_measurement v41_sla_capacity) passes the binding to `v41_last_or_below(l: Nat?)` and does not match it inline, so it is not affected.",
+
+    "DISTINGUISHING FACTS versus `list_head_bound_record_element_stays_t`: that class leaves a binder at the unrefined parameter `T`; this one refines `L` to the alias and then drops the `?` wrapper around it, and only for alias arguments -- a primitive argument keeps the optional.",
+
+    "RUNG FOUND AT: 1, mitigatable -- a typed function boundary at the call site. CEILING: 3, structurally guaranteed, once instantiating a generic `T?` with any argument -- primitive, alias or type application -- yields the optional of that argument for every binding path. NEXT-RUNG TRIGGER: the seed's substitution of a type argument into an optional type preserves the optional when the argument is a type application (alias or generic record), on the direct, nested field-pattern and returned-optional paths. SUFFICIENT FOR: deleting `w_nothing_sustained` and matching `last_sustained` inline in `the_signed_policy_records_ttft_at_262k_without_stopping_on_it`, with the V4.1 witness still 29/29.",
+  ],
+
+  evidence: [],
+}
