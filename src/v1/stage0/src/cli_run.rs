@@ -16976,14 +16976,8 @@ fn parse_module_heads_for_pool_census(
 ) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
     note_source_hash(index, &source);
     // One acquisition, not one per walk -- see `cli_run::pool_acquire`.
-    let tokens = pool_acquire::tokens_for(&source.path, &source.content);
     let nl_index = pool_acquire::newline_index_for(&source.path, &source.content);
     let current_table = index.intern_table.borrow().clone();
-    let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
-        let mut m = HashMap::new();
-        m.insert(source.path.clone(), nl_index.clone());
-        m
-    });
     // The HEADS reading of the grammar, not the full one. Every declaration head is
     // parsed by the same productions; brace-delimited fn bodies and data initializer
     // values are skipped at token grain instead of being built, because
@@ -16999,11 +16993,16 @@ fn parse_module_heads_for_pool_census(
     // can depend on, because the normalizer overwrites it — so the heads reading cannot
     // drift from the full reading through the body slot, only through the heads, which is
     // the surface the differential receipt measures.
-    let parsed = v1_compiler_parse::parse_heads_with_table(tokens, single_si, current_table);
-    *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+    //
+    // ONE HEADS READING PER FILE: the file-local reading `module_path_index` already took is
+    // PROJECTED into this pool's threaded intern/occurrence space (`census_heads::
+    // project_heads_reading`, a total map), not parsed a second time.
+    let local = pool_acquire::heads_reading_for(&source.path, &source.content);
+    let (result, table) = census_heads::project_heads_reading(&local, &current_table)?;
+    *index.intern_table.borrow_mut() = table;
     // Pool census needs declaration heads only — do NOT install full-body ASTs into
     // `parse_cache` here. Closure resolve retains full bodies on its own cache miss.
-    if let Some(err) = &parsed.result.error {
+    if let Some(err) = &result.error {
         let span = diagnostic_to_span(err.diagnostic.clone());
         let loc = format_error_loc(&span.file, span.start, &Rc::new(HashMap::new()));
         return Err(format!(
@@ -17012,7 +17011,7 @@ fn parse_module_heads_for_pool_census(
             diagnostic_to_message(err.diagnostic.clone())
         ));
     }
-    match &parsed.result.module {
+    match &result.module {
         Some(module) => Ok((
             v1_compiler_compile::census_heads_module_node(module.clone()),
             nl_index,
