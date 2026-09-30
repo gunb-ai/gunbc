@@ -503,7 +503,7 @@ type SolEstablishmentFailure
   | SolActivationUnrecorded { detail: String }
   | SolEstablishmentClockUnread { detail: String }
   | SolEstablishmentPaceRefused
-  | SolEstablishmentClockStalled { at_ms: Nat }
+  | SolEstablishmentClockStalled { uptime: Millisecond }
   | SolAdoptedActivationUnproven { collector: SolCollectorObservation, receipt: String }
 
 fn last_nonempty_line(s: String) -> String {
@@ -541,7 +541,7 @@ fn sol_establishment_failure_text(failure: SolEstablishmentFailure) -> String {
     SolActivationUnconfirmed { collector: o, allowance: a } => concat(sol_collector_observation_text(observation: o), concat(", but the session did not print its operational banner within ", concat(to_string(second_count(s: a)), " s, so activation is unconfirmed")))
     SolEstablishmentClockUnread { detail: d } => concat("the establishment deadline could not be measured, so activation is unconfirmed: ", d)
     SolEstablishmentPaceRefused => "the establishment wait could not pace its next poll, so activation is unconfirmed"
-    SolEstablishmentClockStalled { at_ms: t } => concat("the monotonic clock did not advance across a paced poll (uptime ", concat(to_string(t), " ms), so the establishment deadline cannot be measured and activation is unconfirmed"))
+    SolEstablishmentClockStalled { uptime: t } => concat("the monotonic clock did not advance across a paced poll (uptime ", concat(to_string(millisecond_count(m: t)), " ms), so the establishment deadline cannot be measured and activation is unconfirmed"))
     SolActivationUnrecorded { detail: d } => concat("the banner was seen but the activation receipt could not be recorded: ", d)
     SolAdoptedActivationUnproven { collector: o, receipt: r } => concat(sol_collector_observation_text(observation: o), concat("; no activation receipt names this instance, so an adopted collector is not taken as established (receipt: ", concat(if r == "" { "(none)" } else { r }, ")")))
   })
@@ -710,7 +710,7 @@ fn sol_await_establishment_until(pid_path: String, capture_path: String, allowan
   if !first {
     match sol_establishment_pace(paced: paced, previous: previous, now: now) {
       PaceRefused => return SolNotEstablished { failure: SolEstablishmentPaceRefused }
-      PaceClockStalled => return SolNotEstablished { failure: SolEstablishmentClockStalled { at_ms: millisecond_count(m: now) } }
+      PaceClockStalled => return SolNotEstablished { failure: SolEstablishmentClockStalled { uptime: now } }
       PaceAdvanced => {}
     }
   }
