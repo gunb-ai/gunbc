@@ -1,0 +1,256 @@
+module v2.test.provenance.image_occurrence_projection
+
+import std.types { Bool, Int }
+import v2.std.collection { Absent, Present, list_at_optional }
+import std.content_hash { Fnv1a64Structural, structural_content_hash }
+import std.occurrence_identity {
+  NodeOccurrenceIdentity,
+  OccurrenceAllocatorSnapshot,
+  OccurrenceId,
+  OccurrenceIdAllocator,
+  OccurrenceMinted,
+  OccurrenceProjected,
+  OccurrenceSynthetic,
+  ProjectedOccurrenceDerived,
+  ProjectedOrdinalOutOfRange,
+  ProjectedSourceNotAuthoredInSnapshot,
+  ScopedOccurrenceRef,
+  alloc_occurrence_id,
+  occurrence_allocator_seal,
+  occurrence_derived_span,
+  derive_projected_occurrence,
+  scoped_occurrence_ref_in_scope,
+}
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  ImageDerivationRefused,
+  ImageOccurrencesProjected,
+  ImageRootIsAlreadyProjected,
+  Node,
+  Positional,
+  TypeNode,
+  node_with_occurrence_id,
+  project_image_occurrences,
+}
+
+// Fixture: the parse allocator has handed out [0, 10), and the lowered source is authored occurrence
+// 5. Derived ids are 10 + cantor(5, k): k=1 -> 32, k=2 -> 40, k=3 -> 49.
+fn iop_scope() -> Fnv1a64Structural {
+  structural_content_hash(digest: "aaaaaaaaaaaaaaaa")
+}
+
+fn iop_foreign_scope() -> Fnv1a64Structural {
+  structural_content_hash(digest: "bbbbbbbbbbbbbbbb")
+}
+
+fn iop_snapshot() -> OccurrenceAllocatorSnapshot {
+  occurrence_allocator_seal(alloc: OccurrenceIdAllocator { next_id: 10 }, scope: iop_scope()).snapshot
+}
+
+fn iop_minted(id: Int) -> NodeOccurrenceIdentity {
+  OccurrenceMinted { id: OccurrenceId { value: id } }
+}
+
+fn iop_node(occurrence: NodeOccurrenceIdentity, children: List<Node>) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: map(children, c => Edge { label: Positional, target: c }),
+    occurrence_id: occurrence,
+  )
+}
+
+// An absent child reads as minted -1, which no assertion here accepts, so a missing position fails
+// every check instead of passing the synthetic one.
+fn iop_child(n: Node, i: Int) -> Node {
+  match list_at_optional(xs: n.children, index: i) {
+    Present { value: e } => e.target
+    Absent => iop_node(occurrence: iop_minted(id: -1), children: [])
+  }
+}
+
+fn iop_is_projected(n: Node, id: Int, source: Int) -> Bool {
+  match n.occurrence_id {
+    OccurrenceProjected { id: got, caused_by: cause } =>
+      got.value == id
+        && cause.occurrence.value == source
+        && scoped_occurrence_ref_in_scope(occurrence_ref: cause, scope: iop_scope())
+    OccurrenceMinted { id: _ } => false
+    OccurrenceSynthetic => false
+  }
+}
+
+fn iop_is_minted(n: Node, id: Int) -> Bool {
+  match n.occurrence_id {
+    OccurrenceMinted { id: got } => got.value == id
+    OccurrenceProjected { id: _, caused_by: _ } => false
+    OccurrenceSynthetic => false
+  }
+}
+
+fn iop_is_synthetic(n: Node) -> Bool {
+  match n.occurrence_id {
+    OccurrenceSynthetic => true
+    OccurrenceMinted { id: _ } => false
+    OccurrenceProjected { id: _, caused_by: _ } => false
+  }
+}
+
+// Every node of this image is stamped with source 5, as every lowering stamps today: a root, a
+// member with a nested member, a sub-image of ANOTHER source (7) that itself contains a source-5
+// member, and a synthetic node.
+fn iop_stamped_image() -> Node {
+  iop_node(occurrence: iop_minted(id: 5), children: [
+    iop_node(occurrence: iop_minted(id: 5), children: [iop_node(occurrence: iop_minted(id: 5), children: [])]),
+    iop_node(occurrence: iop_minted(id: 7), children: [iop_node(occurrence: iop_minted(id: 5), children: [])]),
+    iop_node(occurrence: OccurrenceSynthetic, children: []),
+  ])
+}
+
+// THE DISCRIMINATING CONTROL. Three derived members receive three distinct ids, each projected with
+// the source as its cause, and only the named root keeps OccurrenceMinted. A pass that stamped the
+// source back onto the members (the rule this change retires) leaves them minted with id 5 and goes red.
+test fn image_projection_three_derived_members_get_distinct_caused_ids_holds() -> Bool {
+  match project_image_occurrences(root: iop_stamped_image(), snapshot: iop_snapshot()) {
+    ImageOccurrencesProjected { root: r } =>
+      iop_is_minted(n: r, id: 5)
+        && iop_is_projected(n: iop_child(n: r, i: 0), id: 32, source: 5)
+        && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 0), i: 0), id: 40, source: 5)
+        && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 1), i: 0), id: 49, source: 5)
+    ImageRootIsAlreadyProjected { observed: _ } => false
+    ImageDerivationRefused { refusal: _ } => false
+  }
+}
+
+// A sub-image of another source and a synthetic node are walked through but never rewritten.
+test fn image_projection_leaves_other_sources_and_synthetic_nodes_untouched_holds() -> Bool {
+  match project_image_occurrences(root: iop_stamped_image(), snapshot: iop_snapshot()) {
+    ImageOccurrencesProjected { root: r } =>
+      iop_is_minted(n: iop_child(n: r, i: 1), id: 7) && iop_is_synthetic(n: iop_child(n: r, i: 2))
+    ImageRootIsAlreadyProjected { observed: _ } => false
+    ImageDerivationRefused { refusal: _ } => false
+  }
+}
+
+// NESTED SAME-SOURCE. An inner builder closed its own image of source 5, and the outer builder then
+// wraps it with another source-5 node and closes again. The inner image's ids are renumbered over
+// the whole outer image rather than restarting at k=1, so every id stays distinct.
+test fn image_projection_nested_same_source_images_yield_distinct_ids_holds() -> Bool {
+  match project_image_occurrences(
+    root: iop_node(occurrence: iop_minted(id: 5), children: [iop_node(occurrence: iop_minted(id: 5), children: [])]),
+    snapshot: iop_snapshot(),
+  ) {
+    ImageOccurrencesProjected { root: inner } =>
+      match project_image_occurrences(
+        root: iop_node(occurrence: iop_minted(id: 5), children: [iop_node(occurrence: iop_minted(id: 5), children: []), inner]),
+        snapshot: iop_snapshot(),
+      ) {
+        ImageOccurrencesProjected { root: r } =>
+          iop_is_minted(n: r, id: 5)
+            && iop_is_projected(n: iop_child(n: r, i: 0), id: 32, source: 5)
+            && iop_is_projected(n: iop_child(n: r, i: 1), id: 40, source: 5)
+            && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 1), i: 0), id: 49, source: 5)
+        ImageRootIsAlreadyProjected { observed: _ } => false
+        ImageDerivationRefused { refusal: _ } => false
+      }
+    ImageRootIsAlreadyProjected { observed: _ } => false
+    ImageDerivationRefused { refusal: _ } => false
+  }
+}
+
+// IDEMPOTENT. Closing an already-closed image yields the same identities.
+test fn image_projection_is_idempotent_holds() -> Bool {
+  match project_image_occurrences(root: iop_stamped_image(), snapshot: iop_snapshot()) {
+    ImageOccurrencesProjected { root: once } =>
+      match project_image_occurrences(root: once, snapshot: iop_snapshot()) {
+        ImageOccurrencesProjected { root: twice } =>
+          iop_is_projected(n: iop_child(n: twice, i: 0), id: 32, source: 5)
+            && iop_is_projected(n: iop_child(n: iop_child(n: twice, i: 0), i: 0), id: 40, source: 5)
+            && iop_is_projected(n: iop_child(n: iop_child(n: twice, i: 1), i: 0), id: 49, source: 5)
+        ImageRootIsAlreadyProjected { observed: _ } => false
+        ImageDerivationRefused { refusal: _ } => false
+      }
+    ImageRootIsAlreadyProjected { observed: _ } => false
+    ImageDerivationRefused { refusal: _ } => false
+  }
+}
+
+// A projection from ANOTHER allocator domain that happens to name ordinal 5 is not a member of this
+// image: membership is scoped, not ordinal equality.
+test fn image_projection_ignores_a_foreign_scope_cause_with_an_equal_ordinal_holds() -> Bool {
+  let foreign = node_with_occurrence_id(
+    kind: TypeNode { connective: Atom { identity: ^iop_foreign_probe } },
+    children: [],
+    occurrence_id: OccurrenceProjected {
+      id: OccurrenceId { value: 3 },
+      caused_by: ScopedOccurrenceRef { scope: iop_foreign_scope(), occurrence: OccurrenceId { value: 5 } },
+    },
+  )
+  match project_image_occurrences(root: iop_node(occurrence: iop_minted(id: 5), children: [foreign]), snapshot: iop_snapshot()) {
+    ImageOccurrencesProjected { root: r } =>
+      match iop_child(n: r, i: 0).occurrence_id {
+        OccurrenceProjected { id: got, caused_by: _ } => got.value == 3
+        OccurrenceMinted { id: _ } => false
+        OccurrenceSynthetic => false
+      }
+    ImageRootIsAlreadyProjected { observed: _ } => false
+    ImageDerivationRefused { refusal: _ } => false
+  }
+}
+
+// THE BOUND IS A TYPED REFUSAL. A source the snapshot's allocator never handed out cannot cause a
+// derived id, because N + cantor(source, k) is collision-free only over sources below N.
+test fn image_projection_refuses_a_source_outside_the_snapshot_holds() -> Bool {
+  match project_image_occurrences(
+    root: iop_node(occurrence: iop_minted(id: 12), children: [iop_node(occurrence: iop_minted(id: 12), children: [])]),
+    snapshot: iop_snapshot(),
+  ) {
+    ImageDerivationRefused { refusal: ProjectedSourceNotAuthoredInSnapshot { source: s, bound: b } } =>
+      s.value == 12 && b == 10
+    ImageDerivationRefused { refusal: _ } => false
+    ImageOccurrencesProjected { root: _ } => false
+    ImageRootIsAlreadyProjected { observed: _ } => false
+  }
+}
+
+test fn image_projection_derivation_refuses_ordinal_zero_holds() -> Bool {
+  match derive_projected_occurrence(snapshot: iop_snapshot(), source: OccurrenceId { value: 5 }, ordinal: 0) {
+    ProjectedOrdinalOutOfRange { source: s, ordinal: o } => s.value == 5 && o == 0
+    ProjectedSourceNotAuthoredInSnapshot { source: _, bound: _ } => false
+    ProjectedOccurrenceDerived { identity: _ } => false
+  }
+}
+
+// An image root that is itself projected has no authored source to keep, so closing it is refused.
+test fn image_projection_refuses_a_projected_root_holds() -> Bool {
+  let root = node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: OccurrenceProjected {
+      id: OccurrenceId { value: 32 },
+      caused_by: ScopedOccurrenceRef { scope: iop_scope(), occurrence: OccurrenceId { value: 5 } },
+    },
+  )
+  match project_image_occurrences(root: root, snapshot: iop_snapshot()) {
+    ImageRootIsAlreadyProjected { observed: _ } => true
+    ImageOccurrencesProjected { root: _ } => false
+    ImageDerivationRefused { refusal: _ } => false
+  }
+}
+
+// THE SEAL RESERVES THE DERIVED RANGE. The first id the continuation allocator hands out lies above
+// the largest id the derivation can produce for this snapshot, so allocation after the seal cannot
+// collide with a derived id. A seal that returned the original allocator would hand out 10, the
+// first id of the derived range, and this control would go red.
+test fn image_projection_seal_continuation_allocates_above_every_derived_id_holds() -> Bool {
+  let seal = occurrence_allocator_seal(alloc: OccurrenceIdAllocator { next_id: 10 }, scope: iop_scope())
+  let first_after = alloc_occurrence_id(alloc: seal.continuation).id.value
+  match derive_projected_occurrence(snapshot: seal.snapshot, source: OccurrenceId { value: 9 }, ordinal: 1073741823) {
+    ProjectedOccurrenceDerived { identity: OccurrenceProjected { id: largest, caused_by: _ } } =>
+      first_after > largest.value && first_after == 10 + occurrence_derived_span()
+    ProjectedOccurrenceDerived { identity: _ } => false
+    ProjectedSourceNotAuthoredInSnapshot { source: _, bound: _ } => false
+    ProjectedOrdinalOutOfRange { source: _, ordinal: _ } => false
+  }
+}

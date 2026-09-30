@@ -14,9 +14,9 @@ import v2.compiler.reference_conservation {
   OccurrenceRoleTableUnadmitted
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.compiler.occurrence_role { NameProductionTableAdmission, NameProductionTableRefused }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { fold_list, length }
+import v2.compiler.occurrence_role { NameProductionTableAdmission, NameProductionTableRefused, NameRoleNotYetRead, dag_name_production_rows, name_production_table_admission, name_row }
+import v2.extdeps.languages.dag { dag_grammar_root, dag_language_model }
+import v2.std.algebra { fold_list, length, list_map }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -447,12 +447,22 @@ test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -
 
 // ---- roles are observed whatever normalization does (review 5330814496) -----------------------
 
-// A module that parses and whose normalization refuses (an else-less `if` statement). It also
-// holds one transport member, the one production the role producer does not read (its name selects
-// a transport kind, and no role describes that yet), so an observed role pass counts exactly one
-// not-yet-read node. Before the repair the refusal arm never ran the role producer and reported
-// zero, a gap nobody had observed.
-data normalization_refused_source: String = "module v2.test.reference_conservation_refused\n\nservice rc.Svc {\n  operation RcOp {\n    transport shell { argv: [] }\n  }\n}\n\nfn rc_guard(c: Bool, n: Int) -> Int {\n  if c { return n }\n  n\n}\n"
+// A module that parses and whose normalization refuses (an else-less `if` statement). Every
+// name-bearing production of the `.dag` grammar is now read, so a live gap no longer exists to observe;
+// the gap is PLANTED AT THE INTERFACE instead: the role table is the real one with its param_list row
+// supplied as NameRoleNotYetRead, and the module's one fn has one parameter list, so an observed role
+// pass counts exactly one not-yet-read node. Before the repair the refusal arm never ran the role
+// producer and reported zero, a gap nobody had observed.
+data normalization_refused_source: String = "module v2.test.reference_conservation_refused\n\nfn rc_guard(c: Bool, n: Int) -> Int {\n  if c { return n }\n  n\n}\n"
+
+fn planted_param_list_unread_admission() -> NameProductionTableAdmission {
+  name_production_table_admission(
+    root: dag_grammar_root(),
+    rows: list_map(xs: dag_name_production_rows(), f: fn(row) {
+      if row.production == ^dag_production_param_list { name_row(production: row.production, disposition: NameRoleNotYetRead) } else { row }
+    })
+  )
+}
 
 fn normalization_refused_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "normalization_refused", source: normalization_refused_source)
@@ -463,7 +473,7 @@ fn refusal_accounts_for_population(r: ReferenceConservationReport) -> Bool {
 }
 
 test fn a_refused_normalization_still_reports_observed_role_gaps_holds() -> Bool {
-  let r = conservation_report_of(subject: normalization_refused_subject())
+  let r = reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_param_list_unread_admission())
   refusal_accounts_for_population(r: r) && r.role_not_yet_read == 1 && r.role_reader_refused == 0 && length(xs: r.unmeasured) == 0
 }
 
