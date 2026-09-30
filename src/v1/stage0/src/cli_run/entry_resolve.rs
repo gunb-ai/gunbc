@@ -883,10 +883,10 @@ fn release_per_entry_graphs_on_live_pool_thread() {
     });
 }
 
-/// AT MOST ONE RESIDENT POOL PER SLOT, ASSERTED. The memo keeps every pool a thread demands, so a
-/// run's retention is the number of distinct root sets that entered it; the floor and the regen
-/// round each demand one per precedence, and a one-shot reader owns its own index instead. A second
-/// resident pool is a demand that should have been released, so it refuses rather than printing.
+/// AT MOST ONE RESIDENT POOL PER SLOT, the positive control of the build-site refusal in
+/// `try_process_shared_index_for_pool`. That refusal makes a second pool unbuildable through the
+/// memo; this reads the memo back at the end of the floor and of a regen round, so a route that
+/// ever installed one another way would still refuse rather than print.
 pub(crate) fn shared_index_residency_control() -> Result<usize, String> {
     PROCESS_RESOLVE_INDEX.with(|s| {
         let slots = s.borrow();
@@ -959,6 +959,24 @@ pub fn try_process_shared_index_for_pool(
     let existing = PROCESS_RESOLVE_INDEX.with(|s| s.borrow()[slot].get(&roots_key).cloned());
     if let Some(idx) = existing {
         return Ok(idx);
+    }
+    // A SECOND POOL IS REFUSED WHERE IT WOULD BE BUILT, before it is walked, parsed and held
+    // beside the first. Every production caller passes the run's own roots or owns a private
+    // index for a pool nothing else reads (the audit that retired
+    // `gunbc.rung_drop.shared_index_residency_asserted_after_the_run`), so a different key here
+    // is a new demand for a second resident pool: carry it to its own index
+    // (`build_multi_entry_index`), never into the shared memo.
+    let resident = PROCESS_RESOLVE_INDEX.with(|s| s.borrow()[slot].keys().next().cloned());
+    if let Some(resident) = resident {
+        let site = std::panic::Location::caller();
+        return Err(format!(
+            "SharedIndexSecondResidentPool: slot {slot} already holds roots {:?}; roots {roots:?} \
+             demanded at {}:{} would be a second resident pool on this thread -- a reader of \
+             another pool owns its index (build_multi_entry_index), not a slot in the shared memo",
+            resident.split('\u{1f}').collect::<Vec<_>>(),
+            site.file(),
+            site.line()
+        ));
     }
     #[cfg(test)]
     yield_live_pool_before_building_another();
