@@ -27,9 +27,8 @@ import v2.std.node {
 }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
-import v2.test.parse.supplied_token_stream_support { supplied_stream_parse }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import std.algebra { Empty }
@@ -208,29 +207,42 @@ test fn occurrence_wall_admits_a_closed_allocated_image_holds() -> Bool {
   }
 }
 
-// THE REAL PATH. One function declaration with three parameters -- whose image is the Arrow with a
-// domain, an order transform, a head spine and one label per parameter -- through tokenize, parse
-// and normalize. The per-construct builders are exercised by the floor's own normalize population;
-// this claim asserts the ROUTE on the smallest input that has a multi-member image. It must be admitted (so the
-// wall found no duplicated minted id), and the ROUTE is asserted: it must hold projected occurrences,
-// each caused by an occurrence still minted in the same tree. A normalize that reached admission
-// without closing any image would be refused; one whose builders stamped nothing derived would hold
-// no projected occurrence and fail the count.
-data iop_real_module: String = "module iop.real
+// THE REAL PATH. One function declaration with two parameters -- whose image is the Arrow with a
+// domain, an order transform, a head spine and one label per parameter -- through the real parse and
+// normalize. The token stream is SUPPLIED (tokenize is not this claim's subject, and paying for it
+// here is what put the claim over its budget); the next claim pairs that supply with the real
+// tokenizer, so supplying it removes no execution of the real path (DESIGN section 3).
+data iop_real_text: String = "module m\n\nfn f(a: Int, b: Int) -> Int {\n  a\n}\n"
 
-fn pick(a: Int, b: Int, c: Int) -> Int {
-  a
+fn iop_real_tokens() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^image_occurrence_real_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^image_occurrence_real_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^image_occurrence_real_probe, start: 10, end: 12 },
+    Token { class: ^dag_token_ident, lexeme: "f", file: ^image_occurrence_real_probe, start: 13, end: 14 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^image_occurrence_real_probe, start: 14, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "a", file: ^image_occurrence_real_probe, start: 15, end: 16 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^image_occurrence_real_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^image_occurrence_real_probe, start: 18, end: 21 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^image_occurrence_real_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_ident, lexeme: "b", file: ^image_occurrence_real_probe, start: 23, end: 24 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^image_occurrence_real_probe, start: 24, end: 25 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^image_occurrence_real_probe, start: 26, end: 29 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^image_occurrence_real_probe, start: 29, end: 30 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^image_occurrence_real_probe, start: 31, end: 33 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^image_occurrence_real_probe, start: 34, end: 37 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^image_occurrence_real_probe, start: 38, end: 39 },
+    Token { class: ^dag_token_ident, lexeme: "a", file: ^image_occurrence_real_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^image_occurrence_real_probe, start: 44, end: 45 }
+  ])
 }
-"
 
 fn iop_real_normalized() -> Outcome<NormalizedTree> {
-  bind_outcome(
-    o: bind_outcome(
-      o: tokenize(text: iop_real_module, file: ^image_occurrence_real_probe, rules: dag_lex()),
-      f: fn(tokens) { supplied_stream_parse(tokens: tokens) }
-    ),
-    f: fn(tree) { normalize(parse_tree: tree) }
-  )
+  bind_outcome(o: supplied_stream_parse(tokens: iop_real_tokens()), f: fn(tree) { normalize(parse_tree: tree) })
+}
+
+test fn image_real_tokens_are_what_the_tokenizer_emits_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: iop_real_text, file: ^image_occurrence_real_probe, supplied: iop_real_tokens())
 }
 
 fn iop_projected_count(n: Node) -> Int {

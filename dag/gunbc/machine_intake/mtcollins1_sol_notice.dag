@@ -108,7 +108,8 @@ fn sol_notice_source(path: String) -> SolNoticeSource {
 fn sol_source_text(source: SolNoticeSource) -> String {
   match source {
     SolSourceRead { content: c } => c
-    _ => ""
+    SolSourceAbsent => ""
+    SolSourceUnreadable { path: _, cause: _ } => ""
   }
 }
 
@@ -346,7 +347,8 @@ fn sol_notice_observe(paths: SolNoticePaths) -> SolNoticePassResult {
 fn sol_notice_delivery_settled(d: SolNoticeDelivery) -> Bool {
   match d {
     SolNoticeDeliveryFailed { kind: _, identity: _, channel: _, error: _ } => false
-    _ => true
+    SolNoticeDelivered { kind: _, identity: _, channel: _ } => true
+    SolNoticeAlreadyDelivered { kind: _, identity: _, channel: _ } => true
   }
 }
 

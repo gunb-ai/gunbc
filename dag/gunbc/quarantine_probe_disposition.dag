@@ -445,7 +445,15 @@ fn quarantine_probe_dispositions_all_hold(
 fn admission_is_quarantine_probe(row: ExplicitWitnessAdmission) -> Bool {
   match row.cadence {
     QuarantineProbeExpectRed => true
-    _ => false
+    DiscoverySelection => false
+    FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
+    BinWitnessWet => false
+    LocalRepoWetLane => false
+    OfflineLocalRecipe => false
+    FixtureExplicitRoster => false
+    NoConsumer => false
   }
 }
 

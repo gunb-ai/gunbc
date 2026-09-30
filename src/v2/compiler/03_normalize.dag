@@ -400,14 +400,33 @@ fn bind_retention_free(o: Outcome<BodyLoweredTree>) -> Outcome<Node> {
 // shell is the earlier fact, and it is why either of them would refuse. v2.compiler.normalized_tree
 // admit_retention_free is where the retained list is consumed and the Node leaves the lowering
 // carrier; nothing downstream of it holds a retention to drop.
+// WHERE THE ALLOCATOR COMES FROM, RESOLVED ONLY WHERE IT IS USED. An isolated allocator starts after the
+// tree's highest id, which is a walk over the parse tree; resolving it only once lowering and the
+// graft have succeeded means a normalize that refuses earlier pays nothing for an allocation it
+// never makes.
+type NormalizeAllocatorSource
+  = NormalizeWithIngestAllocator { allocator: ScopedOccurrenceAllocator }
+  | NormalizeWithIsolatedAllocator
+
+fn normalize_allocator_resolve(source: NormalizeAllocatorSource, parse_tree: ParseTree) -> ScopedOccurrenceAllocator {
+  match source {
+    NormalizeWithIngestAllocator { allocator: a } => a
+    NormalizeWithIsolatedAllocator => normalize_isolated_allocator(parse_tree: parse_tree)
+  }
+}
+
 fn normalize_scoped(parse_tree: ParseTree, allocator: ScopedOccurrenceAllocator) -> Outcome<ScopedNormalizedTree> {
+  normalize_with(parse_tree: parse_tree, source: NormalizeWithIngestAllocator { allocator: allocator })
+}
+
+fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Outcome<ScopedNormalizedTree> {
   match bind_retention_free(o: normalize_node(n: parse_tree)) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>
       match normalize_module_graft_finish(folded: normalized, cd: d) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: lowered, diagnostics: d1 } =>
-          let allocated = allocate_pending_occurrences(root: lowered, allocator: allocator)
+          let allocated = allocate_pending_occurrences(root: lowered, allocator: normalize_allocator_resolve(source: source, parse_tree: parse_tree))
           let grafted = allocated.root
           if well_formed(n: grafted) {
             let parse_nodes = node_subtree_nodes(root: parse_tree)
@@ -467,7 +486,7 @@ fn normalize_isolated_allocator(parse_tree: ParseTree) -> ScopedOccurrenceAlloca
 
 // A tree normalized on its own, for every caller that is not threading an ingest's allocator.
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
-  match normalize_scoped(parse_tree: parse_tree, allocator: normalize_isolated_allocator(parse_tree: parse_tree)) {
+  match normalize_with(parse_tree: parse_tree, source: NormalizeWithIsolatedAllocator) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
   }

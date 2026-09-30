@@ -293,11 +293,13 @@ test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
 // clauses run in that order: Absent absorbing from either side, then the Drifted row the
 // wildcard used to answer, then converged reachable only when both sides are converged.
 test fn witness_converge_verdict_meet_is_total_over_every_pair() -> Bool {
-  converge_verdict_label(v: converge_verdict_meet(a: Absent, b: Absent)) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: Absent, b: Drifted)) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: Absent, b: VerdictConverged)) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: Absent)) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: Absent)) == "absent"
+  let absent = converge_verdict(effective: "", expected: "x")
+  converge_verdict_label(v: absent) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: absent, b: absent)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: absent, b: Drifted)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: absent, b: VerdictConverged)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: absent)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: absent)) == "absent"
     && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: Drifted)) == "drifted"
     && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: VerdictConverged)) == "drifted"
     && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: Drifted)) == "drifted"
