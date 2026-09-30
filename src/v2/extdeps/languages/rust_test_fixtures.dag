@@ -4024,7 +4024,10 @@ fn rust_shell_exec_run_family_argv() -> List<String> {
 }
 
 fn rust_shell_exec_run_family_argv_token(index: Int) -> String {
-  rust_shell_exec_run_family_argv().skip(n: index).first()
+  match rust_shell_exec_run_family_argv().skip(n: index).first() {
+    Present { value: token } => token
+    Absent => rust_shell_exec_run_family_refusal_marker
+  }
 }
 
 fn rust_shell_exec_run_family_prelude() -> String {

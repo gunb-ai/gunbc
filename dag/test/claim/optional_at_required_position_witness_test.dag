@@ -262,3 +262,18 @@ test fn a_coproducts_own_absent_arm_at_its_declared_positions_still_compiles() -
       []
     )
 }
+
+// THE DECLARED RESIDUAL, ENROLLED AS WHAT IT IS. An index access types as optional and realizes in
+// Rust as the bare element, so its optionality is not established across the two acceptance paths
+// and these positions raise no cardinality obligation for it (v1.compiler.infer
+// expr_value_is_index_access; the seed's own tokenizer returns `chars[pos]` at a declared Int).
+// This claim pins the admission so the residual is an executed fact rather than a sentence: it
+// goes red the day the index model and its realization are reconciled and the wall reaches index
+// values, and on that day it flips to a refusal count, it does not retire.
+fn oar_index_residual_source() -> String {
+  "module oar.index_residual\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\nfn probe(xs: List<Int>) -> Int {\n  xs[0]\n}\n\nfn probe_field(xs: List<Int>) -> Code {\n  Code { code: xs[0] }\n}\n"
+}
+
+test fn an_index_access_at_a_required_position_is_the_declared_residual() -> Bool {
+  not_inhabited_blocking_count(source: oar_index_residual_source()) == 0
+}

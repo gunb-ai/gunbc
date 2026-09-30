@@ -2818,9 +2818,16 @@ fn project_enrollment_witness_demands(
           if demand_rows_match_roster(roster: roster, rows: rows) {
             DemandQualified { rows: rows }
           } else {
-            DemandIncomplete {
-              check: roster.first().check,
-              cause: "projected demand check set does not equal input roster" as NonEmptyStr
+            match roster.first() {
+              Present { value: head } =>
+                DemandIncomplete {
+                  check: head.check,
+                  cause: "projected demand check set does not equal input roster" as NonEmptyStr
+                }
+              Absent =>
+                DemandRosterAmbiguous {
+                  cause: "projected demand check set does not equal input roster" as NonEmptyStr
+                }
             }
           }
     }

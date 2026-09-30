@@ -1731,6 +1731,7 @@ pub fn explicit_return_conformance_diags(
                     "".to_string(),
                     declared.clone(),
                     expression_value_type(returned.clone()),
+                    returned.clone(),
                     returned.span.clone(),
                     scope.clone(),
                 ))
@@ -1953,6 +1954,7 @@ pub fn declared_type_conformance_diags(
     subject: String,
     declared: Rc<Node>,
     produced: Rc<Node>,
+    produced_by: Rc<Node>,
     span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -1960,7 +1962,7 @@ pub fn declared_type_conformance_diags(
         let si = scope.type_env.clone().source_indices.clone();
         let both_ground = (conformance_ground_type(declared.clone(), si.clone())
             && conformance_ground_type(produced.clone(), si.clone()));
-        let cardinality_diags = optional_at_required_obligation_diags(
+        let cardinality_diags = optional_at_required_value_obligation_diags(
             Rc::new(DeclaredTypeObligation {
                 position: position.clone(),
                 subject: subject.clone(),
@@ -1968,6 +1970,7 @@ pub fn declared_type_conformance_diags(
                 produced: produced.clone(),
                 span: span.clone(),
             }),
+            produced_by.clone(),
             scope.clone(),
         );
         if ((cardinality_diags.clone().len() as i64) > 0) {
@@ -5769,12 +5772,89 @@ pub fn optional_produced_at_required_declared(
                 source_indices.clone(),
                 declared_peeled.clone(),
             )) == "Optional".to_string()));
-        ((((((produced_carries_optional.clone() && !declared_carries_optional.clone())
+        let declared_required = match crate::v1_compiler_infer_env::lookup_type_for(
+            scope.type_env.clone(),
+            crate::v1_std_core::with_required_cardinality(declared.clone()),
+        ) {
+            Some(resolved) => resolved.clone(),
+            std::option::Option::None => {
+                crate::v1_std_core::with_required_cardinality(declared.clone())
+            }
+        };
+        let declared_expanded =
+            crate::v1_compiler_infer_patterns::expand_scrut_type_for_variant_lookup(
+                declared_required.clone(),
+                scope.type_env.clone(),
+            );
+        let declared_owns_an_optional_arm_name = ((declared_expanded.connective.clone()
+            == Connective::Disj)
+            && (crate::v1_std_core::has_child_named(
+                declared_expanded.clone(),
+                "Absent".to_string(),
+                source_indices.clone(),
+            ) || crate::v1_std_core::has_child_named(
+                declared_expanded.clone(),
+                "Present".to_string(),
+                source_indices.clone(),
+            )));
+        let produced_optional_by_name_only =
+            (produced.return_cardinality.clone() != Cardinality::CardOptional);
+        (((((((produced_carries_optional.clone()
+            && !(produced_optional_by_name_only.clone()
+                && declared_owns_an_optional_arm_name.clone()))
+            && !declared_carries_optional.clone())
             && !declared_is_generic.clone())
             && (declared_name.clone() != "".to_string()))
             && !type_node_is_callable(declared.clone()))
             && !type_node_is_callable(produced.clone()))
             && !direct_call_formal_has_unbound_type_variable(declared.clone()))
+    }
+}
+
+pub fn expr_value_is_index_access(mut __tco_loop_e: Rc<Node>) -> bool {
+    loop {
+        #[allow(unused_mut)]
+        let mut e = __tco_loop_e;
+        match (*e.expr_data.clone()).clone() {
+            ExprData::ExprIndex => {
+                break true;
+            }
+            ExprData::ExprLet => match crate::v1_std_core::let_body(e.clone()) {
+                Some(body) => {
+                    let __tco_0 = body.clone();
+                    __tco_loop_e = __tco_0;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break false;
+                }
+            },
+            ExprData::ExprBlock => match e.children.clone().last().cloned() {
+                Some(tail) => {
+                    let __tco_0 = tail.clone();
+                    __tco_loop_e = __tco_0;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break false;
+                }
+            },
+            _ => {
+                break false;
+            }
+        }
+    }
+}
+
+pub fn optional_at_required_value_obligation_diags(
+    obligation: Rc<DeclaredTypeObligation>,
+    produced_by: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if expr_value_is_index_access(produced_by.clone()) {
+        Rc::new(vec![])
+    } else {
+        optional_at_required_obligation_diags(obligation.clone(), scope.clone())
     }
 }
 
@@ -13698,6 +13778,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         let_name.clone(),
                         declared.clone(),
                         produced_value_type.clone(),
+                        val_typed.clone(),
                         val_expr.span.clone(),
                         scope.clone(),
                     );
@@ -16311,13 +16392,13 @@ let field_type_diags = match field_declared_type.clone() {
 let field_cardinality_diags = if direct_call_formal_has_unbound_type_variable(field_conformance_type.clone()) {
                     Rc::new(vec![])
                 } else {
-                    optional_at_required_obligation_diags(Rc::new(DeclaredTypeObligation {
+                    optional_at_required_value_obligation_diags(Rc::new(DeclaredTypeObligation {
     position: DeclaredTypePosition::PositionRecordLiteralField,
     subject: fi_name.clone(),
     declared: expected_node.clone(),
     produced: got_node.clone(),
     span: ar_typed.span.clone(),
-}), scope.clone())
+}), ar_typed.clone(), scope.clone())
                 };
 if direct_call_formal_has_unbound_type_variable(field_conformance_type.clone()) {
                     Rc::new(vec![])
@@ -21973,6 +22054,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 "".to_string(),
                                 declared_return_type_node(item.clone()),
                                 crate::v1_compiler_infer_types::resolved_type(body_typed.clone()),
+                                body_typed.clone(),
                                 item.body.clone().clone().unwrap().span.clone(),
                                 scope.clone(),
                             ),
@@ -22080,6 +22162,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                         "".to_string(),
                                         item.type_annotation.clone().clone().unwrap(),
                                         expression_value_type(val_typed.clone()),
+                                        val_typed.clone(),
                                         item.body.clone().clone().unwrap().span.clone(),
                                         scope.clone(),
                                     ),
