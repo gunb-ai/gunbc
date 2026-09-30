@@ -504,38 +504,6 @@ fn dag_string_escape_char_pattern() -> LexPattern {
   }
 }
 
-// THE TEXT A STRING LITERAL DENOTES, read against the escape table above and nowhere else: each
-// escape pair collapses to the one scalar it stands for (`\n` and a raw line feed are the same
-// scalar, `\"` is `"`), every other scalar stands for itself. Two literals denote the same text
-// exactly when their decoded texts are equal, which is what a spelling comparison gets wrong. The
-// lexeme is decoded whole, delimiters included; they are identical on every literal, so they cannot
-// separate two keys. Consumed by v2.compiler.resolve's map arm (duplicate keys,
-// docs/plans/map-literal-introduction-design.md). Linear: scalars are pushed on the persistent
-// list and joined once.
-type DagStringLiteralDecode {
-  escaped: Bool
-  scalars: List<String>
-}
-
-// The scalar an escape's second code point stands for: `n` (110) is line feed (10), `t` (116) is
-// tab (9), and every other escapable scalar (`"`, `\`, `{`, `}`) stands for itself.
-fn dag_string_escape_decoded(cp: Int) -> Int {
-  if cp == 110 { 10 } else if cp == 116 { 9 } else { cp }
-}
-
-fn dag_string_literal_decoded_text(lexeme: String) -> String {
-  let decoded = fold(chars(s: lexeme), init: DagStringLiteralDecode { escaped: false, scalars: [] }, f: fn(acc, cp) {
-    if acc.escaped {
-      DagStringLiteralDecode { escaped: false, scalars: list_snoc_item(xs: acc.scalars, item: from_code_point(cp: dag_string_escape_decoded(cp: cp))) }
-    } else if cp == 92 {
-      DagStringLiteralDecode { escaped: true, scalars: acc.scalars }
-    } else {
-      DagStringLiteralDecode { escaped: false, scalars: list_snoc_item(xs: acc.scalars, item: from_code_point(cp: cp)) }
-    }
-  })
-  join(decoded.scalars, "")
-}
-
 fn dag_string_escape_sequence_pattern() -> LexPattern {
   SequencePattern {
     left: CharPattern { char: 92 },

@@ -316,7 +316,7 @@ data known_frontier_causes: List<CauseOwnership> = [
     cause: ^resolve_anonymous_map_duplicate_key,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a map literal whose keys repeat under the key type's equality (decoded text: v2.extdeps.languages.dag dag_string_literal_decoded_text), judged by the one key law v2.std.map_introduction map_introduction_duplicate_key and refused at the SECOND occurrence, never last-wins. Not a frontier: each occurrence is a source defect and flips when the repeated entry is removed"
+    flip_trigger: "a map literal whose keys repeat under the key type's equality (decoded text, via the decoder gunbc#12759 lands), judged by the one key law v2.std.map_introduction map_introduction_duplicate_key and refused at the SECOND occurrence, never last-wins. Not a frontier: each occurrence is a source defect and flips when the repeated entry is removed"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_brace_key_kind_mismatch,

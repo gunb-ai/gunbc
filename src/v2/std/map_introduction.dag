@@ -79,7 +79,7 @@ fn map_introduction_expected_head_is_map(path: QualifiedName) -> Bool {
 
 // THE KEY LAW: the first repeated key, in authored order, as a VALUE -- never a hole, never
 // last-wins. `keys` are the entries' keys already reduced to the key type's declared equality (for
-// string-literal keys, the decoded text: v2.extdeps.languages.dag dag_string_literal_decoded_text),
+// string-literal keys, the decoded text that gunbc#12759's decoder supplies),
 // so equal elements are equal keys. One pass over a map from key to its first index: linear.
 type MapIntroductionKeys
   = MapIntroductionKeysDistinct

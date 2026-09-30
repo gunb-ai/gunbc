@@ -13,7 +13,7 @@ import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.extdeps.languages.dag { dag_language_model, dag_string_literal_decoded_text }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
@@ -202,12 +202,6 @@ test fn ml_the_key_law_names_both_occurrences_holds() -> Bool {
       MapIntroductionKeysDistinct => true
       MapIntroductionKeyRepeated { first_index: _, second_index: _ } => false
     }
-}
-
-// The decoder is the one the key law reads: an escape collapses to its scalar.
-test fn ml_the_decoder_collapses_escapes_holds() -> Bool {
-  (dag_string_literal_decoded_text(lexeme: "\"a\\nb\"") == dag_string_literal_decoded_text(lexeme: "\"a\nb\""))
-    && (dag_string_literal_decoded_text(lexeme: "\"a\\\\nb\"") != dag_string_literal_decoded_text(lexeme: "\"a\nb\""))
 }
 
 // Control 5: K is not the type a string literal denotes, so the key refuses where it is written.

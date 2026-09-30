@@ -15,9 +15,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
   dag_kernel_string_type_spelling,
-  dag_lexeme_is_string_literal,
   dag_kernel_type_binding_optional,
-  dag_string_literal_decoded_text,
   dag_kernel_type_declaration_binding_optional,
   dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
@@ -1783,7 +1781,7 @@ fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpecta
 //     included -- is a text crossing no route declares here); else
 //     resolve_anonymous_map_key_kind_mismatch at the first key;
 //   - no key may repeat, judged by the key type's equality -- for string literals, decoded text
-//     (v2.extdeps.languages.dag dag_string_literal_decoded_text) -- through the ONE key law,
+//     (the decoder gunbc#12759 lands; until then no key has text and the arm refuses at it) -- through the ONE key law,
 //     v2.std.map_introduction map_introduction_duplicate_key; a repeat refuses
 //     resolve_anonymous_map_duplicate_key at its SECOND occurrence. Never last-wins.
 //
@@ -1879,20 +1877,15 @@ fn resolve_map_entry_key(entry: Node) -> Node {
   }
 }
 
-// A KEY'S TEXT, OR NONE. Only a key that carries its own string-literal lexeme has text to compare;
-// a key lowered to a class-stamped atom with no payload (gunbc.recurring_failure_mode
-// string_literal_lowers_to_one_class_stamped_atom) has none, and reading one would make every pair of
-// keys equal -- a fabricated duplicate. So such a key is Absent, and the arm refuses at it.
+// A KEY'S TEXT, OR NONE. A string literal lowers today to one class-stamped atom with no payload
+// (gunbc.recurring_failure_mode string_literal_lowers_to_one_class_stamped_atom), so NO key has text
+// to compare, and comparing payload-less keys would call every pair a duplicate. Every key is
+// therefore Absent and the arm refuses at the first one. The text arrives with the lexeme-stamped
+// string terminal and its one decoder (sleek-owl-120, gunbc#12759,
+// v2.extdeps.languages.dag dag_string_literal_decoded_text, which also refuses a malformed escape);
+// this reader is where that decoder is consumed, and no second decoder is written here.
 fn resolve_map_key_text_optional(key: Node) -> Optional<String> {
-  match key.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if dag_lexeme_is_string_literal(sym: id) {
-        optional_present(value: dag_string_literal_decoded_text(lexeme: symbol_lexeme(sym: id)))
-      } else {
-        optional_absent()
-      }
-    _ => optional_absent()
-  }
+  optional_absent()
 }
 
 fn resolve_map_first_textless_key(items: List<Edge>) -> Optional<Node> {
