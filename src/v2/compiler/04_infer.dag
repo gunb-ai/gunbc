@@ -164,6 +164,7 @@ import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, Type
 import v2.std.coercion { coercion_cast_crossing }
 import v2.std.node_query {
   FieldProjection,
+  construct_tag_path_optional,
   declared_field_named,
   field_projection_optional,
   find_named_child,
@@ -2237,11 +2238,23 @@ fn infer_match_field_type_instantiated(field_type: Node, instances: List<TypeVar
   }
 }
 
-// AN ARM PATTERN, READ. A resolved constructor pattern is a Conj whose FIRST edge is labelled by the
-// variant's tag (its target is the tag's resolved reference) and whose remaining edges are the fields
-// it names; a nullary variant written bare is a declaration reference alone; `_` is the wildcard.
-// Nested and literal field patterns are not read here: they narrow what an arm covers, and an arm this
-// stage cannot account for refuses rather than being counted as covering its variant.
+// AN ARM PATTERN, READ THROUGH THE CONSTRUCT ENCODING'S OWN AUTHORITY. A resolved constructor pattern is
+// a Conj whose FIRST edge carries the fixed v2.std.node_query construct_tag_marker() and whose TARGET is
+// the tag's declaration reference; the remaining edges are the fields it names. A nullary variant written
+// bare is a declaration reference alone; `_` is the wildcard. Nested and literal field patterns are not
+// read here: they narrow what an arm covers, and an arm this stage cannot account for refuses rather than
+// being counted as covering its variant.
+//
+// THE TAG IS ASKED OF construct_tag_path_optional RATHER THAN READ OFF THE FIRST EDGE'S LABEL, and that
+// is not a refactor -- it is the repair for reading the encoding through a second, positional scheme.
+// This reader took the first edge's LABEL to BE the variant tag, which was true of the encoding before
+// gunbc#12714 made a construct tag a declaration reference. After it, that label is always the marker, so
+// every constructor arm looked up the MARKER as a variant name: the positives went red and
+// mbt_a_variant_the_coproduct_does_not_declare_refuses kept passing FOR THE WRONG REASON -- it wants an
+// undeclared variant to refuse, and every variant had become undeclared.
+//
+// That is the §3 lesson in miniature: the encoding has one reader, and a consumer that re-derives the tag
+// from edge positions is a second authority that decays silently the moment the encoding moves.
 type InferCoproductArmPattern
   = ArmPatternVariant { tag: Symbol, fields: List<Edge> }
   | ArmPatternWildcard
@@ -2259,21 +2272,17 @@ fn infer_coproduct_arm_pattern(pat: Node) -> InferCoproductArmPattern {
             Absent => ArmPatternUnread
           }
         Absent =>
-          match pat.kind {
-            TypeNode { connective: Conj } =>
-              match list_at_optional(xs: pat.children, index: 0) {
+          match construct_tag_path_optional(n: pat) {
+            Absent => ArmPatternUnread
+            Present { value: path } =>
+              match qualified_name_last_segment(qn: path) {
                 Absent => ArmPatternUnread
-                Present { value: tag_edge } =>
-                  match tag_edge.label {
-                    Named { name: tag } =>
-                      match list_tail(xs: pat.children) {
-                        TailFound { tail: fields } => ArmPatternVariant { tag: tag, fields: fields }
-                        TailAbsent => ArmPatternVariant { tag: tag, fields: Empty }
-                      }
-                    Positional => ArmPatternUnread
+                Present { value: tag } =>
+                  match list_tail(xs: pat.children) {
+                    TailFound { tail: fields } => ArmPatternVariant { tag: tag, fields: fields }
+                    TailAbsent => ArmPatternVariant { tag: tag, fields: Empty }
                   }
               }
-            _ => ArmPatternUnread
           }
       }
   }
