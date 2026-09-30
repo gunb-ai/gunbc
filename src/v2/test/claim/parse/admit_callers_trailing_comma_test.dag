@@ -14,7 +14,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // AN admit_callers LIST MAY END IN A COMMA (v2.extdeps.languages.dag
 // dag_grammar_admit_callers_clause_expr), as a comma list does everywhere else and as v1 reads it;
-// the list still needs a first element, so a list that is only a comma still refuses.
+// the list still needs a first element, so a list that is only a comma still refuses. The elements
+// are bare names: the clause admits any expression, so the comma behaviour is the same and each
+// claim stays one small parse (a decl_ref element list cost 118k eval steps against the 72.3k
+// new-witness budget).
 fn admit_source(list: String) -> String {
   "module probe.admit\n\nfn sealed(n: Int) -> Int\n  admit_callers: [" + list + "]\n  = n\n"
 }
@@ -43,11 +46,11 @@ fn admit_parses(list: String) -> Bool {
 }
 
 test fn a_trailing_comma_in_admit_callers_parses_holds() -> Bool {
-  admit_parses(list: "decl_ref(module_path: \"m\", decl_name: \"a\"),\n    decl_ref(module_path: \"m\", decl_name: \"b\"),\n  ")
+  admit_parses(list: "caller_a,\n    caller_b,\n  ")
 }
 
 test fn an_admit_callers_list_without_a_trailing_comma_parses_holds() -> Bool {
-  admit_parses(list: "decl_ref(module_path: \"m\", decl_name: \"a\"), decl_ref(module_path: \"m\", decl_name: \"b\")")
+  admit_parses(list: "caller_a, caller_b")
 }
 
 test fn an_admit_callers_list_of_only_a_comma_refuses_holds() -> Bool {
