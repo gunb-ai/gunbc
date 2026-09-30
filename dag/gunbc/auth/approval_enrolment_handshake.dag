@@ -6,7 +6,7 @@ import extdeps.apple.app_attest { AttestKeyId, AttestationVerification, Attestat
 import gunbc.auth.approval_capability { utc_instant_before }
 import gunbc.auth.approval_device_wire { MobilePlatform, MobileIos, MobileAndroid, enrolment_transcript, enrollment_id_for_code }
 import gunbc.auth.approval_device_redemption {
-  EnrolmentChallenge, VerifiedPlatformEvidence, IosAttestedAppInstance, AndroidAttestedDecisionKey, VerifiedDeviceEnrollment,
+  EnrolmentChallenge, VerifiedPlatformEvidence, IosAttestedAppInstance, AndroidAttestedDecisionKey,
 }
 
 // ── ENROLMENT IS A HANDSHAKE, NOT ONE POST ───────────────────────────────────────────────────
@@ -41,6 +41,16 @@ type EnrolmentPending {
   confirm_nonce: NonEmptyStr
 }
 
+// THE ACTIVE RECORD IS THE CONFIRMED PENDING ONE, nothing added but the instant it was confirmed.
+// It is this module's own carrier, not gunbc.auth.approval_device_redemption VerifiedDeviceEnrollment:
+// that type is sole-constructed where the store's bytes are re-minted, and the redemption path mints
+// it from THIS record at the store cut-over. So the handshake decides what ACTIVE means, and the
+// redemption module stays the one place a deciding enrolment is minted.
+type EnrolmentActive {
+  pending: EnrolmentPending
+  confirmed_at: Timestamp
+}
+
 // The slot's standing: generations 1 (issued), 2 (pending), 3 (active), 4 (revoked) of one CAS slot
 // keyed by the code, or nothing at all, or unreadable. Each write expects the generation before it,
 // so there is exactly one writer of each transition.
@@ -48,8 +58,8 @@ type EnrolmentSlot
   = SlotAbsent
   | SlotIssued { challenge: EnrolmentChallenge }
   | SlotPending { pending: EnrolmentPending }
-  | SlotActive { enrollment: VerifiedDeviceEnrollment, confirmed_at: Timestamp }
-  | SlotRevoked { enrollment: VerifiedDeviceEnrollment, revoked_at: Timestamp, reason: NonEmptyStr }
+  | SlotActive { active: EnrolmentActive }
+  | SlotRevoked { active: EnrolmentActive, revoked_at: Timestamp, reason: NonEmptyStr }
   | SlotUnreadable { detail: NonEmptyStr }
 
 // ── THE STATUS READ: one closed answer per stored standing ──────────────────────────────────
@@ -87,9 +97,9 @@ fn enrolment_status_at(slot: EnrolmentSlot, presented_key: VerifyingKey, observe
       } else {
         StatusLapsed { enrollment_id: p.enrollment_id, pending_deadline: p.pending_deadline }
       }
-    SlotActive { enrollment: e, confirmed_at: _ } =>
-      StatusActive { enrollment_id: e.enrollment_id, decision_key_matches: verifying_keys_equal(a: e.decision_key, b: presented_key) }
-    SlotRevoked { enrollment: e, revoked_at: _, reason: _ } => StatusRevoked { enrollment_id: e.enrollment_id }
+    SlotActive { active: a } =>
+      StatusActive { enrollment_id: a.pending.enrollment_id, decision_key_matches: verifying_keys_equal(a: a.pending.decision_key, b: presented_key) }
+    SlotRevoked { active: a, revoked_at: _, reason: _ } => StatusRevoked { enrollment_id: a.pending.enrollment_id }
     SlotUnreadable { detail: d } => StatusUnreadable { detail: d }
   }
 }
@@ -150,8 +160,8 @@ fn submit_admission(
     SlotPending { pending: p } =>
       if submission_matches_pending(s: s, p: p) { SubmitReplaysPending { pending: p } }
       else { SubmitRefused { cause: SubmitCodeAlreadyUsed } }
-    SlotActive { enrollment: _, confirmed_at: _ } => SubmitRefused { cause: SubmitCodeAlreadyUsed }
-    SlotRevoked { enrollment: _, revoked_at: _, reason: _ } => SubmitRefused { cause: SubmitCodeAlreadyUsed }
+    SlotActive { active: _ } => SubmitRefused { cause: SubmitCodeAlreadyUsed }
+    SlotRevoked { active: _, revoked_at: _, reason: _ } => SubmitRefused { cause: SubmitCodeAlreadyUsed }
     SlotIssued { challenge: c } =>
       if !utc_instant_before(a: observed_at, b: c.expires_at) {
         SubmitRefused { cause: SubmitCodeExpired { expires_at: c.expires_at } }
@@ -195,20 +205,10 @@ type ConfirmRefusal
   | ConfirmSlotUnreadable { detail: NonEmptyStr }
 
 type ConfirmAdmission
-  = ConfirmWritesActive { enrollment: VerifiedDeviceEnrollment }
-  | ConfirmReplaysActive { enrollment: VerifiedDeviceEnrollment }
+  = ConfirmWritesActive { active: EnrolmentActive }
+  | ConfirmReplaysActive { active: EnrolmentActive }
   | ConfirmRefused { cause: ConfirmRefusal }
 
-fn enrollment_of_pending(p: EnrolmentPending, confirmed_at: Timestamp) -> VerifiedDeviceEnrollment {
-  VerifiedDeviceEnrollment {
-    enrollment_id: p.enrollment_id,
-    operator_login: p.operator_login,
-    platform: p.platform,
-    decision_key: p.decision_key,
-    evidence: p.evidence,
-    enrolled_at: confirmed_at,
-  }
-}
 
 // A repeated ACK against an ACTIVE record whose key signed it answers active again and writes
 // nothing, so a lost ACK answer is recovered by resending the ACK.
@@ -222,29 +222,29 @@ fn confirm_admission(
     SlotAbsent => ConfirmRefused { cause: ConfirmNothingPending }
     SlotIssued { challenge: _ } => ConfirmRefused { cause: ConfirmNothingPending }
     SlotUnreadable { detail: d } => ConfirmRefused { cause: ConfirmSlotUnreadable { detail: d } }
-    SlotRevoked { enrollment: _, revoked_at: _, reason: _ } => ConfirmRefused { cause: ConfirmRevoked }
-    SlotActive { enrollment: e, confirmed_at: _ } =>
-      if (e.enrollment_id as String) != (enrollment_id as String) { ConfirmRefused { cause: ConfirmEnrollmentMismatch } }
+    SlotRevoked { active: _, revoked_at: _, reason: _ } => ConfirmRefused { cause: ConfirmRevoked }
+    SlotActive { active: a } =>
+      if (a.pending.enrollment_id as String) != (enrollment_id as String) { ConfirmRefused { cause: ConfirmEnrollmentMismatch } }
       else if !signature_by_pending_key { ConfirmRefused { cause: ConfirmSignatureRefused } }
-      else { ConfirmReplaysActive { enrollment: e } }
+      else { ConfirmReplaysActive { active: a } }
     SlotPending { pending: p } =>
       if (p.enrollment_id as String) != (enrollment_id as String) { ConfirmRefused { cause: ConfirmEnrollmentMismatch } }
       else if !pending_is_live(p: p, observed_at: observed_at) { ConfirmRefused { cause: ConfirmLapsed { pending_deadline: p.pending_deadline } } }
       else if !signature_by_pending_key { ConfirmRefused { cause: ConfirmSignatureRefused } }
-      else { ConfirmWritesActive { enrollment: enrollment_of_pending(p: p, confirmed_at: observed_at) } }
+      else { ConfirmWritesActive { active: EnrolmentActive { pending: p, confirmed_at: observed_at } } }
   }
 }
 
 // ── WHO MAY DECIDE ──────────────────────────────────────────────────────────────────────────
 // The redemption path's one question of this module. Only ACTIVE answers an enrolment. PENDING,
 // lapsed or not, answers none, which is the invariant's enforcement point.
-fn deciding_enrollment(slot: EnrolmentSlot) -> VerifiedDeviceEnrollment? {
+fn deciding_enrollment(slot: EnrolmentSlot) -> EnrolmentActive? {
   match slot {
-    SlotActive { enrollment: e, confirmed_at: _ } => Present { value: e }
+    SlotActive { active: a } => Present { value: a }
     SlotAbsent => none
     SlotIssued { challenge: _ } => none
     SlotPending { pending: _ } => none
-    SlotRevoked { enrollment: _, revoked_at: _, reason: _ } => none
+    SlotRevoked { active: _, revoked_at: _, reason: _ } => none
     SlotUnreadable { detail: _ } => none
   }
 }

@@ -9,14 +9,14 @@ import gunbc.auth.approval_device_redemption { EnrolmentChallenge }
 import gunbc.auth.approval_device_wire { MobileIos, enrolment_transcript, enrollment_id_for_code }
 import gunbc.auth.approval_decision_store { approval_operator_login }
 import gunbc.auth.approval_enrolment_handshake {
-  EnrolmentPending, EnrolmentSlot, SlotAbsent, SlotIssued, SlotPending, SlotActive, SlotRevoked, SlotUnreadable,
+  EnrolmentPending, EnrolmentActive, EnrolmentSlot, SlotAbsent, SlotIssued, SlotPending, SlotActive, SlotRevoked, SlotUnreadable,
   EnrolmentStatus, StatusCodeNotIssued, StatusCodeExpired, StatusNeverSubmitted, StatusPending, StatusLapsed,
   StatusActive, StatusRevoked, StatusUnreadable, enrolment_status_at,
   EnrolmentSubmission, SubmitAdmission, SubmitWritesPending, SubmitReplaysPending, SubmitRefused,
   SubmitCodeAlreadyUsed, SubmitCodeExpired, SubmitCodeNotIssued, submit_admission,
   ConfirmAdmission, ConfirmWritesActive, ConfirmReplaysActive, ConfirmRefused,
   ConfirmLapsed, ConfirmSignatureRefused, ConfirmNothingPending, confirm_admission,
-  enrollment_of_pending, deciding_enrollment,
+  deciding_enrollment,
 }
 
 // ── THE RED PER LEG: one claim per lost answer in docs/plans/approval-enrolment-handshake.md ──
@@ -131,7 +131,7 @@ test fn r5_a_lost_ack_answer_reads_active_only_for_the_confirming_key() -> Bool 
   match fx_pending() {
     Absent => false
     Present { value: p } => {
-      let active = SlotActive { enrollment: enrollment_of_pending(p: p, confirmed_at: fx_before_deadline), confirmed_at: fx_before_deadline }
+      let active = SlotActive { active: EnrolmentActive { pending: p, confirmed_at: fx_before_deadline } }
       let mine = match enrolment_status_at(slot: active, presented_key: key_a, observed_at: fx_after_deadline) {
         StatusActive { enrollment_id: _, decision_key_matches: m } => m
         _ => false
@@ -178,12 +178,12 @@ test fn r8_a_repeated_ack_replays_active_without_a_second_write() -> Bool {
     Absent => false
     Present { value: p } => {
       let first = match confirm_admission(slot: SlotPending { pending: p }, enrollment_id: p.enrollment_id, signature_by_pending_key: true, observed_at: fx_before_deadline) {
-        ConfirmWritesActive { enrollment: _ } => true
+        ConfirmWritesActive { active: _ } => true
         _ => false
       }
-      let active = SlotActive { enrollment: enrollment_of_pending(p: p, confirmed_at: fx_before_deadline), confirmed_at: fx_before_deadline }
+      let active = SlotActive { active: EnrolmentActive { pending: p, confirmed_at: fx_before_deadline } }
       let second = match confirm_admission(slot: active, enrollment_id: p.enrollment_id, signature_by_pending_key: true, observed_at: fx_after_deadline) {
-        ConfirmReplaysActive { enrollment: _ } => true
+        ConfirmReplaysActive { active: _ } => true
         _ => false
       }
       first && second
