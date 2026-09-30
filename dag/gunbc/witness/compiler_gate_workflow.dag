@@ -2,8 +2,9 @@ module gunbc.compiler_gate_workflow
 
 // NO LANE THE REQUIRED CONTEXT READS RUNS ON A HOSTED RUNNER (operator ruling 2026-09-28). The
 // lanes the `witnesses` aggregate reads -- `floor` and `generated` -- run on the fleet, and so does
-// the aggregate. The two lanes that block nothing, the v1 unit-test measurement (`rust-unit-tests`)
-// and `emit-build`, stay on `ubuntu-24.04-arm`.
+// the aggregate. Of the two lanes that block nothing, `emit-build` stays on `ubuntu-24.04-arm` and
+// the v1 unit-test lane (`rust-unit-tests`) moved onto the fleet on 2026-09-30, still non-blocking,
+// as the first half of its flip (see the unit-test section below).
 //
 // WHY THE HOSTED LANES LEFT THE MERGE PATH. The history below put them there because the fleet was
 // the bottleneck. On 2026-09-28 the bottleneck was the hosted pool: it held at 20 running jobs with
@@ -19,7 +20,7 @@ module gunbc.compiler_gate_workflow
 // compiler_gate_merge_path_runs_on_the_fleet refuses emission of a workflow in which a blocking
 // lane or the aggregate runs hosted.
 //
-// WHY TWO LANES STAY HOSTED. Neither is read by the required context, so neither can delay a
+// WHY emit-build STAYS HOSTED (and why the unit lane did too until 2026-09-30). Neither is read by the required context, so neither can delay a
 // landing, and together they are most of a run's runner time: the unit-test step and the two
 // emit-build compilations would roughly double the fleet slot-minutes a push costs, which is the
 // cost the history below moved off the fleet. The unit-test step also binds its own cgroup with
@@ -117,8 +118,6 @@ import gunbc.witness_floor_workflow {
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.ci_spec {
-  hosted_runner_memory_cgroup_bind_commands,
-  hosted_arm_runner_cgroup_memory_max,
   gunbc_ci_generated_artifact_verify_invoke,
   gunbc_ci_generated_artifact_regen_verified_invoke,
   gunbc_ci_heal_repair_declaration_invoke,
@@ -257,6 +256,12 @@ fn compiler_gate_lint_step() -> Step {
 // red on main -- the harm gunbc.rung_drop rust_unit_tests_off_the_merge_path records. That drop
 // stays Standing until the population is green and the complete wall is measured.
 //
+// ON THE FLEET SINCE 2026-09-30, STILL NOT BLOCKING (operator ruling via escalation, option A: move,
+// then flip). The flip trigger below requires the move in the flip's change; the move lands first so
+// the lane's fleet wall and a green fleet run on main exist before the flip reads them. The two
+// paragraphs that follow are the 2026-09-28 reasoning for keeping it hosted, kept because the cost
+// they name is the one this move now pays.
+//
 // WHY IT DID NOT FOLLOW THE LINT ONTO THE FLEET. It is the longest step in the workflow, so a fleet
 // slot would pay that wall on every push for a verdict nothing requires, and its cgroup bind (below)
 // is a hosted-VM construction. And as a step on a blocking lane it could still delay a landing: the
@@ -265,12 +270,17 @@ fn compiler_gate_lint_step() -> Step {
 // blocking (compiler_gate_lane_rows), and the required context no longer waits for it. The drop's
 // restoration trigger is that lane's flip trigger, and flipping it moves the job onto the fleet.
 //
-// THE BOUND IS REAL, NOT DECLARED. The regeneration-host tests read their budget through
-// gunbc.host_budget_source and refuse HostBudgetUnreadable where no cgroup binds the process, which
-// is every hosted runner. GUNBC_MEMORY_BUDGET_BYTES would be the escape hatch that refusal exists to
-// refuse, so the step's shell moves itself into a leaf with memory.max set -- the same bind the heal
-// publisher performs, at the one hosted-runner bound gunbc.ci_spec hosted_arm_runner_cgroup_memory_max
-// -- and cargo, and every test binary it starts, inherits it.
+// THE BOUND IS REAL, NOT DECLARED, AND ON THE FLEET IT IS THE SLOT'S OWN. The regeneration-host tests
+// read their budget through gunbc.host_budget_source and refuse HostBudgetUnreadable where no cgroup
+// binds the process. GUNBC_MEMORY_BUDGET_BYTES would be the escape hatch that refusal exists to
+// refuse. On the hosted runner the step bound itself with sudo (gunbc.ci_spec
+// hosted_runner_memory_cgroup_bind_commands); on a fleet host that bind is unsound, because the slots
+// share one cgroup tree and a sudo write to the root subtree_control reaches every slot. It is also
+// unneeded: every fleet slot is a systemd unit whose MemoryMax is gunbc.fleet_host_budget
+// gunbc_per_runner_memory_cap, the runner starts the step inside that unit's cgroup, and the v1
+// governor's leaf-to-root walk (memory_governor binding_cap_cgroup_dir) reads it. So the step runs the
+// test command bare, and a slot that lost its MemoryMax turns the regeneration-host tests red with a
+// typed refusal rather than passing on a fabricated budget.
 data compiler_gate_unit_test_step_name: String = "Run the v1 unit tests"
 data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
 data compiler_gate_unit_test_cgroup_name: String = "gunbc-unit-tests"
@@ -300,16 +310,7 @@ fn compiler_gate_unit_test_job_timeout() -> Minute {
 }
 
 fn compiler_gate_unit_test_command() -> String {
-  join(
-    list_append(
-      hosted_runner_memory_cgroup_bind_commands(
-        cgroup_name: compiler_gate_unit_test_cgroup_name,
-        memory_max: hosted_arm_runner_cgroup_memory_max(),
-      ),
-      [repo_self_test_command()],
-    ),
-    "; "
-  )
+  repo_self_test_command()
 }
 
 fn compiler_gate_unit_test_step() -> Step {
@@ -373,13 +374,13 @@ fn compiler_gate_unit_test_job() -> Job {
   Job {
     id: compiler_gate_unit_test_job_id,
     name: none,
-    runner: HostedRunner { label: Ubuntu2404Arm },
+    runner: gunbc_ci_selected_runner_spec(),
     environment: none,
     steps: list_map(xs: compiler_gate_unit_test_bound_steps(), f: fn(b) { b.step }),
     needs: [],
     env: none,
     outputs: none,
-    if_condition: none,
+    if_condition: Present { value: compiler_gate_floor_job_condition() },
     timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_job_timeout()) },
     continue_on_error: none,
     concurrency: none,
@@ -1394,9 +1395,12 @@ fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
     CompilerGateLaneRow {
       job_id: compiler_gate_unit_test_job_id,
       var_name: "RUST_UNIT_TESTS",
-      arm: GateArmStrict,
+      arm: GateArmSkippableOnFork {
+        notice: "the v1 unit-test lane is skipped for a fork pull request: it runs on the fleet",
+        unobserved_error: "the v1 unit-test lane produced no success"
+      },
       standing: LaneAnnouncedNotBlocking {
-        flip_trigger: "THE v1 UNIT-TEST POPULATION IS GREEN AND ONE COMPLETE WALL IS MEASURED -- the restoration trigger of gunbc.rung_drop rust_unit_tests_off_the_merge_path, which this row names rather than restates. Sufficient for: a head of main on which `cargo test --release -p v1-compiler --lib` exits zero inside the step cap, so that requiring this lane blocks merges only for defects the head in front of it introduced. At that point this row becomes LaneBlocks, the step drops continue_on_error, and the job moves onto the fleet runner in the same change -- taking the fleet lanes' fork guard and GateArmSkippableOnFork arm, and a memory bound that does not reach for sudo -- because no blocking lane runs hosted (operator ruling 2026-09-28) and compiler_gate_merge_path_runs_on_the_fleet refuses emission otherwise."
+        flip_trigger: "THE v1 UNIT-TEST POPULATION IS GREEN AND ONE COMPLETE WALL IS MEASURED -- the restoration trigger of gunbc.rung_drop rust_unit_tests_off_the_merge_path, which this row names rather than restates. Sufficient for: a head of main on which `cargo test --release -p v1-compiler --lib` exits zero inside the step cap, so that requiring this lane blocks merges only for defects the head in front of it introduced. At that point this row becomes LaneBlocks, the step drops continue_on_error, and the aggregate gains the needs edge and the variable. The job already runs on the fleet with the fleet lanes' fork guard and GateArmSkippableOnFork arm, bound by its slot's MemoryMax rather than a sudo leaf (moved 2026-09-30), so compiler_gate_merge_path_runs_on_the_fleet admits the flip."
       }
     },
     CompilerGateLaneRow {
