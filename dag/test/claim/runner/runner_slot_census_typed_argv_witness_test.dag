@@ -118,6 +118,7 @@ test fn a_converged_typed_argv_reads_a_real_census() -> Bool {
   match slot_census_from_typed_argv_outcome(
     host: operator_host_srv1,
     outcome: typed_converged_with_census_fixture(),
+    edge_noun: "the fleet edge",
   ) {
     CensusDerived { rows: rows } =>
       rows_mention_unit(rows: rows, unit: "actions-runner@srv1-01.service")
@@ -136,18 +137,37 @@ fn typed_converged_with_census_fixture() -> TypedArgvExecOutcome {
   }
 }
 
+fn typed_argv_refusal_fixture() -> TypedArgvExecOutcome {
+  TypedArgvExecRefused { reason: "witness: the fleet wall refused the probe before it ran" }
+}
+
 // A TRANSPORT REFUSAL IS UNOBSERVED, NEVER AN EMPTY POPULATION. A fleet edge that refuses the words
 // says nothing about how many slots the host runs, and rendering that as "no surplus" is the narrow
 // that would let a shrink raise caps on a host it could not read.
 test fn a_typed_argv_refusal_is_a_refused_census_not_an_empty_population() -> Bool {
   match slot_census_from_typed_argv_outcome(
     host: operator_host_srv1,
-    outcome: TypedArgvExecRefused {
-      reason: "witness: the fleet wall refused the probe before it ran",
-    },
+    outcome: typed_argv_refusal_fixture(),
+    edge_noun: "the fleet edge",
   ) {
     CensusRefused { cause: cause } =>
       starts_with(s: cause, prefix: "runner slot population unreadable over the fleet edge: ")
+    CensusDerived { rows: _ } => false
+  }
+}
+
+// THE REALIZER'S REMOTE ARMS NAME THE TRANSPORT, NOT THE FLEET EDGE. The same refused outcome,
+// decoded with the noun the host-effect realizer supplies, reads "over the transport" -- a census
+// refused over the ssh edge is not a fleet-edge fact, and the reason that follows the noun still
+// names the concrete endpoint.
+test fn the_realizers_transport_refusal_names_the_transport() -> Bool {
+  match slot_census_from_typed_argv_outcome(
+    host: operator_host_srv1,
+    outcome: typed_argv_refusal_fixture(),
+    edge_noun: "the transport",
+  ) {
+    CensusRefused { cause: cause } =>
+      starts_with(s: cause, prefix: "runner slot population unreadable over the transport: ")
     CensusDerived { rows: _ } => false
   }
 }
