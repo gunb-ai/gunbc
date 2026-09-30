@@ -1,0 +1,91 @@
+module v2.test.claim.std.inhabitance_literal_crossing_relation_test
+
+import v2.std.inhabitance {
+  DeclaredTypeObligation,
+  InhabitanceRefused,
+  InhabitanceUndecidable,
+  Inhabits,
+  LiteralCrossing,
+  declared_type_inhabitance_at,
+  position_declared_return
+}
+import v2.extdeps.languages.dag { dag_type_atom_node }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.literal_elaboration { KernelStringLiteral }
+import v2.std.node { Conj, Node, TypeNode, node_synthetic }
+
+// WHAT THIS FILE ESTABLISHES: v2.std.inhabitance declared_type_inhabitance_at admits a kernel string
+// literal through the ONE declared unfold row (gunbc.structural_realization_bindings
+// literal_homomorphism_rows, UnicodeScalarSequenceUnfold) exactly when the crossing's destination
+// key is std.algebra FreeMonoid at element std.types Char, and otherwise hands the obligation to the
+// ordinary structural relation. The crossing is SUPPLIED here (DESIGN 3, a witness discriminates at
+// one interface): the real routes that would build it -- a declared return peeling an imported alias
+// (#12726 PR2) and a declared callee's formals (#12506) -- are blocked, and their route claims stay
+// pinned expecting-red in body_let_annotation_test with those triggers. That pinned route claim is
+// this interface's owed inhabitance claim; this file does not replace it.
+//
+// THE OBLIGATION IS THE SAME IN EVERY CLAIM and structurally mismatched (a Bool literal produced at a
+// declared Int), so the structural relation alone never admits it. Only the crossing's element key
+// differs between the admit and the refuse, which is what makes the row key the discriminator.
+
+fn lc_empty_domain() -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+}
+
+fn lc_mismatched_obligation() -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position_declared_return(),
+    parameter_identity: ^declared_return,
+    declared: dag_type_atom_node(identity: ^dag_binding_type_int),
+    produced: dag_type_atom_node(identity: ^dag_token_kw_true),
+    application: lc_empty_domain(),
+    type_variables: []
+  }
+}
+
+fn lc_string_crossing(element: DeclarationRef) -> LiteralCrossing {
+  LiteralCrossing {
+    source_kind: KernelStringLiteral,
+    destination: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
+    element: Present { value: element }
+  }
+}
+
+fn lc_admitted_by_the_unfold(crossing: Optional<LiteralCrossing>) -> Bool {
+  match declared_type_inhabitance_at(obligation: lc_mismatched_obligation(), crossing: crossing) {
+    Inhabits { homomorphism: h } => h.rule == ^homomorphism_rule_declared_literal_unfold
+    InhabitanceRefused { find_witness_reason: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
+}
+
+fn lc_admitted_at_all(crossing: Optional<LiteralCrossing>) -> Bool {
+  match declared_type_inhabitance_at(obligation: lc_mismatched_obligation(), crossing: crossing) {
+    Inhabits { homomorphism: _ } => true
+    InhabitanceRefused { find_witness_reason: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
+}
+
+// RED THE PR EXISTS FOR: the Char-keyed crossing selects the unfold row and inhabits by its rule.
+test fn string_literal_at_free_monoid_of_char_inhabits_by_the_unfold_holds() -> Bool {
+  lc_admitted_by_the_unfold(crossing: Present { value: lc_string_crossing(element: decl_ref(module_path: "std.types", decl_name: "Char")) })
+}
+
+// ROW-KEY DISCRIMINATOR: the same crossing with a non-Char element reaches no row, so the
+// structurally mismatched obligation is NOT admitted.
+test fn string_literal_at_free_monoid_of_non_char_is_not_admitted_holds() -> Bool {
+  !lc_admitted_at_all(crossing: Present { value: lc_string_crossing(element: decl_ref(module_path: "std.types", decl_name: "Int")) })
+}
+
+// A HOMONYM ELEMENT IS NOT CHAR: the row keys on the exact declaration, so a Char declared in another
+// module does not select the unfold.
+test fn string_literal_at_free_monoid_of_a_homonym_char_is_not_admitted_holds() -> Bool {
+  !lc_admitted_at_all(crossing: Present { value: lc_string_crossing(element: decl_ref(module_path: "v2.test.claim.std.inhabitance_literal_crossing_relation_test", decl_name: "Char")) })
+}
+
+// NO CROSSING (a produced value that is not a literal) never reaches the rows: the ordinary
+// structural relation decides, and it does not admit the mismatch.
+test fn absent_crossing_is_judged_structurally_holds() -> Bool {
+  !lc_admitted_at_all(crossing: Absent)
+}
