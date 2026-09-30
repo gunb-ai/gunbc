@@ -271,11 +271,12 @@ fn infer_emit_shape_frontier_inferred_tree(root: Node) -> InferredTree {
 // quadratic in the tree. The carrier is instead a function over the state: each node's `run` takes
 // the incoming map, runs its children's `run`s in edge order, then enters its own facts. The node's
 // shape (which row it awaits, how many children remain) is decided at fold time; only the facts are
-// threaded. Entry order is the order the entries list had, and inferred_facts_map_enter keeps the
-// FIRST entry for a repeated node, so the map the run ends with is the one facts_map_from_entries
-// built from that list. A lookup now sees every entry entered before it rather than only its own
-// subtree's; the two differ only for a node repeated elsewhere, and the threaded answer is the one
-// the final map returns.
+// threaded, in the order the entries list had. A repeated node is admitted only with a fact equal to
+// the one it already holds; a different fact refuses with infer_facts_key_conflict
+// (inferred_facts_map_enter), so no entry ever displaces another silently. A lookup sees every entry
+// entered before it, not only its own subtree's: where structurally equal nodes meet at different
+// positions (synthetic occurrence ids), that is the node key's collision, and it refuses rather than
+// answering from the other position.
 type InferGatherState {
   facts: Map<Node, InferredFacts>
   failed: Bool
