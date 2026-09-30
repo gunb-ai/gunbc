@@ -5055,86 +5055,43 @@ fn load_compile_clean_entry_sources(
 /// `container.member` is a dependency edge exactly as an `import` line was: with dag/ imports
 /// stripped, the import-edge closure alone silently drops every module reached only by
 /// qualified reference (they fall out of the census and their qualified names refuse
-/// corpus-wide). Projection is text-level longest-prefix against the declared module-path
-/// index, iterated to fixpoint; each addition pulls its own import closure. The ONE closure
+/// corpus-wide). Projection is the parsed reference set's longest declared module-path prefix,
+/// iterated to fixpoint; each addition pulls its own import closure. The ONE closure
 /// authority for the whole-tree compile-clean walk and the per-entry claim/witness loaders (a
 /// second rule would be a §3 fork). Dissolves into the parsed-tree reference projection when
 /// the Rule-1 terminal step (import as parse error, deps derived from references) lands.
 fn extend_with_reference_closure(
-    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    index: &ModuleSourceIndex,
-    facts: &ModuleGraphFactsLive,
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    mei: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let path_lookup = path_to_source_lookup(index);
-    let module_names: HashSet<String> = index.keys().cloned().collect();
-    let mut known_paths: std::collections::HashSet<String> = sources
-        .iter()
-        .flat_map(|s| [s.path.clone(), workspace_relative_repo_path(&s.path)])
-        .collect();
-    let mut scan_queue: Vec<Rc<v1_compiler_compile::SourceFile>> = sources.clone();
-    while let Some(sf) = scan_queue.pop() {
-        // Sub-attribution of `load` (entry-graph-union slice 1, operator review):
-        // `load` being 68% of resolve-span time does not by itself say whether the cost is
-        // this content scan, file I/O, or pool bookkeeping — and THAT ratio is what
-        // separates "a content-hash memo on a pure function" from "a union graph". Timed
-        // here because this is the call the duplication factor multiplies.
+    // ONE PARSE PER FILE PER INDEX. Each visited file's module-path edges come from the same
+    // producer the edge index's reference half uses (`reference_pull_paths_for_source`), which
+    // reads the index's single parse (`parsed_file_references_of`) against its once-derived name
+    // set. This walk used to parse every closure file afresh on every call -- once per entry,
+    // and on the discovery route once per corpus entry -- rebuilding the name set each time.
+    extend_sources_via_demanded_edges(sources, &pool_path_lookup(mei), |source| {
         let scan_started = std::time::Instant::now();
-        let referenced = referenced_module_paths_of_source(&sf.path, &sf.content, &module_names)?;
+        let pulled = reference_pull_paths_for_source(source, mei);
         resolve_stage_slot_add(|s| {
             s.load_reference_scan += scan_started.elapsed().as_nanos();
-            s.load_reference_scan_bytes += sf.content.len() as u128;
+            s.load_reference_scan_bytes += source.content.len() as u128;
             s.load_reference_scan_calls += 1;
         });
-        for module_path in referenced {
-            let Some(dep) = index.get(&module_path) else {
-                continue;
-            };
-            let dep_rel = workspace_relative_repo_path(&dep.path);
-            if known_paths.contains(&dep_rel) || known_paths.contains(&dep.path) {
-                continue;
-            }
-            if !facts.declares_repo_path(&dep_rel) {
-                return Err(format!(
-                    "reference_closure: referenced module '{module_path}' at '{dep_rel}' \
-                     has no provenance in the module-graph facts pool (fail-closed)"
-                ));
-            }
-            for path in import_closure_live_paths_with_facts(&dep_rel, facts) {
-                let rel = workspace_relative_repo_path(&path);
-                if known_paths.contains(&rel) {
-                    continue;
-                }
-                let Some(dep_sf) = path_lookup.get(&rel).cloned() else {
-                    return Err(format!(
-                        "reference_closure: closure path '{rel}' (via referenced module \
-                         '{module_path}') has no provenance in module index (fail-closed)"
-                    ));
-                };
-                known_paths.insert(rel);
-                known_paths.insert(dep_sf.path.clone());
-                sources.push(dep_sf.clone());
-                scan_queue.push(dep_sf);
-            }
-        }
-    }
-    Ok(sources)
+        pulled
+    })
 }
 
 fn extend_with_reference_closure_for_pool(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     mei: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    extend_sources_via_demanded_edges(
-        sources,
-        &path_to_source_lookup(&mei.source_files),
-        |source| {
-            let edges = build_both_closure_edge_index(mei, source)?;
-            let file = workspace_relative_repo_path(&source.path);
-            edges.ref_out.get(&file).cloned().ok_or_else(|| {
-                format!("closure_edge_demand: reference edges absent after production for '{file}'")
-            })
-        },
-    )
+    extend_sources_via_demanded_edges(sources, &pool_path_lookup(mei), |source| {
+        let edges = build_both_closure_edge_index(mei, source)?;
+        let file = workspace_relative_repo_path(&source.path);
+        edges.ref_out.get(&file).cloned().ok_or_else(|| {
+            format!("closure_edge_demand: reference edges absent after production for '{file}'")
+        })
+    })
 }
 
 /// The module paths one source references, read from its full parse
@@ -5149,6 +5106,7 @@ fn extend_with_reference_closure_for_pool(
 /// stands in front of this reader. A file the parser refuses has no readable reference set, and
 /// the closure REFUSES for it rather than following a guessed one; the required parse sweep
 /// (`run_dag_parse_sweep`) holds every pool file to parse.
+#[cfg(test)]
 fn referenced_module_paths_of_source(
     path: &str,
     content: &str,
@@ -9288,6 +9246,15 @@ fn pool_module_names(index: &MultiEntryIndex) -> Rc<HashSet<String>> {
         .clone()
 }
 
+fn pool_path_lookup(
+    index: &MultiEntryIndex,
+) -> Rc<HashMap<String, Rc<v1_compiler_compile::SourceFile>>> {
+    index
+        .pool_path_lookup
+        .get_or_init(|| Rc::new(path_to_source_lookup(&index.source_files)))
+        .clone()
+}
+
 #[cfg(test)]
 fn bare_candidates_from_source(
     path: &str,
@@ -10379,6 +10346,55 @@ mod closure_edge_demand_tests {
             resolve_stage_slot_snapshot().load_reference_scan_calls - scans_before,
             0,
             "the entry route must not re-parse closure files for module-path references"
+        );
+    }
+
+    /// THE INDEX ROUTE READS THE INDEX'S PARSE. `load_sources_for_entry_with_index` (the discovery
+    /// route's loader) follows a dotted reference through the one parse per file the index owns:
+    /// after the first entry its closure files are in `parsed_references`, and a second entry
+    /// reaching the same provider parses nothing new. Red before: the walk parsed each closure
+    /// file afresh on every call and never touched the index's readings.
+    #[test]
+    fn the_index_route_reads_the_one_parse_per_file_the_index_owns() {
+        let fixture = Fixture::new(&[
+            (
+                "a.dag",
+                "module entry_a\nfn main() -> Int { shared.provider.one() }\n",
+            ),
+            (
+                "b.dag",
+                "module entry_b\nfn main() -> Int { shared.provider.one() }\n",
+            ),
+            (
+                "provider.dag",
+                "module shared.provider\nfn one() -> Int { 1 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let modules_of = |entry: &str| -> BTreeSet<String> {
+            load_sources_for_entry_with_index(&index, &fixture.0.join(entry).to_string_lossy())
+                .unwrap()
+                .iter()
+                .map(|s| extract_module_path(&s.content).unwrap())
+                .collect()
+        };
+        assert_eq!(
+            modules_of("a.dag"),
+            BTreeSet::from(["entry_a".into(), "shared.provider".into()])
+        );
+        let read_after_first = index.parsed_references.borrow().len();
+        assert_eq!(
+            read_after_first, 2,
+            "entry_a and the provider, each read once"
+        );
+        assert_eq!(
+            modules_of("b.dag"),
+            BTreeSet::from(["entry_b".into(), "shared.provider".into()])
+        );
+        assert_eq!(
+            index.parsed_references.borrow().len(),
+            read_after_first + 1,
+            "the second entry parses only its own file; the provider's reading is shared"
         );
     }
 
@@ -13096,6 +13112,9 @@ pub struct MultiEntryIndex {
     /// walk so a chain whose prefix is a module path is read as a path, not a bare head. Derived
     /// once from `source_files`, which is fixed for the index's life.
     pool_module_names: std::cell::OnceCell<Rc<HashSet<String>>>,
+    /// Workspace-relative and as-indexed path → source, over `source_files`. Derived once, for
+    /// the same reason as `pool_module_names`: every closure walk looks pulled paths up in it.
+    pool_path_lookup: std::cell::OnceCell<Rc<HashMap<String, Rc<v1_compiler_compile::SourceFile>>>>,
     /// Each demanded file's full-parse reference reading (`parsed_file_references_of`), refusals
     /// included, keyed by workspace-relative path. Both halves of a file's closure row -- its
     /// module-path references and its bare references -- and its bare-reference admission read
@@ -15428,8 +15447,8 @@ pub struct ResolveStageNanos {
     // does not say WHICH part of the closure walk costs; the split below is the number
     // that decides whether a per-source content-hash memo suffices or a union graph is
     // needed, because only `load_reference_scan` is a pure function of source content.
-    /// `referenced_module_paths_of_source` — the unmemoized full parse and reference walk run once
-    /// per (entry, module) pair. The unit the duplication factor multiplies.
+    /// One visited file's module-path edges in `extend_with_reference_closure`, read from the
+    /// index's one parse per file (`reference_pull_paths_for_source`), once per (entry, module).
     pub load_reference_scan: u128,
     /// Bytes fed to that scan (sum over calls) — lets the scan be priced per byte rather
     /// than per module, which is what the closure-size spread demands.
@@ -23252,8 +23271,9 @@ pub fn discover_owned_data_decls(
     collect_dag_files(scan_path, &mut files);
     files.retain(|p| !path_excluded(p, exclude_subpaths));
 
-    let module_index = build_module_index(source_roots);
-    let module_graph_facts = build_module_graph_facts_live(source_roots);
+    // The process-shared index, so every entry's reference closure reads the one parse per file
+    // the floor's other closure walks already hold.
+    let index = try_process_shared_index(source_roots)?;
 
     let mut names_by_file: HashMap<String, Rc<Vec<String>>> = HashMap::new();
     let mut groups: Vec<DiscoveryResolveGroup> = Vec::new();
@@ -23278,8 +23298,7 @@ pub fn discover_owned_data_decls(
             .count();
         entry_count += 1;
 
-        let closure =
-            load_sources_for_entry_with_index(&module_index, &module_graph_facts, &entry)?;
+        let closure = load_sources_for_entry_with_index(&index, &entry)?;
         for source in &closure {
             names_by_file
                 .entry(source.path.clone())
@@ -40526,11 +40545,9 @@ mod import_closure_equivalence_tests {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace root");
         let roots = default_source_roots();
-        let index = build_module_index(&roots);
-        let facts = build_module_graph_facts_live(&roots);
+        let index = build_multi_entry_index(&roots);
         let entry_rel = "src/v2/workflow/floor_diff_observe.dag";
-        let sources =
-            load_sources_for_entry_with_index(&index, &facts, entry_rel).expect("load closure");
+        let sources = load_sources_for_entry_with_index(&index, entry_rel).expect("load closure");
         let entry_norm = workspace_relative_repo_path(entry_rel);
         let entry_count = sources
             .iter()
@@ -41181,9 +41198,7 @@ mod compile_clean_loader_closure_fork_regression {
         {
             ref_only.push(entry_source);
         }
-        let ref_only =
-            extend_with_reference_closure(ref_only, &mei.source_files, &mei.module_graph_facts)
-                .expect("ref closure");
+        let ref_only = extend_with_reference_closure(ref_only, &mei).expect("ref closure");
         let provider_ref_only = ref_only
             .iter()
             .any(|s| s.path.contains("bare_service_provider/provider.dag"));
@@ -46569,5 +46584,131 @@ mod serve_unix_socket_door_tests {
         let (_conn, peer) = listener.accept().expect("accept");
         let _ = client.join();
         assert_eq!(peer, "");
+    }
+}
+
+#[cfg(test)]
+mod reference_closure_single_parse_differential {
+    //! REAL-POOL DIFFERENTIAL for `extend_with_reference_closure` reading the index's one parse
+    //! per file. The oracle is the retired walk, kept here only as an offline oracle (DESIGN §3):
+    //! a fresh parse of every visited file against a name set rebuilt from the pool, followed to
+    //! fixpoint with each referenced module's import closure. For every entry the floor's
+    //! discovery route loads, the production closure must equal the oracle's at identity grain
+    //! (workspace-relative paths).
+    use super::*;
+
+    /// `fresh` memoizes each file's fresh-parse module paths only so a large population stays
+    /// affordable; every file is still read by its own `parsed_file_references` call, independent
+    /// of the index's `parsed_references`.
+    fn oracle_closure(
+        index: &MultiEntryIndex,
+        entry: &str,
+        fresh: &mut std::collections::HashMap<String, Vec<String>>,
+    ) -> Result<BTreeSet<String>, String> {
+        let module_names: HashSet<String> = index.source_files.keys().cloned().collect();
+        let lookup = path_to_source_lookup(&index.source_files);
+        let facts = &index.module_graph_facts;
+        let entry_source = entry_source_from_index_or_disk(&index.source_files, entry)?;
+        let mut start =
+            resolve_transitively(vec![entry_source.clone()], &index.source_files, facts)?;
+        if !start.iter().any(|s| {
+            s.path == entry_source.path || same_canonical_file(&s.path, &entry_source.path)
+        }) {
+            start.push(entry_source);
+        }
+        let mut known: BTreeSet<String> = start
+            .iter()
+            .map(|s| workspace_relative_repo_path(&s.path))
+            .collect();
+        let mut queue = start;
+        while let Some(sf) = queue.pop() {
+            let key = workspace_relative_repo_path(&sf.path);
+            if !fresh.contains_key(&key) {
+                let self_module = extract_module_path(&sf.content).unwrap_or_default();
+                let refs = entry_resolve::parsed_file_references(
+                    &sf.path,
+                    &sf.content,
+                    &self_module,
+                    &module_names,
+                )
+                .map_err(|c| format!("oracle: {} unreadable ({c})", sf.path))?;
+                fresh.insert(
+                    key.clone(),
+                    module_paths_of_references(&refs, &module_names),
+                );
+            }
+            for module_path in fresh[&key].clone() {
+                let Some(dep) = index.source_files.get(&module_path) else {
+                    continue;
+                };
+                let dep_rel = workspace_relative_repo_path(&dep.path);
+                for path in import_closure_live_paths_with_facts(&dep_rel, facts) {
+                    let rel = workspace_relative_repo_path(&path);
+                    if known.insert(rel.clone()) {
+                        queue.push(lookup.get(&rel).cloned().ok_or(format!("oracle: {rel}"))?);
+                    }
+                }
+            }
+        }
+        Ok(known)
+    }
+
+    #[test]
+    #[ignore = "live-corpus: loads every discovery entry's closure over the live tree; run with --ignored"]
+    fn every_discovery_entry_closure_equals_the_fresh_parse_oracle() {
+        std::env::set_current_dir(workspace_root()).expect("chdir workspace root");
+        let roots = default_source_roots();
+        let index = build_multi_entry_index(&roots);
+        let mut entries = Vec::new();
+        for root in &roots {
+            let mut files = Vec::new();
+            collect_dag_files(Path::new(root), &mut files);
+            for path in files {
+                let Ok(content) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                if entry_likely_has_unified_claim_owned_data(&content) {
+                    entries.push(path.to_string_lossy().to_string());
+                }
+            }
+        }
+        let discovery_entries = entries.len();
+        assert!(
+            discovery_entries > 0,
+            "the discovery population must be non-empty"
+        );
+        // Beyond the discovery population: every seventh pool module in sorted path order, a
+        // deterministic sample that exercises the walk across the corpus's closure shapes.
+        let mut pool: Vec<String> = index
+            .source_files
+            .values()
+            .map(|s| workspace_relative_repo_path(&s.path))
+            .collect();
+        pool.sort();
+        entries.extend(pool.into_iter().step_by(7));
+        entries.sort();
+        entries.dedup();
+        let mut fresh = std::collections::HashMap::new();
+        let mut diverged = Vec::new();
+        for entry in &entries {
+            let production: Result<BTreeSet<String>, String> =
+                load_sources_for_entry_with_index(&index, entry).map(|sources| {
+                    sources
+                        .iter()
+                        .map(|s| workspace_relative_repo_path(&s.path))
+                        .collect()
+                });
+            let oracle = oracle_closure(&index, entry, &mut fresh);
+            if production != oracle {
+                diverged.push(entry.clone());
+            }
+        }
+        eprintln!(
+            "[differential] reference-closure entries={} discovery_entries={} diverged={}",
+            entries.len(),
+            discovery_entries,
+            diverged.len()
+        );
+        assert!(diverged.is_empty(), "diverging entries: {:?}", diverged);
     }
 }
