@@ -1585,7 +1585,9 @@ fn floor_route_gap_expectation_chunk_20() -> List<FloorRouteGapExpectation> {
 // again. Its floor run (job 106999407163) refused it with the same DirWithTemplate/no
 // mock_response gap, route_gap_unenrolled=1, while the local-repo wet lane recorded it
 // expected=passed observed=passed. It reaches fresh_root like the five above, so it is held the
-// same way and discharged the same way.
+// same way and discharged the same way. A SEVENTH, the_real_reservation_route_admits_exactly_what_
+// the_reading_backs, is the real-observation route kept when the ledger cells stopped reading the
+// runner's live memory; it reaches fresh_root too.
 fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.a_request_the_machine_cannot_back_refuses_below_the_live_floor", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1599,7 +1601,10 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.two_requests_summing_past_the_observed_headroom_cannot_both_admit", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.the_real_reservation_route_admits_exactly_what_the_reading_backs", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+  }
   }
   }
   }
