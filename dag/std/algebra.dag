@@ -255,7 +255,7 @@ type MapIntroductionEntry<K, V> {
 }
 
 fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> FinitelySupportedFunction<K, V> {
-  fold(entries, init: empty_map(), f: fn(acc, entry) { map_insert(acc, entry.key, entry.value) })
+  entries |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.key, entry.value))
 }
 
 // MOVED HERE from `v2.std.collection` by the change that split `PartialFunction`. They are the
