@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.nested_field_read_through_a_binder_of_an_inferred_generic_result
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data nested_field_read_through_a_binder_of_an_inferred_generic_result: RecurringFailureMode = RecurringFailureMode {
+  identity: "nested_field_read_through_a_binder_of_an_inferred_generic_result" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a program the checker ACCEPTS fails at evaluation with TypeError `error type cascade`. The shape is a generic function whose type parameter is INFERRED from its argument (`fn refuse<S>(subject: S) -> Admission<S>`), a match on its result that binds the payload (`Refused { subject: s }`), and a field read two levels deep through that binder (`s.program.invocation`). A one-level read (`s.name`) evaluates. The same two-level read also evaluates when the scrutinee is a let annotated `Admission<Tool>` built without the generic call. Binding the intermediate (`let p = s.program` then `p.invocation`) still fails. Neither a cast nor an optional is involved.",
+    "SPECIMEN, 2026-09-29/30, gunbc#12630. `extdeps.tools` `CliTool` moved from `name: NonEmptyStr` to `program: ProgramIdentity`. `test.claim.tool_pin_witness` `mismatched_identity_refuses` and `tracked_pin_refuses_even_when_identity_matches` then read `subj.program.invocation` through `extdeps.pin` `admit_pin_integrity`'s `PinRefused { subject }`, and errored on the required floor. The reduced module (types Inner, Tool, `Admission<S>` and `refuse<S>`) reproduces locally with the seed. neat-pike-685 ran it against their fixed build for `generic_optional_over_a_type_application_argument_loses_the_optional` and it still failed there, so this is a different root. The inferred cause is that the binder's type is only partly substituted; that is not verified in the checker.",
+    "WORKAROUND IN THE TREE: `test.claim.tool_pin_witness` and `test.claim.tool_readiness_witness` read the subject through `fn tool_invocation(tool: CliTool) -> String`, a CliTool-typed helper, so the second read happens against a declared type. Both helpers delete when this row climbs.",
+    "HARM: the checker accepts and the interpreter refuses, untyped and late. It is loud, not silent, but it is a floor failure (DESIGN 4b: fields exist, values inhabit declared types): the check that should locate the fault at the read passes, and the fault surfaces at run time with only a byte offset.",
+    "RUNG FOUND AT: mitigated on the interpretation path (a runtime TypeError, not a located compiler diagnostic). Emission path not measured. CEILING: structurally guaranteed -- the argument's type and the generic's declaration are both resolved, so the binder's type is decidable.",
+    "NEXT-RUNG TRIGGER, capability grain: a pattern binder over the result of a generic call whose type argument is inferred carries the fully substituted payload type, so a field read at any depth through it typechecks against the payload's declaration and evaluates. Sufficient for the reduced module's two-level read to evaluate and for both tool_invocation helpers to be deleted. Not satisfied by a fix that covers only one-level reads, or only annotated scrutinees.",
+  ],
+  evidence: [],
+}

@@ -15,9 +15,13 @@ import v2.compiler.fold_lowering {
   FoldCallNotAFold,
   FoldCallStepFormUnresolved,
   FoldCallStepShapeInvalid,
+  FoldCallOperandAbsent,
+  FoldCallOperands,
+  fold_recurrence_encoding,
   fold_call_head_symbol,
   fold_call_lowering,
-  fold_family_head
+  fold_call_lowering_piped,
+  fold_family_realization
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.compiler.body_producer_forward {
@@ -136,6 +140,11 @@ import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrap
 import v2.std.node_query {
   node_positional_child_targets,
   construct_node,
+  construct_tag_elided_reference,
+  construct_tag_reading,
+  ConstructTagAuthored,
+  ConstructTagElided,
+  NotAConstruct,
   construct_tag_optional,
   field_projection_node,
   field_projection_optional,
@@ -147,7 +156,7 @@ import v2.std.node_query {
   variant_declaration_node
 }
 
-data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into v2.compiler.body_producer_forward GrammarRelationRow forward fold (general-body-producer-design §3) once Slice 4 deletes this module; match/if/body_try hand-walker scaffolds dissolved into body_producer_forward + body_lower_fold. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained as the typed BodyWrapperRetained variant (general-body-producer-design Stage A frontier: lowered | wrapper-retained, refused at the retained shell by the normalized-tree door — never silent shell accept)."
+data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into v2.compiler.body_producer_forward GrammarRelationRow forward fold (general-body-producer-design §3) once Slice 4 deletes this module; match/if/body_try hand-walker scaffolds dissolved into body_producer_forward + body_lower_fold. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → the fold encoding via fold_call_lowering and fold_recurrence_encoding); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_lowering — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained as the typed BodyWrapperRetained variant (general-body-producer-design Stage A frontier: lowered | wrapper-retained, refused at the retained shell by the normalized-tree door — never silent shell accept)."
 
 data body_lowering_fold_dissolution_contract: DissolutionCondition = unbound_dissolution(description: "FLAG E dissolution DELETES this module — coverage lives in v2.compiler.body_producer_forward forward rows + GrammarRelationRow slot-map apply (general-body-producer-design §3). The hand-authored families (body_lower_deep_unwrap*, body_lower_operand_ref*, body_lower_operator_tail/infix*, body_lower_postfix_projection*) are receipt scaffolding only. Acceptance: this file is gone and coverage lives in forward rows + existing witnesses. match/if/body_try hand-walker scaffolds LANDED: body_lower_try_body_lowered delegates behavior productions to body_lower_fold; body_producer_forward owns the forward row table.")
 
@@ -581,7 +590,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
         || (match body_lower_string_literal_value_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
         || (match dag_symbol_literal_name_optional(node: node) { Present { value: _ } => true  Absent => false })
         || qualified_name_spine_shape_present(root: node)
-        || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
+        || (match construct_tag_reading(n: node) { ConstructTagAuthored { reference: _ } => true  ConstructTagElided => true  NotAConstruct => false })
         || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
 }
@@ -702,6 +711,7 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_admit_callers_clause)
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
+    || (emitted == ^dag_surface_field_init_string_key)
     || (emitted == ^dag_surface_where_refinement_clause)
     || (emitted == ^dag_surface_where_predicate)
     || (emitted == ^dag_surface_arrow_lambda)
@@ -1546,6 +1556,165 @@ fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
   }
 }
 
+// ONE OPERATOR APPLIED TO THE ACCUMULATED LEFT OPERAND. `xs |> fold(init, step)` is a fold whose
+// receiver the pipe supplies: the fold template is receiver-first, so the pipe's left operand IS the
+// collection, and it lowers to the fold encoding with that operand as its domain
+// (v2.compiler.fold_lowering fold_call_lowering_piped). A pipe into anything else, and a fold whose
+// step this stage cannot read (a step by name), stays the ordinary infix Transform it always was.
+fn body_lower_binary_apply(acc: Node, operator: Node, right: Node) -> Outcome<Node> {
+  match body_lower_piped_fold_optional(acc: acc, operator: operator, right: right) {
+    Present { value: lowered } => lowered
+    Absent =>
+      match body_lower_operator_operand(node: right) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: operand, diagnostics: d } =>
+          outcome_with_diagnostics(value: lower_binary_infix(left: acc, operator: operator, right: operand), diagnostics: d)
+      }
+  }
+}
+
+fn body_lower_operator_is_pipe(operator: Node) -> Bool {
+  match node_atom_identity_optional(node: operator) {
+    Present { value: id } => id == ^dag_token_pipe_gt
+    Absent => false
+  }
+}
+
+fn body_lower_piped_fold_optional(acc: Node, operator: Node, right: Node) -> Optional<Outcome<Node>> {
+  if body_lower_operator_is_pipe(operator: operator) {
+    match body_lower_fold_call_beneath(node: body_lower_strip_operator_free_levels(node: right)) {
+      Absent => optional_absent()
+      Present { value: call } =>
+        match fold_call_lowering_piped(fold_call: call, receiver: acc) {
+          FoldCallLowered { operands: operands } =>
+            optional_present(value: body_lower_fold_encoding_from(operands: operands, collection: outcome_accepted(value: acc)))
+          FoldCallStepShapeInvalid { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
+          FoldCallOperandAbsent { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
+          FoldCallStepFormUnresolved { diagnostic: _ } => optional_absent()
+          FoldCallNotAFold { diagnostic: _ } => optional_absent()
+        }
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+// The fold-family call an operand is, reached down its captured-child chain exactly as
+// body_lower_fold_family_call_first reads a call: the captured child whose head is a fold-family
+// head. Absent for any other operand.
+fn body_lower_fold_call_beneath(node: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match fold_call_head_symbol(fold_call: captured) {
+        Present { value: head } =>
+          match fold_family_realization(head: head) {
+            Present { value: _ } => optional_present(value: captured)
+            Absent => body_lower_fold_call_beneath(node: captured)
+          }
+        Absent => body_lower_fold_call_beneath(node: captured)
+      }
+  }
+}
+
+// Whether a tower tail element is `|> <fold-family call>`: the element is sequence(operator, operand).
+fn body_lower_tail_element_pipes_into_fold(element: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: element) {
+    Absent => false
+    Present { value: e } =>
+      match body_lower_operator_token_optional(node: e.left, binary: true) {
+        Absent => false
+        Present { value: operator } =>
+          if body_lower_operator_is_pipe(operator: operator) {
+            match body_lower_fold_call_beneath(node: body_lower_strip_operator_free_levels(node: e.right)) {
+              Present { value: _ } => true
+              Absent => false
+            }
+          } else {
+            false
+          }
+      }
+  }
+}
+
+// Whether a tower tail -- empty, sequence(operator, operand), or a repeat spine
+// sequence(sequence(operator, operand), rest) -- pipes into a fold-family call anywhere along it.
+fn body_lower_tail_pipes_into_fold(tail: Node) -> Bool {
+  if is_empty_conj_root(n: tail) {
+    false
+  } else if body_lower_tail_element_pipes_into_fold(element: tail) {
+    true
+  } else {
+    match sugar_sequence_pair_optional(node: tail) {
+      Absent => false
+      Present { value: pair } =>
+        body_lower_tail_element_pipes_into_fold(element: pair.left) || body_lower_tail_pipes_into_fold(tail: pair.right)
+    }
+  }
+}
+
+// Whether a node is the `|>` token: one identity comparison, no operator-list scan.
+fn body_lower_node_is_pipe_token(node: Node) -> Bool {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_pipe_gt
+    Absent => false
+  }
+}
+
+// Whether a tail's FIRST element is headed by `|>`: the tail is sequence(operator, operand) or
+// sequence(sequence(operator, operand), rest), read from the node's own shape.
+fn body_lower_tail_starts_with_pipe(tail: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: tail) {
+    Absent => false
+    Present { value: pair } =>
+      if body_lower_node_is_pipe_token(node: pair.left) {
+        true
+      } else {
+        match sugar_sequence_pair_optional(node: pair.left) {
+          Absent => false
+          Present { value: element } => body_lower_node_is_pipe_token(node: element.left)
+        }
+      }
+  }
+}
+
+// THE ROOT OF A PIPE TOWER, DECIDED FROM THE NODE'S OWN SHAPE BY IDENTITY COMPARISONS ALONE.
+// body_lower_fold runs at every node, so this guard reads only the node's own sequence pair and
+// compares token identities with `|>`: no walk, and no scan of the operator roster (the first
+// constant-time cut asked body_lower_operator_token_optional, whose roster fold ran several times
+// per node and doubled the native route's context phase -- 918s at base against 1892s, census
+// gunbc#12550). The pipe is the outermost level of v2.extdeps.languages.dag
+// dag_grammar_binary_expr_expr, so a sequence whose tail starts with `|>` is a pipe tower; a
+// repeat-spine node inside that tail, sequence(sequence(`|>`, operand), rest), is excluded by its
+// left element starting with `|>`, so the tower is decided once, at its root.
+fn body_lower_is_pipe_tower_root(node: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: node) {
+    Absent => false
+    Present { value: pair } =>
+      if body_lower_tail_starts_with_pipe(tail: pair.left) {
+        false
+      } else {
+        body_lower_tail_starts_with_pipe(tail: pair.right)
+      }
+  }
+}
+
+// A TOWER THAT PIPES INTO A FOLD IS READ WHOLE, BEFORE ITS OPERANDS ARE FOLDED. The bottom-up fold
+// lowers an operator expression's children first, so the fold call on the right of `|>` would be
+// lowered on its own -- with no collection, since the pipe supplies it -- before the tower could hand
+// it the pipe's input. So such a tower -- recognised at its ROOT by structure (body_lower_is_pipe_tower_root,
+// constant time), whatever production identity the node carries, since the value reader unwraps shells
+// before folding; only a root then pays the tail scan below, once per tower -- is read by the
+// raw tower reader, whose binary step
+// (body_lower_binary_apply) builds the fold encoding with the accumulated left operand as the
+// collection. Every other tower takes the ordinary bottom-up path unchanged.
+fn body_lower_tower_pipes_into_fold(node: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: body_lower_strip_operator_free_levels(node: node)) {
+    Absent => false
+    Present { value: pair } => body_lower_tail_pipes_into_fold(tail: pair.right)
+  }
+}
+
 fn body_lower_fold_operator_tail(acc: Node, tail: Node) -> OperatorExpressionRead {
   if is_empty_conj_root(n: tail) {
     OperatorExpressionRead { lowered: acc }
@@ -1555,10 +1724,9 @@ fn body_lower_fold_operator_tail(acc: Node, tail: Node) -> OperatorExpressionRea
       Present { value: pair } =>
         match body_lower_operator_token_optional(node: pair.left, binary: true) {
           Present { value: operator } =>
-            match body_lower_operator_operand(node: pair.right) {
+            match body_lower_binary_apply(acc: acc, operator: operator, right: pair.right) {
               Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
-              Accepted { value: right, diagnostics: _ } =>
-                OperatorExpressionRead { lowered: lower_binary_infix(left: acc, operator: operator, right: right) }
+              Accepted { value: applied, diagnostics: _ } => OperatorExpressionRead { lowered: applied }
             }
           Absent =>
             match sugar_sequence_pair_optional(node: pair.left) {
@@ -1567,13 +1735,10 @@ fn body_lower_fold_operator_tail(acc: Node, tail: Node) -> OperatorExpressionRea
                 match body_lower_operator_token_optional(node: element.left, binary: true) {
                   Absent => body_lower_operator_refusal(reason: ^body_lowering_reason_operator_tail_unread, at: tail)
                   Present { value: operator } =>
-                    match body_lower_operator_operand(node: element.right) {
+                    match body_lower_binary_apply(acc: acc, operator: operator, right: element.right) {
                       Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
-                      Accepted { value: right, diagnostics: _ } =>
-                        body_lower_fold_operator_tail(
-                          acc: lower_binary_infix(left: acc, operator: operator, right: right),
-                          tail: pair.right
-                        )
+                      Accepted { value: applied, diagnostics: _ } =>
+                        body_lower_fold_operator_tail(acc: applied, tail: pair.right)
                     }
                 }
             }
@@ -1652,10 +1817,16 @@ fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
 fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
   match fold_call_head_symbol(fold_call: node) {
     Present { value: head } =>
-      if fold_family_head(sym: head) {
+      match fold_family_realization(head: head) {
+        Present { value: _ } =>
         match fold_call_lowering(fold_call: node) {
-          FoldCallLowered { seam_loop: loop_node } =>
-            outcome_accepted(value: optional_present(value: loop_node))
+          FoldCallLowered { operands: operands } =>
+            match body_lower_fold_encoding(operands: operands) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: encoding, diagnostics: d } =>
+                outcome_with_diagnostics(value: optional_present(value: encoding), diagnostics: d)
+            }
+          FoldCallOperandAbsent { diagnostic: d } => outcome_rejected(d: d)
           FoldCallStepFormUnresolved { diagnostic: d } =>
             outcome_with_diagnostics(
               value: optional_absent(),
@@ -1664,7 +1835,7 @@ fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
           FoldCallNotAFold { diagnostic: d } => outcome_rejected(d: d)
           FoldCallStepShapeInvalid { diagnostic: d } => outcome_rejected(d: d)
         }
-      } else {
+        Absent =>
         body_lower_try_fold_loop_search(node: node)
       }
     Absent => body_lower_try_fold_loop_search(node: node)
@@ -2756,20 +2927,30 @@ fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
 fn body_lower_fold(node: Node) -> Outcome<Node> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: node)
+  } else if body_lower_is_pipe_tower_root(node: node) && body_lower_tower_pipes_into_fold(node: node) {
+    match body_lower_read_operator_expression(node: node) {
+      OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: lowered)
+      OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
+      OperatorExpressionAbsent => body_lower_fold_by_identity(node: node)
+    }
   } else {
+    body_lower_fold_by_identity(node: node)
+  }
+}
+
+fn body_lower_fold_by_identity(node: Node) -> Outcome<Node> {
     match parse_production_emitted_identity_optional(node: node) {
       Present { value: emitted } =>
         if (emitted == ^dag_surface_arrow_lambda) || (emitted == ^dag_surface_fn_literal) {
           body_lower_function_value_in_fold(node: node)
         } else {
           match body_lower_fold_family_call_first(node: node) {
-            Present { value: seam } => body_lower_fold_family_call_arguments_admitted(node: node, emitted: emitted, seam: seam)
+            Present { value: lowered } => lowered
             Absent => body_lower_fold_dispatch(node: node, emitted: emitted)
           }
         }
       Absent => body_lower_fold_identity_absent(node: node)
     }
-  }
 }
 
 fn body_lower_function_value_in_fold(node: Node) -> Outcome<Node> {
@@ -2787,28 +2968,41 @@ fn body_lower_function_value_in_fold(node: Node) -> Outcome<Node> {
   }
 }
 
-// THE SEAM KEEPS ONLY THE STEP, SO THE CALL'S ARGUMENTS ARE ADMITTED BEFORE IT IS ACCEPTED.
-// fold_lowering fold_call_seam_loop carries the step body and its carrier and nothing else, so a
-// refusal owned by any other argument (the collection, `init:`) cannot reach the caller through the
-// seam. Before function values lowered in the fold, the catamorphism lowered the call's children
-// first and built the seam after, so such a refusal propagated; taking the call on its raw node
-// skipped that, and `fold(map(s, <unlowerable>), ..)` Accepted with the collection gone
-// (v2.test.claim.namespace_xl0.value_read_refusal, the swallowed fold refusal). The call is lowered
-// once through the ordinary dispatch and its refusal propagates; the seam stands only when it
-// admits. A seam over a refusing step keeps its own refusal (FoldCallStepShapeInvalid).
-fn body_lower_fold_family_call_arguments_admitted(node: Node, emitted: Symbol, seam: Outcome<Node>) -> Outcome<Node> {
-  match seam {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: _, diagnostics: _ } =>
-      match body_lower_fold_dispatch(node: node, emitted: emitted) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: _, diagnostics: _ } => seam
-      }
-  }
+// A FOLD-FAMILY CALL LOWERS TO THE FOLD ENCODING, BUILT ONCE FROM ITS LOWERED OPERANDS.
+// v2.compiler.fold_lowering fold_call_lowering locates the operands on the call's raw node: head,
+// collection, init and the step as a function value. Each one is lowered here in its own slot -- the
+// collection and init by the value-position reader body_lower_value_read, which peels the shells a
+// bare body_lower_fold leaves behind, and the step by the function-value producer -- and
+// fold_recurrence_encoding assembles Bind { carrier := init, Loop { step, domain: collection, carrier,
+// bound, realized: head } } from the results. Nothing is lowered and then thrown away, and nothing is
+// re-supplied from side context. So a refusal owned by any operand (`fold(map(s, <unlowerable>), ..)`,
+// v2.test.claim.namespace_xl0.value_read_refusal) propagates from the operand that owns it, and every
+// authored reference the call carried stands in the encoding at its own occurrence. The head stays
+// the authored atom; resolve checks it (v2.compiler.resolve resolve_realized_declaration).
+fn body_lower_fold_encoding(operands: FoldCallOperands) -> Outcome<Node> {
+  body_lower_fold_encoding_from(operands: operands, collection: body_lower_value_read(value: operands.collection))
+}
+
+// The same assembly with the collection already lowered: a piped fold's receiver is the pipe's left
+// operand, which the operator tower has lowered before it reaches the call.
+fn body_lower_fold_encoding_from(operands: FoldCallOperands, collection: Outcome<Node>) -> Outcome<Node> {
+  bind_outcome(o: collection, f: fn(collection) {
+    bind_outcome(o: body_lower_value_read(value: operands.init), f: fn(init) {
+      bind_outcome(o: body_lower_function_value_in_fold(node: operands.step), f: fn(step) {
+        outcome_accepted(value: fold_recurrence_encoding(operands: FoldCallOperands {
+          head: operands.head,
+          collection: collection,
+          init: init,
+          step: step,
+          carrier: operands.carrier
+        }))
+      })
+    })
+  })
 }
 
 // A fold-family call, read off the node's own captured sequence (fold_lowering fold_call_head_symbol
-// reads its head atom directly -- no search), lowered to its seam Loop while the step is raw.
+// reads its head atom directly -- no search), lowered to the fold encoding while its step is raw.
 fn body_lower_fold_family_call_first(node: Node) -> Optional<Outcome<Node>> {
   match parse_production_captured_child_optional(node: node) {
     Absent => optional_absent()
@@ -2816,14 +3010,16 @@ fn body_lower_fold_family_call_first(node: Node) -> Optional<Outcome<Node>> {
       match fold_call_head_symbol(fold_call: captured) {
         Absent => optional_absent()
         Present { value: head } =>
-          if fold_family_head(sym: head) {
+          match fold_family_realization(head: head) {
+            Present { value: _ } =>
             match fold_call_lowering(fold_call: captured) {
-              FoldCallLowered { seam_loop: loop_node } => optional_present(value: outcome_accepted(value: loop_node))
+              FoldCallLowered { operands: operands } => optional_present(value: body_lower_fold_encoding(operands: operands))
               FoldCallStepShapeInvalid { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
+              FoldCallOperandAbsent { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
               FoldCallStepFormUnresolved { diagnostic: _ } => optional_absent()
               FoldCallNotAFold { diagnostic: _ } => optional_absent()
             }
-          } else {
+            Absent =>
             optional_absent()
           }
       }
@@ -6993,12 +7189,14 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
 
 
 // AN ADMITTED GUARD LOWERS TO A BRANCH WHOSE ELSE IS THE REST OF THE SPINE: `if c { ..; return e }`
-// followed by statements is Branch(c, <arm>, <rest>). The spine matches it through
-// body_lower_admitted_guard_optional itself, and refuses any other else-less `if` it meets, so the
-// lowering owns the admission rule rather than relying on the wall having run first. The arm is a statement sequence ending in a
-// return, which the statement spine lowers to its operand; the wall
-// (body_lower_exit_outside_tail_optional) admits a guard only in a tail spine, so the arm's value
-// and the rest's value are both the function's result.
+// followed by statements is Branch(c, <arm>, <rest>). Admission has two halves, owned in two places.
+// That the arm ENDS IN A RETURN is checked here, by construction: the spine matches a guard only
+// through body_lower_admitted_guard_optional and refuses any other else-less `if` it meets. That the
+// guard sits in a TAIL spine is NOT checked here; it is established only by the wall
+// (body_lower_exit_outside_tail_optional) having run first with tail: true, at the fn declaration and
+// the fn value block body. A data initializer runs the same wall with tail: false, so any exit there
+// refuses and no guard is admitted. Given both halves, the arm's value and the rest's value are each
+// the enclosing function's result.
 fn body_lower_guard_branch(guard: BodyLowerGuard, rest: Node) -> Outcome<Node> {
   bind_outcome(o: body_lower_value_read(value: guard.condition), f: fn(condition) {
     let arm_lowered = match body_lower_fn_body_stmt_seq_optional(fn_body: guard.arm) {
@@ -7903,6 +8101,19 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
 // shape v2.std.node admits and the shape a fielded pattern lowers to, so `Rec { n: 1 }` and
 // `Rec { n: x } =>` are one shape read in two directions. A dotted head (`m.R { .. }`) is a postfix
 // chain and reaches the same builder, body_lower_record_construct, through its PostfixRecord step.
+// A STRING-KEYED INIT IS NOT A RECORD FIELD, AND THE PARSE SAYS SO. The key's kind is the grammar's
+// choice, carried as the production identity ^dag_surface_field_init_string_key
+// (v2.extdeps.languages.dag dag_grammar_field_init_expr), so a record literal refuses it at the item
+// rather than reading `{ "n": true }` as field `n`. Admitting a quoted key whose decoded text names a
+// declared field is a declared frontier (gunbc#12740); a map literal's entry is the map arm's
+// (gunbc#12758), which dispatches on this same identity.
+fn body_lower_field_init_is_string_keyed(item: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+    Present { value: id } => id == ^dag_surface_field_init_string_key
+    Absent => false
+  }
+}
+
 fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   let stripped = body_lower_deep_unwrap_optional(node: item)
   let captured = match parse_production_captured_child_optional(node: stripped) {
@@ -7912,6 +8123,9 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   let refuse = outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item)
   )
+  if body_lower_field_init_is_string_keyed(item: captured) {
+    refuse
+  } else {
   match sugar_sequence_pair_optional(node: captured) {
     Absent => refuse
     Present { value: pair } =>
@@ -7931,6 +8145,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
               }
           }
       }
+  }
   }
 }
 
@@ -8026,9 +8241,32 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<RecordLite
   }
 }
 
+// AN ANONYMOUS RECORD LITERAL `{ f: v }` names no constructor, and lowering does not choose one:
+// the constructor is the EXPECTED type's, which only resolve reads from an authored annotation. So
+// it lowers through the one construct builder with its tag ELIDED
+// (v2.std.node_query construct_tag_elided_reference), and resolve's construct-tag writer either
+// writes the expected record's reference or refuses located
+// (docs/plans/anonymous-record-literal-design.md). The field set is never consulted to choose. A
+// string-keyed item (a map literal) has no field edge here and still refuses at the item; the map
+// arm gives it one (gunbc#12734).
+fn body_lower_try_headless_record_literal(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_record_brace_items_optional(brace: captured) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: items } =>
+      bind_outcome(
+        o: body_lower_record_construct(
+          reference: construct_tag_elided_reference(source: captured),
+          items: items,
+          source: captured
+        ),
+        f: fn(construct) { outcome_accepted(value: optional_present(value: construct)) }
+      )
+  }
+}
+
 fn body_lower_try_record_literal(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_record_literal_tag_optional(captured: captured) {
-    Absent => outcome_accepted(value: optional_absent())
+    Absent => body_lower_try_headless_record_literal(captured: captured)
     Present { value: read } =>
       match body_lower_record_literal_field_items_optional(captured: captured) {
         Absent => outcome_accepted(value: optional_absent())
