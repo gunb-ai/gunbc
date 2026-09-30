@@ -3599,3 +3599,88 @@ mod tree_census_from_raw_differential {
         assert!(compared >= 2, "both live roots compared ({compared})");
     }
 }
+
+/// THE POOL-FALLBACK CENSUS, as a measurement: over every import-less file of the live
+/// `[dag, src/v2]` pool, which bare references the file's own tree census does NOT answer and the
+/// whole-pool census then does. Each such (file, name, provider) row is a resolution that depends on
+/// the fallback; a demand that reaches the pool and comes back empty is counted separately. It
+/// reports; it asserts only that the walk completed.
+#[cfg(test)]
+mod pool_fallback_census {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn pool_fallback_dependents_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let mut sources: Vec<_> = index.source_files.values().cloned().collect();
+        sources.sort_by(|a, b| a.path.cmp(&b.path));
+        let mut files_scanned = 0usize;
+        let mut files_demanding_pool = 0usize;
+        let mut refusals: Vec<String> = Vec::new();
+        let mut pool_rows: Vec<String> = Vec::new();
+        for sf in &sources {
+            if super::super::source_declares_import_lines(&sf.content) {
+                continue;
+            }
+            files_scanned += 1;
+            let demanded = std::cell::Cell::new(false);
+            // Providers each name resolves to when the tree census alone answers.
+            let mut scoped: BTreeSet<(String, String)> = BTreeSet::new();
+            let r = super::super::visit_bare_reference_providers(
+                sf,
+                &index,
+                |root| {
+                    if root.is_none() {
+                        demanded.set(true);
+                        return Ok(crate::v1_compiler_infer_env::empty_symbol_index());
+                    }
+                    super::super::closure_name_census(&index, root)
+                },
+                |name, module, _| {
+                    scoped.insert((name.to_string(), module.to_string()));
+                    Ok(())
+                },
+            );
+            if !demanded.get() {
+                if let Err(e) = r {
+                    refusals.push(format!("{}: {e}", sf.path));
+                }
+                continue;
+            }
+            files_demanding_pool += 1;
+            let mut full: BTreeSet<(String, String)> = BTreeSet::new();
+            let r = super::super::visit_bare_reference_providers(
+                sf,
+                &index,
+                |root| super::super::closure_name_census(&index, root),
+                |name, module, _| {
+                    full.insert((name.to_string(), module.to_string()));
+                    Ok(())
+                },
+            );
+            if let Err(e) = r {
+                refusals.push(format!("{}: {e}", sf.path));
+            }
+            for (name, module) in full.difference(&scoped) {
+                pool_rows.push(format!("{} -> {name} -> {module}", sf.path));
+            }
+        }
+        eprintln!(
+            "FALLBACK files_scanned={files_scanned} files_demanding_pool={files_demanding_pool} \
+             pool_answered_rows={} refusals={}",
+            pool_rows.len(),
+            refusals.len()
+        );
+        for row in pool_rows.iter().take(60) {
+            eprintln!("FALLBACK row {row}");
+        }
+        for r in refusals.iter().take(10) {
+            eprintln!("FALLBACK refusal {r}");
+        }
+    }
+}
