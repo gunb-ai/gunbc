@@ -1586,10 +1586,6 @@ fn nanoseconds_per_millisecond() -> Nat {
   1000000
 }
 
-fn second_to_millisecond(s: Second) -> Millisecond {
-  millisecond(count: second_count(s: s) * milliseconds_per_second())
-}
-
 fn millisecond_to_nanosecond(m: Millisecond) -> Nanosecond {
   nanosecond(count: millisecond_count(m: m) * nanoseconds_per_millisecond())
 }
@@ -1648,6 +1644,10 @@ fn minute_to_second(m: Minute) -> Second {
 
 fn minute_to_millisecond(m: Minute) -> Millisecond {
   millisecond(count: minute_count(m) * seconds_per_minute() * milliseconds_per_second())
+}
+
+fn second_to_millisecond(s: Second) -> Millisecond {
+  millisecond(count: second_count(s: s) * milliseconds_per_second())
 }
 
 type Percent = Measure<Dimensionless, One, Nat>
