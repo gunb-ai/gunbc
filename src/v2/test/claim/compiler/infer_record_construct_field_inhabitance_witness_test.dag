@@ -21,7 +21,7 @@ import v2.std.integer { integer_int_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool, bool_node }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.node { Edge, Named, Node, Positional, Symbol, node_subtree_nodes }
+import v2.std.node { Arrow, Edge, Named, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
 import v2.std.node_query { construct_field_edges, construct_tag_optional, find_named_child }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -62,7 +62,11 @@ data rcf_provider_source: String = "module v2.test.rcfp\n\ntype RcfFar {\n  n: I
 
 data rcf_bad_source: String = "module v2.test.rcf_bad\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_bad: ArB = ArB { n: true, m: 3 }\n"
 
-data rcf_good_source: String = "module v2.test.rcf_good\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ntype Bx<T> {\n  v: T\n  w: T\n}\n\ntype ArOuter {\n  inner: ArB\n  count: Int\n}\n\ndata ar_good: ArB = ArB { n: 1, m: 3 }\n\ndata bx_good: Bx<Int> = Bx { v: 1, w: 2 }\n\ndata ar_outer: ArOuter = ArOuter { inner: ArB { n: 1, m: 2 }, count: 3 }\n"
+data rcf_good_source: String = "module v2.test.rcf_good\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_good: ArB = ArB { n: 1, m: 3 }\n"
+
+data rcf_generic_good_source: String = "module v2.test.rcf_generic_good\n\ntype Bx<T> {\n  v: T\n  w: T\n}\n\ndata bx_good: Bx<Int> = Bx { v: 1, w: 2 }\n"
+
+data rcf_nested_good_source: String = "module v2.test.rcf_nested_good\n\ntype ArB {\n  n: Int\n}\n\ntype ArOuter {\n  inner: ArB\n}\n\ndata ar_outer: ArOuter = ArOuter { inner: ArB { n: 1 } }\n"
 
 data rcf_missing_source: String = "module v2.test.rcf_missing\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_missing: ArB = ArB { n: 1 }\n"
 
@@ -70,13 +74,13 @@ data rcf_unknown_source: String = "module v2.test.rcf_unknown\n\ntype ArB {\n  n
 
 data rcf_generic_bad_source: String = "module v2.test.rcf_generic_bad\n\ntype Bx<T> {\n  v: T\n  w: T\n}\n\ndata bx_bad: Bx<Int> = Bx { v: 1, w: true }\n"
 
-data rcf_other_source: String = "module v2.test.rcf_other\n\ntype ArA {\n  n: Int\n  m: Int\n}\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ntype ArOuter {\n  inner: ArB\n  count: Int\n}\n\ndata ar_outer: ArOuter = ArOuter { inner: ArA { n: 1, m: 2 }, count: 3 }\n"
+data rcf_other_source: String = "module v2.test.rcf_other\n\ntype ArA {\n  n: Int\n}\n\ntype ArB {\n  n: Int\n}\n\ndata ar_other: ArB = ArA { n: 1 }\n"
 
 data rcf_far_value_source: String = "module v2.test.rcf_far_value\n\nimport v2.test.rcfp { RcfFar }\n\ndata far_value: RcfFar = RcfFar { n: true, m: 3 }\n"
 
 data rcf_far_missing_source: String = "module v2.test.rcf_far_missing\n\nimport v2.test.rcfp { RcfFar }\n\ndata far_missing: RcfFar = RcfFar { n: 1 }\n"
 
-data rcf_bool_field_source: String = "module v2.test.rcf_bool_field\n\nimport v2.std.logic { Bool }\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ndata ar_bool: ArB = ArB { n: true, m: 3 }\n"
+data rcf_bool_field_source: String = "module v2.test.rcf_bool_field\n\nimport v2.std.logic { Bool }\n\ntype ArB {\n  m: Bool\n}\n\ndata ar_bool: ArB = ArB { m: 3 }\n"
 
 data rcf_pattern_source: String = "module v2.test.rcf_pattern\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\nfn rcf_take(a: ArB) -> Int {\n  match a {\n    ArB { n: x } => x\n  }\n}\n"
 
@@ -93,6 +97,8 @@ data rcf_ingest: SourceRootIngest = [
   rcf_read(source: rcf_provider_source, id: ^rcf_provider_read, unit: ^rcf_provider_cu, path: "src/v2/test/fixture/record_construct_field/provider.dag"),
   rcf_read(source: rcf_bad_source, id: ^rcf_bad_read, unit: ^rcf_bad_cu, path: "src/v2/test/fixture/record_construct_field/bad.dag"),
   rcf_read(source: rcf_good_source, id: ^rcf_good_read, unit: ^rcf_good_cu, path: "src/v2/test/fixture/record_construct_field/good.dag"),
+  rcf_read(source: rcf_generic_good_source, id: ^rcf_generic_good_read, unit: ^rcf_generic_good_cu, path: "src/v2/test/fixture/record_construct_field/generic_good.dag"),
+  rcf_read(source: rcf_nested_good_source, id: ^rcf_nested_good_read, unit: ^rcf_nested_good_cu, path: "src/v2/test/fixture/record_construct_field/nested_good.dag"),
   rcf_read(source: rcf_missing_source, id: ^rcf_missing_read, unit: ^rcf_missing_cu, path: "src/v2/test/fixture/record_construct_field/missing.dag"),
   rcf_read(source: rcf_unknown_source, id: ^rcf_unknown_read, unit: ^rcf_unknown_cu, path: "src/v2/test/fixture/record_construct_field/unknown.dag"),
   rcf_read(source: rcf_generic_bad_source, id: ^rcf_generic_bad_read, unit: ^rcf_generic_bad_cu, path: "src/v2/test/fixture/record_construct_field/generic_bad.dag"),
@@ -126,6 +132,8 @@ fn rcf_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
 
 fn rcf_resolved_bad() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_bad") }
 fn rcf_resolved_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_good") }
+fn rcf_resolved_generic_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_generic_good") }
+fn rcf_resolved_nested_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_nested_good") }
 fn rcf_resolved_missing() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_missing") }
 fn rcf_resolved_unknown() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_unknown") }
 fn rcf_resolved_generic_bad() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_generic_bad") }
@@ -252,22 +260,73 @@ test fn rcf_the_refusal_names_the_record_the_field_and_both_types_holds() -> Boo
   }
 }
 
-fn rcf_accepted_without(resolved: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
-  match rcf_verdict(resolved: resolved) {
-    RcfInferAccepted { diagnostics: ds } => !diagnostics_has_reason(d: ds, reason: reason)
-    RcfInferRefused { diagnostics: _ } => false
-    RcfResolveRefused => false
+// THE SUBJECT OF A DECIDED CONTROL IS THE DECLARATION'S MEMBER, NOT THE MODULE AROUND IT. Infer runs
+// over the one Arrow the named `data` declaration lowered to, handed the two indexes resolve produced
+// for the whole module unchanged -- so the construct's tag, the record's declared fields and the
+// declared type it is judged at are all the production route's. Inferring the whole module is more
+// than one claim's budget on the required floor once the verdict is an acceptance
+// (v2.test.execution.data_decl_lowering_grounding records the same measurement), and the type
+// declarations beside the member are not what these claims are about. The refusing claims above
+// and below do run the whole module: a refusal stops early.
+fn rcf_member_arrow(root: Node, name: Symbol) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: optional_absent(), f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        fold(n.children, init: acc, f: fn(inner, e) {
+          match e.label {
+            Named { name: label } =>
+              if label == name {
+                match e.target.kind {
+                  TypeNode { connective: Arrow } => optional_present(value: e.target)
+                  _ => inner
+                }
+              } else {
+                inner
+              }
+            Positional => inner
+          }
+        })
+    }
+  })
+}
+
+// ACCEPTED AND DECIDED, from ONE run of infer: the verdict is Accepted and none of its diagnostics
+// is a counted inhabitance obligation. An acceptance that merely judged nothing would carry one.
+fn rcf_member_accepted_and_decided(resolved: Outcome<ResolvedTree>, member: Symbol) -> Bool {
+  match resolved {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match rcf_member_arrow(root: tree.root, name: member) {
+        Absent => false
+        Present { value: arrow } =>
+          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations }) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: ds } =>
+              !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
+                && !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_argument_type_not_derived)
+                && !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_generic_formal)
+          }
+      }
   }
 }
 
-// THE POSITIVE CONTROL, one term from the red, and DECIDED rather than waved through: the module
-// holds a monomorphic construct, a generic one at its instantiation and one nested in a field
-// declared as a record, infer accepts it, and no obligation in it was counted undecidable -- so every
-// construct derived its declared record and every data initializer was judged at its declared type.
+// THE POSITIVE CONTROL, one term from the red, and DECIDED rather than waved through: the construct
+// derived its declared record and the data initializer was judged at its declared type.
 test fn rcf_inhabiting_field_values_are_accepted_and_decided_holds() -> Bool {
-  rcf_accepted_without(resolved: rcf_resolved_good(), reason: ^inhabitance_undecidable_formal_unresolved)
-    && rcf_accepted_without(resolved: rcf_resolved_good(), reason: ^inhabitance_undecidable_argument_type_not_derived)
-    && rcf_accepted_without(resolved: rcf_resolved_good(), reason: ^inhabitance_undecidable_generic_formal)
+  rcf_member_accepted_and_decided(resolved: rcf_resolved_good(), member: ^ar_good)
+}
+
+// The generic record at its instantiation: `Bx { v: 1, w: 2 }` is a Bx<Int> and is decided at a
+// declared Bx<Int>.
+test fn rcf_a_generic_record_at_its_instantiation_is_accepted_and_decided_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: rcf_resolved_generic_good(), member: ^bx_good)
+}
+
+// A field declared as a record of the subject module is judged too: `inner: ArB` holding an ArB
+// construct is decided, so the nominal refusal below is not a refusal of every nested construct.
+test fn rcf_a_nested_construct_at_a_record_declared_field_is_accepted_and_decided_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: rcf_resolved_nested_good(), member: ^ar_outer)
 }
 
 // A declared field the construct leaves out refuses, at the construct, naming the record and the
@@ -308,13 +367,12 @@ test fn rcf_a_generic_records_second_field_must_inhabit_the_instance_holds() -> 
   rcf_refuses_with(resolved: rcf_resolved_generic_bad(), reason: ^record_field_value_does_not_inhabit)
 }
 
-// THE CONSTRUCT'S TYPE IS THE RECORD IT CONSTRUCTS, so a field declared as a record meets it by
-// identity: `inner: ArB` holding `ArA { n: 1, m: 2 }` refuses although ArA and ArB declare the same
-// fields. The accepted module holds the same outer construct with an ArB inside and is decided, so
-// this is the nominal judgment and not a refusal of every nested construct. Before record
-// introduction a construct's type was not derived and neither case was decided.
-test fn rcf_a_construct_is_its_declared_record_at_a_declared_field_holds() -> Bool {
-  rcf_refuses_with(resolved: rcf_resolved_other(), reason: ^record_field_value_does_not_inhabit)
+// THE CONSTRUCT'S TYPE IS THE RECORD IT CONSTRUCTS, so a declared type meets it by identity:
+// `data ar_other: ArB = ArA { n: 1 }` refuses although ArA and ArB declare the same field. This is
+// the declared-return judgment (a data initializer is a nullary Arrow's body); before record
+// introduction the body's type was not derived and the case was not decided.
+test fn rcf_a_construct_is_its_declared_record_at_a_declared_type_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_other(), reason: ^arrow_body_does_not_inhabit_declared_return)
 }
 
 // THE BOOL-DECLARED FORM, PINNED AS IT IS. `m: Bool` holding `3` is accepted with a counted

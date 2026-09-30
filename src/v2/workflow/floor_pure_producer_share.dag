@@ -1092,6 +1092,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_fixture_normalized",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_bad",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_good",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_generic_good",
+  "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_nested_good",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_missing",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_unknown",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_generic_bad",
