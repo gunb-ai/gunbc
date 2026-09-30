@@ -13,8 +13,7 @@ import v2.std.grammar {
   Sequence,
   Terminal,
   grammar_atom,
-  grammar_empty_sync_tokens,
-  grammar_empty_expectations
+  grammar_empty_sync_tokens
 }
 import v2.compiler.parse {
   ParseSyncState,
@@ -79,15 +78,13 @@ data validation_dup_root: GrammarRoot = GrammarRoot {
     head: validation_terminal_production(name: ^validation_start),
     tail: Cons { head: validation_terminal_production(name: ^validation_start), tail: Empty }
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 data validation_missing_start_root: GrammarRoot = GrammarRoot {
   start: ^validation_start,
   productions: Cons { head: validation_terminal_production(name: ^validation_other), tail: Empty },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 data validation_dangling_ref_root: GrammarRoot = GrammarRoot {
@@ -100,8 +97,7 @@ data validation_dangling_ref_root: GrammarRoot = GrammarRoot {
     },
     tail: Empty
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 data validation_left_recursive_root: GrammarRoot = GrammarRoot {
@@ -117,8 +113,7 @@ data validation_left_recursive_root: GrammarRoot = GrammarRoot {
     },
     tail: Empty
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 data validation_right_recursive_root: GrammarRoot = GrammarRoot {
@@ -134,8 +129,7 @@ data validation_right_recursive_root: GrammarRoot = GrammarRoot {
     },
     tail: Empty
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 data validation_two_distinct_root: GrammarRoot = GrammarRoot {
@@ -144,8 +138,7 @@ data validation_two_distinct_root: GrammarRoot = GrammarRoot {
     head: validation_terminal_production(name: ^validation_start),
     tail: Cons { head: validation_terminal_production(name: ^validation_other), tail: Empty }
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 data validation_ambiguous_choice_root: GrammarRoot = GrammarRoot {
@@ -161,8 +154,7 @@ data validation_ambiguous_choice_root: GrammarRoot = GrammarRoot {
     },
     tail: Empty
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 data validation_disjoint_choice_root: GrammarRoot = GrammarRoot {
@@ -178,8 +170,7 @@ data validation_disjoint_choice_root: GrammarRoot = GrammarRoot {
     },
     tail: Empty
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 fn validation_overlap_choice_validate_accepts_with_residue() -> Bool {
@@ -207,8 +198,7 @@ data validation_nullable_ambiguous_choice_root: GrammarRoot = GrammarRoot {
     },
     tail: Empty
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 fn validation_nullable_ambiguity_validate_rejects() -> Bool {
@@ -235,8 +225,7 @@ data validation_three_alt_inner_nullable_root: GrammarRoot = GrammarRoot {
     },
     tail: Empty
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 data validation_three_alt_tail_overlap_root: GrammarRoot = GrammarRoot {
@@ -255,8 +244,7 @@ data validation_three_alt_tail_overlap_root: GrammarRoot = GrammarRoot {
     },
     tail: Empty
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 test fn validation_three_alt_inner_nullable_pair_rejects() -> Bool {
@@ -339,8 +327,7 @@ fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
 fn validation_empty_sync_found() -> Bool {
   match parse_skip_to_sync(
     tokens: validation_one_token_list,
-    sync_tokens: grammar_empty_sync_tokens(),
-    expectations: grammar_empty_expectations()
+    sync_tokens: grammar_empty_sync_tokens()
   ) {
     ParseSyncState { found_sync: found, result: _ } => found
   }
@@ -521,8 +508,7 @@ data validation_indirect_left_recursive_root: GrammarRoot = GrammarRoot {
       tail: Empty
     }
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 // A = B 'x' , B = 'x' — one left-corner hop, no cycle. The negative twin of the row above: it
@@ -540,8 +526,7 @@ data validation_indirect_terminating_root: GrammarRoot = GrammarRoot {
       tail: Empty
     }
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 test fn validation_direct_left_recursion_is_detected() -> Bool {
@@ -586,8 +571,7 @@ data validation_cycle_5_root: GrammarRoot = GrammarRoot {
       }
     }
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 // The same five-hop chain with the cycle broken at the last link: p5 ends in a terminal instead of
@@ -610,8 +594,7 @@ data validation_chain_5_root: GrammarRoot = GrammarRoot {
       }
     }
   },
-  sync_tokens: grammar_empty_sync_tokens(),
-  expectations: grammar_empty_expectations()
+  sync_tokens: grammar_empty_sync_tokens()
 }
 
 test fn validation_five_hop_cycle_is_left_recursive() -> Bool {

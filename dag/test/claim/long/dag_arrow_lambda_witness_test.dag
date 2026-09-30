@@ -119,8 +119,7 @@ fn pre_repair_grammar() -> ParseGrammar {
         root: GrammarRoot {
           start: r.start,
           productions: swap_expr_production(productions: r.productions),
-          sync_tokens: r.sync_tokens,
-          expectations: r.expectations
+          sync_tokens: r.sync_tokens
         }
       }
     VoidGrammar => VoidGrammar

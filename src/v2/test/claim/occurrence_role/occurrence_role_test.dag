@@ -55,8 +55,7 @@ fn planted_grammar() -> GrammarRoot {
       expression: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident),
       emitted: grammar_atom(identity: ^occurrence_role_planted_binder_surface)
     }),
-    sync_tokens: root.sync_tokens,
-    expectations: root.expectations
+    sync_tokens: root.sync_tokens
   }
 }
 
@@ -106,8 +105,7 @@ fn unkeyed_grammar() -> GrammarRoot {
         list_snoc_item(xs: acc, item: p)
       }
     }),
-    sync_tokens: root.sync_tokens,
-    expectations: root.expectations
+    sync_tokens: root.sync_tokens
   }
 }
 

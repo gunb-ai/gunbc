@@ -26,7 +26,6 @@ import v2.std.grammar {
   Terminal,
   grammar_concrete_fixed_token_node,
   grammar_empty_sync_tokens,
-  grammar_empty_expectations,
   grammar_relation_tokens_node
 }
 import v2.extdeps.languages.dag {
@@ -93,8 +92,7 @@ fn ingest_fixture_root() -> GrammarRoot {
       },
       tail: Empty
     },
-    sync_tokens: grammar_empty_sync_tokens(),
-    expectations: grammar_empty_expectations()
+    sync_tokens: grammar_empty_sync_tokens()
   }
 }
 
