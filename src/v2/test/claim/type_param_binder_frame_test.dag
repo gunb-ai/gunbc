@@ -610,7 +610,8 @@ fn tpb_semantic_emit(with_params: Bool) -> Outcome<Medium<String>> {
     name: ^Box,
     params: Empty,
     node: tpb_box_member(with_params: with_params),
-    target: rust_semantic_decl_target_model_staging()
+    target: rust_semantic_decl_target_model_staging(),
+    realization_host: rust_semantic_decl_target_model_staging()
   )
 }
 

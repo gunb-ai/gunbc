@@ -38,7 +38,7 @@ import v2.std.diagnostic {
 import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
-import v2.compiler.emit_semantic_decl { emit_semantic_type_decl_resolving }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.std.logic { Bool }
 import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredTypeKind }
@@ -353,8 +353,8 @@ fn emit_module_member_refused(reason: Symbol, at: Node) -> Outcome<Medium<String
 fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>) -> Outcome<Medium<String>> {
   match module_member_class(edge: edge, kinds: kinds) {
     ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, realization_host: realization_host)
-    ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl_resolving(name: n, params: [], node: c, target: target, type_binding: produced_type_binding(target: realization_host), host_binding_spellings: target.binding_spellings)
-    ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl_resolving(name: n, params: [], node: r, target: target, type_binding: produced_type_binding(target: realization_host), host_binding_spellings: target.binding_spellings)
+    ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl(name: n, params: [], node: c, target: target, realization_host: realization_host)
+    ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl(name: n, params: [], node: r, target: target, realization_host: realization_host)
     ModuleMemberRefinement { name: n, refinement: m } => emit_refinement_declaration(name: n, refinement: m, target: target, realization_host: realization_host)
     ModuleMemberBodylessArrow => emit_module_member_refused(reason: ^emit_module_member_arrow_has_no_body, at: edge.target)
     ModuleMemberRecordOrRefinement => emit_module_member_refused(reason: ^emit_module_member_record_or_refinement_undecided, at: edge.target)
@@ -456,50 +456,6 @@ fn emit_produced_decl_with_target(
 // never a widen, never a fabricated default (DESIGN section 5).
 fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>> {
   emit_produced_decl_declaring(decl: decl, target: target, realization_host: target)
-}
-
-// HOW A SIGNATURE TYPE IS SPELLED, IN ONE ORDER, AND NEVER BY FABRICATION. A reference to a declared
-// type (the resolved declaration-reference node) is spelled by the target's own declaration-reference
-// form -- the rule the type-expression translate already applies (v2.std.compilers.target_model
-// target_type_expr_declaration_reference_emitted; Rust: `crate::<module>::<Name>`, the same for this
-// module's types and another's). A kernel carrier atom binds its atom realization row's surface symbol
-// (target_atom_type_spelling), which the target's binding_spellings spell. Failing both, an explicit
-// binding_spellings entry for the atom itself is used as written. Anything else refuses, located.
-// Before this, every type atom was bound as itself and an unmapped one printed its interned name
-// (`bool_node_symbol`), and a declared type's reference refused as an unsupported shape.
-// STANDING, STATED: Int still reaches `i32` through its explicit binding_spellings entry, not through a
-// realization row -- the target has no Int atom realization (there is no integer value-template kind to
-// give one), so that route is not yet unified with Bool's.
-fn produced_type_binding(target: TargetModel) -> fn(Node) -> Outcome<Symbol> {
-  fn(type_node) {
-    match declaration_reference_path_optional(node: type_node) {
-      Present { value: path } =>
-        bind_outcome(
-          o: type_expression_projection_from_target(target: target),
-          f: fn(projection) {
-            bind_outcome(
-              o: target_type_expr_declaration_reference_emitted(projection: projection, path: path, reference: type_node),
-              f: fn(emitted) {
-                outcome_accepted(value: target_type_expression_spelling(form: TargetTypeExpression { kind: TargetTypeExprAtom, node: emitted }))
-              }
-            )
-          }
-        )
-      Absent =>
-        match type_node.kind {
-          TypeNode { connective: Atom { identity: id } } =>
-            match translate_target_atom_realization_for_carrier(target: target, source_carrier: type_node) {
-              Accepted { value: row, diagnostics: _ } => outcome_accepted(value: target_atom_type_spelling(row: row))
-              Rejected { diagnostics: _ } =>
-                match map_get(target.binding_spellings, id) {
-                  Accepted { value: Present { value: _ }, diagnostics: _ } => outcome_accepted(value: id)
-                  _ => outcome_rejected(d: emit_produced_decl_diagnostic(reason: ^produced_decl_type_ref_unrealized, node: type_node))
-                }
-            }
-          _ => outcome_rejected(d: emit_produced_decl_diagnostic(reason: ^produced_decl_type_ref_unrealized, node: type_node))
-        }
-    }
-  }
 }
 
 fn emit_produced_decl_declaring(decl: Node, target: TargetModel, realization_host: TargetModel) -> Outcome<Medium<String>> {

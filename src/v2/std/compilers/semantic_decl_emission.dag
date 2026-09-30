@@ -561,12 +561,23 @@ fn semantic_decl_profile_lex_rules(
 fn semantic_decl_profile_binding_spellings(
   profile: TargetSemanticDeclSerializeProfile
 ) -> Outcome<Map<Symbol, String>> {
+  semantic_decl_profile_binding_spellings_over(profile: profile, base: empty_map())
+}
+
+// The spellings a declaration is SERIALIZED with: the profile's rows over the host target's own map. The
+// serializer (semantic_decl_serialize_target) and the type resolver that admits a field type
+// (v2.compiler.emit_semantic_decl emit_semantic_type_decl) both read this one map, so a type is admitted
+// exactly when the serialization that follows can spell it.
+fn semantic_decl_profile_binding_spellings_over(
+  profile: TargetSemanticDeclSerializeProfile,
+  base: Map<Symbol, String>
+) -> Outcome<Map<Symbol, String>> {
   bind_outcome(
     o: semantic_decl_binding_spelling_rows_from_row_nodes(
       rows: profile.binding_spelling_rows
     ),
     f: fn(rows) {
-      outcome_accepted(value: semantic_decl_binding_spellings_from_rows(rows: rows))
+      outcome_accepted(value: semantic_decl_binding_spellings_from_rows_over(rows: rows, base: base))
     }
   )
 }
@@ -647,10 +658,7 @@ fn semantic_decl_serialize_target(
     o: semantic_decl_profile_lex_rules(profile: profile),
     f: fn(lex) {
       bind_outcome(
-        o: bind_outcome(
-          o: semantic_decl_binding_spelling_rows_from_row_nodes(rows: profile.binding_spelling_rows),
-          f: fn(rows) { outcome_accepted(value: semantic_decl_binding_spellings_from_rows_over(rows: rows, base: host_binding_spellings)) }
-        ),
+        o: semantic_decl_profile_binding_spellings_over(profile: profile, base: host_binding_spellings),
         f: fn(binding_spellings) {
           outcome_accepted(
             value: TargetModel {

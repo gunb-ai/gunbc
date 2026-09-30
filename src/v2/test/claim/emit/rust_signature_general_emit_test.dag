@@ -1,7 +1,7 @@
 module v2.test.emit.rust_signature_general_emit
 
 import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
-import v2.compiler.emit_produced { produced_type_binding }
+import v2.compiler.emit_semantic_decl { produced_type_binding }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
 import v2.extdeps.languages.rust {
   rust_target_model_staging,

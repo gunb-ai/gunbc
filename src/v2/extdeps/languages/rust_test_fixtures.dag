@@ -980,7 +980,7 @@ fn rust_semantic_decl_target_model_staging() -> TargetModel {
       occurrence_id: OccurrenceSynthetic
     },
     lex: VoidLexRules,
-    binding_spellings: empty_map(),
+    binding_spellings: rust_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
