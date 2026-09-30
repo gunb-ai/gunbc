@@ -138,7 +138,10 @@ binders; type parameters are still substituted from use-site arguments, over the
 A fifth consumer moves in the same cut (quiet-gull-780, 2026-09-30): smart-newt-725's
 record-construct field typing. It reads #12629's per-module `ResolvedTree.resolved_declarations` for
 same-module records, so it must move in the commit that deletes that field; its cross-module
-population is what P2 adds. smart-newt-725 names this PR as its trigger. What dissolves in this
+population is what P2 adds. smart-newt-725 names this PR as its trigger. A sixth consumer (quiet-gull-780, 2026-09-30): quick-hawk-799's gunbc#12809, a v2 `String`
+literal lowered through the unfold. Its judge sees `declared = Ref(q.String)`, an imported
+declaration, so it needs `q.String`'s resolved body, which #12629's root-only index lacks. It
+stays draft until this PR lands. What dissolves in this
 commit is #12629's `ResolvedTree.resolved_declarations` with `resolved_declarations_of`; no reader
 is left on it.
 All of these took declaration types off an authored or subject-local node; after PR2 none of them can
