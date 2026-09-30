@@ -1,0 +1,63 @@
+module test.claim.runner.runner_slot_census_typed_argv_witness
+
+import std.logic { Bool }
+import std.dissolution { dissolution_is_bound }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.host_effect_realize { observe_slot_population_census_script_retirement_trigger }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
+import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SLOT CENSUS'S ROAD TO TYPED ARGV, WITNESSED AT EACH GATE IT MUST CROSS.
+//
+// `gunbc.host_effect_realize observe_slot_population_over_host_effect_transport` is the live read
+// behind every runner-slot memory-cap decision, and it is the last census site still running its
+// probe as a rendered script: typed argv words, serialized to shell text by
+// observe_slot_population_census_script_body, handed to run_shell_transport -- whose FleetSsh arm
+// refuses a script BODY outright, so the census is unreachable over the fleet transport at all.
+// The argv-native path it should join already exists in-tree (shell.Exec.RunArgv on the local
+// seam; typed_argv_exec_over_ssh / typed_argv_exec_over_fleet_ssh on the remote ones), so the
+// migration is a carrier swap, not a build.
+//
+// This file witnesses the two facts that make the swap safe before it happens:
+//
+// - THE OBLIGATION IS BOUND. The rendered bridge is a named declaration whose retirement trigger
+//   is a std.dissolution DeclarationRetires row -- verifiable now, because its ref names a
+//   declaration that exists today -- so the migration's retirement is a mechanism event rather
+//   than a paragraph. (This row dies WITH the trigger: when the bridge is deleted, the binding is
+//   discharged and both the trigger and this assertion leave by their own removal.)
+//
+// - THE WORDS ALREADY CROSS BOTH REMOTE WALLS. The census argv is six literal systemctl words; a
+//   script body could never be shaped past the fleet path's portable-remote-words wall ("this
+//   carrier is a shell script BODY -- the fleet path admits only portable remote words"), but the
+//   same words as argv pass it typed. That is the precise sense in which FleetSsh stops refusing
+//   the census: the carrier the census arrives in is one the fleet wall admits, where the carrier
+//   it arrives in today is one that wall refuses unconditionally. The executing witness for the
+//   FleetSsh ARM remains compile-verified only, for the structural reason recorded on the
+//   actuator-toolchain slice: a FleetSshExecutionContext is reachable only through the
+//   KnownHostsAnchor seal, so a pure test fn cannot construct the transport those arms match on.
+//   THE SEAL THAT MAKES A FLEET CONTEXT UNFORGEABLE ALSO MAKES IT UNFIXTURABLE.
+
+test fn the_slot_census_probe_serialization_is_a_named_bound_obligation() -> Bool {
+  dissolution_is_bound(condition: observe_slot_population_census_script_retirement_trigger)
+}
+
+// The fleet transport's own typed wall admits the census words -- the gate a script body never
+// reached, because run_shell_transport refuses the carrier shape before any word is examined.
+test fn the_slot_census_words_cross_the_fleet_portable_word_wall() -> Bool {
+  match portable_remote_words(raws: systemctl_list_all_service_units_argv()) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// The SshShell seam's allowlist admits every word, so the argv census executes over the fleet SSH
+// edge rather than refusing there as a diagnosed non-portable word.
+test fn the_slot_census_words_cross_the_ssh_portable_allowlist() -> Bool {
+  match typed_argv_shell_safe_refusal_argv(argv: systemctl_list_all_service_units_argv()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

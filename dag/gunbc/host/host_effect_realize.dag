@@ -4,7 +4,7 @@ import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, hos
 
 import std.algebra { trim, list_snoc_item, list_append }
 import extdeps.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution, retires_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_in_list }
 
@@ -4151,13 +4151,31 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
 // declared in THIS module, so a classifier that accepted it would have to be imported from here --
 // and the census module is already imported BY here. Handing it the outcome fields keeps the edge
 // one-way and leaves the census module able to serve any further transport without knowing of it.
+// THE RENDERED PROBE BRIDGE, AS ITS OWN ADDRESS. Until this extraction the census probe's
+// serialization lived inline inside the function below, invisible to every mechanism: the §5.E
+// wall counts retained script rows at every call, but a row that no declaration names cannot be
+// retired by name. Giving the rendering a declaration is what makes its disappearance bindable --
+// the trigger beside it names THIS declaration, in the std.dissolution DeclarationRetires shape,
+// whose ref points at something that exists today, so the binding is verifiable the moment it is
+// written rather than a promise about a name someone may or may not choose later. DISSOLVES WITH
+// IT: when the census probe reaches the transport as typed argv, this rendering and its trigger
+// delete together -- a trigger citing an absent declaration is the dead vocabulary this repository
+// removes, and the retirement receipt is the counted removal, not a lingering row.
+fn observe_slot_population_census_script_body() -> String {
+  shell_command_text_of_argv(argv: systemctl_list_all_service_units_argv())
+}
+
+data observe_slot_population_census_script_retirement_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "observe_slot_population_census_script_body"),
+)
+
 fn observe_slot_population_over_host_effect_transport(
   host: HostIdentity,
   transport: HostEffectTransport,
 ) -> SlotCensus {
   let observed = run_shell_transport(
     script: retained_srvn(
-      body: shell_command_text_of_argv(argv: systemctl_list_all_service_units_argv()),
+      body: observe_slot_population_census_script_body(),
       reason: "runner slot population census (systemctl list-units)",
     ),
     transport: transport,
