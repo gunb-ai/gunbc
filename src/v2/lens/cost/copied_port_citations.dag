@@ -1,6 +1,7 @@
 module v2.lens.cost.copied_port_citations
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { declared_signature }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { Cons, Empty }
@@ -160,20 +161,14 @@ fn citation_arrow_two_param_loop(
 ) -> Node {
   let left = citation_param_ref(sym: left_sym)
   let right = citation_param_ref(sym: right_sym)
+  let signature = declared_signature(
+    params: [Edge { label: Named { name: left_sym }, target: left }, Edge { label: Named { name: right_sym }, target: right }],
+    source: left
+  )
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            Edge { label: Named { name: left_sym }, target: left },
-            Edge { label: Named { name: right_sym }, target: right }
-          ],
-          occurrence_id: OccurrenceSynthetic
-        }
-      },
+      signature.domain,
       Edge {
         label: Positional,
         target: Node {
@@ -182,6 +177,7 @@ fn citation_arrow_two_param_loop(
           occurrence_id: OccurrenceSynthetic
         }
       },
+      signature.order,
       Edge {
         label: Named { name: ^arrow_body_edge },
         target: citation_loop_body_linear_in(measure: measure)

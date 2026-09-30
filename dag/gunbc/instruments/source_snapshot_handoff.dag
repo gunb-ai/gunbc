@@ -147,6 +147,7 @@ import tools.scm_acceptance_binary {
   scm_acceptance_binary_executable,
   cargo_selection_detail,
 }
+import std.algebra { trim }
 
 // ── THE SNAPSHOT'S CONTENTS ──────────────────────────────────────────────────────────────────
 //

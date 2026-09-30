@@ -86,6 +86,7 @@ fn t_head_observation(unit_digest: ContentHash, image: ContentHash) -> EndpointI
       systemd_invocation: "fixture-invocation-head" as NonEmptyStr, container_id: "fixture-container" as NonEmptyStr,
       executable_digest: image, unit_digest: unit_digest, started_at: 1788907506,
     ),
+    container_env: [],
     receipt: "test.claim.spark.pair_incumbent_identity_witness fixture" as ObservationReceiptRef,
   )
 }
@@ -199,6 +200,7 @@ test fn a_head_on_another_host_is_a_population_difference() -> Bool {
         systemd_invocation: "fixture-invocation-head" as NonEmptyStr, container_id: "fixture-container" as NonEmptyStr,
         executable_digest: img, unit_digest: a, started_at: 1788907506,
       ),
+      container_env: [],
       receipt: "test.claim.spark.pair_incumbent_identity_witness fixture" as ObservationReceiptRef,
     )
     let observed = ObservedPairRealizationRead {

@@ -507,7 +507,9 @@ fn mtcollins1_oem_association() -> OemSelEmpiricalAssociation {
 fn sol_readings_all_banner_only(captures: List<SolCaptureUnderCondition>) -> Bool {
   all(captures, c => match mtcollins1_sol_reading(capture: c) {
     SolBannerOnly { capture_path: _, bytes: _ } => true
-    _ => false
+    SolBytesUnattributedToHost { capture_path: _, bytes: _ } => false
+    SolHostBytesObserved { capture_path: _, bytes: _, report: _ } => false
+    SolCaptureUnreadable { capture_path: _ } => false
   })
 }
 
@@ -521,7 +523,9 @@ fn check_collectors_before_actuation() -> ProcessExit {
     NotReady { gap: g } =>
       match g {
         ConsoleLeaseNotHeld { verdict: _ } => ExitSuccess
-        _ => exit_failure(reason: "collectors-before-actuation: refused, but not on the stale console lease, which is the first gap the fixture presents")
+        EvidenceSinkMissing => exit_failure(reason: "collectors-before-actuation: refused, but not on the stale console lease, which is the first gap the fixture presents")
+        CollectorNotProven { kind: _ } => exit_failure(reason: "collectors-before-actuation: refused, but not on the stale console lease, which is the first gap the fixture presents")
+        ConsoleDeadlineNotAfterAliveInstant { client_alive_at: _, terminate_deadline: _ } => exit_failure(reason: "collectors-before-actuation: refused, but not on the stale console lease, which is the first gap the fixture presents")
       }
   }
   let as_required = match mtcollins1_ac_cycle_readiness_as_required() {
@@ -560,9 +564,17 @@ fn check_console_silence_is_not_a_terminal() -> ProcessExit {
     BringupUndetermined { cause: c } =>
       match c {
         NothingObservedBeyondActivation => ExitSuccess
-        _ => exit_failure(reason: "console-silence: a banner-only capture beside an empty window was not named as nothing observed beyond activation")
+        ConsoleCaptureUnreadable { capture_path: _ } => exit_failure(reason: "console-silence: a banner-only capture beside an empty window was not named as nothing observed beyond activation")
+        SelStandardDecodeUnavailable => exit_failure(reason: "console-silence: a banner-only capture beside an empty window was not named as nothing observed beyond activation")
+        FirmwareStatedUnrecognizedError { statement: _ } => exit_failure(reason: "console-silence: a banner-only capture beside an empty window was not named as nothing observed beyond activation")
+        ConsoleBytesUnattributedToHost => exit_failure(reason: "console-silence: a banner-only capture beside an empty window was not named as nothing observed beyond activation")
+        FirmwareEmittedUndecodedErrorCodes { err_lines: _ } => exit_failure(reason: "console-silence: a banner-only capture beside an empty window was not named as nothing observed beyond activation")
+        NoRestartInWindow => exit_failure(reason: "console-silence: a banner-only capture beside an empty window was not named as nothing observed beyond activation")
+        RestartsBelowTerminalThreshold { restarts_without_progress: _ } => exit_failure(reason: "console-silence: a banner-only capture beside an empty window was not named as nothing observed beyond activation")
       }
-    _ => exit_failure(reason: "console-silence: a banner-only capture beside an empty SEL window produced a verdict about the host")
+    FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } => exit_failure(reason: "console-silence: a banner-only capture beside an empty SEL window produced a verdict about the host")
+    PhysicalRemediationRequired { restarts_without_progress: _, localization: _ } => exit_failure(reason: "console-silence: a banner-only capture beside an empty SEL window produced a verdict about the host")
+    TrainingRefusedByFirmwareStatement { statement: _, localization: _ } => exit_failure(reason: "console-silence: a banner-only capture beside an empty SEL window produced a verdict about the host")
   }
   let stated = match pre_os_bringup_verdict(
     window: sel_window_after_cursor(window: mtcollins1_sel_window(), cursor_record_id: 1103),
@@ -579,14 +591,19 @@ fn check_console_silence_is_not_a_terminal() -> ProcessExit {
               Present { value: 0 } =>
                 match locus.memory_controller {
                   Present { value: 4 } => ExitSuccess
-                  _ => exit_failure(reason: "firmware-statement: the memory controller the firmware named (MC[4]) was not carried")
+                  Present { value: _ } => exit_failure(reason: "firmware-statement: the memory controller the firmware named (MC[4]) was not carried")
+                  Absent => exit_failure(reason: "firmware-statement: the memory controller the firmware named (MC[4]) was not carried")
                 }
-              _ => exit_failure(reason: "firmware-statement: the socket the firmware named (SK[0]) was not carried")
+              Present { value: _ } => exit_failure(reason: "firmware-statement: the socket the firmware named (SK[0]) was not carried")
+              Absent => exit_failure(reason: "firmware-statement: the socket the firmware named (SK[0]) was not carried")
             }
           }
-        _ => exit_failure(reason: "firmware-statement: the localization was not the firmware's own statement")
+        UnavailableFromExposedTelemetry => exit_failure(reason: "firmware-statement: the localization was not the firmware's own statement")
+        LocalizableFrom { source: _ } => exit_failure(reason: "firmware-statement: the localization was not the firmware's own statement")
       }
-    _ => exit_failure(reason: "firmware-statement: the held-session capture with an ERROR: refusal did not produce a firmware-stated terminal")
+    FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } => exit_failure(reason: "firmware-statement: the held-session capture with an ERROR: refusal did not produce a firmware-stated terminal")
+    BringupUndetermined { cause: _ } => exit_failure(reason: "firmware-statement: the held-session capture with an ERROR: refusal did not produce a firmware-stated terminal")
+    PhysicalRemediationRequired { restarts_without_progress: _, localization: _ } => exit_failure(reason: "firmware-statement: the held-session capture with an ERROR: refusal did not produce a firmware-stated terminal")
   }
   first_failure(checks: [readings, verdict, stated])
 }
@@ -607,9 +624,12 @@ fn check_bounded_terminal() -> ProcessExit {
           } else {
             ExitSuccess
           }
-        _ => exit_failure(reason: "bounded-terminal: a SEL-only terminal on this platform must point at the firmware console as the source that would localize it -- never a slot, never unavailable now that the console is known to emit")
+        UnavailableFromExposedTelemetry => exit_failure(reason: "bounded-terminal: a SEL-only terminal on this platform must point at the firmware console as the source that would localize it -- never a slot, never unavailable now that the console is known to emit")
+        StatedByFirmware { locus: _ } => exit_failure(reason: "bounded-terminal: a SEL-only terminal on this platform must point at the firmware console as the source that would localize it -- never a slot, never unavailable now that the console is known to emit")
       }
-    _ => exit_failure(reason: "bounded-terminal: the 32-DIMM window -- twenty restarts, zero firmware-progress records -- did not resolve to PhysicalRemediationRequired")
+    FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } => exit_failure(reason: "bounded-terminal: the 32-DIMM window -- twenty restarts, zero firmware-progress records -- did not resolve to PhysicalRemediationRequired")
+    BringupUndetermined { cause: _ } => exit_failure(reason: "bounded-terminal: the 32-DIMM window -- twenty restarts, zero firmware-progress records -- did not resolve to PhysicalRemediationRequired")
+    TrainingRefusedByFirmwareStatement { statement: _, localization: _ } => exit_failure(reason: "bounded-terminal: the 32-DIMM window -- twenty restarts, zero firmware-progress records -- did not resolve to PhysicalRemediationRequired")
   }
   let bounded = match mtcollins1_32dimm_verdict() {
     PhysicalRemediationRequired { restarts_without_progress: _, localization: _ } => ExitSuccess
@@ -619,7 +639,9 @@ fn check_bounded_terminal() -> ProcessExit {
   }
   let control = match mtcollins1_last_16dimm_verdict() {
     FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } => ExitSuccess
-    _ => exit_failure(reason: "positive control: the last completing 16-DIMM boot (0x3ea..0x3ee) was not read as firmware progress, so the terminal arm is not discriminating")
+    BringupUndetermined { cause: _ } => exit_failure(reason: "positive control: the last completing 16-DIMM boot (0x3ea..0x3ee) was not read as firmware progress, so the terminal arm is not discriminating")
+    PhysicalRemediationRequired { restarts_without_progress: _, localization: _ } => exit_failure(reason: "positive control: the last completing 16-DIMM boot (0x3ea..0x3ee) was not read as firmware progress, so the terminal arm is not discriminating")
+    TrainingRefusedByFirmwareStatement { statement: _, localization: _ } => exit_failure(reason: "positive control: the last completing 16-DIMM boot (0x3ea..0x3ee) was not read as firmware progress, so the terminal arm is not discriminating")
   }
   first_failure(checks: [terminal, bounded, control])
 }
@@ -646,7 +668,8 @@ fn check_opaque_oem_stays_opaque() -> ProcessExit {
   let undecoded = match assoc.decode_standing {
     OemDecodeControllerDeclaredUnknown => ExitSuccess
     OemDecodeAvailable { decode_authority: _ } => exit_failure(reason: "opaque-oem: an association over a payload the controller does not decode was read as decoded")
-    _ => exit_failure(reason: "opaque-oem: decode standing was not derived from the measured profile")
+    OemDecodeRenderedUncited { rendering: _ } => exit_failure(reason: "opaque-oem: decode standing was not derived from the measured profile")
+    OemDecodeNotProbed => exit_failure(reason: "opaque-oem: decode standing was not derived from the measured profile")
   }
   first_failure(checks: [seen, never_beside, undecoded])
 }
