@@ -216,10 +216,12 @@ test fn declared_return_undenoted_atom_is_counted_formal_unresolved_holds() -> B
 // so the obligation is UndecidableGenericFormal on the Accepted path.
 test fn declared_return_type_variable_is_counted_generic_formal_holds() -> Bool {
   match infer(
-    tree: dr_generic_arrow(
-      type_param: ^dr_type_param_t,
-      return_type: dag_type_atom_node(identity: ^dr_type_param_t),
-      body: dag_int_literal_fixture_one()
+    tree: claim_resolved_tree_without_declarations(
+      root: dr_generic_arrow(
+        type_param: ^dr_type_param_t,
+        return_type: dag_type_atom_node(identity: ^dr_type_param_t),
+        body: dag_int_literal_fixture_one()
+      )
     )
   ) {
     Rejected { diagnostics: _ } => false
