@@ -143,9 +143,7 @@ pub fn parse_module_binding(
     //
     // The reading is the file-local one `pool_acquire::heads_reading_for` holds, which the pool
     // census projects rather than re-parses: one heads reading per file per process.
-    let result = crate::cli_run::pool_acquire::heads_reading_for(&key, content)
-        .result
-        .clone();
+    let result = crate::cli_run::pool_acquire::heads_reading_for(&key, content);
     if let Some(err) = result.error.as_ref() {
         if module_declaration_line_present(content) {
             return Err(ModuleBindingRefusal {

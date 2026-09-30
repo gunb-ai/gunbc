@@ -3626,3 +3626,40 @@ mod tree_census_from_raw_differential {
         assert!(compared >= 2, "both live roots compared ({compared})");
     }
 }
+
+/// ONE HEADS PARSE PER (SPELLING, BYTES), asserted: over the live `[dag, src/v2]` pool, building
+/// the module path index (`parse_module_binding`) and the pool census (`pool_parse`) -- the two
+/// consumers of `pool_acquire::heads_reading_for` -- parses each acquisition key's heads exactly
+/// once, and every pool file was read.
+#[cfg(test)]
+mod heads_parse_count {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn each_pool_file_is_heads_parsed_once_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let _ = build_module_path_index(&pool_roots_for_module_graph_closure(&roots));
+        let index = process_shared_index(&roots);
+        let _ = super::super::pool_parse(&index).expect("pool parse");
+        let (keys, max, over): (usize, usize, Vec<String>) = super::pool_acquire::HEADS_PARSES
+            .with(|p| {
+                let p = p.borrow();
+                (
+                    p.len(),
+                    p.values().copied().max().unwrap_or(0),
+                    p.iter()
+                        .filter(|(_, n)| **n > 1)
+                        .map(|((f, _, _), n)| format!("{f} x{n}"))
+                        .take(20)
+                        .collect(),
+                )
+            });
+        eprintln!("HEADS keys={keys} max_parses_per_key={max}");
+        assert!(keys > 5000, "the live pool was read ({keys} keys)");
+        assert!(over.is_empty(), "heads parsed more than once: {over:?}");
+    }
+}
