@@ -2,8 +2,8 @@ module gunbc.workspace_slot_mutation
 
 import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
-import std.durable_compare_and_set { CasGeneration }
-import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef, HoldSlotFree, HoldSlotHeld }
+import std.durable_compare_and_set { CasGeneration, cas_generation_successor, CasSuccessorGeneration }
+import std.durable_exclusive_hold { DurableHoldObservation, DurableHoldOwnerRef, DurableHoldReleaseRef, HoldSlotFree, HoldSlotHeld }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
@@ -143,5 +143,58 @@ fn workspace_slot_mutation_still_owned(held: WorkspaceSlotMutationHeld) -> Bool 
       _ => false
     }
     _ => false
+  }
+}
+
+type WorkspaceMutationRecoveryStanding
+  = WorkspaceMutationRecoveryHeld
+  | WorkspaceMutationRecoveryReleased
+  | WorkspaceMutationRecoveryRefused
+
+// Recovery uses the acquired generation recorded by the enclosing transaction. A free key
+// from another transition, even with the same plan owner, cannot settle this transaction.
+fn workspace_mutation_recovery_standing(observed: DurableHoldObservation,
+  owner: DurableHoldOwnerRef, acquired: CasGeneration) -> WorkspaceMutationRecoveryStanding {
+  match observed {
+    HoldSlotHeld { generation, owner: holder } => if generation == acquired && holder == owner {
+      WorkspaceMutationRecoveryHeld
+    } else { WorkspaceMutationRecoveryRefused }
+    HoldSlotFree { generation, released_by } => match cas_generation_successor(g: acquired) {
+      CasSuccessorGeneration { generation: expected } => if generation == expected
+        && released_by == (concat("mutation-completed:", owner as String) as DurableHoldReleaseRef) {
+        WorkspaceMutationRecoveryReleased
+      } else { WorkspaceMutationRecoveryRefused }
+      _ => WorkspaceMutationRecoveryRefused
+    }
+    _ => WorkspaceMutationRecoveryRefused
+  }
+}
+
+type WorkspaceCommissioningMutationRecovery
+  = WorkspaceCommissioningMutationRetained { lease: WorkspaceSlotMutationLease }
+  | WorkspaceCommissioningMutationReleased
+  | WorkspaceCommissioningMutationRecoveryRefused
+
+// Only completed-controller recovery can reconstruct a commissioning lease. This does not
+// acquire a new generation and grants no permission to start another invocation.
+fn workspace_commissioning_mutation_recover(slot_key: NonEmptyStr, plan_hash: NonEmptyStr,
+  acquired: CasGeneration) -> WorkspaceCommissioningMutationRecovery
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_apply_recover_completed")]
+{
+  let root = workspace_commissioning_store_location as NonEmptyStr
+  let key = workspace_slot_mutation_key(slot_key: slot_key)
+  let owner = workspace_commissioning_mutation_owner(plan_hash: plan_hash)
+  match read_store_ownership(path: root as String) {
+    OwnershipRead { ownership: StoreRootOwned } => match workspace_mutation_recovery_standing(
+      observed: observe_file_hold(root: root, key: key), owner: owner, acquired: acquired) {
+      WorkspaceMutationRecoveryHeld => WorkspaceCommissioningMutationRetained {
+        lease: WorkspaceSlotMutationLeaseHeld { held: WorkspaceSlotMutationHeld {
+          key: key, owner: owner, generation: acquired,
+        } },
+      }
+      WorkspaceMutationRecoveryReleased => WorkspaceCommissioningMutationReleased
+      _ => WorkspaceCommissioningMutationRecoveryRefused
+    }
+    _ => WorkspaceCommissioningMutationRecoveryRefused
   }
 }

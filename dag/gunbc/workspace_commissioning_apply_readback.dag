@@ -2,6 +2,7 @@ module gunbc.workspace_commissioning_apply_readback
 
 import std.types { Bool, String, NonEmptyStr }
 import std.decl_ref { decl_ref }
+import std.durable_compare_and_set { CasGeneration }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent }
 import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead }
 import gunbc.runner_microvm_slot_unit { workspace_launch_credential_source_path }
@@ -10,6 +11,8 @@ import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningPrepare
 import gunbc.workspace_slot_mutation {
   WorkspaceSlotMutationLease, WorkspaceSlotMutationLeaseHeld, workspace_slot_mutation_still_owned,
   workspace_slot_mutation_key, workspace_commissioning_mutation_owner, workspace_slot_mutation_release_fenced,
+  workspace_commissioning_mutation_recover, WorkspaceCommissioningMutationRetained,
+  WorkspaceCommissioningMutationReleased,
 }
 
 import v2.std.algebra { filter }
@@ -175,5 +178,35 @@ fn workspace_commissioning_apply_finish(readback: WorkspaceCommissioningApplyRea
       } } }
     } }
     _ => WorkspaceCommissioningApplyFinishRefused { reason: "commissioning has no exclusive slot mutation authority" }
+  }
+}
+
+// This entry never starts a controller. The enclosing durable fleet transaction must supply
+// its recorded acquired generation and invocation, not infer them from whichever actor is live.
+// A still-running, failed or changed invocation refuses through the ordinary strong readback.
+fn workspace_commissioning_apply_recover_completed(provenance: WorkspaceCommissioningProvenance,
+  acquired: CasGeneration, invocation: NonEmptyStr, release_dir: NonEmptyStr, login: NonEmptyStr,
+  network: SlotNetworkSanitationSubject) -> WorkspaceCommissioningApplyFinish {
+  match workspace_commissioning_apply_observe(provenance: provenance, release_dir: release_dir,
+    login: login, network: network, invocation: invocation) {
+    WorkspaceCommissioningApplyReadbackRefused { reason } => WorkspaceCommissioningApplyFinishRefused { reason: reason }
+    WorkspaceCommissioningApplyObserved { readback } => {
+      let slot_key = runner_slot_instance_name(slot: provenance.slot)
+      match workspace_commissioning_mutation_recover(slot_key: slot_key, plan_hash: provenance.plan_hash, acquired: acquired) {
+        WorkspaceCommissioningMutationRetained { lease } => workspace_commissioning_apply_finish(
+          readback: readback, lease: lease, release_dir: release_dir, login: login, network: network)
+        WorkspaceCommissioningMutationReleased => if !workspace_commissioning_credential_absent(
+          path: workspace_launch_credential_source_path(instance: slot_key as String)) {
+          WorkspaceCommissioningApplyFinishRefused { reason: "released commissioning still has a credential or unreadable credential path" }
+        } else { match workspace_commissioning_mutation_recover(slot_key: slot_key,
+          plan_hash: provenance.plan_hash, acquired: acquired) {
+          WorkspaceCommissioningMutationReleased => WorkspaceCommissioningApplyFinished {
+            completed: WorkspaceCommissioningApplyCompleted { provenance: provenance, invocation: readback.invocation },
+          }
+          _ => WorkspaceCommissioningApplyFinishRefused { reason: "commissioning mutation changed during completed-release recovery" }
+        } }
+        _ => WorkspaceCommissioningApplyFinishRefused { reason: "recorded commissioning exclusion is absent, changed or unreadable; no recovery authority established" }
+      }
+    }
   }
 }
