@@ -1,0 +1,67 @@
+module gunbc.fleet_generation_publication
+
+import std.types { String, NonEmptyStr, Int, Bool }
+import std.algebra { trim }
+import std.content_hash { ContentHash, parse_content_hash, serialize_content_hash }
+
+// A number alone cannot attribute a lost commit response to an apply. Existing numeric records
+// remain readable for migration, but are explicitly weaker evidence than a plan-bound publication.
+// New writers retain the existing generation path and flock; there is no second counter or lock.
+type FleetGenerationPublication
+  = FleetGenerationLegacy { generation: Int }
+  | FleetGenerationPublished { generation: Int, plan_hash: ContentHash }
+  | FleetGenerationUnreadable
+
+fn fleet_generation_publication_decode(content: String) -> FleetGenerationPublication {
+  let text = trim(s: content)
+  let fields = split(s: text, delimiter: " ")
+  if fields.count() == 1 {
+    match parse_int(s: text) {
+      Present { value: generation } => if generation >= 0 { FleetGenerationLegacy { generation: generation } }
+        else { FleetGenerationUnreadable }
+      _ => FleetGenerationUnreadable
+    }
+  } else if fields.count() == 2 {
+    match fields.first() {
+      Present { value: number } => match parse_int(s: number) {
+        Present { value: generation } => if generation < 1 || number != to_string(generation) { FleetGenerationUnreadable }
+          else { match get(xs: fields, index: 1) {
+            Present { value: identity } => match parse_content_hash(wire: identity) {
+              Present { value: plan_hash } => FleetGenerationPublished { generation: generation, plan_hash: plan_hash }
+              _ => FleetGenerationUnreadable
+            }
+            _ => FleetGenerationUnreadable
+          } }
+        _ => FleetGenerationUnreadable
+      }
+      _ => FleetGenerationUnreadable
+    }
+  } else { FleetGenerationUnreadable }
+}
+
+fn fleet_generation_publication_text(generation: Int, plan_hash: ContentHash) -> NonEmptyStr {
+  join([to_string(generation), serialize_content_hash(hash: plan_hash) as String], " ") as NonEmptyStr
+}
+
+// Native parser used inside the existing flock, not another interpreter invocation. It returns
+// only the counter for stale-plan comparison after validating the WHOLE record. Malformed suffixes
+// cannot be ignored. Legacy spelling is retained, so an old noncanonical counter still refuses
+// the existing exact comparison rather than being silently normalized at apply time.
+data fleet_generation_native_read_script: String = join([
+  "set -euo pipefail",
+  "[[ $# == 1 ]] || exit 64",
+  "publication=$(cat -- \"$1\")",
+  "if [[ $publication =~ ^[0-9]+$ ]]; then printf '%s\\n' \"$publication\"; exit 0; fi",
+  "pattern='^([1-9][0-9]*) (([a-f0-9]\{16})|([a-f0-9]\{40})|(sha256:[a-f0-9]\{64})|(sha512:[a-f0-9]\{128}))$'",
+  "[[ $publication =~ $pattern ]] || exit 65",
+  "printf '%s\\n' \"$\{BASH_REMATCH[1]}\"",
+], "\n")
+
+fn fleet_generation_publication_owned(observed: FleetGenerationPublication, generation: Int,
+  plan_hash: ContentHash) -> Bool {
+  match observed {
+    FleetGenerationPublished { generation: recorded, plan_hash: owner } => recorded == generation
+      && serialize_content_hash(hash: owner) == serialize_content_hash(hash: plan_hash)
+    _ => false
+  }
+}

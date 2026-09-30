@@ -9,6 +9,9 @@ import v2.workflow.orchestration_bash_emit_support { orch_bash_do, orch_bash_emi
 // or workflow supplied command. prepare must durably bind the reviewed plan, fleet generation,
 // mutation lease, submitting systemd invocation and prior slot invocation BEFORE returning start.
 // On uncertain prior submission it must refuse or recover that submission, never return start.
+// settle/complete are permitted only from recorded post-readback obligations; they skip the
+// old controller wait because the slot may already have been legitimately reused. The helper
+// must verify the durable release/generation receipts, not reconstruct them from live guest state.
 // bind persists the actual slot invocation. finish owns strong readback, credential removal,
 // mutation settlement and generation publication (including recovery after publication).
 // None of these helpers is called in the waiting loop. The systemd-owned executor retains the
@@ -33,7 +36,7 @@ data workspace_executor_admit_transport: String = join([
   "exec 9< \"$executor_lock\"",
   "flock -x 9",
   "executor_decision=$(\"$executor_helper\" prepare \"$INVOCATION_ID\")",
-  "[[ $executor_decision =~ ^(start|wait|complete):([a-f0-9]\{32}|none)$ ]] || exit 65",
+  "[[ $executor_decision =~ ^(start|wait|settle|complete):([a-f0-9]\{32}|none)$ ]] || exit 65",
   "executor_action=$\{executor_decision%%:*}",
   "executor_expected=$\{executor_decision#*:}",
 ], "\n")
@@ -72,6 +75,7 @@ data workspace_executor_submit_once: String = join([
 
 data workspace_executor_await_invocation: String = join([
   "[[ $executor_expected =~ ^[a-f0-9]\{32}$ ]] || exit 65",
+  "if [[ $executor_action == start || $executor_action == wait ]]; then",
   "executor_terminated=false",
   "for ((executor_poll=0; executor_poll<executor_polls; executor_poll++)); do",
   "  executor_observe || exit 66",
@@ -88,6 +92,7 @@ data workspace_executor_await_invocation: String = join([
   "  sleep 1",
   "done",
   "[[ $executor_terminated == true ]] || exit 68",
+  "fi",
 ], "\n")
 
 data workspace_executor_settle: String = join([

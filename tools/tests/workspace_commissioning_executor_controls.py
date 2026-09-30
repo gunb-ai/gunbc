@@ -75,6 +75,8 @@ with tempfile.TemporaryDirectory(prefix='workspace-executor-controls-') as tmp:
         ('missing-lock-refuses',{'missing_lock':True},1,0,False),
         ('reattach-no-start',{'decision':'wait:'+NEW,'existing':True},0,0,True),
         ('recover-completed',{'decision':'complete:'+NEW,'existing':True},0,0,True),
+        ('settle-after-reuse',{'decision':'settle:'+NEW,'fields':{'InvocationID':'3'*32}},0,0,True),
+        ('complete-after-reuse',{'decision':'complete:'+NEW,'fields':{'InvocationID':'3'*32}},0,0,True),
         ('missing-job',{'omit':'Job'},66,0,False),
         ('duplicate-job',{'duplicate':True},66,0,False),
         ('queued-job',{'fields':{'Job':'123'}},67,0,False),
@@ -100,6 +102,8 @@ with tempfile.TemporaryDirectory(prefix='workspace-executor-controls-') as tmp:
         assert run.returncode==code,(name,run.returncode,run.stderr)
         assert sum(c[0]=='start' for c in seen)==starts,name
         assert any(c[0]=='finish' for c in seen)==finish,name
+        if name in ('settle-after-reuse','complete-after-reuse'):
+            assert not any(c[0]=='show' for c in seen),name
         assert ('commissioning-fleet-generation-committed' in run.stdout)==(code==0),name
         results.append({'case':name,'passed':True})
     # A second actor cannot even prepare while the native waiter owns the fleet lock.

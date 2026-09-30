@@ -66,3 +66,8 @@ The enclosing fleet transaction still must durably record the acquired guard gen
 The operator selected a lightweight host-owned executor. `workspace_commissioning_executor` now emits its Bash transport through the orchestration backend; `workspace_commissioning_executor_unit` models a root-owned service in the existing controller slice. The native process owns the fleet lock while it waits and invokes no DAG interpreter per poll. The existing slot controller remains the only commissioning/readiness worker.
 
 Process-boundary controls and a temporary user-service lifetime test exercise the exported transport, not production commissioning. The remaining production adapter must bind durable submission intent, executor and slot invocations, mutation generation and reviewed fleet generation to the existing CAS/readback authorities. Installation and the fleet commissioning scope remain gated on that adapter and its crash recovery. Nothing in this checkpoint publishes initial readiness or makes srv1-13 supply. See [the selected executor contract](workspace-commissioning-executor-decision.md).
+
+
+## Durable executor source checkpoint
+
+The executor now has a protected CAS phase journal and a controller-side invocation fence. Eight journal controls, 22 native transport controls and the actual controller composition passed locally. The integrated fleet witness closure was OOM-killed at 6 GiB before tests; qualification remains incomplete. The bounded production helper, enclosing fleet scope and complete release/generation recovery remain outstanding. See the [journal checkpoint receipt](receipts/workspace-executor-journal-2026-09-30/README.md). No live commissioning or VM is claimed.

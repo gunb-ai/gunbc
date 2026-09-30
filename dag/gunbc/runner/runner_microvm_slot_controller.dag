@@ -1,5 +1,7 @@
 module gunbc.runner_microvm_slot_controller
 
+import gunbc.workspace_commissioning_executor_fence { workspace_executor_claim_controller, WorkspaceExecutorControllerAdmitted, WorkspaceExecutorControllerRefused }
+
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import gunbc.workspace_slot_mutation {
   workspace_slot_mutation_acquire, workspace_slot_mutation_release,
@@ -788,11 +790,14 @@ fn workspace_slot_dispatch_directive(text: String, instance: String, release_dir
             NetworkSubjectResolved { subject } => match workspace_observe_commissioning_admission(
               provenance: provenance, release_dir: release_dir as NonEmptyStr, login: spec.job_user, network: subject) {
               WorkspaceCommissioningRefused { reason } => workspace_commissioning_slot_refused(reason: reason)
-              WorkspaceCommissioningReady { commissioned } => match workspace_commissioning_reconcile(
-                admitted: commissioned, provenance: provenance, network: subject) {
+              WorkspaceCommissioningReady { commissioned } => match workspace_executor_claim_controller(provenance: provenance, invocation: invocation_id) {
+                WorkspaceExecutorControllerRefused { reason } => workspace_commissioning_slot_refused(reason: reason)
+                WorkspaceExecutorControllerAdmitted { permit } => match workspace_commissioning_reconcile(
+                admitted: commissioned, provenance: provenance, network: subject, execution: permit) {
                 WorkspaceCommissioningComplete => SlotControllerCommissioned
                 WorkspaceCommissioningReconciliationRefused { reason } => workspace_commissioning_slot_refused(reason: reason)
                 _ => workspace_commissioning_slot_refused(reason: "commissioning has an outstanding phase")
+              }
               }
             }
           }

@@ -1,5 +1,8 @@
 module gunbc.fleet_converge_plan
 
+import gunbc.fleet_generation_publication { fleet_generation_publication_decode, FleetGenerationLegacy, FleetGenerationPublished, FleetGenerationUnreadable, fleet_generation_publication_text, fleet_generation_native_read_script }
+import std.content_hash { parse_content_hash }
+
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.workspace_allocation_convergence { WorkspaceConvergenceBasis, workspace_convergence_baseline_rows }
 import gunbc.workspace_allocation_launch_directive { workspace_launch_directive, workspace_launch_directive_text }
@@ -2200,9 +2203,10 @@ fn fleet_converge_generation_observation(
   if !store_present {
     GenerationStoreAbsent
   } else {
-    match fleet_converge_parse_nonneg_generation_text(content: content) {
-      Present { value: n } => GenerationObserved { generation: n }
-      Absent =>
+    match fleet_generation_publication_decode(content: content) {
+      FleetGenerationLegacy { generation: n } => GenerationObserved { generation: n }
+      FleetGenerationPublished { generation: n, plan_hash: _ } => GenerationObserved { generation: n }
+      FleetGenerationUnreadable =>
         GenerationUnobserved {
           reason: concat(
             "fleet_converge: generation store is present but does not decode to a non-negative integer at ",
@@ -2325,7 +2329,10 @@ fn fleet_converge_generation_store_read_stmt(subject_host: NonEmptyStr) -> Node 
         name: fleet_converge_locked_apply_current_var,
         value: bash_build_word_cmdsubst(
           body: bash_build_command_with_words(words: [
-            bash_build_word_lit(text: "cat"),
+            bash_build_word_lit(text: "bash"),
+            bash_build_word_lit(text: "-c"),
+            bash_build_word_lit(text: fleet_generation_native_read_script),
+            bash_build_word_lit(text: "fleet-generation-read"),
             bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
           ]),
         ),
@@ -2361,8 +2368,11 @@ fn fleet_converge_locked_apply_inner_stmts(
   prior_generation: Int,
   planned_generation: Int,
   apply_shell_path: String,
+  plan_hash: NonEmptyStr,
 ) -> List<Node> {
-  [
+  match parse_content_hash(wire: plan_hash as String) {
+    Absent => [bash_build_exit(code: "65")]
+    Present { value: identity } => [
     bash_build_command_with_words(words: [
       bash_build_word_lit(text: "set"),
       bash_build_word_lit(text: "-euo"),
@@ -2382,11 +2392,12 @@ fn fleet_converge_locked_apply_inner_stmts(
       inner: bash_build_command_with_words(words: [
         bash_build_word_lit(text: "printf"),
         bash_build_word_lit(text: "%s\n"),
-        bash_build_word_lit(text: to_string(planned_generation)),
+        bash_build_word_lit(text: fleet_generation_publication_text(generation: planned_generation, plan_hash: identity) as String),
       ]),
       path: bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
     ),
   ]
+  }
 }
 
 data fleet_converge_locked_apply_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ fleet-converge lease guard intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the apply refuses loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
@@ -2407,6 +2418,7 @@ fn fleet_converge_locked_apply_inner_script(
   prior_generation: Int,
   planned_generation: Int,
   apply_shell_path: String,
+  plan_hash: NonEmptyStr,
 ) -> String {
   fleet_converge_bash_or_poison(
     stmts: fleet_converge_locked_apply_inner_stmts(
@@ -2414,6 +2426,7 @@ fn fleet_converge_locked_apply_inner_script(
       prior_generation: prior_generation,
       planned_generation: planned_generation,
       apply_shell_path: apply_shell_path,
+      plan_hash: plan_hash,
     ),
   )
 }
@@ -2459,6 +2472,7 @@ fn fleet_converge_locked_apply_script(
   prior_generation: Int,
   planned_generation: Int,
   apply_shell_path: String,
+  plan_hash: NonEmptyStr,
   invoker: FleetConvergeApplyInvoker,
 ) -> String {
   fleet_converge_bash_or_poison(stmts: [
@@ -2491,6 +2505,7 @@ fn fleet_converge_locked_apply_script(
         prior_generation: prior_generation,
         planned_generation: planned_generation,
         apply_shell_path: apply_shell_path,
+        plan_hash: plan_hash,
       )),
     ])),
   ])
@@ -2788,6 +2803,7 @@ fn fleet_converge_plan_artifact_of_request(
             serialize_content_hash(hash: subject.member_set_fingerprint) as String,
           ),
           concat("plan_generation:", to_string(planned_generation)),
+          "# generation-publication: counter + applied plan hash; older numeric-only apply readers refuse after this cutover",
           concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
           "observed_baseline:",
           baseline,
@@ -2865,6 +2881,7 @@ fn fleet_converge_allocation_store_plan_artifact(
           concat("subject_scope:", fleet_converge_scope_wire(scope: subject.scope)),
           concat("subject_member_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
           concat("plan_generation:", to_string(planned_generation)),
+          "# generation-publication: counter + applied plan hash; older numeric-only apply readers refuse after this cutover",
           "# allocation-store",
           allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
           concat("ensure-directory:path=", spec.namespace_path as String),

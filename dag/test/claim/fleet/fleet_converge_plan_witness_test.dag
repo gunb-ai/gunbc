@@ -553,6 +553,7 @@ test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    plan_hash: "0123456789abcdef",
     invoker: InvokerIsLeaseOwner,
   )
   let inner = fleet_converge_locked_apply_inner_script(
@@ -560,6 +561,7 @@ test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    plan_hash: "0123456789abcdef",
   )
   string_contains(s: script, pattern: "flock")
     && string_contains(s: script, pattern: "LeaseGenerationStale")
@@ -579,12 +581,14 @@ test fn locked_apply_inner_program_is_quoted_not_spliced() -> Bool {
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    plan_hash: "0123456789abcdef",
   )
   let script = fleet_converge_locked_apply_script(
     subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    plan_hash: "0123456789abcdef",
     invoker: InvokerIsLeaseOwner,
   )
   string_contains(s: script, pattern: posix_single_quote(spelling: inner))
@@ -601,6 +605,7 @@ test fn locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero() -> Bool
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    plan_hash: "0123456789abcdef",
   )
   !string_contains(s: inner, pattern: "|| echo 0")
     && !string_contains(s: inner, pattern: "2>/dev/null")
@@ -617,6 +622,7 @@ test fn locked_apply_guard_compares_the_modelled_prior_generation() -> Bool {
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    plan_hash: "0123456789abcdef",
   )
   string_contains(s: inner, pattern: to_string(4))
     && string_contains(s: inner, pattern: "planned=5")
@@ -761,6 +767,7 @@ test fn locked_apply_stale_diagnostic_keeps_observed_value_in_one_word() -> Bool
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    plan_hash: "0123456789abcdef",
   )
   !string_contains(s: inner, pattern: "observed= ")
     && string_contains(s: inner, pattern: "observed=")
@@ -904,6 +911,7 @@ test fn lease_guard_sudoes_only_granted_binaries() -> Bool {
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    plan_hash: "0123456789abcdef",
     invoker: InvokerIsLeaseOwner,
   )
   string_contains(s: script, pattern: sudo_n_word(spelling: ci_runner_sudo_binary_path(b: SudoInstall) as String))
@@ -2314,6 +2322,7 @@ test fn generation_store_is_keyed_by_subject_host() -> Bool {
          prior_generation: 1,
          planned_generation: 2,
          apply_shell_path: fleet_converge_plan_apply_shell_path,
+         plan_hash: "0123456789abcdef",
        ), pattern: b)
 }
 
@@ -2328,6 +2337,7 @@ test fn locked_apply_runs_the_guard_as_the_lease_owner_for_any_invoker() -> Bool
     prior_generation: 0,
     planned_generation: 1,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    plan_hash: "0123456789abcdef",
     invoker: fleet_converge_apply_invoker(effective_user: owner),
   )
   let as_operator = fleet_converge_locked_apply_script(
@@ -2335,6 +2345,7 @@ test fn locked_apply_runs_the_guard_as_the_lease_owner_for_any_invoker() -> Bool
     prior_generation: 0,
     planned_generation: 1,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    plan_hash: "0123456789abcdef",
     invoker: fleet_converge_apply_invoker(effective_user: "briansrls" as NonEmptyStr),
   )
   let flock_word = concat(posix_single_quote(spelling: "flock"), concat(" ", posix_single_quote(spelling: "-x")))
