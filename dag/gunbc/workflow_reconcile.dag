@@ -1,7 +1,7 @@
 module gunbc.workflow_reconcile
 
 import std.types { String, Bool, Int, List }
-import std.reducible { ReduceVerdict, Reduced, Unknown }
+import std.reducible { ReduceVerdict, Reduced, Irreducible, Unknown }
 import std.workflow_recursive {
   VerdictTree,
   Leaf,
@@ -330,11 +330,10 @@ fn workflow_fact_observation_tally(
         failures: 0,
         refusals: 1,
       }
-    _ =>
-      WorkflowObservationTally {
-        failures: 0,
-        refusals: 0,
-      }
+    WorkflowFactPending => WorkflowObservationTally { failures: 0, refusals: 0 }
+    WorkflowFactActive => WorkflowObservationTally { failures: 0, refusals: 0 }
+    WorkflowFactSatisfied => WorkflowObservationTally { failures: 0, refusals: 0 }
+    WorkflowFactWaived => WorkflowObservationTally { failures: 0, refusals: 0 }
   }
 }
 
@@ -490,12 +489,8 @@ fn workflow_reconcile_report(
   let observed_verdict = workflow_fact_forest_verdict(forest: observed)
   let verdict = match observed_verdict {
     Unknown { missing: _ } => observed_verdict
-    _ =>
-      if folded.remaining == 0 {
-        observed_verdict
-      } else {
-        Unknown { missing: folded.first_missing }
-      }
+    Reduced { last_parts: _ } => if folded.remaining == 0 { observed_verdict } else { Unknown { missing: folded.first_missing } }
+    Irreducible { witness: _ } => if folded.remaining == 0 { observed_verdict } else { Unknown { missing: folded.first_missing } }
   }
   WorkflowReconcileReport {
     desired_count: count(workflow_fact_forest_members(forest: desired)),
@@ -522,7 +517,8 @@ fn workflow_reconcile_status_key(
   } else {
     match report.verdict {
       Unknown { missing: _ } => "refused"
-      _ => "converged"
+      Reduced { last_parts: _ } => "converged"
+      Irreducible { witness: _ } => "converged"
     }
   }
 }
