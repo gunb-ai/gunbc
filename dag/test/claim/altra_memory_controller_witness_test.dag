@@ -139,7 +139,10 @@ test fn w_admitted_densities_respect_the_jedec_monolithic_ceiling() -> Bool {
   fold(altra_admitted_device_densities, init: true, f: fn(acc, d) {
     acc && (byte_size_count(b: d) <= ceiling)
   })
-    && byte_size_count(b: altra_admitted_device_densities.last()) == ceiling
+    && match altra_admitted_device_densities.last() {
+      Present { value: top } => byte_size_count(b: top) == ceiling
+      Absent => false
+    }
 }
 
 // THE PRODUCTION/BRING-UP SPLIT, over the closed coproduct. The engineering-debug qualifier is

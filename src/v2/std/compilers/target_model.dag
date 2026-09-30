@@ -14777,10 +14777,14 @@ fn target_project_transform_primitive_apply_in_arrow_scope(
   match canonical_op {
     CoercionCrossing { homomorphism_rule: _ } =>
       target_project_cast_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
-    AlgebraPrimitive { algebra_field: _ } => target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
-    AlgebraInverseCompose { binary_field: _, inverse_field: _ } => target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
-    OrderingComparison { compare_field: _, predicate: _ } => target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
-    EqualityComparison { eq_field: _, predicate: _ } => target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    AlgebraPrimitive { algebra_field: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    AlgebraInverseCompose { binary_field: _, inverse_field: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    OrderingComparison { compare_field: _, predicate: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    EqualityComparison { eq_field: _, predicate: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
   }
 }
 
