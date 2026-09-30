@@ -166,7 +166,7 @@ fn fold_call_lowers_to_terminating_loop_verdict() -> Bool {
       match fold_call_to_encoding(fold_call: call) {
         Accepted { value: encoding, diagnostics: _ } =>
           match fold_recurrence_loop(encoding: encoding) {
-            Present { value: loop } => is_proven_termination(m: loop_multiplicity(n: loop))
+            Present { value: lp } => is_proven_termination(m: loop_multiplicity(n: lp))
             Absent => false
           }
         Rejected { diagnostics: _ } => false
@@ -220,8 +220,8 @@ fn with_duplicate_carrier_edge(n: Node, binder: Node) -> Node {
 test fn lowered_loop_binds_carrier_binder() -> Bool {
   match lowered_fixture_loop() {
     Absent => false
-    Present { value: loop } =>
-      match carrier_binder_of(n: loop) {
+    Present { value: lp } =>
+      match carrier_binder_of(n: lp) {
         Found { target: binder } =>
           match node_atom_identity_optional(node: binder) {
             Present { value: sym } => sym == ^acc
@@ -236,10 +236,10 @@ test fn lowered_loop_binds_carrier_binder() -> Bool {
 test fn duplicate_carrier_edge_is_malformed() -> Bool {
   match lowered_fixture_loop() {
     Absent => false
-    Present { value: loop } =>
-      match carrier_binder_of(n: loop) {
+    Present { value: lp } =>
+      match carrier_binder_of(n: lp) {
         Found { target: binder } =>
-          !well_formed(n: with_duplicate_carrier_edge(n: loop, binder: binder))
+          !well_formed(n: with_duplicate_carrier_edge(n: lp, binder: binder))
         Ambiguous => false
         v2.std.node.Absent => false
       }
@@ -397,7 +397,7 @@ fn well_formed_fold_lowers_through_the_split() -> Bool {
       match l {
         FoldCallLowered { operands: o } =>
           match fold_recurrence_loop(encoding: fold_recurrence_encoding(operands: o)) {
-            Present { value: loop } => is_proven_termination(m: loop_multiplicity(n: loop))
+            Present { value: lp } => is_proven_termination(m: loop_multiplicity(n: lp))
             Absent => false
           }
         FoldCallOperandAbsent { diagnostic: _ } => false

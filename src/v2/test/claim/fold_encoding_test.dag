@@ -63,8 +63,9 @@ fn fe_is_arrow(n: Node) -> Bool {
   }
 }
 
-// The lookup's third arm shares its name with Optional's Absent; it is matched by the wildcard rather
-// than a qualified pattern, which the native route's parser does not admit (parse_g0_tokens_remain).
+// The lookup's third arm shares its name with Optional's Absent, so it is matched by the wildcard.
+// Binders here are never named `loop`: it is a keyword (^dag_token_kw_loop), and the native parser
+// refuses it as a pattern binder (parse_g0_tokens_remain), which the seed parser tolerates.
 fn fe_lookup_target(l: NamedEdgeTargetLookup) -> Optional<Node> {
   match l {
     Found { target: t } => Present { value: t }
@@ -104,20 +105,20 @@ type FeSlots {
 fn fe_slots(encoding: Node) -> Optional<FeSlots> {
   match fold_recurrence_loop(encoding: encoding) {
     Absent => Absent
-    Present { value: loop } =>
+    Present { value: lp } =>
       match list_at_optional(xs: node_positional_child_targets(node: encoding), index: 1) {
         Absent => Absent
         Present { value: init } =>
-          match fe_lookup_target(l: loop_domain_value_target(children: loop.children)) {
+          match fe_lookup_target(l: loop_domain_value_target(children: lp.children)) {
             Absent => Absent
             Present { value: collection } =>
-              match fe_lookup_target(l: loop_realized_declaration_target(children: loop.children)) {
+              match fe_lookup_target(l: loop_realized_declaration_target(children: lp.children)) {
                 Absent => Absent
                 Present { value: head } =>
-                  match fe_lookup_target(l: loop_carrier_binder_target(children: loop.children)) {
+                  match fe_lookup_target(l: loop_carrier_binder_target(children: lp.children)) {
                     Absent => Absent
                     Present { value: carrier } =>
-                      match list_at_optional(xs: node_positional_child_targets(node: loop), index: 0) {
+                      match list_at_optional(xs: node_positional_child_targets(node: lp), index: 0) {
                         Absent => Absent
                         Present { value: step } =>
                           if fe_atom_is(n: init, sym: ^seed) && fe_atom_is(n: collection, sym: ^xs)
@@ -184,8 +185,8 @@ fn fe_pipe_slots_hold(source: String) -> Bool {
         Present { value: encoding } =>
           match fold_recurrence_loop(encoding: encoding) {
             Absent => false
-            Present { value: loop } =>
-              match fe_lookup_target(l: loop_domain_value_target(children: loop.children)) {
+            Present { value: lp } =>
+              match fe_lookup_target(l: loop_domain_value_target(children: lp.children)) {
                 Absent => false
                 Present { value: domain } =>
                   match list_at_optional(xs: node_positional_child_targets(node: encoding), index: 1) {
@@ -213,8 +214,8 @@ fn fe_domain_is_the_bare_input(source: String) -> Bool {
         Present { value: encoding } =>
           match fold_recurrence_loop(encoding: encoding) {
             Absent => false
-            Present { value: loop } =>
-              match fe_lookup_target(l: loop_domain_value_target(children: loop.children)) {
+            Present { value: lp } =>
+              match fe_lookup_target(l: loop_domain_value_target(children: lp.children)) {
                 Absent => false
                 Present { value: domain } => fe_atom_is(n: domain, sym: ^xs)
               }
@@ -250,8 +251,8 @@ fn fe_domain_names(domain: Node) -> List<Symbol> {
 fn fe_step_binders(encoding: Node) -> List<Symbol> {
   match fold_recurrence_loop(encoding: encoding) {
     Absent => []
-    Present { value: loop } =>
-      match list_at_optional(xs: node_positional_child_targets(node: loop), index: 0) {
+    Present { value: lp } =>
+      match list_at_optional(xs: node_positional_child_targets(node: lp), index: 0) {
         Absent => []
         Present { value: step } =>
           match arrow_first_positional_target(children: step.children) {
@@ -297,9 +298,9 @@ type FeDrop
 // with its Loop (so the Bind's value is gone).
 fn fe_mutated(n: Node, drop: FeDrop) -> Node {
   match fold_recurrence_loop(encoding: n) {
-    Present { value: loop } =>
+    Present { value: lp } =>
       match drop {
-        FeDropInit => fe_mutated(n: loop, drop: drop)
+        FeDropInit => fe_mutated(n: lp, drop: drop)
         FeDropCollection => fe_rebuilt(n: n, drop: drop)
         FeDropHead => fe_rebuilt(n: n, drop: drop)
       }
@@ -412,8 +413,8 @@ fn canary_fold_head_binds_to_the_collection_fold_row_verdict() -> Bool {
         Present { value: encoding } =>
           match fold_recurrence_loop(encoding: encoding) {
             Absent => false
-            Present { value: loop } =>
-              match fe_lookup_target(l: loop_realized_declaration_target(children: loop.children)) {
+            Present { value: lp } =>
+              match fe_lookup_target(l: loop_realized_declaration_target(children: lp.children)) {
                 Absent => false
                 Present { value: head } =>
                   match declaration_reference_path_optional(node: head) {
