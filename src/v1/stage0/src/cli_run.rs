@@ -17425,7 +17425,11 @@ fn tree_bare_census_for_root(
         let raw = closure_name_census(index, Some(root))?;
         (raw, if hit { 0 } else { started.elapsed().as_nanos() })
     };
-    let census = v1_compiler_infer::census_with_resolved_fn_sigs(raw, pool.combined_si.clone());
+    // Only the bare-fill half is upgraded: `symbol_index_with_bare_fill`, this census's one
+    // production reader, keeps the closure's `entries` (see
+    // `v1.compiler.infer.census_bare_fill_with_resolved_fn_sigs`).
+    let census =
+        v1_compiler_infer::census_bare_fill_with_resolved_fn_sigs(raw, pool.combined_si.clone());
     index
         .tree_bare_census
         .borrow_mut()

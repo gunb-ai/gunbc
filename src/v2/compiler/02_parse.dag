@@ -108,7 +108,8 @@ import v2.compiler.materialization_carriers {
 }
 import v2.extdeps.languages.dag {
   dag_float_literal_node_from_lexeme,
-  dag_int_literal_node_from_lexeme
+  dag_int_literal_node_from_lexeme,
+  dag_string_literal_node_from_lexeme
 }
 import v2.std.compilers.lexing {
   Lexeme,
@@ -3308,6 +3309,60 @@ fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
   parse_token_first(tokens: parse_tokens_drop(tokens: tokens, count: index))
 }
 
+fn parse_expr_terminal_stamped(
+  tok: Token,
+  stamp: TerminalStampMode,
+  remaining: List<Token>,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov)
+  ParseExprAccepted {
+    remaining: remaining,
+    captured: stamped.node,
+    diagnostics: [],
+    prov: stamped.prov,
+    table: table
+  }
+}
+
+// A STRING VALUE CARRIES ITS DECODED VALUE (v2.extdeps.languages.dag
+// dag_string_literal_node_from_lexeme), refusing located on an unframed lexeme or a malformed
+// escape, exactly as the int-literal arm of parse_expr_terminal decodes its magnitude. Only a
+// class-stamped string terminal is a value: a lexeme-stamped one is a quoted record key, whose
+// identity is its spelling, and parse_expr_terminal keeps it on parse_expr_terminal_stamped.
+fn parse_expr_string_literal_value(
+  tok: Token,
+  remaining: List<Token>,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  let minted = parse_mint_from_source(
+    prov: prov,
+    file: tok.file,
+    start: tok.start,
+    end: tok.end
+  )
+  match dag_string_literal_node_from_lexeme(
+    lexeme: tok.lexeme,
+    occurrence_id: node_occurrence_identity_minted(id: minted.id)
+  ) {
+    Accepted { value: captured, diagnostics: _ } =>
+      ParseExprAccepted {
+        remaining: remaining,
+        captured: captured,
+        diagnostics: std.algebra.Empty,
+        prov: minted.prov,
+        table: table
+      }
+    Rejected { diagnostics: d } =>
+      ParseExprRejected {
+        diagnostics: parse_non_empty_diagnostics_to_list(ned: d),
+        table: table
+      }
+  }
+}
+
 // THE INT-LITERAL WRAP IN THIS FUNCTION IS LOAD-BEARING. minted.id is a raw OccurrenceId;
 // Node.occurrence_id is the NodeOccurrenceIdentity coproduct, so the mint has to be lifted into
 // OccurrenceMinted before it can inhabit a Node. #8833 removed that lift, reading it as a spurious
@@ -3357,6 +3412,14 @@ fn parse_expr_terminal(
                       table: table
                     }
                 }
+              } else if token_class == ^dag_token_string_literal {
+                match stamp {
+                  StampClass =>
+                    parse_expr_string_literal_value(tok: tok, remaining: remaining, table: table, prov: prov)
+                  StampLexeme => parse_expr_terminal_stamped(tok: tok, stamp: stamp, remaining: remaining, table: table, prov: prov)
+                  StampBinding { binding: _ } =>
+                    parse_expr_terminal_stamped(tok: tok, stamp: stamp, remaining: remaining, table: table, prov: prov)
+                }
               } else if token_class == ^dag_token_float_literal {
                 let minted = parse_mint_from_source(
                   prov: prov,
@@ -3375,14 +3438,7 @@ fn parse_expr_terminal(
                   table: table
                 }
               } else {
-                let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov)
-                ParseExprAccepted {
-                  remaining: remaining,
-                  captured: stamped.node,
-                  diagnostics: [],
-                  prov: stamped.prov,
-                  table: table
-                }
+                parse_expr_terminal_stamped(tok: tok, stamp: stamp, remaining: remaining, table: table, prov: prov)
               }
             TailAbsent => ParseExprRejected { diagnostics: [], table: table }
           }

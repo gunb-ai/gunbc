@@ -1,6 +1,7 @@
 module v2.extdeps.languages.swift
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -100,7 +101,8 @@ import v2.std.node {
 }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import std.algebra { Cons, Empty, list_append }
-import v2.std.algebra { approximate_field_type_node, boolean_algebra_type_node, BooleanAlgebra, commutative_semiring_type_node, fold_list, free_monoid_type_node, list_flat_map, list_map, ordered_ring_type_node }
+import v2.std.algebra { BooleanAlgebra, fold_list, list_flat_map, list_map }
+import v2.std.algebra_structure_signature { approximate_field_type_node, boolean_algebra_type_node, commutative_semiring_type_node, free_monoid_type_node, ordered_ring_type_node }
 import v2.std.text { String }
 
 type SwiftIntWidth
@@ -534,15 +536,7 @@ fn swift_selection_policy_node() -> Node {
 }
 
 fn swift_emitted_add_fn_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: swift_inhabitant_int32_node() },
-      Edge { label: Positional, target: swift_inhabitant_int32_node() },
-      Edge { label: Positional, target: swift_inhabitant_int32_node() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [swift_inhabitant_int32_node(), swift_inhabitant_int32_node()], codomain: swift_inhabitant_int32_node(), source: swift_inhabitant_int32_node())
 }
 
 fn swift_source_text_authority() -> String {

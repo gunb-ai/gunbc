@@ -52,7 +52,8 @@ import std.integer {
   ReturnSaturating
 }
 import std.measure { BitWidth, bit_width, bit_width_count }
-import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, Empty, fold_list, list_map }
+import v2.std.algebra { BooleanAlgebra, Empty, fold_list, list_map }
+import v2.std.algebra_structure_signature { boolean_algebra_type_node, commutative_ring_type_node }
 import v2.std.text { String }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,

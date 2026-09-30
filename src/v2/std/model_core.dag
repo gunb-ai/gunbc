@@ -11,14 +11,11 @@ import v2.std.diagnostic {
   WholeFile
 }
 import v2.std.algebra {
-  field_reciprocal_nonzero_precondition_node,
-  field_reciprocal_operation_node,
   fold_list
 }
+import v2.std.algebra_structure_signature { bool_boolean_algebra_node, bool_boolean_algebra_type_node, field_reciprocal_nonzero_precondition_node, field_reciprocal_operation_node }
 import v2.std.logic {
   BoolPrimitiveFacts,
-  bool_boolean_algebra_node,
-  bool_boolean_algebra_type_node,
   bool_encoding_fact_node,
   bool_node,
   bool_primitive_facts,

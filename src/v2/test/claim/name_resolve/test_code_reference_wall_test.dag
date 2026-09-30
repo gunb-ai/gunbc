@@ -56,14 +56,16 @@ fn wall_conj(children: List<Edge>) -> Node {
 
 // `name: () -> Bool = body`, in the shape normalize emits for an expression-bodied, zero-parameter fn.
 fn wall_member(name: Symbol, body: Node) -> Edge {
+  let signature = declared_signature(params: [], source: body)
   Edge {
     label: Named { name: name },
     target: Node {
       kind: TypeNode { connective: Arrow },
       children: [
-        Edge { label: Positional, target: wall_conj(children: []) },
+        signature.domain,
         Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
         Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
+        signature.order,
         Edge { label: Named { name: ^arrow_body_edge }, target: body }
       ],
       occurrence_id: OccurrenceSynthetic
@@ -73,17 +75,19 @@ fn wall_member(name: Symbol, body: Node) -> Edge {
 
 // `name: (param: Bool) -> Bool = param` -- a parameter that shares a module-level name.
 fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
+  let signature = declared_signature(
+    params: [Edge { label: Named { name: param }, target: wall_atom(identity: ^bool_node_symbol) }],
+    source: wall_atom(identity: param)
+  )
   Edge {
     label: Named { name: name },
     target: Node {
       kind: TypeNode { connective: Arrow },
       children: [
-        Edge {
-          label: Positional,
-          target: wall_conj(children: [Edge { label: Named { name: param }, target: wall_atom(identity: ^bool_node_symbol) }])
-        },
+        signature.domain,
         Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
         Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
+        signature.order,
         Edge { label: Named { name: ^arrow_body_edge }, target: wall_atom(identity: param) }
       ],
       occurrence_id: OccurrenceSynthetic
