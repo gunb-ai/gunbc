@@ -79,7 +79,7 @@ snapshot refuses as `infer_declaration_outside_resolved_closure`; it never widen
 
 ## 3. The PRs (stacked)
 
-**PR1: namespace provider (P1), replacing the lazy per-subject build.** A root cut in one motion: after
+**PR1: namespace provider (P1), replacing the lazy per-subject build.** CLEARED (quiet-gull-780, 2026-09-30) to land alone as one motion: the provider replaces the lazy build, the lazy build is deleted in the same PR, and no reader can reach both. Condition (a) then governs PR2. The v1 `emit_rust` main-loop change is admitted under v1 purpose admission because it serves the v2 self-host. A root cut in one motion: after
 it, "what is module X's namespace" has one producer and every caller reads it. Context threading
 lands here, through `native_lane_module_resolution`, `native_test_resolve_module` and its
 `_walk`, the seed main template and the stage0 mirror, `v2.compiler.compile`'s single-subject
@@ -104,6 +104,7 @@ in the same commit. The RFM row is retired, and its red stays enrolled.
 | C6 | IDENTITY: the `DeclarationRef` for a type in the P2 body equals the one the module's own resolved root holds at the same use | positive |
 | C7 | wise-bat-862's `body_cast_node` rows 15, 15b, 15c, 15c2 and 15d stay green, and 15d, the miss, still refuses | regression |
 | C8 | #12629's where-head controls (`declaration_graft_where_alias_*`), re-pointed at the P2 read | regression |
+| C10 | SNAPSHOT IDENTITY: an entry in infer's per-module snapshot and the P2 provider entry it projects are the identical `DeclarationRef` and body; the snapshot is a derived projection, never re-resolved | positive |
 | C9 | the retired RFM row's discriminating red stays enrolled as a regression control (condition c) | regression |
 
 ## 5. Conditions this plan builds to (neat-boar-16, via quiet-gull-780)
