@@ -176,10 +176,13 @@ the elided case adds.
 
 ## Scope: which of the seven Form B admits
 
-MEASURED, on main 7f144278c57. Each file's source ran through the same parse and normalize route as
-`v2.test.claim.namespace_xl0.reference_conservation` `conservation_subject`. The fatal diagnostic was
-rendered through the parse's `SpanIndex`. Only the FIRST fatal refusal is reported per file, so a
-file can have later blockers beyond its first.
+THE READING THAT SET THIS LANE'S SCOPE, not a standing fact. It comes from a one-off probe on main
+7f144278c57: each file's source was run through the parse and normalize route of
+`v2.test.claim.namespace_xl0.reference_conservation` `conservation_subject`, and the first fatal was
+rendered through the parse's `SpanIndex`. Only the FIRST fatal per file is shown, so a file can have
+later blockers. The standing instrument is the #12550 base-vs-head native census, run on PR2's head.
+It re-derives which of these files are admitted, and PR2 cites that census rather than this table
+(DESIGN §6: name the instrument, never transcribe its output).
 
 | File | First fatal refusal (line) | Form | Form B admits it? |
 |---|---|---|---|
