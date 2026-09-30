@@ -53,17 +53,20 @@ fn wave1_gate1_a1_ingest_param_domain_parity_holds() -> Bool {
   match wave1_gate1_a1_parsed_add_module() {
     Absent => false
     Present { value: parsed } =>
-      let ingest_bindings = body_lower_param_binding_symbols_from_fn_decl_module(root: parsed)
-      match wave1_gate1_a1_normalized_add_module() {
+      match body_lower_param_binding_symbols_from_fn_decl_module(root: parsed) {
         Absent => false
-        Present { value: normalized } =>
-          match wave1_gate1_a1_find_arrow_in_module(root: normalized) {
+        Present { value: ingest_bindings } =>
+          match wave1_gate1_a1_normalized_add_module() {
             Absent => false
-            Present { value: arrow } =>
-              body_lower_arrow_domain_matches_ingest_param_bindings(
-                arrow: arrow,
-                ingest_bindings: ingest_bindings
-              )
+            Present { value: normalized } =>
+              match wave1_gate1_a1_find_arrow_in_module(root: normalized) {
+                Absent => false
+                Present { value: arrow } =>
+                  body_lower_arrow_domain_matches_ingest_param_bindings(
+                    arrow: arrow,
+                    ingest_bindings: ingest_bindings
+                  )
+              }
           }
       }
   }
