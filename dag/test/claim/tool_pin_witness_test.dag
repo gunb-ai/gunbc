@@ -75,6 +75,10 @@ data tracked_pin: Pin<CliTool> = Pin {
 // CONTROLS are the two below: each fails if its variant ever reports anything other than a named
 // gap, which is exactly the 'pinned and never updated' silence the refresh axis exists to break.
 
+// WORKAROUND, not a modeling choice: reading `subj.program.invocation` directly through a binder of
+// a generic call's inferred result typechecks and then fails at evaluation ("error type cascade").
+// Reading through this CliTool-typed helper evaluates. Delete it when
+// gunbc.recurring_failure_mode nested_field_read_through_a_binder_of_an_inferred_generic_result climbs.
 fn tool_invocation(tool: CliTool) -> String {
   tool.program.invocation as String
 }
