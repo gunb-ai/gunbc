@@ -164,8 +164,8 @@ pub struct HeadsReading {
     /// node, nothing at this layer can know whether a later phase will build another index whose
     /// pool contains the file: that set is decided by the run's phase routing, and consulting it
     /// from the acquisition layer would invert the layers. Releasing after the first projection
-    /// would force a re-parse for the next index, which is ruled out. The node is released only
-    /// once the set of indexes that will demand each file is derivable up front.
+    /// would force a re-parse for the next index, which is ruled out. The frontier and its
+    /// dissolution are rostered in `gunbc.resolver_cost_frontier`.
     pub module: Option<Rc<crate::v1_std_core::Node>>,
     pub error: Option<Rc<crate::v1_std_core::ErrorNode>>,
     /// The file-local intern strings, in local-id order (local id `k` is `local_strings[k]`).
