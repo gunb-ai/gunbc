@@ -86,6 +86,7 @@ type SymbolIndex {
   bound_declarings: Map<QualifiedName, FreeMonoid<QualifiedName>>
   declared_payloads: Map<QualifiedName, DeclaredPayloadKind>
   renaming_aliases: Map<QualifiedName, Symbol>
+  declared_type_params: Map<QualifiedName, List<Symbol>>
 }
 
 // WHICH KIND OF DECLARED PAYLOAD A PATH DENOTES, stored as the map's value so the map cannot hold a
@@ -104,7 +105,8 @@ fn empty_symbol_index() -> SymbolIndex {
     global_bare: empty_map(),
     bound_declarings: empty_map(),
     declared_payloads: empty_map(),
-    renaming_aliases: empty_map()
+    renaming_aliases: empty_map(),
+    declared_type_params: empty_map()
   }
 }
 
@@ -180,7 +182,8 @@ fn symbol_index_track_global_bare(
               ),
               bound_declarings: index.bound_declarings,
               declared_payloads: index.declared_payloads,
-              renaming_aliases: index.renaming_aliases
+              renaming_aliases: index.renaming_aliases,
+              declared_type_params: index.declared_type_params
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
             if existing_path == qualified_path && existing == resolved {
@@ -197,7 +200,8 @@ fn symbol_index_track_global_bare(
                 ),
                 bound_declarings: index.bound_declarings,
                 declared_payloads: index.declared_payloads,
-                renaming_aliases: index.renaming_aliases
+                renaming_aliases: index.renaming_aliases,
+                declared_type_params: index.declared_type_params
               }
             }
           Absent =>
@@ -210,7 +214,8 @@ fn symbol_index_track_global_bare(
               ),
               bound_declarings: index.bound_declarings,
               declared_payloads: index.declared_payloads,
-              renaming_aliases: index.renaming_aliases
+              renaming_aliases: index.renaming_aliases,
+              declared_type_params: index.declared_type_params
             }
         }
         Rejected { diagnostics: _ } => index
@@ -238,7 +243,8 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
     renaming_aliases: match type_alias_renaming(target: resolved) {
       PureRenamingOf { head: head } => map_insert(m: index.renaming_aliases, key: qualified_path, value: head)
       NotARenaming => index.renaming_aliases
-    }
+    },
+    declared_type_params: index.declared_type_params
   }
   symbol_index_track_global_bare(
     index: with_entry,
@@ -265,7 +271,8 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
     global_bare: index.global_bare,
     bound_declarings: index.bound_declarings,
     declared_payloads: map_insert(m: index.declared_payloads, key: qualified_path, value: kind),
-    renaming_aliases: index.renaming_aliases
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params
   }
 }
 
@@ -277,6 +284,32 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
 // or Absent for a path that denotes no declared payload. The caller matches on it.
 fn symbol_index_declared_payload_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<DeclaredPayloadKind> {
   map_lookup(m: index.declared_payloads, key: qualified_path)
+}
+
+// A GENERIC DECLARATION'S TYPE PARAMETERS, IN DECLARATION ORDER, KEYED BY ITS DECLARING PATH. The
+// entry a generic declaration binds is its MEMBER (v2.compiler.symbol_index_fill
+// symbol_index_declared: no reader of a member meets a binder), so the member alone cannot say which
+// of its field types are type variables or in what order an instantiation's arguments bind them. That
+// fact is v2.std.type_binder type_decl_view's GenericTypeDecl binders, and the fill arm that already
+// dispatches on that view records it here. Consumer: v2.compiler.infer's coproduct match, which
+// instantiates a matched variant's field types at the scrutinee's type arguments. A path with no row
+// declares no parameters; a non-generic declaration writes none.
+fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: QualifiedName, params: List<Symbol>) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: map_insert(m: index.declared_type_params, key: qualified_path, value: params)
+  }
+}
+
+fn symbol_index_declared_type_params_at(index: SymbolIndex, qualified_path: QualifiedName) -> List<Symbol> {
+  match map_lookup(m: index.declared_type_params, key: qualified_path) {
+    Present { value: params } => params
+    Absent => Empty
+  }
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
@@ -385,7 +418,8 @@ fn symbol_index_bind_at(
         value: list_snoc_item(xs: prior, item: declaring_path)
       ),
       declared_payloads: index.declared_payloads,
-      renaming_aliases: index.renaming_aliases
+      renaming_aliases: index.renaming_aliases,
+      declared_type_params: index.declared_type_params
     }
     if is_empty(xs: prior) {
       SymbolIndex {
@@ -393,7 +427,8 @@ fn symbol_index_bind_at(
         global_bare: recorded.global_bare,
         bound_declarings: recorded.bound_declarings,
         declared_payloads: recorded.declared_payloads,
-        renaming_aliases: recorded.renaming_aliases
+        renaming_aliases: recorded.renaming_aliases,
+        declared_type_params: recorded.declared_type_params
       }
     } else {
       recorded

@@ -2145,9 +2145,10 @@ fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName
 
 // A LIST LITERAL UNDER AN ANNOTATED LIST TYPE passes its element type to each element. The list is
 // recognised by the ONE authority infer types list literals with (v2.std.list_introduction
-// list_introduction_head_path): the annotation's head must resolve to exactly that declaration. A
-// head that reaches it only through an alias is not unfolded here; it passes no expectation, and a
-// headless element then refuses resolve_anonymous_record_no_expected_type.
+// list_introduction_head_path): the annotation's head must reach exactly that declaration, directly
+// or through pure-renaming aliases (resolve_expected_rename_chain; `List<R>` is one). A head that
+// reaches it only through any other alias passes no expectation, and a headless element then refuses
+// resolve_anonymous_record_no_expected_type.
 fn resolve_list_literal_expected(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
   match resolve_expected_head_path(ctx: ctx, x: x) {
     ExpectedHeadAliasCycle => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_alias_cycle)

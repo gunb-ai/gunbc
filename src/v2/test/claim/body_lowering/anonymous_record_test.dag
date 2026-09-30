@@ -30,6 +30,7 @@ import v2.std.collection { List }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.test.claim.namespace_xl0.reference_conservation { conservation_subject }
+import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -269,12 +270,15 @@ fn ar_infer_verdict(o: Outcome<ResolvedTree>) -> String {
   }
 }
 
+// The two infer verdicts are shared producers (enrolled warm in v2.workflow.floor_pure_producer_share),
+// each running the real resolve and infer route once; the claim judges only their parity.
+fn ar_infer_verdict_value_mismatch() -> String { ar_infer_verdict(o: ar_resolved_value_mismatch()) }
+fn ar_infer_verdict_value_mismatch_headed() -> String { ar_infer_verdict(o: ar_resolved_value_mismatch_headed()) }
+
 test fn ar_infer_verdict_is_the_headed_forms_holds() -> Bool {
-  let headless = ar_resolved_value_mismatch()
-  let headed = ar_resolved_value_mismatch_headed()
-  (ar_construct_paths(o: headless) == ["v2.test.arp.ArB"])
-    && (ar_construct_paths(o: headed) == ["v2.test.arp.ArB"])
-    && (ar_infer_verdict(o: headless) == ar_infer_verdict(o: headed))
+  (ar_construct_paths(o: ar_resolved_value_mismatch()) == ["v2.test.arp.ArB"])
+    && (ar_construct_paths(o: ar_resolved_value_mismatch_headed()) == ["v2.test.arp.ArB"])
+    && (ar_infer_verdict_value_mismatch() == ar_infer_verdict_value_mismatch_headed())
 }
 
 // POSITIVE (the direct control for the list-element rule): headless elements under an annotated FreeMonoid<ArB>
@@ -316,8 +320,12 @@ data ar_key_bare_source: String = "module v2.test.ar_key_bare\n\ndata ar_k: Bool
 
 data ar_key_quoted_source: String = "module v2.test.ar_key_quoted\n\ndata ar_k: Bool = { \"n\": true }\n"
 
-fn ar_string_key_production_count(source: String, tail: String) -> Int {
-  match conservation_subject(id_tail: tail, source: source).parsed {
+// Each fixture's parse and normalize is a shared producer (enrolled warm), run once on the real route.
+fn ar_key_bare_subject() -> ReferenceConservationSubject { conservation_subject(id_tail: "ar_key_bare", source: ar_key_bare_source) }
+fn ar_key_quoted_subject() -> ReferenceConservationSubject { conservation_subject(id_tail: "ar_key_quoted", source: ar_key_quoted_source) }
+
+fn ar_string_key_production_count(subject: ReferenceConservationSubject) -> Int {
+  match subject.parsed {
     Rejected { diagnostics: _ } => 0 - 1
     Accepted { value: a, diagnostics: _ } =>
       fold(node_subtree_nodes(root: a.tree), init: 0, f: fn(acc, n) {
@@ -330,13 +338,13 @@ fn ar_string_key_production_count(source: String, tail: String) -> Int {
 }
 
 test fn ar_a_quoted_key_takes_the_string_key_production_holds() -> Bool {
-  (ar_string_key_production_count(source: ar_key_bare_source, tail: "ar_key_bare") == 0)
-    && (ar_string_key_production_count(source: ar_key_quoted_source, tail: "ar_key_quoted") == 1)
+  (ar_string_key_production_count(subject: ar_key_bare_subject()) == 0)
+    && (ar_string_key_production_count(subject: ar_key_quoted_subject()) == 1)
 }
 
 // And the record arm refuses the quoted key at the item, never reading it as field `n`.
 test fn ar_a_quoted_key_is_not_a_record_field_holds() -> Bool {
-  match conservation_subject(id_tail: "ar_key_quoted_n", source: ar_key_quoted_source).normalized {
+  match ar_key_quoted_subject().normalized {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_field_init_unlowered
   }
