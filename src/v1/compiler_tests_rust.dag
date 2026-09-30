@@ -1808,6 +1808,7 @@ fn ct_coercion_tests() -> String {
     "    // =========================================================================\n\n",
     test_fns |> join(separator: "\n"),
     ct_rust_btree_set_ord_eligibility_test(),
+    ct_unresolved_variant_pattern_refuses_test(),
     ct_diagnostics_carrier_grounding_test(),
     ct_render_rust_applied_type_qualified_base_test(),
     ct_measure_unit_variant_exact_one_test(),
@@ -2328,6 +2329,36 @@ fn ct_rendered_leaf_occurrence_identity_pipeline_test() -> String {
     "            let applied_reference = occurrence_at(\"List\", 0);\n",
     "            assert_eq!(applied_type.occurrence_identity, std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id: applied_reference }), \"neighbouring children-present type must retain its authored outer occurrence\");\n",
     "        }).expect(\"spawn identity pipeline test\").join().expect(\"identity pipeline test panicked\");\n",
+    "    }\n\n")
+}
+
+// Discriminating red for gunbc.recurring_failure_mode
+// unresolved_variant_pattern_renders_as_a_catch_all_binding: a nullary variant pattern whose parent
+// enum does not resolve must refuse at all three pattern producers, never render as a bare
+// identifier (which Rust binds as a catch-all variable). The positive control is the same pattern
+// with its parent stamped; the optional control is the Absent-parent residue that lowers to None;
+// the fielded control is an unresolved parent whose render is braced, which is not the hazard.
+fn ct_unresolved_variant_pattern_refuses_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn unresolved_variant_pattern_refuses_instead_of_binding_bare() {\n",
+    "        let source_indices = std::rc::Rc::new(HashMap::new());\n",
+    "        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();\n",
+    "        let no_fields = std::rc::Rc::new(im::Vector::new());\n",
+    "        let no_path = std::rc::Rc::new(im::Vector::new());\n",
+    "        let no_shared = std::rc::Rc::new(im::OrdSet::new());\n",
+    "        let unresolved = crate::v1_compiler_emit_rust::emit_variant_pattern(\"Add\".to_string(), None, no_fields.clone(), no_path.clone(), no_shared.clone(), String::new(), source_indices.clone(), empty_emit.clone());\n",
+    "        assert!(unresolved.starts_with(\"compile_error!(\") && unresolved.contains(\"`Add`\"), \"unresolved parent must refuse, got {}\", unresolved);\n",
+    "        let unresolved_rc = crate::v1_compiler_emit_rust::emit_variant_pattern_rc_aware(\"Add\".to_string(), None, no_fields.clone(), no_path.clone(), crate::v1_compiler_emit_rust::empty_rc_pattern_analysis(), no_shared.clone(), String::new(), source_indices.clone(), empty_emit.clone());\n",
+    "        assert!(unresolved_rc.starts_with(\"compile_error!(\"), \"rc-aware producer must refuse, got {}\", unresolved_rc);\n",
+    "        let unresolved_shape = crate::v1_compiler_emit_rust::variant_pattern_shape_for(\"Add\".to_string(), None, String::new(), empty_emit.clone());\n",
+    "        assert!(unresolved_shape.starts_with(\"compile_error!(\"), \"shape producer must refuse, got {}\", unresolved_shape);\n",
+    "        let resolved = crate::v1_compiler_emit_rust::emit_variant_pattern(\"Add\".to_string(), Some(\"BinOp\".to_string()), no_fields.clone(), no_path.clone(), no_shared.clone(), String::new(), source_indices.clone(), empty_emit.clone());\n",
+    "        assert_eq!(resolved, \"BinOp::Add\");\n",
+    "        let optional = crate::v1_compiler_emit_rust::emit_variant_pattern(\"Absent\".to_string(), None, no_fields, no_path, no_shared, String::new(), source_indices, empty_emit);\n",
+    "        assert_eq!(optional, \"std::option::Option::None\");\n",
+    "        let fielded_emit = std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo { fielded_variants: std::rc::Rc::new(im::OrdSet::unit(\"Named\".to_string())), ..(*crate::v1_compiler_infer_emit_info::empty_emit_graph_info()).clone() });\n",
+    "        assert_eq!(crate::v1_compiler_emit_rust::variant_pattern_shape_for(\"Named\".to_string(), None, String::new(), fielded_emit), \"Named { .. }\", \"a braced render is a struct pattern, never a binding, and is not refused\");\n",
     "    }\n\n")
 }
 

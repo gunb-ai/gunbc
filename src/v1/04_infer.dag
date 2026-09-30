@@ -14071,21 +14071,20 @@ fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIn
   node_with_children(n: item, children: ops2)
 }
 
-fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let entry_keys = sorted_map_keys(index.entries)
-  let entries2 = fold(entry_keys, init: index.entries, f: (acc, k) =>
-    match map_get(index.entries, k) {
-      Present { value: node } =>
-        let upgraded = census_upgrade_binding(
-          binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown },
-          module_path: qualified_all_but_last(name: k),
-          census: index,
-          source_indices: source_indices
-        )
-        if upgraded.resolved == node { acc } else { map_insert(acc, k, upgraded.resolved) }
-      Absent => acc
-    }
-  )
+// THE BARE-FILL UNDERLAY'S UPGRADE: `global_bare` and `services` with resolved signatures, `entries`
+// left as the raw census. It is what a per-tree underlay is read for: `symbol_index_with_bare_fill`
+// takes the tree's `global_bare`, `services`, alias reps and exposures and keeps the CLOSURE's
+// `entries`, so upgrading the tree's entries produced a value no consumer read. Every upgrade below
+// reads the RAW `index` (entries included), never an upgraded one, so each bare and service value
+// is exactly the one `census_with_resolved_fn_sigs` produces.
+//
+// DECLARED FRONTIER: the bare upgrade here is still eager over every bare name of the tree, while
+// a closure's typecheck reads only the names it looks up. Scoping it to those demands needs a
+// demand identity for "this lookup, in this closure" -- the demand-identity carriers of
+// docs/plans/demand-engine-program.md (M1). Until that capability exists, no key of `global_bare`
+// can be marked undemanded without either a lazy cell or a new refusal arm in frozen v1 semantics,
+// both ruled out; this stays eager.
+fn census_bare_fill_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let bare_keys = sorted_map_keys(index.global_bare)
   let global2 = fold(bare_keys, init: index.global_bare, f: (acc, k) =>
     match map_get(index.global_bare, k) {
@@ -14110,7 +14109,26 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
       Absent => acc
     }
   )
-  SymbolIndex { entries: entries2, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures }
+  SymbolIndex { entries: index.entries, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures }
+}
+
+fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+  let entry_keys = sorted_map_keys(index.entries)
+  let entries2 = fold(entry_keys, init: index.entries, f: (acc, k) =>
+    match map_get(index.entries, k) {
+      Present { value: node } =>
+        let upgraded = census_upgrade_binding(
+          binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown },
+          module_path: qualified_all_but_last(name: k),
+          census: index,
+          source_indices: source_indices
+        )
+        if upgraded.resolved == node { acc } else { map_insert(acc, k, upgraded.resolved) }
+      Absent => acc
+    }
+  )
+  let fill = census_bare_fill_with_resolved_fn_sigs(index: index, source_indices: source_indices)
+  SymbolIndex { entries: entries2, global_bare: fill.global_bare, services: fill.services, transparent_alias_rep: fill.transparent_alias_rep, type_head_exposures: fill.type_head_exposures }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {

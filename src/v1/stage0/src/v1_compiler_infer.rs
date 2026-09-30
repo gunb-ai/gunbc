@@ -24621,38 +24621,11 @@ pub fn census_upgrade_service_item(
     }
 }
 
-pub fn census_with_resolved_fn_sigs(
+pub fn census_bare_fill_with_resolved_fn_sigs(
     index: Rc<SymbolIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
     {
-        let entry_keys = Rc::new(v1_rt::sorted_map_keys(&index.entries.clone()));
-        let entries2 = entry_keys.iter().cloned().fold(
-            index.entries.clone(),
-            |acc: Rc<HashMap<String, Rc<Node>>>, k: String| match v1_rt::map_get(
-                &index.entries.clone(),
-                k.clone(),
-            ) {
-                Some(node) => {
-                    let upgraded = census_upgrade_binding(
-                        Rc::new(TypeBinding {
-                            name: crate::v1_std_core::qualified_last_segment(k.clone()),
-                            resolved: node.clone(),
-                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                        }),
-                        crate::v1_compiler_infer_env::qualified_all_but_last(k.clone()),
-                        index.clone(),
-                        source_indices.clone(),
-                    );
-                    if (upgraded.resolved.clone() == node.clone()) {
-                        acc.clone()
-                    } else {
-                        v1_rt::rc_map_insert(acc.clone(), k.clone(), upgraded.resolved.clone())
-                    }
-                }
-                std::option::Option::None => acc.clone(),
-            },
-        );
         let bare_keys = Rc::new(v1_rt::sorted_map_keys(&index.global_bare.clone()));
         let global2 = bare_keys.iter().cloned().fold(
             index.global_bare.clone(),
@@ -24748,11 +24721,54 @@ pub fn census_with_resolved_fn_sigs(
             },
         );
         Rc::new(SymbolIndex {
-            entries: entries2.clone(),
+            entries: index.entries.clone(),
             global_bare: global2.clone(),
             services: services2.clone(),
             transparent_alias_rep: index.transparent_alias_rep.clone(),
             type_head_exposures: index.type_head_exposures.clone(),
+        })
+    }
+}
+
+pub fn census_with_resolved_fn_sigs(
+    index: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SymbolIndex> {
+    {
+        let entry_keys = Rc::new(v1_rt::sorted_map_keys(&index.entries.clone()));
+        let entries2 = entry_keys.iter().cloned().fold(
+            index.entries.clone(),
+            |acc: Rc<HashMap<String, Rc<Node>>>, k: String| match v1_rt::map_get(
+                &index.entries.clone(),
+                k.clone(),
+            ) {
+                Some(node) => {
+                    let upgraded = census_upgrade_binding(
+                        Rc::new(TypeBinding {
+                            name: crate::v1_std_core::qualified_last_segment(k.clone()),
+                            resolved: node.clone(),
+                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                        }),
+                        crate::v1_compiler_infer_env::qualified_all_but_last(k.clone()),
+                        index.clone(),
+                        source_indices.clone(),
+                    );
+                    if (upgraded.resolved.clone() == node.clone()) {
+                        acc.clone()
+                    } else {
+                        v1_rt::rc_map_insert(acc.clone(), k.clone(), upgraded.resolved.clone())
+                    }
+                }
+                std::option::Option::None => acc.clone(),
+            },
+        );
+        let fill = census_bare_fill_with_resolved_fn_sigs(index.clone(), source_indices.clone());
+        Rc::new(SymbolIndex {
+            entries: entries2.clone(),
+            global_bare: fill.global_bare.clone(),
+            services: fill.services.clone(),
+            transparent_alias_rep: fill.transparent_alias_rep.clone(),
+            type_head_exposures: fill.type_head_exposures.clone(),
         })
     }
 }

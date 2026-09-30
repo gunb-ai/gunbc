@@ -4196,6 +4196,93 @@ mod compiler_tests {
     }
 
     #[test]
+    fn unresolved_variant_pattern_refuses_instead_of_binding_bare() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
+        let no_fields = std::rc::Rc::new(im::Vector::new());
+        let no_path = std::rc::Rc::new(im::Vector::new());
+        let no_shared = std::rc::Rc::new(im::OrdSet::new());
+        let unresolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Add".to_string(),
+            None,
+            no_fields.clone(),
+            no_path.clone(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved.starts_with("compile_error!(") && unresolved.contains("`Add`"),
+            "unresolved parent must refuse, got {}",
+            unresolved
+        );
+        let unresolved_rc = crate::v1_compiler_emit_rust::emit_variant_pattern_rc_aware(
+            "Add".to_string(),
+            None,
+            no_fields.clone(),
+            no_path.clone(),
+            crate::v1_compiler_emit_rust::empty_rc_pattern_analysis(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved_rc.starts_with("compile_error!("),
+            "rc-aware producer must refuse, got {}",
+            unresolved_rc
+        );
+        let unresolved_shape = crate::v1_compiler_emit_rust::variant_pattern_shape_for(
+            "Add".to_string(),
+            None,
+            String::new(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved_shape.starts_with("compile_error!("),
+            "shape producer must refuse, got {}",
+            unresolved_shape
+        );
+        let resolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Add".to_string(),
+            Some("BinOp".to_string()),
+            no_fields.clone(),
+            no_path.clone(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert_eq!(resolved, "BinOp::Add");
+        let optional = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Absent".to_string(),
+            None,
+            no_fields,
+            no_path,
+            no_shared,
+            String::new(),
+            source_indices,
+            empty_emit,
+        );
+        assert_eq!(optional, "std::option::Option::None");
+        let fielded_emit = std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+            fielded_variants: std::rc::Rc::new(im::OrdSet::unit("Named".to_string())),
+            ..(*crate::v1_compiler_infer_emit_info::empty_emit_graph_info()).clone()
+        });
+        assert_eq!(
+            crate::v1_compiler_emit_rust::variant_pattern_shape_for(
+                "Named".to_string(),
+                None,
+                String::new(),
+                fielded_emit
+            ),
+            "Named { .. }",
+            "a braced render is a struct pattern, never a binding, and is not refused"
+        );
+    }
+
+    #[test]
     fn diagnostics_carrier_grounds_to_native_option() {
         assert!(
             crate::v1_compiler_emit_rust::is_host_diagnostics_carrier_alias(
