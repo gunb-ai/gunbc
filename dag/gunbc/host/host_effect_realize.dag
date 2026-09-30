@@ -128,7 +128,7 @@ import extdeps.apt {
   apt_get_binary_path,
 }
 import extdeps.tools { CliTool, apt_binary_path_of }
-import extdeps.tools.curl { curl_cli_tool }
+import extdeps.tools.curl { curl_cli_tool, curl_bmcweb_session_login_command }
 import extdeps.tools.xorriso { xorriso_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
@@ -408,7 +408,6 @@ import gunbc.host_effect_codex_supervised_turn {
 import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
 import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
-  bmcweb_session_login_curl_args,
 }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
 
@@ -1050,18 +1049,22 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
   }
 }
 
+// The login is a described curl command minted at extdeps.tools.curl (the tool's own module);
+// this site supplies only the paths its materialization bracket owns and runs the FLAGS through
+// srv3_run_tool_by_name, which resolves the program from the same cited curl_cli_tool row the
+// builder's identity carries.
 fn realize_bmcweb_session_login_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let curl_args = bmcweb_session_login_curl_args(
+  let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
   match srv3_run_tool_by_name(
     tool: curl_cli_tool,
-    args: curl_args,
+    args: login.arguments,
     transport: transport,
   ) {
     Srv3PredicateUnobserved { reason: why } =>

@@ -19,6 +19,7 @@ import v2.extdeps.languages.dag {
   dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
   dag_symbol_literal_name_optional,
+  dag_string_literal_value_symbol_optional,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_module_header_metadata_edge,
@@ -1126,7 +1127,15 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
   }
 }
 
+// A string literal carrying its value is a value, returned whole: its payload is never looked up.
 fn resolve_atom_not_symbol_literal(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
+  match dag_string_literal_value_symbol_optional(node: n) {
+    Present { value: _ } => Accepted { value: n, diagnostics: None }
+    Absent => resolve_atom_not_string_literal(ctx: ctx, n: n, identity: identity)
+  }
+}
+
+fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: n) {
     Accepted { value: n, diagnostics: None }
   } else if dag_node_is_float_literal_atom(node: n) {
