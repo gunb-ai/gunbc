@@ -639,7 +639,7 @@ test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
 // GroundingNotDerived frontier (gunbc.symbol_identity_census symbol_nominality_next_rung_trigger
 // (a)). `let y: Int = ^s` was then admitted with the frontier advisory at the caret, and
 // `let y: Symbol = ^s` was admitted without being judged.
-// - `let y: Int = ^s` refuses at the annotation with coercion's typed mismatch.
+// - `let y: Int = ^s` refuses at the let position (v2.std.inhabitance), located at the annotation.
 // - `let y: Symbol = ^s` is admitted, its annotation is the Symbol binding, and no
 //   grounding-not-derived advisory is located at the literal or its name payload: the literal's
 //   frontier count is 0.
@@ -774,7 +774,7 @@ test fn bla_symbol_literal_ascribed_int_refuses_at_the_annotation() -> Bool {
     && match bla_symbol_literal_as_int_inferred() {
       Accepted { value: _, diagnostics: _ } => false
       Rejected { diagnostics: d } =>
-        bla_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+        bla_judged_at_the_let_position(d: d)
           && (diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation)
     }
 }
