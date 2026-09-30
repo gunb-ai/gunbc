@@ -7,7 +7,8 @@ import v2.extdeps.languages.c_decl { c_stage1_type_decl_frontier_deferred_count 
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.arrow_signature { anonymous_signature_arrow }
+import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -136,11 +137,7 @@ test fn c_semantic_int_field_still_emits() -> Bool {
 }
 
 fn cdr_arrow_type() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [ Edge { label: Positional, target: cdr_atom_type(name: ^Int) } ],
-    occurrence_id: OccurrenceSynthetic
-  }
+  anonymous_signature_arrow(domain_types: [cdr_atom_type(name: ^Int)], codomain: cdr_atom_type(name: ^Int), source: cdr_atom_type(name: ^Int))
 }
 
 test fn c_semantic_generic_struct_refuses() -> Bool {
