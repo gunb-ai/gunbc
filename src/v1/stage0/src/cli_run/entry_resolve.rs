@@ -95,22 +95,36 @@ use crate::v1_std_core::{
 use serde::Serialize;
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
+    with_module_path_index(source_roots, |index| index.clone())
+}
+
+/// THE CACHED MODULE-PATH INDEX, BORROWED. A keyed question -- is this module declared, where does
+/// it live -- reads one entry, so it must not pay a copy of every entry to ask. `build_module_path_index`
+/// hands its caller an owned index and therefore clones the cached one on every call; a keyed read
+/// made once per visited module or per edge target turned that into corpus-sized work per step.
+/// This is the same cache, the same fill and the same hit accounting, lent for the duration of `f`.
+pub fn with_module_path_index<R>(
+    source_roots: &[String],
+    f: impl FnOnce(&HashMap<String, String>) -> R,
+) -> R {
     let key = source_roots
         .iter()
         .map(|r| anchor_source_root(r))
         .collect::<Vec<_>>()
         .join("\u{1f}");
-    MODULE_PATH_INDEX_CACHE.with(|cache| {
-        if let Some(index) = cache.borrow().get(&key) {
-            shared_fill::record_hit("module_path_index", &key);
-            return index.clone();
-        }
+    let cached = MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow().contains_key(&key));
+    if cached {
+        shared_fill::record_hit("module_path_index", &key);
+    } else {
         shared_fill::begin_fill();
         let start = std::time::Instant::now();
         let index = build_module_path_index_uncached(source_roots);
         shared_fill::record_fill("module_path_index", &key, start.elapsed().as_nanos() as u64);
-        cache.borrow_mut().insert(key, index.clone());
-        index
+        MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().insert(key.clone(), index));
+    }
+    MODULE_PATH_INDEX_CACHE.with(|cache| {
+        let cache = cache.borrow();
+        f(cache.get(&key).expect("module path index inserted above"))
     })
 }
 
@@ -2102,6 +2116,11 @@ pub(crate) fn resolved_graph_from_sources(
             .iter()
             .map(|idx| (idx.file.clone(), idx.clone()))
             .collect();
+        // THE REFUSAL COUNTS WHAT IT COUNTS. Every line below is a BLOCKING diagnostic -- advisories
+        // are filtered out above and never printed -- and the count heads the list, because the
+        // adjudication that wraps this text reports one blocked PHASE and a reader of
+        // `blocked_phases=1` must not have to infer how many diagnostics block it. Each line names
+        // the owning module beside its location, so a line is attributable without mapping a path.
         let mut msgs = Vec::new();
         for d in result.diagnostics.iter() {
             if !is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate) {
@@ -2116,12 +2135,17 @@ pub(crate) fn resolved_graph_from_sources(
                 None => span.file.clone(),
             };
             msgs.push(format!(
-                "{}: error: {}",
+                "{}: error: [module {}] {}",
                 loc,
+                d.module_name,
                 diagnostic_to_message(d.diagnostic.clone())
             ));
         }
-        return Err(msgs.join("\n"));
+        return Err(format!(
+            "blocking_diagnostics={}\n{}",
+            msgs.len(),
+            msgs.join("\n")
+        ));
     }
 
     let graph = result
@@ -2618,7 +2642,9 @@ pub(crate) fn import_resolution_facts_with_observation(
                     continue;
                 }
             };
-            out.extend(import_facts_for_file(&rel, &content, &declared));
+            out.extend(import_facts_for_file(&rel, &content, |m| {
+                declared.contains(m)
+            }));
         }
     }
     ImportResolutionObservation {
@@ -2635,13 +2661,13 @@ pub(crate) fn import_resolution_facts_with_observation(
 pub(crate) fn import_facts_for_file(
     rel: &str,
     content: &str,
-    declared: &HashSet<String>,
+    is_declared: impl Fn(&str) -> bool,
 ) -> Vec<ImportResolutionFactRaw> {
     extract_import_paths(content)
         .into_iter()
         .map(|import_module| ImportResolutionFactRaw {
             path: rel.to_string(),
-            target_declared: declared.contains(&import_module),
+            target_declared: is_declared(&import_module),
             import_module,
         })
         .collect()
@@ -2683,12 +2709,12 @@ pub fn module_declaration_fact_at(
     module_path: &str,
 ) -> Option<ModuleDeclarationFactRaw> {
     let abs_pool_roots = pool_roots_abs(pool_roots);
-    build_module_path_index(&abs_pool_roots)
-        .get(module_path)
-        .map(|path| ModuleDeclarationFactRaw {
+    with_module_path_index(&abs_pool_roots, |index| {
+        index.get(module_path).map(|path| ModuleDeclarationFactRaw {
             module: module_path.to_string(),
             path: path.clone(),
         })
+    })
 }
 
 /// Project reference edges into the `ImportResolutionFactRaw` channel the module-graph adjacency and
@@ -2817,8 +2843,14 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let key = abs_pool_roots.join("\u{1e}");
     if let Some(hit) = REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        shared_fill::record_hit("reference_pool_names", &key);
         return hit;
     }
+    // A PROCESS-WIDE POOL FILL, ACCOUNTED AS ONE. The heads index is built once per pool per
+    // process and then served to every consumer -- the same class as module_path_index and
+    // reference_edges, which already report through shared_fill. Unrecorded, it was billed as the
+    // own CPU of whichever claim first reached an import-less file.
+    shared_fill::begin_fill();
     let started = std::time::Instant::now();
     let mut heads: Vec<(String, Rc<crate::v1_std_core::Node>)> = Vec::new();
     for root in &abs_pool_roots {
@@ -2850,6 +2882,11 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
         "reference_pool_names_heads",
         super::pre_entry_phase::PhaseScale::Tree,
         started.elapsed(),
+    );
+    shared_fill::record_fill(
+        "reference_pool_names",
+        &key,
+        started.elapsed().as_nanos() as u64,
     );
     REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow_mut().insert(key, names.clone()));
     names
@@ -3716,5 +3753,74 @@ mod heads_parse_count {
         eprintln!("HEADS keys={keys} max_parses_per_key={max}");
         assert!(keys > 5000, "the live pool was read ({keys} keys)");
         assert!(over.is_empty(), "heads parsed more than once: {over:?}");
+    }
+}
+
+/// THE STRICT REFUSAL COUNTS ONLY WHAT BLOCKS, AND NAMES THE MODULE. One fixture carries exactly one
+/// blocking diagnostic and one advisory (a call through a function value, reported as a lower-bound
+/// effect summary with non-error severity). The refusal must head its list with
+/// `blocking_diagnostics=1`, print that one line with its module, and leave the advisory out -- and
+/// the advisory must really have been raised, or its absence would prove nothing.
+#[cfg(test)]
+mod strict_refusal_counts_blocking_diagnostics {
+    use super::*;
+
+    const FIXTURE: &str = "module refusal_count_fixture\n\
+        fn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2) }\n\
+        fn broken(x: NoSuchDeclaredType) -> Int { 1 }\n";
+
+    fn fixture_sources() -> Vec<Rc<v1_compiler_compile::SourceFile>> {
+        vec![Rc::new(v1_compiler_compile::SourceFile {
+            path: "refusal_count_fixture.dag".to_string(),
+            content: FIXTURE.to_string(),
+        })]
+    }
+
+    #[test]
+    fn one_blocker_is_counted_and_named_and_the_advisory_is_not() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let raw = v1_compiler_compile::compile_to_resolved(Rc::new(
+                    fixture_sources().into(),
+                ));
+                let advisories = raw
+                    .diagnostics
+                    .iter()
+                    .filter(|d| {
+                        !is_resolve_typecheck_blocking(
+                            d.diagnostic.clone(),
+                            ResolveTypecheckGate::Strict,
+                        )
+                    })
+                    .count();
+                assert!(
+                    advisories >= 1,
+                    "the fixture must raise a non-blocking diagnostic for its absence to mean anything: {:?}",
+                    raw.diagnostics
+                );
+                let refusal =
+                    match resolved_graph_from_sources(fixture_sources(), ResolveTypecheckGate::Strict) {
+                        Err(text) => text,
+                        Ok(_) => panic!("a fixture with a blocking diagnostic must refuse"),
+                    };
+                let lines: Vec<&str> = refusal.lines().collect();
+                assert_eq!(lines.first(), Some(&"blocking_diagnostics=1"), "{refusal}");
+                let error_lines: Vec<&&str> =
+                    lines.iter().filter(|l| l.contains(": error: ")).collect();
+                assert_eq!(error_lines.len(), 1, "{refusal}");
+                assert!(
+                    error_lines[0].starts_with("refusal_count_fixture.dag:")
+                        && error_lines[0].contains(": error: [module refusal_count_fixture] "),
+                    "the blocker must carry its location and its module: {refusal}"
+                );
+                assert!(
+                    !refusal.contains("effect summary incomplete"),
+                    "the advisory must not be printed or counted: {refusal}"
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("one_blocker_is_counted_and_named_and_the_advisory_is_not panicked");
     }
 }

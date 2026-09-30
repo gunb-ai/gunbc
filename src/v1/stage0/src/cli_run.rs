@@ -86,6 +86,7 @@ use serde::Serialize;
 
 mod active_workset;
 mod census_heads;
+mod checker_dependency;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
@@ -99,9 +100,9 @@ pub mod scope_rank_view;
 mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
-    run_native_claim_program, run_required_v2_native, run_self_host, run_v2_native_cli,
-    run_v2_native_frontier, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
-    NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
+    emitted_build_not_clean_cause, run_native_claim_program, run_required_v2_native, run_self_host,
+    run_v2_native_cli, run_v2_native_frontier, NativeClaimProgramRun, NativeFrontierRun,
+    NativeMemberTermination, NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -10449,6 +10450,28 @@ mod closure_edge_demand_tests {
             (3, 3),
             "one full parse per file on this index"
         );
+    }
+
+    /// The floor's index controls run over a shared index the caller already built, and pass when
+    /// each file's reading was parsed once and no name set was indexed twice.
+    #[test]
+    fn floor_index_controls_hold_over_a_shared_index_the_closure_already_read() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module ctl_entry\nfn main() -> Int { ctl.provider.one() }\n",
+            ),
+            (
+                "provider.dag",
+                "module ctl.provider\nfn one() -> Int { 1 }\n",
+            ),
+        ]);
+        let roots = vec![fixture.0.to_string_lossy().into_owned()];
+        let index = try_process_shared_index(&roots).unwrap();
+        load_sources_for_entry_with_pool(&index, &fixture.0.join("entry.dag").to_string_lossy())
+            .unwrap();
+        required_floor_runner::floor_index_controls("fixture", &[("fixture-roots", roots)])
+            .unwrap();
     }
 
     /// AN EVICTED SHARED INDEX IS NOT REBUILT. Roots A, then roots B (which evicts A from the
@@ -33428,7 +33451,7 @@ pub fn dependency_resolution_facts(
 /// `reference_edges_as_import_facts` and unioned by `union_dedup_import_facts_reference_first`.
 /// Any row returned is the row the population read carries for that path, in the same order.
 ///
-/// WHAT IT DOES NOT DEMAND is the corpus. The declared-module set is the process-cached
+/// WHAT IT DOES NOT DEMAND is the corpus. The declared-module index is the process-cached
 /// `build_module_path_index` the population read also consults; the reference half's pool name
 /// index is built only when the importer carries no `import` line, which is the one case whose
 /// edges depend on other files' names. An importer the population would not walk -- outside every
@@ -33453,11 +33476,9 @@ pub fn dependency_resolution_facts_at(
     let Ok(content) = std::fs::read_to_string(&file) else {
         return Vec::new();
     };
-    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
-        .into_iter()
-        .map(|(k, _)| k)
-        .collect();
-    let import_edges = entry_resolve::import_facts_for_file(importer_path, &content, &declared);
+    let import_edges = with_module_path_index(&abs_pool_roots, |index| {
+        entry_resolve::import_facts_for_file(importer_path, &content, |m| index.contains_key(m))
+    });
     let reference_edges = match entry_resolve::reference_edges_for_file_on_demand(
         importer_path,
         Some(&content),
@@ -44087,6 +44108,16 @@ pub enum RequiredFloorDisposition {
     /// ONE range; a green floor over these rows means the mismatch is HANDLED, never that the two
     /// denominators have been reconciled.
     DeclinedChangedWitnessOutsideDiscovery { module_path: String },
+    /// Selected by the changed-witness sublane, and its file is a `BinWitnessWet`
+    /// `WitnessExclusionRow` (`gunbc.ci_layer_roots` `witness_exclusion_frontier`): its claims
+    /// drive compiled seed witness binaries on host effects the floor's hermetic route refuses,
+    /// and NO CI LANE EXECUTES THAT CLASS -- its per-PR batch died with the floor cut, and
+    /// falsifier.yml with gunbc#8283. The name says exactly that and names no owner, because no
+    /// lane owns it; claiming one would be the §3 meaning fork. The loss is declared as
+    /// `gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci`, and a PR that edits such
+    /// a witness carries a real bin_wet receipt instead. Reachable ONLY from that classification,
+    /// counted, and printed per row with the pattern that matched.
+    DeclinedNoCiWetLane { pattern: String },
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -45413,6 +45444,7 @@ fn write_required_floor_disposition_tsv(
     let mut declined_gate_closure = 0usize;
     let mut declined_discovery_excluded = 0usize;
     let mut declined_changed_witness_outside_discovery = 0usize;
+    let mut declined_no_ci_wet_lane = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
@@ -45428,6 +45460,7 @@ fn write_required_floor_disposition_tsv(
             RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
                 declined_changed_witness_outside_discovery += 1
             }
+            RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => declined_no_ci_wet_lane += 1,
         }
     }
     writeln!(
@@ -45435,7 +45468,7 @@ fn write_required_floor_disposition_tsv(
         "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
          \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\
-         \tdeclined_changed_witness_outside_discovery={}",
+         \tdeclined_changed_witness_outside_discovery={}\tdeclined_no_ci_wet_lane={}",
         rows.len(),
         planned,
         planned_as_changed_witness,
@@ -45445,7 +45478,8 @@ fn write_required_floor_disposition_tsv(
         declined_gate_closure,
         declined_discovery_excluded,
         declined_cost_debt,
-        declined_changed_witness_outside_discovery
+        declined_changed_witness_outside_discovery,
+        declined_no_ci_wet_lane
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")
