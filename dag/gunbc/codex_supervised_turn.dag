@@ -42,7 +42,7 @@ import gunbc.codex_app_server_press {
   AccountStandingIncomplete,
   AccountStandingInitializeUnusable,
 }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import gunbc.provider_standing_probe_bridge {
   provider_standing_bundle_from_codex_press_receipt,
