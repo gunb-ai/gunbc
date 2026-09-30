@@ -3149,6 +3149,25 @@ pub(crate) fn changed_witness_projection_rows(
                     cause: String::new(),
                 }
             }
+            // A CHANGED BinWitnessWet ROW: declined because no CI lane executes the class, which is
+            // the declared loss `gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci`.
+            // Non-blocking on that declaration, and never silent: the row prints with its pattern
+            // and the summary line counts it beside the blocking and the declared-root declines.
+            Some(declined @ RequiredFloorDisposition::DeclinedNoCiWetLane { .. }) => {
+                ChangedWitnessProjectionRow {
+                    identity: identity.clone(),
+                    cost: None,
+                    standing: "declined-no-ci-wet-lane",
+                    disposition: format!(
+                        "{} pattern={}",
+                        required_floor_disposition_label(declined),
+                        required_floor_disposition_matched_prefix(declined)
+                    ),
+                    outcome: "not_executed".to_string(),
+                    blocks: false,
+                    cause: String::new(),
+                }
+            }
             // THE DECLINE'S CAUSE IS ITS DISPOSITION, VERBATIM. This arm is the one the
             // `non_verdict_disposition_surfaces_as_refusal` receipt was measured on: a witness
             // enrolled because the DIFF touched it and declined because DISCOVERY reaches no
@@ -3823,12 +3842,18 @@ pub(crate) fn emit_changed_witness_projection(
         .iter()
         .filter(|r| r.standing == "declined-in-declared-non-executing-root")
         .count();
+    let declined_no_ci_wet_lane = rows
+        .iter()
+        .filter(|r| r.standing == "declined-no-ci-wet-lane")
+        .count();
     eprintln!(
         "required-floor: changed_witnesses={} changed_witness_blocking={} \
-         changed_witness_declined_in_declared_nonexecuting_root={}",
+         changed_witness_declined_in_declared_nonexecuting_root={} \
+         changed_witness_declined_no_ci_wet_lane={}",
         rows.len(),
         blocking,
-        declared_non_executing
+        declared_non_executing,
+        declined_no_ci_wet_lane
     );
     if let Ok(path) = std::env::var("GITHUB_STEP_SUMMARY") {
         if !rows.is_empty() {
@@ -8294,6 +8319,29 @@ pub fn run_required_floor(
                 identity: identity.clone(),
                 agreement: storage_agreement,
             });
+            // A CHANGED `BinWitnessWet` ROW IS DECLINED, NOT PLANNED: the hermetic route refuses
+            // its host effects by construction, and planning it only mints a route gap. The
+            // classification is the gate, read from the typed exclusion rows, never a name match, and the
+            // row must be named in the declared drop's bounded population (review 73267).
+            let bin_wet_pattern = if selected_as_changed_witness {
+                crate::cli_run::witness_gates::witness_exclusion_frontier_rows()
+                    .iter()
+                    .find(|row| {
+                        row.classification == "BinWitnessWet"
+                            && file.path.contains(row.pattern.as_str())
+                            && declared_no_ci_wet_lane_population().contains(&row.pattern)
+                    })
+                    .map(|row| row.pattern.clone())
+            } else {
+                None
+            };
+            if let Some(pattern) = bin_wet_pattern {
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity: identity.clone(),
+                    disposition: RequiredFloorDisposition::DeclinedNoCiWetLane { pattern },
+                });
+                continue;
+            }
             if selected_as_changed_witness {
                 planned_identities.insert(identity.clone());
                 disposition_rows.push(RequiredFloorDispositionRow {
@@ -11559,6 +11607,7 @@ pub(crate) fn required_floor_disposition_label(
         RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
             "declined_changed_witness_outside_discovery"
         }
+        RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => "declined_no_ci_wet_lane",
     }
 }
 
@@ -11582,6 +11631,9 @@ pub(crate) fn required_floor_disposition_matched_prefix(
         RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { module_path } => {
             module_path
         }
+        // The BinWitnessWet exclusion pattern that matched the file: the authored text that
+        // placed this identity in the class no CI lane executes.
+        RequiredFloorDisposition::DeclinedNoCiWetLane { pattern } => pattern,
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
@@ -16183,4 +16235,30 @@ mod floor_stall_metric_tests {
         );
         assert!(!line.contains("stall 0"), "{line}");
     }
+}
+
+/// THE DECLARED POPULATION of `gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci`, read
+/// from that row's `..._population` list -- the ONE list that both declares the drop and gates the
+/// `DeclinedNoCiWetLane` decline. A BinWitnessWet row it does not name is not declined.
+fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<String> {
+    static POPULATION: std::sync::OnceLock<std::collections::HashSet<String>> =
+        std::sync::OnceLock::new();
+    POPULATION.get_or_init(|| {
+        const REL: &str = "dag/gunbc/rung_drop/edited_bin_witness_wet_rows_not_executed_by_ci.dag";
+        let path = crate::cli_run::process_workspace_root().join(REL);
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "rung drop population: failed to read {}: {e}",
+                path.display()
+            )
+        });
+        crate::cli_run::string_list_data_from_module_source(
+            REL,
+            &content,
+            "edited_bin_witness_wet_rows_not_executed_by_ci_population",
+            false,
+        )
+        .into_iter()
+        .collect()
+    })
 }
