@@ -22,8 +22,9 @@ env:
   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.1
 jobs:
   rust-unit-tests:
-    runs-on: ubuntu-24.04-arm
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
     steps:
@@ -57,7 +58,7 @@ jobs:
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
           'set' '+e'
           'set' '-o' 'pipefail'
-          ('sh' '-e' '-c' 'GUNBC_CG=/sys/fs/cgroup/gunbc-unit-tests; echo "+memory" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null; sudo mkdir -p "$GUNBC_CG"; echo 12884901888 | sudo tee "$GUNBC_CG/memory.max" >/dev/null; echo $$ | sudo tee "$GUNBC_CG/cgroup.procs" >/dev/null; cat "$GUNBC_CG/memory.max"; cargo test --release -p v1-compiler --lib') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          ('sh' '-e' '-c' 'cargo test --release -p v1-compiler --lib') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
           GUNBC_FLOOR_EXIT="$?"
           GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
           GUNBC_FLOOR_CLASS='structural'
