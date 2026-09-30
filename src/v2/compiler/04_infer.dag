@@ -1045,7 +1045,7 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
 // atom as a node structurally equal to itself (docs/plans/arrow-elimination-model.md).
 fn infer_literal_type_binding(literal: DagCanonicalLiteral) -> Symbol {
   match literal {
-    DagCanonicalBoolLiteral { value: _ } => ^dag_binding_type_bool
+    DagCanonicalBoolLiteral { value: _ } => ^bool_node_symbol
     DagCanonicalIntLiteral { magnitude: _ } => ^dag_binding_type_int
   }
 }
