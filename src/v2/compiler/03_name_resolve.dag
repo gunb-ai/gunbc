@@ -563,7 +563,8 @@ fn admission_namespace_base(canonical_symbols: PointwisePower<Symbol>) -> Namesp
     module_qn: Empty,
     test_code: test_code_index_empty(),
     declared_in: Empty,
-    imported_origins: empty_map()
+    imported_origins: empty_map(),
+    declaring_index: empty_symbol_index()
   }
 }
 
@@ -618,7 +619,8 @@ fn admitted_subject_from_bindings(
       module_qn: module_qn,
       test_code: test_code,
       declared_in: module_qn,
-      imported_origins: origins
+      imported_origins: origins,
+      declaring_index: symbol_index
     },
     subject_root: subject_module_root
   }
