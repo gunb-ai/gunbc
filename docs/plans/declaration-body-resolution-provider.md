@@ -71,12 +71,16 @@ per native ingest, built in `v2.compiler.compile`).
 - Subject grain: one top-level declaration, either a type declaration or a function SIGNATURE (the
   Arrow's parameter and return types; never a function body, which is not a declaration type).
   Identity: `DeclarationRef` (declaring module, declaration name).
-- Production: the declaration's subtree is taken from the declaring module's validated normalized
-  root (`ResolutionContext.roots.by_name`) and walked by the existing `resolve_node_walk` under
-  `resolve_ctx_init` over that module's P1 namespace. It is the same walker in the same
-  module-scope context the module's own walk would use at that position, so there is no second
-  resolver. That the two contexts agree (scope, position, `under_module_root`) is an obligation
-  C6 checks, not an assumption.
+- Production: ONE WALK OF THE DECLARING MODULE IN A DECLARATION-TYPES-ONLY SELECTION. The walker is
+  the existing `resolve_node_walk` over the module's validated normalized root and its P1 namespace,
+  and `ResolveContext` gains a selection: `WholeModule` or `DeclarationTypesOnly`. Under the second,
+  value bodies are carried unwalked: an Arrow's named body edges and a `data` declaration's value.
+  Every type position is walked exactly as the module's own walk would walk it, so each declaration
+  gets the scope, position and `under_module_root` the full walk would give it BY CONSTRUCTION. The
+  spine descent is not replicated by hand. Production grain is the module, because one selective walk
+  covers all its declarations. Storage and snapshot grain is the declaration: entries are cut from
+  that walk's resolved root, keyed by `DeclarationRef`. A refusal in a declaration type is stored as
+  that declaration's outcome, and the grafting module surfaces it, located.
 - Graft: before walking, a module's own resolve demands every type declaration and signature it
   declares from P2. The walk then carries a READ-ONLY map from occurrence id to provided node in
   `ResolveContext`, and at such a node it returns the stored node instead of descending. The walk
