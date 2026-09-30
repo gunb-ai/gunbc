@@ -8781,40 +8781,7 @@ pub fn run_required_floor(
     // single #9717 diff derivation captured before preparation; the right side is what this site
     // projection actually marked for changed execution. A missing, foreign, or duplicated row
     // cannot be repaired by the aggregate counts coincidentally agreeing.
-    let changed_disposition_set: HashSet<String> = disposition_rows
-        .iter()
-        // A CHANGED BinWitnessWet ROW IS A CHANGED-WITNESS DISPOSITION TOO: the sublane selected
-        // it and decided it (`DeclinedNoCiWetLane`) instead of planning it. Leaving it out made
-        // the join refuse every such selection as `selected_without_disposition`, so the decline
-        // gunbc#12794 added could never be reached by the route it was written for.
-        .filter(|row| {
-            matches!(
-                row.disposition,
-                RequiredFloorDisposition::PlannedAsChangedWitness
-                    | RequiredFloorDisposition::DeclinedNoCiWetLane { .. }
-            )
-        })
-        .map(|row| row.identity.clone())
-        .collect();
-    if changed_disposition_set != changed_witness_expected {
-        let mut selected_without_disposition: Vec<&str> = changed_witness_expected
-            .difference(&changed_disposition_set)
-            .map(String::as_str)
-            .collect();
-        let mut disposition_without_selection: Vec<&str> = changed_disposition_set
-            .difference(&changed_witness_expected)
-            .map(String::as_str)
-            .collect();
-        selected_without_disposition.sort();
-        disposition_without_selection.sort();
-        return Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessSublaneJoinInexact \
-             selected_without_disposition=[{}] disposition_without_selection=[{}] — the \
-             changed-witness execution sublane must execute exactly the one derived identity set",
-            selected_without_disposition.join(", "),
-            disposition_without_selection.join(", ")
-        ));
-    }
+    changed_witness_sublane_join(&changed_witness_expected, &disposition_rows)?;
     // ONE PRODUCER FOR THE COUNTS: the joined row population, folded once per arm.
     let disposition_count = |select: fn(&RequiredFloorDisposition) -> bool| {
         disposition_rows
@@ -16417,4 +16384,128 @@ fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<St
         .into_iter()
         .collect()
     })
+}
+
+/// WHICH DISPOSITIONS DECIDE A CHANGED-WITNESS SELECTION, as an EXHAUSTIVE match: a new
+/// `RequiredFloorDisposition` arm does not compile here until it states whether it counts, which
+/// is the structural ceiling of `gunbc.recurring_failure_mode.a_new_decision_arm_the_downstream_join_does_not_admit`
+/// (an allow-list `matches!` let gunbc#12794's arm compile while the join never admitted it).
+fn decides_a_changed_selection(disposition: &RequiredFloorDisposition) -> bool {
+    match disposition {
+        RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
+        RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::DeclinedLongModule { .. }
+        | RequiredFloorDisposition::DeclinedFixtureMember { .. }
+        | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+        | RequiredFloorDisposition::DeclinedCostDebt
+        | RequiredFloorDisposition::DeclinedOutsideGateClosure
+        | RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+        | RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => false,
+    }
+}
+
+/// EXACTNESS OF THE CHANGED-WITNESS SUBLANE, as an identity join rather than a count. The left side
+/// is the single diff derivation captured before preparation; the right side is every row this
+/// site projection DECIDED for a selected identity -- planned for changed execution, or declined
+/// because no CI lane executes its class (`DeclinedNoCiWetLane`). A missing, foreign, or duplicated
+/// row cannot be repaired by aggregate counts coincidentally agreeing. Extracted so its exactness is
+/// executed by a unit (`changed_witness_sublane_join_tests`), not only by a PR floor that happens to
+/// touch the class: gunbc#12794's decline shipped unreachable because the only route evidence for
+/// it was a later PR's floor.
+pub(crate) fn changed_witness_sublane_join(
+    changed_witness_expected: &HashSet<String>,
+    disposition_rows: &[RequiredFloorDispositionRow],
+) -> Result<(), String> {
+    let changed_disposition_set: HashSet<String> = disposition_rows
+        .iter()
+        .filter(|row| decides_a_changed_selection(&row.disposition))
+        .map(|row| row.identity.clone())
+        .collect();
+    if changed_disposition_set == *changed_witness_expected {
+        return Ok(());
+    }
+    let mut selected_without_disposition: Vec<&str> = changed_witness_expected
+        .difference(&changed_disposition_set)
+        .map(String::as_str)
+        .collect();
+    let mut disposition_without_selection: Vec<&str> = changed_disposition_set
+        .difference(changed_witness_expected)
+        .map(String::as_str)
+        .collect();
+    selected_without_disposition.sort();
+    disposition_without_selection.sort();
+    Err(format!(
+        "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessSublaneJoinInexact \
+         selected_without_disposition=[{}] disposition_without_selection=[{}] — the \
+         changed-witness execution sublane must execute exactly the one derived identity set",
+        selected_without_disposition.join(", "),
+        disposition_without_selection.join(", ")
+    ))
+}
+
+#[cfg(test)]
+mod changed_witness_sublane_join_tests {
+    use super::*;
+
+    fn row(identity: &str, disposition: RequiredFloorDisposition) -> RequiredFloorDispositionRow {
+        RequiredFloorDispositionRow {
+            identity: identity.to_string(),
+            disposition,
+        }
+    }
+
+    /// THE ROUTE gunbc#12794 shipped unreachable: a selected witness the sublane DECLINES as
+    /// `DeclinedNoCiWetLane` satisfies the exactness join. Red on the pre-fix join, which counted
+    /// only `PlannedAsChangedWitness` and refused with `selected_without_disposition`.
+    #[test]
+    fn a_declined_no_ci_wet_lane_selection_satisfies_the_join() {
+        let expected: HashSet<String> = ["m.planned", "m.wet"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let rows = vec![
+            row(
+                "m.planned",
+                RequiredFloorDisposition::PlannedAsChangedWitness,
+            ),
+            row(
+                "m.wet",
+                RequiredFloorDisposition::DeclinedNoCiWetLane {
+                    pattern: "wet_witness_test.dag".to_string(),
+                },
+            ),
+        ];
+        changed_witness_sublane_join(&expected, &rows)
+            .expect("a declined wet selection is decided");
+    }
+
+    /// The join is still exact: a selection with no deciding row refuses, and a deciding row with no
+    /// selection refuses, whichever arm decided it.
+    #[test]
+    fn the_join_still_refuses_a_missing_or_foreign_decision() {
+        let expected: HashSet<String> = ["m.a"].iter().map(|s| s.to_string()).collect();
+        let missing = changed_witness_sublane_join(&expected, &[]).unwrap_err();
+        assert!(
+            missing.contains("selected_without_disposition=[m.a]"),
+            "{missing}"
+        );
+        let foreign = changed_witness_sublane_join(
+            &expected,
+            &[
+                row("m.a", RequiredFloorDisposition::PlannedAsChangedWitness),
+                row(
+                    "m.b",
+                    RequiredFloorDisposition::DeclinedNoCiWetLane {
+                        pattern: "p".to_string(),
+                    },
+                ),
+            ],
+        )
+        .unwrap_err();
+        assert!(
+            foreign.contains("disposition_without_selection=[m.b]"),
+            "{foreign}"
+        );
+    }
 }
