@@ -12336,22 +12336,10 @@ where
 /// the second compile is a hit by construction, so a test that ran both arms warm would compare a
 /// value with itself and be green whatever the cache served -- the change-detector shape §5
 /// rejects. Clearing the slot makes the cold arm genuinely re-derive from disk.
-///
-/// THE BUILT-ROOTS LEDGER IS PART OF THE SAME STATE and is cleared with the slots. The ledger
-/// records which roots this thread's slots have held so that an EVICTION followed by a rebuild
-/// refuses (`SharedIndexRebuiltAfterEviction`). A reset is not an eviction: it declares a fresh
-/// thread history, so the next build is the first of that history, not a second parse of a pool
-/// someone still owns. Clearing the slots while keeping the ledger made every reset-then-rebuild
-/// of the same roots refuse -- this oracle's own cold-then-warm arms included.
 #[cfg(test)]
 pub(crate) fn reset_process_shared_index_for_test() {
     PROCESS_RESOLVE_INDEX.with(|s| {
         *s.borrow_mut() = [None, None];
-    });
-    entry_resolve::PROCESS_RESOLVE_INDEX_BUILT.with(|b| {
-        for built in b.borrow_mut().iter_mut() {
-            built.clear();
-        }
     });
     PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
 }
