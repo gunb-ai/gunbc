@@ -7,6 +7,10 @@
 //! was tokenized 12,121 times: measured `distinct_file_spellings=3031`, of which 3,030 were
 //! tokenized exactly 4x.
 //!
+//! The closure front end (`entry_resolve::via_index_parse_one_source` and the parse-cache miss
+//! arm) is a fifth reader of the same bytes under the same spelling, so it asks here too rather
+//! than re-lexing every closure file the pool census already lexed.
+//!
 //! That multiplicity is the whole content of this module. Lexing a file is a PURE FUNCTION of its
 //! bytes and the file spelling those bytes are reported under -- there is one right answer, so
 //! there is one authority for it, and the walks ask rather than each recompute (DESIGN §2:

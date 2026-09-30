@@ -8,7 +8,7 @@ import v2.std.operation_realization {
   ShellObserved,
 }
 import extdeps.transports.shell { ShellExchangeObservation }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, argv_words }
 
 // AN OPERATION THAT CARRIES A WHOLE COMMAND AS ITS INPUT, AND WHAT THE FAR SIDE ANSWERS. Some
 // operations are one identity for every command they run: extdeps.shell.exec shell.Exec.RunArgv
@@ -41,7 +41,7 @@ data ssh_session_exec_portable_words_operation: OperationRef = OperationRef {
 // The words a LOCAL ArgvCommand dispatches as: its program then its arguments, exactly what
 // command_over_transport builds for LocalExec and RunArgv receives.
 fn local_command_words(command: ArgvCommand) -> List<String> {
-  concat([command.program as String], command.arguments)
+  argv_words(command: command)
 }
 
 fn dispatched_words(bindings: List<v2.std.operation_argv.OperationInputBinding>, name: String) -> List<String>? {

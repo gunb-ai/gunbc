@@ -242,8 +242,9 @@ test fn only_the_renamed_file_is_ever_included_by_sudo() -> Bool {
 }
 
 // THE DARK INSTALL CARRIES THIS RELEASE'S GRANT, inspected at the composition the dark install's
-// intent consumes (gunbc.live_deploy.emit approval_broker_dark_install_release_steps): the release
-// tree's steps, then exactly the eighteen snapshot and grant steps, ending with retirement of every
+// intent consumes (gunbc.live_deploy.emit approval_broker_dark_install_release_steps): the device
+// store's ensure (the operator's 0700 directory), the release tree's steps, then exactly the eighteen
+// snapshot and grant steps, ending with retirement of every
 // other release's snapshot. The whole orchestrated script is still rendered by the existing dark-install
 // claims in test.claim.live_deploy.emit, which now carry these steps. Rendering it again here cost
 // more than the new-witness budget (110041 and 100982 eval steps against 72300).
@@ -251,8 +252,13 @@ test fn the_dark_install_composes_this_releases_grant() -> Bool {
   let spec = deployment_spec_srv1()
   let steps = approval_broker_dark_install_release_steps(spec: spec, revision: rev_a())
   let tree = count(approval_broker_tree_copy_steps(spec: spec, revision: rev_a()))
-  count(steps) == tree + 18
-    && match steps |> skip(n: tree + 13) |> first {
+  count(steps) == tree + 19
+    && match steps |> first {
+      Present { value: st } => string_contains(s: pipeline_step_text(st: st), pattern: "/var/lib/gunbc/approval-devices")
+        && string_contains(s: pipeline_step_text(st: st), pattern: "0700")
+      Absent => false
+    }
+    && match steps |> skip(n: tree + 14) |> first {
       Present { value: st } => string_contains(s: pipeline_step_text(st: st), pattern: "'/usr/bin/mv' '-T'")
       Absent => false
     }
@@ -289,7 +295,7 @@ data sample_observation: NtfyRuntimeProcessObservation = NtfyRuntimeProcessObser
   exe_target: "/usr/local/bin/ntfy",
   exe_inode: 131,
   open_fds: [
-    NtfyOpenFd { target: "/var/lib/gunbc-ntfy/user.db (deleted)", target_inode: 77 },
+    NtfyOpenFd { target: "/var/lib/gunbc-ntfy/auth.db (deleted)", target_inode: 77 },
     NtfyOpenFd { target: "socket:[55123]", target_inode: 55123 },
     NtfyOpenFd { target: "/tmp/a=b c", target_inode: 12 },
   ],
