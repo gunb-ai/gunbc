@@ -17,7 +17,9 @@ import v2.extdeps.languages.dag {
   dag_binding_denotation,
   dag_kernel_type_binding_optional,
   dag_kernel_type_declaration_binding_optional,
+  dag_kernel_value_type_binding,
   dag_kernel_value_type_roster,
+  KernelValueType,
   dag_language_model
 }
 import v2.std.compilers.target_model { char_kernel_type_node, symbol_kernel_type_node }
@@ -30,6 +32,7 @@ import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { for_all }
 import std.types { is_kernel_type }
 import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test {
   rcf_member_accepted_and_decided,
@@ -113,10 +116,21 @@ fn kvr_binding_denotes(node: Node) -> Bool {
   }
 }
 
-// EVERY ROW'S BINDING DENOTES THAT ROW'S NODE: the join is a fold over the roster, so each of the
-// four kernel value types the v2 std authorities own is denoted by its own atom identity.
+// EVERY ROW HAS A BINDING, AND IT DENOTES THAT ROW'S NODE. The claim walks the roster itself, not a
+// list of the nodes it holds today, so a row whose value-type node is not an atom -- which
+// dag_kernel_value_type_binding answers Absent for, and which would then drop out of the canonical
+// bindings and the join without a word -- turns this claim red instead of passing unseen. The four
+// named nodes are asserted beside it so an emptied roster cannot satisfy the walk vacuously.
+fn kvr_row_binds_and_denotes(row: KernelValueType) -> Bool {
+  match dag_kernel_value_type_binding(row: row) {
+    Absent => false
+    Present { value: binding } => dag_binding_denotation(sym: binding) == Present { value: row.value_type }
+  }
+}
+
 test fn kvr_every_kernel_value_type_is_denoted_by_its_own_identity_holds() -> Bool {
-  kvr_binding_denotes(node: integer_int_type_node())
+  for_all(xs: dag_kernel_value_type_roster, predicate: fn(row) { kvr_row_binds_and_denotes(row: row) })
+    && kvr_binding_denotes(node: integer_int_type_node())
     && kvr_binding_denotes(node: bool_node())
     && kvr_binding_denotes(node: symbol_kernel_type_node())
     && kvr_binding_denotes(node: char_kernel_type_node())
