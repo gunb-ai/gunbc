@@ -1,5 +1,6 @@
 module v2.test.claim.match_arm_binder_frame
 
+import v2.compiler.normalized_tree { normalized_tree_record_declarations }
 import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
@@ -341,7 +342,7 @@ fn mab_record_declarations(src: String) -> Outcome<FreeMonoid<Symbol>> {
               match normalize(parse_tree: artifact.tree) {
                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                 Accepted { value: tree, diagnostics: d } =>
-                  Accepted { value: tree.record_declarations, diagnostics: d }
+                  Accepted { value: normalized_tree_record_declarations(t: tree), diagnostics: d }
               }
           }
       }
