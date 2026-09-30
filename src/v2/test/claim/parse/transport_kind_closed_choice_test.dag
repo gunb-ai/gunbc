@@ -56,12 +56,15 @@ fn transport_kind_parses(kind: String) -> Bool {
   }
 }
 
-test fn every_transport_kind_parses_holds() -> Bool {
-  transport_kind_parses(kind: "rest")
-    && transport_kind_parses(kind: "shell")
-    && transport_kind_parses(kind: "file")
-    && transport_kind_parses(kind: "local")
-}
+// One claim per kind: the four parses are independent cases, so each pays one parse under its own
+// budget rather than four under one (DESIGN section 3, a witness discriminates at one interface).
+test fn the_rest_transport_kind_parses_holds() -> Bool { transport_kind_parses(kind: "rest") }
+
+test fn the_shell_transport_kind_parses_holds() -> Bool { transport_kind_parses(kind: "shell") }
+
+test fn the_file_transport_kind_parses_holds() -> Bool { transport_kind_parses(kind: "file") }
+
+test fn the_local_transport_kind_parses_holds() -> Bool { transport_kind_parses(kind: "local") }
 
 // The byte offset of the first token spelled `lexeme`, from the same lexer the parse reads.
 fn token_start(text: String, lexeme: String) -> Int {
