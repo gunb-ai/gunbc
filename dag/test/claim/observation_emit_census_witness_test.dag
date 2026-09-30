@@ -227,7 +227,6 @@ test fn w_post_snapshot_live_tags_are_rostered_bidirectional() -> Bool {
   census_marker_present(site: receipt_site) &&
   emit_site_is_frontier(site: receipt_site) &&
   census_marker_present(site: file_trace_site) &&
-  emit_site_is_frontier(site: file_trace_site) &&
   census_marker_present(site: resolve_split_site) &&
   emit_site_is_frontier(site: resolve_split_site) &&
   census_marker_present(site: assembly_split_site) &&
@@ -350,6 +349,26 @@ test fn w_the_raw_shell_shape_is_gone_from_the_seed() -> Bool {
   seed_marker_absent(marker: "[shell] stderr (exit=") &&
   seed_marker_present(marker: "render_shell_effect_failed_line_mirror") &&
   seed_marker_present(marker: "SHELL_CENSUS_MARKER")
+}
+
+test fn w_file_has_migrated() -> Bool {
+  census_marker_present(site: file_trace_site) &&
+  !emit_site_is_frontier(site: file_trace_site) &&
+  string_contains(s: file_trace_site.marker, pattern: "file") &&
+  string_contains(s: emit_site_dissolve_on(site: file_trace_site), pattern: "seed_file_effect_begin_line") &&
+  string_contains(s: emit_site_dissolve_on(site: file_trace_site), pattern: "render_file_effect_begin_line_mirror")
+}
+
+test fn w_the_raw_file_shape_is_gone_from_the_seed() -> Bool {
+  seed_marker_absent(marker: "[file] delete ") &&
+  seed_marker_absent(marker: "[file] list ") &&
+  seed_marker_absent(marker: "[file] read ") &&
+  seed_marker_absent(marker: "[file] write ") &&
+  seed_marker_absent(marker: "[file] write_owner_only ") &&
+  seed_marker_absent(marker: "[file] write_create_new ") &&
+  seed_marker_absent(marker: "[file] write_create_new_with_mode ") &&
+  seed_marker_present(marker: "render_file_effect_begin_line_mirror") &&
+  seed_marker_present(marker: "FILE_CENSUS_MARKER")
 }
 
 test fn w_the_raw_witness_claim_result_shape_is_gone_from_the_seed() -> Bool {

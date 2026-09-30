@@ -33,14 +33,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // The subject is carried BY VALUE, which is the defect the operator caught in the first shape
 // (2026-07-29). That version declared tool_name: NonEmptyStr and joined to the tool through string
 // equality — the single site in extdeps.tools doing so, against that module's own established
-// convention: resolve(tool: CliTool), ResolvedTool { tool: CliTool }, NotFound { tool: CliTool }
-// all pass the modeled row. A string foreign key into a type that is sitting right there is the
+// convention of passing the modeled row (then resolve(tool: CliTool), ResolvedTool and NotFound,
+// since deleted as dead; today apt_package_of(tool: CliTool) and apt_binary_path_of(tool: CliTool)). A string foreign key into a type that is sitting right there is the
 // anemic-leaf failure of DESIGN section 2, and it put tool identity in two places. Pin<CliTool>
-// carries the CliTool itself, so cli_tool_pin_key_of PROJECTS the name from the row rather than
+// carries the CliTool itself, so cli_tool_pin_key_of PROJECTS the program invocation from the row rather than
 // trusting a copy of it.
 
 fn cli_tool_pin_key_of(pin: Pin<CliTool>) -> NonEmptyStr {
-  pin.subject.name
+  pin.subject.program.invocation
 }
 
 // CORRECTING MY OWN OVERCLAIM, stated so it is not silently carried forward. When proposing this
