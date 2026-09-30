@@ -1,0 +1,386 @@
+[
+  {
+    "module": "extdeps.coverage",
+    "source": "dag/extdeps/coverage.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.coverage.dag",
+    "sha256": "1496e2c45039583852e4df7a1aab2e5e604bc44a1be28b449665ce22294e1bc4"
+  },
+  {
+    "module": "extdeps.currency.currency",
+    "source": "dag/extdeps/currency/currency.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.currency.currency.dag",
+    "sha256": "3016615f96e07bea627ba31aca76c1b6bbf0a95979928f9038e7c6c1143eede8"
+  },
+  {
+    "module": "extdeps.external_authority",
+    "source": "dag/extdeps/external_authority.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.external_authority.dag",
+    "sha256": "88e4aeb78428f3cbd583016c8e4dea926b6a9ff0a9d81b613e22d736e5fba1b4"
+  },
+  {
+    "module": "extdeps.github.errors",
+    "source": "dag/extdeps/github/errors.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.github.errors.dag",
+    "sha256": "07ddeb7c6a19ebeab2414a29a8f102ac704cd45837edc118dd53a848dcb44a88"
+  },
+  {
+    "module": "extdeps.github.github",
+    "source": "dag/extdeps/github/github.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.github.github.dag",
+    "sha256": "d7493b711821a510d6dc83d74865c9d1456db012f3fbff1165af4cdab07d8f76"
+  },
+  {
+    "module": "extdeps.github.github_contracts",
+    "source": "dag/extdeps/github/github_contracts.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.github.github_contracts.dag",
+    "sha256": "a0f651f690a3aed53ad21c1b773963df9e7942974cb9169b3181c272496d23f0"
+  },
+  {
+    "module": "extdeps.github.pulls",
+    "source": "dag/extdeps/github/pulls.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.github.pulls.dag",
+    "sha256": "1028c0eb10bd4057ba64705bcaf301f41260190044eda382106b553e723d4e3d"
+  },
+  {
+    "module": "extdeps.github.pulls_contracts",
+    "source": "dag/extdeps/github/pulls_contracts.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.github.pulls_contracts.dag",
+    "sha256": "d733eef06b05dd42ba6496c658601a97891a1f58d6b841fbc820459aff28565a"
+  },
+  {
+    "module": "extdeps.ietf.http_semantics",
+    "source": "dag/extdeps/ietf/http_semantics.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.ietf.http_semantics.dag",
+    "sha256": "606fc53707bbf45632049ea67659287eb25b95291f9138e68fbbe803553054ab"
+  },
+  {
+    "module": "extdeps.transports.rest",
+    "source": "dag/extdeps/transports/rest.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.transports.rest.dag",
+    "sha256": "7619e219e56d4769a615705e2f411ee7a176a2be1c691346cf6046062ecb31e1"
+  },
+  {
+    "module": "extdeps.units.dimensionless",
+    "source": "dag/extdeps/units/dimensionless.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.units.dimensionless.dag",
+    "sha256": "4ce0c3cf4268976852663dc5faec7c4a8555ad232f8bebe1a6240ebe920f2f99"
+  },
+  {
+    "module": "extdeps.units.iec_80000_13",
+    "source": "dag/extdeps/units/iec_80000_13.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.units.iec_80000_13.dag",
+    "sha256": "81b1def06b779d7df8985e96aed48d3843c1d229f913821f0e7b73d7c204d1e9"
+  },
+  {
+    "module": "extdeps.units.iso8601",
+    "source": "dag/extdeps/units/iso8601.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.units.iso8601.dag",
+    "sha256": "3c65b8483141ebdf694baca379b0fab620f4a53d6df10d0adc7958dbb16a7c6f"
+  },
+  {
+    "module": "extdeps.units.iso_80000_3",
+    "source": "dag/extdeps/units/iso_80000_3.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.units.iso_80000_3.dag",
+    "sha256": "9b2b5204077998805292431b096a121f0ad16b8e272064012a8d455928e23eef"
+  },
+  {
+    "module": "extdeps.uri",
+    "source": "dag/extdeps/uri.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.uri.dag",
+    "sha256": "97d3c7fcbadb72d3d1ca0875fb0af711bce9edd290ebaa8597a5176a944f80a9"
+  },
+  {
+    "module": "extdeps.uri_path",
+    "source": "dag/extdeps/uri_path.dag",
+    "copy": "target/commissioning-floor-imports/extdeps.uri_path.dag",
+    "sha256": "bdc372c881a09577849b46690cd019e825fb6dd34d03c3ac18f1f17f2425e2df"
+  },
+  {
+    "module": "gunbc.idea_pr_spine",
+    "source": "dag/gunbc/idea_pr_spine.dag",
+    "copy": "target/commissioning-floor-imports/gunbc.idea_pr_spine.dag",
+    "sha256": "e8c6fd9fb7d08f3cb039054a4cf771de2ebd21d5cce67e83ce013bae2de321a5"
+  },
+  {
+    "module": "gunbc.review_verdict",
+    "source": "dag/gunbc/review_verdict.dag",
+    "copy": "target/commissioning-floor-imports/gunbc.review_verdict.dag",
+    "sha256": "4f3a02fb69db97e64af5de8c3a4fc0ab5345ac5de4910a57fe6f1ed244846c9e"
+  },
+  {
+    "module": "std.access",
+    "source": "dag/std/access.dag",
+    "copy": "target/commissioning-floor-imports/std.access.dag",
+    "sha256": "82b70a77ff0032f3b61427edb73fc3b839eed8f2d9eec9a12142c0170eae1ffa"
+  },
+  {
+    "module": "std.algebra",
+    "source": "dag/std/algebra.dag",
+    "copy": "target/commissioning-floor-imports/std.algebra.dag",
+    "sha256": "33a01d4e6bc16487014cd4a651f135973c4951d9fc5aedba436dce9dfd7e3adb"
+  },
+  {
+    "module": "std.authorization_profile",
+    "source": "dag/std/authorization_profile.dag",
+    "copy": "target/commissioning-floor-imports/std.authorization_profile.dag",
+    "sha256": "8eb7a8762462dce18733b6fd7897802bb5770346f751df58aad36b0689f36ed7"
+  },
+  {
+    "module": "std.cache_identity",
+    "source": "dag/std/cache_identity.dag",
+    "copy": "target/commissioning-floor-imports/std.cache_identity.dag",
+    "sha256": "c45c49d869cb817d1164d91cc93497c6dee7939be3dcb3a906888cfefe40fe12"
+  },
+  {
+    "module": "std.cache_interface",
+    "source": "dag/std/cache_interface.dag",
+    "copy": "target/commissioning-floor-imports/std.cache_interface.dag",
+    "sha256": "cb7731b075f7dc2ec9703f48fb391c5f9b05cdabf968e6f92f66efb313e3f51e"
+  },
+  {
+    "module": "std.checked_arithmetic",
+    "source": "dag/std/checked_arithmetic.dag",
+    "copy": "target/commissioning-floor-imports/std.checked_arithmetic.dag",
+    "sha256": "f7217d0f7f2151c185bbf35035039e52292ddd5f5df2665119673268eff7ea3d"
+  },
+  {
+    "module": "std.content_hash",
+    "source": "dag/std/content_hash.dag",
+    "copy": "target/commissioning-floor-imports/std.content_hash.dag",
+    "sha256": "8ba1a2f1bdcd8a0fb1699a7a637d5d37c908f17072ca5ed6cef6d6d147375c85"
+  },
+  {
+    "module": "std.credentials",
+    "source": "dag/std/credentials.dag",
+    "copy": "target/commissioning-floor-imports/std.credentials.dag",
+    "sha256": "650ead23b620333525dcfbf9f39ae7c7a3907d9f1259442bf638c32f2d84f2a4"
+  },
+  {
+    "module": "std.decl_ref",
+    "source": "dag/std/decl_ref.dag",
+    "copy": "target/commissioning-floor-imports/std.decl_ref.dag",
+    "sha256": "26082e2d3b20e94c666088be09a38af7004dd0a3585a23d001819eae838c097c"
+  },
+  {
+    "module": "std.disposition",
+    "source": "dag/std/disposition.dag",
+    "copy": "target/commissioning-floor-imports/std.disposition.dag",
+    "sha256": "40cd746f00554945e53e85d17c3d0e2728652ca991927f95db731cfc2eaa5902"
+  },
+  {
+    "module": "std.dissolution",
+    "source": "dag/std/dissolution.dag",
+    "copy": "target/commissioning-floor-imports/std.dissolution.dag",
+    "sha256": "16bac1ef13d250b8e8e5b119fb50b8b9bdd8b85ca1b4b255a91b29c6ecba3fa4"
+  },
+  {
+    "module": "std.effect_grant",
+    "source": "dag/std/effect_grant.dag",
+    "copy": "target/commissioning-floor-imports/std.effect_grant.dag",
+    "sha256": "c112ab5a6196d3a4183b2571e80699b1cecccfe48bc04f99770e95b0870e5617"
+  },
+  {
+    "module": "std.effects",
+    "source": "dag/std/effects.dag",
+    "copy": "target/commissioning-floor-imports/std.effects.dag",
+    "sha256": "62951c43ccd8a52e0d7b01e45b233957d167df645e54b9d8ebcd315e959a7e22"
+  },
+  {
+    "module": "std.error_primitives",
+    "source": "dag/std/error_primitives.dag",
+    "copy": "target/commissioning-floor-imports/std.error_primitives.dag",
+    "sha256": "9dafc12f20fa0592a0cc74159a8ec11462308e577d28bb80a74d3166a670c69d"
+  },
+  {
+    "module": "std.execution_mode",
+    "source": "dag/std/execution_mode.dag",
+    "copy": "target/commissioning-floor-imports/std.execution_mode.dag",
+    "sha256": "c0f66cc1914de3bbf40b49dd9a5bb533bf1f3ec96b854a2eff35b53d95f35ddb"
+  },
+  {
+    "module": "std.fermi",
+    "source": "dag/std/fermi.dag",
+    "copy": "target/commissioning-floor-imports/std.fermi.dag",
+    "sha256": "e3e1762717457e08f185b8ee5328893806e3812f9c14976f1b5f19da885b329f"
+  },
+  {
+    "module": "std.fidelity",
+    "source": "dag/std/fidelity.dag",
+    "copy": "target/commissioning-floor-imports/std.fidelity.dag",
+    "sha256": "7f15f69ef1e14b04ebc93b32ea77cf2c5b99b2cee99621389cd3555995d0ee37"
+  },
+  {
+    "module": "std.interval",
+    "source": "dag/std/interval.dag",
+    "copy": "target/commissioning-floor-imports/std.interval.dag",
+    "sha256": "27bf64e0b74bb1a10176d5d3bb88b6d45e80a53777027a714b3a52bb27a70c24"
+  },
+  {
+    "module": "std.keyed_roster",
+    "source": "dag/std/keyed_roster.dag",
+    "copy": "target/commissioning-floor-imports/std.keyed_roster.dag",
+    "sha256": "41f346765f15aed3ecf28ff990ebb111864d524ab9bf95e03131638717abe584"
+  },
+  {
+    "module": "std.keyed_row",
+    "source": "dag/std/keyed_row.dag",
+    "copy": "target/commissioning-floor-imports/std.keyed_row.dag",
+    "sha256": "e5bce67aea16eabf826cf18ccd4a542142c42bf6950da0b1b977edaa02fba1dc"
+  },
+  {
+    "module": "std.logic",
+    "source": "dag/std/logic.dag",
+    "copy": "target/commissioning-floor-imports/std.logic.dag",
+    "sha256": "f508ba9750df53d5d3021119a1ec7870b9f10671a1882d1cf9224c7319fd0689"
+  },
+  {
+    "module": "std.magnitude",
+    "source": "dag/std/magnitude.dag",
+    "copy": "target/commissioning-floor-imports/std.magnitude.dag",
+    "sha256": "76bf8826e9986a021a6baa5abd18dd9958fda4d8178ccbe8112d1551be273b9b"
+  },
+  {
+    "module": "std.materialization_ladder",
+    "source": "dag/std/materialization_ladder.dag",
+    "copy": "target/commissioning-floor-imports/std.materialization_ladder.dag",
+    "sha256": "03f0b84b9344c1d2b459d4e2c3c495282282b634dc6c54c87aaf48e0911c26bf"
+  },
+  {
+    "module": "std.measure",
+    "source": "dag/std/measure.dag",
+    "copy": "target/commissioning-floor-imports/std.measure.dag",
+    "sha256": "7c9f67965114ed1b12cf22d885a7b7d555becde93be32d866892ca09e96d998b"
+  },
+  {
+    "module": "std.nat",
+    "source": "dag/std/nat.dag",
+    "copy": "target/commissioning-floor-imports/std.nat.dag",
+    "sha256": "70f854bda16ffc0e5ae6e2b46c155cd8fc05f894133a8c18155924752aa613c0"
+  },
+  {
+    "module": "std.occurrence_identity",
+    "source": "dag/std/occurrence_identity.dag",
+    "copy": "target/commissioning-floor-imports/std.occurrence_identity.dag",
+    "sha256": "2c8934d5c379a18f2d8fae4372fd7be5025b6d3bf46da9d9f105c5e12ed3116e"
+  },
+  {
+    "module": "std.pareto",
+    "source": "dag/std/pareto.dag",
+    "copy": "target/commissioning-floor-imports/std.pareto.dag",
+    "sha256": "df8cb6b3943d9fea248d323bb14af15bd746c4fda63363d3bb4904d3f52354a0"
+  },
+  {
+    "module": "std.process_termination",
+    "source": "dag/std/process_termination.dag",
+    "copy": "target/commissioning-floor-imports/std.process_termination.dag",
+    "sha256": "ec4a657d62b7f208e2267008cef187313cee090cffca5eb7823929b9520b1f3c"
+  },
+  {
+    "module": "std.realization",
+    "source": "dag/std/realization.dag",
+    "copy": "target/commissioning-floor-imports/std.realization.dag",
+    "sha256": "77211ca0e368d8abdebf0a823f10a5ff307ee97404c7b4dc98a0625a9bafb3b5"
+  },
+  {
+    "module": "std.realization_measurement",
+    "source": "dag/std/realization_measurement.dag",
+    "copy": "target/commissioning-floor-imports/std.realization_measurement.dag",
+    "sha256": "3c0b776a5345195653be424bc0630e69c40b71695a083105bfffb91b507fcda0"
+  },
+  {
+    "module": "std.realization_schedule",
+    "source": "dag/std/realization_schedule.dag",
+    "copy": "target/commissioning-floor-imports/std.realization_schedule.dag",
+    "sha256": "60a2d0b8354ad341b04baf3a493302c98afaa82f11907e7018765cc8af38c82f"
+  },
+  {
+    "module": "std.realization_width",
+    "source": "dag/std/realization_width.dag",
+    "copy": "target/commissioning-floor-imports/std.realization_width.dag",
+    "sha256": "3a6628f1b86e3563c5ee8f3930264e29258ea09c1de51d9c0157e6c2825ae13c"
+  },
+  {
+    "module": "std.reducible",
+    "source": "dag/std/reducible.dag",
+    "copy": "target/commissioning-floor-imports/std.reducible.dag",
+    "sha256": "fc545182d43aba2cb4e757bd89fce09479f1ceaa1864ef861aeab1a45e117b06"
+  },
+  {
+    "module": "std.roster_frontier",
+    "source": "dag/std/roster_frontier.dag",
+    "copy": "target/commissioning-floor-imports/std.roster_frontier.dag",
+    "sha256": "1254294a5d4be2a8312c2ab563786dde1f6b022570fba8a78041b292774e9998"
+  },
+  {
+    "module": "std.serialization",
+    "source": "dag/std/serialization.dag",
+    "copy": "target/commissioning-floor-imports/std.serialization.dag",
+    "sha256": "c3093200fcd2d53ddb95cb5cae63f06cb00bc72191240d41de1eba1f3aa0e6c2"
+  },
+  {
+    "module": "std.string_type",
+    "source": "dag/std/string_type.dag",
+    "copy": "target/commissioning-floor-imports/std.string_type.dag",
+    "sha256": "54300558500e6c0d8988d1dc5dbe679c3b5fce52db229b1282fe5f163ad1cd18"
+  },
+  {
+    "module": "std.types",
+    "source": "dag/std/types.dag",
+    "copy": "target/commissioning-floor-imports/std.types.dag",
+    "sha256": "2abfc53c499aa0063202944fc7321c02d194ab26006ea35cf32433d1b4187c4e"
+  },
+  {
+    "module": "std.unicode.types",
+    "source": "dag/std/unicode/types.dag",
+    "copy": "target/commissioning-floor-imports/std.unicode.types.dag",
+    "sha256": "d9729ed6cd4156e21ec64eb7ba0a6bc5cc52bc1b525bb370a131d25c85e2dede"
+  },
+  {
+    "module": "std.witness_admission",
+    "source": "dag/std/witness_admission.dag",
+    "copy": "target/commissioning-floor-imports/std.witness_admission.dag",
+    "sha256": "ef3bf6354631729f2da05b633a16934f6b6c3f281b935b12cf9b20e845fac967"
+  },
+  {
+    "module": "std.workflow_recursive",
+    "source": "dag/std/workflow_recursive.dag",
+    "copy": "target/commissioning-floor-imports/std.workflow_recursive.dag",
+    "sha256": "df48be1d268e4d2bdcbfb1ba8ad0619c5e04b8d537ace29f4a156b1a2032ee82"
+  },
+  {
+    "module": "test.claim.workflow_recursive_witness",
+    "source": "dag/test/claim/workflow_recursive_witness_test.dag",
+    "copy": "target/commissioning-floor-imports/test.claim.workflow_recursive_witness.dag",
+    "sha256": "027f4ec4711b717d1505e8af6f56117e8b93b801c366d7bcbf7762b49fc8a496"
+  },
+  {
+    "module": "v2.std.algebra",
+    "source": "src/v2/std/algebra.dag",
+    "copy": "target/commissioning-floor-imports/v2.std.algebra.dag",
+    "sha256": "5be90c2411ad93003bb3b020766ddbb587684cda3f7deb3b72d8bcd51cf02387"
+  },
+  {
+    "module": "v2.std.live_tree",
+    "source": "src/v2/std/live_tree.dag",
+    "copy": "target/commissioning-floor-imports/v2.std.live_tree.dag",
+    "sha256": "df342eaf1b7f295c201eda1db180308cc69604c63202f032db22b71972661355"
+  },
+  {
+    "module": "v2.std.node",
+    "source": "src/v2/std/node.dag",
+    "copy": "target/commissioning-floor-imports/v2.std.node.dag",
+    "sha256": "8c3ba48f6953f285ca3ed112bb292c48b97982504388d0d6093e3d137c384e60"
+  },
+  {
+    "module": "v2.std.operation_argv",
+    "source": "src/v2/std/operation_argv.dag",
+    "copy": "target/commissioning-floor-imports/v2.std.operation_argv.dag",
+    "sha256": "3aebeb4b28f225578592bb4ccaaebeb15c7d951ee9beeb76c08fd9c69990437d"
+  },
+  {
+    "module": "v2.std.optional",
+    "source": "src/v2/std/optional.dag",
+    "copy": "target/commissioning-floor-imports/v2.std.optional.dag",
+    "sha256": "6a686cbc761854f5bbbd83c07e21ff87b8154fe4f466be8b4d46f2fd85d3347b"
+  }
+]

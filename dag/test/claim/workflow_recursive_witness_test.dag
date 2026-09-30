@@ -3,6 +3,9 @@ module test.claim.workflow_recursive_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import gunbc.idea_pr_spine { settle }
+import gunbc.review_verdict { Claude }
+import std.workflow_recursive { Decomposed, VerdictTree, linearize_verdicts, settle_verdict_tree }
+import std.reducible { Irreducible, Reduced, reduce_verdict_combine, verdict_eq }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
