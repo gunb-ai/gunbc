@@ -1,6 +1,6 @@
 # Map-literal introduction: the model (MQ, PR1)
 
-Status: MODEL. No lowering, infer or realization change lands here; PR2 fills the map arm of the
+Status: MODEL. No lowering, resolve, infer or realization change lands here; PR2 fills the map arm of the
 one declared-type check site that #12711 (anonymous record literals, Form B) builds. It builds no
 second site.
 
@@ -8,10 +8,10 @@ second site.
 
 `dag/std/types` is file-refused on the native route at `data kernel_type_set: Map<String, Bool> = {
 "String": true, .. }`, so every module importing `std.types` is refused with it. #12711 routes a
-headless brace to the declared-type check site in `v2.compiler.infer`. There a `Map` expected head
+headless brace to the one elaboration writer, `resolve_construct_walk` in resolve, which carries a top-down `ResolveContext.expected` (revised in #12711; infer is a bottom-up fold and cannot synthesize an elided construct). There a `Map` expected head
 takes the map arm, which refuses located `map_literal_construction_not_modeled`. That refusal is
 correct: the arm has nothing to elaborate TO. The earliest unjustified boundary is not lowering and
-not infer. It is `std.algebra`: **`Map` has no introduction declaration to name.**
+not the writer. It is `std.algebra`: **`Map` has no introduction declaration to name.**
 
 ## Why the list precedent does not transfer as-is (the modeling gap)
 
@@ -49,7 +49,7 @@ fn finitely_supported_function_from_graph<K, V>(entries: FreeMonoid<FiniteGraphE
   new edge kind. `{}` under a `Map` expected type is the head alone, the empty graph.
 - **Authority.** `v2.std.map_introduction` carries head path, constructor
   (`lower_map_introduction`) and reader (`map_introduction_entries_optional`) together, exactly as
-  `v2.std.list_introduction` does. The check site's map arm is its producer, and infer, eval and
+  `v2.std.list_introduction` does. The map arm of `resolve_construct_walk` is its producer, and infer, eval and
   emit are its readers. There is one spelling of the path.
 - **Why a function and not a type.** The relation is not free: a list of entries with a repeated
   key does not denote a function. The introduction is therefore partial, and its partiality is the
@@ -57,34 +57,26 @@ fn finitely_supported_function_from_graph<K, V>(entries: FreeMonoid<FiniteGraphE
 
 ## Typing rule
 
-The expected type at the check site is `Map<K, V>`, resolved through the alias to
-`FinitelySupportedFunction<K, V>`. Each entry's key is checked against `K` and each value against
-`V`, as check positions (a new `PositionMapEntryKey` / `PositionMapEntryValue` pair in
-`v2.std.inhabitance` `DeclaredTypePosition`, beside #12711's `PositionListElement`). So a nested
-headless value, such as `Map<String, Rec>` with `{ "a": { f: 1 } }`, elaborates through the same
-site recursively. Nothing is synthesised bottom-up and then unified. Refusals, each located at the
-offending entry:
+The expected `Map<K, V>` comes ONLY from an authored annotation (data initializer, fn return, record
+field, list element) through `ResolveContext.expected`, resolved through the alias to
+`FinitelySupportedFunction<K, V>`. It is never inferred. A headless string-keyed brace with no
+authored expected type refuses located (`resolve_map_literal_no_expected_type`). The work splits
+along what each stage can decide:
 
-- `infer_map_literal_key_type_mismatch`: the key does not inhabit `K`. For `Map<Int, Bool>` with
-  `{ "k": true }`, the refusal is located at `"k"`.
-- `infer_map_literal_value_type_mismatch`: the value does not inhabit `V`.
-- `infer_map_literal_name_key`: a bare-name key under a `Map` expected type. Keys are string
-  literals by grammar, and a name key is the record arm's form. #12711 already refuses mixed kinds
-  at lowering.
-
-Keys are string literals by grammar today, so `K` must admit a string literal. Under DESIGN §4,
-text crossings go through the declared unfold or refuse, so `Map<Int, V>` refuses at the key rather
-than coercing.
-
-## Duplicate keys: refuse, located, never last-wins
-
-`infer_map_literal_duplicate_key` refuses at the SECOND occurrence and names the first. Equality is
-equality of the elaborated key values in `K`, not of spellings. The check belongs to the
-introduction's partiality, so it is decided at the check site where `K` is known. It does not wait
-for eval, where `map_insert` would silently overwrite. Because the elaborated program never
-contains a graph with a repeated key, eval and emit of the introduction may realize it as a
-sequence of inserts without that realization choosing semantics. That is realization, not
-authority.
+- **Resolve (the map arm of `resolve_construct_walk`)** elaborates the brace to the introduction,
+  sets `ResolveContext.expected` to `FiniteGraphEntry<K, V>`'s `value` field type `V` for each
+  entry value (so a nested headless value such as `Map<String, Rec>` with `{ "a": { f: 1 } }`
+  elaborates recursively through the same writer), and refuses, located at the offending entry:
+  - `resolve_map_literal_key_type_mismatch`: `K` does not admit a string-literal key. Keys are
+    string literals by grammar, and under DESIGN section 4 a text crossing goes through the declared
+    unfold or refuses, so `Map<Int, Bool>` with `{ "k": true }` refuses at `"k"`. This is decided on
+    the declaration `K` resolves to, never on its leaf name.
+  - `resolve_map_literal_duplicate_key` (below).
+  - a mixed name-key/string-key brace already refuses at lowering (#12711).
+- **Infer** needs no map-specific arm. The elaborated node applies a declared function to
+  `FiniteGraphEntry` constructs, so values that do not inhabit `V` refuse through infer's ordinary
+  construct-field check. This is one more reason the head must be a declaration: typing falls out
+  of inhabitance, with no second rule.
 
 ## Consumers (PR2), a declared frontier
 
@@ -92,8 +84,8 @@ authority.
 |---|---|---|
 | `v2.std.map_introduction` | authority | new: head path, constructor, reader |
 | `std.algebra` | declaration | `FiniteGraphEntry`, `finitely_supported_function_from_graph` |
-| `v2.compiler.infer` check site, map arm (#12711) | producer | replaces `map_literal_construction_not_modeled` with elaboration + three refusals |
-| `v2.std.inhabitance` `DeclaredTypePosition` | vocabulary | map entry key/value positions |
+| `resolve_construct_walk` map arm (#12711, owned by sleek-fox-423) | producer | replaces `map_literal_construction_not_modeled` with elaboration + three located refusals |
+| `v2.compiler.infer` | reader | no new arm; values typed through the `FiniteGraphEntry` construct |
 | `v2.compiler.eval`, `v2.std.compilers.target_model`, emit | readers | realize the introduction (graph → finite container) |
 | `v2.workflow.compile_door_cause_ownership` | ownership | one row per new refusal; `map_literal_construction_not_modeled` retired |
 | `reference_conservation_accepted_drops` `a_map_literal_value_refuses_at_the_literal_holds` | control | flips to a positive control: `std/types`'s literal elaborates to exactly the introduction |
@@ -104,10 +96,10 @@ authority.
 1. `dag/std/types` `kernel_type_set` elaborates to a Transform headed by
    `finitely_supported_function_from_graph` with eight `FiniteGraphEntry` children in authored
    order, compared by `content_hash` against the hand-built introduction.
-2. A duplicate key refuses `infer_map_literal_duplicate_key` at the second occurrence.
-3. `Map<Int, Bool>` with `{ "k": true }` refuses `infer_map_literal_key_type_mismatch` at `"k"`.
+2. A duplicate key refuses `resolve_map_literal_duplicate_key` at the second occurrence.
+3. `Map<Int, Bool>` with `{ "k": true }` refuses `resolve_map_literal_key_type_mismatch` at `"k"`.
 4. Mutation: dropping the duplicate check, so the graph reaches eval and `map_insert` last-wins,
-   turns control 2 red. The control reads the infer outcome, not the evaluated map.
+   turns control 2 red. The control reads the resolve outcome, not the evaluated map.
 5. Evidence: a base-vs-head native-route census (recipe on #12550) showing `dag/std/types` and
    every other map-literal file admitted, with no unexplained new refusal.
 
