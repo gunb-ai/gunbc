@@ -68,6 +68,7 @@ import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justi
 import gunbc.dag_artifact_identity_seed_growth { dag_artifact_identity_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
+import gunbc.floor_checker_input_seed_growth { floor_checker_input_seed_growth_justification }
 import gunbc.data_eval_counters_seed_growth { data_eval_counters_seed_growth_justification }
 import gunbc.param_binder_seed_growth { param_binder_seed_growth_justification }
 import gunbc.rust_item_host_observation {
@@ -326,7 +327,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     unimported_bare_provider_gate_seed_growth_justification,
     enrolment_dead_band_seed_growth_justification,
     modeled_operation_realization_seed_growth_justification,
-    observation_file_effect_seed_growth_justification
+    observation_file_effect_seed_growth_justification,
+    floor_checker_input_seed_growth_justification
   ]
 }
 

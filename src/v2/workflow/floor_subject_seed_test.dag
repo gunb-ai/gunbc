@@ -2,6 +2,16 @@ module v2.workflow.floor_subject_seed_test
 
 import v2.std.logic { Bool }
 import v2.workflow.floor_subject_seed {
+  CheckerDependencyObservation,
+  CheckerDependenciesObserved,
+  CheckerDependenciesUnavailable,
+  CheckerSubjectRule,
+  CheckerInputsUnchanged,
+  EveryAdmittedModule,
+  CheckerSubjectRefused,
+  checker_subject_rule,
+  checker_subject_decision,
+  SeedCheckerSourceChanged,
   PreparedSubjectSeedGround,
   SeedRequiredGatePrefix,
   SeedRequiredGateAuthoredModule,
@@ -218,4 +228,118 @@ test fn an_unresolved_call_plans_its_module_where_an_unresolved_name_does_not() 
   let data = interface_read_disposition(declaring_candidates: [], changed_module_path: "flatfn.a", channel: ValueOccurrence)
   let name = interface_read_disposition(declaring_candidates: [], changed_module_path: "flatfn.a", channel: NameOccurrence)
   read_is_planned(read: call) && read_is_planned(read: data) && !read_is_planned(read: name)
+}
+
+// THE CHECKER-INPUT RULE, all three arms. The dependency list stands in for cargo's dep-info
+// record of the binary that runs the floor; the host control that the real record reaches this
+// rule is v1_compiler.cli_run.checker_dependency tests.
+
+fn checker_record() -> CheckerDependencyObservation {
+  CheckerDependenciesObserved {
+    dependency_paths: ["src/v1/stage0/src/v1_compiler_infer.rs", "src/v1/stage0/Cargo.toml", "Cargo.lock"]
+  }
+}
+
+fn rule_selects_every_admitted_module(rule: CheckerSubjectRule, path: String) -> Bool {
+  match rule {
+    CheckerInputsUnchanged => false
+    EveryAdmittedModule { changed_checker_paths: changed } => changed == [path]
+    CheckerSubjectRefused { reason: _ } => false
+  }
+}
+
+fn rule_is_unchanged(rule: CheckerSubjectRule) -> Bool {
+  match rule {
+    CheckerInputsUnchanged => true
+    EveryAdmittedModule { changed_checker_paths: _ } => false
+    CheckerSubjectRefused { reason: _ } => false
+  }
+}
+
+fn rule_is_refused(rule: CheckerSubjectRule) -> Bool {
+  match rule {
+    CheckerInputsUnchanged => false
+    EveryAdmittedModule { changed_checker_paths: _ } => false
+    CheckerSubjectRefused { reason: _ } => true
+  }
+}
+
+// THE gunbc#12441 SHAPE: a diff that touches the checker and no .dag file. The .dag frontier is
+// empty, and the rule still widens preparation to every admitted module, naming only the checker
+// path among the changed ones.
+test fn a_checker_edit_seeds_every_admitted_module() -> Bool {
+  rule_selects_every_admitted_module(
+    rule: checker_subject_rule(
+      observation: checker_record(),
+      changed_paths: ["docs/plans/x.md", "src/v1/stage0/src/v1_compiler_infer.rs"]
+    ),
+    path: "src/v1/stage0/src/v1_compiler_infer.rs"
+  )
+}
+
+// POSITIVE CONTROL: a .dag edit and a doc edit touch no checker input, so the subject stays
+// narrow.
+test fn a_change_outside_the_checker_keeps_the_narrow_subject() -> Bool {
+  rule_is_unchanged(
+    rule: checker_subject_rule(
+      observation: checker_record(),
+      changed_paths: ["src/v2/workflow/x.dag", "docs/plans/x.md"]
+    )
+  )
+}
+
+// THE REFUSAL ARM: an unreadable record, and a record that lists nothing, refuse. They neither
+// narrow nor widen.
+test fn an_unobservable_checker_refuses_rather_than_narrowing_or_widening() -> Bool {
+  rule_is_refused(
+    rule: checker_subject_rule(
+      observation: CheckerDependenciesUnavailable { reason: "dep-info unreadable" },
+      changed_paths: ["src/v1/stage0/src/v1_compiler_infer.rs"]
+    )
+  )
+    && rule_is_refused(
+      rule: checker_subject_rule(
+        observation: CheckerDependenciesObserved { dependency_paths: [] },
+        changed_paths: ["src/v2/workflow/x.dag"]
+      )
+    )
+}
+
+// THE HOST WIRE carries the same three answers.
+test fn the_decision_wire_names_the_rule_it_chose() -> Bool {
+  let widened = checker_subject_decision(
+    dependency_paths: ["src/v1/stage0/src/v1_compiler_infer.rs"],
+    observation_refusal: "",
+    changed_paths: ["src/v1/stage0/src/v1_compiler_infer.rs"]
+  )
+  let narrow = checker_subject_decision(
+    dependency_paths: ["src/v1/stage0/src/v1_compiler_infer.rs"],
+    observation_refusal: "",
+    changed_paths: ["src/v2/workflow/x.dag"]
+  )
+  let refused = checker_subject_decision(
+    dependency_paths: [],
+    observation_refusal: "dep-info unreadable",
+    changed_paths: ["src/v2/workflow/x.dag"]
+  )
+  widened.rule == "EveryAdmittedModule"
+    && widened.changed_checker_paths == ["src/v1/stage0/src/v1_compiler_infer.rs"]
+    && narrow.rule == "CheckerInputsUnchanged"
+    && refused.rule == "CheckerSubjectRefused"
+    && refused.reason == "dep-info unreadable"
+}
+
+test fn the_checker_ground_prints_under_its_own_name() -> Bool {
+  seed_ground_wire_name(
+    ground: SeedCheckerSourceChanged {
+      changed_checker_path: "src/v1/stage0/src/v1_compiler_infer.rs",
+      module_path: "v2.test.claim.type_param_binder_frame"
+    }
+  ) == "SeedCheckerSourceChanged"
+    && !seed_ground_is_textual_prefix(
+      ground: SeedCheckerSourceChanged {
+        changed_checker_path: "src/v1/stage0/src/v1_compiler_infer.rs",
+        module_path: "v2.test.claim.type_param_binder_frame"
+      }
+    )
 }
