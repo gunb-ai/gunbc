@@ -265,7 +265,9 @@ fn production_holds_name_terminal(expr: GrammarExpr) -> Bool {
     choice: fn(a, b) { a || b },
     optional: fn(a) { a },
     repeat: fn(a) { a },
-    expect: fn(a, _reason) { a }
+    expect: fn(a, _reason) { a },
+    refuse_on_match: fn(a, _reason) { a },
+    after_line_break: fn(a) { a }
   })
 }
 

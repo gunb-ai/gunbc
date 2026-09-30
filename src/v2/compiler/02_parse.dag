@@ -99,6 +99,7 @@ import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
 import std.realization { Materialization }
 import v2.std.integer { integer_int_content_digest }
+import std.unicode.types { unicode_char_code_point }
 import v2.compiler.materialization_carriers {
   parse_table_memo_artifact_kind,
   parse_table_memo_provider_id,
@@ -112,16 +113,24 @@ import v2.extdeps.languages.dag {
   dag_string_literal_node_from_lexeme
 }
 import v2.std.compilers.lexing {
+  LineBreakAnswer,
+  LineBreakInGap,
+  LineBreakUnknownWithoutSource,
   Lexeme,
+  NoLineBreakInGap,
   Token,
   TokenStream,
+  token_stream_line_break_between,
   token_stream_remaining,
   token_stream_remaining_count,
+  token_stream_source,
 }
-import v2.std.parse_refusal_reason { ParseRefusalReason, parse_refusal_reason_symbol }
+import v2.std.parse_refusal_reason { LayoutUnknownWithoutSource, ParseRefusalReason, parse_refusal_reason_symbol }
 import v2.std.grammar {
+  AfterLineBreak,
   Choice,
   Expect,
+  RefuseOnMatch,
   LiteralTerminal,
   ParseGrammar,
   GrammarExpr,
@@ -287,9 +296,10 @@ type ParseMemoEntry
       captured: Node,
       diagnostics: List<Diagnostic>,
       prov: ParseProvenanceState,
-      furthest: ParseFurthestFailure
+      furthest: ParseFurthestFailure,
+      refusal: Optional<Diagnostic>
     }
-  | ParseMemoRejected { diagnostics: List<Diagnostic>, furthest: ParseFurthestFailure }
+  | ParseMemoRejected { diagnostics: List<Diagnostic>, furthest: ParseFurthestFailure, refusal: Optional<Diagnostic> }
 
 type ParseExprResult
   = ParseExprAccepted {
@@ -340,6 +350,8 @@ type ParseTableRealization {
   first_rows: Map<Symbol, List<FirstKey>>
   productions_by_name: Map<Symbol, GrammarProduction>
   prepared_exprs: Map<Symbol, PreparedGrammarExpr>
+  source: Optional<v2.std.text.String>
+  refusal: Optional<Diagnostic>
 }
 
 type ParseTable = ParseTableRealization
@@ -639,10 +651,11 @@ fn parse_memo_entry_from_expr(result: ParseExprResult) -> ParseMemoEntry {
         captured: captured,
         diagnostics: diagnostics,
         prov: prov,
-        furthest: parse_expr_result_table(result: result).furthest
+        furthest: parse_expr_result_table(result: result).furthest,
+        refusal: parse_expr_result_table(result: result).refusal
       }
     ParseExprRejected { diagnostics: diagnostics, table: table } =>
-      ParseMemoRejected { diagnostics: diagnostics, furthest: table.furthest }
+      ParseMemoRejected { diagnostics: diagnostics, furthest: table.furthest, refusal: table.refusal }
   }
 }
 
@@ -703,7 +716,9 @@ fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, 
     nullable_set: table.nullable_set,
     first_rows: table.first_rows,
     productions_by_name: table.productions_by_name,
-    prepared_exprs: table.prepared_exprs
+    prepared_exprs: table.prepared_exprs,
+    source: table.source,
+    refusal: table.refusal
   }
 }
 
@@ -775,12 +790,48 @@ fn parse_table_with_furthest(table: ParseTable, furthest: ParseFurthestFailure) 
     nullable_set: table.nullable_set,
     first_rows: table.first_rows,
     productions_by_name: table.productions_by_name,
-    prepared_exprs: table.prepared_exprs
+    prepared_exprs: table.prepared_exprs,
+    source: table.source,
+    refusal: table.refusal
   }
 }
 
 fn parse_table_join_furthest(table: ParseTable, furthest: ParseFurthestFailure) -> ParseTable {
   parse_table_with_furthest(table: table, furthest: parse_furthest_join(left: table.furthest, right: furthest))
+}
+
+// THE FIRST REFUSAL STANDS. A table that already refused keeps its refusal; one that has not takes
+// the incoming one (a memo hit replaying the refusal its subparse recorded).
+fn parse_table_join_refusal(table: ParseTable, refusal: Optional<Diagnostic>) -> ParseTable {
+  match table.refusal {
+    Present { value: _ } => table
+    Absent =>
+      match refusal {
+        Absent => table
+        Present { value: d } => parse_table_with_refusal(table: table, refusal: d)
+      }
+  }
+}
+
+fn parse_table_with_refusal(table: ParseTable, refusal: Diagnostic) -> ParseTable {
+  ParseTableRealization {
+    artifact_kind: table.artifact_kind,
+    provider_id: table.provider_id,
+    materialization: table.materialization,
+    grammar_digest: table.grammar_digest,
+    token_stream_digest: table.token_stream_digest,
+    entries: table.entries,
+    memo_hits: table.memo_hits,
+    memo_misses: table.memo_misses,
+    memo_lookup_calls: table.memo_lookup_calls,
+    furthest: table.furthest,
+    nullable_set: table.nullable_set,
+    first_rows: table.first_rows,
+    productions_by_name: table.productions_by_name,
+    prepared_exprs: table.prepared_exprs,
+    source: table.source,
+    refusal: optional_present(value: refusal)
+  }
 }
 
 fn parse_table_record_lookup_call(table: ParseTable) -> ParseTable {
@@ -841,6 +892,21 @@ fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
 // byte 255 and every non-Latin-1 codepoint collide in the seed interpreter's cross-parse memo key
 // (v1_interpreter parse_table_memo_scope_and_key reads this field). Offsets and positions now go
 // through the Int content authority and the lexeme through its interned symbol.
+fn parse_token_stream_source_digest(all_tokens: List<Token>, source: Optional<v2.std.text.String>) -> Hash {
+  match source {
+    Absent => parse_token_stream_digest(all_tokens: all_tokens)
+    Present { value: text } =>
+      combine_hash(
+        a: parse_token_stream_digest(all_tokens: all_tokens),
+        b: fold_list(
+          xs: text,
+          empty: symbol_identity_digest(sym: ^parse_token_stream_source_digest_nil),
+          cons: fn(acc, c) { combine_hash(a: acc, b: integer_int_content_digest(value: unicode_char_code_point(c: c))) }
+        )
+      )
+  }
+}
+
 fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
   fold_list(
     xs: all_tokens,
@@ -877,12 +943,32 @@ fn parse_table_for_production_analyzed(
   all_tokens: List<Token>,
   materialization: Materialization
 ) -> ParseTable {
+  parse_table_for_stream_analyzed(
+    validated: validated,
+    analysis: analysis,
+    all_tokens: all_tokens,
+    source: optional_absent(),
+    materialization: materialization
+  )
+}
+
+// The stream's source rides on the table so a layout-conditioned production can ask its question at
+// the point of use (v2.std.compilers.lexing token_stream_line_break_between), and it is part of the
+// stream's digest: two sources can lex to byte-identical tokens and differ only in layout, and a memo
+// entry must never serve one's answer to the other.
+fn parse_table_for_stream_analyzed(
+  validated: ValidatedGrammarRoot,
+  analysis: GrammarFirstAnalysis,
+  all_tokens: List<Token>,
+  source: Optional<v2.std.text.String>,
+  materialization: Materialization
+) -> ParseTable {
   ParseTableRealization {
     artifact_kind: v2.compiler.materialization_carriers.parse_table_memo_artifact_kind(),
     provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
     materialization: materialization,
     grammar_digest: analysis.grammar_digest,
-    token_stream_digest: parse_token_stream_digest(all_tokens: all_tokens),
+    token_stream_digest: parse_token_stream_source_digest(all_tokens: all_tokens, source: source),
     entries: empty_map(),
     memo_hits: 0,
     memo_misses: 0,
@@ -891,7 +977,9 @@ fn parse_table_for_production_analyzed(
     nullable_set: analysis.nullable_set,
     first_rows: analysis.first_rows,
     productions_by_name: analysis.productions_by_name,
-    prepared_exprs: analysis.prepared_exprs
+    prepared_exprs: analysis.prepared_exprs,
+    source: source,
+    refusal: optional_absent()
   }
 }
 
@@ -927,7 +1015,9 @@ fn parse_table_empty(materialization: Materialization) -> ParseTable {
     nullable_set: std.algebra.Empty,
     first_rows: empty_map(),
     productions_by_name: empty_map(),
-    prepared_exprs: empty_map()
+    prepared_exprs: empty_map(),
+    source: optional_absent(),
+    refusal: optional_absent()
   }
 }
 
@@ -1485,9 +1575,12 @@ fn parse_nonterminal_memoized_core(
         Holds { value: inner } =>
           let table_hit = parse_table_record_hit(table: table_at_lookup)
           match inner {
-            ParseMemoRejected { diagnostics: diags, furthest: served } =>
-              ParseExprRejected { diagnostics: diags, table: parse_table_join_furthest(table: table_hit, furthest: served) }
-            ParseMemoAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, furthest: served } =>
+            ParseMemoRejected { diagnostics: diags, furthest: served, refusal: served_refusal } =>
+              ParseExprRejected {
+                diagnostics: diags,
+                table: parse_table_join_refusal(table: parse_table_join_furthest(table: table_hit, furthest: served), refusal: served_refusal)
+              }
+            ParseMemoAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, furthest: served, refusal: served_refusal } =>
               let merged_prov = parse_prov_merge(base: prov, incoming: inner_prov)
               let stamped = parse_wrap_production_captured(
                 production: production,
@@ -1499,7 +1592,7 @@ fn parse_nonterminal_memoized_core(
                 captured: stamped.node,
                 diagnostics: diags,
                 prov: stamped.prov,
-                table: parse_table_join_furthest(table: table_hit, furthest: served)
+                table: parse_table_join_refusal(table: parse_table_join_furthest(table: table_hit, furthest: served), refusal: served_refusal)
               }
           }
         Violates { diagnostic: _ } =>
@@ -1561,7 +1654,9 @@ fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: List<Symbol>) -> 
       choice: fn(left_nullable, right_nullable) { left_nullable || right_nullable },
       optional: fn(_) { true },
       repeat: fn(_) { true },
-      expect: fn(element_nullable, _reason) { element_nullable }
+      expect: fn(element_nullable, _reason) { element_nullable },
+      refuse_on_match: fn(element_nullable, _reason) { element_nullable },
+      after_line_break: fn(element_nullable) { element_nullable }
     }
   )
 }
@@ -1846,7 +1941,9 @@ fn expr_first_fold(
       choice: expr_first_fold_choice,
       optional: expr_first_fold_optional,
       repeat: expr_first_fold_repeat,
-      expect: fn(element, _reason) { element }
+      expect: fn(element, _reason) { element },
+      refuse_on_match: fn(element, _reason) { element },
+      after_line_break: fn(element) { element }
     }
   )
 }
@@ -1981,6 +2078,8 @@ type PreparedGrammarExpr
   | PreparedOptional { element: PreparedGrammarExpr }
   | PreparedRepeat { element: PreparedGrammarExpr }
   | PreparedExpect { element: PreparedGrammarExpr, reason: ParseRefusalReason }
+  | PreparedRefuseOnMatch { element: PreparedGrammarExpr, reason: ParseRefusalReason }
+  | PreparedAfterLineBreak { element: PreparedGrammarExpr }
 
 type PreparedExprFold {
   tree: PreparedGrammarExpr
@@ -2024,6 +2123,8 @@ fn flatten_choice_exprs(expr: GrammarExpr) -> List<GrammarExpr> {
     Optional { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
     Repeat { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
     Expect { element: _, reason: _ } => Cons { head: expr, tail: std.algebra.Empty }
+    RefuseOnMatch { element: _, reason: _ } => Cons { head: expr, tail: std.algebra.Empty }
+    AfterLineBreak { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
   }
 }
 
@@ -2063,6 +2164,8 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedOptional { element: _ } => false
         PreparedRepeat { element: _ } => false
         PreparedExpect { element: _, reason: _ } => false
+        PreparedRefuseOnMatch { element: _, reason: _ } => false
+        PreparedAfterLineBreak { element: _ } => false
       }
     PreparedLiteralTerminal { token_class: lc, lexeme: lw } =>
       match right {
@@ -2077,6 +2180,8 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedOptional { element: _ } => false
         PreparedRepeat { element: _ } => false
         PreparedExpect { element: _, reason: _ } => false
+        PreparedRefuseOnMatch { element: _, reason: _ } => false
+        PreparedAfterLineBreak { element: _ } => false
       }
     PreparedNonterminal { production: lp } =>
       match right {
@@ -2088,12 +2193,16 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedOptional { element: _ } => false
         PreparedRepeat { element: _ } => false
         PreparedExpect { element: _, reason: _ } => false
+        PreparedRefuseOnMatch { element: _, reason: _ } => false
+        PreparedAfterLineBreak { element: _ } => false
       }
     PreparedSequence { left: _, right: _ } => false
     PreparedChoice { plan: _, first: _ } => false
     PreparedOptional { element: _ } => false
     PreparedRepeat { element: _ } => false
     PreparedExpect { element: _, reason: _ } => false
+    PreparedRefuseOnMatch { element: _, reason: _ } => false
+    PreparedAfterLineBreak { element: _ } => false
   }
 }
 
@@ -2109,6 +2218,8 @@ fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGr
         PreparedOptional { element: _ } => optional_absent()
         PreparedRepeat { element: _ } => optional_absent()
         PreparedExpect { element: _, reason: _ } => optional_absent()
+        PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
+        PreparedAfterLineBreak { element: _ } => optional_absent()
       }
     PreparedTerminal { token_class: _, stamp: _ } => optional_absent()
     PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_absent()
@@ -2117,6 +2228,8 @@ fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGr
     PreparedOptional { element: _ } => optional_absent()
     PreparedRepeat { element: _ } => optional_absent()
     PreparedExpect { element: _, reason: _ } => optional_absent()
+    PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
+    PreparedAfterLineBreak { element: _ } => optional_absent()
   }
 }
 
@@ -2246,12 +2359,16 @@ fn prepared_terminal_prefix(expr: PreparedGrammarExpr, need: Int) -> Optional<Li
           PreparedOptional { element: _ } => optional_absent()
           PreparedRepeat { element: _ } => optional_absent()
           PreparedExpect { element: _, reason: _ } => optional_absent()
+          PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
+          PreparedAfterLineBreak { element: _ } => optional_absent()
         }
       PreparedNonterminal { production: _ } => optional_absent()
       PreparedChoice { plan: _, first: _ } => optional_absent()
       PreparedOptional { element: _ } => optional_absent()
       PreparedRepeat { element: _ } => optional_absent()
       PreparedExpect { element: _, reason: _ } => optional_absent()
+      PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
+      PreparedAfterLineBreak { element: _ } => optional_absent()
     }
   }
 }
@@ -2371,6 +2488,8 @@ fn choice_shared_prefix_suffixes_from(
         PreparedOptional { element: _ } => optional_absent()
         PreparedRepeat { element: _ } => optional_absent()
         PreparedExpect { element: _, reason: _ } => optional_absent()
+        PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
+        PreparedAfterLineBreak { element: _ } => optional_absent()
       }
   }
 }
@@ -2402,6 +2521,10 @@ fn expr_first_fold_from_prepared(
         element: expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
       )
     PreparedExpect { element: element, reason: _ } =>
+      expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
+    PreparedRefuseOnMatch { element: element, reason: _ } =>
+      expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
+    PreparedAfterLineBreak { element: element } =>
       expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
   }
 }
@@ -2701,6 +2824,20 @@ fn prepare_grammar_expr(
         first: element_prepared.first,
         residue: element_prepared.residue
       }
+    RefuseOnMatch { element: element, reason: reason } =>
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      PreparedExprFold {
+        tree: PreparedRefuseOnMatch { element: element_prepared.tree, reason: reason },
+        first: element_prepared.first,
+        residue: element_prepared.residue
+      }
+    AfterLineBreak { element: element } =>
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      PreparedExprFold {
+        tree: PreparedAfterLineBreak { element: element_prepared.tree },
+        first: element_prepared.first,
+        residue: element_prepared.residue
+      }
   }
 }
 
@@ -2828,7 +2965,9 @@ fn expr_parse_demand_fold(expr: GrammarExpr) -> ParseDemandFold {
           discarding_sites: e.discarding_sites + parse_demand_fold_site(attempted: e)
         }
       },
-      expect: fn(e, _reason) { e }
+      expect: fn(e, _reason) { e },
+      refuse_on_match: fn(e, _reason) { e },
+      after_line_break: fn(e) { e }
     }
   )
 }
@@ -2980,7 +3119,9 @@ fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: List<Symbol>) -> G
       choice: expr_corner_fold_choice,
       optional: expr_corner_fold_optional,
       repeat: expr_corner_fold_repeat,
-      expect: fn(element, _reason) { element }
+      expect: fn(element, _reason) { element },
+      refuse_on_match: fn(element, _reason) { element },
+      after_line_break: fn(element) { element }
     }
   )
 }
@@ -3144,7 +3285,9 @@ fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool 
       choice: fn(left_undef, right_undef) { left_undef || right_undef },
       optional: fn(element_undef) { element_undef },
       repeat: fn(element_undef) { element_undef },
-      expect: fn(element_undef, _reason) { element_undef }
+      expect: fn(element_undef, _reason) { element_undef },
+      refuse_on_match: fn(element_undef, _reason) { element_undef },
+      after_line_break: fn(element_undef) { element_undef }
     }
   )
 }
@@ -3835,6 +3978,120 @@ fn parse_expr_expect(
   }
 }
 
+// A MATCH THAT IS A REFUSAL. Where the element matches, the parse refuses with `reason` located at
+// the first token of the match, and the table carries that refusal from here on: every later
+// attempt rejects at once (parse_expr_with_first), so no alternative can succeed around it, and the
+// production door reports it as the outcome. Where the element does not match, this is an ordinary
+// failed alternative.
+fn parse_expr_refuse_on_match(
+  element: PreparedGrammarExpr,
+  reason: ParseRefusalReason,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
+    ParseExprRejected { diagnostics: diags, table: table1 } => ParseExprRejected { diagnostics: diags, table: table1 }
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: table1 } =>
+      ParseExprRejected {
+        diagnostics: [],
+        table: parse_table_join_refusal(
+          table: table1,
+          refusal: optional_present(value: parse_refusal_at(reason: reason, tokens: tokens, all_tokens: all_tokens))
+        )
+      }
+  }
+}
+
+// A MATCH CONDITIONED ON LAYOUT. The element is parsed first, so a layout question is asked only of
+// a match; then the source decides (v2.std.compilers.lexing token_stream_line_break_between) whether a
+// line break separates the token before the match from its first token. No line break: an ordinary
+// failed alternative. A stream that carries no source cannot answer, and the parse refuses with
+// LayoutUnknownWithoutSource rather than assume one line.
+fn parse_expr_after_line_break(
+  element: PreparedGrammarExpr,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
+    ParseExprRejected { diagnostics: diags, table: table1 } => ParseExprRejected { diagnostics: diags, table: table1 }
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 } =>
+      match parse_line_break_before_first(tokens: tokens, all_tokens: all_tokens, source: table1.source) {
+        LineBreakInGap =>
+          ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 }
+        NoLineBreakInGap => ParseExprRejected { diagnostics: [], table: table1 }
+        LineBreakUnknownWithoutSource =>
+          ParseExprRejected {
+            diagnostics: [],
+            table: parse_table_join_refusal(
+              table: table1,
+              refusal: optional_present(value: parse_refusal_at(reason: LayoutUnknownWithoutSource, tokens: tokens, all_tokens: all_tokens))
+            )
+          }
+      }
+  }
+}
+
+// The gap before the first token of `tokens`: from the end of the token before it in the stream (the
+// start of the source when it is the first token) to its own start. An empty remainder has no first
+// token and so no gap; it answers NoLineBreakInGap, a failed match rather than a layout question.
+fn parse_line_break_before_first(
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  source: Optional<v2.std.text.String>
+) -> LineBreakAnswer {
+  match parse_token_first(tokens: tokens) {
+    Absent => NoLineBreakInGap
+    Present { value: first } =>
+      token_stream_line_break_between(
+        source: source,
+        from: parse_token_end_before(all_tokens: all_tokens, index: length(xs: all_tokens) - length(xs: tokens)),
+        to: first.start
+      )
+  }
+}
+
+fn parse_token_end_before(all_tokens: List<Token>, index: Int) -> Int {
+  if index <= 0 {
+    0
+  } else {
+    match list_at_optional(xs: all_tokens, index: index - 1) {
+      Present { value: prev } => prev.end
+      Absent => 0
+    }
+  }
+}
+
+// A refusal is located at the first token of the match it refuses; with no token left it is located
+// zero-width at the end of the last token.
+fn parse_refusal_at(reason: ParseRefusalReason, tokens: List<Token>, all_tokens: List<Token>) -> Diagnostic {
+  match parse_token_first(tokens: tokens) {
+    Present { value: tok } => parse_refusal_reason_diagnostic(reason: reason, file: tok.file, start: tok.start, end: tok.end)
+    Absent =>
+      match list_at_optional(xs: all_tokens, index: length(xs: all_tokens) - 1) {
+        Present { value: last } => parse_refusal_reason_diagnostic(reason: reason, file: last.file, start: last.end, end: last.end)
+        Absent => Diagnostic {
+          reason: parse_refusal_reason_symbol(reason: reason),
+          at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_refusal_without_a_token),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+
+fn parse_refusal_reason_diagnostic(reason: ParseRefusalReason, file: Symbol, start: Int, end: Int) -> Diagnostic {
+  Diagnostic {
+    reason: parse_refusal_reason_symbol(reason: reason),
+    at: source_port_locus(port: ^parse_stage_locus_port, file: file, extent: ByteRange { start: start, end: end }),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
 // A PreparedLiteralTerminal is a MATCH constraint in front of an ordinary class terminal: it
 // captures and publishes exactly what a StampClass terminal of that class does, never its own text.
 fn parse_expr_with_first(
@@ -3845,11 +4102,15 @@ fn parse_expr_with_first(
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  match parse_expr_dispatch(expr: expr, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
-    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 } =>
-      ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 }
-    ParseExprRejected { diagnostics: diags, table: table1 } =>
-      ParseExprRejected { diagnostics: diags, table: parse_table_join_furthest(table: table1, furthest: parse_furthest_at(tokens: tokens)) }
+  match table.refusal {
+    Present { value: _ } => ParseExprRejected { diagnostics: [], table: table }
+    Absent =>
+      match parse_expr_dispatch(expr: expr, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 } =>
+          ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 }
+        ParseExprRejected { diagnostics: diags, table: table1 } =>
+          ParseExprRejected { diagnostics: diags, table: parse_table_join_furthest(table: table1, furthest: parse_furthest_at(tokens: tokens)) }
+      }
   }
 }
 
@@ -3940,6 +4201,25 @@ fn parse_expr_dispatch(
       parse_expr_expect(
         element: element,
         reason: reason,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    PreparedRefuseOnMatch { element: element, reason: reason } =>
+      parse_expr_refuse_on_match(
+        element: element,
+        reason: reason,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    PreparedAfterLineBreak { element: element } =>
+      parse_expr_after_line_break(
+        element: element,
         tokens: tokens,
         all_tokens: all_tokens,
         root: root,
@@ -4038,6 +4318,7 @@ fn parse_production_prepared_measured(
     analysis: analysis,
     production_name: production_name,
     seed: occurrence_id_allocator_initial(),
+    source: optional_absent(),
     materialization: materialization
   )
 }
@@ -4048,67 +4329,89 @@ fn parse_production_prepared_measured_seeded(
   analysis: GrammarFirstAnalysis,
   production_name: Symbol,
   seed: OccurrenceIdAllocator,
+  source: Optional<v2.std.text.String>,
   materialization: Materialization
 ) -> ParseProductionMeasured {
   let root = validated.root
   match grammar_lookup_production(root: root, name: production_name) {
     Holds { value: production } =>
       let prov = parse_prov_seeded(seed: seed)
-      let table = parse_table_for_production_analyzed(
+      let table = parse_table_for_stream_analyzed(
         validated: validated,
         analysis: analysis,
+        source: source,
         all_tokens: tokens,
         materialization: materialization
       )
-      match parse_expr(
+      let parsed = parse_expr(
         expr: production.expression,
         tokens: tokens,
         all_tokens: tokens,
         root: root,
         table: table,
         prov: prov
-      ) {
-        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: final_table } =>
-          if is_empty(xs: remaining) {
-            let stamped = parse_wrap_production_captured(
-              production: production,
-              captured: captured,
-              prov: inner_prov
-            )
-            ParseProductionMeasured {
-              outcome: Accepted {
-                value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index, alloc: stamped.prov.alloc },
-                diagnostics: parse_diags_to_diagnostics(diags: diags)
-              },
-              memo: parse_table_memo_stats(table: final_table)
-            }
-          } else {
-            ParseProductionMeasured {
-              outcome: Rejected {
-                diagnostics: diagnostics_singleton(
-                  d: parse_g0_tokens_remain_diagnostic_at(tokens: remaining, furthest: final_table.furthest)
-                )
-              },
-              memo: parse_table_memo_stats(table: final_table)
-            }
-          }
-        ParseExprRejected { diagnostics: diags, table: final_table } =>
+      )
+      match parse_expr_result_table(result: parsed).refusal {
+        Present { value: refusal } =>
           ParseProductionMeasured {
-            outcome: Rejected {
-              diagnostics: parse_diags_to_non_empty(
-                diags: diags,
-                default: parse_e1_syntax_error_diagnostic(
-                  at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
-                )
-              )
-            },
-            memo: parse_table_memo_stats(table: final_table)
+            outcome: Rejected { diagnostics: diagnostics_singleton(d: refusal) },
+            memo: parse_table_memo_stats(table: parse_expr_result_table(result: parsed))
           }
+        Absent => parse_production_measured_unrefused(parsed: parsed, production: production, root: root)
       }
     Violates { diagnostic: d } =>
       ParseProductionMeasured {
         outcome: Rejected { diagnostics: diagnostics_singleton(d: d) },
         memo: parse_memo_stats_empty()
+      }
+  }
+}
+
+// A REFUSAL RECORDED ANYWHERE IN THE PARSE IS THE OUTCOME, whether or not the rest of the input
+// happened to parse around it: RefuseOnMatch names source the seed refuses although another reading
+// succeeds, so an Accepted here would be exactly the success it exists to deny. Only an unrefused
+// parse reaches the ordinary accept / leftover-token / no-match reading below.
+fn parse_production_measured_unrefused(
+  parsed: ParseExprResult,
+  production: GrammarProduction,
+  root: GrammarRoot
+) -> ParseProductionMeasured {
+  match parsed {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: final_table } =>
+      if is_empty(xs: remaining) {
+        let stamped = parse_wrap_production_captured(
+          production: production,
+          captured: captured,
+          prov: inner_prov
+        )
+        ParseProductionMeasured {
+          outcome: Accepted {
+            value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index, alloc: stamped.prov.alloc },
+            diagnostics: parse_diags_to_diagnostics(diags: diags)
+          },
+          memo: parse_table_memo_stats(table: final_table)
+        }
+      } else {
+        ParseProductionMeasured {
+          outcome: Rejected {
+            diagnostics: diagnostics_singleton(
+              d: parse_g0_tokens_remain_diagnostic_at(tokens: remaining, furthest: final_table.furthest)
+            )
+          },
+          memo: parse_table_memo_stats(table: final_table)
+        }
+      }
+    ParseExprRejected { diagnostics: diags, table: final_table } =>
+      ParseProductionMeasured {
+        outcome: Rejected {
+          diagnostics: parse_diags_to_non_empty(
+            diags: diags,
+            default: parse_e1_syntax_error_diagnostic(
+              at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
+            )
+          )
+        },
+        memo: parse_table_memo_stats(table: final_table)
       }
   }
 }
@@ -4299,6 +4602,7 @@ fn parse_module_prepared_measured_seeded(
         analysis: modeled.analysis,
         production_name: modeled.validated.root.start,
         seed: seed,
+        source: token_stream_source(stream: tokens),
         materialization: materialization
       )
       match measured.outcome {

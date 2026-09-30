@@ -33,7 +33,7 @@ import v2.std.compilers.lexing {
   lex_artifact_new,
   lex_artifact_semantic_tokens,
   token_stream_empty,
-  token_stream_new,
+  token_stream_lexed,
   TriviaRule,
   UnboundSourceAnnotation,
   VoidLexRules,
@@ -843,7 +843,7 @@ fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet
   } else {
     v2.std.diagnostic.Accepted {
       value: lex_artifact_new(
-        tokens: token_stream_new(all: result.tokens.reverse()),
+        tokens: token_stream_lexed(all: result.tokens.reverse(), source: source),
         annotations: result.annotations.reverse()
       ),
       diagnostics: v2.std.diagnostic.None
