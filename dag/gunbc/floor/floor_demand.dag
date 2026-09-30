@@ -1587,6 +1587,14 @@ data gunbc_floor_job_wall_receipt_2026_09_19: FloorJobWallReceipt = FloorJobWall
 // held set over its own beats, and what a phase LEFT RESIDENT is the next phase's entry: the fold
 // states entry and peak and leaves retained to the reader of the ordered list, because it is the
 // next row's field and not a second quantity.
+// THE PRIMITIVE BOUNDARY IS DECLARED DEBT, NOT A MODELING CHOICE: every counter below is a byte
+// count or an event rate carried on bare Int only because the host cannot construct a std.measure
+// value as an argument, the same boundary gunbc.floor_memory_demand
+// qualify_floor_memory_from_readings states. The lift happens once, in floor_beat_of_reading,
+// after floor_reading_has_negative_counter has refused any count below zero -- nat_magnitude alone
+// would turn a sign bug into a plausible positive byte count.
+data floor_beat_reading_primitive_boundary: DissolutionCondition = unbound_dissolution(description: "dissolve-on: feature:interpreter-constructed-measure-arguments -- FloorBeatReading carries its byte counters and stall rate as Int because run_in_context_with_args admits only primitives. DISSOLVES WHEN the interpreter's argument surface admits a constructed std.measure value (ByteSize, EventsPerMinute) from the host, at which point these fields become ByteSize / EventsPerMinute, the negative-count refusal moves to the host reader that knows the unit, and nat_magnitude leaves floor_beat_of_reading; the same trigger dissolves qualify_floor_memory_from_readings' primitive signature.")
+
 type FloorBeatReading {
   beat: Int
   opens_phase: Bool
@@ -1622,10 +1630,12 @@ type FloorPhaseHeldSet {
 type FloorPhaseAttribution
   = FloorPhasesAttributed { phases: List<FloorPhaseHeldSet> }
   | FloorPhaseSeamUnknown { beat: Int, token: String }
+  | FloorPhaseReadingNegative { beat: Int }
 
 type FloorPhaseFold
   = PhaseFoldRunning { closed: List<FloorPhaseHeldSet>, open: FloorPhaseHeldSet? }
   | PhaseFoldRefused { beat: Int, token: String }
+  | PhaseFoldNegative { beat: Int }
 
 // THE SLOT'S OWN SPELLINGS FIRST: `none` is the unset slot and `unreadable` a poisoned lock, both
 // printed by the heartbeat and neither a row of floor_seam_tokens.
@@ -1645,6 +1655,14 @@ fn floor_seam_of_reading(r: FloorBeatReading) -> FloorSeam? {
   } else {
     Present { value: SeamMovedDuringSample { before: r.seam_before as NonEmptyStr, after: r.seam_after as NonEmptyStr } }
   }
+}
+
+// A NEGATIVE COUNT IS A MALFORMED READ, NOT A SMALL ONE: the kernel documents every counter here as
+// non-negative, so a reading below zero refuses rather than reaching nat_magnitude.
+fn floor_reading_has_negative_counter(r: FloorBeatReading) -> Bool {
+  r.stall_per_min < 0 || r.swap_bytes < 0 || r.charge < 0 || r.anon < 0 || r.file < 0 || r.shmem < 0
+    || r.unevictable < 0 || r.slab_unreclaimable < 0 || r.slab_reclaimable < 0 || r.kernel_stack < 0
+    || r.pagetables < 0 || r.percpu < 0 || r.sock < 0 || r.file_dirty < 0
 }
 
 fn floor_beat_of_reading(r: FloorBeatReading, seam: FloorSeam) -> FloorMemoryStatBeat {
@@ -1687,7 +1705,9 @@ fn floor_phase_closed(closed: List<FloorPhaseHeldSet>, open: FloorPhaseHeldSet?)
 fn floor_phase_step(acc: FloorPhaseFold, r: FloorBeatReading) -> FloorPhaseFold {
   match acc {
     PhaseFoldRefused { beat: n, token: t } => PhaseFoldRefused { beat: n, token: t }
+    PhaseFoldNegative { beat: n } => PhaseFoldNegative { beat: n }
     PhaseFoldRunning { closed: closed, open: open } =>
+      if floor_reading_has_negative_counter(r: r) { PhaseFoldNegative { beat: r.beat } } else {
       match floor_seam_of_reading(r: r) {
         Absent => PhaseFoldRefused { beat: r.beat, token: r.seam_before }
         Present { value: seam } =>
@@ -1711,12 +1731,14 @@ fn floor_phase_step(acc: FloorPhaseFold, r: FloorBeatReading) -> FloorPhaseFold 
             }
           }
       }
+      }
   }
 }
 
 fn floor_phase_attribution(readings: List<FloorBeatReading>) -> FloorPhaseAttribution {
   match fold(readings, init: PhaseFoldRunning { closed: [], open: none }, f: (acc, r) => floor_phase_step(acc: acc, r: r)) {
     PhaseFoldRefused { beat: n, token: t } => FloorPhaseSeamUnknown { beat: n, token: t }
+    PhaseFoldNegative { beat: n } => FloorPhaseReadingNegative { beat: n }
     PhaseFoldRunning { closed: closed, open: open } => FloorPhasesAttributed { phases: floor_phase_closed(closed: closed, open: open) }
   }
 }
