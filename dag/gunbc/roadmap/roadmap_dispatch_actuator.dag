@@ -794,6 +794,21 @@ fn dispatch_attempt_events_path_for_instance(
   ], "")
 }
 
+// THE WIRE LOG DIRECTORY (harness-conversation-log-forking): per-round request/response bytes
+// persist beside the provider events file under "<events>.wire/"; provisioning it here is what
+// makes the harness's round writes land instead of degrading to turn.wire_log_unwritable.
+fn dispatch_attempt_wire_dir_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([dispatch_attempt_events_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  ), ".wire/"], "")
+}
+
 fn dispatch_attempt_key_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -2172,6 +2187,11 @@ fn attempt_state_prepare_argv_for_instance(
         attempt_key: attempt_key,
       ),
       dispatch_attempt_audit_dir_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      ),
+      dispatch_attempt_wire_dir_for_instance(
         instance: instance,
         node_id: node_id,
         attempt_key: attempt_key,

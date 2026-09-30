@@ -327,8 +327,16 @@ fn profile_store_upsert_write(path: String, session: AuthenticatedSession, prior
   }
 }
 
+// A SKIPPED ENTRY, NAMED: the never-blocks law still holds (one malformed file must not blank the
+// picker), but the skip is now carried as data with its reason instead of being erased -- a
+// missing-looking avatar must be distinguishable from a profile nobody published (review Cut B).
+type ProfileStoreSkipped {
+  entry: String
+  reason: String
+}
+
 type ProfileStoreReadAll
-  = ProfileStoreRead { profiles: List<PrincipalProfile> }
+  = ProfileStoreRead { profiles: List<PrincipalProfile>, skipped: List<ProfileStoreSkipped> }
   | ProfileStoreUnread { step: String, reason: String }
 
 // THE READ-ALL, the picker roster's source: every decodable profile file in the store. A file
@@ -340,29 +348,41 @@ fn profile_store_read_all(layout: ProfileStoreLayout) -> ProfileStoreReadAll {
   if !listing_result.success {
     ProfileStoreUnread { step: "list", reason: listing_result.error }
   } else {
+    let decoded = profile_store_decode_entries(layout: layout, entries: listing_result.entries, acc: [], skipped_acc: [])
     ProfileStoreRead {
-      profiles: profile_store_decode_entries(layout: layout, entries: listing_result.entries, acc: [])
+      profiles: decoded.profiles,
+      skipped: decoded.skipped,
     }
   }
 }
 
-fn profile_store_decode_entries(layout: ProfileStoreLayout, entries: List<String>, acc: List<PrincipalProfile>) -> List<PrincipalProfile> {
+fn profile_store_decode_entries(
+  layout: ProfileStoreLayout,
+  entries: List<String>,
+  acc: List<PrincipalProfile>,
+  skipped_acc: List<ProfileStoreSkipped>,
+) -> { profiles: List<PrincipalProfile>, skipped: List<ProfileStoreSkipped> } {
   match entries.first() {
-    Absent => acc
+    Absent => {
+      let done = { profiles: acc, skipped: skipped_acc }
+      done
+    }
     Present { value: entry } =>
-      let next = if !ends_with(s: entry, suffix: ".json") {
-        acc
+      let stepped = if !ends_with(s: entry, suffix: ".json") {
+        { profiles: acc, skipped: skipped_acc }
       } else {
         let read_result = Filesystem.Read(path: join([layout.root as String, "/", entry], ""))
         if !read_result.success {
-          acc
+          { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["read failed: ", read_result.error], "") }]) }
         } else {
           match principal_profile_of_json(text: read_result.content) {
-            ProfileFileMalformed { detail: _ } => acc
-            ProfileFileDecoded { profile: p } => concat(acc, [p])
+            ProfileFileMalformed { detail } =>
+              { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["malformed: ", detail], "") }]) }
+            ProfileFileDecoded { profile: p } =>
+              { profiles: concat(acc, [p]), skipped: skipped_acc }
           }
         }
       }
-      profile_store_decode_entries(layout: layout, entries: entries.skip(n: 1), acc: next)
+      profile_store_decode_entries(layout: layout, entries: entries.skip(n: 1), acc: stepped.profiles, skipped_acc: stepped.skipped)
   }
 }

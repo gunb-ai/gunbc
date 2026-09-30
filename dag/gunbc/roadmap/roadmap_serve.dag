@@ -10,7 +10,7 @@ import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, Form
 
 import gunbc.roadmap_allocation_location { allocation_page_path }
 import gunbc.auth.profile_projection {
-  profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all,
+  profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
 }
 import gunbc.roadmap_allocation_page { allocation_page, allocation_client_path }
@@ -949,7 +949,7 @@ fn serve_project_suite_response_over(
 // exactly as before, never a failed page on a profile read.
 fn serve_profiles_for_instance(instance: HostDashboardInstance) -> List<PrincipalProfile> {
   match profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance)) {
-    ProfileStoreRead { profiles } => profiles
+    ProfileStoreRead { profiles, skipped: _ } => profiles
     ProfileStoreUnread { step: _, reason: _ } => []
   }
 }
@@ -1458,7 +1458,7 @@ fn roadmap_serve_invoke_over(
     AuthLoginHandler => auth_login_response(instance: instance, request: request)
     AuthGoogleCallbackHandler => auth_google_callback_response(instance: instance, path: request.path)
     AuthLogoutHandler => auth_logout_response(instance: instance, request: request)
-    AuthSessionHandler => auth_session_response(request: request)
+    AuthSessionHandler => auth_session_response_over(instance: instance, request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
@@ -2844,6 +2844,87 @@ fn auth_session_response(request: ServeHttpRequest<RequestAuthenticationEvidence
     content_type: application_json_utf8,
     body: auth_session_body(evidence: request.security.authentication),
   )
+}
+
+// THE SESSION STANDING READS THE DURABLE PROJECTION (Cut B): the header displays the profile the
+// projection carries, not a freshly parsed session wire, so merge-retained members cannot be
+// silently reverted by a login that omitted a claim. The session stays the identity authority;
+// the projection is the display authority; a member the projection does not hold falls back to
+// the session's. The roster's degradation standing (unreadable store, skipped records) is
+// reported as data -- a missing-looking avatar must not read as 'nobody published'.
+fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  let roster = profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance))
+  serve_text_response(
+    status: 200,
+    content_type: application_json_utf8,
+    body: auth_session_body_over(roster: roster, evidence: request.security.authentication),
+  )
+}
+
+fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonValue> {
+  match roster {
+    ProfileStoreUnread { step: _, reason: _ } => [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ]
+    ProfileStoreRead { profiles: _, skipped } =>
+      if count(skipped) == 0 {
+        []
+      } else {
+        [ json_kv(key: "profile_standing", value: json_string(s: join([to_string(value: count(skipped)), " profile record(s) unreadable; the affected members render their fallback"], ""))) ]
+      }
+  }
+}
+
+fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenticationEvidence) -> String {
+  serialize_json(v: json_object(members: match evidence {
+    GoogleOidcSession { session } => {
+      let found = match roster {
+        ProfileStoreRead { profiles, skipped: _ } =>
+          filter(profiles, p => principal_ref_eq(a: p.principal, b: session.principal)).first()
+        ProfileStoreUnread { step: _, reason: _ } => none
+      }
+      let name = match found {
+        Present { value: profile } => match profile.name {
+          Present { value: n } => Present { value: n }
+          Absent => session.profile.name
+        }
+        Absent => session.profile.name
+      }
+      let email = match found {
+        Present { value: profile } => match profile.email {
+          Present { value: e } => Present { value: e }
+          Absent => session.profile.email
+        }
+        Absent => session.profile.email
+      }
+      let picture = match found {
+        Present { value: profile } => match profile.picture {
+          Present { value: u } => Present { value: u }
+          Absent => session.profile.picture
+        }
+        Absent => session.profile.picture
+      }
+      concat([
+        json_kv(key: "authenticated", value: json_bool(b: true)),
+        json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
+        json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
+        json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+      ], concat(auth_session_picture_members(picture: picture), concat(auth_session_name_members(name: name), concat(auth_session_email_members(email: email), auth_session_roster_standing_members(roster: roster)))))
+    }
+    SessionStandingInvalid { standing } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: standing))),
+      json_kv(key: "viewer", value: json_string(s: "")),
+    ]
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
+    AuthAbsent => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
+      json_kv(key: "viewer", value: json_string(s: "")),
+    ]
+  }))
 }
 
 // THE OPTIONAL PICTURE MEMBER of the session wire: present only when the session's profile
