@@ -27,6 +27,7 @@ import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
+import gunbc.machine_intake_mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
 import gunbc.machine_intake_mtcollins1_ui_bundle_observe { mtcollins1_ui_bundle_bytes_path, mtcollins1_ui_bundle_receipt_path, mtcollins1_ui_bundle_read_bound }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
@@ -125,6 +126,7 @@ import gunbc.ci_spec {
   gunbc_ci_app_key_version_verify_verdict_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_mtcollins1_ui_bundle_observe_invoke,
+  gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
   gunbc_ci_fabric_writer_identity_observe_invoke,
   gunbc_ci_mtcollins1_census_image_publish_invoke,
   gunbc_ci_mtcollins1_census_member_readback_invoke,
@@ -299,6 +301,7 @@ type FleetConvergeWorkflowMode
   | PairServingD0
   | MtCollins1FanObserve
   | MtCollins1UiBundleObserve
+  | MtCollins1KvmObserverObserve
   | FabricWriterIdentityObserve
   | MtCollins1CensusImagePublish
   | MtCollins1CensusMemberReadback
@@ -360,6 +363,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     PairServingD0 => "pair_serving_d0"
     MtCollins1FanObserve => "mtcollins1_fan_observe"
     MtCollins1UiBundleObserve => "mtcollins1_ui_bundle_observe"
+    MtCollins1KvmObserverObserve => "mtcollins1_kvm_observer_observe"
     FabricWriterIdentityObserve => "fabric_writer_identity_observe"
     MtCollins1CensusImagePublish => "mtcollins1_census_image_publish"
     MtCollins1CensusMemberReadback => "mtcollins1_census_member_readback"
@@ -389,7 +393,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkV41RuntimeImageBuild, SparkV41RuntimeImageDistribute, SparkV41GroupALaunch, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkV41RuntimeImageBuild, SparkV41RuntimeImageDistribute, SparkV41GroupALaunch, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -463,6 +467,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     PairServingD0 => none
     MtCollins1FanObserve => none
     MtCollins1UiBundleObserve => none
+    MtCollins1KvmObserverObserve => none
     FabricWriterIdentityObserve => none
     MtCollins1CensusImagePublish => none
     MtCollins1CensusMemberReadback => none
@@ -592,6 +597,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     PairServingD0 => FleetSshKeyConsumed
     MtCollins1FanObserve => FleetSshKeyNotConsumed
     MtCollins1UiBundleObserve => FleetSshKeyNotConsumed
+    MtCollins1KvmObserverObserve => FleetSshKeyNotConsumed
     FabricWriterIdentityObserve => FleetSshKeyNotConsumed
     MtCollins1CensusImagePublish => FleetSshKeyConsumed
     MtCollins1CensusMemberReadback => FleetSshKeyConsumed
@@ -1215,6 +1221,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     PairServingD0 => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     MtCollins1FanObserve => ExecutorDomain
     MtCollins1UiBundleObserve => ExecutorDomain
+    MtCollins1KvmObserverObserve => ExecutorDomain
     FabricWriterIdentityObserve => ExecutorDomain
     MtCollins1CensusImagePublish => ExecutorDomain
     MtCollins1CensusMemberReadback => ExecutorDomain
@@ -2117,6 +2124,42 @@ fn fleet_converge_mtcollins1_ui_bundle_observe_upload_step() -> Step {
     artifact: "mtcollins1-ui-bundle",
     path: "target/mtcollins1-ui-bundle-*",
     if_condition: join(["always() && ", fleet_converge_mtcollins1_ui_bundle_observe_step_if], "")
+  )
+}
+
+// THE REAL KVM OBSERVER AGAINST THE REAL BMC, NO BOOT (gunbc.machine_intake_mtcollins1_kvm_observer_observe):
+// under the unit hold, log in, establish the viewer, take one still, release the web session and the
+// browser. Nothing is written to media, power, boot device or SEL. The journal, its pre-teardown
+// snapshot, the observer log, every still and the receipt are uploaded whatever the outcome: a refused
+// or fallen run's journal is the record of where the page navigated before it fell. Its closure still
+// loads the fleet's host effects through gunbc.runner_browser_toolchain (the declared host_effect
+// frontier), which the resolve budget carries.
+data fleet_converge_mtcollins1_kvm_observer_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1KvmObserverObserve)
+
+fn fleet_converge_mtcollins1_kvm_observer_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins KVM observer, no boot: under the unit hold, log in, establish the viewer, one still, release" },
+    id: Present { value: "mtcollins1_kvm_observer_observe" },
+    run: gunbc_ci_mtcollins1_kvm_observer_observe_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_kvm_observer_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(read_bound: mtcollins1_kvm_observer_probe_bound()) }
+  }
+}
+
+fn fleet_converge_mtcollins1_kvm_observer_observe_upload_step() -> Step {
+  fleet_converge_receipt_upload_step(
+    id: "mtcollins1_kvm_observer_observe_upload",
+    name: "Upload Mt. Collins KVM observer journal, stills and receipt",
+    artifact: "mtcollins1-kvm-observer",
+    path: mtcollins1_kvm_observer_probe_artifact_glob,
+    if_condition: join(["always() && ", fleet_converge_mtcollins1_kvm_observer_observe_step_if], "")
   )
 }
 
@@ -3474,6 +3517,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_mtcollins1_fan_observe_receipt_upload_step(),
         fleet_converge_mtcollins1_ui_bundle_observe_step(),
         fleet_converge_mtcollins1_ui_bundle_observe_upload_step(),
+        fleet_converge_mtcollins1_kvm_observer_observe_step(),
+        fleet_converge_mtcollins1_kvm_observer_observe_upload_step(),
         fleet_converge_fabric_writer_identity_observe_step(),
         fleet_converge_fabric_writer_identity_observe_receipt_upload_step(),
         fleet_converge_pair_serving_d0_step(),
@@ -3719,6 +3764,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     MtCollins1Boot => "mtcollins1-boot" as NonEmptyStr
     MtCollins1FanObserve => fleet_converge_shared_job_id
     MtCollins1UiBundleObserve => fleet_converge_shared_job_id
+    MtCollins1KvmObserverObserve => fleet_converge_shared_job_id
     MtCollins1CensusImagePublish => fleet_converge_shared_job_id
     MtCollins1CensusMemberReadback => fleet_converge_shared_job_id
     HostCredentialCustodyConverge => fleet_converge_shared_job_id

@@ -76,6 +76,7 @@ import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_pat
 import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.machine_intake_mtcollins1_ui_bundle_observe { mtcollins1_ui_bundle_receipt_path }
+import gunbc.machine_intake_mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_observe_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -1002,6 +1003,11 @@ data gunbc_ci_mtcollins1_ui_bundle_observe_target: GunbcRunStepTarget = GunbcRun
   function: "mtcollins1_ui_bundle_observe_wet",
 }
 
+data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
+  function: "mtcollins1_kvm_observer_observe_wet",
+}
+
 data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
   function: "mtcollins1_census_image_publish_wet",
@@ -1289,6 +1295,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
     gunbc_ci_mtcollins1_ui_bundle_observe_target,
+    gunbc_ci_mtcollins1_kvm_observer_observe_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
     gunbc_ci_mtcollins1_census_member_readback_target,
     gunbc_ci_spark_grant_install_target,
@@ -1857,6 +1864,33 @@ fn gunbc_ci_mtcollins1_ui_bundle_observe_invoke() -> String {
       function: gunbc_ci_mtcollins1_ui_bundle_observe_target.function,
       claim_run: false,
       receipt_rel: mtcollins1_ui_bundle_receipt_path
+    )
+  )
+}
+
+// THE KVM OBSERVER PROBE RUNS ON THE SAME PRELUDE: the viewer login uses the one pinned BMC credential
+// the fan series and the boot already fetch through gunbc_ci_mtcollins1_bmc_credential_fetch_steps, so
+// a second prelude would be a second authority for the same materialization. Same hand-shell
+// transport, same marker and trigger.
+data gunbc_ci_mtcollins1_kvm_observer_observe_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_mtcollins1_kvm_observer_observe_invoke",
+    field: WholeDeclaration
+  }
+}
+
+fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_mtcollins1_kvm_observer_observe_target.entry,
+      function: gunbc_ci_mtcollins1_kvm_observer_observe_target.function,
+      claim_run: false,
+      receipt_rel: mtcollins1_kvm_observer_observe_receipt_path
     )
   )
 }

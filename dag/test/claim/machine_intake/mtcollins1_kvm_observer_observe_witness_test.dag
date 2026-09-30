@@ -1,0 +1,106 @@
+module test.claim.machine_intake.mtcollins1_kvm_observer_observe_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { second, millisecond }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.crypto.hash { sha256_digest }
+import gunbc.owned_process { OwnedRelease, OwnedReleased, OwnedReleaseFailed }
+import gunbc.machine_intake_mtcollins1_kvm_still {
+  KvmObserverRecord, KvmObserverNotStarted, KvmJournalText, KvmInstant,
+  KvmRetainedStill, KvmStillHashed, KvmTerminalStill, KvmTerminalStillAnswered, KvmTerminalStillUnanswered,
+  KvmTeardownRecorded, KvmSnapshotKept, mtcollins1_kvm_observer_dir,
+}
+import gunbc.machine_intake_mtcollins1_kvm_observer_observe {
+  KvmProbeVerdict, KvmProbeHeld, KvmProbeFell, kvm_probe_verdict,
+  mtcollins1_kvm_observer_probe_attempt, mtcollins1_kvm_observer_observe_receipt_path, mtcollins1_kvm_observer_probe_artifact_glob,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE VERDICT IS READ FROM THE RECORD mtcollins1_kvm_observer_finish RETURNS, so its inputs are SUPPLIED
+// records (DESIGN §3: a witness discriminates at one interface). The real producer runs twice elsewhere:
+// against the loopback controller in test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness,
+// which holds the same finish, stop and release to what the controller saw, and against the real BMC
+// in the fleet-converge mode this module's subject belongs to.
+
+fn at() -> KvmInstant {
+  KvmInstant { since_epoch: millisecond(count: 1790000000000), iso: "2026-09-30T20:00:00.000Z" }
+}
+
+fn a_still() -> KvmRetainedStill {
+  KvmStillHashed { at: at(), seq: "1", reason: "trigger:1001-terminal-verdict", path: "artifacts/mtcollins1-boot-kvm-probe-1/still-1.jpg" as NonEmptyStr, digest: sha256_digest(hex: "4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd") }
+}
+
+// A record whose every fact is supplied, so one fact at a time can be flipped.
+fn record(terminal: KvmTerminalStill, stills: List<KvmRetainedStill>, stopped: Bool, session: String, browser: String, process: OwnedRelease) -> KvmObserverRecord {
+  KvmObserverRecord {
+    attempt: "probe-1",
+    start: KvmObserverNotStarted { reason: "supplied" },
+    journal: KvmJournalText { text: "" },
+    events: [],
+    stills: stills,
+    gaps: [],
+    teardown: KvmTeardownRecorded {
+      terminal: terminal,
+      snapshot: KvmSnapshotKept { path: "artifacts/mtcollins1-boot-kvm-probe-1/journal.pre-teardown" },
+      requested_at: "2026-09-30T20:00:01.000Z",
+      stopped_seen: stopped,
+      session_release: session,
+      browser_close: browser,
+      process: process,
+    },
+  }
+}
+
+fn answered() -> KvmTerminalStill {
+  KvmTerminalStillAnswered { line: "1790000000500 2026-09-30T20:00:00.500Z still seq=1 reason=trigger:1001-terminal-verdict gen=1 file=still-1.jpg" }
+}
+
+fn held_record() -> KvmObserverRecord {
+  record(terminal: answered(), stills: [a_still()], stopped: true, session: "released", browser: "closed", process: OwnedReleased { pid: "4242" })
+}
+
+fn held(v: KvmProbeVerdict) -> Bool {
+  match v { KvmProbeHeld => true  KvmProbeFell { reason: _ } => false }
+}
+
+fn fell_with(v: KvmProbeVerdict, pattern: String) -> Bool {
+  match v { KvmProbeHeld => false  KvmProbeFell { reason: r } => string_contains(s: r as String, pattern: pattern) }
+}
+
+test fn an_established_probe_with_one_hashed_still_and_a_seen_teardown_holds() -> Bool {
+  held(v: kvm_probe_verdict(admission: "established, web session 7", established: true, rec: held_record()))
+}
+
+// THE DISCRIMINATING FLIPS: each changes ONE fact of the held record, and each falls, naming that fact.
+test fn an_unestablished_observer_falls_with_the_admission_cause() -> Bool {
+  fell_with(v: kvm_probe_verdict(admission: "REFUSED: seat busy viewer_count=1", established: false, rec: held_record()), pattern: "viewer_count=1")
+}
+
+test fn an_unanswered_terminal_still_falls() -> Bool {
+  fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: KvmTerminalStillUnanswered { waited: second(count: 15) }, stills: [a_still()], stopped: true, session: "released", browser: "closed", process: OwnedReleased { pid: "4242" })), pattern: "terminal still")
+}
+
+test fn no_retained_still_falls() -> Bool {
+  fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: answered(), stills: [], stopped: true, session: "released", browser: "closed", process: OwnedReleased { pid: "4242" })), pattern: "no still")
+}
+
+// THE RELEASE IS PART OF THE CLAIM: a session that was not released, a browser not closed, a stopped line
+// never seen, or a process that could not be released each fall -- a probe that leaves the seat taken
+// is not a probe that held.
+test fn a_teardown_not_seen_through_falls() -> Bool {
+  fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: answered(), stills: [a_still()], stopped: true, session: "http-500", browser: "closed", process: OwnedReleased { pid: "4242" })), pattern: "released")
+    && fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: answered(), stills: [a_still()], stopped: true, session: "released", browser: "close-failed", process: OwnedReleased { pid: "4242" })), pattern: "released")
+    && fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: answered(), stills: [a_still()], stopped: false, session: "released", browser: "closed", process: OwnedReleased { pid: "4242" })), pattern: "released")
+    && fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: answered(), stills: [a_still()], stopped: true, session: "released", browser: "closed", process: OwnedReleaseFailed { pid: "4242", detail: "survived KILL" })), pattern: "released")
+}
+
+// THE ARTIFACT GLOB CARRIES WHAT THE PROBE WRITES: its observer directory and its receipt, both derived
+// from the observer's own directory authority, and not a boot's directory.
+test fn the_upload_glob_covers_the_probe_directory_and_receipt_and_no_boot_directory() -> Bool {
+  let dir = mtcollins1_kvm_observer_dir(attempt: mtcollins1_kvm_observer_probe_attempt(run_id: "36800000000" as NonEmptyStr))
+  let prefix = substring(s: mtcollins1_kvm_observer_probe_artifact_glob, start: 0, end: string_length(mtcollins1_kvm_observer_probe_artifact_glob) - 1)
+  starts_with(s: dir, prefix: prefix)
+    && starts_with(s: mtcollins1_kvm_observer_observe_receipt_path, prefix: prefix)
+    && !starts_with(s: mtcollins1_kvm_observer_dir(attempt: "36800000000"), prefix: prefix)
+}

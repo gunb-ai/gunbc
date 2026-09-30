@@ -8,7 +8,7 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldSlotUndecodable,
 }
 import gunbc.machine_intake_mtcollins1_maintenance_hold {
-  UnitHoldOwner, OperatorMaintenance, BootRun, HostResetReturn, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,
+  UnitHoldOwner, OperatorMaintenance, BootRun, HostResetReturn, KvmObserverProbe, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,
   unit_hold_owner_ref, decode_unit_hold_owner, unit_hold_owner_label,
   unit_hold_refusal, operator_maintenance_owner, boot_run_owner, host_reset_owner, mtcollins1_unit_hold_key,
 }
@@ -140,6 +140,7 @@ test fn every_holder_kind_round_trips_and_a_foreign_owner_is_refused() -> Bool {
   round_trips(o: OperatorMaintenance { reason: "reseating DIMMs" as NonEmptyStr }, label: "operator maintenance: reseating DIMMs")
     && round_trips(o: BootRun { run_id: "41" as NonEmptyStr }, label: "the mtcollins1 boot run 41")
     && round_trips(o: HostResetReturn { attempt: "srv1-mtcollins1" as NonEmptyStr }, label: "host reset-return attempt srv1-mtcollins1")
+    && round_trips(o: KvmObserverProbe { run_id: "36800000000" as NonEmptyStr }, label: "the mtcollins1 KVM observer probe run 36800000000")
     && match decode_unit_hold_owner(owner: "someone-else:x" as DurableHoldOwnerRef) {
       UnitHoldOwnerUnrecognized { raw: _ } => true
       UnitHoldOwnerDecoded { owner: _ } => false

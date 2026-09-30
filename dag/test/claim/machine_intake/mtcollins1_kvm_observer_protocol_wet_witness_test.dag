@@ -29,6 +29,7 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverEstablished, KvmObserverRefused, KvmSeatBusy, KvmObserverLost,
   KvmJournalConnectionLost, KvmJournalAcquisitionFailed, KvmNotConnected, KvmCanvasUnreadable,
   KvmStillHashed, KvmTeardownRecorded, KvmHandoffAdmitted, KvmHandoffRefused,
+  KvmJournalEvent, KvmJournalNavigated, kvm_journal_events_at,
   kvm_observer_launch_in, kvm_observer_trigger, kvm_handoff_admission, kvm_observer_standing_now, mtcollins1_kvm_observer_finish,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_screen_boundary_report }
@@ -133,6 +134,31 @@ fn released(rec: KvmObserverRecord) -> Bool {
 
 fn transport_log(r: Rig) -> String { read_or_empty(path: concat(r.dir, "/transport.log")) }
 
+// THE PAGE'S ROUTE, AS THE JOURNAL RECORDS IT: every main-frame navigation's seq, the observer's phase
+// and the committed URL, in journal order. Against the loopback controller the route is exactly the two
+// navigations the observer itself makes -- the landing, then viewer.html -- so the journal's record of
+// where the page went is held to what happened; on the real controller the same lines say where the
+// MegaRAC SPA moved after DOMContentLoaded (run 36721915217).
+fn navigation_route(start: KvmObserverStart) -> List<String> {
+  match start {
+    KvmObserverStarted { dir: d, subject: _, standing: _, checked_at: _ } =>
+      flat_map(kvm_journal_events_at(dir: d as String), e => match e {
+        KvmJournalNavigated { at: _, seq: n, phase: p, url: u } => [join([n, p, u], " ")]
+        _ => []
+      })
+    _ => []
+  }
+}
+
+// The loopback port the observer was pointed at, read back from its established host.
+fn port_of(start: KvmObserverStart) -> String {
+  match start {
+    KvmObserverStarted { dir: _, subject: s, standing: _, checked_at: _ } =>
+      match split(s: s.host, delimiter: ":").last() { Present { value: p } => p  Absent => "" }
+    _ => ""
+  }
+}
+
 // ESTABLISHED FOR THIS SUBJECT, ADMITTED FOR THE HANDOFF, AND THE TRIGGERED STILL IS HASH-BOUND. The
 // controller saw a real login, the owning logout, and closed the stream when the model said so.
 test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> Bool {
@@ -143,8 +169,10 @@ test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> B
   let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let log = transport_log(r: r)
   let loss_still = count(filter(rec.stills, s => match s { KvmStillHashed { at: a, seq: _, reason: why, path: _, digest: _ } => string_contains(s: why, pattern: "sol-channel-lost") && (millisecond_count(m: a.since_epoch) as Int) > 0  _ => false }))
+  let navigations = navigation_route(start: r.start)
   let closed = close_rig(r: r)
   admitted && asked && loss_still == 1 && released(rec: rec) && closed
+    && navigations == [concat("1 landing \"http://127.0.0.1:", port_of(start: r.start), "/\""), concat("2 viewer \"http://127.0.0.1:", port_of(start: r.start), "/viewer.html\"")]
     && string_contains(s: log, pattern: "transition request=[\"login\",\"admin\",\"pw\"] status=200")
     && string_contains(s: log, pattern: "transition request=[\"logout\",\"csrf-7\"] status=200")
     && string_contains(s: log, pattern: "stream closed by the model")

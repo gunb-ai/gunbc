@@ -1,0 +1,164 @@
+module gunbc.machine_intake_mtcollins1_kvm_observer_observe
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.string_type { String }
+import std.algebra { trim }
+import std.measure { Second, second, second_count }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.actions_environment { github_run_id_variable_name }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet }
+import gunbc.owned_process { OwnedReleased, OwnedAlreadyGone }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
+import gunbc.machine_intake_mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
+import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
+import gunbc.machine_intake_mtcollins1_maintenance_hold { UnitHeld, UnitHoldRefused, mtcollins1_kvm_observer_acquire_unit_hold, unit_hold_release }
+import gunbc.machine_intake_mtcollins1_kvm_still {
+  KvmObserverRecord, KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted,
+  KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission,
+  KvmStillHashed, KvmTeardownRecorded, KvmTerminalStillAnswered,
+  mtcollins1_kvm_observer_start, mtcollins1_kvm_observer_finish, mtcollins1_kvm_observer_dir,
+  mtcollins1_bmc_firmware, mtcollins1_kvm_still_allowance, mtcollins1_kvm_observer_establish_wait,
+  kvm_observer_record_text,
+}
+
+// THE REAL KVM OBSERVER AGAINST THE REAL BMC, WITH NO BOOT (operator-approved brief, 2026-09-30).
+// The observer (gunbc.machine_intake_mtcollins1_kvm_still) is the boot's; this mode drives the SAME
+// functions the boot drives -- mtcollins1_kvm_observer_start, the handoff admission that waits for
+// establishment, and mtcollins1_kvm_observer_finish, which asks one terminal still, requests the stop,
+// releases the web session and the browser and hashes the still -- and nothing else. So it exercises,
+// on the hardware, exactly the login and the MegaRAC SPA navigation after DOMContentLoaded that ended
+// run 36721915217, and the journal records where the page went (`navigated` lines, written and read
+// only through kvm_journal_line / KvmJournalWord).
+//
+// NOTHING IS WRITTEN TO THE CONTROLLER'S MEDIA, POWER, BOOT DEVICE OR SEL. The web session it opens is
+// its own and is DELETEd on every reachable exit; the only other effect is the KVM viewer seat, which
+// is why the run holds the unit (gunbc.machine_intake_mtcollins1_maintenance_hold
+// mtcollins1_kvm_observer_acquire_unit_hold): the boot takes that seat under the same hold and refuses
+// its handoff when the seat is busy, so an unheld probe could make a concurrent boot refuse.
+//
+// THE ARTIFACTS are the observer's own directory -- journal, journal.pre-teardown, observer.log and
+// every still-N.jpg -- under mtcollins1_kvm_observer_dir(attempt), plus this mode's receipt, which is
+// kvm_observer_record_text of the record, written on every path that started the observer.
+
+// The attempt names the observer's directory (mtcollins1_kvm_observer_dir); a probe's carries this
+// prefix, so its directories, and the receipt beside them, are one glob apart from every boot's.
+data mtcollins1_kvm_observer_probe_prefix: String = "probe"
+
+fn mtcollins1_kvm_observer_probe_attempt(run_id: NonEmptyStr) -> String {
+  join([mtcollins1_kvm_observer_probe_prefix, "-", run_id as String], "")
+}
+
+data mtcollins1_kvm_observer_observe_receipt_path: String = concat(mtcollins1_kvm_observer_dir(attempt: mtcollins1_kvm_observer_probe_prefix), "-receipt.txt")
+
+// Everything the probe keeps: every probe's observer directory and its receipt.
+data mtcollins1_kvm_observer_probe_artifact_glob: String = concat(mtcollins1_kvm_observer_dir(attempt: mtcollins1_kvm_observer_probe_prefix), "-*")
+
+// WHAT THE PROBE'S OWN BOUNDED WAITS COST AT MOST: the establishment wait, then the observer's own
+// allowance (terminal still, stop, owned release). The step budget adds gunbc run's load to this on the
+// workflow side, which owns that authority.
+fn mtcollins1_kvm_observer_probe_bound() -> Second {
+  second(count: second_count(s: mtcollins1_kvm_observer_establish_wait) + second_count(s: mtcollins1_kvm_still_allowance()))
+}
+
+// THE VERDICT IS A CONJUNCTION OF OBSERVED FACTS, EACH READ FROM THE RECORD: established for this
+// host and attempt (the handoff admission's own test), the one terminal still answered and hashed, and
+// the teardown seen through -- stopped line written, session released, browser closed, process gone.
+type KvmProbeVerdict
+  = KvmProbeHeld
+  | KvmProbeFell { reason: NonEmptyStr }
+
+fn kvm_probe_teardown_seen(rec: KvmObserverRecord) -> Bool {
+  match rec.teardown {
+    KvmTeardownRecorded { terminal: _, snapshot: _, requested_at: _, stopped_seen: st, session_release: sr, browser_close: bc, process: p } =>
+      st && string_contains(s: sr, pattern: "released") && string_contains(s: bc, pattern: "closed")
+        && match p { OwnedReleased { pid: _ } => true  OwnedAlreadyGone { pid: _ } => true  _ => false }
+    _ => false
+  }
+}
+
+fn kvm_probe_still_answered(rec: KvmObserverRecord) -> Bool {
+  match rec.teardown {
+    KvmTeardownRecorded { terminal: t, snapshot: _, requested_at: _, stopped_seen: _, session_release: _, browser_close: _, process: _ } =>
+      match t { KvmTerminalStillAnswered { line: _ } => true  _ => false }
+    _ => false
+  }
+}
+
+fn kvm_probe_hashed_stills(rec: KvmObserverRecord) -> Int {
+  count(filter(rec.stills, s => match s { KvmStillHashed { at: _, seq: _, reason: _, path: _, digest: _ } => true  _ => false }))
+}
+
+fn kvm_probe_verdict(admission: String, established: Bool, rec: KvmObserverRecord) -> KvmProbeVerdict {
+  if !established { KvmProbeFell { reason: concat("the observer was not established: ", admission) as NonEmptyStr } }
+  else if !kvm_probe_still_answered(rec: rec) { KvmProbeFell { reason: "the terminal still was not answered" } }
+  else if kvm_probe_hashed_stills(rec: rec) < 1 { KvmProbeFell { reason: "no still was retained with its digest" } }
+  else if !kvm_probe_teardown_seen(rec: rec) { KvmProbeFell { reason: "the web session, the browser or the process was not seen released" } }
+  else { KvmProbeHeld }
+}
+
+fn kvm_probe_conclude(rec: KvmObserverRecord, verdict: KvmProbeVerdict) -> ProcessExit {
+  let verdict_line = match verdict { KvmProbeHeld => "verdict=held"  KvmProbeFell { reason: r } => concat("verdict=FELL: ", r as String) }
+  let body = join([concat("subject=", mtcollins1_endpoint.host as String), verdict_line, kvm_observer_record_text(rec: rec)], "\n")
+  let kept = Filesystem.Write(path: mtcollins1_kvm_observer_observe_receipt_path, content: concat(body, "\n"))
+  let outcome = match verdict {
+    KvmProbeHeld => ExitSuccess
+    KvmProbeFell { reason: r } => exit_failure(reason: concat("mtcollins1 kvm observer: ", r as String))
+  }
+  if kept.success { outcome } else {
+    match outcome {
+      ExitSuccess => exit_failure(reason: concat("mtcollins1 kvm observer: the probe held and its receipt could not be written: ", kept.error))
+      other => other
+    }
+  }
+}
+
+fn mtcollins1_kvm_observer_observe_held(username: NonEmptyStr, password_file: NonEmptyStr, run_id: NonEmptyStr) -> ProcessExit {
+  let attempt = mtcollins1_kvm_observer_probe_attempt(run_id: run_id)
+  let start = mtcollins1_kvm_observer_start(
+    firmware: mtcollins1_bmc_firmware,
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file as String,
+    toolchain: runner_browser_toolchain_here_wet(),
+    attempt: attempt,
+  )
+  let admission = kvm_handoff_admission(start: start)
+  let established = match admission { KvmHandoffAdmitted { session: _ } => true  KvmHandoffRefused { cause: _ } => false }
+  let admission_text = match admission { KvmHandoffAdmitted { session: s } => concat("established, web session ", s)  KvmHandoffRefused { cause: c } => c }
+  let rec = mtcollins1_kvm_observer_finish(start: start, attempt: attempt, terminal_order: 1)
+  kvm_probe_conclude(rec: rec, verdict: kvm_probe_verdict(admission: admission_text, established: established, rec: rec))
+}
+
+// REFUSALS BEFORE THE FIRST REQUEST, EACH NAMING WHAT IS MISSING: off srv1 (the hold store's host),
+// no secured account, no credential file, no run id, or the unit already held.
+fn mtcollins1_kvm_observer_observe_wet() -> ProcessExit
+{
+  match mtcollins1_boot_host_admission() {
+    ExitSuccess => {}
+    other => return other
+  }
+  let run_id = match actions_variable_read(name: github_run_id_variable_name) {
+    ActionsVariablePresent { value: v } => trim(s: v)
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  if run_id == "" {
+    return exit_failure(reason: concat(concat("mtcollins1 kvm observer: ", github_run_id_variable_name as String), " is unset or empty, so the unit hold has no owner to name; contacting NO host"))
+  }
+  match mtcollins1_secured_account() {
+    Absent => exit_failure(reason: "mtcollins1 kvm observer: the BMC is not BmcSecured, so this run holds no account to log in to the viewer with; contacting NO host")
+    Present { value: username } =>
+      match mtcollins1_fan_credential_path() {
+        FanCredentialPathUnset => exit_failure(reason: join(["mtcollins1 kvm observer: no ", mtcollins1_fan_credential_path_env as String, " in the environment; contacting NO host"], ""))
+        FanCredentialPathEmpty => exit_failure(reason: join(["mtcollins1 kvm observer: ", mtcollins1_fan_credential_path_env as String, " is set but empty; contacting NO host"], ""))
+        FanCredentialPathReady { path: p } =>
+          match mtcollins1_kvm_observer_acquire_unit_hold(run_id: run_id as NonEmptyStr) {
+            UnitHoldRefused { reason: r } => exit_failure(reason: concat("mtcollins1 kvm observer: ", r as String))
+            UnitHeld { proof: proof } => unit_hold_release(proof: proof, outcome: mtcollins1_kvm_observer_observe_held(username: username, password_file: p, run_id: run_id as NonEmptyStr))
+          }
+      }
+  }
+}

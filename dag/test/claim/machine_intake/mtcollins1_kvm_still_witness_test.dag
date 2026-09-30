@@ -27,7 +27,7 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmJournalText, KvmJournalAbsent, KvmJournalUnread, kvm_journal_events_of,
   kvm_journal_event, kvm_journal_events, kvm_journal_line, KvmJournalRender, KvmJournalRendered, KvmJournalRenderRefused,
   KvmJournalEstablished, KvmJournalConnectionRequested, KvmJournalConnectionRefused, KvmJournalConnectionOpen, KvmJournalConnectionError,
-  KvmJournalRefused, KvmJournalFailed, KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped, KvmJournalTriggerScanFailed,
+  KvmJournalRefused, KvmJournalFailed, KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped, KvmJournalTriggerScanFailed, KvmJournalNavigated,
   KvmLoginRefused, KvmNoKvmService, KvmNoFrame, KvmToolchainUnavailable, KvmCredentialUnreadable, KvmRefusedOther, KvmAcquisitionOther, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
   mtcollins1_kvm_observer_start, mtcollins1_bmc_firmware, mtcollins1_kvm_observer_dir, kvm_observer_trigger,
   KvmJournalWord, kvm_journal_event_words, kvm_journal_cause_words, mtcollins1_kvm_observer_script,
@@ -280,6 +280,7 @@ fn kvm_event_sample() -> List<KvmJournalEvent> {
     KvmJournalBrowserClose { at: kvm_at(ms: 1790000000022), result: "closed" },
     KvmJournalStopped { at: kvm_at(ms: 1790000000023), session: "released", browser: "closed" },
     KvmJournalTriggerScanFailed { at: kvm_at(ms: 1790000000024), detail: "\"EACCES\"" },
+    KvmJournalNavigated { at: kvm_at(ms: 1790000000025), seq: "2", phase: "login", url: "\"https://192.168.1.30/#login\"" },
   ]
 }
 
@@ -309,6 +310,20 @@ test fn a_written_line_renders_as_the_observer_writes_it() -> Bool {
     && rendered(r: kvm_journal_line(event: kvm_journal_event(line: lost))) == lost
     && rendered(r: kvm_journal_line(event: kvm_journal_event(line: refused))) == refused
     && rendered(r: kvm_journal_line(event: kvm_journal_event(line: still))) == "1790577710009 2026-09-28T06:41:50.009Z still seq=3 reason=periodic gen=1 file=still-3.jpg"
+}
+
+// A NAVIGATION AS THE OBSERVER WRITES IT (framenavigated on the main frame): seq, phase, then the URL
+// JSON-quoted and last, since a URL is the free-text key the parser reads to the end of the line. A
+// hash route and a query survive the round trip whole, so the journal records exactly where the page
+// went rather than a prefix of it.
+test fn a_navigation_line_reads_back_its_phase_and_whole_url() -> Bool {
+  let line = "1790577698650 2026-09-28T06:41:38.650Z navigated seq=2 phase=landing url=\"https://192.168.1.30/#/login?next=%2Fdashboard\""
+  match kvm_journal_event(line: line) {
+    KvmJournalNavigated { at: _, seq: n, phase: p, url: u } =>
+      n == "2" && p == "landing" && u == "\"https://192.168.1.30/#/login?next=%2Fdashboard\""
+        && rendered(r: kvm_journal_line(event: kvm_journal_event(line: line))) == line
+    _ => false
+  }
 }
 
 // THE RED: a line that is not a journal line (no epoch-milliseconds word) is Unparsed and renders as
