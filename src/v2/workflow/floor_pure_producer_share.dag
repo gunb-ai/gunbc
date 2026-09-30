@@ -602,6 +602,10 @@ import v2.std.collection { List }
 // THE XL-2 SEQUENCE-OPERAND RESOLVE ROW IS THE SAME GROUND AT FIVE SPECIMENS:
 // v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes drives one front end
 // over five inline modules and stores one verdict arm per module, portable for the same reason.
+// THE XL-2 ENCLOSING-EXPRESSION ROW: v2.test.claim.body_lowering.enclosing_expression_structure
+// ees_and_match_value, ees_call_match_value, ees_and_match_walked and ees_call_match_walked each
+// tokenize and parse one inline module and call one producer on its body expression; the stored value
+// is an EesValue (a lowered Node or a reason Symbol, no resolution context and no closure).
 // THE XL-2 CALL-ARGUMENT VALUE RESOLVE ROW IS THE SAME GROUND AT TWENTY-ONE SPECIMENS:
 // v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes drives one front end
 // over twenty-one inline modules and stores one verdict arm per module, portable for the same reason.
@@ -609,6 +613,9 @@ import v2.std.collection { List }
 // v2.test.claim.fold_lowering flp_outcomes ingests the positional, positional-named-step,
 // non-fold and well-formed snippets once and stores four Bool verdicts; MQ-1's first floor run refused each claim
 // that paid its own ingest against the new-witness budget. Portable for the same reason.
+// THE XL-2 LET-IN CAST ROW: v2.test.claim.body_cast_node bcn_let_in_value_cast_verdict assembles one
+// inline module through the production route and stores one Bool (the lowered body carries exactly
+// one cast node with its target), portable because it holds no Node and no closure.
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
 // end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
@@ -616,6 +623,18 @@ import v2.std.collection { List }
 // mals_third_arm_malformed each tokenize and parse one inline module and call one producer
 // (body_lower_match_arms_optional) on its match capture; the stored value is the lowered arm list
 // (Nodes, no resolution context and no closure), portable for the same reason vpw_normalized is.
+// THE XL-2 RETURN-TAIL-POSITION ROW IS THE SAME GROUND AT NINE SPECIMENS:
+// v2.test.claim.namespace_xl0.return_tail_position rtp_outcomes drives one front end over nine inline
+// modules and stores one verdict arm per module, portable for the same reason cav_outcomes is.
+// THE XL-2 WILDCARD-PATTERN-FORM ROW IS THE MATCH-ARM LIST ROW'S GROUND AT ONE MORE SPECIMEN:
+// v2.test.claim.body_lowering.wildcard_pattern_form wpf_patterns tokenizes and parses one inline
+// module and calls body_lower_match_arms_optional on its match capture; the stored value is the
+// lowered arm patterns (Nodes, no resolution context and no closure). Its first floor run refused all
+// five claims over the enrolment margin at ~590ms each, every one of them paying the same ingest.
+// THE XL-2 MATCH-POSITION ROW: v2.test.claim.body_lowering.match_position_structure mps_normalized
+// runs the production route (module_roots_from_source_root_ingest) over three inline modules; the
+// stored value is the normalized trees (Nodes, no resolution context and no closure), portable for
+// the same reason vpw_normalized is.
 // THE XL-2 BOUND-VALUE RESOLVE ROW IS THE SAME GROUND AT ELEVEN SPECIMENS:
 // v2.test.claim.namespace_xl0.bound_value_resolve_refusal bvr_outcomes drives one front end over
 // eleven inline modules and stores one verdict arm per module, portable for the same reason.
@@ -686,6 +705,27 @@ import v2.std.collection { List }
 // is more than one claim's budget. ingested_classical_not_real_infer_holds, the seventh row that run
 // named, re-ingested the source ingested_classical_not_arrow_with_body already serves from this
 // roster; it now reads that producer, so it adds no row here.
+//
+// THE classical_not TARGET MODEL IS ONE DEMAND FROM EVERY EMIT ROW OF ITS THREE CONSUMER MODULES
+// (v2.test.long.emit_host_classical_not_ingested_equals_eval, v2.test.long.emit_host_native_only_verdict,
+// v2.test.execution.emit_on_demand_classical_not_ingested_family_witness). Each emit row builds
+// rust_classical_not_ingested_target_model_staging from nothing -- a nullary pure producer whose value
+// is the same TargetModel in every frame -- so the least common ancestor of those demands is the floor
+// process and the per-claim rebuild is duplicated demand (DESIGN section 2), not a recurrence a cache
+// excuses. Re-derive the cost with claim_batch per-fn inclusive steps over an emit row: the build is a
+// fixed setup that does not move with the emitted module's size (flat classical_not and a four-leaf
+// nested match pay the same construction), and its first touch of std.integer's interval-spec data rows
+// alone exceeds one claim's new-witness budget, so it is WARM, NEVER CLAIM-FORCED by the arithmetic above.
+// The value is a TargetModel record of Nodes, symbol/string Maps and data variants -- the shape the
+// three withdrawn rust rows below stored without refusal -- so portability is not what is at risk.
+// WHAT IS AT RISK IS THOSE ROWS' MEASURED FINDING: serving a rust TargetModel cost its produced-decl
+// consumers more than recomputing it, for a cause this file leaves unidentified. This producer reaches
+// none of those consumers, and it stays here only on a measured serve below recompute on its OWN
+// consumer rows (required_floor_claim_cost.tsv, present against absent, normalised on rows outside its
+// consumer modules); a regression there moves it to floor_cross_claim_refused_candidates. The emit rows
+// also re-ingest their source through ingested_emit_shape_frontier_tree_from_source instead of reading
+// the arrow this roster already serves -- that is the witness-shape lane's item, not this row's, and
+// until it lands those rows stay over the new-witness budget whatever this row saves.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_loaded_roots",
@@ -697,6 +737,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module",
   "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
   "v2.test.claim.namespace_xl0.call_argument_resolve_refusal.xl2_outcomes",
+  "v2.test.claim.body_lowering.enclosing_expression_structure.ees_and_match_value",
+  "v2.test.claim.body_lowering.enclosing_expression_structure.ees_call_match_value",
+  "v2.test.claim.body_lowering.enclosing_expression_structure.ees_and_match_walked",
+  "v2.test.claim.body_lowering.enclosing_expression_structure.ees_call_match_walked",
   "v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal.sqo_outcomes",
   "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_outcomes",
   "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_normalized",
@@ -711,18 +755,40 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.list_literal_value_lowering.llv_self_outcome",
   "v2.test.claim.namespace_xl0.list_literal_value_lowering.llv_self_missing_outcome",
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
+  "v2.test.claim.normalize.authored_marker_spelling.ams_verdicts",
   "v2.test.claim.body_lowering.caret_symbol_value_refusal.csv_verdicts",
+  "v2.test.claim.body_cast_node.bcn_let_in_value_cast_verdict",
   "v2.test.claim.namespace_xl0.value_read_refusal.vrr_outcomes",
   "v2.test.claim.fold_lowering.flp_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_lowered",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_third_arm_malformed",
+  "v2.test.claim.namespace_xl0.return_tail_position.rtp_outcomes",
+  "v2.test.claim.body_lowering.wildcard_pattern_form.wpf_patterns",
+  "v2.test.claim.body_lowering.match_position_structure.mps_normalized",
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_mixed_probe_verdict",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_empty_probe_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_coproduct_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_record_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_refinement_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_alias_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_opaque_verdict",
+  "v2.test.claim.emit.module_member_emission.member_emission_generic_verdict",
+  "v2.test.execution.infer_declaration_formation.formation_coproduct_verdict",
+  "v2.test.execution.infer_declaration_formation.formation_payload_coproduct_verdict",
+  "v2.test.execution.infer_declaration_formation.formation_plain_alias_verdict",
+  "v2.test.execution.infer_declaration_formation.formation_bodyless_verdict",
+  "v2.test.execution.infer_declaration_formation.formation_generic_binder_alias_verdict",
+  "v2.test.execution.infer_declaration_formation.formation_empty_record_verdict",
+  "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_coproduct_verdict",
+  "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_alias_used_verdict",
+  "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_alias_of_alias_verdict",
+  "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_bodyless_verdict",
+  "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_payload_single_variant_verdict",
   "v2.test.claim.coercion.identity_cast_emission_route.identity_cast_route_verdict",
   "v2.test.claim.coercion.identity_cast_emission_route.refused_cast_route_verdict",
   "v2.test.emit.int_literal_form_unwired_located.int_literal_probe_table",
@@ -737,6 +803,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.long.emit_host_produced_module_equals_eval.produced_add_module_source",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_with_body",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_arrow_with_body",
+  "v2.extdeps.languages.rust_test.rust_classical_not_ingested_target_model_staging",
   "v2.test.long.pick_ingested_structural_lowering.pick_ingested_true_arrow",
   "v2.test.long.pick_ingested_structural_lowering.pick_ingested_false_arrow",
   "v2.test.long.pick_ingested_structural_lowering.pick_ingested_swapped_arrow",
@@ -841,6 +908,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.declared_parameter_order.dpo_a_then_b",
   "v2.test.claim.declared_parameter_order.dpo_eleven_anonymous",
   "v2.test.claim.declared_parameter_order.dpo_label_shadows_a_declaration",
+  "v2.test.claim.named_argument_binding.nab_reordered",
+  "v2.test.claim.named_argument_binding.nab_in_order",
+  "v2.test.claim.named_argument_binding.nab_positional_after_named",
+  "v2.test.claim.named_argument_binding.nab_label_repeated",
   "v2.test.claim.body_type_annotation_refusal.btar_let_annotated",
   "v2.test.claim.body_type_annotation_refusal.btar_let_plain",
   "v2.test.claim.body_type_annotation_refusal.btar_fn_literal_annotated",
@@ -902,6 +973,16 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_let_annotation.bla_int_literal_as_bool",
   "v2.test.claim.body_let_annotation.bla_int_literal_as_int_inferred",
   "v2.test.claim.body_let_annotation.bla_int_literal_as_bool_inferred",
+  "v2.test.claim.body_let_annotation.bla_declared_int_literal",
+  "v2.test.claim.body_let_annotation.bla_declared_bool_literal",
+  "v2.test.claim.body_let_annotation.bla_declared_int_literal_inferred",
+  "v2.test.claim.body_let_annotation.bla_declared_bool_literal_inferred",
+  "v2.test.claim.body_let_annotation.bla_imported_int_literal",
+  "v2.test.claim.body_let_annotation.bla_ambiguous_imported_int_literal",
+  "v2.test.claim.body_let_annotation.bla_ambiguous_kernel_int_literal",
+  "v2.test.claim.body_let_annotation.bla_single_tree_declared_int",
+  "v2.test.claim.body_let_annotation.bla_single_tree_declared_bool",
+  "v2.test.claim.body_let_annotation.bla_single_tree_undeclared_int",
   "v2.test.claim.body_let_annotation.bla_annotated_bind_emitted",
   "v2.test.claim.body_let_annotation.bla_reordered_self_reference",
   "v2.test.claim.body_let_annotation.bla_reordered_outer_reference",
@@ -957,13 +1038,15 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.qualified_constructor_value_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.match_arm_statement_body_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.data_initializer_match_scrutinee_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.fn_body_match_scrutinee_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.anonymous_slots_subject",
-  "v2.test.claim.namespace_xl0.reference_conservation_admission.two_same_spelled_labels_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.two_same_spelled_predicates_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_call_argument_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_if_arm_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_member_dropping_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_outsider_dropping_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_member_clean_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.call_projection_operand_subject",
   "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_alias_subject",
   "v2.test.claim.body_lowering.single_arm_match.three_arm_subject",
   "v2.test.claim.body_lowering.single_arm_match.zero_arm_subject",

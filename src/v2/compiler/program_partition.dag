@@ -4,9 +4,8 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import v2.compiler.emit { emit }
 import v2.compiler.emit_produced {
-  emit_produced_module,
-  produced_decl_conjs_in_tree,
-  produced_module_declares_bodied_members
+  produced_module_bodies_declare_members,
+  emit_module_body_members
 }
 import v2.compiler.infer {
   InferredFacts,
@@ -64,6 +63,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   invariant_port_locus
 }
+import v2.std.type_binder { node_inferred_subtree_nodes }
 import v2.std.node {
   Atom,
   ComputationNode,
@@ -75,7 +75,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  node_inferred_subtree_nodes,
   node_subtree_nodes,
   well_formed
 }
@@ -624,8 +623,8 @@ fn emit_partition_with_target(
     bind_outcome(
       o: partition_inferred_tree(partition: partition),
       f: fn(tree) {
-        if produced_module_declares_bodied_members(root: tree.root) {
-          emit_produced_module(decls: produced_decl_conjs_in_tree(root: tree.root), target: target)
+        if produced_module_bodies_declare_members(root: tree.root) {
+          emit_module_body_members(root: tree.root, target: target)
         } else {
           emit(tree: tree, target: target)
         }
