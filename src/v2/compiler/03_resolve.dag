@@ -334,6 +334,113 @@ fn binder_hides_visible_value_diagnostic(binder: Symbol, at: Node) -> Diagnostic
   }
 }
 
+// THE NAMES EACH BINDER SITE INTRODUCES, as LISTS rather than maps, because a map cannot answer the
+// question the admission asks. map_insert silently overwrites, so a frame built by insertion cannot tell
+// a duplicate binder from a single one -- the duplicate is exactly what must refuse. These three
+// collectors mirror the three harvesters beside them, and each is deliberately NARROWER in one respect,
+// stated here so the narrowing is not mistaken for an oversight:
+//
+// An Arrow's list is the AUTHORED Named binders of its domain Conj only. The harvester also sweeps every
+// Atom in the domain subtree (harvest_direct_atom_binding), which admits the fresh type-variable atoms a
+// lowered signature carries as if they were value binders. Those are not what "an Arrow's parameters"
+// means, and running the hiding check over them would refuse on generated names no author wrote. The
+// harvested frame is left exactly as it was; only the JUDGEMENT is scoped to the authored binders.
+fn arrow_domain_binder_name_list(n: Node) -> List<Symbol> {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      match arrow_first_positional_target(children: n.children) {
+        FirstPositionalFound { target: domain } => conj_named_binder_name_list(root: domain)
+        FirstPositionalAbsent => []
+      }
+    _ => []
+  }
+}
+
+fn conj_named_binder_name_list(root: Node) -> List<Symbol> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: [], f: fn(acc, e) {
+        match try_edge_declared_binding(e: e) {
+          Present { value: b } => list_snoc_item(xs: acc, item: b.name)
+          Absent => acc
+        }
+      })
+    _ => []
+  }
+}
+
+// A match arm's list mirrors resolve_pattern_binders exactly, including its two exclusions: a wildcard
+// binds nothing, and a field target that names a CONSTRUCTOR is a nested pattern, not a binder.
+fn pattern_binder_name_list(ctx: ResolveContext, pat: Node) -> List<Symbol> {
+  match construct_tag_optional(n: pat) {
+    Absent => []
+    Present { value: _ } =>
+      fold(construct_field_edges(n: pat), init: [], f: fn(acc, e) {
+        match e.target.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            if is_wildcard_pattern(pattern: e.target) {
+              acc
+            } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
+              acc
+            } else {
+              list_snoc_item(xs: acc, item: id)
+            }
+          _ => concat(acc, pattern_binder_name_list(ctx: ctx, pat: e.target))
+        }
+      })
+  }
+}
+
+// A `let`'s list mirrors add_bind_atom_binder: the binder is the FIRST positional child, and the harvester
+// sweeps the atoms of that subtree. For an ordinary `let x = e` that subtree is the single binder atom.
+fn bind_binder_name_list(n: Node) -> List<Symbol> {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      if positional_child_count(children: n.children) == 3 {
+        match first(positional_edges(children: n.children)) {
+          Present { value: e0 } => atom_name_list(root: e0.target)
+          Absent => []
+        }
+      } else {
+        []
+      }
+    _ => []
+  }
+}
+
+fn atom_name_list(root: Node) -> List<Symbol> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          TypeNode { connective: Atom { identity: sym } } => [sym]
+          _ => []
+        }
+      },
+      step: fn(acc, _e, child) { concat(acc, child) }
+    }
+  )
+}
+
+// THE ADMISSION AS A GATE OVER A SITE'S OWN FRAME. Each site keeps the frame its harvester already built
+// -- so an admitted binder resolves exactly as it did before this change -- and the gate only decides
+// whether the site proceeds at all. That separation is deliberate: it makes the new behaviour purely a
+// set of refusals, with no chance of silently changing which name a body binds to.
+type BinderGate
+  = BinderGateAdmitted
+  | BinderGateRefused { diagnostic: Diagnostic }
+
+fn gate_value_binders(names: List<Symbol>, outer: Scope, at: Node) -> BinderGate {
+  match admit_value_binders(names: names, outer: outer) {
+    BindersAdmitted { locals: _ } => BinderGateAdmitted
+    BinderDuplicateInFrame { binder: b } =>
+      BinderGateRefused { diagnostic: binder_duplicate_in_frame_diagnostic(binder: b, at: at) }
+    BinderHidesVisibleValue { binder: b } =>
+      BinderGateRefused { diagnostic: binder_hides_visible_value_diagnostic(binder: b, at: at) }
+  }
+}
+
 // A LOOP'S CARRIER IS A BINDER, SO IT OPENS A FRAME AND IS NOT WALKED AS A REFERENCE. v2.std.node says
 // it outright -- "^loop_carrier_edge targets the loop-carried state's BINDER, never a value" -- and
 // resolve did neither: a Loop fell to resolve_children_homogeneous_scope, which opens a frame only for
@@ -1996,29 +2103,36 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
   match find_named_child(root: arm, name: match_arm_pattern) {
     Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
     Accepted { value: pat, diagnostics: _ } =>
-      let arm_ctx = resolve_ctx_with_scope(
-        ctx: ctx,
-        scope: ScopeFrame {
-          locals: resolve_pattern_binders(ctx: ctx, pat: pat, acc: empty_map()),
-          outer: ctx.scope
-        }
-      )
-      child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(), f: fn(acc, e) {
-        child_walk_step(
-          w: acc,
-          e: e,
-          r: match e.label {
-            Named { name: label } =>
-              if label == match_arm_pattern {
-                resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
-              } else {
-                resolve_node_walk(ctx: arm_ctx, n: e.target)
-              }
-            Positional => resolve_node_walk(ctx: arm_ctx, n: e.target)
-          }
-        )
-      }))
+      match gate_value_binders(names: pattern_binder_name_list(ctx: ctx, pat: pat), outer: ctx.scope, at: pat) {
+        BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
+        BinderGateAdmitted => resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat)
+      }
   }
+}
+
+fn resolve_match_arm_admitted(ctx: ResolveContext, arm: Node, pat: Node) -> ResolveNodeWalk {
+  let arm_ctx = resolve_ctx_with_scope(
+    ctx: ctx,
+    scope: ScopeFrame {
+      locals: resolve_pattern_binders(ctx: ctx, pat: pat, acc: empty_map()),
+      outer: ctx.scope
+    }
+  )
+  child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(
+      w: acc,
+      e: e,
+      r: match e.label {
+        Named { name: label } =>
+          if label == match_arm_pattern {
+            resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
+          } else {
+            resolve_node_walk(ctx: arm_ctx, n: e.target)
+          }
+        Positional => resolve_node_walk(ctx: arm_ctx, n: e.target)
+      }
+    )
+  }))
 }
 
 // children[0] is the scrutinee (outer scope); every later child is an arm. The ordinal advances on
@@ -2282,6 +2396,13 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
 // enclosing scope, and a minted anonymous label against nothing. It is carried unwalked; the Arrow
 // wall (v2.std.node arrow_signature_order_conforms) is its check.
 fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  match gate_value_binders(names: arrow_domain_binder_name_list(n: n), outer: ctx.scope, at: n) {
+    BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
+    BinderGateAdmitted => resolve_arrow_node_admitted(outer_ctx: outer_ctx, ctx: ctx, n: n)
+  }
+}
+
+fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
   let value_params = add_arrow_domain_named_params(n: n, acc: empty_map())
   let scope_codomain = ScopeFrame { locals: value_params, outer: scope_type }
@@ -2395,15 +2516,19 @@ fn resolve_bind_node(
   n: Node
 ) -> ResolveNodeWalk {
   if positional_child_count(children: n.children) == 3 {
-    child_walk_node(n: n, w: resolve_bind_edges(
-      ctx: ctx,
-      edges: n.children,
-      scope_outer: ctx.scope,
-      scope_inner: ScopeFrame {
-        locals: add_bind_atom_binder(n: n, acc: empty_map()),
-        outer: ctx.scope
-      }
-    ))
+    match gate_value_binders(names: bind_binder_name_list(n: n), outer: ctx.scope, at: n) {
+      BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
+      BinderGateAdmitted =>
+        child_walk_node(n: n, w: resolve_bind_edges(
+          ctx: ctx,
+          edges: n.children,
+          scope_outer: ctx.scope,
+          scope_inner: ScopeFrame {
+            locals: add_bind_atom_binder(n: n, acc: empty_map()),
+            outer: ctx.scope
+          }
+        ))
+    }
   } else {
     resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)))
   }
