@@ -52,8 +52,10 @@ data ml_types_source: String = "module std.types\n\nimport std.algebra { Finitel
 data ml_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\ntype FinitelySupportedFunction<K, V> {\n  size: Int\n}\n\ntype MapIntroductionEntry<K, V> {\n  key: K\n  value: V\n}\n\nfn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> FinitelySupportedFunction<K, V> {\n  FinitelySupportedFunction { size: 0 }\n}\n"
 
 // The kernel String is bound as a canonical symbol only where some module declares it, as
-// std.string_type does in the real corpus; without it a fixture's `String` is unbound.
-data ml_string_type_source: String = "module std.string_type\n\ntype String = Int\n"
+// std.string_type does in the real corpus; without it a fixture's `String` is unbound. The stand-in
+// is OPAQUE -- a record aliasing nothing -- so no claim here can pass because String means something
+// else (ml_an_int_key_under_a_string_map_refuses_holds reds if it did).
+data ml_string_type_source: String = "module std.string_type\n\ntype String {\n  opaque_text: Bool\n}\n"
 
 data ml_headed_source: String = "module v2.test.ml_headed\n\nimport std.types { Map }\nimport std.algebra { MapIntroductionEntry, map_from_entries }\n\ndata ml_x: Map<String, Bool> = map_from_entries(entries: [MapIntroductionEntry { key: \"a\", value: true }, MapIntroductionEntry { key: \"b\", value: false }])\n"
 
@@ -75,6 +77,16 @@ data ml_name_key_source: String = "module v2.test.ml_name_key\n\nimport std.type
 data ml_call_argument_source: String = "module v2.test.ml_call_argument\n\nimport std.types { Map }\n\nfn ml_take(m: Map<String, Bool>) -> Bool { true }\n\nfn ml_call() -> Bool { ml_take(m: { \"a\": true }) }\n"
 
 data ml_value_mismatch_source: String = "module v2.test.ml_value_mismatch\n\nimport std.types { Map }\n\ndata ml_bad: Map<String, Bool> = { \"a\": 3 }\n"
+
+// An Int key where K = String: never a map entry, so never admitted.
+data ml_int_key_source: String = "module v2.test.ml_int_key\n\nimport std.types { Map }\n\ndata ml_i: Map<String, Bool> = { 1: true }\n"
+
+data ml_int_key_ingest: SourceRootIngest = [
+  ml_read(source: ml_types_source, id: ^ml_ik_types_read, unit: ^ml_ik_types_cu, path: "src/v2/test/fixture/map_literal/ik_types.dag"),
+  ml_read(source: ml_algebra_source, id: ^ml_ik_algebra_read, unit: ^ml_ik_algebra_cu, path: "src/v2/test/fixture/map_literal/ik_algebra.dag"),
+  ml_read(source: ml_string_type_source, id: ^ml_ik_string_read, unit: ^ml_ik_string_cu, path: "src/v2/test/fixture/map_literal/ik_string.dag"),
+  ml_read(source: ml_int_key_source, id: ^ml_int_key_read, unit: ^ml_int_key_cu, path: "src/v2/test/fixture/map_literal/int_key.dag")
+]
 
 // Lowering's refusal is its own ingest: a module that fails body lowering fails the whole ingest.
 data ml_mixed_source: String = "module v2.test.ml_mixed\n\nimport std.types { Map }\n\ndata ml_m: Map<String, Bool> = { \"a\": true, b: false }\n"
@@ -230,6 +242,25 @@ fn ml_infers(o: Outcome<ResolvedTree>) -> Bool {
       match infer(tree: t) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// An Int key under Map<String, V> is refused somewhere on the route -- at lowering or at resolve --
+// and never elaborates. Were String collapsed onto Int, this is the claim that would go red.
+test fn ml_an_int_key_under_a_string_map_refuses_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_int_key_ingest, lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.ml_int_key") }, imports: Empty },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
       }
   }
 }
