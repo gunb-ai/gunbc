@@ -325,6 +325,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "a brace no key-kind choice could type: a constructor head over string keys, or a headless brace mixing name keys and string keys. Refused at lowering at the first item of the offending kind (docs/plans/map-literal-introduction-design.md); flips per site when the source writes one kind"
   },
   CauseOwnership {
+    cause: ^resolve_anonymous_record_alias_cycle,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a headless record literal whose authored expected type reaches a cycle of pure-renaming aliases (`type A = B`, `type B = A`) while v2.compiler.resolve follows renamings to the record or list head (ruling, neat-boar-16, gunbc#12740). The cycle is refused at the literal rather than followed. Not a frontier: each occurrence is an alias cycle in source, and flips when the source breaks it"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_function_value_body_unread,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,

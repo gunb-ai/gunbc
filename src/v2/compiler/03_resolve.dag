@@ -95,7 +95,8 @@ import v2.std.symbol_index {
   symbol_index_global_unique_lookup,
   symbol_index_declaring_path_of,
   symbol_index_lexical_lookup,
-  symbol_index_lookup
+  symbol_index_lookup,
+  symbol_index_renaming_alias_at
 }
 import v2.std.node {
   named_edges,
@@ -134,7 +135,10 @@ import v2.std.node {
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   construct_field_edges,
-  construct_tag_is_elided,
+  construct_tag_reading,
+  ConstructTagAuthored,
+  ConstructTagElided,
+  NotAConstruct,
   construct_tag_optional,
   node_positional_child_targets,
   find_named_child,
@@ -1661,8 +1665,8 @@ fn resolve_construct_walk_with_tag(
 
 // AN ANONYMOUS RECORD LITERAL IS ELABORATED FROM AN AUTHORED ANNOTATION, OR REFUSED
 // (docs/plans/anonymous-record-literal-design.md). `{ f: v }` lowers to a construct whose tag is
-// ELIDED (v2.std.node_query construct_tag_is_elided). Its constructor is the record the EXPECTED
-// type names, and the expectation is an explicit parameter handed by exactly four position rules --
+// ELIDED (v2.std.node_query construct_tag_reading answers ConstructTagElided). Its constructor is the record the EXPECTED
+// type names, and the expectation is an explicit parameter handed by three position rules --
 // an Arrow's body under its declared return (which covers a `data` initializer), a record field
 // under its authored field type, and a list element under its annotated list's element type -- and
 // never ambient context. So a headless literal reached by ANY other edge (a call argument, a let
@@ -1683,14 +1687,14 @@ fn resolve_anonymous_record_refused(n: Node, reason: Symbol) -> ResolveNodeWalk 
 // THE HEAD OF AN AUTHORED TYPE EXPRESSION, peeled syntactically: a bare name, or the head of an
 // instantiation `H<A, ..>`. Anything else -- an optional `T?`, a function type, an anonymous record
 // type -- has no head a record could be read from, and answers Absent.
-fn resolve_expected_head_atom_optional(t: Node) -> Optional<Symbol> {
+fn resolve_expected_head_node_optional(t: Node) -> Optional<Node> {
   match t.kind {
-    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    TypeNode { connective: Atom { identity: _ } } => optional_present(value: t)
     TypeNode { connective: Instantiation } =>
       match list_at_optional(xs: node_positional_child_targets(node: t), index: 0) {
         Present { value: head } =>
           match head.kind {
-            TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+            TypeNode { connective: Atom { identity: _ } } => optional_present(value: head)
             _ => optional_absent()
           }
         Absent => optional_absent()
@@ -1699,15 +1703,70 @@ fn resolve_expected_head_atom_optional(t: Node) -> Optional<Symbol> {
   }
 }
 
-// The head resolved at `position` through the existing lexical lookup: the literal's own position
-// for an annotation written in its module, the record's own path for a field type written on the
-// record. A binder (`T`), a kernel symbol, or an unbound or ambiguous name answers Absent.
-fn resolve_expected_head_path(ctx: ResolveContext, position: QualifiedName, t: Node) -> Optional<QualifiedName> {
-  match resolve_expected_head_atom_optional(t: t) {
+// THE HEAD IS RESOLVED BY THE SAME ROUTE THE ANNOTATION ITSELF IS. An annotation written in the
+// literal's own module (a data declaration's type, a fn's return, a list element type taken from one)
+// resolves its head through resolve_atom in this context -- scope chain, root bindings, the index,
+// the kernel -- so the expectation can never bind a head to a different declaration than the one
+// the annotation denotes. A field type is written in the RECORD's module, whose scope and bindings
+// this context does not carry, so it is looked up at the record's own position through the index's
+// lexical lookup (NamespaceOnlyY: lookup by containment position). A head that is a binder, a kernel
+// symbol, or unbound gives no declaration path, and answers Absent.
+// WHERE AN EXPECTED TYPE'S HEAD LEADS: a declaration, nowhere, or round a cycle of aliases.
+type ExpectedHead
+  = ExpectedHeadAt { path: QualifiedName }
+  | ExpectedHeadAbsent
+  | ExpectedHeadAliasCycle
+
+fn resolve_expected_head_path(ctx: ResolveContext, x: ResolveExpectation) -> ExpectedHead {
+  match resolve_expected_head_path_as_written(ctx: ctx, x: x) {
+    Absent => ExpectedHeadAbsent
+    Present { value: path } => resolve_expected_rename_chain(ctx: ctx, path: path, visited: [])
+  }
+}
+
+// A PURE-RENAMING ALIAS IS FOLLOWED; NO OTHER ALIAS IS (ruling, neat-boar-16). Whether an alias is a
+// pure renaming -- `type A<p1..pn> = H<p1..pn>`, or `type A = H` -- was decided once, on its
+// declaration, and recorded in the index (v2.std.type_binder type_alias_renaming,
+// v2.std.symbol_index symbol_index_renaming_alias_at); this reads that fact and does not re-derive
+// it. Following a renaming substitutes nothing: the annotation's own arguments stay in the positions
+// they were written. This is how `List<R>` (type List<element> = FreeMonoid<element>) reaches the list
+// head. Chains are followed transitively, each renamed head looked up at the alias's own position
+// through the existing lexical lookup, and a path met twice is a cycle, refused located rather than
+// followed. Any other alias is not recorded as a renaming and is the declaration the head names,
+// which is not a record, so the literal refuses.
+fn resolve_expected_rename_chain(ctx: ResolveContext, path: QualifiedName, visited: List<QualifiedName>) -> ExpectedHead {
+  if any(xs: visited, predicate: fn(v) { v == path }) {
+    ExpectedHeadAliasCycle
+  } else {
+    match symbol_index_renaming_alias_at(index: ctx.namespace.symbol_index, qualified_path: path) {
+      Absent => ExpectedHeadAt { path: path }
+      Present { value: head } =>
+        match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: path, name: head) {
+          LexicalHit { node: _, path: renamed } =>
+            resolve_expected_rename_chain(ctx: ctx, path: renamed, visited: list_snoc_item(xs: visited, item: path))
+          _ => ExpectedHeadAbsent
+        }
+    }
+  }
+}
+
+fn resolve_expected_head_path_as_written(ctx: ResolveContext, x: ResolveExpectation) -> Optional<QualifiedName> {
+  match resolve_expected_head_node_optional(t: x.expected) {
     Absent => optional_absent()
-    Present { value: id } =>
-      match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: position, name: id) {
-        LexicalHit { node: _, path: path } => optional_present(value: path)
+    Present { value: head } =>
+      match head.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          if x.at_use_site {
+            match resolve_atom(ctx: resolve_ctx_with_scope(ctx: ctx, scope: ctx.type_scope), n: head, identity: id) {
+              Accepted { value: resolved, diagnostics: _ } => declaration_reference_path_optional(node: resolved)
+              Rejected { diagnostics: _ } => optional_absent()
+            }
+          } else {
+            match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: x.position, name: id) {
+              LexicalHit { node: _, path: path } => optional_present(value: path)
+              _ => optional_absent()
+            }
+          }
         _ => optional_absent()
       }
   }
@@ -1717,31 +1776,34 @@ fn resolve_expected_head_path(ctx: ResolveContext, position: QualifiedName, t: N
 type ResolveExpectation {
   expected: Node
   position: QualifiedName
+  at_use_site: Bool
 }
 
 // A value edge walked under an expectation. Only three node shapes consume one -- a headless
 // literal, an authored construct (whose fields take their own), and a list literal -- and every
 // other node is walked exactly as resolve_child_edge would, so the expectation stops here.
 fn resolve_expected_edge(ctx: ResolveContext, e: Edge, x: ResolveExpectation) -> ResolveNodeWalk {
-  if construct_tag_is_elided(n: e.target) {
-    resolve_elided_construct_walk(ctx: ctx, n: e.target, x: x)
-  } else {
-    match list_introduction_elements_optional(node: e.target) {
-      Present { value: _ } => resolve_list_literal_expected(ctx: ctx, n: e.target, x: x)
-      Absent => resolve_child_edge(ctx: ctx, e: e)
-    }
+  match construct_tag_reading(n: e.target) {
+    ConstructTagElided => resolve_elided_construct_walk(ctx: ctx, n: e.target, x: x)
+    ConstructTagAuthored { reference: _ } => resolve_child_edge(ctx: ctx, e: e)
+    NotAConstruct =>
+      match list_introduction_elements_optional(node: e.target) {
+        Present { value: _ } => resolve_list_literal_expected(ctx: ctx, n: e.target, x: x)
+        Absent => resolve_child_edge(ctx: ctx, e: e)
+      }
   }
 }
 
 fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
-  match resolve_expected_head_path(ctx: ctx, position: x.position, t: x.expected) {
-    Absent =>
+  match resolve_expected_head_path(ctx: ctx, x: x) {
+    ExpectedHeadAbsent =>
       if resolve_elided_construct_is_map_literal(n: n) {
         resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_expected_type_not_map)
       } else {
         resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_expected_type_not_record)
       }
-    Present { value: path } =>
+    ExpectedHeadAliasCycle => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_alias_cycle)
+    ExpectedHeadAt { path: path } =>
       if map_introduction_expected_head_is_map(path: path) {
         resolve_map_literal_walk(ctx: ctx, n: n, x: x)
       } else if resolve_elided_construct_is_map_literal(n: n) {
@@ -1996,7 +2058,7 @@ fn resolve_record_field_edge(ctx: ResolveContext, e: Edge, record: Optional<Qual
           match resolve_record_field_type_optional(ctx: ctx, record: path, field: field) {
             Absent => resolve_child_edge(ctx: ctx, e: e)
             Present { value: t } =>
-              resolve_expected_edge(ctx: ctx, e: e, x: ResolveExpectation { expected: t, position: path })
+              resolve_expected_edge(ctx: ctx, e: e, x: ResolveExpectation { expected: t, position: path, at_use_site: false })
           }
       }
   }
@@ -2034,15 +2096,19 @@ fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName
 // head that reaches it only through an alias is not unfolded here; it passes no expectation, and a
 // headless element then refuses resolve_anonymous_record_no_expected_type.
 fn resolve_list_literal_expected(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
-  let element_type = match resolve_expected_head_path(ctx: ctx, position: x.position, t: x.expected) {
-    Present { value: path } =>
+  match resolve_expected_head_path(ctx: ctx, x: x) {
+    ExpectedHeadAliasCycle => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_alias_cycle)
+    ExpectedHeadAbsent => resolve_node_walk(ctx: ctx, n: n)
+    ExpectedHeadAt { path: path } =>
       if path == list_introduction_head_path() {
-        list_at_optional(xs: node_positional_child_targets(node: x.expected), index: 1)
+        resolve_list_elements_expected(ctx: ctx, n: n, x: x, element_type: list_at_optional(xs: node_positional_child_targets(node: x.expected), index: 1))
       } else {
-        optional_absent()
+        resolve_node_walk(ctx: ctx, n: n)
       }
-    Absent => optional_absent()
   }
+}
+
+fn resolve_list_elements_expected(ctx: ResolveContext, n: Node, x: ResolveExpectation, element_type: Optional<Node>) -> ResolveNodeWalk {
   match element_type {
     Absent => resolve_node_walk(ctx: ctx, n: n)
     Present { value: et } =>
@@ -2050,7 +2116,7 @@ fn resolve_list_literal_expected(ctx: ResolveContext, n: Node, x: ResolveExpecta
         if acc.ordinal == 0 {
           child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
         } else {
-          child_walk_step(w: acc, e: e, r: resolve_expected_edge(ctx: ctx, e: e, x: ResolveExpectation { expected: et, position: x.position }))
+          child_walk_step(w: acc, e: e, r: resolve_expected_edge(ctx: ctx, e: e, x: ResolveExpectation { expected: et, position: x.position, at_use_site: x.at_use_site }))
         }
       }))
   }
@@ -2192,24 +2258,22 @@ fn resolve_node_walk(
     ComputationNode { behavior: Transform } =>
       resolve_transform_children(ctx: ctx, n: n)
     TypeNode { connective: Conj } =>
-      if construct_tag_is_elided(n: n) {
-        if resolve_elided_construct_is_map_literal(n: n) {
-          resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_no_expected_type)
-        } else {
-          resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_no_expected_type)
-        }
-      } else {
-      match construct_tag_optional(n: n) {
-        Present { value: reference } =>
+      match construct_tag_reading(n: n) {
+        ConstructTagElided =>
+          if resolve_elided_construct_is_map_literal(n: n) {
+            resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_no_expected_type)
+          } else {
+            resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_no_expected_type)
+          }
+        ConstructTagAuthored { reference: reference } =>
           resolve_construct_walk(ctx: ctx, n: n, reference: reference, field: fn(e, record) {
             resolve_record_field_edge(ctx: ctx, e: e, record: record)
           })
-        Absent =>
+        NotAConstruct =>
           match try_resolve_qualified_name_node(ctx: ctx, n: n) {
             Present { value: outcome } => resolve_walk_of_outcome(o: outcome)
             Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
           }
-      }
       }
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
@@ -2429,7 +2493,7 @@ fn resolve_arrow_body_or_named_edge(ctx: ResolveContext, arrow: Node, e: Edge) -
         resolve_expected_edge(
           ctx: ctx,
           e: e,
-          x: ResolveExpectation { expected: declared, position: symbol_index_lookup_position(ctx: ctx) }
+          x: ResolveExpectation { expected: declared, position: symbol_index_lookup_position(ctx: ctx), at_use_site: true }
         )
       Absent => resolve_node_walk(ctx: ctx, n: e.target)
     }
@@ -2446,13 +2510,14 @@ fn resolve_edge_is_arrow_body(e: Edge) -> Bool {
 }
 
 fn resolve_node_consumes_expectation(n: Node) -> Bool {
-  if construct_tag_is_elided(n: n) {
-    true
-  } else {
-    match list_introduction_elements_optional(node: n) {
-      Present { value: _ } => true
-      Absent => false
-    }
+  match construct_tag_reading(n: n) {
+    ConstructTagElided => true
+    ConstructTagAuthored { reference: _ } => false
+    NotAConstruct =>
+      match list_introduction_elements_optional(node: n) {
+        Present { value: _ } => true
+        Absent => false
+      }
   }
 }
 
