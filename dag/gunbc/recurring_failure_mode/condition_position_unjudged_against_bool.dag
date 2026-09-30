@@ -15,7 +15,7 @@ data condition_position_unjudged_against_bool: RecurringFailureMode = RecurringF
 
     "REPAIR (DESIGN section 6b): the earliest unjustified boundary is the missing obligation producer, not the relation. `condition_obligation_diags` builds the same `DeclaredTypeObligation` every other position builds, at `PositionCondition` with declared `Bool`, and it is decided by `declared_type_obligation_diags`, the whole relation -- no condition-specific test. Both guard sites (first-pass and unified-arm re-inference) and the if condition consume it.",
 
-    "RUNG FOUND AT: outside the ladder (silent) at acceptance; mitigatable on the interpretation path for guards only. RUNG NOW: 3, structurally guaranteed at the if condition and the match-arm guard, evidenced by `test.claim.numeral_at_non_numeric_kernel_witness_test` (an Int literal as a guard and as an if condition, each with a Bool control).",
+    "RUNG FOUND AT: outside the ladder (silent) at acceptance; mitigatable on the interpretation path for guards only. RUNG NOW: 3, structurally guaranteed at the if condition and the match-arm guard, evidenced by `test.claim.numeral_at_non_numeric_kernel_witness_test`: an Int literal guard, a non-literal Int guard (`x if x + 1`), a String guard (`x if (s)` -- the one RED no numeral arm reaches, so it isolates the wiring), and an Int literal if condition, all refusing, with a Bool guard and a Bool if condition in the shared positive control. The two non-literal guard REDs are bright-owl-402's, from the superseded gunbc#12829.",
 
     "ATTAINABLE CEILING: 3. The interpreter's `MatchGuardNotBool` arm becomes unreachable from an Accepted program; it stays as the runtime refusal for unaccepted input, not as the wall."
   ],
