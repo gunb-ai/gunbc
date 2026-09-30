@@ -1885,6 +1885,8 @@ fn resolve_map_key_text(key: Node) -> String {
   }
 }
 
+// The pairs are walked under a Transform carrier (positional edges only) that never leaves this
+// arm; only its resolved children are read.
 fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, items: List<Edge>, value_x: ResolveExpectation) -> ResolveNodeWalk {
   let keys = fold(items, init: [], f: fn(acc, e) {
     list_snoc_item(xs: acc, item: resolve_map_key_text(key: resolve_map_entry_key(entry: e.target)))
@@ -1899,8 +1901,6 @@ fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, items: List<Edge>, 
       let walked = fold(items, init: child_walk_init(), f: fn(acc, e) {
         child_walk_step(w: acc, e: e, r: resolve_map_entry_walk(ctx: ctx, entry: e.target, value_x: value_x))
       })
-      // The pairs are walked under a Transform carrier (positional edges only) that never leaves
-      // this arm; only its resolved children are read.
       let carrier = node_with_occurrence_id(kind: ComputationNode { behavior: Transform }, children: [], occurrence_id: n.occurrence_id)
       match child_walk_node(w: walked, n: carrier) {
         ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
