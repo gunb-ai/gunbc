@@ -49,7 +49,7 @@ data hmac_sha256_verify_hex_contract: PrimitiveContract = {
 // one reason, measured: the pure fold (extdeps.crypto.sha2 sha256_hex) costs ~500-600k interpreted
 // eval steps over a ~150-byte text, and the fabric store door digests an approved intent on every
 // protected write (gunbc.fabric_store_operation_admission). The pure fold stays as its differential
-// oracle (test.claim.sha256_host_differential_witness).
+// oracle (test.claim.sha256_host_known_answer_witness).
 data sha256_hex_of_text_contract: PrimitiveContract = {
   name: "sha256_hex_of_text",
   work: "n",
