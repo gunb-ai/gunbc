@@ -34,6 +34,8 @@ data fe_pipe_source: String = "module fold_encoding_pipe\n\nfn f(xs: List<Int>, 
 
 data fe_pipe_chain_source: String = "module fold_encoding_pipe_chain\n\nfn g(ys: List<Int>) -> List<Int> { ys }\n\nfn f(xs: List<Int>, seed: Int) -> Int {\n  xs |> g |> fold(seed, fn(acc, x) { acc })\n}\n"
 
+data fe_binders_source: String = "module fold_encoding_binders\n\nfn f(xs: Bool) -> Bool {\n  fold(xs, false, fn(found, e) { found || e })\n}\n"
+
 data fe_canary_source: String = "module fold_encoding_canary\n\nfn caller(x: Int) -> Int { fold(x, 0, fn(acc, _) { acc }) }\n"
 
 data fe_user_fold_source: String = "module fold_encoding_user_fold\n\nfn fold(xs: Int, init: Int, f: Int) -> Int { init }\n\nfn caller(x: Int) -> Int { fold(x, 0, fn(acc, _) { acc }) }\n"
@@ -227,6 +229,60 @@ fn piped_chain_takes_the_whole_prefix_as_its_collection_verdict() -> Bool {
   fe_pipe_slots_hold(source: fe_pipe_chain_source) && !fe_domain_is_the_bare_input(source: fe_pipe_chain_source)
 }
 
+// ---- the step's binders are binders ---------------------------------------------------------------
+// The Loop's positional child is the step as a function value (gunbc.plans.for_while_loop_sugar §2.3,
+// body: (acc, x) => step), so BOTH of its binders -- the carrier `found` and the element `e` -- are
+// parameters of that Arrow, named on its domain, and resolve scopes them over the step body as it
+// scopes any Arrow's parameters. The shape claim reads the two names off the Arrow's domain; the
+// resolve claim is the route: a step body reading both binders resolves with nothing unbound.
+
+fn fe_domain_names(domain: Node) -> List<Symbol> {
+  fold(domain.children, init: [], f: fn(acc, e) {
+    match e.label {
+      Named { name: n } => list_snoc_item(xs: acc, item: n)
+      Positional => acc
+    }
+  })
+}
+
+fn fe_step_binders(encoding: Node) -> List<Symbol> {
+  match fold_recurrence_loop(encoding: encoding) {
+    Absent => []
+    Present { value: loop } =>
+      match list_at_optional(xs: node_positional_child_targets(node: loop), index: 0) {
+        Absent => []
+        Present { value: step } =>
+          match arrow_first_positional_target(children: step.children) {
+            FirstPositionalFound { target: domain } => fe_domain_names(domain: domain)
+            FirstPositionalAbsent => []
+          }
+      }
+  }
+}
+
+fn fold_step_carries_carrier_and_element_binders_verdict() -> Bool {
+  match fe_normalized(source: fe_binders_source) {
+    Absent => false
+    Present { value: tree } =>
+      match fe_first_encoding(root: tree.root) {
+        Absent => false
+        Present { value: encoding } =>
+          match fe_step_binders(encoding: encoding) {
+            Cons { head: a, tail: Cons { head: b, tail: Empty } } =>
+              (symbol_lexeme(sym: a) == "found") && (symbol_lexeme(sym: b) == "e")
+            _ => false
+          }
+      }
+  }
+}
+
+fn fold_step_binders_resolve_in_the_step_body_verdict() -> Bool {
+  match fe_resolved(source: fe_binders_source) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // ---- the drop mutations, measured by the real conservation check ----------------------------------
 
 type FeDrop
@@ -395,7 +451,7 @@ fn fold_like_name_outside_the_roster_is_not_desugared_verdict() -> Bool {
 // drives the front end over a supplied snippet and inspects one verdict; the front end, not the
 // assertion, is the expense, and MQ-5's floor run 36490720680 measured each claim over the
 // new-witness budget for exactly that reason (DESIGN section 3, a witness discriminates at one
-// interface). The claims below read one field each of this record. The stored value is nine Bools:
+// interface). The claims below read one field each of this record. The stored value is eleven Bools:
 // no Node, no context, no closure, so it is portable.
 type FeOutcomes {
   fold_encoding_carries_each_operand_at_its_authored_occurrence: Bool
@@ -407,6 +463,8 @@ type FeOutcomes {
   fold_like_name_outside_the_roster_is_not_desugared: Bool
   piped_fold_takes_the_pipe_input_as_its_collection: Bool
   piped_chain_takes_the_whole_prefix_as_its_collection: Bool
+  fold_step_carries_carrier_and_element_binders: Bool
+  fold_step_binders_resolve_in_the_step_body: Bool
 }
 
 fn fe_outcomes() -> FeOutcomes {
@@ -419,7 +477,9 @@ fn fe_outcomes() -> FeOutcomes {
     user_declared_fold_refuses_at_the_head: user_declared_fold_refuses_at_the_head_verdict(),
     fold_like_name_outside_the_roster_is_not_desugared: fold_like_name_outside_the_roster_is_not_desugared_verdict(),
     piped_fold_takes_the_pipe_input_as_its_collection: piped_fold_takes_the_pipe_input_as_its_collection_verdict(),
-    piped_chain_takes_the_whole_prefix_as_its_collection: piped_chain_takes_the_whole_prefix_as_its_collection_verdict()
+    piped_chain_takes_the_whole_prefix_as_its_collection: piped_chain_takes_the_whole_prefix_as_its_collection_verdict(),
+    fold_step_carries_carrier_and_element_binders: fold_step_carries_carrier_and_element_binders_verdict(),
+    fold_step_binders_resolve_in_the_step_body: fold_step_binders_resolve_in_the_step_body_verdict()
   }
 }
 
@@ -457,4 +517,12 @@ test fn piped_fold_takes_the_pipe_input_as_its_collection() -> Bool {
 
 test fn piped_chain_takes_the_whole_prefix_as_its_collection() -> Bool {
   fe_outcomes().piped_chain_takes_the_whole_prefix_as_its_collection
+}
+
+test fn fold_step_carries_carrier_and_element_binders() -> Bool {
+  fe_outcomes().fold_step_carries_carrier_and_element_binders
+}
+
+test fn fold_step_binders_resolve_in_the_step_body() -> Bool {
+  fe_outcomes().fold_step_binders_resolve_in_the_step_body
 }
