@@ -1058,7 +1058,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.occurrence_role.occurrence_role.roles_fixture_outcome",
   "v2.test.claim.parse.uses_clause.uses_parsed",
   "v2.test.claim.parse.uses_clause.uses_refusal",
-  "v2.test.claim.parse.uses_clause.uses_token_start",
   "v2.test.claim.occurrence_role.occurrence_role.binders_fixture_outcome",
   "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_parsed",
   "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_planted",

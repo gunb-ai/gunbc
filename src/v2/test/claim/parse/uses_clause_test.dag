@@ -1,23 +1,11 @@
 module v2.test.claim.parse.uses_clause
 
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
-import v2.std.diagnostic {
-  Accepted,
-  ByteRange,
-  DeclarationLocus,
-  InvariantPortLocus,
-  NodeLocus,
-  Rejected,
-  SourcePortLocus,
-  Textual,
-  WholeFile,
-  diagnostics_fatal
-}
-import v2.std.integer { Int }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -39,35 +27,29 @@ fn uses_parsed() -> Bool {
   }
 }
 
-// The normalize refusal's reason and start offset; offset -1 when there is no byte extent.
+// The normalize refusal's reason, and whether it is anchored at the clause. A lowering refusal is a
+// NodeLocus (v2.std.diagnostic node_locus), so "located at the clause" means its anchor IS the
+// uses_clause production shell, not the fn around it.
 type UsesRefusal {
   is_unmodeled: Bool
-  start: Int
+  at_clause: Bool
 }
 
 fn uses_refusal() -> UsesRefusal {
   match conservation_subject_of_text(path: "probe_uses.dag", text: uses_source).normalized {
-    Accepted { value: _, diagnostics: _ } => UsesRefusal { is_unmodeled: false, start: -1 }
+    Accepted { value: _, diagnostics: _ } => UsesRefusal { is_unmodeled: false, at_clause: false }
     Rejected { diagnostics: d } =>
       UsesRefusal {
         is_unmodeled: diagnostics_fatal(d: d).reason == ^body_lowering_reason_uses_clause_unmodeled,
-        start: match diagnostics_fatal(d: d).at {
-          SourcePortLocus { anchor: _, file: _, extent: ByteRange { start: s, end: _ } } => s
-          SourcePortLocus { anchor: _, file: _, extent: WholeFile } => -1
-          Textual { file: _, extent: _ } => -1
-          NodeLocus { anchor: _ } => -1
-          InvariantPortLocus { anchor: _, invariant: _ } => -1
-          DeclarationLocus { declaration: _ } => -1
+        at_clause: match diagnostics_fatal(d: d).at {
+          NodeLocus { anchor: a } =>
+            match parse_production_emitted_identity_optional(node: a.at) {
+              Present { value: id } => id == ^dag_surface_uses_clause
+              Absent => false
+            }
+          _ => false
         }
       }
-  }
-}
-
-fn uses_token_start() -> Int {
-  match tokenize(text: uses_source, file: ^uses_clause_probe, rules: dag_lex()) {
-    Rejected { diagnostics: _ } => -1
-    Accepted { value: ts, diagnostics: _ } =>
-      fold(ts.all, init: -1, f: fn(acc, t) { if acc < 0 && t.lexeme == "uses" { t.start } else { acc } })
   }
 }
 
@@ -75,6 +57,4 @@ test fn a_fn_with_a_uses_clause_parses_holds() -> Bool { uses_parsed() }
 
 test fn a_fn_with_a_uses_clause_refuses_at_the_clause_holds() -> Bool { uses_refusal().is_unmodeled }
 
-test fn the_uses_refusal_is_located_at_the_clause_holds() -> Bool {
-  uses_token_start() > 0 && uses_refusal().start == uses_token_start()
-}
+test fn the_uses_refusal_is_located_at_the_clause_holds() -> Bool { uses_refusal().at_clause }
