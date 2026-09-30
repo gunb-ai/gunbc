@@ -134,10 +134,15 @@ import v2.std.node {
   Instantiation,
   symbol_eq,
   symbol_lexeme,
+  labeled_named_is,
   well_formed,
 }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
+  NamedChildAmbiguous,
+  NamedChildFound,
+  NamedChildMissing,
+  named_child_lookup,
   construct_field_edges,
   construct_tag_reading,
   ConstructTagAuthored,
@@ -155,8 +160,11 @@ import v2.std.map_introduction {
   MapIntroductionEntryNodes,
   MapIntroductionKeyRepeated,
   MapIntroductionKeysDistinct,
-  edge_is_map_literal_entries,
-  map_literal_entries_optional,
+  MapLiteralEntriesMalformed,
+  MapLiteralEntriesNone,
+  MapLiteralEntriesPresent,
+  map_literal_entries,
+  map_literal_entries_label,
   lower_map_introduction,
   map_introduction_duplicate_key,
   map_introduction_expected_head_is_map
@@ -1894,20 +1902,15 @@ fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpecta
 // value elaborates through this same writer; each key is walked as the ordinary child it is.
 // Nothing is unified here, and infer still checks every value against V afterwards.
 fn resolve_elided_construct_is_map_literal(n: Node) -> Bool {
-  any(xs: skip(xs: n.children, n: 1), predicate: fn(e) { edge_is_map_literal_entries(e: e) })
-}
-
-// The pairs as positional edges, in authored order; none for `{}`.
-fn resolve_map_literal_items(n: Node) -> List<Edge> {
-  match map_literal_entries_optional(n: n) {
-    Absent => []
-    Present { value: pairs } =>
-      fold(pairs, init: [], f: fn(acc, p) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: p }) })
+  match map_literal_entries(n: n) {
+    MapLiteralEntriesNone => false
+    MapLiteralEntriesPresent { pairs: _ } => true
+    MapLiteralEntriesMalformed => true
   }
 }
 
+
 fn resolve_map_literal_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
-  let items = resolve_map_literal_items(n: n)
   let type_args = node_positional_child_targets(node: x.expected)
   match list_at_optional(xs: type_args, index: 1) {
     Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_expected_type_not_closed)
@@ -1918,11 +1921,11 @@ fn resolve_map_literal_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation)
           match resolve_map_first_name_keyed_item(items: skip(xs: n.children, n: 1)) {
             Present { value: offending } => resolve_anonymous_record_refused(n: offending, reason: ^resolve_anonymous_map_name_key)
             Absent =>
-              match resolve_map_pairs(pairs: resolve_map_pair_targets(items: items)) {
+              match resolve_map_literal_pairs(n: n) {
                 ResolveMapPairMalformed { at: p } => resolve_anonymous_record_refused(n: p, reason: ^resolve_anonymous_map_entry_malformed)
                 ResolveMapPairsRead { entries: entries } =>
                   if resolve_map_key_type_is_string_literal_type(ctx: ctx, position: x.position, t: key_type) {
-                    resolve_map_literal_entries(ctx: ctx, n: n, items: items, entries: entries, value_x: ResolveExpectation { expected: value_type, position: x.position, at_use_site: x.at_use_site })
+                    resolve_map_literal_entries(ctx: ctx, n: n, entries: entries, value_x: ResolveExpectation { expected: value_type, position: x.position, at_use_site: x.at_use_site })
                   } else {
                     match list_at_optional(xs: entries, index: 0) {
                       Present { value: first } => resolve_anonymous_record_refused(n: first.key, reason: ^resolve_anonymous_map_key_kind_mismatch)
@@ -1939,7 +1942,7 @@ fn resolve_map_first_name_keyed_item(items: List<Edge>) -> Optional<Node> {
   fold(items, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
-      Absent => if edge_is_map_literal_entries(e: e) { optional_absent() } else { optional_present(value: e.target) }
+      Absent => if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entries_label()) { optional_absent() } else { optional_present(value: e.target) }
     }
   })
 }
@@ -1962,21 +1965,11 @@ fn resolve_map_key_type_is_string_literal_type(ctx: ResolveContext, position: Qu
 // A pair is a tag-elided construct carrying `key` and `value` (body lowering
 // body_lower_map_literal_entry_edge); these read them back.
 fn resolve_map_entry_field(entry: Node, field: Symbol) -> Optional<Node> {
-  resolve_named_edge_target_optional(edges: skip(xs: entry.children, n: 1), field: field)
-}
-
-// The target of a map entry's first edge labelled `field`.
-fn resolve_named_edge_target_optional(edges: List<Edge>, field: Symbol) -> Optional<Node> {
-  fold(edges, init: optional_absent(), f: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match e.label {
-          Named { name: nm } => if symbol_eq(a: nm, b: field) { optional_present(value: e.target) } else { optional_absent() }
-          Positional => optional_absent()
-        }
-    }
-  })
+  match named_child_lookup(root: entry, name: field) {
+    NamedChildFound { target: t } => optional_present(value: t)
+    NamedChildMissing => optional_absent()
+    NamedChildAmbiguous => optional_absent()
+  }
 }
 
 // A KEY'S TEXT, OR NONE, read through the ONE string decoder: a string literal lowers to a terminal
@@ -2018,6 +2011,16 @@ fn resolve_map_pair_targets(items: List<Edge>) -> List<Node> {
   fold(items, init: [], f: fn(acc, e) { list_snoc_item(xs: acc, item: e.target) })
 }
 
+// The literal's pairs, read through v2.std.map_introduction map_literal_entries: `{}` has none, and a
+// malformed entries carrier refuses at the literal rather than reading as empty.
+fn resolve_map_literal_pairs(n: Node) -> ResolveMapPairs {
+  match map_literal_entries(n: n) {
+    MapLiteralEntriesNone => ResolveMapPairsRead { entries: [] }
+    MapLiteralEntriesMalformed => ResolveMapPairMalformed { at: n }
+    MapLiteralEntriesPresent { pairs: pairs } => resolve_map_pairs(pairs: pairs)
+  }
+}
+
 // THE KEYS' TEXTS, READ TOTALLY: one text per entry, in order, or the first key with no text, named.
 type ResolveMapKeyTexts
   = ResolveMapKeyTextsRead { texts: List<String> }
@@ -2039,7 +2042,7 @@ fn resolve_map_key_texts(entries: List<MapIntroductionEntryNodes>) -> ResolveMap
 // The key law sees one text per entry, so its indices are entry indices.
 // The pairs are walked under a Transform carrier (positional edges only) that never leaves this
 // arm; the resolved pairs are read again through resolve_map_pairs, never defaulted.
-fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, items: List<Edge>, entries: List<MapIntroductionEntryNodes>, value_x: ResolveExpectation) -> ResolveNodeWalk {
+fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, entries: List<MapIntroductionEntryNodes>, value_x: ResolveExpectation) -> ResolveNodeWalk {
   match resolve_map_key_texts(entries: entries) {
     ResolveMapKeyTextless { at: key } => resolve_anonymous_record_refused(n: key, reason: ^resolve_anonymous_map_key_text_unavailable)
     ResolveMapKeyTextsRead { texts: texts } =>
@@ -2050,8 +2053,8 @@ fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, items: List<Edge>, 
             Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_duplicate_key)
           }
         MapIntroductionKeysDistinct =>
-          let walked = fold(items, init: child_walk_init(), f: fn(acc, e) {
-            child_walk_step(w: acc, e: e, r: resolve_map_entry_walk(ctx: ctx, entry: e.target, value_x: value_x))
+          let walked = fold(entries, init: child_walk_init(), f: fn(acc, e) {
+            child_walk_step(w: acc, e: Edge { label: Positional, target: e.source }, r: resolve_map_entry_walk(ctx: ctx, entry: e.source, value_x: value_x))
           })
           let carrier = node_with_occurrence_id(kind: ComputationNode { behavior: Transform }, children: [], occurrence_id: n.occurrence_id)
           match child_walk_node(w: walked, n: carrier) {

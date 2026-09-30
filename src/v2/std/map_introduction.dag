@@ -8,7 +8,7 @@ import v2.std.integer { Int }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Edge, Named, Node, Positional, Symbol, Transform, node_with_occurrence_id }
-import v2.std.node_query { construct_node }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, construct_node, named_child_lookup }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node }
 
 // THE MAP-LITERAL INTRODUCTION, ONE AUTHORITY FOR ITS PATHS, ITS CONSTRUCTOR AND ITS KEY LAW
@@ -34,32 +34,29 @@ fn map_literal_entry_label() -> Symbol {
   ^map_literal_entry
 }
 
-fn edge_is_map_literal_entry(e: Edge) -> Bool {
-  match e.label {
-    Named { name: n } => n == map_literal_entry_label()
-    Positional => false
-  }
-}
-
 fn map_literal_entries_label() -> Symbol {
   ^map_literal_entries
 }
 
-fn edge_is_map_literal_entries(e: Edge) -> Bool {
-  match e.label {
-    Named { name: n } => n == map_literal_entries_label()
-    Positional => false
-  }
-}
+// THE AUTHORED PAIRS OF A STRING-KEYED BRACE, read totally through the one named-child lookup
+// (v2.std.node_query named_child_lookup): no entries edge, exactly one carrying a list literal of
+// pairs, or a malformed carrier (two entries edges, or one that is not a list literal) -- which the
+// map arm refuses rather than reading as empty.
+type MapLiteralEntries
+  = MapLiteralEntriesNone
+  | MapLiteralEntriesPresent { pairs: List<Node> }
+  | MapLiteralEntriesMalformed
 
-// The authored pairs of a string-keyed brace, in order; Absent for any node that carries none.
-fn map_literal_entries_optional(n: Node) -> Optional<List<Node>> {
-  fold(n.children, init: optional_absent(), f: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if edge_is_map_literal_entries(e: e) { list_introduction_elements_optional(node: e.target) } else { optional_absent() }
-    }
-  })
+fn map_literal_entries(n: Node) -> MapLiteralEntries {
+  match named_child_lookup(root: n, name: map_literal_entries_label()) {
+    NamedChildMissing => MapLiteralEntriesNone
+    NamedChildAmbiguous => MapLiteralEntriesMalformed
+    NamedChildFound { target: t } =>
+      match list_introduction_elements_optional(node: t) {
+        Present { value: pairs } => MapLiteralEntriesPresent { pairs: pairs }
+        Absent => MapLiteralEntriesMalformed
+      }
+  }
 }
 
 fn map_introduction_head_path() -> QualifiedName {
