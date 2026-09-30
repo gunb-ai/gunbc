@@ -68,7 +68,7 @@ test fn the_remote_host_answers_production_commands_in_coreutils_format() -> Boo
 
 // THE FILESYSTEM'S PARENT RULE: a write under a directory the model does not hold is not_found.
 test fn a_write_needs_its_parent_directory() -> Bool {
-  let fs = ModeledFilesystem { directories: ["/", "/run"], files: [] }
+  let fs = ModeledFilesystem { directories: ["/", "/run"], files: [], refused_reads: [] }
   fs_parent(path: "/run/sol.pid") == "/run" && fs_parent(path: "/x") == "/" && fs_parent(path: "target/a.pub") == "target"
     && match fs_write(fs: fs, path: "/var/x", content: "1", create_new: false).observation {
       extdeps.transports.file.FileOperationFailed { kind: extdeps.filesystem.filesystem_io.FilesystemNotFound, error: _ } => true
@@ -104,6 +104,6 @@ fn read_byte_count(fs: ModeledFilesystem, path: String) -> Int {
 }
 
 test fn a_modeled_read_counts_utf8_bytes() -> Bool {
-  let fs = ModeledFilesystem { directories: ["/", "/t"], files: [ModeledFile { path: "/t/a", content: "é" }, ModeledFile { path: "/t/b", content: "abc" }] }
+  let fs = ModeledFilesystem { directories: ["/", "/t"], files: [ModeledFile { path: "/t/a", content: "é" }, ModeledFile { path: "/t/b", content: "abc" }], refused_reads: [] }
   read_byte_count(fs: fs, path: "/t/a") == 2 && read_byte_count(fs: fs, path: "/t/b") == 3
 }

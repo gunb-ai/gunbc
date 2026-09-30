@@ -1,5 +1,6 @@
 module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
 
+import gunbc.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
@@ -12,14 +13,15 @@ import v2.std.witness_evaluation {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.bmc_model { BmcWorld, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired }
-import gunbc.filesystem_model { ModeledFilesystem, ModeledFile }
+import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_refusing_reads_of, fs_with_file }
 import gunbc.process_environment_model { ModeledVariable }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile }
 import gunbc.wall_clock_model { ModeledWallClock, ModeledClockStep }
 import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage, MegaRacCdRow, megarac_cleared_cd }
 import gunbc.machine_intake_mtcollins1_boot_dry_realization {
   MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
-  mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher,
+  mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher, with_fs,
+  worker_process_started, worker_process_killed, proc_stat_path, proc_stat_line, worker_process,
 }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, OperationObserved, OperationWorkerKilled,
@@ -176,11 +178,21 @@ fn healthy_media() -> MegaRacMediaWorld {
   }
 }
 
+// The worker host's boot, and the boot worker's own process (pid, start tick) as procfs shows it.
+data worker_boot_id: String = "73c8153e-0e0e-4480-a36c-bc7560c50e8b"
+data worker_pid_namespace: String = "pid:[4026531836]"
+data first_worker_pid: Int = 3100
+data first_worker_start: Int = 5000
+
 fn worker_filesystem() -> ModeledFilesystem {
-  ModeledFilesystem {
-    directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String],
-    files: [ModeledFile { path: credential_path, content: "secret" }],
-  }
+  worker_process_started(
+    fs: ModeledFilesystem {
+      directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String],
+      files: [ModeledFile { path: credential_path, content: "secret" }],
+      refused_reads: [],
+    },
+    boot_id: worker_boot_id, pid_namespace: worker_pid_namespace, pid: first_worker_pid, start_ticks: first_worker_start,
+  )
 }
 
 fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
@@ -323,18 +335,22 @@ test fn a_healthy_census_completes_and_releases_its_collector() -> Bool {
 // THE SAME UNIT HELD BY ANOTHER RUN. Before this attempt starts, a different run's boot holds the
 // unit (acquired through the production file_hold_acquire, into the same store). This attempt is
 // refused at the hold with the controller untouched: no controller write of any kind appears in its
-// route, and it never starts a SOL collector.
+// route, and it never starts a SOL collector. The other run is still running -- its process is in
+// procfs -- so it is a live holder, not a dead one to recover.
 test fn a_second_run_for_a_held_unit_writes_nothing_to_the_controller() -> Bool {
+  let base = world_with_console(lines: [])
+  let other_running = with_fs(w: base, fs: fs_with_file(fs: base.fs, path: proc_stat_path(pid: 2900), content: proc_stat_line(p: worker_process(pid: 2900, start_ticks: 100))))
   let prior = evaluate_in_witness_frame(
-    frame: matrix_frame(world: world_with_console(lines: [])),
-    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr)) }
+    frame: matrix_frame(world: other_running),
+    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr)) }
   )
   match prior {
     WitnessReturned { state } => match state {
       Absent => false
       Present { value: held } => match run_attempt(world: held) {
         WitnessReturned { value, route } =>
-          string_contains(s: outcome_reason(a: value), pattern: "is held by 'mtcollins1-boot:4141'")
+          string_contains(s: outcome_reason(a: value), pattern: "is held by 'mtcollins1-boot:4141@")
+            && string_contains(s: outcome_reason(a: value), pattern: "which is alive")
             && count(filter(route, r => is_controller_write(r: r))) == 0
             && count_named(route: route, name: "gunbc.machine_intake.sol_hold.ActivateHeld") == 0
         _ => false
@@ -540,14 +556,19 @@ test fn a_two_socket_answer_is_a_truthful_topology_refusal() -> Bool {
 
 // THE WORKER DIES RIGHT AFTER THE START-MEDIA WRITE COMMITS, before its reply. The realization is the
 // matrix's own with that one handler wrapped: the controller takes the start, and the worker is gone.
-fn killed_after_start_media(realization: OperationRealization<MtCollins1BootWorld>) -> OperationRealization<MtCollins1BootWorld> {
+// THE WORKER DIES RIGHT AFTER StartMedia COMMITS: the dispatch reports it killed, and the kernel
+// removes the dead process's /proc entry. stopped_after_start_media is the same interruption with the
+// worker's process STILL RUNNING (the dispatch stopped being observed; the holder did not exit) -- the
+// live-holder control.
+fn interrupted_after_start_media(realization: OperationRealization<MtCollins1BootWorld>, process_exits: Bool) -> OperationRealization<MtCollins1BootWorld> {
   OperationRealization {
     identity: realization.identity, initial: realization.initial, epoch: realization.epoch, advance: realization.advance,
     bindings: map(realization.bindings, b => if b.at.operation == "StartMedia" {
       OperationBinding { at: b.at, handler: fn(state, call) {
         let inner = b.handler
         match inner(state, call) {
-          OperationObserved { observation: _, state: after, elapsed: _ } => OperationWorkerKilled { committed: true, state: after }
+          OperationObserved { observation: _, state: after, elapsed: _ } =>
+            OperationWorkerKilled { committed: true, state: if process_exits { with_fs(w: after, fs: worker_process_killed(fs: after.fs, pid: first_worker_pid)) } else { after } }
           other => other
         }
       } }
@@ -555,34 +576,92 @@ fn killed_after_start_media(realization: OperationRealization<MtCollins1BootWorl
   }
 }
 
-fn as_another_run(w: MtCollins1BootWorld, run_id: String) -> MtCollins1BootWorld {
-  let env = map(w.environment, v => if v.name == "GITHUB_RUN_ID" { ModeledVariable { name: v.name, value: run_id } } else { v })
-  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
+fn killed_after_start_media(realization: OperationRealization<MtCollins1BootWorld>) -> OperationRealization<MtCollins1BootWorld> {
+  interrupted_after_start_media(realization: realization, process_exits: true)
 }
 
-// PINNED: THE NEXT ATTEMPT IS LOCKED OUT BY THE DEAD RUN'S HOLD. The interrupted run never released the
-// unit, so a new run finds it held by the dead one and refuses with the controller untouched -- safe,
-// but it cannot reconcile: nothing retires a hold whose owner is gone, so every later attempt refuses
-// until an operator intervenes (#12423: interrupted operations must be reconciled without undocumented
-// preparation). When dead-owner reconciliation lands this case flips.
-test fn pinned_an_interrupted_attempt_locks_out_the_next_one() -> Bool {
-  let realization = killed_after_start_media(realization: mtcollins1_boot_dry_realization(identity: realization_identity, initial: world_with_console(lines: []), epoch: virtual_clock_origin()))
+fn stopped_after_start_media(realization: OperationRealization<MtCollins1BootWorld>) -> OperationRealization<MtCollins1BootWorld> {
+  interrupted_after_start_media(realization: realization, process_exits: false)
+}
+
+// THE NEXT RUN IS A NEW WORKER PROCESS on the same host: a new run id, and its own pid and start tick
+// in procfs. The first worker's /proc entry is left as the interruption left it.
+fn as_another_run(w: MtCollins1BootWorld, run_id: String) -> MtCollins1BootWorld {
+  as_another_run_in(w: w, run_id: run_id, pid_namespace: worker_pid_namespace)
+}
+
+fn as_another_run_in(w: MtCollins1BootWorld, run_id: String, pid_namespace: String) -> MtCollins1BootWorld {
+  let env = map(w.environment, v => if v.name == "GITHUB_RUN_ID" { ModeledVariable { name: v.name, value: run_id } } else { v })
+  let fs = worker_process_started(fs: w.fs, boot_id: worker_boot_id, pid_namespace: pid_namespace, pid: first_worker_pid + 1, start_ticks: first_worker_start + 9000)
+  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
+}
+
+// THE NEXT ATTEMPT RECOVERS THE DEAD RUN'S HOLD (finding 2, repaired in #12555). The interrupted run
+// never released the unit; its process is gone from procfs, so the next run observes the holder dead,
+// frees the hold and proceeds to the controller -- no operator step (#12423: interrupted operations are
+// reconciled without undocumented preparation). The red is the old lockout: "is held by" with no write.
+// The two controls beside it differ only in what procfs says of the holder: still running, and a stat
+// read the host refuses. Neither is ever recovered, and neither writes to the controller.
+fn resumed_after(realization: OperationRealization<MtCollins1BootWorld>, refuse_holder_stat: Bool) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld>? {
+  resumed_in(realization: realization, refuse_holder_stat: refuse_holder_stat, pid_namespace: worker_pid_namespace)
+}
+
+fn resumed_in(realization: OperationRealization<MtCollins1BootWorld>, refuse_holder_stat: Bool, pid_namespace: String) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld>? {
   match evaluate_in_witness_frame(frame: matrix_frame_over(realization: realization), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
     WitnessInterrupted { at, state, now: interrupted_clock } => {
-      let next = as_another_run(w: state, run_id: "4243")
-      let resumed = evaluate_in_witness_frame(
-        frame: matrix_frame_over(realization: mtcollins1_boot_dry_realization(identity: realization_identity, initial: next, epoch: interrupted_clock)),
-        subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }
-      )
-      at.invocation.at.operation == "StartMedia"
-        && match at.outcome { DispatchWorkerKilled { committed: c } => c _ => false }
-        && match resumed {
-          WitnessReturned { value, route } =>
-            string_contains(s: outcome_reason(a: value), pattern: "is held by 'mtcollins1-boot:4242'")
-              && count(filter(route, r => is_controller_write(r: r))) == 0
-          _ => false
-        }
+      let another = as_another_run_in(w: state, run_id: "4243", pid_namespace: pid_namespace)
+      let next = if refuse_holder_stat { with_fs(w: another, fs: fs_refusing_reads_of(fs: another.fs, path: proc_stat_path(pid: first_worker_pid))) } else { another }
+      if at.invocation.at.operation != "StartMedia" { none } else {
+        Present { value: evaluate_in_witness_frame(
+          frame: matrix_frame_over(realization: mtcollins1_boot_dry_realization(identity: realization_identity, initial: next, epoch: interrupted_clock)),
+          subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }
+        ) }
+      }
     }
+    _ => none
+  }
+}
+
+fn fresh_realization() -> OperationRealization<MtCollins1BootWorld> {
+  mtcollins1_boot_dry_realization(identity: realization_identity, initial: world_with_console(lines: []), epoch: virtual_clock_origin())
+}
+
+test fn an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one() -> Bool {
+  match resumed_after(realization: killed_after_start_media(realization: fresh_realization()), refuse_holder_stat: false) {
+    Present { value: WitnessReturned { value, route } } =>
+      !string_contains(s: outcome_reason(a: value), pattern: "is held by")
+        && count(filter(route, r => is_controller_write(r: r))) > 0
+    _ => false
+  }
+}
+
+test fn a_live_holder_still_blocks_the_next_attempt() -> Bool {
+  match resumed_after(realization: stopped_after_start_media(realization: fresh_realization()), refuse_holder_stat: false) {
+    Present { value: WitnessReturned { value, route } } =>
+      string_contains(s: outcome_reason(a: value), pattern: "which is alive")
+        && count(filter(route, r => is_controller_write(r: r))) == 0
+    _ => false
+  }
+}
+
+test fn an_unobservable_holder_is_refused_not_recovered() -> Bool {
+  match resumed_after(realization: killed_after_start_media(realization: fresh_realization()), refuse_holder_stat: true) {
+    Present { value: WitnessReturned { value, route } } =>
+      string_contains(s: outcome_reason(a: value), pattern: "whose liveness could not be observed")
+        && count(filter(route, r => is_controller_write(r: r))) == 0
+    _ => false
+  }
+}
+
+// A SUCCESSOR IN ANOTHER PID NAMESPACE CANNOT LOOK (review 72326). The holder is dead and its
+// /proc entry gone, exactly as in the recovery case above; the only difference is that the next run
+// reads a different /proc/self/ns/pid. From there a missing pid proves nothing, so the hold is
+// refused, never recovered, and nothing is written. The red is recovery across namespaces.
+test fn a_successor_in_another_pid_namespace_refuses_rather_than_recovering() -> Bool {
+  match resumed_in(realization: killed_after_start_media(realization: fresh_realization()), refuse_holder_stat: false, pid_namespace: "pid:[4026532999]") {
+    Present { value: WitnessReturned { value, route } } =>
+      string_contains(s: outcome_reason(a: value), pattern: "its pid cannot be looked up from here")
+        && count(filter(route, r => is_controller_write(r: r))) == 0
     _ => false
   }
 }

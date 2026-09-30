@@ -69,6 +69,10 @@ fn mtcollins1_boot_matrix_enrolment_dead_band_observed_only() -> List<EnrolmentD
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_sol_loss_mid_boot_is_reported_before_the_deadline",
     reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36648847499 of gunbc#12533 at bd99cbb4899 observed 332 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
   },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one",
+    reason: "the real boot entry end to end over the dry realization TWICE (the killed run up to StartMedia, then the next run over the world it left), each run's cost gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36649110326 of gunbc#12555 at b3bf1ff433 observed 366 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
   ]
 }
 
