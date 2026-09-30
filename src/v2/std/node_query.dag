@@ -43,6 +43,7 @@ import v2.std.node {
   node_lowered_from,
   node_with_occurrence_id,
   construct_tag_marker,
+  construct_tag_elided_marker,
   symbol_eq,
   symbol_intern_lexeme,
 }
@@ -321,11 +322,39 @@ fn construct_node(reference: Node, field_edges: List<Edge>, source: Node) -> Nod
   )
 }
 
-// The tag of a construct: the reference its marked first edge targets. Anything else -- a payload
-// Conj, a domain Conj, a declaration reference, a field projection, a bare record -- has none. The
-// answer is the reference NODE, at whichever stage the tree is: a spine before resolution, a
-// declaration reference after it.
-fn construct_tag_optional(n: Node) -> Optional<Node> {
+// AN ANONYMOUS RECORD LITERAL IS THE SAME CONSTRUCT WITH ITS TAG ELIDED: the marked tag edge is
+// present and targets the v2.std.node construct_tag_elided_marker atom, never a guessed reference.
+// Resolve's construct-tag writer replaces that target with the expected type's record reference, or
+// refuses (docs/plans/anonymous-record-literal-design.md).
+fn construct_tag_elided_reference(source: Node) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Atom { identity: construct_tag_elided_marker() } },
+    children: [],
+    occurrence_id: source.occurrence_id
+  )
+}
+
+fn construct_node_elided(field_edges: List<Edge>, source: Node) -> Node {
+  construct_node(reference: construct_tag_elided_reference(source: source), field_edges: field_edges, source: source)
+}
+
+fn construct_tag_target_is_elided(target: Node) -> Bool {
+  match target.kind {
+    TypeNode { connective: Atom { identity: id } } => symbol_eq(a: id, b: construct_tag_elided_marker())
+    _ => false
+  }
+}
+
+// The one reader of the elided case. A construct whose tag is elided answers true; an authored or
+// resolved construct, and anything that is not a construct, answers false.
+fn construct_tag_is_elided(n: Node) -> Bool {
+  match construct_tag_edge_target_optional(n: n) {
+    Present { value: target } => construct_tag_target_is_elided(target: target)
+    Absent => false
+  }
+}
+
+fn construct_tag_edge_target_optional(n: Node) -> Optional<Node> {
   match n.kind {
     TypeNode { connective: Conj } =>
       match first(n.children) {
@@ -345,9 +374,25 @@ fn construct_tag_optional(n: Node) -> Optional<Node> {
   }
 }
 
+// The tag of a construct: the reference its marked first edge targets. Anything else -- a payload
+// Conj, a domain Conj, a declaration reference, a field projection, a bare record -- has none. The
+// answer is the reference NODE, at whichever stage the tree is: a spine before resolution, a
+// declaration reference after it.
+fn construct_tag_optional(n: Node) -> Optional<Node> {
+  match construct_tag_edge_target_optional(n: n) {
+    Present { value: target } =>
+      if construct_tag_target_is_elided(target: target) {
+        optional_absent()
+      } else {
+        optional_present(value: target)
+      }
+    Absent => optional_absent()
+  }
+}
+
 // The constructor's PATH, read from the tag at either stage: the resolved declaration's path after
-// resolution, the authored path before it. Absent when the node is not a construct or its tag is
-// not a well-formed reference. A pre-resolution path is what the author wrote, not a declaration
+// resolution, the authored path before it. Absent when the node is not a construct, its tag is
+// elided, or its tag is not a well-formed reference. A pre-resolution path is what the author wrote, not a declaration
 // identity; only a resolved tree's answer names the declaration.
 fn construct_tag_path_optional(n: Node) -> Optional<QualifiedName> {
   match construct_tag_optional(n: n) {

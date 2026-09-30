@@ -1,0 +1,214 @@
+module v2.test.claim.body_lowering.anonymous_record
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_with_admission_context_policy
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
+import v2.std.node { Hash, Node, Symbol, content_hash, node_subtree_nodes }
+import v2.std.node_query { construct_tag_is_elided, construct_tag_optional, construct_tag_path_optional }
+import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_to_dotted_string }
+import v2.std.algebra { length }
+import v2.std.text { String }
+import v2.std.collection { List }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN ANONYMOUS RECORD LITERAL ELABORATES FROM ITS AUTHORED ANNOTATION, OR REFUSES.
+//
+// The subject is v2.compiler.resolve's construct-tag writer for a headless literal `{ f: v }`
+// (docs/plans/anonymous-record-literal-design.md): lowering writes the construct with its tag
+// ELIDED, and resolve writes the reference of the record the authored expected type names -- at a
+// data initializer, a declared return, a record field or an annotated list element -- or refuses
+// located. The oracle is CONTENT EQUALITY WITH THE HEADED FORM, never the v1 seed, which chooses by
+// field names (v1.compiler.emit_rust anonymous_record_struct_candidates).
+//
+// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL, as in v2.test.claim.body_lowering.qualified_construct:
+// tokenize, parse, normalize with body lowering, and resolve through
+// v2.compiler.name_resolve resolve_with_admission_context_policy, from inline source text.
+//
+// ArA and ArB have the SAME field set, and the headless literals are annotated with ArB, the one
+// declared SECOND: a chooser that read the field names would pick ArA or refuse as ambiguous, and
+// ar_the_annotation_chooses_not_the_field_names_holds reds either way.
+data ar_provider_source: String = "module v2.test.arp\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\n\ntype ArA {\n  n: Bool\n  m: Bool\n}\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ntype ArOuter {\n  inner: ArB\n  flag: Bool\n}\n\ntype ArShape\n  = ArV { n: Bool }\n  | ArW\n\ntype ArBox<T> {\n  top: T\n}\n\nfn ar_take(x: ArB) -> Bool { true }\n"
+
+data ar_headed_source: String = "module v2.test.ar_headed\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArA, ArB, ArOuter }\n\ndata ar_x: ArB = ArB { n: true, m: false }\n\ndata ar_outer: ArOuter = ArOuter { inner: ArB { n: false, m: true }, flag: true }\n\nfn ar_ret() -> ArB { ArB { n: true, m: true } }\n\nfn ar_list() -> FreeMonoid<ArB> { [ArB { n: true, m: false }, ArB { n: false, m: false }] }\n"
+
+data ar_headless_source: String = "module v2.test.ar_headless\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArA, ArB, ArOuter }\n\ndata ar_x: ArB = { n: true, m: false }\n\ndata ar_outer: ArOuter = { inner: { n: false, m: true }, flag: true }\n\nfn ar_ret() -> ArB { { n: true, m: true } }\n\nfn ar_list() -> FreeMonoid<ArB> { [{ n: true, m: false }, { n: false, m: false }] }\n"
+
+// Review condition 3: the expectation does not leak into a call argument.
+data ar_call_argument_source: String = "module v2.test.ar_call_argument\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB, ar_take }\n\nfn ar_call() -> Bool { ar_take(x: { n: true, m: true }) }\n"
+
+data ar_coproduct_source: String = "module v2.test.ar_coproduct\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArShape }\n\ndata ar_c: ArShape = { n: true }\n"
+
+// Review condition 1: the outer literal elaborates to ArBox; its field `top: T` is a binder, which
+// is not substituted, so the inner literal refuses.
+data ar_binder_source: String = "module v2.test.ar_binder\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB, ArBox }\n\ndata ar_box: ArBox<ArB> = { top: { n: true, m: true } }\n"
+
+// Review condition 2: resolve's choice is not proof. `m: 3` is an Int where ArB declares a Bool.
+data ar_value_mismatch_source: String = "module v2.test.ar_value_mismatch\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB }\n\ndata ar_bad: ArB = { n: true, m: 3 }\n"
+
+fn ar_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data ar_ingest: SourceRootIngest = [
+  ar_read(source: ar_provider_source, id: ^ar_provider_read, unit: ^ar_provider_cu, path: "src/v2/test/fixture/anonymous_record/provider.dag"),
+  ar_read(source: ar_headed_source, id: ^ar_headed_read, unit: ^ar_headed_cu, path: "src/v2/test/fixture/anonymous_record/headed.dag"),
+  ar_read(source: ar_headless_source, id: ^ar_headless_read, unit: ^ar_headless_cu, path: "src/v2/test/fixture/anonymous_record/headless.dag"),
+  ar_read(source: ar_call_argument_source, id: ^ar_call_argument_read, unit: ^ar_call_argument_cu, path: "src/v2/test/fixture/anonymous_record/call_argument.dag"),
+  ar_read(source: ar_coproduct_source, id: ^ar_coproduct_read, unit: ^ar_coproduct_cu, path: "src/v2/test/fixture/anonymous_record/coproduct.dag"),
+  ar_read(source: ar_binder_source, id: ^ar_binder_read, unit: ^ar_binder_cu, path: "src/v2/test/fixture/anonymous_record/binder.dag"),
+  ar_read(source: ar_value_mismatch_source, id: ^ar_value_mismatch_read, unit: ^ar_value_mismatch_cu, path: "src/v2/test/fixture/anonymous_record/value_mismatch.dag")
+]
+
+fn ar_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: ar_ingest, lm: dag_language_model())
+}
+
+fn ar_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match ar_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      )
+  }
+}
+
+fn ar_resolved_headed() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_headed") }
+fn ar_resolved_headless() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_headless") }
+fn ar_resolved_call_argument() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_call_argument") }
+fn ar_resolved_coproduct() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_coproduct") }
+fn ar_resolved_binder() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_binder") }
+fn ar_resolved_value_mismatch() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_value_mismatch") }
+
+// Every construct under the root, authored or elided, in tree order.
+fn ar_constructs(root: Node) -> List<Node> {
+  fold(node_subtree_nodes(root: root), init: Empty, f: fn(acc, n) {
+    if construct_tag_is_elided(n: n) {
+      list_snoc_item(xs: acc, item: n)
+    } else {
+      match construct_tag_optional(n: n) {
+        Present { value: _ } => list_snoc_item(xs: acc, item: n)
+        Absent => acc
+      }
+    }
+  })
+}
+
+fn ar_construct_hashes(o: Outcome<ResolvedTree>) -> List<Hash> {
+  match o {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: t, diagnostics: _ } =>
+      fold(ar_constructs(root: t.root), init: Empty, f: fn(acc, n) { list_snoc_item(xs: acc, item: content_hash(n: n)) })
+  }
+}
+
+fn ar_construct_paths(o: Outcome<ResolvedTree>) -> List<String> {
+  match o {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: t, diagnostics: _ } =>
+      fold(ar_constructs(root: t.root), init: Empty, f: fn(acc, n) {
+        match construct_tag_path_optional(n: n) {
+          Present { value: path } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: path))
+          Absent => list_snoc_item(xs: acc, item: "<elided>")
+        }
+      })
+  }
+}
+
+fn ar_pairwise_equal(xs: List<Hash>, ys: List<Hash>) -> Bool {
+  match xs {
+    Empty => match ys { Empty => true  Cons { head: _, tail: _ } => false }
+    Cons { head: x, tail: xt } =>
+      match ys {
+        Empty => false
+        Cons { head: y, tail: yt } => (x == y) && ar_pairwise_equal(xs: xt, ys: yt)
+      }
+  }
+}
+
+fn ar_refuses_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// Control 1 and 6: every headless literal -- a data initializer, a nested record field, a declared
+// return, and two annotated list elements -- resolves to the SAME construct as its headed spelling,
+// by content, and there are six of them, so a literal that stayed elided or vanished cannot pass.
+test fn ar_headless_literals_equal_their_headed_form_holds() -> Bool {
+  let headed = ar_construct_hashes(o: ar_resolved_headed())
+  (length(xs: headed) == 6) && ar_pairwise_equal(xs: headed, ys: ar_construct_hashes(o: ar_resolved_headless()))
+}
+
+// Control 5, the mutation: ArA and ArB share the field set, and ArA is declared first. The
+// annotation says ArB, so every elaborated tag is ArB. A chooser that read the field names would
+// answer ArA (or refuse as ambiguous) and this goes red.
+test fn ar_the_annotation_chooses_not_the_field_names_holds() -> Bool {
+  ar_construct_paths(o: ar_resolved_headless()) == [
+    "v2.test.arp.ArB", "v2.test.arp.ArOuter", "v2.test.arp.ArB", "v2.test.arp.ArB", "v2.test.arp.ArB", "v2.test.arp.ArB"
+  ]
+}
+
+// Control 8 (review condition 3): an annotation does not reach a call argument. The argument's
+// formal is typed, but that type is a fact about the callee and is not threaded; the literal refuses.
+test fn ar_a_call_argument_has_no_expected_type_holds() -> Bool {
+  ar_refuses_with(o: ar_resolved_call_argument(), reason: ^resolve_anonymous_record_no_expected_type)
+}
+
+// Control 3: a two-constructor coproduct is not a record, and no constructor is picked from it.
+test fn ar_a_coproduct_expectation_is_not_a_record_holds() -> Bool {
+  ar_refuses_with(o: ar_resolved_coproduct(), reason: ^resolve_anonymous_record_expected_type_not_record)
+}
+
+// Control 9 (review condition 1): the field type `T` is a binder and is not substituted, so the
+// inner literal has no record head.
+test fn ar_a_binder_field_type_is_not_substituted_holds() -> Bool {
+  ar_refuses_with(o: ar_resolved_binder(), reason: ^resolve_anonymous_record_expected_type_not_record)
+}
+
+// Control 7 (review condition 2): resolve elaborates the literal (it accepts, and the tag is ArB),
+// and infer then refuses the Int value where ArB declares a Bool. Resolve's choice is not proof.
+test fn ar_infer_still_checks_an_elaborated_construct_holds() -> Bool {
+  match ar_resolved_value_mismatch() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: d } =>
+      (ar_construct_paths(o: Accepted { value: t, diagnostics: d }) == ["v2.test.arp.ArB"])
+        && match infer(tree: t) {
+          Accepted { value: _, diagnostics: _ } => false
+          Rejected { diagnostics: _ } => true
+        }
+  }
+}

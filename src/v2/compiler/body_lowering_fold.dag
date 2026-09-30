@@ -133,6 +133,7 @@ import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrap
 import v2.std.node_query {
   node_positional_child_targets,
   construct_node,
+  construct_tag_elided_reference,
   construct_tag_optional,
   field_projection_node,
   field_projection_optional,
@@ -7824,9 +7825,32 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<RecordLite
   }
 }
 
+// AN ANONYMOUS RECORD LITERAL `{ f: v }` names no constructor, and lowering does not choose one:
+// the constructor is the EXPECTED type's, which only resolve reads from an authored annotation. So
+// it lowers through the one construct builder with its tag ELIDED
+// (v2.std.node_query construct_tag_elided_reference), and resolve's construct-tag writer either
+// writes the expected record's reference or refuses located
+// (docs/plans/anonymous-record-literal-design.md). The field set is never consulted to choose. A
+// string-keyed item (a map literal) has no field edge here and still refuses at the item; the map
+// arm gives it one (gunbc#12734).
+fn body_lower_try_headless_record_literal(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_record_brace_items_optional(brace: captured) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: items } =>
+      bind_outcome(
+        o: body_lower_record_construct(
+          reference: construct_tag_elided_reference(source: captured),
+          items: items,
+          source: captured
+        ),
+        f: fn(construct) { outcome_accepted(value: optional_present(value: construct)) }
+      )
+  }
+}
+
 fn body_lower_try_record_literal(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_record_literal_tag_optional(captured: captured) {
-    Absent => outcome_accepted(value: optional_absent())
+    Absent => body_lower_try_headless_record_literal(captured: captured)
     Present { value: read } =>
       match body_lower_record_literal_field_items_optional(captured: captured) {
         Absent => outcome_accepted(value: optional_absent())
