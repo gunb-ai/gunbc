@@ -52,6 +52,7 @@ data modeled_operation_realization_seed_growth_justification: SeedGrowthJustific
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "shell_result_of_observation", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "shell_result_projection", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "file_result_of_observation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "file_transport_path", field: WholeDeclaration },
   ],
   reason: "The seed interpreter is the only evaluator that runs the boot orchestrator, and the acceptance matrix (#12423, operator ruling 2026-09-27) must execute that orchestrator against controlled device histories. These items are the seed realization of a .dag contract: selection is v2.std.operation_realization operation_handler_selection over std.effect_grant covering_grant, admission is modeled_realization_admitted_in and operation_realization_duplicate, the virtual clock is virtual_clock_origin and virtual_clock_after over std.measure Second, and every scenario transition is gunbc.bmc_model. The Rust holds a state value, a clock value and the dispatch log, and dispatches; shell_result_projection is the existing wet shell projection extracted so the modeled observation reaches the same decoder path.",
   owning_dissolution_lane: "v1-materialization-kernel" as RoadmapNodeId,

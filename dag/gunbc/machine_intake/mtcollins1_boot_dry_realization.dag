@@ -6,13 +6,14 @@ import std.algebra { trim }
 import v2.std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep,
-  OperationObserved, OperationHarnessFault, ShellObserved,
+  OperationObserved, OperationHarnessFault, ShellObserved, FileObserved,
   virtual_delay_binding, operation_input_text,
 }
 import gunbc.bmc_model { BmcWorld, bmc_advance, bmc_with_sol_session, bmc_power_is_on }
 import gunbc.bmc_dry_realization { bmc_bindings, megarac_bindings, bmc_ipmi_operation, sleep_delay_seconds_operation }
 import gunbc.megarac_media_model { MegaRacMediaWorld, megarac_media_advance }
-import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, filesystem_bindings, fs_with_file, fs_file, fs_write }
+import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, filesystem_bindings, fs_with_file, fs_file, fs_write, content_bytes }
+import extdeps.transports.file { FileOperationSucceeded }
 import gunbc.process_environment_model { ModeledVariable, environment_binding }
 import gunbc.host_command_model { ModeledInvocation, exact_invocation_binding, local_command_words, shell_exec_run_argv_operation }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
@@ -282,7 +283,8 @@ fn smpro_refused_handler(w: MtCollins1BootWorld, call: OperationCall) -> Operati
   }
 }
 
-// /proc/uptime: the worker's seconds since its own boot, `<seconds>.<hundredths> <idle>` (proc(5)).
+// /proc/uptime: the worker's seconds since its own boot, `<seconds>.<hundredths> <idle>` and one newline
+// (proc(5)), read over the file transport since gunbc#12636, so the record keeps its final newline.
 data linux_procfs_read_uptime_operation: OperationRef = OperationRef {
   path: "dag/extdeps/linux/procfs.dag",
   service: "linux.Procfs",
@@ -291,8 +293,9 @@ data linux_procfs_read_uptime_operation: OperationRef = OperationRef {
 
 fn uptime_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
   let up = w.worker.uptime_at_origin + (second_count(s: call.now) as Int)
+  let record = join([to_string(up), ".00 ", to_string(up), ".00\n"], "")
   OperationObserved {
-    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: join([to_string(up), ".00 ", to_string(up), ".00\n"], ""), stderr: "" } },
+    observation: FileObserved { observation: FileOperationSucceeded { byte_count: content_bytes(s: record), content: record } },
     state: w,
     elapsed: second(count: 0),
   }
