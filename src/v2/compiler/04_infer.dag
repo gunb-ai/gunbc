@@ -1125,7 +1125,7 @@ fn infer_projection_receiver(
           match declaration_reference_path_optional(node: receiver_type) {
             Absent => ReceiverNotARecord
             Present { value: path } =>
-              match symbol_index_lookup(index: resolved.symbol_index, qualified_path: path) {
+              match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
                 Absent => ReceiverNotARecord
                 Present { value: payload } => ReceiverPayload { payload: payload }
               }
@@ -1207,7 +1207,7 @@ fn infer_declaration_reference_facts(
     Absent =>
       inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
     Present { value: path } =>
-      match symbol_index_lookup(index: resolved.symbol_index, qualified_path: path) {
+      match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
         Absent =>
           inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
         Present { value: declared } =>
@@ -2836,13 +2836,6 @@ fn infer_application_callee_arrow_with_facts(
   }
 }
 
-fn infer_application_callee_arrow(node: Node) -> Optional<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-    Absent => Absent
-    Present { value: operator } => infer_operator_arrow(operator: operator)
-  }
-}
-
 // THE FORMALS IN DECLARED ORDER, OR A REFUSAL. The domain's formals are keyed by name; their
 // positions come only from the Arrow's declared order (arrow_declared_parameter_order), never from
 // the domain's stored sequence, which is sorted by label for identity (gunbc#12054). An operator
@@ -3109,7 +3102,7 @@ fn infer_application_argument_inhabitance(
     FormalsOrderRefused { reason: reason } =>
       outcome_rejected(application_parameter_order_diagnostic(application: node, reason: reason))
     FormalsInDeclaredOrder { formals: formals } =>
-      match infer_application_formal_args(node: node, formals: formals) {
+      match infer_application_formal_args(node: node, formals: formals, entries: entries) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: pairs, diagnostics: _ } =>
           let type_params = infer_application_type_params(node: node, entries: entries)
@@ -3152,9 +3145,28 @@ fn infer_application_argument_inhabitance(
 // bound twice -- refuses here, located at the actual it names (the application itself when the plan
 // names no actual). This replaces a zip of stored formals with positional children by index, which
 // ignored every name (gunbc#12054).
-fn infer_application_formal_args(node: Node, formals: List<InhabitanceFormal>) -> Outcome<List<InhabitanceFormalArg>> {
+// THE ARROW IS READ THROUGH THE CALLEE'S FACTS, THE SAME WAY ITS FORMALS WERE. This read used the
+// facts-blind reader while its caller's formals came from infer_application_callee_arrow_with_facts,
+// so a NAMED call -- whose callee is a resolved declaration reference, a Conj and never an Arrow --
+// answered Absent here and returned NO formal/actual pairs. The inhabitance fold over an empty list
+// accepts unconditionally, so every argument of every named call went unjudged: a Bool actual filled
+// an Int formal and the application typed past it. Nothing reported it, because the two readers
+// disagreed about the same question. ONE reader now answers it for both, so the formals a caller
+// admitted and the plan that binds them come from the same arrow or from neither.
+//
+// WHY THE FAIL-OPEN WAS INVISIBLE: the application's RESULT typing read the same arrow through
+// infer_arrow_declared_return_type, which was itself failing on a declaration whose return atom was
+// the authored spelling rather than a resolved binding -- so the call never grounded, and the negative
+// control asserting that an invalid-argument call does not ground passed for the wrong reason. Fixing
+// the declaration lookup to read resolved bodies removed the mask and the control went red, which is
+// how the fail-open surfaced at all.
+fn infer_application_formal_args(
+  node: Node,
+  formals: List<InhabitanceFormal>,
+  entries: List<InferredFactsEntry>,
+) -> Outcome<List<InhabitanceFormalArg>> {
   let actuals = application_actual_edges(site: node)
-  match infer_application_callee_arrow(node: node) {
+  match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
     Absent => outcome_accepted(value: Empty)
     Present { value: arrow } =>
       match application_binding_plan(arrow: arrow, actuals: actuals) {

@@ -342,16 +342,27 @@ test fn cref_a_named_call_with_an_argument_executes_holds() -> Bool {
 // callee's parameter -- a callee ignoring its argument entirely would pass both. This fixture returns
 // its parameter, so its value depends on the argument, and it REFUSES today. Enrolled executed and
 // expected-red rather than deleted, so the gap is counted rather than described.
-test fn cref_a_parameter_bodied_callee_still_refuses_holds() -> Bool {
-  cref_refusal_reason_is(o: cref_source(), wanted: ^eval_rejected_grounding_not_derived)
+// FLIPPED, AND THE ROW STAYS ENROLLED AS A REGRESSION CONTROL (DESIGN section 4b(4): a climb deletes the
+// lower-rung production handling, never the evidence). The refusal this row was written to count is
+// gone: the supplied argument reaches the callee's parameter and the call executes. The wall that
+// landed it is the one reader for a callee's arrow -- v2.compiler.infer
+// infer_application_formal_args now reads it through the callee's FACTS, as its caller's formals
+// already did, and infer_declaration_reference_facts reads the declaration from
+// v2.compiler.resolve ResolvedTree resolved_declarations rather than the authored symbol_index.
+test fn cref_a_parameter_bodied_callee_executes_holds() -> Bool {
+  cref_executes(o: cref_source())
 }
 
 // A BOOL-RETURNING CALL STILL REFUSES, AND IT IS A DIFFERENT BOUNDARY FROM THE PARAMETER BODY. This
 // callee's body is a constant, so it differs from the executing claim above only in its RETURN TYPE.
 // The call grounds under infer, so this sits downstream of both the reference repair and the dispatch
 // repair. Enrolled executed, not diagnosed further here.
-test fn cref_a_bool_returning_call_still_refuses_holds() -> Bool {
-  cref_refusal_reason_is(o: cref_bool_pair_source(), wanted: ^eval_rejected_grounding_not_derived)
+// FLIPPED. The return type was never the variable: the callee's declared return `Bool` read as the
+// authored spelling, which the binding-to-type table does not denote, so the application's result
+// typing fell to the frontier. Reading the RESOLVED declaration answers it, and the same repair is why
+// the Int rows above never separated from this one on their own.
+test fn cref_a_bool_returning_call_executes_holds() -> Bool {
+  cref_executes(o: cref_bool_pair_source())
 }
 
 // THE DISCRIMINATING NEGATIVE FOR THE DISPATCH: a callee naming no declaration must refuse rather
@@ -381,13 +392,14 @@ fn cref_identity_executes_to(lex: String, n: Int) -> Bool {
 // It refuses at the shared facts key, not at anything about calls or arguments: see
 // v2.test.claim.callexec.synthetic_facts_key_collision, where more than one entry carries one key and
 // those entries disagree on grounding.
-test fn cref_argument_dependent_execution_still_refuses_holds() -> Bool {
-  !cref_identity_executes_to(lex: "3", n: 3)
-    && !cref_identity_executes_to(lex: "8", n: 8)
-    && cref_refusal_reason_is(
-         o: cref_identity_source(lex: "3"),
-         wanted: ^eval_rejected_grounding_not_derived
-       )
+// FLIPPED, AND THIS IS THE ACCEPTANCE TARGET THE ROW WAS WRITTEN FOR. Both arguments are supplied and
+// both results are compared, so a callee that ignored its argument and answered one constant fails it:
+// 3 in yields 3 out and 8 in yields 8 out. The refusal it used to count was NOT the shared facts key
+// the old annotation blamed -- the synthetic-key collision is real and still enrolled separately, but
+// it was not what held this row red. The boundary was the two disagreeing readers of a callee's arrow.
+test fn cref_argument_dependent_execution_reaches_the_callee_holds() -> Bool {
+  cref_identity_executes_to(lex: "3", n: 3)
+    && cref_identity_executes_to(lex: "8", n: 8)
 }
 
 // AND THE SAME CALLEE MUST NOT ANSWER A DIFFERENT ARGUMENT'S VALUE once it executes. THIS CLAIM IS
@@ -408,11 +420,46 @@ fn cref_bool_false_source() -> Outcome<ResolvedTree> {
   cref_assemble(src: "module p\n\nfn falsity(only_arg: Int) -> Bool {\n  false\n}\n\nfn consumer() -> Bool {\n  falsity(only_arg: 3)\n}\n")
 }
 
-test fn cref_the_bool_pair_does_not_yet_separate_holds() -> Bool {
-  !cref_executes(o: cref_bool_pair_source())
-    && !cref_executes(o: cref_bool_false_source())
-    && cref_refusal_reason_is(
-         o: cref_bool_false_source(),
-         wanted: ^eval_rejected_grounding_not_derived
-       )
+// FLIPPED: THE PAIR SEPARATES. Two callees differing only in their constant Bool body now execute and
+// produce DIFFERENT values. Execution is asserted on both sides before inequality is read, because two
+// refusals are also unequal and would satisfy inequality alone. The values are not compared against a
+// magnitude: this module is not the authority on how v2.std.logic represents its arms, and asserting a
+// byte image here would be a second such authority (DESIGN section 3).
+test fn cref_the_bool_pair_separates_holds() -> Bool {
+  cref_executes(o: cref_bool_pair_source())
+    && cref_executes(o: cref_bool_false_source())
+    && cref_results_differ(a: cref_bool_pair_source(), b: cref_bool_false_source())
+}
+
+// THE PRIMITIVE BYTES OF A CALL'S RESULT, for the one claim whose property is that two calls produce
+// DIFFERENT values. The existing int reader decodes a four-byte signed image and a Bool is not one, so
+// asserting "true" and "false" by magnitude would be asserting this module's guess at v2.std.logic's
+// representation. Byte inequality is the property without the guess: a callee that ignored its
+// declaration and answered one constant cannot satisfy it.
+fn cref_result_bytes(o: Outcome<ResolvedTree>) -> Optional<List<Byte>> {
+  match cref_eval_of(o: o) {
+    Absent => optional_absent()
+    Present { value: outcome } =>
+      match outcome {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: v, diagnostics: _ } =>
+          match v {
+            RuntimePrimitive { value: p } => optional_present(value: p.bytes)
+            _ => optional_absent()
+          }
+      }
+  }
+}
+
+// FALSE WHEN EITHER SIDE DID NOT EXECUTE, so the separation claim below pairs it with two execution
+// assertions rather than reading inequality as evidence on its own: two refusals are also unequal.
+fn cref_results_differ(a: Outcome<ResolvedTree>, b: Outcome<ResolvedTree>) -> Bool {
+  match cref_result_bytes(o: a) {
+    Absent => false
+    Present { value: xs } =>
+      match cref_result_bytes(o: b) {
+        Absent => false
+        Present { value: ys } => !(xs == ys)
+      }
+  }
 }

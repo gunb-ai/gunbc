@@ -451,6 +451,31 @@ fn dre_imported_reference_source() -> Outcome<ResolvedTree> {
   )
 }
 
-test fn dre_an_imported_reference_grounds_the_same_way_holds() -> Bool {
-  dre_call_is_grounded_for(o: dre_imported_reference_source(), wanted: ^helper)
+// A CROSS-MODULE REFERENCE DOES NOT GROUND, AND THAT IS THE SCOPE OF THE CARRIER, NOT A FAIL-OPEN.
+// The declaration a reference grounds to is read from v2.compiler.resolve ResolvedTree
+// resolved_declarations -- DECLARATIONS WITH RESOLVED BODIES -- because a declaration's return atom as
+// AUTHORED is the source spelling `Int`, which v2.extdeps.languages.dag dag_binding_denotation does not
+// denote (it is a binding-to-type table, and the authored spelling is not a binding). Reading the
+// pre-resolve symbol_index instead is what made every named call's result typing fall to the frontier.
+//
+// resolve walks ONE module root and mints resolved_declarations over it (resolved_declarations_of), so
+// that index carries the SUBJECT module's declarations and no other. m.lib.helper is therefore absent
+// from it, the lookup answers Absent, and the reference stays underived. NOTHING IS FABRICATED: the
+// arm that would widen -- fall back to the authored index when the resolved one has no row -- is the
+// absorbing fallback DESIGN section 5 forbids, and it is the exact widening whose answer was wrong.
+// Re-deriving the return from the language's kernel spelling table inside infer is the other tempting
+// arm and is a second resolution authority (DESIGN section 3), so it is refused too.
+//
+// THE TRIGGER IS A RESOLVED-DECLARATION INDEX OVER EVERY RESOLVED MODULE ROOT -- the multi-root door
+// v2.compiler.symbol_index_fill symbol_index_fill_module_roots applied to resolved roots rather than
+// authored ones, minted by resolve beside the per-module carrier. That is resolve's fact to own, not
+// infer's. Until it exists, a cross-module named call's result type is on the counted frontier.
+//
+// THIS ROW IS THE FRONTIER'S EXECUTING EVIDENCE, asserted in the direction that is true today: the
+// imported call does NOT ground. It flips the moment the trigger lands, which is what makes it a
+// transition signal rather than a permanent green. The single-module rows above are the positive
+// controls that the mechanism itself works, so this row cannot be satisfied by the mechanism being
+// broken everywhere.
+test fn dre_an_imported_reference_does_not_yet_ground_holds() -> Bool {
+  dre_call_is_grounded_for(o: dre_imported_reference_source(), wanted: ^helper) == false
 }
