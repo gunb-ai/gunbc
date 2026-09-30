@@ -1,5 +1,12 @@
 module gunbc.runner_microvm_slot_controller
 
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import gunbc.workspace_slot_mutation {
+  workspace_slot_mutation_acquire, workspace_slot_mutation_release,
+  WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationRefused,
+}
+import std.decl_ref { decl_ref }
+
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, FieldRead }
 import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused }
 import gunbc.workspace_commissioning_admission_observe { workspace_observe_commissioning_admission }
@@ -783,7 +790,7 @@ fn workspace_slot_dispatch_directive(text: String, instance: String, release_dir
               WorkspaceCommissioningRefused { reason } => workspace_commissioning_slot_refused(reason: reason)
               WorkspaceCommissioningReady { commissioned } => match workspace_commissioning_reconcile(
                 admitted: commissioned, provenance: provenance, network: subject) {
-                WorkspaceCommissioningComplete { committed: _ } => SlotControllerCommissioned
+                WorkspaceCommissioningComplete => SlotControllerCommissioned
                 WorkspaceCommissioningReconciliationRefused { reason } => workspace_commissioning_slot_refused(reason: reason)
                 _ => workspace_commissioning_slot_refused(reason: "commissioning has an outstanding phase")
               }
@@ -867,6 +874,22 @@ fn workspace_slot_from_current_ledger(allocation: WorkspaceAllocation, store: Fa
 
 fn workspace_slot_launch_observed(reservation: WorkspaceReservation, live: RequiredBuildCellSnapshot, subject: SlotNetworkSanitationSubject,
   store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
+  let owner = concat("workspace-controller:", invocation_id as String) as DurableHoldOwnerRef
+  match workspace_slot_mutation_acquire(slot_key: fabric_cell_allocation_key(slot: reservation.slot), owner: owner) {
+    WorkspaceSlotMutationRefused { reason } => workspace_slot_refused(reason: reason as String)
+    WorkspaceSlotMutationAdmitted { lease } => {
+      let outcome = workspace_slot_launch_under_exclusion(reservation: reservation, live: live, subject: subject,
+        store: store, release_dir: release_dir, invocation_id: invocation_id)
+      if workspace_slot_mutation_release(lease: lease) { outcome }
+      else { workspace_slot_refused(reason: "workspace controller returned but its mutation exclusion remains unsettled; recover this invocation") }
+    }
+  }
+}
+
+fn workspace_slot_launch_under_exclusion(reservation: WorkspaceReservation, live: RequiredBuildCellSnapshot, subject: SlotNetworkSanitationSubject,
+  store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome
+  admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "workspace_slot_launch_observed")]
+{
   let bins = locus_binaries(release_dir: release_dir)
   if !path_is_executable(path: bins.firecracker) { SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } } }
   else if !path_is_executable(path: bins.jailer) { SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } } }

@@ -1,0 +1,8 @@
+module test.probe.public_release
+import std.process { ProcessExit, ExitSuccess }
+import std.types { Bool }
+import gunbc.workspace_slot_mutation { WorkspaceSlotMutationLease, workspace_slot_mutation_release }
+import gunbc.workspace_commissioning_apply_readback { WorkspaceCommissioningApplyReadback }
+fn route(lease: WorkspaceSlotMutationLease) -> Bool { workspace_slot_mutation_release(lease: lease) }
+
+fn check() -> ProcessExit { ExitSuccess }

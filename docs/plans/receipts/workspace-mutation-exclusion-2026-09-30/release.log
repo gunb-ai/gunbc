@@ -1,0 +1,24 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=12 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=21 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=5170 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1849 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1997 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=32 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=36 scale=closure
+[pre-entry] phase=closure_load ms=2187 scale=closure
+[pre-entry] phase=closure_parse ms=5901 scale=closure
+[pre-entry] phase=closure_resolve ms=188 scale=closure
+[pre-entry] phase=closure_normalize ms=669 scale=closure
+[pre-entry] phase=closure_typecheck ms=57619 scale=closure
+[pre-entry] phase=closure_parent_envs ms=5 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=100 scale=closure
+[pre-entry] phase=closure_ownership ms=0 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=87539 scale=closure
+[pre-entry] population pool_modules=783 closure_files=refused
+[pre-entry] process_cpu user_ms=85748 sys_ms=1513 max_rss_kib=3213512
+error: resolve failed for /home/briansrls/scratch-wt/workspace-commissioning-production/target/commissioning-access-controls-verified/release-probe.dag
+  cause: target/commissioning-access-controls-verified/release-probe.dag:5:54: error: constructor call admission refused: 'gunbc.workspace_slot_mutation.workspace_slot_mutation_release_fenced' refuses call from 'test.probe.commissioning_release_bypass.skip' — permitted callers: [gunbc.workspace_slot_mutation.workspace_slot_mutation_release, gunbc.workspace_commissioning_apply_readback.workspace_commissioning_apply_finish]

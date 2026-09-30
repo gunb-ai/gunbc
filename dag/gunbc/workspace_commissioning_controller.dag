@@ -1,6 +1,9 @@
 module gunbc.workspace_commissioning_controller
 
 import std.types { String }
+import v2.std.algebra { filter }
+import gunbc.workspace_slot_mutation { workspace_commissioning_mutation_held }
+import gunbc.runner_microvm_cell_readiness { StoreRead, StoreRootOwned, CellSettled, record_cell }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import product.fabric.sanitation { CellId, CellReady, SlotScopedNetwork, cell_readiness_from_observations }
 import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
@@ -26,7 +29,7 @@ import gunbc.runner_microvm_cell_readiness_store {
 
 type WorkspaceCommissioningReconciliation
   = WorkspaceCommissioningProgress
-  | WorkspaceCommissioningComplete { committed: WorkspaceCommittedCommissioning }
+  | WorkspaceCommissioningComplete
   | WorkspaceCommissioningReconciliationRefused { reason: String }
 
 // This is a mode of the installed slot controller, not another readiness writer. Its caller must
@@ -53,6 +56,9 @@ fn workspace_commissioning_controller_step(admitted: WorkspaceCommissionedSlot,
   provenance: WorkspaceCommissioningProvenance, network: SlotNetworkSanitationSubject) -> WorkspaceCommissioningReconciliation
   admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_controller", decl_name: "workspace_commissioning_reconcile")]
 {
+  if !workspace_commissioning_mutation_held(slot_key: runner_slot_instance_name(slot: provenance.slot), plan_hash: provenance.plan_hash) {
+    WorkspaceCommissioningReconciliationRefused { reason: "commissioning mutation exclusion changed before journal publication" }
+  } else {
   match workspace_commissioning_no_hold_refusal(provenance: provenance) {
     Present { value: reason } => WorkspaceCommissioningReconciliationRefused { reason: reason }
     Absent => {
@@ -71,9 +77,17 @@ fn workspace_commissioning_controller_step(admitted: WorkspaceCommissionedSlot,
         transaction: snapshot.reading, readiness: read_cell_readiness_store())
       match transition {
         WorkspaceCommissioningTransitionRefused { reason } => WorkspaceCommissioningReconciliationRefused { reason: reason }
-        WorkspaceCommissioningAlreadyCommitted => match workspace_commissioning_store_admit_supply(snapshot: snapshot) {
-          WorkspaceCommissioningSupplyReady { committed } => WorkspaceCommissioningComplete { committed: committed }
-          WorkspaceCommissioningSupplyRefused { reason } => WorkspaceCommissioningReconciliationRefused { reason: reason }
+        WorkspaceCommissioningAlreadyCommitted => match read_cell_readiness_store() {
+          StoreRead { ownership: StoreRootOwned, records } => {
+            let cell = runner_slot_instance_name(slot: provenance.slot) as String
+            let own = filter(records, r => (record_cell(record: r) as String) == cell)
+            if own.count() == 1 && (match own.first() {
+              Present { value: CellSettled { cell: _, generation: 0, readiness: CellReady { cell: ready } } } => (ready as String) == cell
+              _ => false
+            }) { WorkspaceCommissioningComplete }
+            else { WorkspaceCommissioningReconciliationRefused { reason: "controller commit has no matching generation-zero readiness" } }
+          }
+          _ => WorkspaceCommissioningReconciliationRefused { reason: "controller commit readiness is unreadable" }
         }
         WorkspaceCommissioningWriteReadiness { write } => match persist_cell_readiness_write(write: write) {
           StorePersisted { record: _ } => WorkspaceCommissioningProgress
@@ -98,4 +112,6 @@ fn workspace_commissioning_controller_step(admitted: WorkspaceCommissionedSlot,
   }
     }
   }
+}
+
 }

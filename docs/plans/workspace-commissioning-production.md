@@ -43,6 +43,15 @@ The privileged storage observer repair passed its actual srv1 read-only plan in 
 
 Integrated floor run 36655903531 failed on missing imports and stale import-debt standings before changed-witness execution. Those specific defects have source repairs; the recursive-workflow witness passed locally. The shared slot-start wait now checks the expected InvocationID around activity reads and after receipt readback, with four controls passing under 6 GiB/no swap. Neither result qualifies the still-missing guarded commissioning apply.
 
-Re-review 5360810834: main@81d292e9dbb was merged through the parent allocation branch and reconciled at c74d34ef844. Eight HTTP transport tests passed on parent 6eeb14c95cd. Integrated floor 36661497113 then refused the missing `any` import in the issue-tracker model before changed-witness execution; the explicit import is repaired. Generated-document heal 36661495178 is still outstanding.
+Re-review 5360810834: main@81d292e9dbb was merged through the parent allocation branch and reconciled at c74d34ef844. Eight HTTP transport tests passed on parent 6eeb14c95cd. Integrated floor 36661497113 then refused the missing `any` import in the issue-tracker model before changed-witness execution; the explicit import is repaired. Generated-document heal 36661495178 succeeded; its App publication run 36664586278 remains queued.
 
 The apply post-controller readback now composes actual invocation/receipt, protected committed journal, generation-zero readiness, runtime/budget/no-hold and sanitation reads. Four negative/positive controls and its full composition passed under 6 GiB/no swap. This result is explicitly not FullyApplied: the enclosing shared exclusion, credential cleanup and fleet-scope wiring remain unfinished. [Validation receipt](receipts/workspace-apply-readback-2026-09-30/README.md).
+
+
+## Shared mutation exclusion checkpoint
+
+The workspace slot now uses the existing durable exclusive-hold/CAS store for a distinct mutation key. Reservation writes and guest launch take this guard; commissioning admission and every controller journal phase require the reviewed plan to hold it. This key does not consume physical reservation or readiness generations. It has no time-based expiry.
+
+A committed journal alone no longer exposes supply while a mutation remains outstanding. The post-controller finish function requires the exact held guard, repeats the strong readback, removes only the canonical root-owned commissioning credential, proves its absence, and releases that exact guard generation. Direct calls to its privileged cleanup and fenced-release functions are restricted to their admitted callers.
+
+This is an incomplete source checkpoint, not a deployable commissioning apply. The enclosing fleet subject, acquisition/start orchestration, and interrupted-guard recovery still need wiring. In particular, a crashed actor can leave the guard held; recovery must establish what that actor did before releasing or resuming it. The current acquire function deliberately refuses an already-held key, even for the same owner. No automatic recovery or host acceptance is claimed.

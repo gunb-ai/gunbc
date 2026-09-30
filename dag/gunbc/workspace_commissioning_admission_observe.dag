@@ -1,6 +1,8 @@
 module gunbc.workspace_commissioning_admission_observe
 
 import std.types { String, NonEmptyStr }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.workspace_slot_mutation { workspace_commissioning_mutation_held }
 import gunbc.workspace_commissioning {
   WorkspaceCommissioningAdmission, WorkspaceCommissioningReady, WorkspaceCommissioningRefused,
   workspace_commissioning_admit, WorkspaceCommissioningAuthorizedPlan, WorkspacePriorPurposeWithdrawn,
@@ -26,6 +28,9 @@ import gunbc.fleet_host_budget { HostAllocationConserves }
 // mutation exclusion. Intent fields never stand in for host observations. No operation writes.
 fn workspace_observe_commissioning_admission(provenance: WorkspaceCommissioningProvenance,
   release_dir: NonEmptyStr, login: NonEmptyStr, network: SlotNetworkSanitationSubject) -> WorkspaceCommissioningAdmission {
+  if !workspace_commissioning_mutation_held(slot_key: runner_slot_instance_name(slot: provenance.slot), plan_hash: provenance.plan_hash) {
+    WorkspaceCommissioningRefused { reason: "the enclosing commissioning mutation does not hold this slot" }
+  } else {
   match workspace_commissioning_runtime_refusal(provenance: provenance, release_dir: release_dir, login: login) {
     Present { value: reason } => WorkspaceCommissioningRefused { reason: reason }
     Absent => match workspace_commissioning_no_hold_refusal(provenance: provenance) {
@@ -54,6 +59,8 @@ fn workspace_observe_commissioning_admission(provenance: WorkspaceCommissioningP
       }
     }
   }
+}
+
 }
 
 // Repeated before every phase, including recovery after initial readiness was written. A free

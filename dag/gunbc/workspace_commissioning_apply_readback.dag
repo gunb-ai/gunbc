@@ -1,6 +1,17 @@
 module gunbc.workspace_commissioning_apply_readback
 
 import std.types { Bool, String, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead }
+import gunbc.runner_microvm_slot_unit { workspace_launch_credential_source_path }
+import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningPrepared }
+import gunbc.workspace_slot_mutation {
+  WorkspaceSlotMutationLease, WorkspaceSlotMutationLeaseHeld, workspace_slot_mutation_still_owned,
+  workspace_slot_mutation_key, workspace_commissioning_mutation_owner, workspace_slot_mutation_release_fenced,
+}
+
 import v2.std.algebra { filter }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop }
@@ -101,4 +112,68 @@ fn workspace_commissioning_apply_observe(provenance: WorkspaceCommissioningProve
       }
     }
   } }
+}
+
+// This result is constructed only after independent readback, exact credential removal and
+// generation-fenced exclusion release. The enclosing fleet apply still owns its generation gate.
+type WorkspaceCommissioningApplyCompleted sole_constructor {
+  provenance: WorkspaceCommissioningProvenance
+  invocation: NonEmptyStr
+}
+
+type WorkspaceCommissioningApplyFinish
+  = WorkspaceCommissioningApplyFinished { completed: WorkspaceCommissioningApplyCompleted }
+  | WorkspaceCommissioningApplyFinishRefused { reason: String }
+
+fn workspace_commissioning_credential_absent(path: String) -> Bool {
+  let read = Filesystem.Read(path: path)
+  match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+    FilesystemExactPathAbsent { path: _ } => true
+    _ => false
+  }
+}
+
+fn workspace_commissioning_credential_remove(provenance: WorkspaceCommissioningProvenance) -> Bool
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_apply_finish")]
+{
+  let path = workspace_launch_credential_source_path(instance: runner_slot_instance_name(slot: provenance.slot) as String)
+  let read = Filesystem.Read(path: path)
+  match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+    FilesystemExactPathAbsent { path: _ } => true
+    FilesystemExactPathRead { path: _, content } => if content != (workspace_commissioning_record_text(record: WorkspaceCommissioningPrepared { provenance: provenance }) as String) { false }
+      else { match read_store_ownership(path: path) {
+        OwnershipRead { ownership: StoreRootOwned } => {
+          let removed = Filesystem.Delete(path: path)
+          removed.success && workspace_commissioning_credential_absent(path: path)
+        }
+        _ => false
+      } }
+    _ => false
+  }
+}
+
+fn workspace_commissioning_apply_finish(readback: WorkspaceCommissioningApplyReadback,
+  lease: WorkspaceSlotMutationLease, release_dir: NonEmptyStr, login: NonEmptyStr,
+  network: SlotNetworkSanitationSubject) -> WorkspaceCommissioningApplyFinish {
+  let provenance = readback.provenance
+  match lease {
+    WorkspaceSlotMutationLeaseHeld { held } => if held.key != workspace_slot_mutation_key(slot_key: runner_slot_instance_name(slot: provenance.slot))
+      || held.owner != workspace_commissioning_mutation_owner(plan_hash: provenance.plan_hash)
+      || !workspace_slot_mutation_still_owned(held: held) {
+      WorkspaceCommissioningApplyFinishRefused { reason: "commissioning no longer owns its exact mutation exclusion" }
+    } else { match workspace_commissioning_apply_observe(provenance: provenance, release_dir: release_dir,
+      login: login, network: network, invocation: readback.invocation) {
+      WorkspaceCommissioningApplyReadbackRefused { reason } => WorkspaceCommissioningApplyFinishRefused { reason: reason }
+      WorkspaceCommissioningApplyObserved { readback: fresh } => if !workspace_commissioning_credential_remove(provenance: provenance) {
+        WorkspaceCommissioningApplyFinishRefused { reason: "canonical commissioning credential could not be removed and read back absent; exclusion retained" }
+      } else if !workspace_slot_mutation_still_owned(held: held) {
+        WorkspaceCommissioningApplyFinishRefused { reason: "commissioning exclusion changed during credential removal" }
+      } else if !workspace_slot_mutation_release_fenced(lease: lease) {
+        WorkspaceCommissioningApplyFinishRefused { reason: "commissioning exclusion release is unsettled; recover before reporting FullyApplied" }
+      } else { WorkspaceCommissioningApplyFinished { completed: WorkspaceCommissioningApplyCompleted {
+        provenance: provenance, invocation: fresh.invocation,
+      } } }
+    } }
+    _ => WorkspaceCommissioningApplyFinishRefused { reason: "commissioning has no exclusive slot mutation authority" }
+  }
 }

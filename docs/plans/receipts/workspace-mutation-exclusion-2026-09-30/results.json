@@ -1,0 +1,23 @@
+{
+  "binary_sha256": "717e9b4159dc7bc722e94a235325e6760f5acd246e63d8bed14b828dac970243",
+  "results": [
+    {
+      "probe": "release",
+      "exit_code": 1,
+      "passed": true,
+      "source_sha256": "61ec122c1be76d90556d4b579f2e4d86ea764116df277d81d5c7c940eefe660b"
+    },
+    {
+      "probe": "cleanup",
+      "exit_code": 1,
+      "passed": true,
+      "source_sha256": "5f938276853e52fce65504cd724544ca1f4cd8380bf7da8d78ab2c2636aac1a0"
+    },
+    {
+      "probe": "public",
+      "exit_code": 0,
+      "passed": true,
+      "source_sha256": "1bca3a764ae487903fb6ca9baa7fe97c14ce8b63563106a03733fd42fb3bbffe"
+    }
+  ]
+}

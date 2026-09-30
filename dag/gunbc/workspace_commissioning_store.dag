@@ -3,6 +3,7 @@ module gunbc.workspace_commissioning_store
 import gunbc.workspace_commissioning { WorkspaceCommissionedSlot, WorkspaceCommissioningAdmission, WorkspaceCommissioningReady, WorkspaceCommissioningRefused, workspace_commissioning_restore_recorded }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import std.decl_ref { decl_ref }
+import gunbc.workspace_slot_mutation { workspace_slot_mutation_supply_open }
 import std.types { String, NonEmptyStr }
 import std.measure { byte_size_count, hardware_thread_count_value }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int, json_bool, serialize_json }
@@ -160,6 +161,9 @@ type WorkspaceCommissioningSupplyReadback
   | WorkspaceCommissioningSupplyRefused { reason: String }
 
 fn workspace_commissioning_store_admit_supply(snapshot: WorkspaceCommissioningStoreSnapshot) -> WorkspaceCommissioningSupplyReadback {
+  if !workspace_slot_mutation_supply_open(slot_key: runner_slot_instance_name(slot: snapshot.provenance.slot)) {
+    WorkspaceCommissioningSupplyRefused { reason: "enclosing slot mutation is outstanding; committed controller provenance is not yet supply" }
+  } else {
   match workspace_commissioning_store_observe(root: snapshot.root, provenance: snapshot.provenance) {
     WorkspaceCommissioningStoreObserved { snapshot: current } =>
       if current.expected != snapshot.expected || current.reading != snapshot.reading {
@@ -167,6 +171,8 @@ fn workspace_commissioning_store_admit_supply(snapshot: WorkspaceCommissioningSt
       } else { workspace_commissioning_current_supply(snapshot: current) }
     WorkspaceCommissioningStoreRefused { reason } => WorkspaceCommissioningSupplyRefused { reason: reason }
   }
+}
+
 }
 
 fn workspace_commissioning_current_supply(snapshot: WorkspaceCommissioningStoreSnapshot) -> WorkspaceCommissioningSupplyReadback

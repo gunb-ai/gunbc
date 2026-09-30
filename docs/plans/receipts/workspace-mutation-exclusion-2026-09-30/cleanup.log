@@ -1,0 +1,24 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 4 seconds
+[pre-entry] phase=workspace_discovery ms=13 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=18 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=4890 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1707 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1930 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=33 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=47 scale=closure
+[pre-entry] phase=closure_load ms=2434 scale=closure
+[pre-entry] phase=closure_parse ms=9165 scale=closure
+[pre-entry] phase=closure_resolve ms=335 scale=closure
+[pre-entry] phase=closure_normalize ms=1030 scale=closure
+[pre-entry] phase=closure_typecheck ms=85555 scale=closure
+[pre-entry] phase=closure_parent_envs ms=9 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=175 scale=closure
+[pre-entry] phase=closure_ownership ms=0 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=135933 scale=closure
+[pre-entry] population pool_modules=784 closure_files=refused
+[pre-entry] process_cpu user_ms=132974 sys_ms=2513 max_rss_kib=5287296
+error: resolve failed for /home/briansrls/scratch-wt/workspace-commissioning-production/target/commissioning-access-controls-verified/cleanup-probe.dag
+  cause: target/commissioning-access-controls-verified/cleanup-probe.dag:6:65: error: constructor call admission refused: 'gunbc.workspace_commissioning_apply_readback.workspace_commissioning_credential_remove' refuses call from 'test.probe.commissioning_cleanup_bypass.skip' — permitted callers: [gunbc.workspace_commissioning_apply_readback.workspace_commissioning_apply_finish]
