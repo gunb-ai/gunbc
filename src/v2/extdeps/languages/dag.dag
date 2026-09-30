@@ -20,7 +20,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, ParseRefusalReason }
+import v2.std.parse_refusal_reason { DataValueMissingAfterEq, ParseRefusalReason }
 import v2.std.grammar {
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
@@ -2013,10 +2013,7 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
                 left: dag_grammar_nonterminal(production: ^dag_production_fn_body),
                 right: dag_grammar_sequence(
                   left: dag_grammar_terminal(token_class: ^dag_token_eq),
-                  right: dag_grammar_expect(
-                    element: dag_grammar_nonterminal(production: ^dag_production_expr),
-                    reason: FnExpressionBodyMissingAfterEq
-                  )
+                  right: dag_grammar_nonterminal(production: ^dag_production_expr)
                 )
               )
             )
