@@ -1529,12 +1529,10 @@ pub(crate) fn via_index_parse_one_source(
     // captures and admits them against this file's occurrence transport.
     // Annotation-erasing `tokenize` here let a touched in-closure file
     // compile on the floor while missing the class #8204 claims to close.
-    let artifact = v1_compiler_tokenize::tokenize_artifact(
-        source.content.clone(),
-        source.path.clone(),
-        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-    );
-    let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+    // One acquisition, not one per walk -- see `cli_run::pool_acquire`. The pool census already
+    // tokenized these bytes under this spelling; the artifact keeps the annotation channel.
+    let artifact = super::pool_acquire::artifact_for(&source.path, &source.content);
+    let nl_index = super::pool_acquire::newline_index_for(&source.path, &source.content);
     let current_table = index.intern_table.borrow().clone();
     let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
         let mut m = HashMap::new();
@@ -1957,12 +1955,9 @@ pub(crate) fn parse_module_node_from_index_source(
     let (parse_result, nl_index) = match cached {
         Some(entry) => (entry.parse_result, entry.newline_index),
         None => {
-            let tokens = v1_compiler_tokenize::tokenize(
-                source.content.clone(),
-                source.path.clone(),
-                crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-            );
-            let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+            // One acquisition, not one per walk -- see `cli_run::pool_acquire`.
+            let tokens = super::pool_acquire::tokens_for(&source.path, &source.content);
+            let nl_index = super::pool_acquire::newline_index_for(&source.path, &source.content);
             let current_table = index.intern_table.borrow().clone();
             let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
                 let mut m = HashMap::new();
@@ -3400,5 +3395,116 @@ mod live_pool_thread_tests {
             Some("planted live-pool failure")
         );
         assert_eq!(on_live_pool_thread(|| 7), 7);
+    }
+}
+
+/// THE INSTRUMENT for a cold entry resolve's per-term cost on the live `[dag, src/v2]` pool: one
+/// fresh process acquires the pool's tokens, builds the module path index (the heads reading
+/// `parse_module_binding` takes), builds the shared index, and resolves two small workflow
+/// entries, printing `PROBE` rows and every `pre_entry_phase` term. The first two terms are split
+/// out so the per-file token acquisition, which later readings reuse through `pool_acquire`, is
+/// not charged to whichever walk happens to run first. It reports; it asserts only that the
+/// entries resolve. Run it with
+/// `cargo test --release -p v1-compiler --lib live_pool_entry_resolve_attribution -- --ignored --nocapture`.
+#[cfg(test)]
+mod live_pool_entry_resolve_attribution {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn live_pool_entry_resolve_attribution() {
+        let t0 = std::time::Instant::now();
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let t = std::time::Instant::now();
+        let mut files = 0usize;
+        for r in &roots {
+            let mut dag_files = Vec::new();
+            collect_dag_files_tolerant(Path::new(r), &mut dag_files);
+            for f in dag_files {
+                let content = std::fs::read_to_string(&f).expect("read pool file");
+                // The spelling `parse_module_binding` acquires under (`source_key`).
+                let key = f
+                    .strip_prefix(&root)
+                    .unwrap_or(&f)
+                    .to_string_lossy()
+                    .into_owned();
+                let _ = super::pool_acquire::tokens_for(&key, &content);
+                files += 1;
+            }
+        }
+        eprintln!(
+            "PROBE pool token acquisition {:?} files={files}",
+            t.elapsed()
+        );
+        let t = std::time::Instant::now();
+        let n = build_module_path_index(&pool_roots_for_module_graph_closure(&roots)).len();
+        eprintln!(
+            "PROBE module_path_index (heads parse) {:?} modules={n}",
+            t.elapsed()
+        );
+        let t = std::time::Instant::now();
+        let index = process_shared_index(&roots);
+        eprintln!("PROBE shared_index {:?}", t.elapsed());
+        for e in [
+            "src/v2/workflow/regen_convergence_transaction.dag",
+            "src/v2/workflow/required_regen.dag",
+        ] {
+            let entry = root.join(e);
+            let t = std::time::Instant::now();
+            let r = resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy());
+            assert!(r.is_ok(), "{e} resolves");
+            eprintln!("PROBE resolve {e} {:?}", t.elapsed());
+            for line in super::pre_entry_phase::take_lines() {
+                eprintln!("PROBE   phase {line}");
+            }
+        }
+        eprintln!("PROBE total {:?}", t0.elapsed());
+    }
+}
+
+/// THE IDENTITY DIFFERENTIAL for the closure front end reading its lexical artifact from
+/// `pool_acquire` instead of re-lexing: the only input that change alters is the artifact the
+/// closure parser receives, so it is compared at that grain over every file of the live
+/// `[dag, src/v2]` pool, under the spelling the shared index gives it -- tokens AND the annotation
+/// channel, against a fresh `tokenize_artifact` of the same bytes. A divergence names the file.
+#[cfg(test)]
+mod closure_parse_acquisition_differential {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn pooled_closure_artifacts_equal_fresh_lexing_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let mut compared = 0usize;
+        let mut divergent: Vec<String> = Vec::new();
+        for source in index.source_files.values() {
+            let pooled = super::pool_acquire::artifact_for(&source.path, &source.content);
+            let fresh = v1_compiler_tokenize::tokenize_artifact(
+                source.content.clone(),
+                source.path.clone(),
+                crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+            );
+            if *pooled != *fresh {
+                divergent.push(source.path.clone());
+            }
+            let pooled_nl = super::pool_acquire::newline_index_for(&source.path, &source.content);
+            if *pooled_nl != *build_newline_index(source.path.clone(), source.content.clone()) {
+                divergent.push(format!("{} (newline index)", source.path));
+            }
+            compared += 1;
+        }
+        eprintln!("DIFF compared={compared} divergent={}", divergent.len());
+        assert!(compared > 1000, "the live pool was read ({compared} files)");
+        assert!(
+            divergent.is_empty(),
+            "pooled artifacts diverge: {divergent:?}"
+        );
     }
 }
