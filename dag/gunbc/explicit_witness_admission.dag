@@ -633,7 +633,15 @@ fn explicit_witness_admission_substrate_long_lane_roster() -> List<ScheduleWitne
     f: fn(acc, row) {
       match row.cadence {
         FalsifierSubstrateLongLane => Cons { head: row.witness, tail: acc }
-        _ => acc
+        DiscoverySelection => acc
+        FalsifierSelfHostWet => acc
+        FalsifierRehomedBinWet => acc
+        BinWitnessWet => acc
+        LocalRepoWetLane => acc
+        QuarantineProbeExpectRed => acc
+        OfflineLocalRecipe => acc
+        FixtureExplicitRoster => acc
+        NoConsumer => acc
       }
     }
   ))
@@ -944,7 +952,13 @@ fn explicit_witness_admission_well_formed(row: ExplicitWitnessAdmission) -> Bool
               QuarantineProbeExpectRed => true
               FalsifierSubstrateLongLane => true
               BinWitnessWet => true
-              _ => false
+              DiscoverySelection => false
+              FalsifierSelfHostWet => false
+              FalsifierRehomedBinWet => false
+              LocalRepoWetLane => false
+              OfflineLocalRecipe => false
+              FixtureExplicitRoster => false
+              NoConsumer => false
             }))
 }
 
