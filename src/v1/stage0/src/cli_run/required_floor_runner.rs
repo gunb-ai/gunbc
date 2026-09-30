@@ -10349,9 +10349,10 @@ pub fn run_required_floor(
         }
     }
     // THE FOLD'S LAST SCOPE HAS NO READER AFTER THE FOLD. Each scope is dropped before the next is
-    // built; the last one was instead held to the end of this function, keeping its whole closure
-    // of prepared modules shared through publication and enrolment -- past its demanded lifetime,
-    // and the reason the teardown attribution found most prepared modules still owned elsewhere.
+    // built; the last one was instead held to the end of this function, past its demanded
+    // lifetime. It is NOT what keeps most prepared modules shared at teardown: with this drop in
+    // place, `typed_graph_byte_attribution` still reported the same shared_modules on main's
+    // subject, so that owner is elsewhere and untraced.
     drop(current_scope);
     outcome.receipt_identities = receipted.len();
     // THE LEDGER IS PUBLISHED OVER THE PLANNED POPULATION, NEVER OVER THE PREFIX THAT RAN.
