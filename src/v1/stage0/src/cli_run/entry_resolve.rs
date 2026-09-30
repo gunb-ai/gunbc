@@ -558,11 +558,12 @@ pub(crate) fn load_sources_for_entry_with_pool(
     if let Some(cached) = index.entry_closure_sources.borrow().get(&cache_key) {
         return Ok(cached.clone());
     }
-    let sources = load_sources_for_entry_with_index(
-        &index.source_files,
-        &index.module_graph_facts,
-        entry_path,
-    )?;
+    // The import closure only: the module-path reference half is the fixpoint's own
+    // (`extend_with_reference_closure_for_pool`), read from the index's one parse per file.
+    // Running `extend_with_reference_closure` first answered the same question from a second,
+    // per-entry full parse of every closure file.
+    let sources =
+        load_import_closure_for_entry(&index.source_files, &index.module_graph_facts, entry_path)?;
     let sources = extend_sources_to_both_closure_fixpoint(sources, index)?;
     index
         .entry_closure_sources
@@ -572,6 +573,19 @@ pub(crate) fn load_sources_for_entry_with_pool(
 }
 
 pub(crate) fn load_sources_for_entry_with_index(
+    index: &ModuleSourceIndex,
+    facts: &ModuleGraphFactsLive,
+    entry_path: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let sources = load_import_closure_for_entry(index, facts, entry_path)?;
+    let mut sources = extend_with_reference_closure(sources, index, facts)?;
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.dedup_by(|a, b| a.path == b.path);
+    Ok(sources)
+}
+
+/// An entry and its import closure, with no reference edges followed.
+fn load_import_closure_for_entry(
     index: &ModuleSourceIndex,
     facts: &ModuleGraphFactsLive,
     entry_path: &str,
@@ -591,9 +605,6 @@ pub(crate) fn load_sources_for_entry_with_index(
     {
         sources.push(entry_source);
     }
-    let mut sources = extend_with_reference_closure(sources, index, facts)?;
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
-    sources.dedup_by(|a, b| a.path == b.path);
     Ok(sources)
 }
 
