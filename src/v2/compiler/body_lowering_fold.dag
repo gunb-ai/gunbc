@@ -398,20 +398,23 @@ fn body_lower_binding_symbol_lists_match(
   zip_eq(a: expected, b: actual, eq: fn(left, right) { left == right })
 }
 
-fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<Symbol> {
+// Absent where the list does not read: a list that refused has no binding list to compare against.
+fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> Optional<List<Symbol>> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
-    Absent => Empty
+    Absent => Present { value: Empty }
     Present { value: comma_spine } =>
-      fold(
-        body_lower_param_edges(sequence_capture: comma_spine),
-        init: Empty,
-        f: fn(acc, e) {
-          match e.label {
-            Named { name: sym } => Cons { head: sym, tail: acc }
-            Positional => acc
+      match body_lower_param_edges(sequence_capture: comma_spine) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: edges, diagnostics: _ } =>
+          Present {
+            value: fold(edges, init: Empty, f: fn(acc, e) {
+              match e.label {
+                Named { name: sym } => Cons { head: sym, tail: acc }
+                Positional => acc
+              }
+            })
           }
-        }
-      )
+      }
   }
 }
 
@@ -422,26 +425,26 @@ fn body_lower_param_list_binder_atoms(param_list: Node) -> Optional<List<Node>> 
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
     Absent => Absent
     Present { value: comma_spine } =>
-      match body_lower_collect_typed_params_all_optional(sequence_capture: comma_spine) {
-        Absent => Absent
-        Present { value: params } => Present { value: list_map(xs: params, f: fn(p) { p.binder }) }
+      match body_lower_collect_typed_params(sequence_capture: comma_spine) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: params, diagnostics: _ } => Present { value: list_map(xs: params, f: fn(p) { p.binder }) }
       }
   }
 }
 
-fn body_lower_param_binding_symbols_from_fn_captured(captured: Node) -> List<Symbol> {
+fn body_lower_param_binding_symbols_from_fn_captured(captured: Node) -> Optional<List<Symbol>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
     ParseSubtreeFound { captured: param_list } =>
       body_lower_param_binding_symbols_from_param_list(param_list: param_list)
-    ParseSubtreeAbsent => Empty
+    ParseSubtreeAbsent => Present { value: Empty }
   }
 }
 
-fn body_lower_param_binding_symbols_from_fn_decl_module(root: Node) -> List<Symbol> {
+fn body_lower_param_binding_symbols_from_fn_decl_module(root: Node) -> Optional<List<Symbol>> {
   match body_lower_find_captured(root: root, emitted: ^dag_surface_fn_decl) {
     ParseSubtreeFound { captured: captured } =>
       body_lower_param_binding_symbols_from_fn_captured(captured: captured)
-    ParseSubtreeAbsent => Empty
+    ParseSubtreeAbsent => Present { value: Empty }
   }
 }
 
@@ -1776,28 +1779,38 @@ fn body_lower_typed_param_edge_of(param: BodyLowerTypedParam) -> Edge {
   Edge { label: Named { name: param.name }, target: param.type_node }
 }
 
-fn body_lower_collect_param_edges(sequence_capture: Node) -> List<Edge> {
-  list_map(xs: body_lower_collect_typed_params(sequence_capture: sequence_capture), f: fn(param) { body_lower_typed_param_edge_of(param: param) })
+fn body_lower_collect_param_edges(sequence_capture: Node) -> Outcome<List<Edge>> {
+  bind_outcome(o: body_lower_collect_typed_params(sequence_capture: sequence_capture), f: fn(params) {
+    outcome_accepted(value: list_map(xs: params, f: fn(param) { body_lower_typed_param_edge_of(param: param) }))
+  })
 }
 
-fn body_lower_typed_param_from_comma_seq(sequence_capture: Node) -> Optional<BodyLowerTypedParam> {
+// A repeat element is seq(`,`, param): the parameter is its RIGHT element, read by position. It used
+// to try the right and, on Absent, the left -- the `,` token -- a second reader standing in for the
+// first's failure.
+fn body_lower_typed_param_from_comma_seq(sequence_capture: Node) -> Outcome<BodyLowerTypedParam> {
   match sugar_sequence_pair_optional(node: sequence_capture) {
-    Present { value: pair } =>
-      match body_lower_typed_param_optional(param_capture: pair.right) {
-        Present { value: param } => Present { value: param }
-        Absent => body_lower_typed_param_optional(param_capture: pair.left)
-      }
-    Absent => body_lower_typed_param_optional(param_capture: sequence_capture)
+    Present { value: pair } => body_lower_typed_param_slot(param_capture: pair.right)
+    Absent => body_lower_typed_param_slot(param_capture: sequence_capture)
   }
 }
 
-// ONE ENTRY PER PARAMETER SLOT THE LIST WRITES: Present for a slot read as a typed parameter,
-// Absent for a slot the reader could not read. The walk never drops a slot, so the two views below
-// differ only in what they do with an Absent one: lowering's view keeps the readable parameters
-// (body_lower_collect_typed_params, its behaviour unchanged), and the binder view
-// v2.compiler.occurrence_role reads (body_lower_param_list_binder_atoms) refuses the whole list,
-// because a list with an unread binder is not a complete read of its binders (review 5355095582).
-fn body_lower_collect_typed_param_slots_from_repeat_tail(repeat_capture: Node) -> List<Optional<BodyLowerTypedParam>> {
+// ONE PARAMETER SLOT, READ OR REFUSED: a slot the typed-parameter reader cannot read refuses
+// body_lowering_reason_parameter_unlowered, located at the slot. It is never skipped.
+fn body_lower_typed_param_slot(param_capture: Node) -> Outcome<BodyLowerTypedParam> {
+  match body_lower_typed_param_optional(param_capture: param_capture) {
+    Present { value: param } => outcome_accepted(value: param)
+    Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_parameter_unlowered, n: param_capture))
+  }
+}
+
+// ONE ENTRY PER PARAMETER SLOT THE LIST WRITES, each read or refused (body_lower_typed_param_slot).
+// The walk never drops a slot, and neither does its one view (body_lower_collect_typed_params): the
+// first refused slot refuses the whole list. Lowering's domain and the binder list
+// v2.compiler.occurrence_role reads are the same read, so a parameter can no longer be missing from
+// the domain while present in the source (gunbc.recurring_failure_mode
+// lowering_accessor_collapses_a_sequence_operand, the binder route).
+fn body_lower_collect_typed_param_slots_from_repeat_tail(repeat_capture: Node) -> List<Outcome<BodyLowerTypedParam>> {
   if is_empty_conj_root(n: repeat_capture) {
     Empty
   } else {
@@ -1814,10 +1827,10 @@ fn body_lower_collect_typed_param_slots_from_repeat_tail(repeat_capture: Node) -
   }
 }
 
-fn body_lower_collect_typed_param_slots(sequence_capture: Node) -> List<Optional<BodyLowerTypedParam>> {
+fn body_lower_collect_typed_param_slots(sequence_capture: Node) -> List<Outcome<BodyLowerTypedParam>> {
   match find_named_child(root: sequence_capture, name: ^grammar_sequence_left_node_projection) {
     Accepted { value: first, diagnostics: _ } =>
-      let first_slots = [body_lower_typed_param_optional(param_capture: first)]
+      let first_slots = [body_lower_typed_param_slot(param_capture: first)]
       match find_named_child(root: sequence_capture, name: ^grammar_sequence_right_node_projection) {
         Accepted { value: outer_right, diagnostics: _ } =>
           match find_named_child(root: outer_right, name: ^grammar_sequence_left_node_projection) {
@@ -1829,12 +1842,17 @@ fn body_lower_collect_typed_param_slots(sequence_capture: Node) -> List<Optional
       }
     Rejected { diagnostics: _ } =>
       match body_lower_typed_param_optional(param_capture: sequence_capture) {
-        Present { value: param } => [Present { value: param }]
+        Present { value: param } => [outcome_accepted(value: param)]
         Absent =>
           match sugar_sequence_pair_optional(node: sequence_capture) {
-            Absent => Empty
+            Absent =>
+              if is_empty_conj_root(n: sequence_capture) {
+                Empty
+              } else {
+                [body_lower_typed_param_slot(param_capture: sequence_capture)]
+              }
             Present { value: pair } =>
-              let slot = body_lower_typed_param_optional(param_capture: pair.left)
+              let slot = body_lower_typed_param_slot(param_capture: pair.left)
               match body_lower_after_comma_tail_optional(node: pair.right) {
                 Present { value: tail } => list_append(left: [slot], right: body_lower_collect_typed_param_slots(sequence_capture: tail))
                 Absent => [slot]
@@ -1844,25 +1862,15 @@ fn body_lower_collect_typed_param_slots(sequence_capture: Node) -> List<Optional
   }
 }
 
-// Lowering's view: the readable parameters, in order.
-fn body_lower_collect_typed_params(sequence_capture: Node) -> List<BodyLowerTypedParam> {
-  fold(body_lower_collect_typed_param_slots(sequence_capture: sequence_capture), init: Empty, f: fn(acc, slot) {
-    match slot {
-      Present { value: param } => list_snoc_item(xs: acc, item: param)
-      Absent => acc
-    }
-  })
-}
-
-// The strict view: every slot's parameter, or Absent if any slot is unreadable.
-fn body_lower_collect_typed_params_all_optional(sequence_capture: Node) -> Optional<List<BodyLowerTypedParam>> {
-  fold(body_lower_collect_typed_param_slots(sequence_capture: sequence_capture), init: Present { value: Empty }, f: fn(acc, slot) {
+// THE ONE VIEW: every slot's parameter, in order, or the first slot's refusal.
+fn body_lower_collect_typed_params(sequence_capture: Node) -> Outcome<List<BodyLowerTypedParam>> {
+  fold(body_lower_collect_typed_param_slots(sequence_capture: sequence_capture), init: outcome_accepted(value: Empty), f: fn(acc, slot) {
     match acc {
-      Absent => Absent
-      Present { value: params } =>
+      Rejected { diagnostics: _ } => acc
+      Accepted { value: params, diagnostics: _ } =>
         match slot {
-          Present { value: param } => Present { value: list_snoc_item(xs: params, item: param) }
-          Absent => Absent
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: param, diagnostics: _ } => outcome_accepted(value: list_snoc_item(xs: params, item: param))
         }
     }
   })
@@ -1872,12 +1880,16 @@ fn body_lower_collect_typed_params_all_optional(sequence_capture: Node) -> Optio
 // the comma spine and cannot know a slot's position; the mint needs the whole list, so it runs once
 // here, and both the domain (body_lower_domain_from_param_list) and the ingest-side binding list the
 // domain is checked against (body_lower_param_binding_symbols_from_param_list) read through it.
-fn body_lower_param_list(sequence_capture: Node) -> DeclaredParameterList {
-  anonymous_binder_mint_parameter_list(edges: body_lower_collect_param_edges(sequence_capture: sequence_capture))
+fn body_lower_param_list(sequence_capture: Node) -> Outcome<DeclaredParameterList> {
+  bind_outcome(o: body_lower_collect_param_edges(sequence_capture: sequence_capture), f: fn(edges) {
+    outcome_accepted(value: anonymous_binder_mint_parameter_list(edges: edges))
+  })
 }
 
-fn body_lower_param_edges(sequence_capture: Node) -> List<Edge> {
-  body_lower_param_list(sequence_capture: sequence_capture).edges
+fn body_lower_param_edges(sequence_capture: Node) -> Outcome<List<Edge>> {
+  bind_outcome(o: body_lower_param_list(sequence_capture: sequence_capture), f: fn(minted) {
+    outcome_accepted(value: minted.edges)
+  })
 }
 
 fn body_lower_param_binding_optional(node: Node) -> Optional<Symbol> {
@@ -1890,10 +1902,15 @@ fn body_lower_param_binding_optional(node: Node) -> Optional<Symbol> {
 // The same read, answered as the atom that carries the name: lowered from the token it was read
 // from (v2.std.node node_lowered_from), so a caller that places the name in the tree keeps its
 // minted occurrence. The name-only reader above is this one's projection, not a second reader.
-// A BINDER IS NEVER AN OPERATOR EXPRESSION: an operand the reader refuses is not a binder, so
-// the answer is "not a binder" and the enclosing construct refuses at its own locus. The
-// refusal is not carried because this position returns no Outcome; the binder readers'
-// callers are the named remaining gap of lowering_accessor_collapses_a_sequence_operand.
+// A BINDER IS A NAME, SO IT IS READ AS A NAME AND NEVER AS AN OPERAND. Every binder position the
+// grammar writes -- a parameter, a field, a named argument's label, a let key, a type parameter, a
+// projection's member -- is an identifier, possibly under shells whose value is that one atom. The
+// reader peels exactly those shells (a production's captured child, an optional element, a sequence
+// whose right projection is empty) and answers the atom; anything else is not a binder, and each
+// caller refuses at its own locus. It used to fall back to the operand reader, which could answer a
+// PART of an operator expression, and whose refusal it had to map to Absent (the binder route of
+// gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand): a name reader has no
+// such arm to collapse.
 fn body_lower_param_binding_atom_optional(node: Node) -> Optional<Node> {
   match dag_binding_branded_atom_identity(node: node) {
     Present { value: binding } =>
@@ -1906,17 +1923,29 @@ fn body_lower_param_binding_atom_optional(node: Node) -> Optional<Node> {
           } else {
             optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: sym } }, children: [], source: node))
           }
-        Absent =>
-          match body_lower_operand_ref_read(node: node) {
-            OperandRefLowered { lowered: ref_node } =>
-              match node_atom_identity_optional(node: ref_node) {
-                Present { value: sym } =>
-                  optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: sym } }, children: [], source: ref_node))
-                Absent => optional_absent()
-              }
-            OperandRefAbsent => optional_absent()
-            OperandRefRefused { diagnostics: _ } => optional_absent()
-          }
+        Absent => body_lower_binder_name_behind_shell_optional(node: node)
+      }
+  }
+}
+
+// The one peel a name admits: a shell whose value IS its single child.
+fn body_lower_binder_name_behind_shell_optional(node: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: node) {
+    Present { value: inner } => body_lower_param_binding_atom_optional(node: inner)
+    Absent =>
+      let peeled = body_lower_deep_unwrap_optional(node: node)
+      if peeled != node {
+        body_lower_param_binding_atom_optional(node: peeled)
+      } else {
+        match sugar_sequence_pair_optional(node: node) {
+          Present { value: pair } =>
+            if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+              body_lower_param_binding_atom_optional(node: pair.left)
+            } else {
+              optional_absent()
+            }
+          Absent => optional_absent()
+        }
       }
   }
 }
@@ -2231,25 +2260,32 @@ type BodyLowerDeclaredDomain {
   order: List<Symbol>
 }
 
-fn body_lower_declared_domain_from_param_list(param_list: Node) -> Optional<BodyLowerDeclaredDomain> {
+// Rejected where a parameter slot refuses (body_lower_typed_param_slot); Absent where the list has no
+// comma spine to read.
+fn body_lower_declared_domain_from_param_list(param_list: Node) -> Outcome<Optional<BodyLowerDeclaredDomain>> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
-    Absent => Absent
+    Absent => outcome_accepted(value: optional_absent())
     Present { value: comma_spine } =>
-      let minted = body_lower_param_list(sequence_capture: comma_spine)
-      Present {
-        value: BodyLowerDeclaredDomain {
-          domain: node_lowered_from(kind: TypeNode { connective: Conj }, children: minted.edges, source: param_list),
-          order: minted.order
-        }
-      }
+      bind_outcome(o: body_lower_param_list(sequence_capture: comma_spine), f: fn(minted) {
+        outcome_accepted(
+          value: optional_present(
+            value: BodyLowerDeclaredDomain {
+              domain: node_lowered_from(kind: TypeNode { connective: Conj }, children: minted.edges, source: param_list),
+              order: minted.order
+            }
+          )
+        )
+      })
   }
 }
 
-fn body_lower_domain_from_param_list(param_list: Node) -> Optional<Node> {
-  match body_lower_declared_domain_from_param_list(param_list: param_list) {
-    Absent => Absent
-    Present { value: d } => Present { value: d.domain }
-  }
+fn body_lower_domain_from_param_list(param_list: Node) -> Outcome<Optional<Node>> {
+  bind_outcome(o: body_lower_declared_domain_from_param_list(param_list: param_list), f: fn(declared) {
+    match declared {
+      Absent => outcome_accepted(value: optional_absent())
+      Present { value: d } => outcome_accepted(value: optional_present(value: d.domain))
+    }
+  })
 }
 
 fn body_lower_sequence_head_is_arrow(node: Node) -> Bool {
@@ -3310,29 +3346,36 @@ type BodyLowerFnSignature {
   type_params: DeclTypeParams,
 }
 
-fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSignature> {
+// Rejected where a parameter slot refuses; Absent for a signature this lowering cannot read, which
+// the fn declaration retains as its shell.
+fn body_lower_fn_signature_optional(captured: Node) -> Outcome<Optional<BodyLowerFnSignature>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
-    ParseSubtreeAbsent => Absent
+    ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
     ParseSubtreeFound { captured: param_list } =>
       match body_lower_declared_domain_from_param_list(param_list: param_list) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: Absent, diagnostics: _ } => outcome_accepted(value: optional_absent())
+        Accepted { value: Present { value: declared }, diagnostics: _ } =>
+          outcome_accepted(value: body_lower_fn_signature_after_domain(captured: captured, declared: declared))
+      }
+  }
+}
+
+fn body_lower_fn_signature_after_domain(captured: Node, declared: BodyLowerDeclaredDomain) -> Optional<BodyLowerFnSignature> {
+  match body_lower_return_type_from_fn_captured(captured: captured) {
+    Absent => Absent
+    Present { value: return_type } =>
+      match dag_surface_kw_then_ident_from_captured(captured: captured) {
         Absent => Absent
-        Present { value: declared } =>
-          match body_lower_return_type_from_fn_captured(captured: captured) {
-            Absent => Absent
-            Present { value: return_type } =>
-              match dag_surface_kw_then_ident_from_captured(captured: captured) {
-                Absent => Absent
-                Present { value: fn_name } =>
-                  Present {
-                    value: BodyLowerFnSignature {
-                      domain: declared.domain,
-                      order: declared.order,
-                      return_type: return_type,
-                      fn_name: fn_name,
-                      type_params: body_lower_decl_type_params(captured: captured)
-                    }
-                  }
-              }
+        Present { value: fn_name } =>
+          Present {
+            value: BodyLowerFnSignature {
+              domain: declared.domain,
+              order: declared.order,
+              return_type: return_type,
+              fn_name: fn_name,
+              type_params: body_lower_decl_type_params(captured: captured)
+            }
           }
       }
   }
@@ -3535,8 +3578,9 @@ fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<BodyLowering> {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
       match body_lower_fn_signature_optional(captured: captured) {
-        Absent => body_lower_wrapper_retained_shell(shell: shell)
-        Present { value: sig } =>
+        Rejected { diagnostics: r } => body_lowering_lowered(o: Rejected { diagnostics: r })
+        Accepted { value: Absent, diagnostics: _ } => body_lower_wrapper_retained_shell(shell: shell)
+        Accepted { value: Present { value: sig }, diagnostics: _ } =>
           match body_lower_fn_signature_refusal(shell: shell, sig: sig) {
             Present { value: refused } => body_lowering_lowered(o: refused)
             Absent =>
@@ -3553,8 +3597,9 @@ fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<BodyLowering> {
 // and the signature is the earlier fact.
 fn body_lower_fn_decl_to_arrow_admitted(shell: Node, captured: Node) -> Outcome<BodyLowering> {
   match body_lower_fn_signature_optional(captured: captured) {
-    Absent => body_lower_wrapper_retained_shell(shell: shell)
-    Present { value: sig } =>
+    Rejected { diagnostics: r } => body_lowering_lowered(o: Rejected { diagnostics: r })
+    Accepted { value: Absent, diagnostics: _ } => body_lower_wrapper_retained_shell(shell: shell)
+    Accepted { value: Present { value: sig }, diagnostics: _ } =>
       match body_lower_fn_signature_refusal(shell: shell, sig: sig) {
         Present { value: refused } => body_lowering_lowered(o: refused)
         Absent =>

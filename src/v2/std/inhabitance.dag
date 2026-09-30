@@ -30,6 +30,7 @@ import v2.std.node {
   node_subtree_nodes,
   node_synthetic
 }
+import std.algebra { list_append }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
@@ -81,6 +82,7 @@ fn type_variable_instance_lookup(
 type DeclaredTypePosition
   = PositionDirectCallArgument
   | PositionDeclaredReturn
+  | PositionRecordField { record: Node }
 
 // type_variables are the declaring Arrow's type parameters (v2.std.type_binder type_param_names):
 // the only atoms in `declared` that name no type, and so the only thing that keeps an
@@ -110,9 +112,12 @@ type InhabitanceVerdict
   | InhabitanceRefused { find_witness_reason: Symbol }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
-// Two producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
-// an application and PositionDeclaredReturn per Arrow body against its declared return, and both
-// hand the obligation to declared_type_inhabitance.
+// Three producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
+// an application, PositionDeclaredReturn per Arrow body against its declared return, and
+// PositionRecordField per field value of a record construct against the field the record declares,
+// and all three hand the obligation to declared_type_inhabitance. A record field's position carries
+// the construct's resolved constructor reference, so its refusal names the record as well as the
+// field (the obligation's parameter_identity) and the two types.
 fn position_direct_call_argument() -> DeclaredTypePosition {
   PositionDirectCallArgument
 }
@@ -121,10 +126,15 @@ fn position_declared_return() -> DeclaredTypePosition {
   PositionDeclaredReturn
 }
 
+fn position_record_field(record: Node) -> DeclaredTypePosition {
+  PositionRecordField { record: record }
+}
+
 fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
   match position {
     PositionDirectCallArgument => ^position_direct_call_argument
     PositionDeclaredReturn => ^position_declared_return
+    PositionRecordField { record: _ } => ^position_record_field
   }
 }
 
@@ -247,10 +257,26 @@ fn inhabitance_no_candidate_return_reason() -> Symbol {
   ^arrow_body_does_not_inhabit_declared_return
 }
 
+fn inhabitance_no_candidate_record_field_reason() -> Symbol {
+  ^record_field_value_does_not_inhabit
+}
+
+// WHAT A POSITION ADDS TO ITS REFUSAL BEYOND THE SITE, THE FORMAL AND THE TWO TYPES. A record field
+// names the record it is a field of; an argument and a declared return are already named by the
+// site they are located at.
+fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Edge> {
+  match position {
+    PositionDirectCallArgument => []
+    PositionDeclaredReturn => []
+    PositionRecordField { record: record } => [Edge { label: Named { name: ^inhabitance_record }, target: record }]
+  }
+}
+
 fn inhabitance_no_candidate_reason(position: DeclaredTypePosition) -> Symbol {
   match position {
     PositionDirectCallArgument => inhabitance_no_candidate_application_reason()
     PositionDeclaredReturn => inhabitance_no_candidate_return_reason()
+    PositionRecordField { record: _ } => inhabitance_no_candidate_record_field_reason()
   }
 }
 
@@ -361,7 +387,7 @@ fn application_argument_does_not_inhabit_diagnostic(
     correction: Suggested {
       node: Node {
         kind: TypeNode { connective: Conj },
-        children: [
+        children: list_append(left: [
           Edge {
             label: Named { name: inhabitance_position_symbol(position: obligation.position) },
             target: obligation.application
@@ -378,7 +404,7 @@ fn application_argument_does_not_inhabit_diagnostic(
             label: Named { name: find_witness_reason },
             target: obligation.produced
           }
-        ],
+        ], right: inhabitance_position_context_edges(position: obligation.position)),
         occurrence_id: obligation.application.occurrence_id
       }
     }
