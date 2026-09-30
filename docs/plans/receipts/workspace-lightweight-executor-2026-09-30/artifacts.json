@@ -1,0 +1,26 @@
+[
+  {
+    "path": "dag/gunbc/workspace_commissioning_executor.dag",
+    "sha256": "15a6e0e2f3dbf75004d37b1481c2f0e20c75fce4caa2e81fca9a68c8462d825f"
+  },
+  {
+    "path": "dag/gunbc/workspace_commissioning_executor_unit.dag",
+    "sha256": "cfbc420920318999aa4e4682f7117b8a512e6dc278ab1d54c15a5bdf98d08d6c"
+  },
+  {
+    "path": "dag/test/claim/workspace_commissioning_executor_witness_test.dag",
+    "sha256": "346d4b597996922ce2d8bd27a3d5b7f34385cd7fee2e3f6cf8faea2d4d8c6201"
+  },
+  {
+    "path": "tools/tests/workspace_commissioning_executor_controls.py",
+    "sha256": "9e2359d373b013c76426eacbacf7b78c93c1c783e5790f7a60ca48649ab6b5ab"
+  },
+  {
+    "path": "target/workspace-commissioning-executor.sh",
+    "sha256": "fd3b67bcd4864053785359d4307d17c3d334720d46ae86231e0bdbda92f9de32"
+  },
+  {
+    "path": "/home/briansrls/scratch-wt/allocation-vertical-resume/target/release/gunbc",
+    "sha256": "717e9b4159dc7bc722e94a235325e6760f5acd246e63d8bed14b828dac970243"
+  }
+]

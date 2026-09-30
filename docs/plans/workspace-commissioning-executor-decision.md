@@ -1,6 +1,6 @@
-# Commissioning executor lifetime: decision needed
+# Commissioning executor lifetime: lightweight executor selected
 
-Standing: source/design investigation at allocation commissioning checkpoint `0622f9a1ed1`. Nothing installed, started, commissioned or reserved. The new named-property observer is a source component, not an executor.
+Decision: the operator explicitly selected a lightweight executor. The implementation is a Bash transport emitted from the existing orchestration authority, with a systemd service model in the existing controller slice. No additional resident DAG interpreter is introduced. Production installation and commissioning remain unperformed.
 
 ## The boundary exposed
 
@@ -29,19 +29,23 @@ Whichever realization is chosen must extend the existing fleet apply authority, 
 - Reuse the existing slot controller as the sole commissioning/readiness writer.
 - Keep the 12 GiB serving limit, 28 GiB cell envelope, and existing separately accounted controller budget unchanged.
 
-## Realization choices
+## Selected realization
 
-### Preserve the no-additional-interpreter-service constraint
+`gunbc.workspace_commissioning_executor` emits the native transport through the existing orchestration Bash backend. `gunbc.workspace_commissioning_executor_unit` models its host-owned service in the existing controller slice. The service has `Restart=no`, `RemainAfterExit=yes`, and the existing control-group teardown intent. It is not enabled at boot.
 
-Use a lightweight host-owned executor emitted from the existing fleet operation model. Its persistent process handles execution lifetime and exact-invocation waiting. It invokes bounded installed DAG operations for preparation and settlement; no interpreter is started on every poll. The dispatcher and privileged operations remain modeled, not an independently authored shell controller.
+The transport holds the existing fleet lock across prepare, start/reattach, exact-invocation wait, and finish. It preserves named systemd fields; missing/duplicate fields, a pending job, changed invocation, timeout and failed settlement refuse. Systemctl requests have bounded command lifetimes. There is no interpreter invocation in the polling loop. A readable controller success alone is not the executor terminal.
 
-This requires implementing and qualifying that lightweight execution boundary. No such complete guarded commissioning executor was found in the current fleet apply path. The existing Spark transfer implementation demonstrates detached supervision, but its retry and publication semantics are specific to artifact transfer and cannot simply be reused as commissioning permission.
+The bounded helper interface is intentionally not a new authorization authority:
 
-### Explicit temporary exception for the first commissioning run
+| Call | Obligation before returning successfully |
+| --- | --- |
+| `prepare <executor-invocation>` | Verify installed execution and reviewed plan under the lock; recover the old actor and pending jobs; acquire/recover the mutation guard; persist submission intent before returning `start:<prior-invocation>`, or return `wait:<recorded-invocation>` / `complete:<recorded-invocation>`. |
+| `bind <executor-invocation> <slot-invocation>` | Persist the actual slot invocation against the exact prepared journal head. |
+| `finish <executor-invocation> <slot-invocation>` | Require strong controller/journal/readiness/artifact readbacks; remove and reread the credential; settle the mutation guard; publish/recover the exact fleet generation; return the committed terminal. |
 
-Run the existing reviewed DAG apply logic inside a host-owned, one-shot systemd execution, from the same installed root-owned release. It would hold the fleet lock itself and start/wait/read back the existing slot controller. This is a temporary second interpreter process during commissioning, not another guest controller; it must fit the existing controller budget with no ceiling increase. Its combined peak and cancellation behavior are not yet qualified.
+The production helper, its durable enclosing journal, installer wiring and reviewed fleet commissioning scope remain to be implemented. The native component and service model do **not** remove that gate. In particular, a fresh executor must not turn an unresolved earlier submission into another `start` simply because the unit currently looks inactive. Controls use explicit process-boundary doubles, not manufactured production permissions.
 
-This option needs an explicit exception to the user's earlier instruction: “Do not ... add another interpreter-sized service for allocations.” It must not be selected silently just because it simplifies recovery.
+The temporary additional-interpreter-service alternative was not selected.
 
 ## Newly qualified observation component
 
@@ -53,4 +57,4 @@ Upstream reference: systemd v255 [`systemctl-show.c`, Job property rendering](ht
 
 ## Review and acceptance remain unchanged
 
-Neither option permits live commissioning before the complete transaction, exact-head qualification and reviewed plan exist. Required live proof remains initial commissioning, first VM and SSH, release/sanitation, larger-profile reuse on the same physical slot, and expiry.
+The selected executor does not permit live commissioning before the complete transaction, exact-head qualification and reviewed plan exist. Required live proof remains initial commissioning, first VM and SSH, release/sanitation, larger-profile reuse on the same physical slot, and expiry.

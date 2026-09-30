@@ -59,3 +59,10 @@ This is an incomplete source checkpoint, not a deployable commissioning apply. T
 Completed-controller recovery now rereads the exact successful invocation, committed journal, generation-zero readiness and host identities before recovering its recorded mutation generation. A retained guard resumes credential cleanup and fenced release. A lost release response is accepted only when the guard records this owner's exact successor generation and the credential is absent. Missing history, another owner, or a later generation refuses. This entry contains no controller start.
 
 The enclosing fleet transaction still must durably record the acquired guard generation and actual invocation. The start-dispatch window is not covered by completed-controller recovery: a crash before invocation capture must recover an attributable existing start, not infer permission from an inactive unit or issue a blind second start. This remains part of the HOLD.
+
+
+## Lightweight executor transport
+
+The operator selected a lightweight host-owned executor. `workspace_commissioning_executor` now emits its Bash transport through the orchestration backend; `workspace_commissioning_executor_unit` models a root-owned service in the existing controller slice. The native process owns the fleet lock while it waits and invokes no DAG interpreter per poll. The existing slot controller remains the only commissioning/readiness worker.
+
+Process-boundary controls and a temporary user-service lifetime test exercise the exported transport, not production commissioning. The remaining production adapter must bind durable submission intent, executor and slot invocations, mutation generation and reviewed fleet generation to the existing CAS/readback authorities. Installation and the fleet commissioning scope remain gated on that adapter and its crash recovery. Nothing in this checkpoint publishes initial readiness or makes srv1-13 supply. See [the selected executor contract](workspace-commissioning-executor-decision.md).
