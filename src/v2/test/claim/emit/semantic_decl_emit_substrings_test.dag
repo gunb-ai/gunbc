@@ -33,7 +33,8 @@ test fn emit_eq_golden() -> Bool {
     name: ^Bool,
     params: Empty,
     node: semantic_bool_coproduct(),
-    target: rust_semantic_decl_target_model_staging()
+    target: rust_semantic_decl_target_model_staging(),
+    realization_host: rust_semantic_decl_target_model_staging()
   ) {
     Accepted { value: m, diagnostics: _ } => m.carried == golden
     Rejected { diagnostics: _ } => false

@@ -2,7 +2,7 @@ module gunbc.host_effect_realize
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text }
 
-import std.algebra { trim, list_snoc_item, list_append }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, trim }
 import extdeps.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -128,7 +128,7 @@ import extdeps.apt {
   apt_get_binary_path,
 }
 import extdeps.tools { CliTool, apt_binary_path_of }
-import extdeps.tools.curl { curl_cli_tool }
+import extdeps.tools.curl { curl_cli_tool, curl_bmcweb_session_login_command }
 import extdeps.tools.xorriso { xorriso_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
@@ -171,6 +171,7 @@ import gunbc.runner_host_deploy {
 import gunbc.runner_slot_population_census {
   SlotCensus,
   slot_census_from_command_outcome,
+  slot_census_from_typed_argv_outcome,
   surplus_observation,
 }
 import gunbc.runner_slot_retirement {
@@ -179,8 +180,10 @@ import gunbc.runner_slot_retirement {
   observe_retirement_standings,
   surplus_observation_from_census_and_retirement,
 }
-import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
-import gunbc.shell_command_text { shell_command_text_of_argv }
+import extdeps.systemd.systemctl {
+  systemctl_list_all_service_units_command,
+  systemctl_list_all_service_units_argv,
+}
 import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
@@ -408,7 +411,6 @@ import gunbc.host_effect_codex_supervised_turn {
 import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
 import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
-  bmcweb_session_login_curl_args,
 }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
 
@@ -1050,18 +1052,22 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
   }
 }
 
+// The login is a described curl command minted at extdeps.tools.curl (the tool's own module);
+// this site supplies only the paths its materialization bracket owns and runs the FLAGS through
+// srv3_run_tool_by_name, which resolves the program from the same cited curl_cli_tool row the
+// builder's identity carries.
 fn realize_bmcweb_session_login_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let curl_args = bmcweb_session_login_curl_args(
+  let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
   match srv3_run_tool_by_name(
     tool: curl_cli_tool,
-    args: curl_args,
+    args: login.arguments,
     transport: transport,
   ) {
     Srv3PredicateUnobserved { reason: why } =>
@@ -4135,37 +4141,69 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
 
 // THE CENSUS, TAKEN OVER THE TRANSPORT THE REALIZER ALREADY HOLDS.
 //
-// `gunbc.runner_slot_population_census` owns the JUDGMENT and names no transport: it classifies a
-// `systemctl list-units` outcome into a `SlotCensus`. This is the second binding of that one
-// judgment -- the first is `observe_slot_population_over_ssh` over the fleet SSH edge -- and it exists
-// because the realizer's subject is reached through `HostEffectTransport`, not through a fleet
-// `SshTarget`. Two transports, one classifier, per DESIGN section 2's horizontal rule; the alternative
-// was a second place deciding what a nonzero exit means about a host's slot population, and one of
-// two such places rendering an unreadable host as an empty one is the narrow that raises caps on a
-// host nobody read.
+// `gunbc.runner_slot_population_census` owns the JUDGMENT: what a `systemctl list-units` outcome
+// says about a host's slots, and what an unreadable host means (a refused census, never an empty
+// population). The typed-argv decode lives THERE -- slot_census_from_typed_argv_outcome, the one
+// decode the census module's own fleet reader (observe_slot_population_over_ssh) and every remote
+// arm below share; this fn adds no census judgment of its own and exists because the realizer's
+// subject is reached through `HostEffectTransport`, not through a fleet `SshTarget`, so the
+// transports the realizer already holds are bound to reads here.
 //
-// THE DIRECTION OF THE IMPORT IS WHY THE CLASSIFIER TAKES LOOSE FIELDS. `ShellExecObserved` is
-// declared in THIS module, so a classifier that accepted it would have to be imported from here --
-// and the census module is already imported BY here. Handing it the outcome fields keeps the edge
-// one-way and leaves the census module able to serve any further transport without knowing of it.
+// THE LOCAL FLATTEN STAYS BESIDE THE FN THAT HOLDS THE SEAM. The census module decodes the records
+// it already imports; the local seam's `ProcessOutcome` is flattened into the classifier's loose
+// fields here, where run_shell_command_capture's success convention (output present == exited
+// zero) is known. THE RENDERED PROBE BRIDGE IS GONE; THIS IS ITS RETIREMENT RECEIPT.
+//
+// EVERY NON-LOCAL TRANSPORT RIDES THE ONE TYPED DISPATCH: SshShell and FleetSsh execute the words
+// as argv; EmitArtifactThenThinRun is refused by the dispatch, and a refused leg decodes (in the
+// census module's one adapter) as a refused census -- unobserved, never an empty population.
+//
+// Until the commit before this one, the census probe's serialization lived here as a named
+// declaration (observe_slot_population_census_script_body) with a std.dissolution
+// DeclarationRetires trigger bound to it -- because a row that no declaration names cannot be
+// retired by name. This commit discharges that obligation: the census probe now reaches every
+// transport as typed argv -- the command spelling lives in extdeps.systemd.systemctl
+// (systemctl_list_all_service_units_command) and the word list is derived from it -- so the
+// rendering and its trigger deleted together, as the trigger's own comment required: a trigger
+// citing an absent declaration is the dead vocabulary this repository removes. What remains is the
+// counted removal itself: one RetainedShellScript row off the section 5.E frontier, and the census
+// the cap flow consumes no longer unreachable over FleetSsh -- the fleet wall refuses a script
+// BODY before any word is examined, but the same words as argv pass it typed.
+//
+// THE LOCAL ADAPTER: the local seam's observation record, flattened into the classifier's fields.
+fn slot_census_from_process_outcome(host: HostIdentity, outcome: ProcessOutcome) -> SlotCensus {
+  match outcome {
+    ProcessOutputPresent { text: t } =>
+      slot_census_from_command_outcome(host: host, success: true, exit_code: 0, stdout: t, stderr: "")
+    ProcessOutputAbsent =>
+      slot_census_from_command_outcome(host: host, success: true, exit_code: 0, stdout: "", stderr: "")
+    ProcessRefused { exit_code: c, stderr: e } =>
+      slot_census_from_command_outcome(host: host, success: false, exit_code: c, stdout: "", stderr: e)
+  }
+}
+
 fn observe_slot_population_over_host_effect_transport(
   host: HostIdentity,
   transport: HostEffectTransport,
 ) -> SlotCensus {
-  let observed = run_shell_transport(
-    script: retained_srvn(
-      body: shell_command_text_of_argv(argv: systemctl_list_all_service_units_argv()),
-      reason: "runner slot population census (systemctl list-units)",
-    ),
-    transport: transport,
-  )
-  slot_census_from_command_outcome(
-    host: host,
-    success: observed.success,
-    exit_code: observed.exit_code,
-    stdout: observed.stdout,
-    stderr: observed.stderr,
-  )
+  match transport {
+    LocalShell =>
+      slot_census_from_process_outcome(
+        host: host,
+        outcome: run_shell_command_capture(
+          command: systemctl_list_all_service_units_command(),
+          transport: LocalExec,
+        ),
+      )
+    _ =>
+      slot_census_from_typed_argv_outcome(
+        host: host,
+        outcome: run_typed_argv_transport(
+          argv: systemctl_list_all_service_units_argv(),
+          transport: transport,
+        ),
+      )
+  }
 }
 
 // THIS IS THE ONE PLACE THE CAP AUTHORIZATION IS SUPPLIED, AND IT IS NOW DERIVED FROM A LIVE READ.

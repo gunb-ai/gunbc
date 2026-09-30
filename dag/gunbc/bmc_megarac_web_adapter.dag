@@ -71,7 +71,8 @@ type MegaRacWebStep {
 fn megarac_stream_open(world: BmcWorld) -> Bool {
   match world.web.kvm {
     BmcKvmStreaming { session: _ } => true
-    _ => false
+    BmcKvmIdle {} => false
+    BmcKvmClosedByController { session: _ } => false
   }
 }
 

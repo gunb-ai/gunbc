@@ -368,9 +368,15 @@ fn json_string_member(doc: JsonValue, key: String) -> String? {
     JsonMemberFound { value: v } =>
       match v {
         JsonString { value: s } => Present { value: s }
-        _ => none
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
       }
-    _ => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -379,9 +385,15 @@ fn json_number_member(doc: JsonValue, key: String) -> String? {
     JsonMemberFound { value: v } =>
       match v {
         JsonNumber { lexeme: n } => Present { value: n }
-        _ => none
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonString { value: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
       }
-    _ => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -574,6 +586,7 @@ fn megarac_attach_remote_image(
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_observe_presentation"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_stale_power_off"),
   ]
 {
   session = megarac.Media.OpenSession(
@@ -1002,13 +1015,19 @@ fn detach_verdict(
   if evidence.readback_read == false {
     DetachNotEstablished { reason: "the configurations read-back after stop-media failed, so the stop is unestablished whatever stop-media answered" }
   } else {
+    let still_presenting = DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
     match presented_convergence(
       presented: presented_media(body: evidence.readback, image_name: image_name, firmware: firmware),
       image_name: image_name,
       replaceable_seeded_stem: replaceable_seeded_stem,
     ) {
       ConvergeNothingPresented => DetachEstablished
-      _ => DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
+      ConvergeUnreadable { detail: _ } => still_presenting
+      ConvergeUncatalogued { image_name: _, wire: _ } => still_presenting
+      ConvergeDesiredPresented { row: _ } => still_presenting
+      ConvergeStalePresented { row: _ } => still_presenting
+      ConvergeForeignPresented { image_name: _ } => still_presenting
+      ConvergeSeveralPresented => still_presenting
     }
   }
 }
@@ -1148,38 +1167,60 @@ fn megarac_await_enumeration(
   let reading = if images.success { images_listing_reading(body: images.body, image_name: image_name) } else { ImagesListingLacks }
   match clock_unix_millis_read() {
     ClockUnixMillisRefused { detail: d } => EnumerationClockUnreadable { detail: d }
-    ClockUnixMillisObserved { millis: now } =>
-      match reading {
-        ImagesListingUnparseable { detail: d } => EnumerationUnparseable { detail: d }
-        _ => {
-          let evidence = content_hash_of_value(value: concat("megarac-remote-images:", images.body) as NonEmptyStr)
-          let seen = observations.append(RemoteMediaListingObservation {
-            observed_at: now,
-            listing: images_listing_presence(reading: reading),
-            raw_response: evidence,
-          })
-          let standing = mount_standing_as_of(
+    ClockUnixMillisObserved { millis: now } => {
+      let step = match reading {
+        ImagesListingUnparseable { detail: d } => ListedEnumerationDone { result: EnumerationUnparseable { detail: d } }
+        ImagesListingEmpty => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
+        ImagesListingLacks => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
+        ImagesListingOffers { image_index: _ } => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
+      }
+      match step {
+        ListedEnumerationDone { result: r } => r
+        ListedEnumerationLookAgain { observations: seen } => {
+          let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_refresh_poll_interval)
+          megarac_await_enumeration(
+            bmc_host: bmc_host,
+            cookie_jar: cookie_jar,
+            csrf_token: csrf_token,
+            image_name: image_name,
             window: window,
             observations: seen,
-            boundary: MountEvaluationBoundary { observed_through: now, clock_evidence: evidence },
+            remaining: remaining - 1,
           )
-          match enumeration_decision(standing: standing, reading: reading, remaining: remaining) {
-            EnumerationDecided { result: r } => r
-            EnumerationLookAgain => {
-              let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_refresh_poll_interval)
-              megarac_await_enumeration(
-                bmc_host: bmc_host,
-                cookie_jar: cookie_jar,
-                csrf_token: csrf_token,
-                image_name: image_name,
-                window: window,
-                observations: seen,
-                remaining: remaining - 1,
-              )
-            }
-          }
         }
       }
+    }
+  }
+}
+
+// One look's conclusion for a listing that parsed: the loop's self tail-call stays in
+// megarac_await_enumeration, which matches this step exhaustively.
+type ListedEnumerationStep
+  = ListedEnumerationDone { result: EnumerationAfterRefresh }
+  | ListedEnumerationLookAgain { observations: List<RemoteMediaListingObservation> }
+
+fn megarac_listed_enumeration_step(
+  body: String,
+  reading: ImagesListingReading,
+  now: EpochMs,
+  window: RemoteMediaMountWindow,
+  observations: List<RemoteMediaListingObservation>,
+  remaining: Int,
+) -> ListedEnumerationStep {
+  let evidence = content_hash_of_value(value: concat("megarac-remote-images:", body) as NonEmptyStr)
+  let seen = observations.append(RemoteMediaListingObservation {
+    observed_at: now,
+    listing: images_listing_presence(reading: reading),
+    raw_response: evidence,
+  })
+  let standing = mount_standing_as_of(
+    window: window,
+    observations: seen,
+    boundary: MountEvaluationBoundary { observed_through: now, clock_evidence: evidence },
+  )
+  return match enumeration_decision(standing: standing, reading: reading, remaining: remaining) {
+    EnumerationDecided { result: r } => ListedEnumerationDone { result: r }
+    EnumerationLookAgain => ListedEnumerationLookAgain { observations: seen }
   }
 }
 
@@ -1314,26 +1355,35 @@ fn configuration_row_reading(
                         match status {
                           RedirectionStopped => ConfigurationRowIdle
                           RedirectionWireUncatalogued { wire: w } => ConfigurationRowUncatalogued { image_name: name, wire: w }
-                          _ =>
-                            if name == "" {
-                              ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
-                            } else {
-                              ConfigurationRowPresenting {
-                                row: PresentingRow {
-                                  image_name: name,
-                                  media_index: json_number_member(doc: row, key: "media_index"),
-                                  session_index: json_number_member(doc: row, key: "session_index"),
-                                  redirection_wire: wire,
-                                  redirection: status,
-                                },
-                              }
-                            }
+                          RedirectionStartedConnectionAccepted => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
+                          RedirectionConnecting => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
                         }
                     }
                   }
               }
           }
       }
+  }
+}
+
+fn configuration_row_presenting_reading(
+  row: JsonValue,
+  name: String,
+  wire: Int,
+  status: MegaRacRedirectionStatus,
+) -> ConfigurationRowReading {
+  if name == "" {
+    ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
+  } else {
+    ConfigurationRowPresenting {
+      row: PresentingRow {
+        image_name: name,
+        media_index: json_number_member(doc: row, key: "media_index"),
+        session_index: json_number_member(doc: row, key: "session_index"),
+        redirection_wire: wire,
+        redirection: status,
+      },
+    }
   }
 }
 
@@ -1613,7 +1663,9 @@ fn attach_readiness(
               match r.redirection {
                 RedirectionStartedConnectionAccepted =>
                   if presenting_session_bound(row: r) { ReadinessStarted { row: r } } else { ReadinessStartedUnbound { row: r } }
-                _ => ReadinessConnecting { row: r }
+                RedirectionStopped => ReadinessConnecting { row: r }
+                RedirectionConnecting => ReadinessConnecting { row: r }
+                RedirectionWireUncatalogued { wire: _ } => ReadinessConnecting { row: r }
               }
           }
         }
@@ -1641,7 +1693,10 @@ fn readiness_standing(look: ReadinessLook, phase: ReadinessPhase) -> ReadinessSt
         ReadinessAfterStart => ReadinessPending
         ReadinessOfPresented => ReadinessRefusedAt { look: look }
       }
-    _ => ReadinessRefusedAt { look: look }
+    ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => ReadinessRefusedAt { look: look }
+    ReadinessMalformed { detail: _ } => ReadinessRefusedAt { look: look }
+    ReadinessDuplicate { configurations: _ } => ReadinessRefusedAt { look: look }
+    ReadinessWrongPresentation { image_name: _, configurations: _ } => ReadinessRefusedAt { look: look }
   }
 }
 
@@ -1809,7 +1864,9 @@ fn readiness_wait_outcome(
     ReadinessWaitClockIncoherent { opened_at: o, previous: p, look: l, looks: n } => MegaRacReadinessClockIncoherent { image_name: image_name, route: route, opened_at: o, previous: p, look: l, looks: n }
     ReadinessWaitClosed { last: l, deadline: d, looks: n } => MegaRacReadinessTimedOut { image_name: image_name, route: route, last: l, deadline: d, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
     ReadinessWaitRefused { look: l, looks: n } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-    ReadinessWaitReady { look: l, looks: n } =>
+    ReadinessWaitReady { look: l, looks: n } => {
+      let not_ready = MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
+      let state_unestablished = MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
       match l.reading {
         ReadinessStarted { row: r } =>
           match cd_at_end {
@@ -1829,10 +1886,19 @@ fn readiness_wait_outcome(
               general_at_ready: general_at_end,
             },
           }
-            _ => MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
+            CdErrorRead { code: CdErrorUncatalogued { wire: _ } } => state_unestablished
+            CdErrorUnread { detail: _ } => state_unestablished
           }
-        _ => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
+        ReadinessConnecting { row: _ } => not_ready
+        ReadinessStartedUnbound { row: _ } => not_ready
+        ReadinessNotPresented { configurations: _ } => not_ready
+        ReadinessUnanswered { detail: _ } => not_ready
+        ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => not_ready
+        ReadinessMalformed { detail: _ } => not_ready
+        ReadinessDuplicate { configurations: _ } => not_ready
+        ReadinessWrongPresentation { image_name: _, configurations: _ } => not_ready
       }
+    }
   }
 }
 
@@ -1890,7 +1956,8 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
       match sh {
         ShareUnreadable { detail: _ } => PresentationUnobserved { reason: "the general settings could not be read" }
         ShareMismatch { observed: _ } => PresentationNoLongerReady { reason: "the controller's share no longer matches this unit's boot share" }
-        ShareBound =>
+        ShareBound => {
+          let no_longer_ready = PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
           match r {
             ReadinessUnanswered { detail: _ } => PresentationUnobserved { reason: "the configurations read was not answered" }
             ReadinessMalformed { detail: _ } => PresentationUnobserved { reason: "the configurations document could not be read" }
@@ -1905,9 +1972,41 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
                 CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
                 other => PresentationStateUnestablished { cd_error: other }
               }
-            _ => PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
+            ReadinessConnecting { row: _ } => no_longer_ready
+            ReadinessStartedUnbound { row: _ } => no_longer_ready
+            ReadinessNotPresented { configurations: _ } => no_longer_ready
+            ReadinessDuplicate { configurations: _ } => no_longer_ready
+            ReadinessWrongPresentation { image_name: _, configurations: _ } => no_longer_ready
           }
+        }
       }
-    _ => PresentationUnobserved { reason: "the presentation could not be observed (the session was refused or its token unreadable)" }
+    MegaRacPresentationReady { route: _, evidence: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessTimedOut { image_name: _, route: _, last: _, deadline: _, looks: _, cd_before_any_write: _, cd_at_refusal: _ } => presentation_unobserved_before_presentation()
+    MegaRacMediaStateUnestablished { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_ready: _, general_at_ready: _ } => presentation_unobserved_before_presentation()
+    MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: _, reason: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessRefused { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_refusal: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessClockUnreadable { image_name: _, route: _, detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessClockIncoherent { image_name: _, route: _, opened_at: _, previous: _, look: _, looks: _ } => presentation_unobserved_before_presentation()
+    MegaRacConfigurationsUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacShareMismatch { expected: _, observed: _ } => presentation_unobserved_before_presentation()
+    MegaRacShareUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacSessionRefused { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacSessionTokenUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacImagesUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacImageListingEmpty => presentation_unobserved_before_presentation()
+    MegaRacImageListingUnparseable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacImageNotEnumerated { image_name: _ } => presentation_unobserved_before_presentation()
+    MegaRacForeignImagePresented { image_name: _, configurations: _ } => presentation_unobserved_before_presentation()
+    MegaRacSeveralImagesPresented { configurations: _ } => presentation_unobserved_before_presentation()
+    MegaRacStaleDetachNotAdmitted { stale_image: _, reason: _ } => presentation_unobserved_before_presentation()
+    MegaRacStaleDetachUnconfirmed { detach: _, reason: _ } => presentation_unobserved_before_presentation()
+    MegaRacRedirectionUncatalogued { image_name: _, wire: _, configurations: _ } => presentation_unobserved_before_presentation()
+    MegaRacRefreshClockUnreadable { detail: _, detach: _ } => presentation_unobserved_before_presentation()
+    MegaRacListingUnparseableAfterDetach { detail: _, detach: _ } => presentation_unobserved_before_presentation()
+    MegaRacNotEnumeratedAfterRefresh { image_name: _, detach: _, standing: _ } => presentation_unobserved_before_presentation()
   }
+}
+
+fn presentation_unobserved_before_presentation() -> PresentationStillServed {
+  PresentationUnobserved { reason: "the presentation could not be observed (the session was refused or its token unreadable)" }
 }
