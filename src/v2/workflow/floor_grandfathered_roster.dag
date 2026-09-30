@@ -125,6 +125,26 @@ type GrandfatheredRemoval =
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   WitnessDeleted {
+    identity: "v2.test.execution.bind_round_trip.bind_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/bind_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.execution.branch_if_then_else_round_trip.branch_if_then_else_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/branch_if_then_else_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.execution.dag_add_emit_round_trip.dag_add_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.execution.loop_round_trip.loop_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/loop_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.execution.match_bool_round_trip.match_bool_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/match_bool_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
+  },
+  WitnessDeleted {
     identity: "v2.test.claim.parse_engine_hooks_test.parse_engine_hooks_symbols_match_grammar_productions" as NonEmptyStr,
     deleted_in: "parse_engine_hooks deletion (follow-up to gunbc#12376): v2.compiler.parse_engine_hooks was unconsumed -- v2.compiler.parse imported its three Symbols and read none -- and one of them named dag_production_match_arm_body, a production extdeps.languages.dag does not declare. The module is deleted, so the claim comparing its constants to literals has no subject" as NonEmptyStr
   },
