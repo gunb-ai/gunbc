@@ -2106,11 +2106,30 @@ fn dag_grammar_op_modifier_expr() -> GrammarExpr {
   )
 }
 
+// THE TRANSPORT KIND IS A CLOSED CHOICE, NOT A NAME. `transport shell { .. }` selects the realization
+// handler kind; it binds nothing and name resolution never looks it up (body lowering sets the member
+// aside as a realization member). So the grammar admits exactly the four kinds as literal terminals,
+// as dag_grammar_op_modifier_expr does for readonly/idempotent/hermetic: the production holds no
+// name terminal, v2.compiler.occurrence_role needs no row for it, and an unknown kind is a located
+// parse refusal instead of an accepted identifier. The four are v1 00_core TransportKind's arms.
+fn dag_grammar_transport_kind_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "rest")),
+    right: dag_grammar_choice(
+      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "shell")),
+      right: dag_grammar_choice(
+        left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "file")),
+        right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "local"))
+      )
+    )
+  )
+}
+
 fn dag_grammar_transport_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^transport),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_transport_kind_expr(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
         right: dag_grammar_sequence(
