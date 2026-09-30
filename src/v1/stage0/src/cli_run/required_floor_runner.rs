@@ -8783,10 +8783,15 @@ pub fn run_required_floor(
     // cannot be repaired by the aggregate counts coincidentally agreeing.
     let changed_disposition_set: HashSet<String> = disposition_rows
         .iter()
+        // A CHANGED BinWitnessWet ROW IS A CHANGED-WITNESS DISPOSITION TOO: the sublane selected
+        // it and decided it (`DeclinedNoCiWetLane`) instead of planning it. Leaving it out made
+        // the join refuse every such selection as `selected_without_disposition`, so the decline
+        // gunbc#12794 added could never be reached by the route it was written for.
         .filter(|row| {
             matches!(
                 row.disposition,
                 RequiredFloorDisposition::PlannedAsChangedWitness
+                    | RequiredFloorDisposition::DeclinedNoCiWetLane { .. }
             )
         })
         .map(|row| row.identity.clone())
