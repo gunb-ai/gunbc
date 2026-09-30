@@ -159,13 +159,16 @@ import v2.std.node_query {
   node_positional_child_targets,
   nullary_inhabitant_by_discriminant,
   is_wildcard_pattern_identity,
-  pattern_wildcard_name
+  pattern_wildcard_name,
+  construct_field_edges,
+  construct_tag_optional
 }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_node,
   qualified_name_init,
-  qualified_name_last_segment
+  qualified_name_last_segment,
+  declaration_reference_path_optional
 }
 import v2.std.logic {
   Bool
@@ -6777,22 +6780,6 @@ fn target_value_expr_record_construct_field_slots_from_wire(
   ) {
     Accepted { value: slots, diagnostics: d } => Accepted { value: slots, diagnostics: d }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-fn target_value_expr_labeled_edge_head(labeled: List<Edge>) -> Optional<Edge> {
-  fold(labeled, init: optional_absent(), f: fn(acc, edge) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => optional_present(value: edge)
-    }
-  })
-}
-
-fn target_value_expr_labeled_edges_tail(labeled: List<Edge>) -> List<Edge> {
-  match list_tail(xs: labeled) {
-    TailFound { tail: rest } => rest
-    TailAbsent => Empty
   }
 }
 
@@ -14594,24 +14581,37 @@ fn target_value_expr_project_atom_literal_or(
   }
 }
 
-fn target_value_expr_record_construct_gate(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      if !all_edges_named(children: node.children) {
-        false
-      } else {
-        match target_value_expr_labeled_edge_head(
-          labeled: node_labeled_child_edges(node: node)
-        ) {
-          Present { value: first_edge } =>
-            match first_edge.target.kind {
-              TypeNode { connective: Atom { identity: _ } } => true
-              _ => false
-            }
-          Absent => false
-        }
+// A CONSTRUCT REACHES EMISSION RESOLVED. Its tag (v2.std.node_query construct_tag_optional) must be a
+// resolved reference -- a declaration reference, whose path names the constructor declaration, or a
+// kernel canonical atom -- and the emitted type name is that declaration's own name, spelled by the
+// target's binding rows downstream. An authored path that never went through resolution is not an
+// identity and refuses here, as does any Conj that is not a construct. Before the tag was a marked
+// reference this gate read the first labelled edge's target as an Atom, which a resolved user
+// construct never has (gunbc.recurring_failure_mode
+// construct_tag_read_by_label_equality_after_resolve_rewrote_the_target), so it refused every one.
+fn target_value_expr_record_construct_type_name_optional(node: Node) -> Optional<Symbol> {
+  match construct_tag_optional(n: node) {
+    Absent => optional_absent()
+    Present { value: reference } =>
+      match declaration_reference_path_optional(node: reference) {
+        Present { value: path } =>
+          match qualified_name_last_segment(qn: path) {
+            Present { value: name } => optional_present(value: name)
+            Absent => optional_absent()
+          }
+        Absent =>
+          match reference.kind {
+            TypeNode { connective: Atom { identity: kernel } } => optional_present(value: kernel)
+            _ => optional_absent()
+          }
       }
-    _ => false
+  }
+}
+
+fn target_value_expr_record_construct_gate(node: Node) -> Bool {
+  match target_value_expr_record_construct_type_name_optional(node: node) {
+    Present { value: _ } => all_edges_named(children: node.children)
+    Absent => false
   }
 }
 
@@ -14682,36 +14682,25 @@ fn target_project_record_construct(
       )
     )
   } else {
-    let labeled = node_labeled_child_edges(node: body)
-    match target_value_expr_labeled_edge_head(labeled: labeled) {
-      Present { value: type_edge } =>
-        match type_edge.target.kind {
-          TypeNode { connective: Atom { identity: type_name } } =>
-            bind_outcome(
-              o: target_value_expr_record_construct_field_slots_from_edges(
-                arrow: arrow,
-                edges: target_value_expr_labeled_edges_tail(labeled: labeled),
-                target: target,
-                source_bool_form: source_bool_form,
-                handle_transform: handle_transform
-              ),
-              f: fn(fields) {
-                outcome_accepted(
-                  target_value_expression_record_construct(
-                    type_name: type_name,
-                    fields: fields
-                  )
-                )
-              }
-            )
-          _ =>
-            outcome_rejected(
-              target_value_expr_diagnostic(
-                reason: ^target_value_expr_reason_transform_shape_invalid,
-                node: body
+    match target_value_expr_record_construct_type_name_optional(node: body) {
+      Present { value: type_name } =>
+        bind_outcome(
+          o: target_value_expr_record_construct_field_slots_from_edges(
+            arrow: arrow,
+            edges: construct_field_edges(n: body),
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          ),
+          f: fn(fields) {
+            outcome_accepted(
+              target_value_expression_record_construct(
+                type_name: type_name,
+                fields: fields
               )
             )
-        }
+          }
+        )
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
