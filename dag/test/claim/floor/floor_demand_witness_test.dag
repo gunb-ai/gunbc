@@ -5,6 +5,7 @@ import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size
 import std.checked_arithmetic { int_inclusive_max, CheckedIntReady, CheckedIntOverflow }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import gunbc.floor_demand {
+  floor_execution_requirements,
   FloorRunCgroupPeakReceipt, FloorRunCgroupPeakMeasured, FloorRunCgroupPeakUnmeasured,
   floor_peak_reading_kind, UncensoredPeak, ThrottlePin, PeakUnmeasured,
   floor_cgroup_charge_ceiling, gunbc_floor_cgroup_charge_ceiling,
@@ -31,8 +32,8 @@ import gunbc.floor_demand {
   beat_stall_is_zero, beat_stall_is_positive,
   SeamArmSetPlanning, SeamInterfaceConsumerPlanning, floor_seam_of_token,
 }
-import gunbc.fabric_witness_run { floor_execution_requirements }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import v2.std.algebra { any }
 
 fn receipt(peak: Int, high: Int) -> FloorRunCgroupPeakReceipt {
   FloorRunCgroupPeakMeasured {

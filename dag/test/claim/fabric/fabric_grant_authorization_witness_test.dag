@@ -20,6 +20,7 @@ import product.fabric.grant_issue {
 }
 import product.fabric.budget { MoneyAccount, MoneyReservationRequest }
 import std.measure { Count, One }
+import std.algebra { Cons, Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

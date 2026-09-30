@@ -62,6 +62,7 @@ import v2.std.diagnostic {
   diagnostics_merge,
   diagnostics_fatal_reason,
   diagnostics_singleton,
+  bind_outcome,
   rejected_with_pending
 }
 import v2.std.qualified_name {
@@ -71,7 +72,8 @@ import v2.std.qualified_name {
   qualified_name_last_segment,
   qualified_name_snoc,
   declaration_reference_node,
-  parameter_reference_node
+  parameter_reference_node,
+  declaration_reference_path_optional
 }
 import v2.std.resolution_policy {
   ImportScoped,
@@ -127,6 +129,8 @@ import v2.std.node {
   FirstPositionalFound,
   edge_label_of,
   node_with_occurrence_id,
+  construct_tag_marker,
+  symbol_eq,
   well_formed,
 }
 import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
@@ -1785,11 +1789,101 @@ fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk 
   } else {
     match construct_tag_optional(n: pat) {
       Absent => resolve_node_walk(ctx: ctx, n: pat)
-      Present { value: _ } =>
-        child_walk_node(n: pat, w: fold(pat.children, init: child_walk_init(), f: fn(acc, e) {
-          child_walk_step(w: acc, e: e, r: resolve_pattern_node_walk(ctx: ctx, pat: e.target))
-        }))
+      Present { value: reference } =>
+        resolve_construct_walk(ctx: ctx, n: pat, reference: reference, field: fn(e) {
+          resolve_pattern_node_walk(ctx: ctx, pat: e.target)
+        })
     }
+  }
+}
+
+// A CONSTRUCT RESOLVES ITS TAG AS A REFERENCE AND ITS FIELDS AS THEIR ROLE DEMANDS. The tag edge
+// (v2.std.node construct_tag_marker) targets the constructor's authored path; it is resolved here,
+// once, for a construction and a pattern alike, and the field edges are walked by the caller's
+// own rule (a value field as an ordinary child, a pattern field as a sub-pattern). The marker label
+// is a role, not a declaration segment, so it never extends the lookup position.
+fn resolve_construct_walk(
+  ctx: ResolveContext,
+  n: Node,
+  reference: Node,
+  field: fn(Edge) -> ResolveNodeWalk
+) -> ResolveNodeWalk {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    match e.label {
+      Named { name: label } =>
+        if symbol_eq(a: label, b: construct_tag_marker()) {
+          child_walk_step(w: acc, e: e, r: resolve_construct_tag_walk(ctx: ctx, reference: reference))
+        } else {
+          child_walk_step(w: acc, e: e, r: field(e))
+        }
+      Positional => child_walk_step(w: acc, e: e, r: field(e))
+    }
+  }))
+}
+
+// ONE ROUTE FOR THE TAG, THROUGH THE DOORS EVERY OTHER REFERENCE USES. The authored path is read
+// whole (v2.std.qualified_name qualified_name_from_node) and dispatched by its length only: two or
+// more segments go to the qualified door (try_resolve_qualified_name_node), one segment to the bare
+// door (resolve_atom on that segment, with the spine root's occurrence, which is the tag's locus).
+// Both mint through resolved_reference_node, so a qualified and an unqualified constructor naming
+// one declaration resolve to one node. The path is never trimmed: `m.R` is looked up as `m.R`.
+//
+// WHAT IT RESOLVES TO MUST BE A CONSTRUCTOR. A declaration reference whose path is not a declared
+// payload -- a coproduct TYPE rather than one of its variants, a function, a data row -- refuses
+// resolve_reason_construct_tag_not_a_constructor, located at the tag. The variant is its own
+// declaration (symbol_index_declared_payload_at answers VariantArmPayload for the variant, not for
+// its coproduct), so the check is by identity, never by spelling. A tag bound to a kernel canonical
+// symbol carries no declaration path and is accepted as that symbol, as a bare atom always was. Any
+// other answer -- a field projection, if the qualified door reads the first segment as a local value
+// (whether a dotted path is a name or a projection is decided in that door, by the first segment's
+// scope, and nowhere here) -- is not a constructor and refuses the same way.
+fn resolve_construct_tag_walk(ctx: ResolveContext, reference: Node) -> ResolveNodeWalk {
+  match qualified_name_from_node(root: reference) {
+    Rejected { diagnostics: r } => resolve_walk_of_outcome(o: Rejected { diagnostics: r })
+    Accepted { value: path, diagnostics: _ } =>
+      resolve_walk_of_outcome(o: bind_outcome(
+        o: resolve_construct_tag_reference(ctx: ctx, reference: reference, path: path),
+        f: fn(resolved) { resolve_construct_tag_names_constructor(ctx: ctx, reference: reference, resolved: resolved) }
+      ))
+  }
+}
+
+fn resolve_construct_tag_reference(ctx: ResolveContext, reference: Node, path: QualifiedName) -> Outcome<Node> {
+  match path {
+    Cons { head: only, tail: Empty } =>
+      resolve_atom(ctx: ctx, n: reference, identity: only)
+    Cons { head: _, tail: Cons { head: _, tail: _ } } =>
+      match try_resolve_qualified_name_node(ctx: ctx, n: reference) {
+        Present { value: outcome } => outcome
+        Absent => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
+      }
+    Empty => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
+  }
+}
+
+fn resolve_construct_tag_names_constructor(ctx: ResolveContext, reference: Node, resolved: Node) -> Outcome<Node> {
+  match declaration_reference_path_optional(node: resolved) {
+    Absent =>
+      match resolved.kind {
+        TypeNode { connective: Atom { identity: _ } } => Accepted { value: resolved, diagnostics: None }
+        _ => resolve_construct_tag_not_a_constructor(reference: reference)
+      }
+    Present { value: declared } =>
+      if resolve_path_is_declared_payload(ctx: ctx, path: declared) {
+        Accepted { value: resolved, diagnostics: None }
+      } else {
+        resolve_construct_tag_not_a_constructor(reference: reference)
+      }
+  }
+}
+
+fn resolve_construct_tag_not_a_constructor(reference: Node) -> Outcome<Node> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: Diagnostic {
+      reason: ^resolve_reason_construct_tag_not_a_constructor,
+      at: node_locus(node: reference),
+      correction: Unavailable { reason: UserInputBoundary }
+    })
   }
 }
 
@@ -1874,9 +1968,16 @@ fn resolve_node_walk_entered(
     ComputationNode { behavior: Transform } =>
       resolve_transform_children(ctx: ctx, n: n)
     TypeNode { connective: Conj } =>
-      match try_resolve_qualified_name_node(ctx: ctx, n: n) {
-        Present { value: outcome } => resolve_walk_of_outcome(o: outcome)
-        Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
+      match construct_tag_optional(n: n) {
+        Present { value: reference } =>
+          resolve_construct_walk(ctx: ctx, n: n, reference: reference, field: fn(e) {
+            resolve_child_edge(ctx: ctx, e: e)
+          })
+        Absent =>
+          match try_resolve_qualified_name_node(ctx: ctx, n: n) {
+            Present { value: outcome } => resolve_walk_of_outcome(o: outcome)
+            Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
+          }
       }
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
