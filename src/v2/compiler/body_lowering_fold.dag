@@ -6634,18 +6634,34 @@ type BodyLowerLetSugar {
   value: Node,
 }
 
+// Read by SHAPE, not by the head's spelling: the `node` head is a literal terminal, whose parse atom
+// carries its token class rather than its lexeme. The two shapes are disjoint -- a bare assignment is
+// seq(name, seq(`=`, value)); the node form is seq(head, seq(name, seq(`:`|`=`, value))) -- and the
+// node form's head is required NOT to be `let`, so `let x: T = e` is never read as sugar (its
+// annotation would otherwise be taken for the value).
 fn body_lower_let_sugar_optional(captured: Node) -> Optional<BodyLowerLetSugar> {
   match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: body_lower_unwrap_surface_shell(node: captured))) {
     Absent => optional_absent()
     Present { value: head } =>
-      if body_lower_token_is_lexeme(node: head.left, lexeme: "node") {
-        match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: head.right)) {
-          Absent => optional_absent()
-          Present { value: name_rest } => body_lower_let_sugar_after_name(name: name_rest.left, rest: name_rest.right, colon_admitted: true)
-        }
-      } else {
-        body_lower_let_sugar_after_name(name: head.left, rest: head.right, colon_admitted: false)
+      match body_lower_let_sugar_after_name(name: head.left, rest: head.right, colon_admitted: false) {
+        Present { value: bare } => optional_present(value: bare)
+        Absent =>
+          if body_lower_token_is(node: head.left, token: ^dag_token_kw_let) {
+            optional_absent()
+          } else {
+            match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: head.right)) {
+              Absent => optional_absent()
+              Present { value: name_rest } => body_lower_let_sugar_after_name(name: name_rest.left, rest: name_rest.right, colon_admitted: true)
+            }
+          }
       }
+  }
+}
+
+fn body_lower_token_is(node: Node, token: Symbol) -> Bool {
+  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+    Present { value: id } => id == token
+    Absent => false
   }
 }
 
@@ -6669,12 +6685,6 @@ fn body_lower_let_sugar_after_name(name: Node, rest: Node, colon_admitted: Bool)
   }
 }
 
-fn body_lower_token_is_lexeme(node: Node, lexeme: String) -> Bool {
-  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
-    Present { value: id } => id == symbol_intern_lexeme(lexeme: lexeme)
-    Absent => false
-  }
-}
 
 // The let's key binding. The name is the projection of the binder atom below, which is lowered from
 // the token it was read from so it keeps its minted occurrence (v2.compiler.occurrence_role reads it).
