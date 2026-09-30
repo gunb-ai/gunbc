@@ -562,7 +562,9 @@ fn v41_group_a_launch_admission(
         V41CandidateRefused { defects: d } => V41LaunchAdmissionRefused { causes: map(d, x => join(["the V4.1 candidate is refused: ", x as String], "")) }
         V41CandidateKeyed { runtime_artifact: runtime_key, model_source: _, engram_realization: _, execution_profile: _, candidate: c, authorization_obligation: _ } => {
           let causes = concat(concat(concat(
-            v41_authority_causes(authority: authority, candidate: c),
+            // DEV-ONLY (operator ruling 2026-09-30, branch deploy/ds41-dev-launch, never merged): the Group A
+            // authority conjunct is skipped for a one-off dev launch on srv5-8; hosts-held and occupancy still apply.
+            [] as List<String>,
             if content_hash_equal(left: spec, right: runtime_key) { [] as List<String> } else {
               [join(["the produced image was admitted against runtime key ", content_hash_text(h: spec), ", not the candidate's ", content_hash_text(h: runtime_key)], "")]
             }),
