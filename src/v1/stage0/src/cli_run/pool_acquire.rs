@@ -156,6 +156,16 @@ pub fn newline_index_for(file: &str, content: &str) -> Rc<NewlineIndex> {
 /// not read by either, so they are not retained: holding the whole parse result for every pool
 /// file for the life of the process was the +16% peak-RSS regression the #12656 bisect measured.
 pub struct HeadsReading {
+    /// RETAINED FOR THE PROCESS, and that is the obligated lifetime rather than a leak. Every
+    /// `MultiEntryIndex` whose pool contains this file projects this node (`pool_parse`), and a
+    /// run builds its indexes on demand, one per module-name set its phases ask for (measured on
+    /// #12765's floor: the shared index, a v1 attribution index and the `namespace_baseline`
+    /// [dag] closure, besides the duplicate that PR removed). When the first census projects the
+    /// node, nothing at this layer can know whether a later phase will build another index whose
+    /// pool contains the file: that set is decided by the run's phase routing, and consulting it
+    /// from the acquisition layer would invert the layers. Releasing after the first projection
+    /// would force a re-parse for the next index, which is ruled out. The node is released only
+    /// once the set of indexes that will demand each file is derivable up front.
     pub module: Option<Rc<crate::v1_std_core::Node>>,
     pub error: Option<Rc<crate::v1_std_core::ErrorNode>>,
     /// The file-local intern strings, in local-id order (local id `k` is `local_strings[k]`).
