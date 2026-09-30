@@ -81,6 +81,11 @@ test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
 // steps.first() is an Optional, so an ABSENT first step may not read as ready; the realization is
 // taken against the resolved census image. Both facts are load-bearing and neither side of the
 // merge that introduced them carried the other.
+//
+// The trailing disposition control: was a Scaffold asserting the raw word list awaited realization
+// dispatch; the dispatch landed (#8582) and the legs are described commands (extdeps.tools.nbdkit /
+// extdeps.tools.websocat, admitted at the argv_command wall), so the scaffold retired to Terminal
+// and this witness asserts the standing plus the reason that says why.
 test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
   let steps = os_install_actuator_steps(
     mechanism: NbdProxyVirtualMediaInstall,
@@ -107,9 +112,11 @@ test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
       }
   }
   first_step_ready
-    && match nbd_proxy_serve_systemd_realization_dissolution_trigger {
-      Scaffold { dissolves_to: _, bind: _ } => true
-      Terminal { reason: _ } => false
+    && match nbd_proxy_serve_systemd_realization_disposition {
+      Terminal { reason: why } =>
+        string_contains(s: why, pattern: "transient-unit realization dispatch")
+          && string_contains(s: why, pattern: "websocat_header_argv_word_dissolution_trigger")
+      Scaffold { dissolves_to: _, bind: _ } => false
     }
 }
 
