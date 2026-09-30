@@ -18,19 +18,16 @@ import v2.std.find_witness {
   find_witness
 }
 import v2.std.node {
-  Arrow,
   Atom,
   Cardinality,
-  ComputationNode,
   Conj,
-  Disj,
   Edge,
-  Instantiation,
   Named,
   Node,
   Positional,
   Symbol,
   TypeNode,
+  node_subtree_nodes,
   node_synthetic
 }
 import v2.std.optional { Absent, Optional, Present, optional_present }
@@ -85,12 +82,16 @@ type DeclaredTypePosition
   = PositionDirectCallArgument
   | PositionDeclaredReturn
 
+// type_variables are the declaring Arrow's type parameters (v2.std.type_binder type_param_names):
+// the only atoms in `declared` that name no type, and so the only thing that keeps an
+// Instantiation from being decided structurally.
 type DeclaredTypeObligation {
   position: DeclaredTypePosition
   parameter_identity: Symbol
   declared: Node
   produced: Node
   application: Node
+  type_variables: List<Symbol>
 }
 
 type InhabitanceFormal {
@@ -109,12 +110,15 @@ type InhabitanceVerdict
   | InhabitanceRefused { find_witness_reason: Symbol }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
-// PositionDeclaredReturn is the second coproduct arm so DeclaredTypePosition is not a one-arm
-// alias. This fold only constructs PositionDirectCallArgument. Declared frontier: a return-type
-// inhabitance obligation (produced body type vs declared return) at the same declared_type_inhabitance
-// consumer, trigger = that producer landing in v2.compiler.infer.
+// Two producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
+// an application and PositionDeclaredReturn per Arrow body against its declared return, and both
+// hand the obligation to declared_type_inhabitance.
 fn position_direct_call_argument() -> DeclaredTypePosition {
   PositionDirectCallArgument
+}
+
+fn position_declared_return() -> DeclaredTypePosition {
+  PositionDeclaredReturn
 }
 
 fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
@@ -143,29 +147,51 @@ fn inhabitance_cardinality_type(inner: Node) -> Node {
   )
 }
 
+// A TYPE MENTIONS A TYPE VARIABLE WHEN ANY ATOM IN IT IS SPELLED AS ONE. v2.compiler.resolve refuses
+// a type parameter that shadows a visible name, so inside the declaring Arrow that spelling means
+// the binder and nothing else -- whether it stands bare (`x: T`) or as an Instantiation's head
+// or argument (`Box<T>`, `T` lowered as Instantiation[T]).
+fn inhabitance_node_mentions_type_variable(n: Node, type_variables: List<Symbol>) -> Bool {
+  fold(node_subtree_nodes(root: n), init: false, f: fn(acc, m) {
+    acc || (match m.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        fold(type_variables, init: false, f: fn(found, v) { found || (v == id) })
+      _ => false
+    })
+  })
+}
+
+// A TYPE IS DECIDED UNLESS IT MENTIONS A TYPE VARIABLE. An applied type whose constructor and
+// arguments are all established (`Outcome<Node>`) is a type node like any other, and
+// exact_structural_equality_zip_fold compares it argument by argument, so `Outcome<Record>` at
+// `Outcome<Node>` refuses. A type that mentions one of the declaring Arrow's type variables -- bare
+// (`-> T`) or inside an Instantiation (`Box<T>`) -- stays UndecidableGenericFormal: this relation
+// holds no instance for the variable, and comparing its spelling against a concrete type would
+// refuse for the wrong reason. The check reads the variable first, so no connective arm can decide
+// a type that carries one.
 fn inhabitance_node_undecidable_reason(
-  n: Node
+  n: Node,
+  type_variables: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  match n.kind {
-    TypeNode { connective: Cardinality } =>
-      optional_present(value: UndecidableOptionalCarrier)
-    TypeNode { connective: Instantiation } =>
-      optional_present(value: UndecidableGenericFormal)
-    TypeNode { connective: Atom { identity: _ } } => Absent
-    TypeNode { connective: Conj } => Absent
-    TypeNode { connective: Disj } => Absent
-    TypeNode { connective: Arrow } => Absent
-    ComputationNode { behavior: _ } => Absent
+  if inhabitance_node_mentions_type_variable(n: n, type_variables: type_variables) {
+    optional_present(value: UndecidableGenericFormal)
+  } else {
+    match n.kind {
+      TypeNode { connective: Cardinality } =>
+        optional_present(value: UndecidableOptionalCarrier)
+      _ => Absent
+    }
   }
 }
 
 fn inhabitance_pair_undecidable_reason(
   declared: Node,
-  produced: Node
+  produced: Node,
+  type_variables: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  match inhabitance_node_undecidable_reason(n: declared) {
+  match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
     Present { value: reason } => optional_present(value: reason)
-    Absent => inhabitance_node_undecidable_reason(n: produced)
+    Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
   }
 }
 
@@ -186,7 +212,8 @@ fn inhabitance_pair_undecidable_reason(
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   match inhabitance_pair_undecidable_reason(
     declared: obligation.declared,
-    produced: obligation.produced
+    produced: obligation.produced,
+    type_variables: obligation.type_variables
   ) {
     Present { value: reason } => InhabitanceUndecidable { reason: reason }
     Absent =>
@@ -216,9 +243,23 @@ fn inhabitance_no_candidate_application_reason() -> Symbol {
   ^application_argument_does_not_inhabit
 }
 
-fn inhabitance_application_refusal_reason(find_witness_reason: Symbol) -> Symbol {
+fn inhabitance_no_candidate_return_reason() -> Symbol {
+  ^arrow_body_does_not_inhabit_declared_return
+}
+
+fn inhabitance_no_candidate_reason(position: DeclaredTypePosition) -> Symbol {
+  match position {
+    PositionDirectCallArgument => inhabitance_no_candidate_application_reason()
+    PositionDeclaredReturn => inhabitance_no_candidate_return_reason()
+  }
+}
+
+fn inhabitance_application_refusal_reason(
+  position: DeclaredTypePosition,
+  find_witness_reason: Symbol
+) -> Symbol {
   if find_witness_reason == ^find_witness_reason_no_candidate {
-    inhabitance_no_candidate_application_reason()
+    inhabitance_no_candidate_reason(position: position)
   } else {
     find_witness_reason
   }
@@ -312,7 +353,10 @@ fn application_argument_does_not_inhabit_diagnostic(
   find_witness_reason: Symbol
 ) -> Diagnostic {
   Diagnostic {
-    reason: inhabitance_application_refusal_reason(find_witness_reason: find_witness_reason),
+    reason: inhabitance_application_refusal_reason(
+      position: obligation.position,
+      find_witness_reason: find_witness_reason
+    ),
     at: node_locus(node: obligation.application),
     correction: Suggested {
       node: Node {

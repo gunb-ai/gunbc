@@ -38,11 +38,12 @@ import gunbc.fabric_storage_client { FabricStorageBinding }
 import std.fabric_storage { FabricStoreRefused, fabric_storage_fault_wire }
 import gunbc.host_effect { FleetSsh }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
-import gunbc.rung_drop { Standing, Retired, TypedDeclaration }
+import gunbc.rung_drop { Standing, Retired, TypedDeclaration, RungDropStanding }
 import gunbc.rung_drop.fabric_storage_append_principal_unrefused { fabric_storage_append_principal_unrefused }
+import gunbc.rung_drop.d0_store_walls_single_lifecycle { d0_store_walls_single_lifecycle }
 import gunbc.fleet_ssh_locus { fleet_locus_ssh_target, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, parse_fabric_group, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, parse_fabric_group, fabric_group_hosts }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint, ServingRouteResolved, ServingRouteUnresolved, serving_route }
 import gunbc.harness.harness_backend { harness_bounded_get, harness_bounded_presence, HarnessResponded, HarnessConnectFailed, HarnessDeadline, HarnessTransportUnread, harness_metrics_url, harness_models_url, harness_launch_from_body }
 import gunbc.serving.serving_enrollment { serving_route_endpoint_wire }
@@ -1683,13 +1684,46 @@ data d0_store_operation_wall: StoreOperationWall = StoreOperationWallMissing {
   trigger: "the fabric DB's served door admits a put/advance on a pair-serving-authority partition, host-placement or a D0 consent slot only with a D0 authorization the store verifies for that operation (subject, grant, attempt) -- SUFFICIENT FOR a rostered fleet writer without that authorization to be refused at the store",
 }
 
-fn d0_store_write_wall_standing() -> String? {
+// THE ONE LIFECYCLE ADMITTED WHILE THE WALLS ARE UNFINISHED (gunbc.rung_drop
+// d0_store_walls_single_lifecycle, operator-ruled 2026-09-30): FabricGroupA under this escalation id.
+// The escalation id is what the door's authorization= names and what the frozen filing is keyed by, so
+// a rerun of the same lifecycle carries it and a new consent does not.
+data d0_single_lifecycle_escalation_id: NonEmptyStr = "d0-group-a-ds41-2026-09-30" as NonEmptyStr
+
+fn d0_single_lifecycle_admits(group: FabricGroup, escalation_id: NonEmptyStr) -> Bool {
+  d0_single_lifecycle_admits_under(standing: d0_store_walls_single_lifecycle.standing, group: group, escalation_id: escalation_id)
+}
+
+// The admission over a supplied standing of the drop row, so its RED with the row retired is
+// witnessed without retiring the real row.
+fn d0_single_lifecycle_admits_under(standing: RungDropStanding, group: FabricGroup, escalation_id: NonEmptyStr) -> Bool {
+  match standing {
+    Retired { trigger_fired: _ } => false
+    Standing =>
+      (match group { FabricGroupA => true  FabricGroupB => false })
+        && (escalation_id as String) == (d0_single_lifecycle_escalation_id as String)
+  }
+}
+
+// Whether the store walls let THIS lifecycle run: both walls finished admits every lifecycle; while
+// either stands unfinished, only the single declared lifecycle is admitted, and every other one refuses
+// with the wall that stands.
+fn d0_store_write_wall_standing(group: FabricGroup, escalation_id: NonEmptyStr) -> String? {
+  match d0_store_walls_refusal() {
+    Absent => none
+    Present { value: why } =>
+      if d0_single_lifecycle_admits(group: group, escalation_id: escalation_id) { none }
+      else { Present { value: why } }
+  }
+}
+
+fn d0_store_walls_refusal() -> String? {
   match fabric_storage_append_principal_unrefused.standing {
     Standing => Present { value: join(["the fabric DB's write door admits any tailnet member (gunbc.rung_drop fabric_storage_append_principal_unrefused stands; its trigger: ", fabric_storage_append_principal_unrefused_trigger(), "), so a writer that never passed this door could move the facts this transaction writes; D0 does not run until that drop is retired"], "") }
     Retired { trigger_fired: _ } =>
       match d0_store_operation_wall {
         StoreOperationWallRestored { by: _ } => none
-        StoreOperationWallMissing { trigger: t } => Present { value: join(["the fabric DB's write door admits any rostered fleet writer on every head without a D0 authorization for the operation (d0_store_operation_wall is missing; its trigger: ", t, "); D0 does not run until that wall is restored"], "") }
+        StoreOperationWallMissing { trigger: t } => Present { value: join(["the fabric DB's write door admits any rostered fleet writer on every head without a D0 authorization for the operation (d0_store_operation_wall is missing; its trigger: ", t, "); D0 does not run until that wall is restored, except the single lifecycle gunbc.rung_drop d0_store_walls_single_lifecycle admits (FabricGroupA under escalation ", d0_single_lifecycle_escalation_id as String, ")"], "") }
       }
   }
 }

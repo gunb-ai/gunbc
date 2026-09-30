@@ -108,7 +108,8 @@ import v2.compiler.materialization_carriers {
 }
 import v2.extdeps.languages.dag {
   dag_float_literal_node_from_lexeme,
-  dag_int_literal_node_from_lexeme
+  dag_int_literal_node_from_lexeme,
+  dag_string_literal_node_from_lexeme
 }
 import v2.std.compilers.lexing {
   Lexeme,
@@ -117,8 +118,10 @@ import v2.std.compilers.lexing {
   token_stream_remaining,
   token_stream_remaining_count,
 }
+import v2.std.parse_refusal_reason { ParseRefusalReason, parse_refusal_reason_symbol }
 import v2.std.grammar {
   Choice,
+  Expect,
   LiteralTerminal,
   ParseGrammar,
   GrammarExpr,
@@ -266,12 +269,17 @@ type ParseMemoStats {
 // the refusal -- a `test fn` whose body holds one unadmitted construct was reported at `test`
 // (DESIGN section 6b). The rejection that went furthest into the stream is the earliest token no
 // admitted production could consume, so it is the locus. A join over one monotone order: the later
-// token wins, end of input beats every token, and the empty value is the unit -- so the answer is
-// independent of the order alternatives were tried in.
+// token wins, end of input beats every token, and the empty value is the unit -- so the POSITION
+// is independent of the order alternatives were tried in.
+//
+// A POSITION MAY CARRY ONE EXPECTATION: the reason of a `v2.std.grammar` `Expect` whose element
+// began exactly there and failed. Only the position decides which record survives; at a tie the
+// expectation recorded FIRST in parse order wins (ordered choice tries left before right), so the
+// label is deterministic, and a later plain failure at the same position never erases it.
 type ParseFurthestFailure
   = FurthestNone
-  | FurthestAtToken { token: Token }
-  | FurthestAtEnd
+  | FurthestAtToken { token: Token, expectation: Optional<ParseRefusalReason> }
+  | FurthestAtEnd { expectation: Optional<ParseRefusalReason> }
 
 type ParseMemoEntry
   = ParseMemoAccepted {
@@ -358,27 +366,74 @@ fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
 
 // Located at the furthest rejection when one reached past the first leftover token; otherwise at
 // that token. A furthest record at end of input locates at the last token's end, zero-width.
+// When the furthest record carries a grammar expectation, the refusal IS that expectation: its
+// reason, located at the token the expected element was to follow (the last leftover token before
+// the furthest position). An expectation whose anchor is not among the leftover tokens cannot be
+// located on the leftover item, so the generic reason stands, located as before.
 fn parse_g0_tokens_remain_diagnostic_at(tokens: List<Token>, furthest: ParseFurthestFailure) -> Diagnostic {
   match list_at_optional(xs: tokens, index: 0) {
     Absent => parse_g0_tokens_remain_diagnostic(tokens: tokens)
     Present { value: first } =>
       match furthest {
         FurthestNone => parse_g0_tokens_remain_diagnostic(tokens: tokens)
-        FurthestAtToken { token: tok } =>
+        FurthestAtToken { token: tok, expectation: expectation } =>
           if tok.start > first.start {
-            parse_g0_tokens_remain_diagnostic(tokens: [tok])
+            match expectation {
+              Present { value: reason } =>
+                match parse_token_before(tokens: tokens, start: tok.start) {
+                  Present { value: anchor } => parse_expectation_diagnostic(reason: reason, anchor: anchor)
+                  Absent => parse_g0_tokens_remain_diagnostic(tokens: [tok])
+                }
+              Absent => parse_g0_tokens_remain_diagnostic(tokens: [tok])
+            }
           } else {
             parse_g0_tokens_remain_diagnostic(tokens: tokens)
           }
-        FurthestAtEnd =>
+        FurthestAtEnd { expectation: expectation } =>
           match list_at_optional(xs: tokens, index: length(xs: tokens) - 1) {
             Absent => parse_g0_tokens_remain_diagnostic(tokens: tokens)
             Present { value: last } =>
-              parse_g0_tokens_remain_diagnostic(
-                tokens: [Token { class: last.class, lexeme: last.lexeme, file: last.file, start: last.end, end: last.end }]
-              )
+              match expectation {
+                Present { value: reason } => parse_expectation_diagnostic(reason: reason, anchor: last)
+                Absent =>
+                  parse_g0_tokens_remain_diagnostic(
+                    tokens: [Token { class: last.class, lexeme: last.lexeme, file: last.file, start: last.end, end: last.end }]
+                  )
+              }
           }
       }
+  }
+}
+
+// The last token that ends at or before `start`: the token an expected element was to follow.
+fn parse_token_before(tokens: List<Token>, start: Int) -> Optional<Token> {
+  fold_list(
+    xs: tokens,
+    empty: optional_absent(),
+    cons: fn(acc, tok) { parse_token_before_step(acc: acc, tok: tok, start: start) }
+  )
+}
+
+fn parse_token_before_step(acc: Optional<Token>, tok: Token, start: Int) -> Optional<Token> {
+  if tok.end <= start {
+    optional_present(value: tok)
+  } else {
+    acc
+  }
+}
+
+// THE GRAMMAR-AUTHORED REFUSAL. `reason` is a variant of the closed parse-stage vocabulary
+// (`v2.std.parse_refusal_reason`), refusing under its declared diagnostic identity, and the locus
+// is the source span of the token the expected element was to follow.
+fn parse_expectation_diagnostic(reason: ParseRefusalReason, anchor: Token) -> Diagnostic {
+  Diagnostic {
+    reason: parse_refusal_reason_symbol(reason: reason),
+    at: source_port_locus(
+      port: ^parse_stage_locus_port,
+      file: anchor.file,
+      extent: ByteRange { start: anchor.start, end: anchor.end }
+    ),
+    correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -657,23 +712,51 @@ fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, 
 // parse_table_memo_scope_and_key), so a table-only record would lose the deep rejection inside a
 // served subparse and the refusal's locus would depend on cache warmth. The miss path runs the
 // subparse from the unit, stores what that subparse alone reached, then joins it with the caller's.
+fn parse_expectation_first(left: Optional<ParseRefusalReason>, right: Optional<ParseRefusalReason>) -> Optional<ParseRefusalReason> {
+  match left {
+    Present { value: _ } => left
+    Absent => right
+  }
+}
+
 fn parse_furthest_join(left: ParseFurthestFailure, right: ParseFurthestFailure) -> ParseFurthestFailure {
   match left {
     FurthestNone => right
-    FurthestAtEnd => FurthestAtEnd
-    FurthestAtToken { token: lt } =>
+    FurthestAtEnd { expectation: le } =>
       match right {
         FurthestNone => left
-        FurthestAtEnd => FurthestAtEnd
-        FurthestAtToken { token: rt } => if rt.start > lt.start { right } else { left }
+        FurthestAtToken { token: _, expectation: _ } => left
+        FurthestAtEnd { expectation: re } => FurthestAtEnd { expectation: parse_expectation_first(left: le, right: re) }
+      }
+    FurthestAtToken { token: lt, expectation: le } =>
+      match right {
+        FurthestNone => left
+        FurthestAtEnd { expectation: _ } => right
+        FurthestAtToken { token: rt, expectation: re } =>
+          if rt.start > lt.start {
+            right
+          } else {
+            if rt.start == lt.start {
+              FurthestAtToken { token: lt, expectation: parse_expectation_first(left: le, right: re) }
+            } else {
+              left
+            }
+          }
       }
   }
 }
 
 fn parse_furthest_at(tokens: List<Token>) -> ParseFurthestFailure {
   match parse_token_first(tokens: tokens) {
-    Present { value: tok } => FurthestAtToken { token: tok }
-    Absent => FurthestAtEnd
+    Present { value: tok } => FurthestAtToken { token: tok, expectation: Absent }
+    Absent => FurthestAtEnd { expectation: Absent }
+  }
+}
+
+fn parse_furthest_expected_at(tokens: List<Token>, reason: ParseRefusalReason) -> ParseFurthestFailure {
+  match parse_token_first(tokens: tokens) {
+    Present { value: tok } => FurthestAtToken { token: tok, expectation: Present { value: reason } }
+    Absent => FurthestAtEnd { expectation: Present { value: reason } }
   }
 }
 
@@ -1379,6 +1462,8 @@ fn parse_match_arm_stmt_body(
   }
 }
 
+// A MEMO MISS JOINS CALLER FIRST: the caller's furthest record was made before the subparse ran, so
+// it is the left operand of parse_furthest_join -- the order an expectation tie is broken by.
 fn parse_nonterminal_memoized_core(
   all_tokens: List<Token>,
   tokens: List<Token>,
@@ -1427,13 +1512,14 @@ fn parse_nonterminal_memoized_core(
             table: parse_table_with_furthest(table: table_miss, furthest: FurthestNone),
             prov: parse_prov_enter_frame(prov: prov)
           )
-          let table_after_memo = parse_table_join_furthest(
-            table: parse_table_insert(
-              table: parse_expr_result_table(result: inner),
-              key: key,
-              value: parse_memo_entry_from_expr(result: inner)
-            ),
-            furthest: table_miss.furthest
+          let table_inserted = parse_table_insert(
+            table: parse_expr_result_table(result: inner),
+            key: key,
+            value: parse_memo_entry_from_expr(result: inner)
+          )
+          let table_after_memo = parse_table_with_furthest(
+            table: table_inserted,
+            furthest: parse_furthest_join(left: table_miss.furthest, right: table_inserted.furthest)
           )
           match inner {
             ParseExprRejected { diagnostics: diags, table: _ } =>
@@ -1474,7 +1560,8 @@ fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: List<Symbol>) -> 
       sequence: fn(left_nullable, right_nullable) { left_nullable && right_nullable },
       choice: fn(left_nullable, right_nullable) { left_nullable || right_nullable },
       optional: fn(_) { true },
-      repeat: fn(_) { true }
+      repeat: fn(_) { true },
+      expect: fn(element_nullable, _reason) { element_nullable }
     }
   )
 }
@@ -1758,7 +1845,8 @@ fn expr_first_fold(
       sequence: expr_first_fold_sequence,
       choice: expr_first_fold_choice,
       optional: expr_first_fold_optional,
-      repeat: expr_first_fold_repeat
+      repeat: expr_first_fold_repeat,
+      expect: fn(element, _reason) { element }
     }
   )
 }
@@ -1892,6 +1980,7 @@ type PreparedGrammarExpr
   | PreparedChoice { plan: PreparedChoicePlan, first: GrammarExprFirstFold }
   | PreparedOptional { element: PreparedGrammarExpr }
   | PreparedRepeat { element: PreparedGrammarExpr }
+  | PreparedExpect { element: PreparedGrammarExpr, reason: ParseRefusalReason }
 
 type PreparedExprFold {
   tree: PreparedGrammarExpr
@@ -1922,6 +2011,8 @@ fn concat_prepared_alt_residue(alts: List<PreparedExprFold>) -> List<GrammarChoi
   }
 }
 
+// An Expect around a Choice stays ONE alternative: the label belongs to the whole choice, so
+// flattening through it would move its reason onto every branch.
 fn flatten_choice_exprs(expr: GrammarExpr) -> List<GrammarExpr> {
   match expr {
     Choice { left: left, right: right } =>
@@ -1932,6 +2023,7 @@ fn flatten_choice_exprs(expr: GrammarExpr) -> List<GrammarExpr> {
     Sequence { left: _, right: _ } => Cons { head: expr, tail: std.algebra.Empty }
     Optional { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
     Repeat { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
+    Expect { element: _, reason: _ } => Cons { head: expr, tail: std.algebra.Empty }
   }
 }
 
@@ -1970,6 +2062,7 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedChoice { plan: _, first: _ } => false
         PreparedOptional { element: _ } => false
         PreparedRepeat { element: _ } => false
+        PreparedExpect { element: _, reason: _ } => false
       }
     PreparedLiteralTerminal { token_class: lc, lexeme: lw } =>
       match right {
@@ -1983,6 +2076,7 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedChoice { plan: _, first: _ } => false
         PreparedOptional { element: _ } => false
         PreparedRepeat { element: _ } => false
+        PreparedExpect { element: _, reason: _ } => false
       }
     PreparedNonterminal { production: lp } =>
       match right {
@@ -1993,11 +2087,13 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedChoice { plan: _, first: _ } => false
         PreparedOptional { element: _ } => false
         PreparedRepeat { element: _ } => false
+        PreparedExpect { element: _, reason: _ } => false
       }
     PreparedSequence { left: _, right: _ } => false
     PreparedChoice { plan: _, first: _ } => false
     PreparedOptional { element: _ } => false
     PreparedRepeat { element: _ } => false
+    PreparedExpect { element: _, reason: _ } => false
   }
 }
 
@@ -2012,6 +2108,7 @@ fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGr
         PreparedChoice { plan: _, first: _ } => optional_absent()
         PreparedOptional { element: _ } => optional_absent()
         PreparedRepeat { element: _ } => optional_absent()
+        PreparedExpect { element: _, reason: _ } => optional_absent()
       }
     PreparedTerminal { token_class: _, stamp: _ } => optional_absent()
     PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_absent()
@@ -2019,6 +2116,7 @@ fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGr
     PreparedChoice { plan: _, first: _ } => optional_absent()
     PreparedOptional { element: _ } => optional_absent()
     PreparedRepeat { element: _ } => optional_absent()
+    PreparedExpect { element: _, reason: _ } => optional_absent()
   }
 }
 
@@ -2147,11 +2245,13 @@ fn prepared_terminal_prefix(expr: PreparedGrammarExpr, need: Int) -> Optional<Li
           PreparedChoice { plan: _, first: _ } => optional_absent()
           PreparedOptional { element: _ } => optional_absent()
           PreparedRepeat { element: _ } => optional_absent()
+          PreparedExpect { element: _, reason: _ } => optional_absent()
         }
       PreparedNonterminal { production: _ } => optional_absent()
       PreparedChoice { plan: _, first: _ } => optional_absent()
       PreparedOptional { element: _ } => optional_absent()
       PreparedRepeat { element: _ } => optional_absent()
+      PreparedExpect { element: _, reason: _ } => optional_absent()
     }
   }
 }
@@ -2264,7 +2364,13 @@ fn choice_shared_prefix_suffixes_from(
           } else {
             optional_absent()
           }
-        _ => optional_absent()
+        PreparedTerminal { token_class: _, stamp: _ } => optional_absent()
+        PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_absent()
+        PreparedNonterminal { production: _ } => optional_absent()
+        PreparedChoice { plan: _, first: _ } => optional_absent()
+        PreparedOptional { element: _ } => optional_absent()
+        PreparedRepeat { element: _ } => optional_absent()
+        PreparedExpect { element: _, reason: _ } => optional_absent()
       }
   }
 }
@@ -2295,6 +2401,8 @@ fn expr_first_fold_from_prepared(
       expr_first_fold_repeat(
         element: expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
       )
+    PreparedExpect { element: element, reason: _ } =>
+      expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
   }
 }
 
@@ -2586,6 +2694,13 @@ fn prepare_grammar_expr(
         first: expr_first_fold_repeat(element: element_prepared.first),
         residue: element_prepared.residue
       }
+    Expect { element: element, reason: reason } =>
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      PreparedExprFold {
+        tree: PreparedExpect { element: element_prepared.tree, reason: reason },
+        first: element_prepared.first,
+        residue: element_prepared.residue
+      }
   }
 }
 
@@ -2712,7 +2827,8 @@ fn expr_parse_demand_fold(expr: GrammarExpr) -> ParseDemandFold {
           demands_nonterminal: e.demands_nonterminal,
           discarding_sites: e.discarding_sites + parse_demand_fold_site(attempted: e)
         }
-      }
+      },
+      expect: fn(e, _reason) { e }
     }
   )
 }
@@ -2863,7 +2979,8 @@ fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: List<Symbol>) -> G
       sequence: expr_corner_fold_sequence,
       choice: expr_corner_fold_choice,
       optional: expr_corner_fold_optional,
-      repeat: expr_corner_fold_repeat
+      repeat: expr_corner_fold_repeat,
+      expect: fn(element, _reason) { element }
     }
   )
 }
@@ -3026,7 +3143,8 @@ fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool 
       sequence: fn(left_undef, right_undef) { left_undef || right_undef },
       choice: fn(left_undef, right_undef) { left_undef || right_undef },
       optional: fn(element_undef) { element_undef },
-      repeat: fn(element_undef) { element_undef }
+      repeat: fn(element_undef) { element_undef },
+      expect: fn(element_undef, _reason) { element_undef }
     }
   )
 }
@@ -3191,6 +3309,60 @@ fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
   parse_token_first(tokens: parse_tokens_drop(tokens: tokens, count: index))
 }
 
+fn parse_expr_terminal_stamped(
+  tok: Token,
+  stamp: TerminalStampMode,
+  remaining: List<Token>,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov)
+  ParseExprAccepted {
+    remaining: remaining,
+    captured: stamped.node,
+    diagnostics: [],
+    prov: stamped.prov,
+    table: table
+  }
+}
+
+// A STRING VALUE CARRIES ITS DECODED VALUE (v2.extdeps.languages.dag
+// dag_string_literal_node_from_lexeme), refusing located on an unframed lexeme or a malformed
+// escape, exactly as the int-literal arm of parse_expr_terminal decodes its magnitude. Only a
+// class-stamped string terminal is a value: a lexeme-stamped one is a quoted record key, whose
+// identity is its spelling, and parse_expr_terminal keeps it on parse_expr_terminal_stamped.
+fn parse_expr_string_literal_value(
+  tok: Token,
+  remaining: List<Token>,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  let minted = parse_mint_from_source(
+    prov: prov,
+    file: tok.file,
+    start: tok.start,
+    end: tok.end
+  )
+  match dag_string_literal_node_from_lexeme(
+    lexeme: tok.lexeme,
+    occurrence_id: node_occurrence_identity_minted(id: minted.id)
+  ) {
+    Accepted { value: captured, diagnostics: _ } =>
+      ParseExprAccepted {
+        remaining: remaining,
+        captured: captured,
+        diagnostics: std.algebra.Empty,
+        prov: minted.prov,
+        table: table
+      }
+    Rejected { diagnostics: d } =>
+      ParseExprRejected {
+        diagnostics: parse_non_empty_diagnostics_to_list(ned: d),
+        table: table
+      }
+  }
+}
+
 // THE INT-LITERAL WRAP IN THIS FUNCTION IS LOAD-BEARING. minted.id is a raw OccurrenceId;
 // Node.occurrence_id is the NodeOccurrenceIdentity coproduct, so the mint has to be lifted into
 // OccurrenceMinted before it can inhabit a Node. #8833 removed that lift, reading it as a spurious
@@ -3240,6 +3412,14 @@ fn parse_expr_terminal(
                       table: table
                     }
                 }
+              } else if token_class == ^dag_token_string_literal {
+                match stamp {
+                  StampClass =>
+                    parse_expr_string_literal_value(tok: tok, remaining: remaining, table: table, prov: prov)
+                  StampLexeme => parse_expr_terminal_stamped(tok: tok, stamp: stamp, remaining: remaining, table: table, prov: prov)
+                  StampBinding { binding: _ } =>
+                    parse_expr_terminal_stamped(tok: tok, stamp: stamp, remaining: remaining, table: table, prov: prov)
+                }
               } else if token_class == ^dag_token_float_literal {
                 let minted = parse_mint_from_source(
                   prov: prov,
@@ -3258,14 +3438,7 @@ fn parse_expr_terminal(
                   table: table
                 }
               } else {
-                let stamped = parse_stamp_terminal(tok: tok, stamp: stamp, prov: prov)
-                ParseExprAccepted {
-                  remaining: remaining,
-                  captured: stamped.node,
-                  diagnostics: [],
-                  prov: stamped.prov,
-                  table: table
-                }
+                parse_expr_terminal_stamped(tok: tok, stamp: stamp, remaining: remaining, table: table, prov: prov)
               }
             TailAbsent => ParseExprRejected { diagnostics: [], table: table }
           }
@@ -3637,6 +3810,31 @@ fn parse_expr_repeat(
   }
 }
 
+// AN EXPECTATION CHANGES NO ACCEPTED TREE. The element is parsed exactly as it would be bare, and
+// an acceptance is returned untouched. On rejection the element's own furthest record has already
+// been joined in; the expectation is then joined AT THE ELEMENT'S START as the right operand, so
+// it labels that position only if nothing earlier in parse order labelled it and nothing reached
+// further (parse_furthest_join).
+fn parse_expr_expect(
+  element: PreparedGrammarExpr,
+  reason: ParseRefusalReason,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 } =>
+      ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov1, table: table1 }
+    ParseExprRejected { diagnostics: diags, table: table1 } =>
+      ParseExprRejected {
+        diagnostics: diags,
+        table: parse_table_join_furthest(table: table1, furthest: parse_furthest_expected_at(tokens: tokens, reason: reason))
+      }
+  }
+}
+
 // A PreparedLiteralTerminal is a MATCH constraint in front of an ordinary class terminal: it
 // captures and publishes exactly what a StampClass terminal of that class does, never its own text.
 fn parse_expr_with_first(
@@ -3732,6 +3930,16 @@ fn parse_expr_dispatch(
     PreparedRepeat { element: element } =>
       parse_expr_repeat(
         element: element,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    PreparedExpect { element: element, reason: reason } =>
+      parse_expr_expect(
+        element: element,
+        reason: reason,
         tokens: tokens,
         all_tokens: all_tokens,
         root: root,
