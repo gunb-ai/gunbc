@@ -43,18 +43,27 @@ fn value_parses(name: String) -> Bool {
   }
 }
 
-test fn the_data_keyword_as_a_value_parses_holds() -> Bool { value_parses(name: "data") }
+// Each parse or normalize is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it (a claim that parsed its own source
+// is over the new-witness eval-step budget).
+fn data_value_parsed() -> Bool { value_parses(name: "data") }
 
-// The route past parse: the same module normalizes, so the admitted atom is one lowering reads.
-test fn the_data_keyword_as_a_value_normalizes_holds() -> Bool {
+fn data_value_normalized() -> Bool {
   match conservation_subject_of_text(path: "probe_keyword_value.dag", text: value_source(name: "data")).normalized {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
+fn else_value_parsed() -> Bool { value_parses(name: "else") }
+
+test fn the_data_keyword_as_a_value_parses_holds() -> Bool { data_value_parsed() }
+
+// The route past parse: the same module normalizes, so the admitted atom is one lowering reads.
+test fn the_data_keyword_as_a_value_normalizes_holds() -> Bool { data_value_normalized() }
+
 test fn a_clause_keyword_is_still_not_a_value_holds() -> Bool {
-  match value_parses(name: "else") {
+  match else_value_parsed() {
     true => false
     false => true
   }
