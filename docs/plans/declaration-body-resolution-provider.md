@@ -91,11 +91,16 @@ replacement with no two structures, or must fold into PR2, is neat-boar-16's cal
 mechanical.
 
 **PR2: declaration-body provider (P2) and the reader cut, together.** P2 lands; resolve grafts P2
-bodies; three infer readers move to the snapshot in the same commit: `infer_projection_receiver`
+bodies; four infer readers move to the snapshot in the same commit: `infer_projection_receiver`
 (field projection), `refinement_declaration` (#12407, per wise-bat-862), and
 `infer_declaration_reference_facts`'s callee-Arrow read (#12506, found by calm-pike-507: it reads
 `symbol_index_lookup` and gets unresolved atoms for the seven's cross-module
-`parse_module_prepared(...)` call). calm-pike-507 stacks the return-type derivation on this branch. `ResolvedTree.resolved_declarations` and `resolved_declarations_of` (#12629) are deleted
+`parse_module_prepared(...)` call; its Arrow feeds `infer_application_callee_arrow_with_facts` and
+`infer_arrow_declared_return_type`), and `infer_match_coproduct_of_type` with
+`infer_binding_type_in_scope` (#12641, calm-pike-507: variant payload and field types for match
+binders; type parameters are still substituted from use-site arguments, over the resolved body).
+All four took declaration types off the authored `symbol_index` node; after PR2 none of them can
+reach it. Branch: `session/royal-stag-371-pr2-declaration-bodies`. calm-pike-507 stacks the return-type derivation on this branch. `ResolvedTree.resolved_declarations` and `resolved_declarations_of` (#12629) are deleted
 in the same commit. The RFM row is retired, and its red stays enrolled.
 
 ## 4. Controls
