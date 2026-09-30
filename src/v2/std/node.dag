@@ -518,18 +518,15 @@ fn arrow_signature_order_conforms(children: List<Edge>) -> Bool {
 // would otherwise be one identity). So an Arrow whose domain binds any name and carries no order edge
 // has no admitted meaning and is ill formed here, at Node admission, rather than refused later at
 // binding time. A domain that binds no name -- a positional type, an empty product -- owes no order.
+// THE ONE ANSWER to "does this Arrow's domain bind a name": v2.compiler.resolve scopes an Arrow's
+// parameters exactly when this holds (arrow_domain_has_named_bindings delegates here), so admission and
+// scoping cannot disagree. An Atom domain is a TYPE, not a binder, under the one encoding.
 fn arrow_domain_binds_a_name(children: List<Edge>) -> Bool {
   match arrow_first_positional_target(children: children) {
     FirstPositionalAbsent => false
     FirstPositionalFound { target: domain } =>
       match domain.kind {
-        TypeNode { connective: Conj } =>
-          fold(domain.children, init: false, f: fn(acc, e) {
-            match e.label {
-              Named { name: _ } => true
-              Positional => acc
-            }
-          })
+        TypeNode { connective: Conj } => fold(domain.children, init: false, f: fn(acc, e) { acc || is_named(e: e) })
         _ => false
       }
   }
