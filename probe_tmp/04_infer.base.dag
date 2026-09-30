@@ -1,0 +1,3591 @@
+module v2.compiler.infer
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_node, roster_kind_index, roster_kind_index_lookup }
+import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_map, list_tail, zip_map }
+import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.bounded_lattice_completeness {
+  infer_bounded_lattice_consumer_gate,
+  partial_bounded_lattice_instances_in_tree
+}
+import v2.std.compilers.target_model {
+  canonical_operation_op_add,
+  canonical_operation_op_coerce,
+  canonical_operation_wire_matches_operation,
+  target_model_canonical_operation_member_declared_type
+}
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.inferred_tree {
+  DerivedGrounding,
+  GroundingNotDerived,
+  InferredFacts,
+  InferredFactsEntry,
+  InferredTree,
+  ObligatedInferredTree,
+  NodeGrounding
+}
+import v2.extdeps.languages.dag {
+  DagCanonicalBoolLiteral,
+  DagCanonicalIntLiteral,
+  DagCanonicalLiteral,
+  dag_binding_denotation,
+  dag_canonical_literal_from_node,
+  dag_declared_inhabitants_root,
+  dag_declared_inhabitants_subject_field,
+  dag_grammar_production_member_declared_type
+}
+import v2.extdeps.languages.python {
+  python_declared_inhabitants_root,
+  python_declared_inhabitants_subject_field
+}
+import v2.extdeps.languages.typescript {
+  ts_declared_inhabitants_root,
+  ts_declared_inhabitants_subject_field
+}
+import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
+import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node }
+import v2.std.collection {
+  List,
+  Map,
+  empty_map,
+  list_at_optional,
+  map_insert,
+  map_lookup
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
+import v2.std.node { arrow_signature_order_label, edge_label_of }
+import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+import v2.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness,
+  canonical_grounding_from_derived_type
+}
+import v2.std.inhabitance {
+  DeclaredType,
+  DeclaredTypeObligation,
+  DeclaredTypeVariable,
+  TypeVariableInstance,
+  inhabitance_formal_declaration,
+  type_variable_instance_lookup,
+  InhabitanceFormal,
+  InhabitanceUndecidableReason,
+  InhabitanceVerdict,
+  application_argument_does_not_inhabit_diagnostic,
+  application_positional_arity_mismatch_diagnostic,
+  application_parameter_order_absent_reason,
+  application_parameter_order_diagnostic,
+  application_parameter_order_malformed_reason,
+  declared_type_inhabitance,
+  inhabitance_node_undecidable_reason,
+  inhabitance_undecidable_diagnostic,
+  position_direct_call_argument,
+  undecidable_argument_type_not_derived,
+  undecidable_formal_unresolved
+}
+import v2.std.diagnostic {
+  Diagnostic,
+  Diagnostics,
+  ExternalContractUnknown,
+  Locus,
+  NonEmptyDiagnostics,
+  UserInputBoundary,
+  node_locus,
+  Outcome,
+  Unavailable,
+  Accepted,
+  None,
+  Rejected,
+  Some,
+  bind_outcome,
+  diagnostics_merge,
+  diagnostics_singleton,
+  outcome_rejected,
+  outcome_accepted,
+  rejected_with_pending
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Bind,
+  Branch,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Instantiation,
+  Loop,
+  Match,
+  Named,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  Value,
+  Ambiguous,
+  Found,
+  all_edges_positional,
+  arrow_body_target_lookup,
+  canonicalize_node_strip_provenance,
+  fold_node,
+  loop_edge_contributes_to_iteration_fold,
+  match_arm_body,
+  match_arm_pattern,
+  node_subtree_nodes,
+  well_formed,
+}
+import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, cast_target_optional, declaration_binder_edge, edge_is_type_params, type_annotation_optional, type_decl_view, type_param_names }
+import v2.std.coercion { coercion_cast_crossing }
+import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
+
+type AlgebraRef {
+  algebra: Node
+  witness: Node
+}
+
+// TWO POSITION-SCOPED DERIVATIONS SIT BESIDE THE KIND RULES. An accepted int
+// literal's magnitude payload derives against the integer authority's own types
+// (infer_literal_payload_entries), and a childless Conj in an Arrow's domain position derives as
+// the empty product (infer_arrow_empty_domain_edge). A node's KIND does not decide whether it
+// grounds, so a count of kinds covered does not measure how much of a closure grounds: gen-one's
+// door probe (fixture.native_cli_door.door_probe) met this frontier only through Atom and Conj
+// nodes, because body lowering handed infer a data declaration's surface tokens (fixed at
+// v2.compiler.body_lowering_fold body_lower_data_decl_to_member).
+
+fn infer_grounding_not_derived_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_grounding_not_derived,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn inferred_facts_subject_node(facts: InferredFacts) -> Node {
+  match facts.grounding {
+    DerivedGrounding { grounding: g } => g.node
+    GroundingNotDerived { node: n } => n
+  }
+}
+
+fn inferred_facts_cover_node(facts: InferredFacts, node: Node) -> Bool {
+  inferred_facts_subject_node(facts: facts) == node
+}
+
+fn inferred_facts_grounding_derived(facts: InferredFacts) -> Bool {
+  match facts.grounding {
+    DerivedGrounding { grounding: _ } => true
+    GroundingNotDerived { node: _ } => false
+  }
+}
+
+fn inferred_facts_canonical_admitted(facts: InferredFacts) -> Bool {
+  match facts.grounding {
+    DerivedGrounding { grounding: g } => canonical_grounding_admits_infer_facts(grounding: g)
+    GroundingNotDerived { node: _ } => false
+  }
+}
+
+fn inferred_facts_grounding_witness(facts: InferredFacts) -> Witness<CanonicalGrounding> {
+  match facts.grounding {
+    DerivedGrounding { grounding: g } => Holds { value: g }
+    GroundingNotDerived { node: n } =>
+      Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+  }
+}
+
+fn inferred_facts_resolved_type(facts: InferredFacts) -> Witness<Node> {
+  match facts.grounding {
+    DerivedGrounding { grounding: g } => Holds { value: g.witness.structural.evidence }
+    GroundingNotDerived { node: n } =>
+      Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+  }
+}
+
+fn inferred_facts_algebra_ref(facts: InferredFacts) -> Witness<AlgebraRef> {
+  match facts.grounding {
+    DerivedGrounding { grounding: g } =>
+      Holds { value: algebra_ref_from_grounding(grounding: g) }
+    GroundingNotDerived { node: n } =>
+      Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+  }
+}
+
+fn inferred_facts_canonical_witness(facts: InferredFacts) -> Witness<CanonicalGroundingWitness> {
+  match facts.grounding {
+    DerivedGrounding { grounding: g } => Holds { value: g.witness }
+    GroundingNotDerived { node: n } =>
+      Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+  }
+}
+
+fn inferred_facts_descent(facts: InferredFacts) -> Witness<v2.std.cardinality.TerminationProof> {
+  facts.descent
+}
+
+// Test-only emit-shape frontier (review 47246): empty facts map for orch-emit-compatible mock
+// proofs (`orch_emit_facts_lookup`, `ingested_emit_shape_frontier_tree_from_source` in emit-host
+// witnesses). Not a production carrier — production emit paths pass canonical infer output
+// facts-flow-forward; erasing or relabeling infer judgments is forbidden (review 47234, review
+// 47246). dissolve-on: v2-inferred-tree-completeness makes incomplete InferredTree unwritable on
+// the production emit path.
+
+fn infer_emit_shape_frontier_inferred_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: PartialFunction {
+      lookup: fn(_key) {
+        Absent
+      }
+    }
+  }
+}
+
+type InferGatherFoldAcc {
+  node: Node
+  entries: List<InferredFactsEntry>
+  failed: Bool
+  pending: Diagnostics
+  await_branch_row: Bool
+  await_match_row: Bool
+  await_loop_row: Bool
+  await_transform_row: Bool
+  children_remaining: Int
+}
+
+fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_facts_lookup_miss,
+    at: node_locus(node: key),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_canonical_grounding_incoherent,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_algebra_ref_ungrounded,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_branch_shape_invalid_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_branch_shape_invalid,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_branch_cond_not_bool_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_branch_cond_not_bool,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_branch_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_branch_arm_type_mismatch,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_loop_shape_invalid_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_loop_shape_invalid,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_loop_iteration_type_mismatch_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_loop_iteration_type_mismatch,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_shape_invalid_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_shape_invalid,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_scrutinee_not_bool_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_scrutinee_not_bool,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_pattern_not_bool_literal_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_pattern_not_bool_literal,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_arm_type_mismatch_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_arm_type_mismatch,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_non_exhaustive_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_non_exhaustive,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_transform_shape_invalid_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_transform_shape_invalid,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_transform_operand_type_mismatch_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_transform_operand_type_mismatch,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// An element of a list literal whose type differs from the first element's, located AT that element.
+fn infer_list_element_type_mismatch_diagnostic(element: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_list_element_type_mismatch,
+    at: node_locus(node: element),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_transform_operator_unsupported_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_transform_operator_unsupported,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_int_scrutinee_bool_literal_scaffold,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn algebra_ref_is_grounded(algebra: Node) -> Bool {
+  match algebra.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: _ } => false
+        _ => true
+      }
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn infer_descent_not_derived_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_descent_not_derived,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_descent_witness_for_node(n: Node) -> Witness<v2.std.cardinality.TerminationProof> {
+  match termination_proof_witness_for_node(n: n) {
+    Holds { value: proof } => Holds { value: proof }
+    Violates { diagnostic: upstream } =>
+      Violates {
+        diagnostic: infer_descent_not_derived_diagnostic(at: upstream.at)
+      }
+  }
+}
+
+fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
+  AlgebraRef {
+    algebra: grounding.witness.structural.evidence,
+    witness: grounding.node
+  }
+}
+
+// This predicate deliberately does NOT carry an 'evidence != node' conjunct; that conjunct was
+// tried and withdrawn. As a read-path backstop against hand-built self-groundings it looked free,
+// but it is a PROXY for the property at issue — 'was this grounding produced by a derivation?' —
+// which the NodeGrounding carrier already answers exactly. Proxies produced the defect in the
+// first place: algebra_ref_is_grounded is a shape test on the connective, which is why Conj/Disj
+// type-node self-groundings walked through it. The proxy also has real false positives:
+// v2_evaluator's bool fixture uses ONE atom as both the evaluand and the runtime value's
+// primitive_type, so resolved == algebra there is the fixture's coherent encoding of 'this atom
+// denotes Bool', not a fabrication. Refusing it would mean rewriting a thesis-proof fixture to
+// make a check go green — the inversion DESIGN §5 names. The wall therefore lives where it is
+// exact: canonical_grounding_from_derived_type refuses self-evidence for every grounding the
+// COMPILER mints, and GroundingNotDerived is what an underived node carries. A structurally
+// hand-written CanonicalGrounding remains writable by any module; that residue is stated, not
+// silently covered.
+
+fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
+  well_formed(n: grounding.node)
+    && well_formed(n: grounding.witness.structural.evidence)
+    && (grounding.witness.structural.property == ^constraint_property_being_canonical)
+    && (grounding.witness.closedness.property == ^constraint_property_candidate_set_closedness)
+    && (grounding.witness.closedness.evidence == grounding.node)
+}
+
+fn inferred_facts_construction(
+  grounding: CanonicalGrounding,
+  descent: Witness<v2.std.cardinality.TerminationProof>,
+) -> Outcome<InferredFacts> {
+  if canonical_grounding_admits_infer_facts(grounding: grounding) {
+    Accepted {
+      value: InferredFacts {
+        grounding: DerivedGrounding { grounding: grounding },
+        descent: descent
+      },
+      diagnostics: None
+    }
+  } else {
+    outcome_rejected(
+      infer_canonical_grounding_incoherent_diagnostic(node: grounding.node)
+    )
+  }
+}
+
+fn inferred_facts_from_grounding(
+  grounding: CanonicalGrounding,
+  descent: Witness<v2.std.cardinality.TerminationProof>,
+) -> Outcome<InferredFacts> {
+  inferred_facts_construction(grounding: grounding, descent: descent)
+}
+
+fn inferred_facts_not_derived(
+  node: Node,
+  descent: Witness<v2.std.cardinality.TerminationProof>,
+) -> Outcome<InferredFacts> {
+  Accepted {
+    value: InferredFacts {
+      grounding: GroundingNotDerived { node: node },
+      descent: descent
+    },
+    diagnostics: Some {
+      diagnostics: diagnostics_singleton(
+        d: infer_grounding_not_derived_diagnostic(at: node_locus(node: node))
+      )
+    }
+  }
+}
+
+fn empty_inferred_facts_entry_list() -> List<InferredFactsEntry> {
+  []
+}
+
+fn concat_inferred_facts_entries(
+  a: List<InferredFactsEntry>,
+  b: List<InferredFactsEntry>,
+) -> List<InferredFactsEntry> {
+  fold(b, init: a, f: fn(acc, entry) {
+    list_snoc_item(xs: acc, item: entry)
+  })
+}
+
+// infer_node_facts used to reach solve_constraints with the singleton candidate set [root] and the
+// constraint-satisfaction predicate, whose preservation rule is (algebra == source_facts &&
+// candidate == source_facts) with algebra bound to the root itself — so the witness search reduced
+// to root == root and always succeeded. The grounding it minted carried the source node as its own
+// structural evidence, which inferred_facts_resolved_type reads as the node's resolved type:
+// source identity standing where a derivation belongs. The Bool and Int arms now consume the
+// typed canonical-literal query and raise those derivations to leaf facts; every other node on
+// this path carries the typed GroundingNotDerived frontier. solve_constraints is untouched — it
+// remains the structural-solve authority named by dag/gunbc/plans/solve_higher_order_design.dag,
+// to be EXTENDED with real candidate generation, never forked.
+
+// THE DECLARED-INHABITANT MEMBERSHIP DERIVATION, GENERAL OVER THE CLOSED INGEST SET. A language
+// authority's declared-inhabitants roster (v2.extdeps.languages.dag dag_declared_inhabitants_root,
+// and the python/typescript analogues) already fixes what its members denote — the add fn Arrow,
+// the int/number inhabitant Conj, and the inhabitant, surface-spelling, representation and
+// std-projection Atoms are all declared there — so a node that IS a roster member derives its
+// grounding by LOOKUP, never by invention. Its derived type is its KIND (std.kind): the roster's
+// structure says whether a member denotes a type or states a fact about one, and the kind node is
+// the type; the roster root is where the member was found, not what it is, and never reaches
+// derived_type (DESIGN section 3). This is the derivation the self-host candidate-generation add-slice
+// stall's original trigger named, at specimen scope: the slice's Arrow, Conj and Atom nodes derive,
+// while the KINDS stay frontier — a non-member Arrow, Conj or Atom carries GroundingNotDerived
+// exactly as before, so the enrolled refusal witnesses pinning other shapes (the bodied arrow, the
+// empty Conj, the rust grammar atom) are untouched. The membership check is DEEP
+// (node_subtree_nodes): a language's inhabitant node embeds its facts subtree, so the leaf fact
+// atoms of a declared inhabitant are roster members exactly as the inhabitant node itself is.
+// Growth is execution-driven: the lookup widened from the dag roster to the closed ingest set
+// (dag, python, typescript) when the python/typescript same-language round-trip witnesses named
+// that moment — their frontier is the grammar parse-product population, whose leaves are the
+// declared inhabitants' fact atoms. The set is the compiler's own closed ingest set, not a generic
+// hub enumerating upstream products: infer already fixes which languages it ingests, and each
+// roster stays in its own authority module (DESIGN section 3's external-upstream decomposition).
+// The end-state is the resolver handing infer declaration-resolved identities directly — the
+// namespace migration's completed state — at which point this lookup deletes in favor of consuming
+// resolution output.
+
+// THE CLOSED INGEST SET'S ROSTER-KIND INDEXES, DERIVED ONCE PER INFER RUN (infer_entries_for_tree)
+// and threaded to every node query beside `partials`: a member's kind is a fact about the rosters,
+// fixed before the run starts, so no node query re-walks a roster (DESIGN section 6, bare minimum
+// cost). They are consulted in ingest order (dag, python, typescript): the first roster that
+// declares a node gives its kind, as the per-roster chain this replaces did.
+fn infer_language_inhabitants_kind_index() -> List<RosterKindIndex> {
+  [
+    roster_kind_index(
+      roster: dag_declared_inhabitants_root(),
+      subject_field: dag_declared_inhabitants_subject_field()
+    ),
+    roster_kind_index(
+      roster: python_declared_inhabitants_root(),
+      subject_field: python_declared_inhabitants_subject_field()
+    ),
+    roster_kind_index(
+      roster: ts_declared_inhabitants_root(),
+      subject_field: ts_declared_inhabitants_subject_field()
+    )
+  ]
+}
+
+fn infer_roster_kind_first_declared(acc: Optional<Kind>, index: RosterKindIndex, n: Node) -> Optional<Kind> {
+  match acc {
+    Present { value: _ } => acc
+    Absent => roster_kind_index_lookup(index: index, n: n)
+  }
+}
+
+// Returns the member's KIND (std.kind roster_kind_index_lookup): a type-denotation member derives
+// TypeDenotationKind and a fact about a type derives TypeFactKind -- never the roster root, which
+// is where the member was found, not what it is. Absent when no ingested language's roster
+// declares the node.
+fn infer_node_declared_in_language_inhabitants(kinds: List<RosterKindIndex>, n: Node) -> Optional<Kind> {
+  fold(kinds, init: optional_absent(), f: fn(acc, index) {
+    infer_roster_kind_first_declared(acc: acc, index: index, n: n)
+  })
+}
+
+fn infer_node_declared_in_language_inhabitants_bool(kinds: List<RosterKindIndex>, n: Node) -> Bool {
+  match infer_node_declared_in_language_inhabitants(kinds: kinds, n: n) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE PRODUCT-INTRODUCTION DERIVATION (Conj and Arrow kinds). A Conj node denotes the product of
+// its conjuncts' denotations and an Arrow node the function from its domain's denotation to its
+// codomain's — the closed vocabulary's own composition semantics (v2.std.node), not an invented
+// meaning. So when EVERY child of a non-roster Conj or Arrow carries DerivedGrounding, the node
+// derives: its evidence is the same shape re-formed over each child's grounding evidence, a fresh
+// OccurrenceSynthetic node whose evidential chain bottoms out in authority nodes at the leaves
+// (never the source node — canonical_grounding_from_derived_type refuses self-evidence by
+// construction). When ANY child is still on the frontier or absent from the entries, the node
+// stays on the frontier with its typed diagnostic — the derivation discharges only when the whole
+// child spine is evidenced, so a partially-derived product can never masquerade as grounded
+// (DESIGN section 5). Roster members keep their declared kind (the authority's declaration
+// outranks composition for what the language itself declares), and a childless Conj or Arrow has
+// no evidence to compose and stays frontier. This discharges the frontier for these
+// two kinds: the kind-level rule the specimen-scope roster lookups stood in for.
+
+fn infer_type_node_awaits_product_row(kinds: List<RosterKindIndex>, n: Node) -> Bool {
+  (length(xs: n.children) > 0) && !infer_node_declared_in_language_inhabitants_bool(kinds: kinds, n: n)
+}
+
+// THE CANONICAL-OPERATION AND GRAMMAR-PRODUCTION MEMBER DERIVATIONS. The resolver canonicalizes a
+// dag surface operator to a target-model CanonicalOperation wire node, and the bridge projects a
+// grammar production's identity atom (e.g. dag_surface_module) into the tree. Each such node is a
+// member of its authority's roster, and derives with the type that authority DECLARES for the
+// member (v2.std.compilers.target_model target_model_canonical_operation_member_declared_type,
+// v2.extdeps.languages.dag dag_grammar_production_member_declared_type) -- never the roster root,
+// which would make derived_type carry provenance where every reader expects a type (DESIGN §3).
+
+fn infer_roster_member_declared_type(n: Node) -> Optional<Node> {
+  match target_model_canonical_operation_member_declared_type(n: n) {
+    Present { value: member_type } => optional_present(value: member_type)
+    Absent => dag_grammar_production_member_declared_type(n: n)
+  }
+}
+
+// AN ARROW'S DECLARED ORDER IS ITS OWN EVIDENCE: the ^arrow_signature_order_edge's atoms are labels,
+// not values, so the derived type carries that edge unchanged (see infer_arrow_signature_order_edge).
+fn infer_product_child_evidence_edges(
+  children: List<Edge>,
+  entries: List<InferredFactsEntry>,
+) -> Optional<List<Edge>> {
+  infer_formation_child_evidence_edges(
+    children: children,
+    entries: entries,
+    is_metadata: fn(edge) { edge_label_of(e: edge) == arrow_signature_order_label }
+  )
+}
+
+// A FORMED NODE'S EVIDENCE: each child's resolved type under the child's own label, except a
+// METADATA edge -- one the parent's model says carries labels or binders, not a value -- which rides
+// unchanged. Absent when any value child has no derived grounding, so a partially grounded child spine
+// never forms.
+fn infer_formation_child_evidence_edges(
+  children: List<Edge>,
+  entries: List<InferredFactsEntry>,
+  is_metadata: fn(Edge) -> Bool,
+) -> Optional<List<Edge>> {
+  fold(
+    children,
+    init: optional_present(value: Empty),
+    f: fn(acc, edge) {
+      match acc {
+        Absent => acc
+        Present { value: evidence_edges } =>
+          if is_metadata(edge) {
+            optional_present(value: list_snoc_item(xs: evidence_edges, item: edge))
+          } else {
+          match lookup_inferred_facts_in_entries(entries: entries, key: edge.target) {
+            Absent => optional_absent()
+            Present { value: child_facts } =>
+              match inferred_facts_resolved_type(facts: child_facts) {
+                Violates { diagnostic: _ } => optional_absent()
+                Holds { value: child_evidence } =>
+                  optional_present(
+                    value: list_snoc_item(
+                      xs: evidence_edges,
+                      item: Edge { label: edge.label, target: child_evidence }
+                    )
+                  )
+              }
+          }
+          }
+      }
+    }
+  )
+}
+
+// ARROW INTRODUCTION: A BODIED ARROW'S BODY MUST INHABIT THE RETURN IT DECLARES. Asked only once every
+// child of the Arrow is derived (the product row above), so the body's type is known. The body's
+// value type must equal the declared return's denotation, structurally with provenance stripped
+// (infer_type_equal_ignoring_provenance, the list rule's authority); otherwise the Arrow refuses,
+// located at the body. An Arrow with no body edge, or whose return is not a binding the language
+// join denotes, is not judged here -- and arrow elimination derives nothing from such a return.
+fn infer_arrow_body_does_not_inhabit_declared_return_diagnostic(body: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^arrow_body_does_not_inhabit_declared_return,
+    at: node_locus(node: body),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_arrow_body_inhabits_declared_return(node: Node, entries: List<InferredFactsEntry>) -> Outcome<Bool> {
+  match node.kind {
+    TypeNode { connective: Arrow } =>
+      match arrow_body_target_lookup(children: node.children) {
+        Ambiguous => outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
+        Found { target: body } =>
+          match infer_arrow_declared_return_type(arrow: node) {
+            Absent => outcome_accepted(value: true)
+            Present { value: declared } =>
+              match lookup_inferred_facts_in_entries(entries: entries, key: body) {
+                Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body))
+                Present { value: body_facts } =>
+                  match inferred_facts_resolved_type(facts: body_facts) {
+                    Violates { diagnostic: d } => outcome_rejected(d)
+                    Holds { value: body_type } =>
+                      if infer_type_equal_ignoring_provenance(a: declared, b: body_type) {
+                        outcome_accepted(value: true)
+                      } else {
+                        outcome_rejected(
+                          infer_arrow_body_does_not_inhabit_declared_return_diagnostic(body: body)
+                        )
+                      }
+                  }
+              }
+          }
+        _ => outcome_accepted(value: true)
+      }
+    _ => outcome_accepted(value: true)
+  }
+}
+
+// WHICH FORMATION A SETTLED TYPE NODE TAKES, decided once. A type-declaration wrapper is NOT a
+// product even though its carrier is a Conj (v2.std.type_binder type_decl_view says which it is), so it
+// never reaches product introduction: an alias or generic member forms its own evidence with the binder
+// edge carried as metadata, and a bodyless declaration derives the type-denotation kind. Every other
+// Conj or Arrow is product introduction, and a Disj of Named alternatives is SUM FORMATION -- the same
+// kind-preserving construction over its alternatives' evidence. Forming a sum type grants no
+// introduction or elimination: it says nothing about a value inhabiting one arm.
+fn infer_formation_facts_from_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  partials: List<Node>,
+) -> Outcome<InferredFacts> {
+  match type_decl_view(target: node) {
+    TypeAlias { binders: _, aliased: _ } => infer_declaration_wrapper_facts_from_entries(node: node, entries: entries, partials: partials)
+    GenericTypeDecl { binders: _, member: _ } => infer_declaration_wrapper_facts_from_entries(node: node, entries: entries, partials: partials)
+    OpaqueTypeDecl { binders: _ } => infer_opaque_declaration_facts(node: node, partials: partials)
+    PlainTypeDecl { member: _ } => infer_product_facts_from_entries(node: node, entries: entries, partials: partials)
+  }
+}
+
+// AN ALIAS DENOTES ITS RIGHT-HAND SIDE UNDER ITS BINDERS; A GENERIC MEMBER IS ITS MEMBER UNDER ITS
+// BINDERS. The evidence is the wrapper re-formed with the binder edge carried unchanged
+// (infer_declaration_binder_edge) and the aliased expression or member replaced by its derived type --
+// so a generic alias keeps its abstraction rather than collapsing to a closed right-hand side. It forms
+// only when that right-hand side or member derives: a generic alias whose right-hand side names its own
+// binder (`type Id<T> = T`) has no symbolic grounding route for `T` yet and stays on the frontier,
+// never substituted or instantiated here.
+fn infer_declaration_wrapper_facts_from_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  partials: List<Node>,
+) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      match infer_descent_witness_for_node(n: node) {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: descent_proof } =>
+          match infer_formation_child_evidence_edges(
+            children: node.children,
+            entries: entries,
+            is_metadata: fn(edge) { edge_is_type_params(e: edge) }
+          ) {
+            Absent =>
+              bind_outcome_accepted(od: cd, inner: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof }))
+            Present { value: evidence_edges } =>
+              bind_outcome_accepted(
+                od: cd,
+                inner: inferred_facts_from_derived_type(
+                  node: node,
+                  derived_type: Node {
+                    kind: node.kind,
+                    children: evidence_edges,
+                    occurrence_id: OccurrenceSynthetic
+                  },
+                  descent: Holds { value: descent_proof }
+                )
+              )
+          }
+      }
+  }
+}
+
+// A BODYLESS DECLARATION DENOTES A TYPE, AND THAT IS ALL IT STATES. `type PointerWidth` asserts no
+// representation, inhabitant, field, variant or alias target, so it derives exactly the fact infer
+// already gives a type-denoting binding (the dag_binding_denotation arm of infer_node_facts):
+// TypeDenotationKind. That grants no member, construction or representation-sensitive coercion, and
+// for a generic declaration (`type MachineWidth<bits>`) it says only that the declaration names a type
+// constructor -- a use's arity stays the binder authority's to check. It is not the empty product: an
+// authored empty record is a member, and forms through product introduction.
+fn infer_opaque_declaration_facts(node: Node, partials: List<Node>) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      match infer_descent_witness_for_node(n: node) {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: descent_proof } =>
+          bind_outcome_accepted(
+            od: cd,
+            inner: inferred_facts_from_derived_type(
+              node: node,
+              derived_type: kind_node(kind: TypeDenotationKind),
+              descent: Holds { value: descent_proof }
+            )
+          )
+      }
+  }
+}
+
+fn infer_product_facts_from_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  partials: List<Node>,
+) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      match infer_descent_witness_for_node(n: node) {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: descent_proof } =>
+          match infer_product_child_evidence_edges(children: node.children, entries: entries) {
+            Absent =>
+              bind_outcome_accepted(
+                od: cd,
+                inner: inferred_facts_not_derived(
+                  node: node,
+                  descent: Holds { value: descent_proof }
+                )
+              )
+            Present { value: evidence_edges } =>
+              bind_outcome(
+                o: infer_arrow_body_inhabits_declared_return(node: node, entries: entries),
+                f: fn(_checked) {
+                  bind_outcome_accepted(
+                    od: cd,
+                    inner: inferred_facts_from_derived_type(
+                      node: node,
+                      derived_type: Node {
+                        kind: node.kind,
+                        children: evidence_edges,
+                        occurrence_id: OccurrenceSynthetic
+                      },
+                      descent: Holds { value: descent_proof }
+                    )
+                  )
+                }
+              )
+          }
+      }
+  }
+}
+
+fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, tree: Node) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: n, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      match infer_descent_witness_for_node(n: n) {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: descent_proof } =>
+          match dag_canonical_literal_from_node(node: n) {
+            Accepted { value: literal, diagnostics: _ } =>
+              match infer_literal_value_type(literal: literal) {
+                Present { value: literal_type } =>
+                  inferred_facts_from_derived_type(
+                    node: n,
+                    derived_type: literal_type,
+                    descent: Holds { value: descent_proof }
+                  )
+                Absent =>
+                  inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+              }
+            Rejected { diagnostics: _ } =>
+              match infer_node_declared_in_language_inhabitants(kinds: kinds, n: n) {
+                Present { value: member_kind } =>
+                  inferred_facts_from_derived_type(
+                    node: n,
+                    derived_type: kind_node(kind: member_kind),
+                    descent: Holds { value: descent_proof }
+                  )
+                Absent =>
+                match infer_atom_binding_sym(node: n) {
+                  Present { value: binding } =>
+                    match dag_binding_denotation(sym: binding) {
+                      Present { value: _ } =>
+                        inferred_facts_from_derived_type(
+                          node: n,
+                          derived_type: kind_node(kind: TypeDenotationKind),
+                          descent: Holds { value: descent_proof }
+                        )
+                      Absent =>
+                        match infer_roster_member_declared_type(n: n) {
+                          Present { value: member_type } =>
+                            inferred_facts_from_derived_type(
+                              node: n,
+                              derived_type: member_type,
+                              descent: Holds { value: descent_proof }
+                            )
+                          Absent =>
+                            match infer_parameter_type_in_scope(tree: tree, reference: n, binding: binding) {
+                              Present { value: domain_ty } =>
+                                inferred_facts_from_derived_type(
+                                  node: n,
+                                  derived_type: domain_ty,
+                                  descent: Holds { value: descent_proof }
+                                )
+                              Absent =>
+                                inferred_facts_not_derived(
+                                  node: n,
+                                  descent: Holds { value: descent_proof }
+                                )
+                            }
+                        }
+                    }
+                  Absent =>
+                    inferred_facts_not_derived(
+                      node: n,
+                      descent: Holds { value: descent_proof }
+                    )
+                }
+              }
+          }
+      }
+  }
+}
+
+fn lookup_inferred_facts_in_entries(
+  entries: List<InferredFactsEntry>,
+  key: Node,
+) -> Optional<InferredFacts> {
+  fold(
+    entries,
+    init: optional_absent(),
+    f: fn(acc, entry) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if entry.node == key {
+            optional_present(value: entry.facts)
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+// THE FACTS MAP IS A NODE-KEYED MAP, BUILT ONCE PER RUN (DESIGN section 6, bare minimum cost): a
+// lookup against the admitted entries list was a scan, so every lookup was linear in the tree and
+// a consumer walking the tree paid quadratic. Entry order still decides a repeated node: the FIRST
+// admitted entry answers, exactly as the scan it replaces did, so a later entry never displaces it.
+fn inferred_facts_map_enter(facts: Map<Node, InferredFacts>, entry: InferredFactsEntry) -> Map<Node, InferredFacts> {
+  match map_lookup(m: facts, key: entry.node) {
+    Present { value: _ } => facts
+    Absent => map_insert(m: facts, key: entry.node, value: entry.facts)
+  }
+}
+
+fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<PartialFunction<Node, InferredFacts>> {
+  match fold(entries, init: Accepted { value: empty_map(), diagnostics: None }, f: fn(acc, entry) {
+    match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: admitted, diagnostics: d } =>
+        if inferred_facts_cover_node(facts: entry.facts, node: entry.node) {
+          Accepted { value: inferred_facts_map_enter(facts: admitted, entry: entry), diagnostics: d }
+        } else {
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: infer_canonical_grounding_incoherent_diagnostic(node: entry.node)
+            )
+          }
+        }
+    }
+  }) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: admitted, diagnostics: d } =>
+      Accepted {
+        value: PartialFunction {
+          lookup: fn(key) {
+            map_lookup(m: admitted, key: key)
+          }
+        },
+        diagnostics: d
+      }
+  }
+}
+
+fn inferred_facts_witness_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
+}
+
+// A DEMAND FOR A CANONICAL GROUNDING THE FRONTIER LEFT UNDERIVED IS A REFUSAL, AND IT HAS ITS OWN
+// NAME. `infer_grounding_not_derived` is the frontier ADVISORY infer carries on its Accepted path
+// (v2.compiler.inferred_tree NodeGrounding); until 2026-09-21 this arm REFUSED with that same symbol, so a
+// consumer that demanded the grounding -- coercion, translate's fold, eval's constraints -- produced
+// a rejection chain whose fatal was spelled exactly like the advisories riding in front of it, and no
+// reader of the flat chain could tell which link refused (DESIGN section 3: one name, two contracts).
+// eval and translate each name their own gate's refusal; this is the shared root every other demand
+// reaches, so it names its own.
+fn infer_grounding_demanded_not_derived_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_grounding_demanded_not_derived,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn canonical_grounding_from_inferred_facts(
+  node: Node,
+  facts: InferredFacts,
+) -> Outcome<CanonicalGrounding> {
+  match facts.grounding {
+    GroundingNotDerived { node: n } =>
+      outcome_rejected(infer_grounding_demanded_not_derived_diagnostic(at: node_locus(node: n)))
+    DerivedGrounding { grounding: g } =>
+      if node != g.node {
+        outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
+      } else if !algebra_ref_is_grounded(algebra: algebra_ref_from_grounding(grounding: g).algebra) {
+        outcome_rejected(infer_algebra_ref_ungrounded_diagnostic(node: node))
+      } else if canonical_grounding_admits_infer_facts(grounding: g) {
+        Accepted {
+          value: g,
+          diagnostics: None
+        }
+      } else {
+        outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
+      }
+  }
+}
+
+fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
+  match inferred_facts_witness_for_node(tree: tree, node: node) {
+    Holds { value: facts } =>
+      canonical_grounding_from_inferred_facts(node: node, facts: facts)
+    Violates { diagnostic: d } =>
+      outcome_rejected(d)
+  }
+}
+
+fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<InferredFactsEntry> {
+  if inferred_facts_cover_node(facts: facts, node: node) {
+    Accepted {
+      value: InferredFactsEntry { node: node, facts: facts },
+      diagnostics: None
+    }
+  } else {
+    outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
+  }
+}
+
+// A VALUE'S TYPE COMES FROM THE LANGUAGE'S ONE BINDING JOIN, NEVER A NODE THIS FOLD MINTS. A literal
+// is typed by what its type binding denotes (v2.extdeps.languages.dag dag_binding_denotation, whose
+// rows point at v2.std.integer and v2.std.logic), and so is an application's result (its callee's
+// declared return). A type-expression atom that names such a binding derives its KIND, not the type
+// it denotes: the type of the expression `Int` is a type, and taking the denotation would type the
+// atom as a node structurally equal to itself (docs/plans/arrow-elimination-model.md).
+fn infer_literal_type_binding(literal: DagCanonicalLiteral) -> Symbol {
+  match literal {
+    DagCanonicalBoolLiteral { value: _ } => ^dag_binding_type_bool
+    DagCanonicalIntLiteral { magnitude: _ } => ^dag_binding_type_int
+  }
+}
+
+fn infer_literal_value_type(literal: DagCanonicalLiteral) -> Optional<Node> {
+  dag_binding_denotation(sym: infer_literal_type_binding(literal: literal))
+}
+
+fn infer_binding_value_type_witness(binding: Symbol, at: Node) -> Witness<Node> {
+  match dag_binding_denotation(sym: binding) {
+    Present { value: t } => Holds { value: t }
+    Absent => Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: at)) }
+  }
+}
+
+// The value type an Arrow DECLARES it returns: the denotation of its return atom as written
+// (positional child 1). Read from the declaration, never from the Arrow's composed evidence, which
+// also carries the body. Absent when the return is not a binding this language's join denotes, and
+// then nothing is derived from it.
+fn infer_arrow_declared_return_type(arrow: Node) -> Optional<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+    Absent => Absent
+    Present { value: ret } =>
+      match infer_atom_binding_sym(node: ret) {
+        Absent => Absent
+        Present { value: binding } => dag_binding_denotation(sym: binding)
+      }
+  }
+}
+
+fn infer_atom_binding_sym(node: Node) -> Optional<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
+    _ => Absent
+  }
+}
+
+fn infer_conj_edge_named_type_for_binding(edge: Edge, binding: Symbol) -> Optional<Node> {
+  match edge.label {
+    Named { name: sym } =>
+      if sym == binding {
+        optional_present(value: edge.target)
+      } else {
+        optional_absent()
+      }
+    Positional => optional_absent()
+  }
+}
+
+fn infer_conj_named_type_for_binding(domain: Node, binding: Symbol) -> Optional<Node> {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      fold(domain.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => infer_conj_edge_named_type_for_binding(edge: e, binding: binding)
+        }
+      })
+    _ => Absent
+  }
+}
+
+fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional<Node> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+        Present { value: domain } =>
+          infer_conj_named_type_for_binding(domain: domain, binding: binding)
+        Absent => Absent
+      }
+    _ => Absent
+  }
+}
+
+// A PARAMETER REFERENCE IS BOUND BY THE INNERMOST ENCLOSING ARROW THAT DECLARES IT. The walk this
+// replaces returned the FIRST Arrow anywhere in the tree naming the binding, so in a module declaring
+// `fn positive(x: Int)` and `fn f(x: Pos)` every `x` in f's body grounded as positive's Int: a
+// derived type fabricated from an unrelated declaration, which admitted `x as Int` and refused
+// `x as Pos` for the wrong reason (v2.test.claim.body_cast_node rows 15 and 16). One descent, the
+// same cost as the unscoped walk: it locates the reference OCCURRENCE (Node equality carries the
+// occurrence identity) and each Arrow on the way back up binds it if its domain names it.
+// Consumers: infer_node_facts' parameter arm (the grounding every cast, add, application, branch,
+// match and loop operand reads) and infer_branch_operand_resolved_type_in_tree.
+// interim: dissolve-on the SymbolIndex / ResolvedTree.bindings lookup, as before.
+type InferParameterScopeSearch
+  = ParameterReferenceNotHere
+  | ParameterReferenceUnbound
+  | ParameterReferenceBound { declared: Node }
+
+fn infer_parameter_scope_search(root: Node, reference: Node, binding: Symbol) -> InferParameterScopeSearch {
+  if root == reference {
+    ParameterReferenceUnbound
+  } else {
+    match fold(root.children, init: ParameterReferenceNotHere, f: fn(acc, e) {
+      match acc {
+        ParameterReferenceNotHere => infer_parameter_scope_search(root: e.target, reference: reference, binding: binding)
+        _ => acc
+      }
+    }) {
+      ParameterReferenceUnbound =>
+        match infer_arrow_domain_type_for_binding(arrow: root, binding: binding) {
+          Present { value: ty } => ParameterReferenceBound { declared: ty }
+          Absent => ParameterReferenceUnbound
+        }
+      ParameterReferenceBound { declared: ty } => ParameterReferenceBound { declared: ty }
+      ParameterReferenceNotHere => ParameterReferenceNotHere
+    }
+  }
+}
+
+fn infer_parameter_type_in_scope(tree: Node, reference: Node, binding: Symbol) -> Optional<Node> {
+  match infer_parameter_scope_search(root: tree, reference: reference, binding: binding) {
+    ParameterReferenceBound { declared: ty } => Present { value: ty }
+    ParameterReferenceUnbound => Absent
+    ParameterReferenceNotHere => Absent
+  }
+}
+
+// The literal and arrow-domain arms below derive a real type for the operand; the remaining arm
+// falls through to the operand's own inferred facts. When those facts are the GroundingNotDerived
+// frontier there is no operand type, and this now refuses (Violates) instead of returning the
+// operand NODE as its own type. That fallback was how the self-grounding fabrication entered
+// branch/match/loop unification: two arms whose 'types' were their own expression nodes compared
+// unequal and were reported as an arm-type mismatch, while two structurally identical arms
+// compared equal and were reported as unified — both verdicts about node identity, not types.
+
+fn infer_branch_operand_resolved_type_in_tree(
+  node: Node,
+  facts: InferredFacts,
+  tree: Node,
+) -> Witness<Node> {
+  match dag_canonical_literal_from_node(node: node) {
+    Accepted { value: literal, diagnostics: _ } =>
+      infer_binding_value_type_witness(binding: infer_literal_type_binding(literal: literal), at: node)
+    Rejected { diagnostics: _ } =>
+      match infer_atom_binding_sym(node: node) {
+        Present { value: binding } =>
+          match infer_parameter_type_in_scope(tree: tree, reference: node, binding: binding) {
+            Present { value: domain_ty } => Holds { value: domain_ty }
+            Absent => inferred_facts_resolved_type(facts: facts)
+          }
+        Absent => inferred_facts_resolved_type(facts: facts)
+      }
+  }
+}
+
+fn infer_branch_operand_resolved_type(node: Node, facts: InferredFacts) -> Witness<Node> {
+  infer_branch_operand_resolved_type_in_tree(node: node, facts: facts, tree: node)
+}
+
+fn inferred_facts_from_derived_type(
+  node: Node,
+  derived_type: Node,
+  descent: Witness<v2.std.cardinality.TerminationProof>,
+) -> Outcome<InferredFacts> {
+  bind_outcome(
+    o: canonical_grounding_from_derived_type(node: node, derived_type: derived_type),
+    f: fn(grounding) {
+      inferred_facts_from_grounding(grounding: grounding, descent: descent)
+    }
+  )
+}
+
+fn infer_branch_type_atoms_equal(a: Node, b: Node) -> Bool {
+  match a.kind {
+    TypeNode { connective: Atom { identity: id_a } } =>
+      match b.kind {
+        TypeNode { connective: Atom { identity: id_b } } => id_a == id_b
+        _ => false
+      }
+    _ => a == b
+  }
+}
+
+fn infer_branch_type_is_bool(type_node: Node) -> Bool {
+  match type_node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^bool_node_symbol
+    _ => false
+  }
+}
+
+fn infer_branch_cond_type_is_bool(cond_target: Node, cond_facts: InferredFacts) -> Bool {
+  match infer_branch_operand_resolved_type(node: cond_target, facts: cond_facts) {
+    Holds { value: cond_type } => infer_branch_type_is_bool(type_node: cond_type)
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn infer_branch_type_is_int(type_node: Node) -> Bool {
+  match type_node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_binding_type_int
+    _ => false
+  }
+}
+
+// Int-scrutinee bool-literal match arms ground body type as Int at arm-row construction (same octet
+// 0/1 authority as eval allocate_literal), not a post-unification rewrite. dissolve-on: bool
+// keywords carry Int type in Int-valued match bodies at normalize/ingest. scaffold-widen: Int
+// scrutinee on bool-literal match emits infer_match_int_scrutinee_bool_literal_scaffold diagnostic
+// (countable on Accepted path). paired-scaffold: emit half =
+// target_value_expr_int_bool_octet_channel_dissolution_note (target_model.dag) — dissolve both
+// halves together on octet↔bool codec inhabitation.
+
+fn infer_match_bool_consumer_diagnostics_with_int_scrutinee_scaffold(
+  consumer: Node,
+  cd: Diagnostics,
+  scrutinee_type: Node
+) -> Diagnostics {
+  if infer_branch_type_is_int(type_node: scrutinee_type) {
+    diagnostics_merge(
+      outer: cd,
+      inner: Some {
+        diagnostics: diagnostics_singleton(
+          d: infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: consumer)
+        )
+      }
+    )
+  } else {
+    cd
+  }
+}
+
+fn infer_match_bool_arm_body_type(
+  body_target: Node,
+  body_facts: InferredFacts,
+  scrutinee_type: Node
+) -> Witness<Node> {
+  match dag_canonical_literal_from_node(node: body_target) {
+    Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } =>
+      if infer_branch_type_is_int(type_node: scrutinee_type) {
+        infer_binding_value_type_witness(binding: ^dag_binding_type_int, at: body_target)
+      } else {
+        infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
+      }
+    Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
+      infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
+    Rejected { diagnostics: _ } =>
+      infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
+  }
+}
+
+fn infer_match_bool_arm_rows_accept(
+  node: Node,
+  partials: List<Node>,
+  entries: List<InferredFactsEntry>,
+  first_arm_target: Node,
+  second_arm_target: Node,
+  cd: Diagnostics,
+  scrutinee_type: Node
+) -> Outcome<InferredFacts> {
+  match infer_match_bool_arm_row(
+    arm: first_arm_target,
+    entries: entries,
+    scrutinee_type: scrutinee_type
+  ) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: first_row, diagnostics: fd } =>
+      match infer_match_bool_arm_row(
+        arm: second_arm_target,
+        entries: entries,
+        scrutinee_type: scrutinee_type
+      ) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: second_row, diagnostics: sd } =>
+          let first_body = first_row.body_type
+          let second_body = second_row.body_type
+          match infer_bool_literal_exhaustiveness_merge(
+            left: first_row.coverage,
+            right: second_row.coverage
+          ) {
+            InferBoolLiteralExhaustive =>
+              if !infer_branch_type_atoms_equal(a: first_body, b: second_body) {
+                outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
+              } else {
+                match infer_descent_witness_for_node(n: node) {
+                  Violates { diagnostic: d } =>
+                    Rejected { diagnostics: diagnostics_singleton(d: d) }
+                  Holds { value: descent_proof } =>
+                    bind_outcome(
+                      o: inferred_facts_from_derived_type(
+                        node: node,
+                        derived_type: first_body,
+                        descent: Holds { value: descent_proof }
+                      ),
+                      f: fn(facts) {
+                        Accepted {
+                          value: facts,
+                          diagnostics: diagnostics_merge(
+                            outer: diagnostics_merge(outer: cd, inner: fd),
+                            inner: sd
+                          )
+                        }
+                      }
+                    )
+                }
+              }
+            InferBoolLiteralMissingTrue =>
+              outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+            InferBoolLiteralMissingFalse =>
+              outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+            InferBoolLiteralMissingBoth =>
+              outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+          }
+      }
+  }
+}
+
+fn infer_unify_branch_arm_types(
+  then_node: Node,
+  then_facts: InferredFacts,
+  else_node: Node,
+  else_facts: InferredFacts,
+) -> Outcome<Node> {
+  match infer_branch_operand_resolved_type(node: then_node, facts: then_facts) {
+    Violates { diagnostic: d } => outcome_rejected(d)
+    Holds { value: then_type } =>
+      match infer_branch_operand_resolved_type(node: else_node, facts: else_facts) {
+        Violates { diagnostic: d } => outcome_rejected(d)
+        Holds { value: else_type } =>
+          if infer_branch_type_atoms_equal(a: then_type, b: else_type) {
+            Accepted { value: then_type, diagnostics: None }
+          } else {
+            outcome_rejected(infer_branch_arm_type_mismatch_diagnostic(node: then_node))
+          }
+      }
+  }
+}
+
+fn infer_branch_bool_if_else(
+  node: Node,
+  partials: List<Node>,
+  entries: List<InferredFactsEntry>,
+) -> Outcome<InferredFacts> {
+  let positional_targets = node_positional_child_targets(node: node)
+  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
+    outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+  } else {
+    match list_at_optional(xs: positional_targets, index: 0) {
+      Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+      Present { value: cond_target } =>
+        match list_at_optional(xs: positional_targets, index: 1) {
+          Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+          Present { value: then_target } =>
+            match list_at_optional(xs: positional_targets, index: 2) {
+              Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+              Present { value: else_target } =>
+                match lookup_inferred_facts_in_entries(entries: entries, key: cond_target) {
+                  Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: cond_target))
+                  Present { value: cond_facts } =>
+                    match lookup_inferred_facts_in_entries(entries: entries, key: then_target) {
+                      Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: then_target))
+                      Present { value: then_facts } =>
+                        match lookup_inferred_facts_in_entries(entries: entries, key: else_target) {
+                          Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: else_target))
+                          Present { value: else_facts } =>
+                            match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+                              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                              Accepted { value: _, diagnostics: cd } =>
+                                if !infer_branch_cond_type_is_bool(
+                                  cond_target: cond_target,
+                                  cond_facts: cond_facts
+                                ) {
+                                  outcome_rejected(infer_branch_cond_not_bool_diagnostic(node: node))
+                                } else {
+                                  match infer_unify_branch_arm_types(
+                                    then_node: then_target,
+                                    then_facts: then_facts,
+                                    else_node: else_target,
+                                    else_facts: else_facts
+                                  ) {
+                                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                    Accepted { value: unified_type, diagnostics: ud } =>
+                                      match infer_descent_witness_for_node(n: node) {
+                                        Violates { diagnostic: d } =>
+                                          Rejected { diagnostics: diagnostics_singleton(d: d) }
+                                        Holds { value: descent_proof } =>
+                                          bind_outcome(
+                                            o: inferred_facts_from_derived_type(
+                                              node: node,
+                                              derived_type: unified_type,
+                                              descent: Holds { value: descent_proof }
+                                            ),
+                                            f: fn(facts) {
+                                              Accepted {
+                                                value: facts,
+                                                diagnostics: diagnostics_merge(outer: cd, inner: ud)
+                                              }
+                                            }
+                                          )
+                                      }
+                                  }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+type InferBoolLiteralPattern
+  = InferBoolLiteralPatternTrue
+  | InferBoolLiteralPatternFalse
+  | InferBoolLiteralPatternOther
+
+type InferBoolLiteralArmCoverage
+  = InferBoolLiteralArmCoversTrue
+  | InferBoolLiteralArmCoversFalse
+  | InferBoolLiteralArmCoversNeither
+
+type InferBoolLiteralExhaustiveness
+  = InferBoolLiteralExhaustive
+  | InferBoolLiteralMissingTrue
+  | InferBoolLiteralMissingFalse
+  | InferBoolLiteralMissingBoth
+
+type InferMatchArmRow {
+  coverage: InferBoolLiteralArmCoverage
+  body_type: Node
+}
+
+fn infer_bool_literal_pattern_classify(pattern: Node) -> InferBoolLiteralPattern {
+  match dag_canonical_literal_from_node(node: pattern) {
+    Accepted { value: DagCanonicalBoolLiteral { value: true }, diagnostics: _ } =>
+      InferBoolLiteralPatternTrue
+    Accepted { value: DagCanonicalBoolLiteral { value: false }, diagnostics: _ } =>
+      InferBoolLiteralPatternFalse
+    Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
+      InferBoolLiteralPatternOther
+    Rejected { diagnostics: _ } => InferBoolLiteralPatternOther
+  }
+}
+
+fn infer_bool_literal_arm_coverage_from_pattern(pattern: Node) -> InferBoolLiteralArmCoverage {
+  match infer_bool_literal_pattern_classify(pattern: pattern) {
+    InferBoolLiteralPatternTrue => InferBoolLiteralArmCoversTrue
+    InferBoolLiteralPatternFalse => InferBoolLiteralArmCoversFalse
+    InferBoolLiteralPatternOther => InferBoolLiteralArmCoversNeither
+  }
+}
+
+fn infer_bool_literal_exhaustiveness_merge(
+  left: InferBoolLiteralArmCoverage,
+  right: InferBoolLiteralArmCoverage
+) -> InferBoolLiteralExhaustiveness {
+  match left {
+    InferBoolLiteralArmCoversTrue =>
+      match right {
+        InferBoolLiteralArmCoversTrue => InferBoolLiteralMissingFalse
+        InferBoolLiteralArmCoversFalse => InferBoolLiteralExhaustive
+        InferBoolLiteralArmCoversNeither => InferBoolLiteralMissingFalse
+      }
+    InferBoolLiteralArmCoversFalse =>
+      match right {
+        InferBoolLiteralArmCoversTrue => InferBoolLiteralExhaustive
+        InferBoolLiteralArmCoversFalse => InferBoolLiteralMissingTrue
+        InferBoolLiteralArmCoversNeither => InferBoolLiteralMissingTrue
+      }
+    InferBoolLiteralArmCoversNeither =>
+      match right {
+        InferBoolLiteralArmCoversTrue => InferBoolLiteralMissingFalse
+        InferBoolLiteralArmCoversFalse => InferBoolLiteralMissingTrue
+        InferBoolLiteralArmCoversNeither => InferBoolLiteralMissingBoth
+      }
+  }
+}
+
+fn infer_match_bool_arm_row(
+  arm: Node,
+  entries: List<InferredFactsEntry>,
+  scrutinee_type: Node
+) -> Outcome<InferMatchArmRow> {
+  match arm.kind {
+    TypeNode { connective: Conj } =>
+      match find_named_child(root: arm, name: match_arm_pattern) {
+        Rejected { diagnostics: _ } =>
+          outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+        Accepted { value: pat, diagnostics: pd } =>
+          match find_named_child(root: arm, name: match_arm_body) {
+            Rejected { diagnostics: _ } =>
+              outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+            Accepted { value: body_target, diagnostics: bd } =>
+              match infer_bool_literal_pattern_classify(pattern: pat) {
+                InferBoolLiteralPatternOther =>
+                  outcome_rejected(infer_match_pattern_not_bool_literal_diagnostic(node: arm))
+                _ =>
+                  let coverage = infer_bool_literal_arm_coverage_from_pattern(pattern: pat)
+                  match lookup_inferred_facts_in_entries(entries: entries, key: body_target) {
+                    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body_target))
+                    Present { value: body_facts } =>
+                      match infer_match_bool_arm_body_type(
+                        body_target: body_target,
+                        body_facts: body_facts,
+                        scrutinee_type: scrutinee_type
+                      ) {
+                        Violates { diagnostic: d } => outcome_rejected(d)
+                        Holds { value: body_type } =>
+                          Accepted {
+                            value: InferMatchArmRow {
+                              coverage: coverage,
+                              body_type: body_type
+                            },
+                            diagnostics: diagnostics_merge(outer: pd, inner: bd)
+                          }
+                      }
+                  }
+              }
+          }
+      }
+    _ => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+  }
+}
+
+fn infer_match_bool(
+  node: Node,
+  partials: List<Node>,
+  entries: List<InferredFactsEntry>,
+  tree: Node,
+) -> Outcome<InferredFacts> {
+  let positional_targets = node_positional_child_targets(node: node)
+  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
+    outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
+  } else {
+    match list_at_optional(xs: positional_targets, index: 0) {
+      Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
+      Present { value: scrutinee_target } =>
+        match list_at_optional(xs: positional_targets, index: 1) {
+          Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+          Present { value: first_arm_target } =>
+            match list_at_optional(xs: positional_targets, index: 2) {
+              Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+              Present { value: second_arm_target } =>
+                match lookup_inferred_facts_in_entries(entries: entries, key: scrutinee_target) {
+                  Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: scrutinee_target))
+                  Present { value: scrutinee_facts } =>
+                    match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                      Accepted { value: _, diagnostics: cd } =>
+                        match infer_branch_operand_resolved_type_in_tree(
+                          node: scrutinee_target,
+                          facts: scrutinee_facts,
+                          tree: tree
+                        ) {
+                          Violates { diagnostic: d } => outcome_rejected(d)
+                          Holds { value: scrutinee_type } =>
+                            if infer_branch_type_is_bool(type_node: scrutinee_type)
+                                || infer_branch_type_is_int(type_node: scrutinee_type) {
+                              infer_match_bool_arm_rows_accept(
+                                node: node,
+                                partials: partials,
+                                entries: entries,
+                                first_arm_target: first_arm_target,
+                                second_arm_target: second_arm_target,
+                                cd: infer_match_bool_consumer_diagnostics_with_int_scrutinee_scaffold(
+                                  consumer: node,
+                                  cd: cd,
+                                  scrutinee_type: scrutinee_type
+                                ),
+                                scrutinee_type: scrutinee_type
+                              )
+                            } else {
+                              outcome_rejected(infer_match_scrutinee_not_bool_diagnostic(node: node))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+// FLAG C (body-lowering design, operator-signed): the first cut types carrier-invariant loops only
+// — every iteration-fold child must resolve to ONE carrier type τ, so the inferred tree states
+// 'body : τ → τ, repeated under the measure'. A refinement-shaped loop (carrier narrows across
+// iterations, e.g. Refined<τ> vs τ) lands in the located infer_loop_iteration_type_mismatch refusal
+// by construction — refused, never silently fabricated as τ → τ. Dissolution trigger: the
+// refinement-typed follow-on (monotone-narrowing carrier) replaces that refusal with a real
+// refinement judgment.
+
+fn infer_loop_iteration_fold_child_targets(node: Node) -> List<Node> {
+  fold(node.children, init: [], f: fn(acc, e) {
+    if loop_edge_contributes_to_iteration_fold(parent: node, e: e) {
+      list_snoc_item(xs: acc, item: e.target)
+    } else {
+      acc
+    }
+  })
+}
+
+fn infer_loop_body_type_at(target: Node, entries: List<InferredFactsEntry>) -> Outcome<Node> {
+  match lookup_inferred_facts_in_entries(entries: entries, key: target) {
+    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: target))
+    Present { value: facts } =>
+      match infer_branch_operand_resolved_type(node: target, facts: facts) {
+        Violates { diagnostic: d } => outcome_rejected(d)
+        Holds { value: body_type } =>
+          Accepted {
+            value: body_type,
+            diagnostics: None
+          }
+      }
+  }
+}
+
+fn infer_loop_fixpoint_carrier(
+  node: Node,
+  body_targets: List<Node>,
+  entries: List<InferredFactsEntry>,
+) -> Outcome<Node> {
+  match list_at_optional(xs: body_targets, index: 0) {
+    Absent => outcome_rejected(infer_loop_shape_invalid_diagnostic(node: node))
+    Present { value: first_body } =>
+      bind_outcome(
+        o: infer_loop_body_type_at(target: first_body, entries: entries),
+        f: fn(carrier) {
+          fold(body_targets, init: Accepted { value: carrier, diagnostics: None }, f: fn(acc, target) {
+            match acc {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: c, diagnostics: _ } =>
+                match infer_loop_body_type_at(target: target, entries: entries) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: t, diagnostics: _ } =>
+                    if infer_branch_type_atoms_equal(a: c, b: t) {
+                      acc
+                    } else {
+                      outcome_rejected(infer_loop_iteration_type_mismatch_diagnostic(node: target))
+                    }
+                }
+            }
+          })
+        }
+      )
+  }
+}
+
+fn infer_loop_iteration(
+  node: Node,
+  partials: List<Node>,
+  entries: List<InferredFactsEntry>,
+) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      match infer_loop_fixpoint_carrier(
+        node: node,
+        body_targets: infer_loop_iteration_fold_child_targets(node: node),
+        entries: entries
+      ) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: carrier, diagnostics: ud } =>
+          match infer_descent_witness_for_node(n: node) {
+            Violates { diagnostic: d } =>
+              Rejected { diagnostics: diagnostics_singleton(d: d) }
+            Holds { value: descent_proof } =>
+              bind_outcome(
+                o: inferred_facts_from_derived_type(
+                  node: node,
+                  derived_type: carrier,
+                  descent: Holds { value: descent_proof }
+                ),
+                f: fn(facts) {
+                  Accepted {
+                    value: facts,
+                    diagnostics: diagnostics_merge(outer: cd, inner: ud)
+                  }
+                }
+              )
+          }
+      }
+  }
+}
+
+// First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int
+// add derives the unified Int type as the expression result — the add_probe body vertical. Operator
+// recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve
+// (03_resolve.resolve_transform_operator_child). Every reached Transform awaits the transform row
+// so application-argument inhabitance runs; add-shape result derivation is selected inside
+// infer_gather_transform_row_on_entries, and non-add Transforms stay GroundingNotDerived as the
+// application's result type after the inhabitance judgment. dissolve-on: general operator/operand
+// typing table subsumes the add-only result rule.
+
+fn infer_transform_operator_is_int_add(op_node: Node) -> Bool {
+  match op_node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      id == ^dag_token_plus
+        || canonical_operation_wire_matches_operation(
+          wire: op_node,
+          operation: canonical_operation_op_add()
+        )
+    _ =>
+      canonical_operation_wire_matches_operation(
+        wire: op_node,
+        operation: canonical_operation_op_add()
+      )
+  }
+}
+
+fn infer_transform_is_binary_infix_int_add_shape(node: Node) -> Bool {
+  let positional_targets = node_positional_child_targets(node: node)
+  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
+    false
+  } else {
+    match list_at_optional(xs: positional_targets, index: 0) {
+      Absent => false
+      Present { value: op_target } => infer_transform_operator_is_int_add(op_node: op_target)
+    }
+  }
+}
+
+fn infer_unify_transform_operand_types(
+  left_node: Node,
+  left_facts: InferredFacts,
+  right_node: Node,
+  right_facts: InferredFacts,
+  tree: Node,
+) -> Outcome<Node> {
+  match infer_branch_operand_resolved_type_in_tree(node: left_node, facts: left_facts, tree: tree) {
+    Violates { diagnostic: d } => outcome_rejected(d)
+    Holds { value: left_type } =>
+      match infer_branch_operand_resolved_type_in_tree(
+        node: right_node,
+        facts: right_facts,
+        tree: tree
+      ) {
+        Violates { diagnostic: d } => outcome_rejected(d)
+        Holds { value: right_type } =>
+          if infer_branch_type_atoms_equal(a: left_type, b: right_type) {
+            Accepted { value: left_type, diagnostics: None }
+          } else {
+            outcome_rejected(infer_transform_operand_type_mismatch_diagnostic(node: left_node))
+          }
+      }
+  }
+}
+
+fn infer_transform_argument_targets(node: Node) -> List<Node> {
+  match list_tail(xs: node_positional_child_targets(node: node)) {
+    TailAbsent => Empty
+    TailFound { tail: t } => t
+  }
+}
+
+fn infer_operator_arrow(operator: Node) -> Optional<Node> {
+  match operator.kind {
+    TypeNode { connective: Arrow } => Present { value: operator }
+    _ => Absent
+  }
+}
+
+fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      fold(domain.children, init: Present { value: Empty }, f: fn(acc, e) {
+        match acc {
+          Absent => Absent
+          Present { value: formals } =>
+            match e.label {
+              Named { name: nme } =>
+                Present {
+                  value: list_snoc_item(
+                    xs: formals,
+                    item: InhabitanceFormal {
+                      parameter_identity: nme,
+                      declared: e.target
+                    }
+                  )
+                }
+              Positional => Absent
+            }
+        }
+      })
+    _ => Absent
+  }
+}
+
+fn infer_application_callee_arrow(node: Node) -> Optional<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Absent => Absent
+    Present { value: operator } => infer_operator_arrow(operator: operator)
+  }
+}
+
+// THE FORMALS IN DECLARED ORDER, OR A REFUSAL. The domain's formals are keyed by name; their
+// positions come only from the Arrow's declared order (arrow_declared_parameter_order), never from
+// the domain's stored sequence, which is sorted by label for identity (gunbc#12054). An operator
+// that is not an Arrow, or a domain whose formals are not all named, stays FormalsUnresolved -- the
+// undecidable-accepted arm it always took. An Arrow with named formals and no readable order refuses.
+type InferApplicationFormals
+  = FormalsInDeclaredOrder { formals: List<InhabitanceFormal> }
+  | FormalsUnresolved
+  | FormalsOrderRefused { reason: Symbol }
+
+fn infer_application_formals(node: Node) -> InferApplicationFormals {
+  match infer_application_callee_arrow(node: node) {
+    Absent => FormalsUnresolved
+    Present { value: arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+        Absent => FormalsUnresolved
+        Present { value: domain } =>
+          match infer_formals_from_domain(domain: domain) {
+            Absent => FormalsUnresolved
+            Present { value: formals } =>
+              match arrow_declared_parameter_order(arrow: arrow) {
+                ArrowParameterOrderAbsent =>
+                  FormalsOrderRefused { reason: application_parameter_order_absent_reason() }
+                ArrowParameterOrderMalformed =>
+                  FormalsOrderRefused { reason: application_parameter_order_malformed_reason() }
+                ArrowParameterOrderDeclared { labels: labels } =>
+                  infer_formals_in_declared_order(formals: formals, labels: labels)
+              }
+          }
+      }
+  }
+}
+
+// Each declared label selects its one formal by identity, in declared order. Both sides are sorted by
+// label once and matched in one walk, then put back in declared order by position -- O(n log n), not
+// a scan of the formals per label. The order edge is a permutation of the domain's binders
+// (v2.std.node arrow_signature_order_conforms), so a mismatch here is malformed and refuses rather
+// than shortening the list.
+type InferIndexedLabel {
+  label: Symbol
+  position: Int
+}
+
+type InferIndexWalk {
+  index: Int
+  labels: List<InferIndexedLabel>
+}
+
+type InferFormalPairing {
+  indexed: InferIndexedLabel
+  formal: InhabitanceFormal
+}
+
+fn infer_formals_in_declared_order(formals: List<InhabitanceFormal>, labels: List<Symbol>) -> InferApplicationFormals {
+  if length(xs: formals) != length(xs: labels) {
+    FormalsOrderRefused { reason: application_parameter_order_malformed_reason() }
+  } else {
+    let indexed = fold(labels, init: InferIndexWalk { index: 0, labels: Empty }, f: fn(acc, l) {
+      InferIndexWalk { index: acc.index + 1, labels: Cons { head: InferIndexedLabel { label: l, position: acc.index }, tail: acc.labels } }
+    }).labels
+    let pairs = infer_pair_by_label(
+      labels: sort_by(indexed, infer_indexed_label_key),
+      formals: sort_by(formals, infer_formal_identity_key)
+    )
+    if infer_pairings_match(pairs: pairs) {
+      FormalsInDeclaredOrder { formals: infer_pairings_in_declared_order(pairs: pairs) }
+    } else {
+      FormalsOrderRefused { reason: application_parameter_order_malformed_reason() }
+    }
+  }
+}
+
+// Sort keys are named top-level functions: an inline lambda's parameter type is not inferred from a
+// generic instantiation (the v2.std.node edge_label_of precedent).
+fn infer_indexed_label_key(x: InferIndexedLabel) -> Symbol {
+  x.label
+}
+
+fn infer_formal_identity_key(f: InhabitanceFormal) -> Symbol {
+  f.parameter_identity
+}
+
+fn infer_pairing_position_key(p: InferFormalPairing) -> Int {
+  p.indexed.position
+}
+
+// Folds over the pairings take them as a TYPED parameter: the emitter types a fold's element from
+// the list's declared type, and a zip_map result reached inline carries none (it emitted an error
+// type and refused the emitted crate).
+fn infer_pair_by_label(labels: List<InferIndexedLabel>, formals: List<InhabitanceFormal>) -> List<InferFormalPairing> {
+  zip_map(a: labels, b: formals, f: fn(il, f) { InferFormalPairing { indexed: il, formal: f } })
+}
+
+fn infer_pairings_match(pairs: List<InferFormalPairing>) -> Bool {
+  fold(pairs, init: true, f: fn(acc, p) { acc && (p.indexed.label == p.formal.parameter_identity) })
+}
+
+fn infer_pairings_in_declared_order(pairs: List<InferFormalPairing>) -> List<InhabitanceFormal> {
+  list_map(xs: sort_by(pairs, infer_pairing_position_key), f: infer_pairing_formal)
+}
+
+fn infer_pairing_formal(p: InferFormalPairing) -> InhabitanceFormal {
+  p.formal
+}
+
+// The callee's declared type parameters; empty when the operator is not an Arrow or declares none.
+fn infer_application_type_params(node: Node) -> List<Symbol> {
+  match infer_application_callee_arrow(node: node) {
+    Absent => []
+    Present { value: arrow } => type_param_names(n: arrow)
+  }
+}
+
+type InhabitanceFormalArg {
+  formal: InhabitanceFormal
+  arg: Node
+}
+
+fn infer_inhabitance_undecidable_accepted(
+  application: Node,
+  reason: InhabitanceUndecidableReason
+) -> Outcome<Bool> {
+  Accepted {
+    value: true,
+    diagnostics: Some {
+      diagnostics: diagnostics_singleton(
+        d: inhabitance_undecidable_diagnostic(application: application, reason: reason)
+      )
+    }
+  }
+}
+
+fn infer_judge_application_argument(
+  application: Node,
+  entries: List<InferredFactsEntry>,
+  formal: InhabitanceFormal,
+  arg: Node
+) -> Outcome<Bool> {
+  match inhabitance_node_undecidable_reason(n: formal.declared) {
+    Present { value: reason } =>
+      infer_inhabitance_undecidable_accepted(
+        application: application,
+        reason: reason
+      )
+    Absent =>
+  match lookup_inferred_facts_in_entries(entries: entries, key: arg) {
+    Absent =>
+      infer_inhabitance_undecidable_accepted(
+        application: application,
+        reason: undecidable_argument_type_not_derived()
+      )
+    Present { value: facts } =>
+      match inferred_facts_resolved_type(facts: facts) {
+        Violates { diagnostic: _ } =>
+          infer_inhabitance_undecidable_accepted(
+            application: application,
+            reason: undecidable_argument_type_not_derived()
+          )
+        Holds { value: produced } =>
+          let obligation = DeclaredTypeObligation {
+            position: position_direct_call_argument(),
+            parameter_identity: formal.parameter_identity,
+            declared: formal.declared,
+            produced: produced,
+            application: application
+          }
+          match declared_type_inhabitance(obligation: obligation) {
+            Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
+            InhabitanceUndecidable { reason: reason } =>
+              infer_inhabitance_undecidable_accepted(
+                application: obligation.application,
+                reason: reason
+              )
+            InhabitanceRefused { find_witness_reason: fw_reason } =>
+              outcome_rejected(
+                application_argument_does_not_inhabit_diagnostic(
+                  obligation: obligation,
+                  find_witness_reason: fw_reason
+                )
+              )
+          }
+      }
+  }
+  }
+}
+
+fn infer_no_type_variable_instances() -> List<TypeVariableInstance> {
+  Empty
+}
+
+// A FORMAL DECLARED AS ONE OF THE CALLEE'S TYPE PARAMETERS IS INSTANTIATED, NOT COMPARED. Judged as
+// an ordinary declared type, `x: T` would demand the argument's type be structurally the Atom `T`
+// and refuse every real argument application_argument_does_not_inhabit -- a loud refusal for the
+// wrong reason. Instead the first derived argument at a type variable instantiates it for THIS
+// application, and every later occurrence must inhabit that instance through the same
+// declared_type_inhabitance fold an ordinary formal uses. An argument whose type is not derived
+// stays the counted frontier it is for any formal, and instantiates nothing.
+fn infer_judge_application_argument_instantiating(
+  application: Node,
+  entries: List<InferredFactsEntry>,
+  formal: InhabitanceFormal,
+  arg: Node,
+  type_params: List<Symbol>,
+  instances: List<TypeVariableInstance>
+) -> Outcome<List<TypeVariableInstance>> {
+  match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
+    DeclaredType { declared: _ } =>
+      match infer_judge_application_argument(application: application, entries: entries, formal: formal, arg: arg) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+      }
+    DeclaredTypeVariable { binder: binder } =>
+      match type_variable_instance_lookup(instances: instances, binder: binder) {
+        Present { value: instance } =>
+          match infer_judge_application_argument(
+            application: application,
+            entries: entries,
+            formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: instance },
+            arg: arg
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+          }
+        Absent =>
+          match lookup_inferred_facts_in_entries(entries: entries, key: arg) {
+            Absent =>
+              match infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived()) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+              }
+            Present { value: facts } =>
+              match inferred_facts_resolved_type(facts: facts) {
+                Violates { diagnostic: _ } =>
+                  match infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived()) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+                  }
+                Holds { value: produced } =>
+                  Accepted {
+                    value: list_snoc_item(xs: instances, item: TypeVariableInstance { binder: binder, instance: produced }),
+                    diagnostics: None
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn infer_application_argument_inhabitance(
+  node: Node,
+  entries: List<InferredFactsEntry>
+) -> Outcome<Bool> {
+  match infer_application_formals(node: node) {
+    FormalsUnresolved =>
+      infer_inhabitance_undecidable_accepted(
+        application: node,
+        reason: undecidable_formal_unresolved()
+      )
+    FormalsOrderRefused { reason: reason } =>
+      outcome_rejected(application_parameter_order_diagnostic(application: node, reason: reason))
+    FormalsInDeclaredOrder { formals: formals } =>
+      let args = infer_transform_argument_targets(node: node)
+      if length(xs: formals) != length(xs: args) {
+        outcome_rejected(
+          application_positional_arity_mismatch_diagnostic(
+            application: node,
+            formal_count: length(xs: formals),
+            argument_count: length(xs: args)
+          )
+        )
+      } else {
+        let type_params = infer_application_type_params(node: node)
+        match fold(
+          zip_map(
+            a: formals,
+            b: args,
+            f: fn(formal, arg) {
+              InhabitanceFormalArg { formal: formal, arg: arg }
+            }
+          ),
+          init: Accepted { value: infer_no_type_variable_instances(), diagnostics: None },
+          f: fn(acc, pair) {
+            match acc {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: instances, diagnostics: pd } =>
+                match infer_judge_application_argument_instantiating(
+                  application: node,
+                  entries: entries,
+                  formal: pair.formal,
+                  arg: pair.arg,
+                  type_params: type_params,
+                  instances: instances
+                ) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: next, diagnostics: jd } =>
+                    Accepted {
+                      value: next,
+                      diagnostics: diagnostics_merge(outer: pd, inner: jd)
+                    }
+                }
+            }
+          }
+        ) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+        }
+      }
+  }
+}
+
+fn infer_transform_binary_infix(
+  node: Node,
+  partials: List<Node>,
+  entries: List<InferredFactsEntry>,
+  tree: Node,
+) -> Outcome<InferredFacts> {
+  let positional_targets = node_positional_child_targets(node: node)
+  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
+    outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+  } else {
+    match list_at_optional(xs: positional_targets, index: 0) {
+      Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+      Present { value: op_target } =>
+        match list_at_optional(xs: positional_targets, index: 1) {
+          Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+          Present { value: left_target } =>
+            match list_at_optional(xs: positional_targets, index: 2) {
+              Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+              Present { value: right_target } =>
+                if !infer_transform_operator_is_int_add(op_node: op_target) {
+                  outcome_rejected(infer_transform_operator_unsupported_diagnostic(node: node))
+                } else {
+                  match lookup_inferred_facts_in_entries(entries: entries, key: left_target) {
+                    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: left_target))
+                    Present { value: left_facts } =>
+                      match lookup_inferred_facts_in_entries(entries: entries, key: right_target) {
+                        Absent =>
+                          outcome_rejected(infer_facts_lookup_miss_diagnostic(key: right_target))
+                        Present { value: right_facts } =>
+                          match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+                            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                            Accepted { value: _, diagnostics: cd } =>
+                              match infer_unify_transform_operand_types(
+                                left_node: left_target,
+                                left_facts: left_facts,
+                                right_node: right_target,
+                                right_facts: right_facts,
+                                tree: tree
+                              ) {
+                                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                Accepted { value: unified_type, diagnostics: ud } =>
+                                  if !infer_branch_type_is_int(type_node: unified_type) {
+                                    outcome_rejected(
+                                      infer_transform_operand_type_mismatch_diagnostic(node: node)
+                                    )
+                                  } else {
+                                    match infer_descent_witness_for_node(n: node) {
+                                      Violates { diagnostic: d } =>
+                                        Rejected { diagnostics: diagnostics_singleton(d: d) }
+                                      Holds { value: descent_proof } =>
+                                        bind_outcome(
+                                          o: inferred_facts_from_derived_type(
+                                            node: node,
+                                            derived_type: unified_type,
+                                            descent: Holds { value: descent_proof }
+                                          ),
+                                          f: fn(facts) {
+                                            Accepted {
+                                              value: facts,
+                                              diagnostics: diagnostics_merge(outer: cd, inner: ud)
+                                            }
+                                          }
+                                        )
+                                    }
+                                  }
+                              }
+                          }
+                      }
+                  }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn infer_gather_fold_acc_failed(
+  node: Node,
+  pending: NonEmptyDiagnostics,
+  await_branch_row: Bool,
+  await_match_row: Bool,
+  await_loop_row: Bool,
+  await_transform_row: Bool,
+  children_remaining: Int,
+) -> InferGatherFoldAcc {
+  InferGatherFoldAcc {
+    node: node,
+    entries: empty_inferred_facts_entry_list(),
+    failed: true,
+    pending: Some { diagnostics: pending },
+    await_branch_row: await_branch_row,
+    await_match_row: await_match_row,
+    await_loop_row: await_loop_row,
+    await_transform_row: await_transform_row,
+    children_remaining: children_remaining
+  }
+}
+
+fn infer_gather_fold_acc_ok(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  await_branch_row: Bool,
+  await_match_row: Bool,
+  await_loop_row: Bool,
+  await_transform_row: Bool,
+  children_remaining: Int,
+) -> InferGatherFoldAcc {
+  InferGatherFoldAcc {
+    node: node,
+    entries: entries,
+    failed: false,
+    pending: pending,
+    await_branch_row: await_branch_row,
+    await_match_row: await_match_row,
+    await_loop_row: await_loop_row,
+    await_transform_row: await_transform_row,
+    children_remaining: children_remaining
+  }
+}
+
+fn infer_gather_acc_to_outcome(acc: InferGatherFoldAcc) -> Outcome<List<InferredFactsEntry>> {
+  if acc.failed {
+    match acc.pending {
+      None =>
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: infer_canonical_grounding_incoherent_diagnostic(node: infer_gather_fold_failure_node())
+          )
+        }
+      Some { diagnostics: nds } => Rejected { diagnostics: nds }
+    }
+  } else {
+    Accepted {
+      value: acc.entries,
+      diagnostics: acc.pending
+    }
+  }
+}
+
+fn infer_gather_fold_failure_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^infer_gather_fold_failure } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn infer_gather_branch_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+) -> InferGatherFoldAcc {
+  match infer_branch_bool_if_else(node: node, partials: partials, entries: entries) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: facts, diagnostics: d } =>
+      match admitted_inferred_facts_entry(node: node, facts: facts) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: entry, diagnostics: ed } =>
+          infer_gather_fold_acc_ok(
+            node: node,
+            entries: list_snoc_item(xs: entries, item: entry),
+            pending: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: d),
+              inner: ed
+            ),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+      }
+  }
+}
+
+fn infer_gather_match_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match infer_match_bool(node: node, partials: partials, entries: entries, tree: tree) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: facts, diagnostics: d } =>
+      match admitted_inferred_facts_entry(node: node, facts: facts) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: entry, diagnostics: ed } =>
+          infer_gather_fold_acc_ok(
+            node: node,
+            entries: list_snoc_item(xs: entries, item: entry),
+            pending: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: d),
+              inner: ed
+            ),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+      }
+  }
+}
+
+fn infer_gather_loop_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+) -> InferGatherFoldAcc {
+  match infer_loop_iteration(node: node, partials: partials, entries: entries) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: facts, diagnostics: d } =>
+      match admitted_inferred_facts_entry(node: node, facts: facts) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: entry, diagnostics: ed } =>
+          infer_gather_fold_acc_ok(
+            node: node,
+            entries: list_snoc_item(xs: entries, item: entry),
+            pending: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: d),
+              inner: ed
+            ),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+      }
+  }
+}
+
+fn infer_gather_transform_frontier_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match infer_node_facts(n: node, partials: partials, kinds: kinds, tree: tree) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: facts, diagnostics: d } =>
+      match admitted_inferred_facts_entry(node: node, facts: facts) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: entry, diagnostics: ed } =>
+          infer_gather_fold_acc_ok(
+            node: node,
+            entries: list_snoc_item(xs: entries, item: entry),
+            pending: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: d),
+              inner: ed
+            ),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+      }
+  }
+}
+
+// THE FREE-MONOID INTRODUCTION: A LIST LITERAL'S ONE INFER CASE. v2 body lowering writes
+// `[e1, .., en]` as ONE flat Transform whose head is the reference to std.algebra FreeMonoid's
+// declaration and whose remaining positional children are the elements in order
+// (v2.std.list_introduction lower_list_introduction, read back by
+// list_introduction_elements_optional) -- the flat canonical introduction
+// std.literal_elaboration UnicodeScalarSequenceUnfold names, never a cons^n nesting. It is not an
+// application: the head is a type, so application-argument inhabitance is not asked of it. Every
+// element's type must be one T, compared STRUCTURALLY with provenance stripped (two equal types minted
+// at two occurrences are one type, and a list of lists compares its element types whole); the first element that differs refuses located AT that element. The
+// literal's type is then FreeMonoid<T>: the Instantiation of the FreeMonoid reference at T. `[]`
+// carries no element to derive T from; its type is its boundary's, so it joins the counted
+// GroundingNotDerived frontier like every Transform this fold does not derive -- never a guessed T.
+// Two element types are one type when they are STRUCTURALLY equal with provenance removed at every
+// level -- the same authority the inhabitance judgment decides declared-versus-produced types with
+// (v2.std.exact_structural_equality_zip_fold_predicate exact_structural_equality_zip_fold), so a
+// list of lists compares its FreeMonoid<T> element types whole rather than as atoms.
+fn infer_type_equal_ignoring_provenance(a: Node, b: Node) -> Bool {
+  exact_structural_equality_zip_fold(source_facts: a, candidate: b)
+}
+
+fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, tree: Node) -> Outcome<Node> {
+  match lookup_inferred_facts_in_entries(entries: entries, key: element) {
+    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: element))
+    Present { value: facts } =>
+      match infer_branch_operand_resolved_type_in_tree(node: element, facts: facts, tree: tree) {
+        Violates { diagnostic: d } => outcome_rejected(d)
+        Holds { value: t } => outcome_accepted(value: t)
+      }
+  }
+}
+
+// Absent: `[]`, whose T is not derivable here. Present: the elements' one type, or the located
+// refusal of the first element that differs.
+fn infer_list_elements_unified_type(
+  elements: List<Node>,
+  entries: List<InferredFactsEntry>,
+  tree: Node
+) -> Optional<Outcome<Node>> {
+  match elements {
+    Empty => Absent
+    Cons { head: first, tail: rest } =>
+      Present {
+        value: bind_outcome(o: infer_list_element_type(element: first, entries: entries, tree: tree), f: fn(t) {
+          fold(rest, init: outcome_accepted(value: t), f: fn(acc, element) {
+            bind_outcome(o: acc, f: fn(unified) {
+              bind_outcome(o: infer_list_element_type(element: element, entries: entries, tree: tree), f: fn(et) {
+                if infer_type_equal_ignoring_provenance(a: unified, b: et) {
+                  outcome_accepted(value: unified)
+                } else {
+                  outcome_rejected(infer_list_element_type_mismatch_diagnostic(element: element))
+                }
+              })
+            })
+          })
+        })
+      }
+  }
+}
+
+fn infer_freemonoid_type_of(element_type: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: canonicalize_node_strip_provenance(n: element_type) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// Absent: `[]` (frontier). Present: the literal's facts, or a located refusal.
+fn infer_transform_freemonoid_introduction(
+  node: Node,
+  elements: List<Node>,
+  entries: List<InferredFactsEntry>,
+  tree: Node
+) -> Optional<Outcome<InferredFacts>> {
+  match infer_list_elements_unified_type(elements: elements, entries: entries, tree: tree) {
+    Absent => Absent
+    Present { value: unified } =>
+      Present {
+        value: bind_outcome(o: unified, f: fn(element_type) {
+          match infer_descent_witness_for_node(n: node) {
+            Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+            Holds { value: descent_proof } =>
+              inferred_facts_from_derived_type(
+                node: node,
+                derived_type: infer_freemonoid_type_of(element_type: element_type),
+                descent: Holds { value: descent_proof }
+              )
+          }
+        })
+      }
+  }
+}
+
+fn infer_gather_transform_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match list_introduction_elements_optional(node: node) {
+    Absent =>
+      infer_gather_application_row_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, tree: tree)
+    Present { value: elements } =>
+    match infer_transform_freemonoid_introduction(node: node, elements: elements, entries: entries, tree: tree) {
+      Absent =>
+        infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, tree: tree)
+      Present { value: introduced } =>
+        match introduced {
+          Rejected { diagnostics: r } =>
+            infer_gather_fold_acc_failed(
+              node: node,
+              pending: rejected_with_pending(pending: pending, rejected: r),
+              await_branch_row: false,
+              await_match_row: false,
+              await_loop_row: false,
+              await_transform_row: false,
+              children_remaining: 0
+            )
+          Accepted { value: facts, diagnostics: d } =>
+            match admitted_inferred_facts_entry(node: node, facts: facts) {
+              Rejected { diagnostics: r } =>
+                infer_gather_fold_acc_failed(
+                  node: node,
+                  pending: rejected_with_pending(pending: pending, rejected: r),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+              Accepted { value: entry, diagnostics: ed } =>
+                infer_gather_fold_acc_ok(
+                  node: node,
+                  entries: list_snoc_item(xs: entries, item: entry),
+                  pending: diagnostics_merge(outer: diagnostics_merge(outer: pending, inner: d), inner: ed),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+            }
+        }
+    }
+  }
+}
+
+fn infer_gather_application_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match infer_application_argument_inhabitance(node: node, entries: entries) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: _, diagnostics: id } =>
+      let merged_pending = diagnostics_merge(outer: pending, inner: id)
+      match infer_transform_derived_optional(
+        node: node,
+        partials: partials,
+        entries: entries,
+        tree: tree,
+        arguments_decided: infer_diagnostics_none(d: id)
+      ) {
+        Present { value: derived } =>
+        match derived {
+          Rejected { diagnostics: r } =>
+            infer_gather_fold_acc_failed(
+              node: node,
+              pending: rejected_with_pending(pending: merged_pending, rejected: r),
+              await_branch_row: false,
+              await_match_row: false,
+              await_loop_row: false,
+              await_transform_row: false,
+              children_remaining: 0
+            )
+          Accepted { value: facts, diagnostics: d } =>
+            match admitted_inferred_facts_entry(node: node, facts: facts) {
+              Rejected { diagnostics: r } =>
+                infer_gather_fold_acc_failed(
+                  node: node,
+                  pending: rejected_with_pending(pending: merged_pending, rejected: r),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+              Accepted { value: entry, diagnostics: ed } =>
+                infer_gather_fold_acc_ok(
+                  node: node,
+                  entries: list_snoc_item(xs: entries, item: entry),
+                  pending: diagnostics_merge(
+                    outer: diagnostics_merge(outer: merged_pending, inner: d),
+                    inner: ed
+                  ),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+            }
+        }
+        Absent =>
+        infer_gather_transform_frontier_on_entries(
+          node: node,
+          entries: entries,
+          pending: merged_pending,
+          partials: partials,
+          kinds: kinds,
+          tree: tree
+        )
+      }
+  }
+}
+
+// AN ANNOTATED LET CHECKS ITS BOUND VALUE AGAINST THE ANNOTATION. `let x: T = e` is Bind[x, e, body]
+// + <type-annotation> T (v2.std.type_binder); it awaits its children, then asks v2.std.coercion --
+// the one inhabitance authority, the fold a cast's crossing also asks -- whether e's derived
+// grounding inhabits T, and refuses with coercion's typed mismatch when it does not. An ascription
+// converts nothing, so only the verdict is used, never a crossed value. A value whose grounding is
+// not derived leaves the check unjudged and the Bind on the counted frontier, as an unannotated Bind
+// is: the check is neither admitted nor skipped silently.
+
+fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>) -> Outcome<Bool> {
+  match type_annotation_optional(n: node) {
+    Absent => outcome_accepted(true)
+    Present { value: annotation } =>
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
+        Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+        Present { value: bound } =>
+          match lookup_inferred_facts_in_entries(entries: entries, key: bound) {
+            Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: bound))
+            Present { value: bound_facts } =>
+              match bound_facts.grounding {
+                GroundingNotDerived { node: _ } => outcome_accepted(true)
+                DerivedGrounding { grounding: g } =>
+                  match coercion_cast_crossing(source: g, source_type: g.witness.structural.evidence, target: annotation) {
+                    Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+                    Rejected { diagnostics: r } =>
+                      Rejected { diagnostics: infer_bind_annotation_refusal(annotation: annotation, cause: r) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE REFUSAL IS THE ANNOTATION'S. Coercion's mismatch is located at the bound value it could not
+// carry across; it rides in front as the cause, and the fatal -- the last diagnostic, which every
+// consumer reads as the verdict -- is located at the authored annotation with its own reason.
+fn infer_bind_annotation_refusal(annotation: Node, cause: NonEmptyDiagnostics) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: cause.head,
+    tail: list_snoc_item(
+      xs: cause.tail,
+      item: Diagnostic {
+        reason: ^infer_reason_bound_value_does_not_inhabit_annotation,
+        at: node_locus(node: annotation),
+        correction: Unavailable { reason: UserInputBoundary }
+      }
+    )
+  }
+}
+
+fn infer_gather_bind_annotation_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match infer_bind_annotation_check(node: node, entries: entries) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: _, diagnostics: d } =>
+      infer_gather_transform_frontier_on_entries(
+        node: node,
+        entries: entries,
+        pending: diagnostics_merge(outer: pending, inner: d),
+        partials: partials,
+        kinds: kinds,
+        tree: tree
+      )
+  }
+}
+
+// THE TRANSFORMS WHOSE TYPE IS DERIVED, by shape: the binary Int add, and a cast whose operand's
+// grounding is derived. Absent is the counted frontier (GroundingNotDerived), never an admission.
+fn infer_diagnostics_none(d: Diagnostics) -> Bool {
+  match d {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
+
+// arguments_decided: argument inhabitance returned no counted-undecidable obligation. Arrow
+// elimination derives only then -- an application whose argument obligation is still undecided
+// stays on the frontier rather than typing past it.
+fn infer_transform_derived_optional(
+  node: Node,
+  partials: List<Node>,
+  entries: List<InferredFactsEntry>,
+  tree: Node,
+  arguments_decided: Bool,
+) -> Optional<Outcome<InferredFacts>> {
+  if infer_transform_is_binary_infix_int_add_shape(node: node) {
+    optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree))
+  } else if infer_transform_is_cast(node: node) {
+    infer_transform_cast_optional(node: node, entries: entries)
+  } else if arguments_decided {
+    infer_transform_application_optional(node: node, entries: entries)
+  } else {
+    optional_absent()
+  }
+}
+
+// ARROW ELIMINATION. `f(a)`, where the callee is an Arrow, has the type the Arrow DECLARES it
+// returns (infer_arrow_declared_return_type: the return atom as written, never the composed
+// evidence). The caller has already admitted argument inhabitance, and the callee must itself be
+// derived -- so arrow introduction has checked its body against that return. An underived callee,
+// a non-Arrow operator, or a return the language join does not denote stays on the counted
+// frontier: Absent here, never an admission.
+fn infer_transform_application_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
+  match infer_application_callee_arrow(node: node) {
+    Absent => optional_absent()
+    Present { value: arrow } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: arrow) {
+        Absent => optional_absent()
+        Present { value: arrow_facts } =>
+          if !inferred_facts_grounding_derived(facts: arrow_facts) {
+            optional_absent()
+          } else {
+            match infer_arrow_declared_return_type(arrow: arrow) {
+              Absent => optional_absent()
+              Present { value: return_type } =>
+                optional_present(
+                  value: match infer_descent_witness_for_node(n: node) {
+                    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+                    Holds { value: descent_proof } =>
+                      inferred_facts_from_derived_type(
+                        node: node,
+                        derived_type: return_type,
+                        descent: Holds { value: descent_proof }
+                      )
+                  }
+                )
+            }
+          }
+      }
+  }
+}
+
+// A CAST `e as T` is Transform[coerce, e] + <cast-target> T (v2.std.type_binder). Its type is T, and
+// it is admitted only when v2.std.coercion coercion_cast_crossing finds e's derived grounding
+// crosses to T; otherwise it refuses with coercion's typed mismatch. An operand whose grounding is
+// not derived leaves the cast on the counted frontier -- the crossing is not judged, and it is not
+// admitted either.
+fn infer_transform_is_cast(node: Node) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Present { value: op } =>
+      canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_coerce())
+    Absent => false
+  }
+}
+
+fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
+  if !infer_transform_is_cast(node: node) {
+    optional_absent()
+  } else {
+    match cast_target_optional(n: node) {
+      Absent => optional_present(value: outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node)))
+      Present { value: target } =>
+        match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
+          Absent => optional_present(value: outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node)))
+          Present { value: operand } =>
+            match lookup_inferred_facts_in_entries(entries: entries, key: operand) {
+              Absent => optional_present(value: outcome_rejected(infer_facts_lookup_miss_diagnostic(key: operand)))
+              Present { value: operand_facts } =>
+                match operand_facts.grounding {
+                  GroundingNotDerived { node: _ } => optional_absent()
+                  DerivedGrounding { grounding: g } =>
+                    optional_present(value: bind_outcome(
+                      o: coercion_cast_crossing(source: g, source_type: g.witness.structural.evidence, target: target),
+                      f: fn(crossed) {
+                        match infer_descent_witness_for_node(n: node) {
+                          Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+                          Holds { value: descent_proof } =>
+                            inferred_facts_from_derived_type(
+                              node: node,
+                              derived_type: crossed.target,
+                              descent: Holds { value: descent_proof }
+                            )
+                        }
+                      }
+                    ))
+                }
+            }
+        }
+    }
+  }
+}
+
+// This dispatch is TOTAL over the closed node vocabulary (6 connectives + 6 behaviors) with no
+// wildcard arm -- the construction half of the wall. The wildcard it replaces let eight kinds fall
+// silently into the self-grounding fabrication; enumerating them means a thirteenth kind cannot be
+// added without deciding, at this site, whether it derives its type or joins the counted frontier
+// -- never defaulted into by omission (DESIGN §4 closed vocabulary, §5 unwritable-by-construction).
+
+fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, tree: Node) -> InferGatherFoldAcc {
+  infer_gather_transform_frontier_on_entries(
+    node: n,
+    entries: empty_inferred_facts_entry_list(),
+    pending: None,
+    partials: partials,
+    kinds: kinds,
+    tree: tree
+  )
+}
+
+// THE CONJ ARM READS A RESOLVED CORPUS-DECLARATION REFERENCE FIRST, BECAUSE IT IS CONJ-SHAPED AND
+// NOT A RECORD. Resolution carries a reference to a declaration as its declaring path
+// (v2.compiler.resolve resolved_reference_node), a qualified-name spine that shares the Conj
+// connective with a product; read as a product it would be typed as a two-field record of its own
+// segments, silently. It is exactly what a bare Atom reference was to this fold before the carrier
+// -- a grounding this fold does not derive -- and it takes that arm. Deriving the reference's type
+// FROM its declaration by path is the end-state the roster lookups above already name as their
+// dissolution, not this arm.
+fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, tree: Node) -> InferGatherFoldAcc {
+  match n.kind {
+    ComputationNode { behavior: Branch } =>
+      infer_gather_fold_acc_ok(
+        node: n,
+        entries: empty_inferred_facts_entry_list(),
+        pending: None,
+        await_branch_row: true,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: length(xs: n.children)
+      )
+    ComputationNode { behavior: Match } =>
+      infer_gather_fold_acc_ok(
+        node: n,
+        entries: empty_inferred_facts_entry_list(),
+        pending: None,
+        await_branch_row: false,
+        await_match_row: true,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: length(xs: n.children)
+      )
+    ComputationNode { behavior: Loop } =>
+      infer_gather_fold_acc_ok(
+        node: n,
+        entries: empty_inferred_facts_entry_list(),
+        pending: None,
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: true,
+        await_transform_row: false,
+        children_remaining: length(xs: n.children)
+      )
+    ComputationNode { behavior: Value } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+    ComputationNode { behavior: Transform } =>
+      if length(xs: n.children) == 0 {
+        infer_gather_transform_row_on_entries(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          partials: partials,
+          kinds: kinds,
+          tree: tree
+        )
+      } else {
+        infer_gather_fold_acc_ok(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: true,
+          children_remaining: length(xs: n.children)
+        )
+      }
+    ComputationNode { behavior: Bind } =>
+      match type_annotation_optional(n: n) {
+        Present { value: _ } =>
+          infer_gather_fold_acc_ok(
+            node: n,
+            entries: empty_inferred_facts_entry_list(),
+            pending: None,
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: length(xs: n.children)
+          )
+        Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+      }
+    TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+    TypeNode { connective: Conj } =>
+      match declaration_reference_path_optional(node: n) {
+        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+        Absent =>
+      if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
+        infer_gather_fold_acc_ok(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: false,
+          children_remaining: length(xs: n.children)
+        )
+      } else {
+        infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+      }
+      }
+    TypeNode { connective: Disj } =>
+      if infer_disj_is_named_sum(n: n) && !infer_node_declared_in_language_inhabitants_bool(kinds: kinds, n: n) {
+        infer_gather_fold_acc_ok(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: false,
+          children_remaining: length(xs: n.children)
+        )
+      } else {
+        infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+      }
+    TypeNode { connective: Arrow } =>
+      if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
+        infer_gather_fold_acc_ok(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: false,
+          children_remaining: length(xs: n.children)
+        )
+      } else {
+        infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+      }
+    TypeNode { connective: Cardinality } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+    TypeNode { connective: Instantiation } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+  }
+}
+
+fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics {
+  match acc.pending {
+    Some { diagnostics: nds } => nds
+    None =>
+      diagnostics_singleton(
+        d: infer_canonical_grounding_incoherent_diagnostic(node: infer_gather_fold_failure_node())
+      )
+  }
+}
+
+// An integer literal's modeled type derives from its canonical representation, including its sole
+// named magnitude subtree. Its derivation discharges only that edge's local type frontier;
+// propagating it past the literal would report GroundingNotDerived after Int was derived. Boolean
+// literals are canonical only with no children, so no boolean payload can be discharged. Malformed
+// literals remain GroundingNotDerived and retain every child diagnostic.
+
+fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
+  match dag_canonical_literal_from_node(node: parent) {
+    Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
+      match edge.label {
+        Named { name: field } => field == ^integer_literal_magnitude_field
+        Positional => false
+      }
+    Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE EMPTY DOMAIN OF A NULLARY ARROW IS THE EMPTY PRODUCT, AND IT IS GROUNDED BY THE ARROW'S
+// POSITION, NOT BY ITS OWN SHAPE. body_lower_domain_from_param_list lowers `fn f()` to an Arrow
+// whose domain is a childless Conj: the product of zero parameters. Its resolved type is what
+// product introduction yields over zero children, the empty product: a fresh synthetic childless
+// Conj. The domain lowering produces carries its parameter list's occurrence, so it is never the
+// same node as that evidence. A domain that IS structurally the empty product (a synthetic
+// childless Conj) meets the self-evidence wall in canonical_grounding_from_derived_type, and infer
+// refuses it rather than typing a node as itself. The standalone childless-Conj rule deliberately
+// still refuses (v2.test.execution.infer_product_introduction
+// product_introduction_leaves_childless_conj_on_the_frontier_holds): a childless Conj elsewhere
+// is not known to be a product of anything, and parse residue has that shape too. What this adds
+// is the one position whose meaning the Arrow fixes: its first child, the domain. Before
+// 2026-09-23 every nullary fn stayed on the frontier through its domain, so the Arrow and every
+// enclosing member did too, and gen-one's translate gate refused it.
+fn infer_arrow_empty_domain_edge(parent: Node, edge: Edge, children_remaining: Int) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Arrow } =>
+      (children_remaining == length(xs: parent.children))
+        && (edge.label == Positional)
+        && (length(xs: edge.target.children) == 0)
+        && (match edge.target.kind {
+          TypeNode { connective: Conj } => true
+          _ => false
+        })
+    _ => false
+  }
+}
+
+fn infer_empty_product_entry(domain: Node) -> Outcome<InferredFactsEntry> {
+  bind_outcome(
+    o: inferred_facts_from_derived_type(
+      node: domain,
+      derived_type: Node {
+        kind: TypeNode { connective: Conj },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      },
+      descent: infer_descent_witness_for_node(n: domain)
+    ),
+    f: fn(facts) { admitted_inferred_facts_entry(node: domain, facts: facts) }
+  )
+}
+
+// THE PAYLOAD'S FACTS FOLLOW THE DISCHARGE ABOVE, OR THE TWO DISAGREE. The literal's derivation
+// already drops its magnitude subtree's frontier DIAGNOSTICS, and until 2026-09-23 it left that
+// subtree's FACTS at GroundingNotDerived. Translate reads facts, not diagnostics, so the payload of
+// every accepted int literal (its digit atoms and cons cells) refused emission at
+// translate_rejected_grounding_not_derived: gen-one could not emit `data x: Int = 606060`, nor
+// `fn f() -> Int { 606060 }`. The payload is the integer authority's canonical decimal
+// representation (v2.std.integer integer_decimal_magnitude_node): a fold_list_node of digit atoms.
+// So each payload node derives with ITS OWN TYPE in that authority as the resolved type: a digit
+// atom is a DecimalDigit (integer_decimal_digit_type_node), and a cons cell or the empty tail is a
+// FreeMonoid<DecimalDigit> (integer_decimal_digits_type_node). The resolved-type field
+// is never given the enclosing literal as a record of where the node came from (a meaning fork the
+// first cut of this rule had). A payload node of any other shape stays on the frontier. Only the
+// edge infer_literal_edge_diagnostics_derived admits reaches here, so a malformed literal keeps
+// every child on the frontier.
+fn infer_literal_payload_member_type(member: Node) -> Optional<Node> {
+  match member.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      optional_present(value: integer_decimal_digit_type_node())
+    TypeNode { connective: Conj } =>
+      optional_present(value: integer_decimal_digits_type_node())
+    _ => optional_absent()
+  }
+}
+
+fn infer_literal_payload_member_facts(member: Node) -> Outcome<InferredFacts> {
+  match infer_literal_payload_member_type(member: member) {
+    Present { value: member_type } =>
+      inferred_facts_from_derived_type(
+        node: member,
+        derived_type: member_type,
+        descent: infer_descent_witness_for_node(n: member)
+      )
+    Absent =>
+      inferred_facts_not_derived(node: member, descent: infer_descent_witness_for_node(n: member))
+  }
+}
+
+fn infer_literal_payload_entries(payload: Node) -> Outcome<List<InferredFactsEntry>> {
+  fold(
+    node_subtree_nodes(root: payload),
+    init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None },
+    f: fn(acc, member) {
+      bind_outcome(
+        o: acc,
+        f: fn(entries) {
+          bind_outcome(
+            o: infer_literal_payload_member_facts(member: member),
+            f: fn(facts) {
+              bind_outcome(
+                o: admitted_inferred_facts_entry(node: member, facts: facts),
+                f: fn(entry) {
+                  outcome_accepted(value: list_snoc_item(xs: entries, item: entry))
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn infer_gather_acc_awaits_product_row(node: Node, entries: List<InferredFactsEntry>) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: node) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    TypeNode { connective: Arrow } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: node) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    TypeNode { connective: Disj } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: node) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    _ => false
+  }
+}
+
+fn infer_gather_product_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+) -> InferGatherFoldAcc {
+  match infer_formation_facts_from_entries(node: node, entries: entries, partials: partials) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: facts, diagnostics: d } =>
+      match admitted_inferred_facts_entry(node: node, facts: facts) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: entry, diagnostics: ed } =>
+          infer_gather_fold_acc_ok(
+            node: node,
+            entries: list_snoc_item(xs: entries, item: entry),
+            pending: diagnostics_merge(
+              outer: diagnostics_merge(outer: pending, inner: d),
+              inner: ed
+            ),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+      }
+  }
+}
+
+// A PAYLOADLESS ALTERNATIVE IS THE EMPTY PRODUCT, AND IT IS GROUNDED BY ITS SUM, NOT BY ITS OWN
+// SHAPE. A coproduct lowers to a Disj whose Named arms carry each alternative's payload, and a
+// nullary alternative (`Allowed`) carries a childless Conj: the product of zero fields. The Disj fixes
+// that meaning for its Named children the way an Arrow fixes its domain's
+// (infer_arrow_empty_domain_edge), and the evidence is the same fresh synthetic empty product
+// (infer_empty_product_entry). A childless Conj anywhere else still refuses: parse residue has that
+// shape too, and a positional child of a Disj is not an alternative.
+fn infer_sum_nullary_payload_edge(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Disj } =>
+      (match edge.label {
+        Named { name: _ } => true
+        Positional => false
+      })
+        && (length(xs: edge.target.children) == 0)
+        && (match edge.target.kind {
+          TypeNode { connective: Conj } => true
+          _ => false
+        })
+    _ => false
+  }
+}
+
+// A DECLARATION'S BINDERS ARE NOT INFERRED. The <type-parameters> edge of a type-declaration wrapper
+// (v2.std.type_binder type_decl_view: a generic member, an alias or an opaque declaration) carries the
+// declaration's binder Conj -- names the binder authority checks and resolve scopes, not values -- so
+// there is no type for its subtree to derive, and an EMPTY binder list is never a unit value. The
+// wrapper carries the edge unchanged as its own evidence, the same shape as the Arrow's declared order
+// (infer_arrow_signature_order_edge). Asked through the view, never by the label alone, so the marker
+// on an Arrow (a fn's type parameters) is not swept in.
+fn infer_declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
+  declaration_binder_edge(parent: parent, edge: edge)
+}
+
+// A SUM IS FORMED ONLY OVER NAMED ALTERNATIVES: a Disj with no children, or with a positional child,
+// is not a coproduct this rule knows how to read, and stays on the frontier.
+fn infer_disj_is_named_sum(n: Node) -> Bool {
+  (length(xs: n.children) > 0)
+    && fold(n.children, init: true, f: fn(acc, e) {
+      acc && match e.label {
+        Named { name: _ } => true
+        Positional => false
+      }
+    })
+}
+
+// AN ARROW'S DECLARED ORDER IS NOT INFERRED. The ^arrow_signature_order_edge's subtree is a list of
+// the domain's binder LABELS (v2.std.arrow_signature signature_order_edge), not values: there
+// is no type for a label atom to derive, so walking it left every declared Arrow's order atoms on the
+// frontier (infer_grounding_not_derived) and the Arrow itself NotDerived. The Arrow carries the edge
+// as its own evidence (infer_product_child_evidence_edges), and this step takes nothing from its subtree --
+// the same shape as infer_arrow_empty_domain_edge and the literal payload arm, where the parent's
+// model, not the child's walk, says what the child is.
+fn infer_arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Arrow } => (edge_label_of(e: edge) == arrow_signature_order_label)
+    _ => false
+  }
+}
+
+fn infer_gather_fold_step(
+  acc: InferGatherFoldAcc,
+  edge: Edge,
+  child: InferGatherFoldAcc,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  if acc.failed {
+    acc
+  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge) || infer_declaration_binder_edge(parent: acc.node, edge: edge) {
+    infer_gather_fold_step_merged(
+      acc: acc,
+      merged_entries: acc.entries,
+      merged_pending: acc.pending,
+      partials: partials,
+      kinds: kinds,
+      tree: tree
+    )
+  } else if child.failed {
+    infer_gather_fold_acc_failed(
+      node: acc.node,
+      pending: rejected_with_pending(
+        pending: acc.pending,
+        rejected: infer_gather_failed_non_empty(acc: child)
+      ),
+      await_branch_row: acc.await_branch_row,
+      await_match_row: acc.await_match_row,
+      await_loop_row: acc.await_loop_row,
+      await_transform_row: acc.await_transform_row,
+      children_remaining: acc.children_remaining
+    )
+  } else if infer_arrow_empty_domain_edge(parent: acc.node, edge: edge, children_remaining: acc.children_remaining)
+    || infer_sum_nullary_payload_edge(parent: acc.node, edge: edge) {
+    match infer_empty_product_entry(domain: edge.target) {
+      Rejected { diagnostics: r } =>
+        infer_gather_fold_acc_failed(
+          node: acc.node,
+          pending: rejected_with_pending(pending: acc.pending, rejected: r),
+          await_branch_row: acc.await_branch_row,
+          await_match_row: acc.await_match_row,
+          await_loop_row: acc.await_loop_row,
+          await_transform_row: acc.await_transform_row,
+          children_remaining: acc.children_remaining
+        )
+      Accepted { value: domain_entry, diagnostics: _ } =>
+        infer_gather_fold_step_merged(
+          acc: acc,
+          merged_entries: list_snoc_item(xs: acc.entries, item: domain_entry),
+          merged_pending: acc.pending,
+          partials: partials,
+          kinds: kinds,
+          tree: tree
+        )
+    }
+  } else if infer_literal_edge_diagnostics_derived(parent: acc.node, edge: edge) {
+    match infer_literal_payload_entries(payload: edge.target) {
+      Rejected { diagnostics: r } =>
+        infer_gather_fold_acc_failed(
+          node: acc.node,
+          pending: rejected_with_pending(pending: acc.pending, rejected: r),
+          await_branch_row: acc.await_branch_row,
+          await_match_row: acc.await_match_row,
+          await_loop_row: acc.await_loop_row,
+          await_transform_row: acc.await_transform_row,
+          children_remaining: acc.children_remaining
+        )
+      Accepted { value: payload_entries, diagnostics: _ } =>
+        infer_gather_fold_step_merged(
+          acc: acc,
+          merged_entries: concat_inferred_facts_entries(a: acc.entries, b: payload_entries),
+          merged_pending: acc.pending,
+          partials: partials,
+          kinds: kinds,
+          tree: tree
+        )
+    }
+  } else {
+    infer_gather_fold_step_merged(
+      acc: acc,
+      merged_entries: concat_inferred_facts_entries(a: acc.entries, b: child.entries),
+      merged_pending: diagnostics_merge(outer: acc.pending, inner: child.pending),
+      partials: partials,
+      kinds: kinds,
+      tree: tree
+    )
+  }
+}
+
+fn infer_gather_fold_step_merged(
+  acc: InferGatherFoldAcc,
+  merged_entries: List<InferredFactsEntry>,
+  merged_pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  let children_remaining = acc.children_remaining - 1
+  if acc.await_branch_row && children_remaining == 0 {
+    infer_gather_branch_row_on_entries(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      partials: partials
+    )
+  } else if acc.await_match_row && children_remaining == 0 {
+    infer_gather_match_row_on_entries(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      partials: partials,
+      tree: tree
+    )
+  } else if acc.await_loop_row && children_remaining == 0 {
+    infer_gather_loop_row_on_entries(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      partials: partials
+    )
+  } else if acc.await_transform_row && children_remaining == 0 {
+    infer_gather_transform_row_on_entries(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      partials: partials,
+      kinds: kinds,
+      tree: tree
+    )
+  } else if children_remaining == 0 {
+    infer_gather_settled_row(acc: acc, merged_entries: merged_entries, merged_pending: merged_pending, partials: partials, kinds: kinds, tree: tree)
+  } else {
+    infer_gather_fold_acc_ok(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      await_branch_row: acc.await_branch_row,
+      await_match_row: acc.await_match_row,
+      await_loop_row: acc.await_loop_row,
+      await_transform_row: acc.await_transform_row,
+      children_remaining: children_remaining
+    )
+  }
+}
+
+// THE LAST CHILD OF A NODE NO BEHAVIOR ROW AWAITED. An annotated Bind (v2.std.type_binder
+// type_annotation_optional) checks its bound value against the annotation; a product or Arrow still
+// missing its own entry takes the product row; anything else stays as folded.
+fn infer_gather_settled_row(
+  acc: InferGatherFoldAcc,
+  merged_entries: List<InferredFactsEntry>,
+  merged_pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match type_annotation_optional(n: acc.node) {
+    Present { value: _ } =>
+      infer_gather_bind_annotation_row_on_entries(
+        node: acc.node,
+        entries: merged_entries,
+        pending: merged_pending,
+        partials: partials,
+        kinds: kinds,
+        tree: tree
+      )
+    Absent =>
+      if infer_gather_acc_awaits_product_row(node: acc.node, entries: merged_entries) {
+        infer_gather_product_row_on_entries(
+          node: acc.node,
+          entries: merged_entries,
+          pending: merged_pending,
+          partials: partials
+        )
+      } else {
+        infer_gather_fold_acc_ok(
+          node: acc.node,
+          entries: merged_entries,
+          pending: merged_pending,
+          await_branch_row: acc.await_branch_row,
+          await_match_row: acc.await_match_row,
+          await_loop_row: acc.await_loop_row,
+          await_transform_row: acc.await_transform_row,
+          children_remaining: 0
+        )
+      }
+  }
+}
+
+fn infer_gather_fold_algebra(partials: List<Node>, kinds: List<RosterKindIndex>, tree: Node) -> NodeFold<InferGatherFoldAcc> {
+  NodeFold {
+    init: fn(n0) {
+      infer_gather_fold_init(n: n0, partials: partials, kinds: kinds, tree: tree)
+    },
+    step: fn(acc, e, child) {
+      infer_gather_fold_step(acc: acc, edge: e, child: child, partials: partials, kinds: kinds, tree: tree)
+    }
+  }
+}
+
+fn infer_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
+  canonical_grounding_admits_infer_facts(grounding: grounding)
+}
+
+fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
+  let partials = partial_bounded_lattice_instances_in_tree(tree: tree.root)
+  let kinds = infer_language_inhabitants_kind_index()
+  infer_gather_acc_to_outcome(
+    acc: fold_node(n: tree.root, algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, tree: tree.root))
+  )
+}
+// INFER'S OUTPUT IS THE OBLIGATED FORM, never an InferredTree: v2.compiler.refinement_discharge
+// discharge_refinement_obligations is the one route onward. No obligation is recorded yet -- the
+// producer is the literal-into-refinement cast arm, which lands once where-predicates bind to their
+// declarations (node adhoc-46630399-82b); until then every tree discharges with nothing to evaluate.
+fn infer(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
+  match infer_entries_for_tree(tree: tree) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: entries, diagnostics: d } =>
+      match facts_map_from_entries(entries: entries) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: facts_map, diagnostics: md } =>
+          Accepted {
+            value: ObligatedInferredTree {
+              root: tree.root,
+              facts: facts_map,
+              obligations: Empty
+            },
+            diagnostics: diagnostics_merge(outer: d, inner: md)
+          }
+      }
+  }
+}

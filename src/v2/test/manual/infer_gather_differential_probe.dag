@@ -1,0 +1,210 @@
+module v2.test.manual.infer_gather_differential_probe
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.compiler.infer { infer }
+import v2.compiler.inferred_tree { InferredFacts }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, node_subtree_nodes, node_subtree_count }
+import v2.std.optional { Optional }
+import v2.std.text { String }
+import v2.std.algebra { list_map }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type InferProbeRow
+  = InferProbeAssemblyRefused
+  | InferProbeRefused { diagnostics: NonEmptyDiagnostics }
+  | InferProbeFacts { facts: List<Optional<InferredFacts>> }
+
+fn infer_probe_row(src: String) -> InferProbeRow {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: _ } => InferProbeAssemblyRefused
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Rejected { diagnostics: r } => InferProbeRefused { diagnostics: r }
+        Accepted { value: t, diagnostics: _ } =>
+          InferProbeFacts { facts: list_map(xs: node_subtree_nodes(root: t.root), f: fn(n) { t.facts.lookup(n) }) }
+      }
+  }
+}
+
+fn infer_probe_specimens() -> List<String> {
+  ["module p\n",
+    "module p\n\nfn f(a: Bool, b: Int) -> Int { 1 }\n",
+    "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  if b { x as Int } else { x }\n}\n",
+    "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Int\n    false => x\n  }\n}\n",
+    "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Q\n    false => x\n  }\n}\n",
+    "module p\n\nfn f(b: Int, a: Bool) -> Int { 1 }\n",
+    "module p\n\nfn f(_: Int, _: Bool) -> Int { 1 }\n",
+    "module p\n\nfn f(_: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int, _: Bool, _: Int) -> Int { 1 }\n",
+    "module p\n\nfn f(_: Int, _: Int) -> Int { 1 }\n\nfn g(_: Int, _: Int) -> Int { 2 }\n",
+    "module p\n\nfn f(_: Int, _: Int) -> Int { _ }\n",
+    "module p\n\nfn first<A, B>(a: A, b: B) -> A { a }\n",
+    "module p\n\nfn f(Q: Int) -> Int {\n  let y: Q = Q\n  y\n}\n",
+    "module p\n\nfn f(Q: Int) -> Int {\n  Q as Q\n}\n",
+    "module p\n\nfn f<T>(x: T) -> T {\n  let y: T = T\n  y\n}\n",
+    "module p\n\nfn f<T>(x: T) -> T {\n  let y: T = x\n  y\n}\n",
+    "module p\n\nfn f<T>(x: T) -> T {\n  x as T\n}\n",
+    "module p\n\nfn f<T>(x: T) -> T { T }\n",
+    "module p\n\nfn f<T>(x: T) -> T { x }\n",
+    "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn g<T>(y: T) -> T { y }\n",
+    "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn g<U>(y: T) -> U { y }\n",
+    "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn h(y: T) -> Int { 1 }\n",
+    "module p\n\nfn f<T>(x: V) -> T { x }\n",
+    "module p\n\nfn f(x: Bool) -> Int { if x { fn(y) { zz } } else { 1 } }\n",
+    "module p\n\nfn f(x: Int) -> Bool {\n  (x + x) as Bool\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(y) -> Q { y }\n  x\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(y) { y }\n  x\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = 1\n  x\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = x + x\n  x\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = 1\n  x\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x\n  y\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x + x\n  y\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  let y: Q = x\n  y\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Int\n  y\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  let y = x\n  y\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  x as Int\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  x as Q\n}\n",
+    "module p\n\nfn f(x: Int) -> Int {\n  (x + x) as Int\n}\n",
+    "module p\n\nfn f(x: Int) -> Int { x }\n",
+    "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x as Int)\n}\n",
+    "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x) as Int\n}\n",
+    "module p\n\nfn h(x: Int, _: Int) -> Int { x }\n",
+    "module p\n\nfn lower_hex_64(v: Int) -> Bool { true }\n\ntype V = Int where lower_hex_64\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(W) => W\n    B => 0\n  }\n}\n",
+    "module p\n\nfn lower_hex_64(v: Int) -> Bool { true }\n\ntype W = Int where lower_hex_64\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(W) => W\n    B => 0\n  }\n}\n",
+    "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ndata d: Pos = 1 as Pos\n",
+    "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Bool {\n  x as Bool\n}\n",
+    "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Int {\n  x as Int\n}\n",
+    "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x as Pos\n}\n",
+    "module p\n\nfn y() -> Int { 1 }\n\nfn f(y: Int) -> Int { 2 }\n",
+    "module p\n\nimport q { Int }\nimport r { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
+    "module p\n\nimport q { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
+    "module p\n\nimport v2.std.integer { Int }\nimport std.integer { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
+    "module p\n\nimport v2.std.logic { Bool }\n\ntype Flag = On | Off\ntype Name = String where brand(\"Name\")\nfn f(x: Int) -> Int { x }\nfn dag_user(x: Int) -> Int { x }\nfn g(q: Flag) -> Flag { q }\nfn h() -> Flag { On }\nfn flip(q: Flag) -> Flag { match q { On => Off } }\nfn b() -> Bool { true }\n",
+    "module p\n\ntype B = Full { value: Int } | Empty\n",
+    "module p\n\ntype Bool = | Mine\n\nfn f(x: Int) -> Int {\n  let y: Bool = true\n  x\n}\n",
+    "module p\n\ntype Box<T> = Full { value: T } | Empty\n",
+    "module p\n\ntype Box<T> = Full { value: T } | Empty\n\ntype S { g: T }\n",
+    "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    Aa(y) => y\n    B => 0\n  }\n}\n",
+    "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => 0\n  }\n}\n",
+    "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => y\n  }\n}\n",
+    "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => z\n    B => 0\n  }\n}\n",
+    "module p\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n",
+    "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(_) => x\n    B => 0\n  }\n}\n",
+    "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n",
+    "module p\n\ntype dag_production_type_decl = String where brand(\"N\")\nfn f(x: Int) -> Int { x }\n",
+    "module p\n\ntype dag_surface_type_expr = String where brand(\"N\")\nfn f(x: Int) -> Int { x }\n",
+    "module p\n\ntype Decision = Allowed | Blocked\n",
+    "module p\n\ntype Empty {}\n",
+    "module p\n\ntype Flag = On | Off\n",
+    "module p\n\ntype Flag = On | Off\ntype Rec { n: Int }\n",
+    "module p\n\ntype Id = Int\n",
+    "module p\n\ntype Id = Int\n\nfn keep(x: Id) -> Id { x }\n",
+    "module p\n\ntype Id = Int\n\ntype Ref = Id\n",
+    "module p\n\ntype Id<T> = Q\n",
+    "module p\n\ntype Id<T> = T\n",
+    "module p\n\ntype Int = | Mine\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
+    "module p\n\ntype Maybe<A> = Some { v: A } | None\n\ntype Box<T> = Maybe<T>\n",
+    "module p\n\ntype Name = String where brand(\"Name\")\n",
+    "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value } => value\n    Absent => 0\n  }\n}\n",
+    "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n",
+    "module p\n\ntype Opt = Present { value: Int } | Absent\ntype C = A(Opt) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(Present { value: y }) => y\n    A(Absent) => 0\n    B => 1\n  }\n}\n",
+    "module p\n\ntype Pair<A, B> { left: A, right: B }\n",
+    "module p\n\ntype PointerWidth\n",
+    "module p\n\ntype Rec { f: Int }\ndata d: Rec = Rec { f: 1 }\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(d) => 0\n    B => 0\n  }\n}\n",
+    "module p\n\ntype Rec { n: Int }\n",
+    "module p\n\ntype Rec { n: Int }\nfn mk() -> Rec { Rec { n: 1 } }\n",
+    "module p\n\ntype R { f: Int }\ntype W = Int where non_empty\ntype C = A { v: Int } | B\ntype U {}\n",
+    "module p\n\ntype R<T> { f: T }\n",
+    "module p\n\ntype Same<T> = T\n",
+    "module p\n\ntype Shape = Dot | Box { w: Int }\n",
+    "module p\n\ntype S = Int\n",
+    "module p\n\ntype S =\n  | Only\n",
+    "module p\n\ntype Tag<T> = A | B\n",
+    "module p\n\ntype T = Int\n\nfn f<T>(x: T) -> T { x }\n",
+    "module p\n\ntype T = Int\n\ntype Box<T> = Full { value: T } | Empty\n",
+    "module p\n\ntype T = Int\n\ntype Id<T> = T\n",
+    "module p\n\ntype W<bits>\n",
+    "module p\n\ntype Wrapped = Only { a: Int }\n",
+    "module p\n\ntype X<T> =\n  | Only\n"
+  ]
+}
+
+fn infer_probe_differential() -> List<InferProbeRow> {
+  list_map(xs: infer_probe_specimens(), f: fn(src) { infer_probe_row(src: src) })
+}
+
+fn infer_probe_scale_8_nodes() -> Int {
+  match tpb_assemble(src: "module p\n\nfn f0(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f1(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f2(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f3(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f4(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f5(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f6(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f7(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n") {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: root, diagnostics: _ } => node_subtree_count(n: root.root)
+  }
+}
+
+fn infer_probe_scale_8() -> Int {
+  match tpb_assemble(src: "module p\n\nfn f0(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f1(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f2(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f3(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f4(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f5(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f6(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f7(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n") {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Rejected { diagnostics: _ } => 1
+        Accepted { value: _, diagnostics: _ } => 2
+      }
+  }
+}
+
+fn infer_probe_scale_16_nodes() -> Int {
+  match tpb_assemble(src: "module p\n\nfn f0(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f1(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f2(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f3(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f4(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f5(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f6(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f7(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f8(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f9(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f10(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f11(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f12(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f13(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f14(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f15(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n") {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: root, diagnostics: _ } => node_subtree_count(n: root.root)
+  }
+}
+
+fn infer_probe_scale_16() -> Int {
+  match tpb_assemble(src: "module p\n\nfn f0(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f1(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f2(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f3(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f4(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f5(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f6(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f7(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f8(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f9(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f10(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f11(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f12(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f13(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f14(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f15(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n") {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Rejected { diagnostics: _ } => 1
+        Accepted { value: _, diagnostics: _ } => 2
+      }
+  }
+}
+
+fn infer_probe_scale_32_nodes() -> Int {
+  match tpb_assemble(src: "module p\n\nfn f0(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f1(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f2(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f3(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f4(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f5(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f6(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f7(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f8(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f9(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f10(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f11(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f12(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f13(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f14(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f15(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f16(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f17(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f18(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f19(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f20(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f21(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f22(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f23(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f24(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f25(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f26(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f27(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f28(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f29(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f30(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f31(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n") {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: root, diagnostics: _ } => node_subtree_count(n: root.root)
+  }
+}
+
+fn infer_probe_scale_32() -> Int {
+  match tpb_assemble(src: "module p\n\nfn f0(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f1(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f2(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f3(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f4(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f5(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f6(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f7(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f8(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f9(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f10(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f11(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f12(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f13(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f14(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f15(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f16(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f17(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f18(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f19(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f20(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f21(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f22(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f23(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f24(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f25(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f26(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f27(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f28(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f29(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f30(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f31(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n") {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Rejected { diagnostics: _ } => 1
+        Accepted { value: _, diagnostics: _ } => 2
+      }
+  }
+}
+
+fn infer_probe_scale_64_nodes() -> Int {
+  match tpb_assemble(src: "module p\n\nfn f0(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f1(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f2(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f3(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f4(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f5(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f6(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f7(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f8(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f9(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f10(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f11(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f12(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f13(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f14(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f15(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f16(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f17(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f18(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f19(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f20(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f21(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f22(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f23(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f24(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f25(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f26(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f27(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f28(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f29(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f30(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f31(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f32(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f33(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f34(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f35(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f36(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f37(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f38(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f39(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f40(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f41(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f42(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f43(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f44(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f45(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f46(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f47(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f48(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f49(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f50(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f51(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f52(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f53(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f54(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f55(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f56(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f57(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f58(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f59(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f60(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f61(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f62(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f63(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n") {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: root, diagnostics: _ } => node_subtree_count(n: root.root)
+  }
+}
+
+fn infer_probe_scale_64() -> Int {
+  match tpb_assemble(src: "module p\n\nfn f0(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f1(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f2(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f3(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f4(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f5(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f6(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f7(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f8(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f9(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f10(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f11(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f12(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f13(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f14(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f15(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f16(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f17(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f18(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f19(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f20(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f21(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f22(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f23(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f24(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f25(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f26(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f27(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f28(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f29(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f30(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f31(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f32(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f33(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f34(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f35(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f36(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f37(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f38(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f39(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f40(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f41(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f42(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f43(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f44(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f45(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f46(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f47(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f48(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f49(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f50(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f51(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f52(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f53(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f54(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f55(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f56(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f57(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f58(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f59(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f60(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f61(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f62(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n\nfn f63(b: Bool, x: Int) -> Int {\n  let y: Int = x + x\n  if b { y } else { x as Int }\n}\n") {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Rejected { diagnostics: _ } => 1
+        Accepted { value: _, diagnostics: _ } => 2
+      }
+  }
+}
