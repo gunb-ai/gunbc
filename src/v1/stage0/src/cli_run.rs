@@ -9819,9 +9819,6 @@ fn visit_bare_reference_providers(
         let Some((module_path, is_test_row)) = target_module else {
             continue;
         };
-        if is_test_row {
-            continue;
-        }
         let Some(dep) = index.source_files.get(&module_path) else {
             return Err(format!(
                 "bare_reference_closure: census resolved '{name}' in '{file_rel}' to \
@@ -9829,6 +9826,9 @@ fn visit_bare_reference_providers(
                  (fail-closed)"
             ));
         };
+        if is_test_row {
+            continue;
+        }
         let dep_rel = workspace_relative_repo_path(&dep.path);
         if std::env::var("GUNBC_BARE_PULL_TRACE").is_ok() {
             eprintln!(
