@@ -61,13 +61,19 @@ in the authority:
   `resolve_anonymous_map_duplicate_key` there, naming the key and the first occurrence.
 - **Equality is the KEY TYPE's declared equality, never assumed structural equality.** Its home is
   the one that already decides equality admissibility: `std.algebra`
-  `algebra_profile_equality_extensional`, consequence of `algebra_profile_support`. Scalars and
-  finite-support carriers have decidable extensional equality; open-support carriers
-  (`PartialFunction`, the pointwise power) do not. The key relation itself is owned by the keys /
-  hashing conformance row (`conformance-identity`). That row's homes today are structural node
-  identity and the materialization keys, neither of which is value equality over `K`. So PR2 either
-  cites the `std.algebra` equality home against that row as a stated scope extension, or states the
-  divergence on the PR. It does not add a third equality.
+  `algebra_profile_equality_extensional`, a consequence of `algebra_profile_support`. Scalars and
+  finite-support carriers have decidable extensional equality. Open-support carriers
+  (`PartialFunction`, the pointwise power) and arrows do not. This PR adds that declaration to the
+  home authorities of the keys / hashing conformance row (`gunbc.design_argument`
+  `conformance_domains`, `conformance-identity`) and widens the row's scope sentence to match,
+  rather than asserting the extension in prose.
+- **Honest coverage at this rung.** That admission is instantiation-blind, by its own declared
+  boundary (v1 infer `equality_admission_wall_note`, boundary 1). An opaque brand, or a generic key
+  type parameter, ADMITS unjudged. So the undecidable-equality refusal and its control cover
+  open-support carriers and arrows only. A map literal whose key type is a type parameter or an
+  opaque brand is admitted UNJUDGED at this rung, and the control does not claim otherwise. Next-rung
+  trigger, shared with that boundary: instantiation-grain admission, which judges equality where the
+  type arguments are known.
 - **Decidable at the site, or refuse.** Keys are compared as elaborated literals of `K`. Where `K`'s
   equality is not decidable at elaboration, the literal refuses located at its first key with
   `resolve_anonymous_map_key_equality_undecidable`, and nothing is guessed. That covers an
@@ -138,7 +144,9 @@ check. A value that does not inhabit `V` refuses in infer after a successful ela
    the key.
 3. Distinct keys are accepted. This includes keys that differ only after escape normalization in
    the non-equal direction.
-4. A key type without decidable equality refuses `resolve_anonymous_map_key_equality_undecidable`.
+4. A key type without decidable equality (an open-support carrier or an arrow) refuses
+   `resolve_anonymous_map_key_equality_undecidable`. Coverage stops there: a type-parameter or
+   opaque-brand key admits unjudged at this rung (see Honest coverage).
 5. `Map<Int, Bool>` with `{ "k": true }` refuses `resolve_anonymous_map_key_kind_mismatch` at `"k"`.
 6. Mutation: the pre-fold check removed, so the fold's last-wins absorbs the duplicate, turns
    control 2 red. The control reads the resolve outcome, not the evaluated map.
