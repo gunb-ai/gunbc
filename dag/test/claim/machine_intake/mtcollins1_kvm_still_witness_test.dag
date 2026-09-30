@@ -280,7 +280,7 @@ fn kvm_event_sample() -> List<KvmJournalEvent> {
     KvmJournalBrowserClose { at: kvm_at(ms: 1790000000022), result: "closed" },
     KvmJournalStopped { at: kvm_at(ms: 1790000000023), session: "released", browser: "closed" },
     KvmJournalTriggerScanFailed { at: kvm_at(ms: 1790000000024), detail: "\"EACCES\"" },
-    KvmJournalNavigated { at: kvm_at(ms: 1790000000025), seq: "2", phase: "login", url: "\"https://192.168.1.30/#login\"" },
+    KvmJournalNavigated { at: kvm_at(ms: 1790000000025), seq: "2", phase: "held", url: "\"https://192.168.1.30/#login\"" },
   ]
 }
 
@@ -317,10 +317,10 @@ test fn a_written_line_renders_as_the_observer_writes_it() -> Bool {
 // hash route and a query survive the round trip whole, so the journal records exactly where the page
 // went rather than a prefix of it.
 test fn a_navigation_line_reads_back_its_phase_and_whole_url() -> Bool {
-  let line = "1790577698650 2026-09-28T06:41:38.650Z navigated seq=2 phase=landing url=\"https://192.168.1.30/#/login?next=%2Fdashboard\""
+  let line = "1790577698650 2026-09-28T06:41:38.650Z navigated seq=2 phase=held url=\"https://192.168.1.30/viewer.html?next=%2Fkvm#login\""
   match kvm_journal_event(line: line) {
     KvmJournalNavigated { at: _, seq: n, phase: p, url: u } =>
-      n == "2" && p == "landing" && u == "\"https://192.168.1.30/#/login?next=%2Fdashboard\""
+      n == "2" && p == "held" && u == "\"https://192.168.1.30/viewer.html?next=%2Fkvm#login\""
         && rendered(r: kvm_journal_line(event: kvm_journal_event(line: line))) == line
     _ => false
   }

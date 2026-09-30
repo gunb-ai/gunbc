@@ -878,7 +878,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'mtcollins1_ui_bundle_observe'
-        timeout-minutes: 16
+        timeout-minutes: 17
       - name: Upload Mt. Collins UI bundle bytes and receipt
         id: mtcollins1_ui_bundle_observe_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -911,7 +911,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'mtcollins1_kvm_observer_observe'
-        timeout-minutes: 17
+        timeout-minutes: 18
       - name: Upload Mt. Collins KVM observer journal, stills and receipt
         id: mtcollins1_kvm_observer_observe_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

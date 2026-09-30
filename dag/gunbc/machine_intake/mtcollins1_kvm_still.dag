@@ -64,8 +64,21 @@ data mtcollins1_bmc_firmware: BmcFirmwareReleaseIdentity = megarac_firmware_0_32
 // recovered from the served bundles cited on extdeps.bmc.megarac MegaRacScreenCaptureRoute: POST
 // /api/session and the sessionStorage keys its login handler sets; GET /api/settings/services and
 // the `kvm` row's viewer_count, which the UI's own launch() requires to be 0 before it opens
-// viewer.html (else "only one KVM session is allowed"); then viewer.html in the same tab, and
-// captureScreen()'s canvas#kvm.toDataURL("image/jpeg").
+// viewer.html (else "only one KVM session is allowed"); then viewer.html, and captureScreen()'s
+// canvas#kvm.toDataURL("image/jpeg").
+//
+// ONLY THE VIEWER IS A DOCUMENT (fleet-converge run 36721915217, 2026-09-30). The session POST, the
+// services read and the session DELETE are HTTP exchanges that need a cookie jar, not a page, so they
+// go through the browser context's own request client (it shares the jar the viewer's /kvm WebSocket
+// uses); the sessionStorage keys are seeded by a context init script, which runs in every document of
+// the controller's origin before that document's own scripts. The observer therefore never loads the
+// UI's root page. It used to: it loaded "/" to borrow an origin and ran the login inside it, and on
+// that run the journal read "page.evaluate: Execution context was destroyed, most likely because of a
+// navigation" with session-release login-unobserved -- the root document was replaced under the login.
+// That the vendor SPA reloads itself to #login is read from its bundle (see the navigation note below);
+// the repair does not depend on it, because no step now runs in a document the observer did not
+// navigate to itself. The only in-page evaluations left are on viewer.html: the
+// canvas wait and the toDataURL.
 //
 // ONE OBSERVER, HELD FOR THE WHOLE BOOT (side-chat acceptance (a), 2026-09-28). The observer is a
 // background process, started under the unit hold after the SOL acquire and BEFORE the handoff, that
@@ -82,15 +95,17 @@ data mtcollins1_bmc_firmware: BmcFirmwareReleaseIdentity = megarac_firmware_0_32
 // that exists but cannot be read (toDataURL throws) is acquisition-failed cause=canvas-unreadable. An
 // unchanged picture is never read as a stale one: the observer does not compare pixels at all.
 //
-// THE PAGE NAVIGATES AFTER DOMContentLoaded, AND THAT IS MODELED, NOT AVOIDED (operator, 2026-09-30).
-// Run 36721915217 failed "page.evaluate: Execution context was destroyed": the MegaRAC SPA moved the
-// main frame after the landing's DOMContentLoaded, under the login evaluate. Every main-frame
-// navigation is now a `navigated` journal line (seq, the script phase it happened in -- landing,
-// login, viewer, held -- and the URL the frame committed to), so the journal says exactly where the
-// page went, and the login waits for Playwright's own settled state (waitForLoadState 'networkidle',
-// the upstream's definition, bounded by the frame wait) instead of the first DOMContentLoaded. A
-// navigation that still lands under an evaluate is recorded, and the evaluate's failure is the
-// journal's failed line after it -- never retried into a different answer.
+// EVERY MAIN-FRAME NAVIGATION IS JOURNALLED (operator, 2026-09-30: the navigation is MODELED, not
+// avoided). What the SPA does is now read from its own bundle, not inferred: the UI fetched by
+// fleet-converge run 36778446928 (gunbc.machine_intake_mtcollins1_ui_bundle_observe, firmware 0.32,
+// digest matching the 2026-09-27 read) routes by Backbone hash routing, and on session expiry, on an
+// unauthorized answer and on its logout paths sets location.href "#login" and then calls
+// location.reload() -- a FULL document reload, which is what destroys an evaluate in flight. The only
+// document the observer loads is viewer.html; every commit of its main frame is a `navigated` line (seq,
+// the observer's phase -- viewer while it opens the viewer, held after establishment -- and the URL the
+// frame committed to), so a reload to #login under the held viewer is on the journal with the instant it
+// happened, before the connection-lost or failed line it causes. A navigation is recorded, never retried
+// into a different answer.
 //
 // THE SEAT. A held seat (viewer_count > 0) refuses with its count -- an operator's session is never
 // evicted -- and every exit the process reaches (stop file, SIGTERM, refusal, failure) DELETEs its web
@@ -151,6 +166,21 @@ data kvm_cause_not_connected: KvmJournalWord = KvmJournalWord { id: "notConnecte
 data kvm_cause_connection_changed_during_acquisition: KvmJournalWord = KvmJournalWord { id: "connectionChangedDuringAcquisition", word: "connection-changed-during-acquisition" }
 data kvm_cause_canvas_unreadable: KvmJournalWord = KvmJournalWord { id: "canvasUnreadable", word: "canvas-unreadable" }
 
+// THE TEARDOWN'S RESULT WORDS: the leading token of a session-release or browser-close result. The
+// observer script spells them only through the RS vocabulary below, and kvm_session_release_of /
+// kvm_browser_close_of read them back through the same rows, so a teardown is judged by its word and
+// never by a substring of its detail.
+data kvm_result_released: KvmJournalWord = KvmJournalWord { id: "released", word: "released" }
+data kvm_result_http_prefix: KvmJournalWord = KvmJournalWord { id: "httpPrefix", word: "http-" }
+data kvm_result_release_failed: KvmJournalWord = KvmJournalWord { id: "releaseFailed", word: "release-failed" }
+data kvm_result_login_unobserved: KvmJournalWord = KvmJournalWord { id: "loginUnobserved", word: "login-unobserved" }
+data kvm_result_no_session: KvmJournalWord = KvmJournalWord { id: "noSession", word: "no-session" }
+data kvm_result_closed: KvmJournalWord = KvmJournalWord { id: "closed", word: "closed" }
+data kvm_result_no_browser: KvmJournalWord = KvmJournalWord { id: "noBrowser", word: "no-browser" }
+data kvm_result_close_failed: KvmJournalWord = KvmJournalWord { id: "closeFailed", word: "close-failed" }
+
+data kvm_journal_result_words: List<KvmJournalWord> = [kvm_result_released, kvm_result_http_prefix, kvm_result_release_failed, kvm_result_login_unobserved, kvm_result_no_session, kvm_result_closed, kvm_result_no_browser, kvm_result_close_failed]
+
 data kvm_journal_event_words: List<KvmJournalWord> = [kvm_event_established, kvm_event_connection_requested, kvm_event_connection_refused, kvm_event_connection_open, kvm_event_connection_lost, kvm_event_connection_error, kvm_event_still, kvm_event_acquisition_failed, kvm_event_session_release, kvm_event_browser_close, kvm_event_refused, kvm_event_failed, kvm_event_stop_requested, kvm_event_stopped, kvm_event_trigger_scan_failed, kvm_event_navigated]
 data kvm_journal_cause_words: List<KvmJournalWord> = [kvm_cause_seat_busy, kvm_cause_login, kvm_cause_no_kvm_service, kvm_cause_no_frame, kvm_cause_no_kvm_frame, kvm_cause_no_kvm_websocket, kvm_cause_toolchain, kvm_cause_credential_unreadable, kvm_cause_not_connected, kvm_cause_connection_changed_during_acquisition, kvm_cause_canvas_unreadable]
 
@@ -202,10 +232,10 @@ fn kvm_journal_words_js(name: String, words: List<KvmJournalWord>) -> String {
 }
 
 fn mtcollins1_kvm_observer_vocabulary_js() -> String {
-  concat(kvm_journal_words_js(name: "EV", words: kvm_journal_event_words), kvm_journal_words_js(name: "CA", words: kvm_journal_cause_words))
+  concat(concat(kvm_journal_words_js(name: "EV", words: kvm_journal_event_words), kvm_journal_words_js(name: "CA", words: kvm_journal_cause_words)), kvm_journal_words_js(name: "RS", words: kvm_journal_result_words))
 }
 
-data mtcollins1_kvm_observer_script_body: String = "const fs=require('fs');const path=require('path');const [base,user,pwFile,dir,attempt,cadenceMs,frameMs,maxPeriodic,pwModule]=process.argv.slice(1);const J=path.join(dir,'journal');function j(ev,kv)\{const t=Date.now();try\{fs.appendFileSync(J,t+' '+new Date(t).toISOString()+' '+ev+(kv?' '+kv:'')+'\\n')}catch(e)\{try\{process.stderr.write('journal write failed: '+ev+' '+String(e&&e.message)+'\\n')}catch(e2)\{}}}function one(e)\{return String(e&&e.message||e).replace(/[^ -~]+/g,' ').replace(/ +/g,' ').slice(0,300)}let browser=null,page=null,stopping=false,login='not-attempted',token=null,seq=0,periodic=0;let gen=0,live=null;let nav=0,phase='launch';async function teardown(why,code)\{if(stopping)return;stopping=true; j(EV.stopRequested,'by='+why); let rel; if(login==='accepted'&&page&&token)\{try\{rel=await page.evaluate(async t=>\{const r=await fetch('/api/session',\{method:'DELETE',headers:\{'X-CSRFTOKEN':t}});return r.ok?'released':'http-'+r.status},token)}catch(e)\{rel='release-failed detail='+JSON.stringify(one(e))}} else if(login==='unobserved')\{rel='login-unobserved'} else\{rel='no-session'} j(EV.sessionRelease,'result='+rel); let closed='closed';try\{if(browser)await browser.close();else closed='no-browser'}catch(e)\{closed='close-failed detail='+JSON.stringify(one(e))} j(EV.browserClose,'result='+closed); j(EV.stopped,'session='+rel.split(' ')[0]+' browser='+closed.split(' ')[0]); process.exit(code)}process.on('SIGTERM',()=>teardown('sigterm',0));process.on('SIGINT',()=>teardown('sigint',0));async function still(reason)\{seq+=1;const n=seq;const g=gen;const startedMs=Date.now(); if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' cause='+CA.notConnected+'');return} try\{const url=await page.evaluate(()=>\{const c=document.getElementById('kvm');if(!c)throw new Error('no canvas#kvm');return c.toDataURL('image/jpeg')});  if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.connectionChangedDuringAcquisition+'');return}  if(!url.startsWith('data:image/jpeg;base64,'))throw new Error('toDataURL answered '+url.slice(0,40));  const b=Buffer.from(url.slice(url.indexOf(',')+1),'base64');const f='still-'+n+'.jpg';fs.writeFileSync(path.join(dir,f),b);  j(EV.still,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' file='+f+' bytes='+b.length)} catch(e)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.canvasUnreadable+' detail='+JSON.stringify(one(e)))}}(async()=>\{ let pw;try\{pw=fs.readFileSync(pwFile,'utf8')}catch(e)\{j(EV.refused,'cause='+CA.credentialUnreadable+' detail='+JSON.stringify(one(e)));return teardown('refused',14)} let chromium;try\{chromium=require(pwModule).chromium}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{browser=await chromium.launch(\{headless:true})}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{const ctx=await browser.newContext(\{ignoreHTTPSErrors:true,viewport:\{width:1280,height:1024}});page=await ctx.newPage();  page.on('framenavigated',f=>\{if(f===page.mainFrame())\{nav+=1;j(EV.navigated,'seq='+nav+' phase='+phase+' url='+JSON.stringify(f.url()))}});  const expectedHost=new URL(base).host;  phase='landing';await page.goto(base+'/',\{waitUntil:'domcontentloaded'});  await page.waitForLoadState('networkidle',\{timeout:Number(frameMs)});  phase='login';login='unobserved';  const reply=await page.evaluate(async([u,p])=>\{const r=await fetch('/api/session',\{method:'POST',headers:\{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(\{username:u,password:p})});let b=null;try\{b=await r.json()}catch(e)\{}return\{status:r.status,b:b}},[user,pw]);  if(reply.status!==200||!reply.b||reply.b.ok!==0)\{login='refused';j(EV.refused,'cause='+CA.login+' http='+reply.status);return teardown('refused',11)}  login='accepted';token=reply.b.CSRFToken;  await page.evaluate(([b,u])=>\{sessionStorage.setItem('garc',b.CSRFToken);sessionStorage.setItem('privilege_id',String(b.privilege));sessionStorage.setItem('extended_privilege',String(b.extendedpriv));sessionStorage.setItem('session_id',String(b.racsession_id));sessionStorage.setItem('username',u);sessionStorage.setItem('kvm_access','1');sessionStorage.setItem('vmedia_access','1')},[reply.b,user]);  const seat=await page.evaluate(async t=>\{const r=await fetch('/api/settings/services',\{headers:\{'X-CSRFTOKEN':t}});const a=await r.json();const k=Array.isArray(a)?a.find(s=>s.service_name==='kvm'):null;return k?k.viewer_count:null},token);  if(seat===null||seat===undefined)\{j(EV.refused,'cause='+CA.noKvmService+'');return teardown('refused',15)}  if(seat!==0)\{j(EV.refused,'cause='+CA.seatBusy+' viewer_count='+seat);return teardown('refused',10)}  page.on('websocket',ws=>\{let u;try\{u=new URL(ws.url())}catch(e)\{return}   if(u.host!==expectedHost||u.pathname!=='/kvm')return;   j(EV.connectionRequested,'url='+JSON.stringify(ws.url()));let mine=null;   ws.on('framereceived',()=>\{if(!mine)\{gen+=1;mine=\{gen:gen};live=mine;j(EV.connectionOpen,'gen='+mine.gen+' url='+JSON.stringify(ws.url()))}});   ws.on('socketerror',e=>\{j(EV.connectionError,'gen='+(mine?mine.gen:0)+' detail='+JSON.stringify(one(e)));if(mine&&live===mine)live=null});   ws.on('close',()=>\{if(mine&&live===mine)\{live=null;j(EV.connectionLost,'gen='+mine.gen)}else if(!mine)\{j(EV.connectionRefused,'url='+JSON.stringify(ws.url()))}})});  phase='viewer';await page.goto(base+'/viewer.html',\{waitUntil:'domcontentloaded'});  try\{await page.waitForFunction(()=>\{const c=document.getElementById('kvm');return !!c&&c.width>1&&c.height>1},null,\{timeout:Number(frameMs)})}  catch(e)\{j(EV.refused,'cause='+CA.noFrame+' detail='+JSON.stringify(one(e)));return teardown('refused',12)}  const deadline=Date.now()+Number(frameMs);while(!live&&Date.now()<deadline)\{await new Promise(r=>setTimeout(r,100))}  if(!live)\{j(EV.refused,'cause='+CA.noKvmFrame+'');return teardown('refused',12)}  j(EV.established,'host='+JSON.stringify(expectedHost)+' session='+String(reply.b.racsession_id)+' attempt='+attempt+' gen='+live.gen);  phase='held';let next=Date.now()+Number(cadenceMs);  while(!stopping)\{   if(fs.existsSync(path.join(dir,'stop')))\{return teardown('stop-file',0)}   let tf=[];try\{tf=fs.readdirSync(dir).filter(n=>n.startsWith('trigger-')).sort()}catch(e)\{j(EV.triggerScanFailed,'detail='+JSON.stringify(one(e)))}   for(const n of tf)\{const p=path.join(dir,n);try\{fs.unlinkSync(p)}catch(e)\{continue}await still('trigger:'+n.slice(8))}   if(Date.now()>=next&&periodic<Number(maxPeriodic))\{next=Date.now()+Number(cadenceMs);periodic+=1;await still('periodic')}   await new Promise(r=>setTimeout(r,250))} }catch(e)\{j(EV.failed,'detail='+JSON.stringify(one(e)));return teardown('failed',1)}})();"
+data mtcollins1_kvm_observer_script_body: String = "const fs=require('fs');const path=require('path');const [base,user,pwFile,dir,attempt,cadenceMs,frameMs,maxPeriodic,pwModule]=process.argv.slice(1);const J=path.join(dir,'journal');function j(ev,kv)\{const t=Date.now();try\{fs.appendFileSync(J,t+' '+new Date(t).toISOString()+' '+ev+(kv?' '+kv:'')+'\\n')}catch(e)\{try\{process.stderr.write('journal write failed: '+ev+' '+String(e&&e.message)+'\\n')}catch(e2)\{}}}function one(e)\{return String(e&&e.message||e).replace(/[^ -~]+/g,' ').replace(/ +/g,' ').slice(0,300)}let browser=null,page=null,api=null,stopping=false,login='not-attempted',token=null,seq=0,periodic=0;let gen=0,live=null;let nav=0,phase='launch';async function teardown(why,code)\{if(stopping)return;stopping=true; j(EV.stopRequested,'by='+why); let rel; if(login==='accepted'&&api&&token)\{try\{const r=await api.delete(base+'/api/session',\{headers:\{'X-CSRFTOKEN':token}});rel=r.ok()?RS.released:RS.httpPrefix+r.status()}catch(e)\{rel=RS.releaseFailed+' detail='+JSON.stringify(one(e))}} else if(login==='unobserved')\{rel=RS.loginUnobserved} else\{rel=RS.noSession} j(EV.sessionRelease,'result='+rel); let closed=RS.closed;try\{if(browser)await browser.close();else closed=RS.noBrowser}catch(e)\{closed=RS.closeFailed+' detail='+JSON.stringify(one(e))} j(EV.browserClose,'result='+closed); j(EV.stopped,'session='+rel.split(' ')[0]+' browser='+closed.split(' ')[0]); process.exit(code)}process.on('SIGTERM',()=>teardown('sigterm',0));process.on('SIGINT',()=>teardown('sigint',0));async function still(reason)\{seq+=1;const n=seq;const g=gen;const startedMs=Date.now(); if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' cause='+CA.notConnected+'');return} try\{const url=await page.evaluate(()=>\{const c=document.getElementById('kvm');if(!c)throw new Error('no canvas#kvm');return c.toDataURL('image/jpeg')});  if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.connectionChangedDuringAcquisition+'');return}  if(!url.startsWith('data:image/jpeg;base64,'))throw new Error('toDataURL answered '+url.slice(0,40));  const b=Buffer.from(url.slice(url.indexOf(',')+1),'base64');const f='still-'+n+'.jpg';fs.writeFileSync(path.join(dir,f),b);  j(EV.still,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' file='+f+' bytes='+b.length)} catch(e)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.canvasUnreadable+' detail='+JSON.stringify(one(e)))}}(async()=>\{ let pw;try\{pw=fs.readFileSync(pwFile,'utf8')}catch(e)\{j(EV.refused,'cause='+CA.credentialUnreadable+' detail='+JSON.stringify(one(e)));return teardown('refused',14)} let chromium;try\{chromium=require(pwModule).chromium}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{browser=await chromium.launch(\{headless:true})}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{const ctx=await browser.newContext(\{ignoreHTTPSErrors:true,viewport:\{width:1280,height:1024}});api=ctx.request;page=await ctx.newPage();  page.on('framenavigated',f=>\{if(f===page.mainFrame())\{nav+=1;j(EV.navigated,'seq='+nav+' phase='+phase+' url='+JSON.stringify(f.url()))}});  const expectedHost=new URL(base).host;  login='unobserved';  const lr=await api.post(base+'/api/session',\{form:\{username:user,password:pw}});let lb=null;try\{lb=await lr.json()}catch(e)\{}const reply=\{status:lr.status(),b:lb};  if(reply.status!==200||!reply.b||reply.b.ok!==0)\{login='refused';j(EV.refused,'cause='+CA.login+' http='+reply.status);return teardown('refused',11)}  login='accepted';token=reply.b.CSRFToken;  await ctx.addInitScript(([h,b,u])=>\{if(location.host!==h)return;sessionStorage.setItem('garc',b.CSRFToken);sessionStorage.setItem('privilege_id',String(b.privilege));sessionStorage.setItem('extended_privilege',String(b.extendedpriv));sessionStorage.setItem('session_id',String(b.racsession_id));sessionStorage.setItem('username',u);sessionStorage.setItem('kvm_access','1');sessionStorage.setItem('vmedia_access','1')},[expectedHost,reply.b,user]);  const sa=await(await api.get(base+'/api/settings/services',\{headers:\{'X-CSRFTOKEN':token}})).json();const kr=Array.isArray(sa)?sa.find(s=>s.service_name==='kvm'):null;const seat=kr?kr.viewer_count:null;  if(seat===null||seat===undefined)\{j(EV.refused,'cause='+CA.noKvmService+'');return teardown('refused',15)}  if(seat!==0)\{j(EV.refused,'cause='+CA.seatBusy+' viewer_count='+seat);return teardown('refused',10)}  page.on('websocket',ws=>\{let u;try\{u=new URL(ws.url())}catch(e)\{return}   if(u.host!==expectedHost||u.pathname!=='/kvm')return;   j(EV.connectionRequested,'url='+JSON.stringify(ws.url()));let mine=null;   ws.on('framereceived',()=>\{if(!mine)\{gen+=1;mine=\{gen:gen};live=mine;j(EV.connectionOpen,'gen='+mine.gen+' url='+JSON.stringify(ws.url()))}});   ws.on('socketerror',e=>\{j(EV.connectionError,'gen='+(mine?mine.gen:0)+' detail='+JSON.stringify(one(e)));if(mine&&live===mine)live=null});   ws.on('close',()=>\{if(mine&&live===mine)\{live=null;j(EV.connectionLost,'gen='+mine.gen)}else if(!mine)\{j(EV.connectionRefused,'url='+JSON.stringify(ws.url()))}})});  phase='viewer';await page.goto(base+'/viewer.html',\{waitUntil:'domcontentloaded'});  try\{await page.waitForFunction(()=>\{const c=document.getElementById('kvm');return !!c&&c.width>1&&c.height>1},null,\{timeout:Number(frameMs)})}  catch(e)\{j(EV.refused,'cause='+CA.noFrame+' detail='+JSON.stringify(one(e)));return teardown('refused',12)}  const deadline=Date.now()+Number(frameMs);while(!live&&Date.now()<deadline)\{await new Promise(r=>setTimeout(r,100))}  if(!live)\{j(EV.refused,'cause='+CA.noKvmFrame+'');return teardown('refused',12)}  j(EV.established,'host='+JSON.stringify(expectedHost)+' session='+String(reply.b.racsession_id)+' attempt='+attempt+' gen='+live.gen);  phase='held';let next=Date.now()+Number(cadenceMs);  while(!stopping)\{   if(fs.existsSync(path.join(dir,'stop')))\{return teardown('stop-file',0)}   let tf=[];try\{tf=fs.readdirSync(dir).filter(n=>n.startsWith('trigger-')).sort()}catch(e)\{j(EV.triggerScanFailed,'detail='+JSON.stringify(one(e)))}   for(const n of tf)\{const p=path.join(dir,n);try\{fs.unlinkSync(p)}catch(e)\{continue}await still('trigger:'+n.slice(8))}   if(Date.now()>=next&&periodic<Number(maxPeriodic))\{next=Date.now()+Number(cadenceMs);periodic+=1;await still('periodic')}   await new Promise(r=>setTimeout(r,250))} }catch(e)\{j(EV.failed,'detail='+JSON.stringify(one(e)));return teardown('failed',1)}})();"
 
 data mtcollins1_kvm_observer_script: String = concat(mtcollins1_kvm_observer_vocabulary_js(), mtcollins1_kvm_observer_script_body)
 
@@ -883,6 +913,51 @@ fn kvm_last_result(events: List<KvmJournalEvent>, session: Bool) -> String {
     Present { value: t } => t
     Absent => "NOT JOURNALLED"
   }
+}
+
+// THE TEARDOWN RESULTS, TYPED: the leading token of a result, read against the RS rows. Anything
+// after it -- a detail, an " at <instant>" suffix -- is carried, never matched, so a failure whose detail
+// happens to contain "released" or "closed" is a failure.
+type KvmSessionRelease
+  = KvmSessionReleased
+  | KvmSessionReleaseHttp { status: String }
+  | KvmSessionReleaseFailed { detail: String }
+  | KvmSessionLoginUnobserved
+  | KvmSessionNoSession
+  | KvmSessionReleaseUnrecognized { raw: String }
+
+type KvmBrowserClose
+  = KvmBrowserClosed
+  | KvmBrowserNotLaunched
+  | KvmBrowserCloseFailed { detail: String }
+  | KvmBrowserCloseUnrecognized { raw: String }
+
+fn kvm_result_leading(result: String) -> String {
+  match split(s: trim(s: result), delimiter: " ").first() { Present { value: w } => w  Absent => "" }
+}
+
+fn kvm_result_rest(result: String) -> String {
+  join(split(s: trim(s: result), delimiter: " ").skip(n: 1), " ")
+}
+
+fn kvm_session_release_of(result: String) -> KvmSessionRelease {
+  let w = kvm_result_leading(result: result)
+  if w == kvm_result_released.word { KvmSessionReleased }
+  else if w == kvm_result_release_failed.word { KvmSessionReleaseFailed { detail: kvm_result_rest(result: result) } }
+  else if w == kvm_result_login_unobserved.word { KvmSessionLoginUnobserved }
+  else if w == kvm_result_no_session.word { KvmSessionNoSession }
+  else if starts_with(s: w, prefix: kvm_result_http_prefix.word) && string_length(w) > string_length(kvm_result_http_prefix.word) {
+    KvmSessionReleaseHttp { status: substring(s: w, start: string_length(kvm_result_http_prefix.word), end: string_length(w)) }
+  }
+  else { KvmSessionReleaseUnrecognized { raw: result } }
+}
+
+fn kvm_browser_close_of(result: String) -> KvmBrowserClose {
+  let w = kvm_result_leading(result: result)
+  if w == kvm_result_closed.word { KvmBrowserClosed }
+  else if w == kvm_result_no_browser.word { KvmBrowserNotLaunched }
+  else if w == kvm_result_close_failed.word { KvmBrowserCloseFailed { detail: kvm_result_rest(result: result) } }
+  else { KvmBrowserCloseUnrecognized { raw: result } }
 }
 
 // THE END: the terminal still, the pre-teardown snapshot from a journal actually read, the boot's

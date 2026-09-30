@@ -135,10 +135,10 @@ fn released(rec: KvmObserverRecord) -> Bool {
 fn transport_log(r: Rig) -> String { read_or_empty(path: concat(r.dir, "/transport.log")) }
 
 // THE PAGE'S ROUTE, AS THE JOURNAL RECORDS IT: every main-frame navigation's seq, the observer's phase
-// and the committed URL, in journal order. Against the loopback controller the route is exactly the two
-// navigations the observer itself makes -- the landing, then viewer.html -- so the journal's record of
-// where the page went is held to what happened; on the real controller the same lines say where the
-// MegaRAC SPA moved after DOMContentLoaded (run 36721915217).
+// and the committed URL, in journal order. Against the loopback controller the route is exactly the one
+// navigation the observer makes -- viewer.html, and never the root -- so the journal's record of where the
+// page went is held to what happened; on the real controller the same lines record any reload the SPA
+// makes to #login under the held viewer.
 fn navigation_route(start: KvmObserverStart) -> List<String> {
   match start {
     KvmObserverStarted { dir: d, subject: _, standing: _, checked_at: _ } =>
@@ -172,10 +172,26 @@ test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> B
   let navigations = navigation_route(start: r.start)
   let closed = close_rig(r: r)
   admitted && asked && loss_still == 1 && released(rec: rec) && closed
-    && navigations == [concat("1 landing \"http://127.0.0.1:", port_of(start: r.start), "/\""), concat("2 viewer \"http://127.0.0.1:", port_of(start: r.start), "/viewer.html\"")]
+    && navigations == [concat("1 viewer \"http://127.0.0.1:", port_of(start: r.start), "/viewer.html\"")]
     && string_contains(s: log, pattern: "transition request=[\"login\",\"admin\",\"pw\"] status=200")
     && string_contains(s: log, pattern: "transition request=[\"logout\",\"csrf-7\"] status=200")
     && string_contains(s: log, pattern: "stream closed by the model")
+}
+
+// THE LOGIN DOES NOT RUN IN A DOCUMENT THAT CAN NAVIGATE AWAY (fleet-converge run 36721915217). The
+// transport's root page replaces itself on DOMContentLoaded. The observer that loaded "/" and logged in
+// by evaluating a fetch inside it journalled "failed ... Execution context was destroyed" against this
+// transport, the hardware journal line for line, and was never established. The ROUTE is asserted, not
+// only the answer: the controller saw the login and never served its root page.
+test fn a_root_page_that_navigates_cannot_destroy_the_login() -> Bool {
+  let r = rig(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: true))
+  let admitted = match kvm_handoff_admission(start: r.start) { KvmHandoffAdmitted { session: s } => s == "7"  _ => false }
+  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let log = transport_log(r: r)
+  let closed = close_rig(r: r)
+  admitted && released(rec: rec) && closed
+    && string_contains(s: log, pattern: "transition request=[\"login\",\"admin\",\"pw\"] status=200")
+    && !string_contains(s: log, pattern: "spa-root served")
 }
 
 // VIEWER SLOT BUSY: the model's other viewer makes viewer_count 1; the observer refuses with that count,

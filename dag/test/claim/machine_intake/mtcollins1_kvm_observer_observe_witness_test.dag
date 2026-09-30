@@ -9,6 +9,8 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverRecord, KvmObserverNotStarted, KvmJournalText, KvmInstant,
   KvmRetainedStill, KvmStillHashed, KvmTerminalStill, KvmTerminalStillAnswered, KvmTerminalStillUnanswered,
   KvmTeardownRecorded, KvmSnapshotKept, mtcollins1_kvm_observer_dir,
+  KvmSessionReleased, KvmSessionReleaseHttp, KvmSessionReleaseFailed, KvmSessionLoginUnobserved, KvmSessionNoSession, KvmSessionReleaseUnrecognized,
+  KvmBrowserClosed, KvmBrowserNotLaunched, KvmBrowserCloseFailed, KvmBrowserCloseUnrecognized, kvm_session_release_of, kvm_browser_close_of,
 }
 import gunbc.machine_intake_mtcollins1_kvm_observer_observe {
   KvmProbeVerdict, KvmProbeHeld, KvmProbeFell, kvm_probe_verdict,
@@ -57,7 +59,7 @@ fn answered() -> KvmTerminalStill {
 }
 
 fn held_record() -> KvmObserverRecord {
-  record(terminal: answered(), stills: [a_still()], stopped: true, session: "released", browser: "closed", process: OwnedReleased { pid: "4242" })
+  record(terminal: answered(), stills: [a_still()], stopped: true, session: "released at 2026-09-30T20:00:02.000Z", browser: "closed at 2026-09-30T20:00:02.100Z", process: OwnedReleased { pid: "4242" })
 }
 
 fn held(v: KvmProbeVerdict) -> Bool {
@@ -85,14 +87,42 @@ test fn no_retained_still_falls() -> Bool {
   fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: answered(), stills: [], stopped: true, session: "released", browser: "closed", process: OwnedReleased { pid: "4242" })), pattern: "no still")
 }
 
-// THE RELEASE IS PART OF THE CLAIM: a session that was not released, a browser not closed, a stopped line
-// never seen, or a process that could not be released each fall -- a probe that leaves the seat taken
-// is not a probe that held.
+// THE RELEASE IS PART OF THE CLAIM, JUDGED BY ITS WORD: a session not released, a browser not closed, a
+// stopped line never seen, or a process that could not be released each fall -- a probe that leaves the
+// seat taken is not a probe that held. The results are written as the teardown records them
+// ("<result> at <instant>").
+fn teardown_fell(session: String, browser: String, stopped: Bool, process: OwnedRelease, pattern: String) -> Bool {
+  fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: answered(), stills: [a_still()], stopped: stopped, session: session, browser: browser, process: process)), pattern: pattern)
+}
+
 test fn a_teardown_not_seen_through_falls() -> Bool {
-  fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: answered(), stills: [a_still()], stopped: true, session: "http-500", browser: "closed", process: OwnedReleased { pid: "4242" })), pattern: "released")
-    && fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: answered(), stills: [a_still()], stopped: true, session: "released", browser: "close-failed", process: OwnedReleased { pid: "4242" })), pattern: "released")
-    && fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: answered(), stills: [a_still()], stopped: false, session: "released", browser: "closed", process: OwnedReleased { pid: "4242" })), pattern: "released")
-    && fell_with(v: kvm_probe_verdict(admission: "", established: true, rec: record(terminal: answered(), stills: [a_still()], stopped: true, session: "released", browser: "closed", process: OwnedReleaseFailed { pid: "4242", detail: "survived KILL" })), pattern: "released")
+  teardown_fell(session: "http-500 at 2026-09-30T20:00:02.000Z", browser: "closed at 2026-09-30T20:00:02.100Z", stopped: true, process: OwnedReleased { pid: "4242" }, pattern: "web session was not released")
+    && teardown_fell(session: "released at 2026-09-30T20:00:02.000Z", browser: "close-failed detail=\"x\" at 2026-09-30T20:00:02.100Z", stopped: true, process: OwnedReleased { pid: "4242" }, pattern: "browser was not closed")
+    && teardown_fell(session: "released at 2026-09-30T20:00:02.000Z", browser: "closed at 2026-09-30T20:00:02.100Z", stopped: false, process: OwnedReleased { pid: "4242" }, pattern: "stopped line")
+    && teardown_fell(session: "released at 2026-09-30T20:00:02.000Z", browser: "closed at 2026-09-30T20:00:02.100Z", stopped: true, process: OwnedReleaseFailed { pid: "4242", detail: "survived KILL" }, pattern: "process")
+}
+
+// THE RED THE SUBSTRING READING MISSED (side-chat review 5372184063): a failed release or close whose
+// detail CONTAINS the success word is still a failure, because the result is its leading word.
+test fn a_failure_whose_detail_contains_the_success_word_still_falls() -> Bool {
+  teardown_fell(session: "release-failed detail=\"session already released by the BMC?\" at 2026-09-30T20:00:02.000Z", browser: "closed at 2026-09-30T20:00:02.100Z", stopped: true, process: OwnedReleased { pid: "4242" }, pattern: "web session was not released")
+    && teardown_fell(session: "released at 2026-09-30T20:00:02.000Z", browser: "close-failed detail=\"Target page, context or browser has been closed\" at 2026-09-30T20:00:02.100Z", stopped: true, process: OwnedReleased { pid: "4242" }, pattern: "browser was not closed")
+    && teardown_fell(session: "NOT JOURNALLED", browser: "closed at 2026-09-30T20:00:02.100Z", stopped: true, process: OwnedReleased { pid: "4242" }, pattern: "web session was not released")
+}
+
+// THE PARSE ITSELF, ONE ARM PER WORD, including a status carried out of http-N and a detail carried
+// rather than matched.
+test fn every_teardown_word_reads_into_its_own_arm() -> Bool {
+  (match kvm_session_release_of(result: "released at x") { KvmSessionReleased => true  _ => false })
+    && (match kvm_session_release_of(result: "http-401 at x") { KvmSessionReleaseHttp { status: s } => s == "401"  _ => false })
+    && (match kvm_session_release_of(result: "release-failed detail=\"released\" at x") { KvmSessionReleaseFailed { detail: d } => string_contains(s: d, pattern: "released")  _ => false })
+    && (match kvm_session_release_of(result: "login-unobserved at x") { KvmSessionLoginUnobserved => true  _ => false })
+    && (match kvm_session_release_of(result: "no-session at x") { KvmSessionNoSession => true  _ => false })
+    && (match kvm_session_release_of(result: "http- at x") { KvmSessionReleaseUnrecognized { raw: _ } => true  _ => false })
+    && (match kvm_browser_close_of(result: "closed at x") { KvmBrowserClosed => true  _ => false })
+    && (match kvm_browser_close_of(result: "no-browser at x") { KvmBrowserNotLaunched => true  _ => false })
+    && (match kvm_browser_close_of(result: "close-failed detail=\"closed\" at x") { KvmBrowserCloseFailed { detail: _ } => true  _ => false })
+    && (match kvm_browser_close_of(result: "NOT JOURNALLED") { KvmBrowserCloseUnrecognized { raw: _ } => true  _ => false })
 }
 
 // THE ARTIFACT GLOB CARRIES WHAT THE PROBE WRITES: its observer directory and its receipt, both derived

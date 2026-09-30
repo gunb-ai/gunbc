@@ -19,9 +19,10 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold { UnitHeld, UnitHoldRefu
 import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverRecord, KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted,
   KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission,
-  KvmStillHashed, KvmTeardownRecorded, KvmTerminalStillAnswered,
+  KvmStillHashed, KvmTeardownRecorded, KvmTeardownNotNeeded, KvmTerminalStillAnswered,
+  KvmSessionReleased, KvmBrowserClosed, kvm_session_release_of, kvm_browser_close_of,
   mtcollins1_kvm_observer_start, mtcollins1_kvm_observer_finish, mtcollins1_kvm_observer_dir,
-  mtcollins1_bmc_firmware, mtcollins1_kvm_still_allowance, mtcollins1_kvm_observer_establish_wait,
+  mtcollins1_bmc_firmware, mtcollins1_kvm_still_allowance,
   kvm_observer_record_text,
 }
 
@@ -57,11 +58,12 @@ data mtcollins1_kvm_observer_observe_receipt_path: String = concat(mtcollins1_kv
 // Everything the probe keeps: every probe's observer directory and its receipt.
 data mtcollins1_kvm_observer_probe_artifact_glob: String = concat(mtcollins1_kvm_observer_dir(attempt: mtcollins1_kvm_observer_probe_prefix), "-*")
 
-// WHAT THE PROBE'S OWN BOUNDED WAITS COST AT MOST: the establishment wait, then the observer's own
-// allowance (terminal still, stop, owned release). The step budget adds gunbc run's load to this on the
-// workflow side, which owns that authority.
+// WHAT THE PROBE'S OWN BOUNDED WAITS COST AT MOST is the observer's own allowance
+// (mtcollins1_kvm_still_allowance: the establishment wait, the terminal-still wait, the stop wait and
+// the owned release), counted once. The step budget adds gunbc run's load and the credential prelude to
+// this on the workflow side, which owns those authorities.
 fn mtcollins1_kvm_observer_probe_bound() -> Second {
-  second(count: second_count(s: mtcollins1_kvm_observer_establish_wait) + second_count(s: mtcollins1_kvm_still_allowance()))
+  mtcollins1_kvm_still_allowance()
 }
 
 // THE VERDICT IS A CONJUNCTION OF OBSERVED FACTS, EACH READ FROM THE RECORD: established for this
@@ -71,12 +73,20 @@ type KvmProbeVerdict
   = KvmProbeHeld
   | KvmProbeFell { reason: NonEmptyStr }
 
-fn kvm_probe_teardown_seen(rec: KvmObserverRecord) -> Bool {
+// THE TEARDOWN IS JUDGED BY ITS WORDS, NOT BY SUBSTRINGS: the session release must read exactly
+// `released` and the browser close exactly `closed` (kvm_session_release_of / kvm_browser_close_of, the
+// journal's own RS rows), the stopped line must have been seen, and the owned process released or
+// already gone. A "release-failed detail=..." whose detail mentions "released" is a failed release.
+// Absent means seen through; Present names the first fact that was not.
+fn kvm_probe_teardown_gap(rec: KvmObserverRecord) -> NonEmptyStr? {
   match rec.teardown {
     KvmTeardownRecorded { terminal: _, snapshot: _, requested_at: _, stopped_seen: st, session_release: sr, browser_close: bc, process: p } =>
-      st && string_contains(s: sr, pattern: "released") && string_contains(s: bc, pattern: "closed")
-        && match p { OwnedReleased { pid: _ } => true  OwnedAlreadyGone { pid: _ } => true  _ => false }
-    _ => false
+      if !st { Present { value: "the observer's stopped line was not seen" as NonEmptyStr } }
+      else if !(match kvm_session_release_of(result: sr) { KvmSessionReleased => true  _ => false }) { Present { value: concat("the web session was not released: ", sr) as NonEmptyStr } }
+      else if !(match kvm_browser_close_of(result: bc) { KvmBrowserClosed => true  _ => false }) { Present { value: concat("the browser was not closed: ", bc) as NonEmptyStr } }
+      else if !(match p { OwnedReleased { pid: _ } => true  OwnedAlreadyGone { pid: _ } => true  _ => false }) { Present { value: "the observer process was not seen released" as NonEmptyStr } }
+      else { none }
+    KvmTeardownNotNeeded { reason: r } => Present { value: concat("no teardown was recorded: ", r as String) as NonEmptyStr }
   }
 }
 
@@ -96,8 +106,12 @@ fn kvm_probe_verdict(admission: String, established: Bool, rec: KvmObserverRecor
   if !established { KvmProbeFell { reason: concat("the observer was not established: ", admission) as NonEmptyStr } }
   else if !kvm_probe_still_answered(rec: rec) { KvmProbeFell { reason: "the terminal still was not answered" } }
   else if kvm_probe_hashed_stills(rec: rec) < 1 { KvmProbeFell { reason: "no still was retained with its digest" } }
-  else if !kvm_probe_teardown_seen(rec: rec) { KvmProbeFell { reason: "the web session, the browser or the process was not seen released" } }
-  else { KvmProbeHeld }
+  else {
+    match kvm_probe_teardown_gap(rec: rec) {
+      Present { value: g } => KvmProbeFell { reason: g }
+      Absent => KvmProbeHeld
+    }
+  }
 }
 
 fn kvm_probe_conclude(rec: KvmObserverRecord, verdict: KvmProbeVerdict) -> ProcessExit {

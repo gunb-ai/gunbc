@@ -3,7 +3,7 @@ module gunbc.fleet_converge_workflow
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 
 import gunbc.namecheap.federation { namecheap_environment, namecheap_provider_resource, namecheap_service_account }
-import gunbc.ci_spec { gunbc_ci_namecheap_observe_invoke }
+import gunbc.ci_spec { gunbc_ci_namecheap_observe_invoke, gunbc_ci_sm_max_time }
 
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
 import std.measure { Second, minute_count, second_count }
@@ -2090,13 +2090,17 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
 // only, no web session. The receipt and the bytes are uploaded whatever the outcome, because a refused
 // run's receipt is the one that says why it holds no bytes; a step condition without a status
 // function is implicitly success() and would drop exactly that receipt.
-// A READ-ONLY MT. COLLINS PROBE STEP'S BUDGET IS A FOLD, NEVER A LITERAL: gunbc run's load of the
-// probe's closure, whose authority is the measured resolve budget
-// (gunbc.fleet_workflow_steps gunbc_ci_gunbc_run_resolve_step_timeout_minutes), plus the probe's own
-// declared read bound, rounded up to whole minutes. The flat aux budget is what killed the UI
-// bundle's first wet run (36759368077) while it was still typechecking.
-fn fleet_converge_mtcollins1_probe_step_timeout_minutes(read_bound: Second) -> Int {
-  gunbc_ci_gunbc_run_resolve_step_timeout_minutes + ((second_count(s: read_bound) as Int) + 59) / 60
+// A READ-ONLY MT. COLLINS PROBE STEP'S BUDGET IS A FOLD, NEVER A LITERAL, over the step's phases in
+// order, each counted once and rounded once: gunbc run's load of the probe's closure, whose authority is
+// the measured resolve budget (gunbc.fleet_workflow_steps gunbc_ci_gunbc_run_resolve_step_timeout_minutes);
+// the credential prelude's one bounded Secret Manager read (gunbc.ci_spec gunbc_ci_sm_max_time -- the
+// prelude's other lines are local file writes); and the probe's own declared bound. The flat aux budget
+// is what killed the UI bundle's first wet run (36759368077) while it was still typechecking.
+fn fleet_converge_mtcollins1_probe_step_timeout_minutes(probe_bound: Second) -> Int {
+  let secs = gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60
+    + (second_count(s: gunbc_ci_sm_max_time) as Int)
+    + (second_count(s: probe_bound) as Int)
+  (secs + 59) / 60
 }
 
 data fleet_converge_mtcollins1_ui_bundle_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1UiBundleObserve)
@@ -2113,7 +2117,7 @@ fn fleet_converge_mtcollins1_ui_bundle_observe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_ui_bundle_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(read_bound: mtcollins1_ui_bundle_read_bound()) }
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(probe_bound: mtcollins1_ui_bundle_read_bound()) }
   }
 }
 
@@ -2149,7 +2153,7 @@ fn fleet_converge_mtcollins1_kvm_observer_observe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_kvm_observer_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(read_bound: mtcollins1_kvm_observer_probe_bound()) }
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(probe_bound: mtcollins1_kvm_observer_probe_bound()) }
   }
 }
 
