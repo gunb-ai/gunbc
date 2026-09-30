@@ -45,16 +45,27 @@ fn admit_parses(list: String) -> Bool {
   }
 }
 
-test fn a_trailing_comma_in_admit_callers_parses_holds() -> Bool {
+// Each parse is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it: a parse is mostly fixed front-end
+// work, so a claim that parsed its own source was over the new-witness eval-step budget.
+fn trailing_comma_parsed() -> Bool {
   admit_parses(list: "caller_a,\n    caller_b,\n  ")
 }
 
-test fn an_admit_callers_list_without_a_trailing_comma_parses_holds() -> Bool {
+fn no_trailing_comma_parsed() -> Bool {
   admit_parses(list: "caller_a, caller_b")
 }
 
+fn only_a_comma_parsed() -> Bool {
+  admit_parses(list: ",")
+}
+
+test fn a_trailing_comma_in_admit_callers_parses_holds() -> Bool { trailing_comma_parsed() }
+
+test fn an_admit_callers_list_without_a_trailing_comma_parses_holds() -> Bool { no_trailing_comma_parsed() }
+
 test fn an_admit_callers_list_of_only_a_comma_refuses_holds() -> Bool {
-  match admit_parses(list: ",") {
+  match only_a_comma_parsed() {
     true => false
     false => true
   }
