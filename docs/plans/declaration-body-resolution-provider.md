@@ -109,7 +109,14 @@ declared corpus return type beyond kernel and `Bool`, from the resolved callee A
 `infer_declaration_reference_facts`. As a result the seven's `parse_module_prepared(...)` is typed as
 `Outcome<ParseArtifact>`. Proof: calm-pike-507's seven's-frontier claim in
 `v2.test.claim.match_binder.match_binder_typing`
-(`infer_match_scrutinee_type_underived` on that call shape) flips to a typed binder (C12).
+(`infer_match_scrutinee_type_underived` on that call shape) flips to a typed binder (C12). Concretely,
+`mbt_the_sevens_call_scrutinee_is_a_counted_frontier_holds` goes red and is replaced by a positive
+claim that the binder `artifact` in `mbt_seven_src` is `ParseArtifact` (`mbp_fact_of` with
+`mbp_find_atom(^artifact)`, the shape of `mbt_binder_is_typed_parse_artifact_from_accepted_value_holds`).
+The coproduct readers (`infer_match_coproduct_of_type`, `infer_binding_type_in_scope`,
+`infer_match_field_type_instantiated`) currently leave non-parameter field types that are scoped to
+their declaration underived on purpose. In PR2 they read the resolved types from the provider
+instead.
 
 ## 4. Controls
 
