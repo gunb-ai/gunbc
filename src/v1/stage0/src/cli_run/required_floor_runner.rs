@@ -7116,50 +7116,72 @@ pub fn run_required_floor(
             let observation = crate::cli_run::checker_dependency::observe_checker_input_paths(
                 &process_workspace_root(),
             );
-            let decision = crate::cli_run::checker_dependency::checker_subject_decision(
+            let application = crate::cli_run::checker_dependency::checker_subject_application(
                 source_roots,
                 &observation,
                 paths,
             )?;
             let dependency_count = observation.as_ref().map(Vec::len).unwrap_or(0);
-            if decision.refused() {
-                if commit != "local" && !commit.is_empty() {
-                    return Err(format!(
-                        "REQUIRED-FLOOR REFUSAL cause=CheckerSubjectRefused {} -- whether this \
-                         change reaches the checker is unknown, and the floor neither narrows to \
-                         the .dag frontier nor widens to the corpus on that ignorance",
-                        decision.reason
-                    ));
+            use crate::cli_run::checker_dependency::CheckerSubjectApplication;
+            match &application {
+                CheckerSubjectApplication::CheckerSubjectApplicationRefused { reason } => {
+                    if commit != "local" && !commit.is_empty() {
+                        return Err(format!(
+                            "REQUIRED-FLOOR REFUSAL cause=CheckerSubjectRefused {reason} -- \
+                             whether this change reaches the checker is unknown, and the floor \
+                             neither narrows to the .dag frontier nor widens to the corpus on \
+                             that ignorance"
+                        ));
+                    }
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=CheckerSubjectRefused \
+                         state=not-evaluated reason={reason:?}"
+                    );
+                    Vec::new()
                 }
-                eprintln!(
-                    "[floor-phase] phase=checker-input-subject rule=CheckerSubjectRefused \
-                     state=not-evaluated reason={:?}",
-                    decision.reason
-                );
-                Vec::new()
-            } else if decision.selects_every_admitted_module() {
-                let seeds = crate::cli_run::checker_dependency::checker_module_seeds(
-                    &decision,
-                    &floor_corpus,
-                );
-                eprintln!(
-                    "[floor-phase] phase=checker-input-subject rule=EveryAdmittedModule \
-                     seed_ground=SeedCheckerSourceChanged checker_inputs={dependency_count} \
-                     changed_checker_paths={:?} modules_seeded={} -- the checker is a dependency \
-                     of every module it judges, so every admitted module is Strict-prepared; \
-                     claims are planned as before",
-                    decision.changed_checker_paths,
-                    seeds.len()
-                );
-                seeds
-            } else {
-                eprintln!(
-                    "[floor-phase] phase=checker-input-subject rule={} \
-                     checker_inputs={dependency_count} diff_paths={}",
-                    decision.rule,
-                    paths.len()
-                );
-                Vec::new()
+                CheckerSubjectApplication::PrepareEveryAdmittedModule {
+                    changed_checker_paths,
+                } => {
+                    let seeds = crate::cli_run::checker_dependency::checker_module_seeds(
+                        &application,
+                        &floor_corpus,
+                    );
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=EveryAdmittedModule \
+                         applied=true seed_ground=SeedCheckerSourceChanged \
+                         checker_inputs={dependency_count} \
+                         changed_checker_paths={changed_checker_paths:?} modules_seeded={} -- \
+                         the checker is a dependency of every module it judges, so every \
+                         admitted module is Strict-prepared; claims are planned as before",
+                        seeds.len()
+                    );
+                    seeds
+                }
+                CheckerSubjectApplication::EveryAdmittedModuleWithheld {
+                    changed_checker_paths,
+                    drop_identity,
+                } => {
+                    // A DECLARED DROP, ANNOUNCED ON EVERY RUN IT BEARS ON: the rule chose the
+                    // whole corpus, and the standing drop says why this run does not prepare it.
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=EveryAdmittedModule \
+                         applied=false withheld_under=gunbc.rung_drop.{drop_identity} \
+                         checker_inputs={dependency_count} \
+                         changed_checker_paths={changed_checker_paths:?} modules_not_prepared={} \
+                         -- this checker change is judged over the narrow subject only; a module \
+                         its new check refuses outside that subject is not seen on this run",
+                        floor_corpus.inventory.len()
+                    );
+                    Vec::new()
+                }
+                CheckerSubjectApplication::NarrowSubject => {
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=CheckerInputsUnchanged \
+                         checker_inputs={dependency_count} diff_paths={}",
+                        paths.len()
+                    );
+                    Vec::new()
+                }
             }
         }
         None => {
@@ -13325,7 +13347,9 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
     // refuses on the victim. The positive control is the same fixture under a non-checker diff.
     #[test]
     fn a_checker_edit_prepares_the_module_its_check_refuses_outside_the_edited_closure() {
-        use crate::cli_run::checker_dependency::{checker_module_seeds, checker_subject_decision};
+        use crate::cli_run::checker_dependency::{
+            checker_module_seeds, checker_subject_application_when_applied,
+        };
         const EDITED: &str = "module armset.edited\n\nfn ok() -> Int {\n  1\n}\n";
         const VICTIM: &str = "module armset.victim\n\nfn wrong() -> String {\n  1\n}\n";
         let fx = interface_fixture(
@@ -13340,10 +13364,11 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
         let record = Ok(vec![infer.clone()]);
         let authority_roots = default_source_roots();
         let subject_under = |changed: &[String]| {
-            let decision =
-                checker_subject_decision(&authority_roots, &record, changed).expect("decision");
+            let application =
+                checker_subject_application_when_applied(&authority_roots, &record, changed)
+                    .expect("application");
             let seeds: Vec<String> = std::iter::once("armset.edited".to_string())
-                .chain(checker_module_seeds(&decision, &corpus))
+                .chain(checker_module_seeds(&application, &corpus))
                 .collect();
             crate::cli_run::prepare_repository_from_corpus(
                 &corpus,

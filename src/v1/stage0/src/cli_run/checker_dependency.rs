@@ -20,21 +20,21 @@ use std::path::{Path, PathBuf};
 
 const CHECKER_SUBJECT_AUTHORITY: &str = "src/v2/workflow/floor_subject_seed.dag";
 
-/// `v2.workflow.floor_subject_seed` `CheckerSubjectDecision`, decoded.
+/// `v2.workflow.floor_subject_seed` `CheckerSubjectApplication`, decoded by variant. The host holds
+/// no string tag: an arm it does not know is a decode refusal, never a narrow subject (review 73329).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CheckerSubjectDecision {
-    pub rule: String,
-    pub changed_checker_paths: Vec<String>,
-    pub reason: String,
-}
-
-impl CheckerSubjectDecision {
-    pub(crate) fn selects_every_admitted_module(&self) -> bool {
-        self.rule == "EveryAdmittedModule"
-    }
-    pub(crate) fn refused(&self) -> bool {
-        self.rule == "CheckerSubjectRefused"
-    }
+pub(crate) enum CheckerSubjectApplication {
+    NarrowSubject,
+    PrepareEveryAdmittedModule {
+        changed_checker_paths: Vec<String>,
+    },
+    EveryAdmittedModuleWithheld {
+        changed_checker_paths: Vec<String>,
+        drop_identity: String,
+    },
+    CheckerSubjectApplicationRefused {
+        reason: String,
+    },
 }
 
 /// The prerequisites of every rule in a Makefile-syntax dep-info file, with `\ ` unescaped.
@@ -181,13 +181,27 @@ pub(crate) fn checker_inputs_from_record(
     Ok(inputs)
 }
 
-/// Evaluate `checker_subject_decision` over the observation. The rule lives in the `.dag`; this
-/// function decodes its three-field wire form and decides nothing.
-pub(crate) fn checker_subject_decision(
+/// The floor's call: the rule for this observation under the DECLARED widening standing. The rule
+/// and the standing live in the `.dag`; this function decodes the arm and decides nothing.
+pub(crate) fn checker_subject_application(
     source_roots: &[String],
     observation: &Result<Vec<String>, String>,
     changed_paths: &[String],
-) -> Result<CheckerSubjectDecision, String> {
+) -> Result<CheckerSubjectApplication, String> {
+    evaluate_application(
+        source_roots,
+        "checker_subject_application_from_host",
+        observation,
+        changed_paths,
+    )
+}
+
+fn evaluate_application(
+    source_roots: &[String],
+    entry_function: &str,
+    observation: &Result<Vec<String>, String>,
+    changed_paths: &[String],
+) -> Result<CheckerSubjectApplication, String> {
     use v1_interpreter::Value;
     // Anchored at the workspace root rather than the process cwd, so the decision is the same
     // from the floor (run at the root) and from a test (run in the crate directory).
@@ -212,40 +226,63 @@ pub(crate) fn checker_subject_decision(
                 .collect::<Vec<_>>(),
         )
     };
-    let (deps, refusal) = match observation {
-        Ok(paths) => (list(paths), v1_interpreter::str_value("")),
-        Err(reason) => (list(&[]), v1_interpreter::str_value(reason)),
+    let (observed, deps, refusal) = match observation {
+        Ok(paths) => (true, list(paths), v1_interpreter::str_value("")),
+        Err(reason) => (false, list(&[]), v1_interpreter::str_value(reason)),
     };
     let args = [
+        (Some("observed".to_string()), Value::Bool(observed)),
         (Some("dependency_paths".to_string()), deps),
-        (Some("observation_refusal".to_string()), refusal),
+        (Some("refusal_reason".to_string()), refusal),
         (Some("changed_paths".to_string()), list(changed_paths)),
     ];
-    let result =
-        v1_interpreter::run_in_context_with_args(&ctx, "checker_subject_decision", &args, false)
-            .map_err(|e| format!("checker_subject_decision: {e}"))?;
-    let fields = match &result {
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+    let result = v1_interpreter::run_in_context_with_args(&ctx, entry_function, &args, false)
+        .map_err(|e| format!("{entry_function}: {e}"))?;
+    let (variant_name, fields) = match &result {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => (*variant_name, fields),
         other => {
             return Err(format!(
-                "checker_subject_decision returned `{}`, expected CheckerSubjectDecision",
+                "{entry_function} returned `{}`, expected a CheckerSubjectApplication arm",
                 ctx.format_value(other)
             ))
         }
     };
+    let paths = || match ctx.field(fields, "changed_checker_paths") {
+        Some(v) => decoded_string_list(&ctx, v),
+        None => Err("arm missing `changed_checker_paths`".to_string()),
+    };
     let text = |name: &str| match ctx.field(fields, name) {
         Some(Value::Str(s)) => Ok(s.to_string()),
-        _ => Err(format!("CheckerSubjectDecision missing String `{name}`")),
+        _ => Err(format!("arm missing String `{name}`")),
     };
-    let changed_checker_paths = match ctx.field(fields, "changed_checker_paths") {
-        Some(v) => decoded_string_list(&ctx, v)?,
-        None => return Err("CheckerSubjectDecision missing `changed_checker_paths`".to_string()),
-    };
-    Ok(CheckerSubjectDecision {
-        rule: text("rule")?,
-        changed_checker_paths,
-        reason: text("reason")?,
-    })
+    if ctx.sym_eq(variant_name, "NarrowSubject") {
+        Ok(CheckerSubjectApplication::NarrowSubject)
+    } else if ctx.sym_eq(variant_name, "PrepareEveryAdmittedModule") {
+        Ok(CheckerSubjectApplication::PrepareEveryAdmittedModule {
+            changed_checker_paths: paths()?,
+        })
+    } else if ctx.sym_eq(variant_name, "EveryAdmittedModuleWithheld") {
+        Ok(CheckerSubjectApplication::EveryAdmittedModuleWithheld {
+            changed_checker_paths: paths()?,
+            drop_identity: text("drop_identity")?,
+        })
+    } else if ctx.sym_eq(variant_name, "CheckerSubjectApplicationRefused") {
+        Ok(
+            CheckerSubjectApplication::CheckerSubjectApplicationRefused {
+                reason: text("reason")?,
+            },
+        )
+    } else {
+        Err(format!(
+            "{entry_function} returned an arm this host does not know: `{}`; the floor refuses \
+             rather than read an unknown arm as the narrow subject",
+            ctx.format_value(&result)
+        ))
+    }
 }
 
 /// A `List<String>` as the frame returns it: a host list, or the structural `FreeMonoid` chain a
@@ -298,15 +335,33 @@ fn decoded_string_list(
     }
 }
 
+/// The route control's call: the same rule under the standing the drop's retirement would declare.
+#[cfg(test)]
+pub(crate) fn checker_subject_application_when_applied(
+    source_roots: &[String],
+    observation: &Result<Vec<String>, String>,
+    changed_paths: &[String],
+) -> Result<CheckerSubjectApplication, String> {
+    evaluate_application(
+        source_roots,
+        "checker_subject_application_when_applied",
+        observation,
+        changed_paths,
+    )
+}
+
 /// The module seeds a decision contributes: every module the corpus admits when the rule chose
 /// `EveryAdmittedModule`, and none otherwise. The runner and its route control both call this, so
 /// the control prepares exactly what the floor prepares.
 pub(crate) fn checker_module_seeds(
-    decision: &CheckerSubjectDecision,
+    application: &CheckerSubjectApplication,
     corpus: &SourceCorpusRead,
 ) -> Vec<String> {
-    if !decision.selects_every_admitted_module() {
-        return Vec::new();
+    match application {
+        CheckerSubjectApplication::PrepareEveryAdmittedModule { .. } => {}
+        CheckerSubjectApplication::NarrowSubject
+        | CheckerSubjectApplication::EveryAdmittedModuleWithheld { .. }
+        | CheckerSubjectApplication::CheckerSubjectApplicationRefused { .. } => return Vec::new(),
     }
     corpus
         .inventory
@@ -395,27 +450,39 @@ mod tests {
     // restated here.
     #[test]
     fn the_modeled_rule_widens_only_for_a_changed_checker_input() {
+        use CheckerSubjectApplication::*;
         let roots = default_source_roots();
-        let record = Ok(vec!["src/v1/stage0/src/v1_compiler_infer.rs".to_string()]);
-        let widened = checker_subject_decision(
-            &roots,
-            &record,
-            &["src/v1/stage0/src/v1_compiler_infer.rs".to_string()],
-        )
-        .expect("decision");
-        assert!(widened.selects_every_admitted_module(), "{widened:?}");
-        let narrow =
-            checker_subject_decision(&roots, &record, &["src/v2/workflow/x.dag".to_string()])
-                .expect("decision");
-        assert_eq!(narrow.rule, "CheckerInputsUnchanged");
-        let refused = checker_subject_decision(
-            &roots,
-            &Err("dep-info unreadable".to_string()),
-            &["src/v2/workflow/x.dag".to_string()],
-        )
-        .expect("decision");
-        assert!(refused.refused(), "{refused:?}");
-        assert_eq!(refused.reason, "dep-info unreadable");
+        let infer = "src/v1/stage0/src/v1_compiler_infer.rs".to_string();
+        let record = Ok(vec![infer.clone()]);
+        let one = std::slice::from_ref(&infer);
+        // UNDER THE DECLARED STANDING the widening is withheld and names its drop.
+        assert_eq!(
+            checker_subject_application(&roots, &record, one).expect("application"),
+            EveryAdmittedModuleWithheld {
+                changed_checker_paths: vec![infer.clone()],
+                drop_identity: "compiler_change_refusals_land_outside_every_compiled_closure"
+                    .to_string(),
+            }
+        );
+        // APPLIED, the same rule prepares every admitted module.
+        assert_eq!(
+            checker_subject_application_when_applied(&roots, &record, one).expect("application"),
+            PrepareEveryAdmittedModule {
+                changed_checker_paths: vec![infer.clone()]
+            }
+        );
+        assert_eq!(
+            checker_subject_application(&roots, &record, &["src/v2/workflow/x.dag".to_string()])
+                .expect("application"),
+            NarrowSubject
+        );
+        // An EMPTY refusal reason is still unobserved: the Bool carries the state, not the text.
+        assert_eq!(
+            checker_subject_application(&roots, &Err(String::new()), one).expect("application"),
+            CheckerSubjectApplicationRefused {
+                reason: String::new()
+            }
+        );
     }
 
     fn tempdir_with_manifest() -> PathBuf {

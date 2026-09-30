@@ -374,40 +374,120 @@ fn checker_subject_rule(
   }
 }
 
-fn checker_subject_rule_wire_name(rule: CheckerSubjectRule) -> String {
-  match rule {
-    CheckerInputsUnchanged => "CheckerInputsUnchanged"
-    EveryAdmittedModule { changed_checker_paths: _ } => "EveryAdmittedModule"
-    CheckerSubjectRefused { reason: _ } => "CheckerSubjectRefused"
-  }
-}
-
-// The host's wire form: one call, three fields, so it decodes no coproduct. `rule` is the wire
-// name above, `changed_checker_paths` is empty unless the rule is EveryAdmittedModule, and
-// `reason` is empty unless the rule refused.
-type CheckerSubjectDecision {
-  rule: String
-  changed_checker_paths: List<String>
-  reason: String
-}
-
-fn checker_subject_decision(
+// THE HOST CALL. It returns the CheckerSubjectRule coproduct itself, and the host decodes that
+// by variant, so a renamed or added arm is an unknown variant the host refuses. An earlier
+// revision flattened the rule into a String tag with fields meaningful only for some tags, and
+// the host narrowed on any tag it did not recognise, which is the silent narrowing this module
+// exists to close (review 73329). `observed` is a Bool rather than an empty-string sentinel, so
+// an empty refusal reason cannot read as an observation.
+fn checker_subject_rule_from_host(
+  observed: Bool,
   dependency_paths: List<String>,
-  observation_refusal: String,
+  refusal_reason: String,
   changed_paths: List<String>,
-) -> CheckerSubjectDecision {
-  let observation = if observation_refusal == "" {
-    CheckerDependenciesObserved { dependency_paths: dependency_paths }
+) -> CheckerSubjectRule {
+  if observed {
+    checker_subject_rule(
+      observation: CheckerDependenciesObserved { dependency_paths: dependency_paths },
+      changed_paths: changed_paths
+    )
   } else {
-    CheckerDependenciesUnavailable { reason: observation_refusal }
+    checker_subject_rule(
+      observation: CheckerDependenciesUnavailable { reason: refusal_reason },
+      changed_paths: changed_paths
+    )
   }
-  let rule = checker_subject_rule(observation: observation, changed_paths: changed_paths)
+}
+
+// WHETHER THE WIDENING IS APPLIED ON THE REQUIRED PATH. The edge above is modeled and decided on
+// every run. APPLYING it, meaning Strict-preparing every admitted module, was measured over the
+// per-PR runner class: gunbc#12761 on srv1 over main with gunbc#12765, 2142s wall and 43.66 GiB
+// peak against the 28 GiB class and the 30-minute line (neat-boar-16, 2026-09-30). So the widening
+// is withheld under the standing drop that already owns this loss,
+// gunbc.rung_drop.compiler_change_refusals_land_outside_every_compiled_closure, and the amendment
+// gunbc.rung_drop_amendment.checker_edge_withheld_over_the_per_pr_runner_class says why. The
+// standing names the drop it is withheld under, so the host cannot withhold without citing one,
+// and every run prints the rule it would have applied. This is a declared, bounded rung drop and not
+// an escape hatch: there is no argument, environment variable or flag that changes it, and it is
+// retired only by the drop's trigger.
+type CheckerWideningStanding
+  = WideningApplied
+  | WideningWithheldUnderDrop { drop_identity: String }
+
+data checker_widening_standing: CheckerWideningStanding = WideningWithheldUnderDrop {
+  drop_identity: "compiler_change_refusals_land_outside_every_compiled_closure"
+}
+
+type CheckerSubjectApplication
+  = NarrowSubject
+  | PrepareEveryAdmittedModule { changed_checker_paths: List<String> }
+  | EveryAdmittedModuleWithheld { changed_checker_paths: List<String>, drop_identity: String }
+  | CheckerSubjectApplicationRefused { reason: String }
+
+fn checker_subject_application(
+  rule: CheckerSubjectRule,
+  standing: CheckerWideningStanding,
+) -> CheckerSubjectApplication {
   match rule {
-    CheckerInputsUnchanged =>
-      CheckerSubjectDecision { rule: checker_subject_rule_wire_name(rule: rule), changed_checker_paths: [], reason: "" }
+    CheckerInputsUnchanged => NarrowSubject
+    CheckerSubjectRefused { reason: r } => CheckerSubjectApplicationRefused { reason: r }
     EveryAdmittedModule { changed_checker_paths: changed } =>
-      CheckerSubjectDecision { rule: checker_subject_rule_wire_name(rule: rule), changed_checker_paths: changed, reason: "" }
-    CheckerSubjectRefused { reason: r } =>
-      CheckerSubjectDecision { rule: checker_subject_rule_wire_name(rule: rule), changed_checker_paths: [], reason: r }
+      match standing {
+        WideningApplied => PrepareEveryAdmittedModule { changed_checker_paths: changed }
+        WideningWithheldUnderDrop { drop_identity: d } =>
+          EveryAdmittedModuleWithheld { changed_checker_paths: changed, drop_identity: d }
+      }
   }
+}
+
+// THE HOST CALLS. The floor's call applies the DECLARED standing. The route control applies an
+// explicit one, so it can show what the edge prepares once the drop's trigger fires, without the
+// floor having any way to choose its own standing.
+fn checker_subject_application_under(
+  standing: CheckerWideningStanding,
+  observed: Bool,
+  dependency_paths: List<String>,
+  refusal_reason: String,
+  changed_paths: List<String>,
+) -> CheckerSubjectApplication {
+  checker_subject_application(
+    rule: checker_subject_rule_from_host(
+      observed: observed,
+      dependency_paths: dependency_paths,
+      refusal_reason: refusal_reason,
+      changed_paths: changed_paths
+    ),
+    standing: standing
+  )
+}
+
+fn checker_subject_application_from_host(
+  observed: Bool,
+  dependency_paths: List<String>,
+  refusal_reason: String,
+  changed_paths: List<String>,
+) -> CheckerSubjectApplication {
+  checker_subject_application_under(
+    standing: checker_widening_standing,
+    observed: observed,
+    dependency_paths: dependency_paths,
+    refusal_reason: refusal_reason,
+    changed_paths: changed_paths
+  )
+}
+
+// The route control's call, with the standing the drop's retirement would declare.
+fn checker_subject_application_when_applied(
+  observed: Bool,
+  dependency_paths: List<String>,
+  refusal_reason: String,
+  changed_paths: List<String>,
+) -> CheckerSubjectApplication {
+  checker_subject_application_under(
+    standing: WideningApplied,
+    observed: observed,
+    dependency_paths: dependency_paths,
+    refusal_reason: refusal_reason,
+    changed_paths: changed_paths
+  )
 }
