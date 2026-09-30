@@ -473,6 +473,7 @@ import gunbc.roadmap.roadmap_submission {
   submission_artifact_name, submission_digest, submission_decode,
   submission_capture_basename, submission_capture_text, submission_capture_decode,
   submission_readiness_key,
+  SubmissionCandidacy, SubmissionIsCandidate, SubmissionNotCandidate, submission_candidacy,
   SubmissionCaptureRootBound,
   submission_capture_binding_refusal, CaptureBindingMismatch, CaptureBindingUnverifiable,
 }
@@ -7112,6 +7113,41 @@ fn belt_run_validation_operations(
   )
 }
 
+// THE CAPTURE GATE OF THE VERIFY PASS, the twin of belt_integration_capture_gate and consuming the
+// same classifier, so the two passes answer "is this capture a verification candidate" identically.
+type BeltVerifyCaptureGate
+  = VerifyCaptureAdvances { capture: SubmissionCapture }
+  | VerifyCaptureStops { outcome: BeltVerifyOutcome }
+
+fn belt_verify_capture_gate(node_id: String, capture: SubmissionCaptureObservation) -> BeltVerifyCaptureGate {
+  match capture {
+    CaptureUnreadable { reason } =>
+      VerifyCaptureStops {
+        outcome: VerifyRefused {
+          node_id: node_id,
+          cause: join([
+            "whether this head is a captured candidate is unknown (",
+            reason,
+            "), and the belt does not verify a head it cannot bind to a submission",
+          ], ""),
+        },
+      }
+    CaptureAbsent =>
+      VerifyCaptureStops {
+        outcome: VerifyDeferred {
+          node_id: node_id,
+          reason: "no submission capture binds this head: the belt's commit over it was a checkpoint (yielded, not ready), and only a captured candidate advances to authoritative verification",
+        },
+      }
+    CaptureForHead { capture: c } =>
+      match submission_candidacy(submission: c.submission) {
+        SubmissionNotCandidate { reason } =>
+          VerifyCaptureStops { outcome: VerifyDeferred { node_id: node_id, reason: reason } }
+        SubmissionIsCandidate => VerifyCaptureAdvances { capture: c }
+      }
+  }
+}
+
 fn belt_verify_attempt_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
@@ -7152,51 +7188,21 @@ fn belt_verify_attempt_for_instance(
               WorktreeHeadUnobserved { reason } =>
                 VerifyDeferred { node_id: progress.node_id, reason: reason }
               WorktreeHeadObserved { revision: revision } =>
-              match belt_submission_capture_for_head(
-                instance: instance,
-                worktree: attempt_worktree,
-                dir: belt_attempt_submission_dir_for_instance(
+              match belt_verify_capture_gate(
+                node_id: progress.node_id,
+                capture: belt_submission_capture_for_head(
                   instance: instance,
-                  node_id: node_id,
-                  attempt_key: progress.attempt_key,
+                  worktree: attempt_worktree,
+                  dir: belt_attempt_submission_dir_for_instance(
+                    instance: instance,
+                    node_id: node_id,
+                    attempt_key: progress.attempt_key,
+                  ),
+                  head_sha: revision as String,
                 ),
-                head_sha: revision as String,
               ) {
-                CaptureUnreadable { reason } =>
-                  VerifyRefused {
-                    node_id: progress.node_id,
-                    cause: join([
-                      "whether this head is a captured candidate is unknown (",
-                      reason,
-                      "), and the belt does not verify a head it cannot bind to a submission",
-                    ], ""),
-                  }
-                CaptureAbsent =>
-                  VerifyDeferred {
-                    node_id: progress.node_id,
-                    reason: "no submission capture binds this head: the belt's commit over it was a checkpoint (yielded, not ready), and only a captured candidate advances to authoritative verification",
-                  }
-                CaptureForHead { capture } =>
-              match capture.submission.readiness {
-                SubmissionBlocked =>
-                  VerifyDeferred {
-                    node_id: progress.node_id,
-                    reason: join([
-                      "the captured submission declares blocked, not ready: ",
-                      capture.submission.explanation,
-                      " -- no candidate advances to verification",
-                    ], ""),
-                  }
-                SubmissionNeedsContext =>
-                  VerifyDeferred {
-                    node_id: progress.node_id,
-                    reason: join([
-                      "the captured submission declares needs-context, not ready: ",
-                      capture.submission.explanation,
-                      " -- no candidate advances to verification",
-                    ], ""),
-                  }
-                SubmissionReady => {
+                VerifyCaptureStops { outcome } => outcome
+                VerifyCaptureAdvances { capture: _ } => {
                 let head_sha = revision as String
                 let worktree = belt_verify_detached_worktree(
                   instance: instance,
@@ -7333,7 +7339,6 @@ fn belt_verify_attempt_for_instance(
                     }
                   }
                 }
-              }
               }
               }
             }
@@ -9874,6 +9879,52 @@ type BeltCandidateVerdict
   | VerificationNotPassed { reason: String }
   | VerificationUnreadable { reason: String }
 
+// THE SELECTION IS READ THREE WAYS, NOT TWO. SelectionAbsent is an ABSENCE -- the belt has not yet
+// selected a verification window for this head, which is the ordinary state of a head the verify
+// pass has not reached -- so the candidate is not (yet) passed and the integrate step defers.
+// Unaddressable, unreadable and malformed selections are faults and stay unreadable, as does a
+// present selection that cannot bind a subject (another head, no criteria digest). Collapsing the
+// absence into the fault failed the publish pass on every tick from 2026-09-29.
+type BeltCandidateSubjectReading
+  = CandidateSubjectSettled { verdict: BeltCandidateVerdict }
+  | CandidateSubjectBound { subject: VerificationSubject }
+
+fn belt_candidate_subject_reading(
+  node: RoadmapNode,
+  attempt_key: String,
+  branch: String,
+  head: CommitSha,
+  selection: CurrentVerificationSelectionObservation,
+) -> BeltCandidateSubjectReading {
+  match selection {
+    SelectionAbsent =>
+      CandidateSubjectSettled {
+        verdict: VerificationNotPassed {
+          reason: "the belt has not selected a verification window for this head yet, so no verified candidate exists to integrate",
+        },
+      }
+    SelectionUnaddressable { cause } =>
+      CandidateSubjectSettled { verdict: VerificationUnreadable { reason: cause } }
+    SelectionUnreadable { cause } =>
+      CandidateSubjectSettled { verdict: VerificationUnreadable { reason: cause } }
+    SelectionMalformed { cause } =>
+      CandidateSubjectSettled { verdict: VerificationUnreadable { reason: cause } }
+    SelectionObserved { head: _, window_identity: _ } =>
+      match belt_verification_subject_from_selection(
+        node: node,
+        attempt_key: attempt_key,
+        branch: branch,
+        head: head,
+        selection: selection,
+      ) {
+        VerificationSubjectUnobserved { reason } =>
+          CandidateSubjectSettled { verdict: VerificationUnreadable { reason: reason } }
+        VerificationSubjectObserved { subject } =>
+          CandidateSubjectBound { subject: subject }
+      }
+  }
+}
+
 fn belt_candidate_verification_passed(
   instance: HostDashboardInstance,
   node_id: String,
@@ -9898,7 +9949,7 @@ fn belt_candidate_verification_passed(
         attempt_key: attempt_key,
         selection: selection,
       )
-      match belt_verification_subject_from_selection(
+      match belt_candidate_subject_reading(
         node: node,
         attempt_key: attempt_key,
         branch: dispatch_branch_name(
@@ -9908,9 +9959,8 @@ fn belt_candidate_verification_passed(
         head: head_sha as CommitSha,
         selection: selection,
       ) {
-        VerificationSubjectUnobserved { reason } =>
-          VerificationUnreadable { reason: reason }
-        VerificationSubjectObserved { subject } =>
+        CandidateSubjectSettled { verdict } => verdict
+        CandidateSubjectBound { subject } =>
           match verification_file_evidence_for(expected: subject, source: source) {
             VerificationFileAbsent =>
               VerificationNotPassed { reason: "no verification receipt exists for this head yet" }
@@ -10087,6 +10137,32 @@ type BeltIntegrationCoreStep
   | IntegrationCoreBlocked { detail: String }
   | IntegrationCoreIntegrated { project_key: String }
 
+// THE CAPTURE GATE OF THE INTEGRATE STEP, pure so a witness reaches every arm with a supplied
+// observation. Only a capture the shared classifier (gunbc.roadmap.roadmap_submission
+// submission_candidacy) admits as a candidate advances to the verification read; a blocked or
+// needs-context declaration defers exactly as the verify pass defers it (belt_verify_capture_gate),
+// never reaching a selection the verify pass will by design never write.
+type BeltIntegrationCaptureGate
+  = IntegrationCaptureAdvances { capture: SubmissionCapture }
+  | IntegrationCaptureStops { step: BeltIntegrationCoreStep }
+
+fn belt_integration_capture_gate(capture: SubmissionCaptureObservation) -> BeltIntegrationCaptureGate {
+  match capture {
+    CaptureAbsent =>
+      IntegrationCaptureStops {
+        step: IntegrationCoreDeferred { reason: "no submission capture binds this head, so there is no candidate to integrate" },
+      }
+    CaptureUnreadable { reason } =>
+      IntegrationCaptureStops { step: IntegrationCoreUnreadable { detail: reason } }
+    CaptureForHead { capture: c } =>
+      match submission_candidacy(submission: c.submission) {
+        SubmissionNotCandidate { reason } =>
+          IntegrationCaptureStops { step: IntegrationCoreDeferred { reason: reason } }
+        SubmissionIsCandidate => IntegrationCaptureAdvances { capture: c }
+      }
+  }
+}
+
 // THE PER-ITEM INTEGRATE, census-free. The integration receipt at the attempt's own head answers
 // first: a recorded verdict there is durable (the same head merges to the same answer), so a
 // repeat wake-up is a typed no-op that never touches the project envelope. Only an un-integrated
@@ -10126,7 +10202,7 @@ fn belt_integrate_candidate_core_for_instance(
             IntegrationBlocked { detail } => IntegrationCoreBlocked { detail: detail }
           }
         IntegrationReceiptAbsent =>
-      match belt_submission_capture_for_head(
+      match belt_integration_capture_gate(capture: belt_submission_capture_for_head(
         instance: instance,
         worktree: worktree,
         dir: belt_attempt_submission_dir_for_instance(
@@ -10135,11 +10211,9 @@ fn belt_integrate_candidate_core_for_instance(
           attempt_key: attempt_key,
         ),
         head_sha: revision as String,
-      ) {
-        CaptureAbsent =>
-          IntegrationCoreDeferred { reason: "no submission capture binds this head, so there is no candidate to integrate" }
-        CaptureUnreadable { reason } => IntegrationCoreUnreadable { detail: reason }
-        CaptureForHead { capture } =>
+      )) {
+        IntegrationCaptureStops { step } => step
+        IntegrationCaptureAdvances { capture } =>
           match belt_candidate_verification_passed(
             instance: instance,
             node_id: node_id,
@@ -10788,6 +10862,29 @@ fn belt_publish_attempt_adjudicate(
   }
 }
 
+// A FAILED PUBLISH PASS NAMES WHAT FAILED. The tick receipt keeps only the pass sentence, so a
+// sentence that says "one or more" erases which attempt and why -- the 2026-09-29 regression was
+// diagnosable only by re-running the pass by hand. Each failing outcome is rendered as its node, its
+// arm and its detail, from the same accessors the per-outcome wire uses.
+fn belt_publish_outcome_is_failure(o: BeltPublishOutcome) -> Bool {
+  match o {
+    PublishWriteFailed { node_id: _, detail: _ } => true
+    PublishEvidenceUnreadable { node_id: _, detail: _ } => true
+    PublishDeferred { node_id: _, reason: _ } => false
+    PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
+    PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+    PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+  }
+}
+
+fn belt_publish_outcome_failure_line(o: BeltPublishOutcome) -> String {
+  join([
+    belt_publish_outcome_node_id(o: o),
+    " (", belt_publish_outcome_key(o: o), "): ",
+    belt_publish_outcome_detail(o: o),
+  ], "")
+}
+
 fn belt_publish_pass_outcome_from(outcomes: List<BeltPublishOutcome>) -> BeltPassOutcome {
   let ledger_refusals = outcomes |> filter(o => match o {
     PublishDeferred { node_id: nid, reason: _ } => nid == ""
@@ -10805,15 +10902,15 @@ fn belt_publish_pass_outcome_from(outcomes: List<BeltPublishOutcome>) -> BeltPas
         BeltPassRefused { reason: "the attempts ledger is unobservable" }
     }
   } else {
-    if any(outcomes, o => match o {
-      PublishWriteFailed { node_id: _, detail: _ } => true
-      PublishEvidenceUnreadable { node_id: _, detail: _ } => true
-      PublishDeferred { node_id: _, reason: _ } => false
-      PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
-      PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
-      PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
-    }) {
-      BeltPassFailed { reason: "one or more publication outcomes could not be recorded" }
+    let failures = outcomes |> filter(o => belt_publish_outcome_is_failure(o: o))
+    if count(failures) > 0 {
+      BeltPassFailed {
+        reason: join([
+          to_string(count(failures)),
+          " publication outcome(s) could not be recorded: ",
+          join(map(failures, o => belt_publish_outcome_failure_line(o: o)), "; "),
+        ], ""),
+      }
     } else {
       BeltPassRecorded
     }
