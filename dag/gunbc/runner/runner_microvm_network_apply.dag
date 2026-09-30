@@ -489,14 +489,14 @@ fn ensure_host_tool(tool: CliTool, subject: MicrovmNetworkApplySubject, context:
   match apt_package_of(tool: tool) {
     Absent =>
       HostToolPrerequisite {
-        tool: tool.name,
+        tool: tool.program.invocation,
         verdict: Srv3PredicateUnobserved {
-          reason: join([tool.name as String, " is a slot-network host prerequisite but declares no apt source, so apply has no modeled way to acquire it"], ""),
+          reason: join([tool.program.invocation as String, " is a slot-network host prerequisite but declares no apt source, so apply has no modeled way to acquire it"], ""),
         },
       }
     Present { value: p } =>
       HostToolPrerequisite {
-        tool: tool.name,
+        tool: tool.program.invocation,
         verdict: srv3_ensure_apt_tool(
           tool: tool,
           package: p,

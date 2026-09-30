@@ -239,17 +239,6 @@ import v2.compiler.target_serialize {
   type_expr_atom_binding
 }
 
-fn token_item_serialize_measure(item: Node, target: TargetModel) -> Outcome<Int> {
-  bind_outcome(
-    o: target_translation_rules_budget(target: target),
-    f: fn(rules_budget) {
-      Accepted {
-        value: node_subtree_count(n: item) + rules_budget + 1,
-        diagnostics: None
-      }
-    }
-  )
-}
 fn token_list_node_budget(tokens: List<Node>) -> Int {
   fold_list(
     xs: tokens,
@@ -504,14 +493,6 @@ fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnosti
 }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
-}
-fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetText> {
-  bind_outcome(
-    o: token_item_serialize_measure(item: item, target: target),
-    f: fn(measure) {
-      token_item_to_source_bounded(measure, item, target, lex_literal_index(rules: target.lex))
-    }
-  )
 }
 fn token_sequence_to_source_bounded(
   remaining: Int,

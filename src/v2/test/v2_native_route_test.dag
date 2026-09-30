@@ -68,7 +68,7 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStageEval,
   NativeTestFileRefusal
 }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.optional { Absent, Optional, Present, optional_present, optional_absent }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
@@ -130,7 +130,7 @@ fn refused_row(
 }
 
 fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
-  NativeTestFileRefusal { path: path, head_reason: head, fatal_reason: fatal }
+  NativeTestFileRefusal { path: path, module: optional_absent(), head_reason: head, fatal_reason: fatal }
 }
 
 // The emitted build as the lane records it on a clean run: cargo's argv, the denial set by the
