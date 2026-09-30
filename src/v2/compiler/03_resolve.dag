@@ -16,6 +16,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
   dag_kernel_type_binding_optional,
   dag_kernel_type_declaration_binding_optional,
+  dag_kernel_type_foreign_declaration,
+  ForeignDeclarationBinds,
+  ForeignDeclarationRefuses,
   dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
   dag_symbol_literal_name_optional,
@@ -955,10 +958,18 @@ type KernelTypeReading
 fn resolve_kernel_type_reading(identity: Symbol, path: QualifiedName, declared_here: Bool) -> KernelTypeReading {
   match dag_kernel_type_binding_optional(sym: identity) {
     Absent => NotAKernelTypeReading
-    Present { value: _ } =>
+    Present { value: spelled } =>
       match dag_kernel_type_declaration_binding_optional(path: path) {
         Present { value: canonical } => KernelTypeBinding { canonical: canonical }
-        Absent => if declared_here { NotAKernelTypeReading } else { KernelSpellingForeignDeclaration }
+        Absent =>
+          if declared_here {
+            NotAKernelTypeReading
+          } else {
+            match dag_kernel_type_foreign_declaration(canonical: spelled) {
+              ForeignDeclarationRefuses => KernelSpellingForeignDeclaration
+              ForeignDeclarationBinds => NotAKernelTypeReading
+            }
+          }
       }
   }
 }

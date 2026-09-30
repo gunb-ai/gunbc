@@ -93,6 +93,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member,
 }
 import v2.std.node {
+  host_text_type_node,
   symbol_lexeme,
   symbol_type_node,
   Arrow,
@@ -2915,6 +2916,7 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
       ^dag_binding_type_bool,
       ^bool_node_symbol,
       ^symbol_node_symbol,
+      ^string_node_symbol,
       ^dag_loop_measure_sym
     ]
   )
@@ -3588,8 +3590,30 @@ fn dag_kernel_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
     optional_present(value: ^bool_node_symbol)
   } else if symbol_lexeme(sym: sym) == "Symbol" {
     optional_present(value: ^symbol_node_symbol)
+  } else if symbol_lexeme(sym: sym) == "String" {
+    optional_present(value: ^string_node_symbol)
   } else {
     optional_absent()
+  }
+}
+
+// WHAT ANOTHER DECLARATION OF A KERNEL SPELLING MEANS. For Int, Bool and Symbol the corpus has no
+// second meaning, so a foreign declaration of the spelling is a capture hazard and refuses
+// (v2.compiler.resolve resolve_kernel_type_reading). String is the one kernel spelling the corpus
+// already declares with a DIFFERENT meaning: v2.std.text and std.string_type declare the structural
+// FreeMonoid<Char>, deliberately, and hundreds of modules import it. So a String declaration the
+// author reached binds THAT declaration, and the kernel host text applies only where none is visible
+// (neat-boar-16's ruling, decision A). Representation is decided by declaration identity, never by
+// the spelling.
+type KernelSpellingForeignDeclaration
+  = ForeignDeclarationRefuses
+  | ForeignDeclarationBinds
+
+fn dag_kernel_type_foreign_declaration(canonical: Symbol) -> KernelSpellingForeignDeclaration {
+  if canonical == ^string_node_symbol {
+    ForeignDeclarationBinds
+  } else {
+    ForeignDeclarationRefuses
   }
 }
 
@@ -3609,6 +3633,8 @@ fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional
     optional_present(value: ^bool_node_symbol)
   } else if path == qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol") {
     optional_present(value: ^symbol_node_symbol)
+  } else if path == qualified_name_from_dotted_string(dotted: "v2.std.node.String") {
+    optional_present(value: ^string_node_symbol)
   } else {
     optional_absent()
   }
@@ -3634,6 +3660,8 @@ fn dag_binding_denotation(sym: Symbol) -> Optional<Node> {
     optional_present(value: bool_node())
   } else if sym == ^symbol_node_symbol {
     optional_present(value: symbol_type_node())
+  } else if sym == ^string_node_symbol {
+    optional_present(value: host_text_type_node())
   } else {
     optional_absent()
   }
@@ -3934,6 +3962,7 @@ type DagCanonicalLiteral
   = DagCanonicalBoolLiteral { value: Bool }
   | DagCanonicalIntLiteral { magnitude: Int }
   | DagCanonicalSymbolLiteral { symbol: Symbol }
+  | DagCanonicalStringLiteral
 
 fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
@@ -3948,8 +3977,18 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
 // of publishing sibling is_* predicates over Node storage. Bool literals admit exactly the
 // childless true/false atoms. Int literals admit exactly one named, decodable magnitude child.
 // Symbol literals admit exactly the caret atom with one named name payload (dag_symbol_literal_node)
-// whose terminal carries an identity; the symbol is that identity.
+// whose terminal carries an identity; the symbol is that identity. String literals admit the
+// childless string-literal atom. It carries no value today: the terminal is class-stamped, so every
+// string literal is the same node (gunbc.recurring_failure_mode
+// string_literal_lowers_to_one_class_stamped_atom). Its type does not depend on the value.
 // Every other shape is a typed refusal.
+
+fn dag_node_is_string_literal_atom(node: Node) -> Bool {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_string_literal
+    Absent => false
+  }
+}
 
 fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
   match dag_symbol_literal_name_optional(node: node) {
@@ -3959,7 +3998,9 @@ fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
         Absent => outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
       }
     Absent =>
-      if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
+      if dag_node_is_string_literal_atom(node: node) && (length(xs: node.children) == 0) {
+        outcome_accepted(value: DagCanonicalStringLiteral)
+      } else if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
         outcome_accepted(value: DagCanonicalBoolLiteral { value: true })
       } else if dag_node_is_kw_false_atom(node: node) && (length(xs: node.children) == 0) {
         outcome_accepted(value: DagCanonicalBoolLiteral { value: false })
