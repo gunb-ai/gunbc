@@ -191,6 +191,13 @@ fn census_tree_binding_source(t: CensusTree) -> ModuleBindingSource {
   }
 }
 
+// Projection of ONE sealed tree's captured import rows, for a reader that must ask what a module
+// imports without unsealing the carrier: v2.compiler.compile native_import_target_file_refusal,
+// which attributes a resolve refusal to an import target the context refused at ingest.
+fn normalized_tree_import_bindings(tree: NormalizedTree) -> FreeMonoid<AliasBindingRow> {
+  tree.import_bindings
+}
+
 // Projection out of the sealed carrier for the symbol-index fill, which needs both halves of what a
 // module binds and can import neither this carrier nor the stages beneath it. Order-preserving for
 // the same reason the Node projection is.

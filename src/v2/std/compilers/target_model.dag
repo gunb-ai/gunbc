@@ -565,7 +565,7 @@ fn produced_decl_type_tokens_at(
                 o: produced_decl_function_type_params_tokens(
                   rows: rows,
                   sugar: row.sugar,
-                  params: produced_decl_function_type_domain_edges(arrow: type_node, params: shape.params),
+                  params: shape.params,
                   type_binding: type_binding
                 ),
                 f: fn(param_tokens) {
@@ -594,20 +594,6 @@ fn produced_decl_type_tokens_at(
           )
       }
     _ => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node, type_binding: type_binding)
-  }
-}
-
-// A function TYPE's domain is lowered two ways: a single parameter type stands as the domain itself
-// (`fn(Int) -> R` lowers to Arrow(Int, R)), and several stand as a Conj of their edges. The Conj's
-// edges are the parameters; a lone type is one parameter, carried as one positional edge.
-fn produced_decl_function_type_domain_edges(arrow: Node, params: List<Edge>) -> List<Edge> {
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
-    Present { value: domain } =>
-      match domain.kind {
-        TypeNode { connective: Conj } => params
-        _ => [Edge { label: Positional, target: domain }]
-      }
-    Absent => params
   }
 }
 
@@ -700,47 +686,43 @@ fn produced_decl_signature_segments_tokens(
 // the one reader of ^arrow_signature_order_edge) -- never the domain Conj's stored sequence, which is
 // a set's storage and which canonicalization sorts by label. The domain is read only for MEMBERSHIP:
 // each declared label selects its binder edge, so the parameter's type still comes from the domain.
-// A domain that binds named parameters but carries no readable order refuses typed; there is no
-// domain-order fallback. A domain that binds no name -- a function TYPE's positional product, or a
-// lone parameter type (produced_decl_function_type_domain_edges) -- has no labels to order: its
-// positional edges are the sequence, so its children pass through. A domain mixing named and
-// positional edges is neither and refuses as malformed rather than dropping the positional ones.
+// Every Arrow has one encoding (Program P): a function TYPE's parameters are minted anonymous binders
+// with their own declared order (v2.std.arrow_signature anonymous_signature_arrow), and a nullary
+// function declares the empty order. So there is no "domain binding no names" arm: an Arrow with no
+// readable order -- the retired positional-types shape among them -- refuses typed, and there is no
+// domain-order fallback.
 fn produced_decl_ordered_params(arrow: Node, domain: Node) -> Outcome<List<Edge>> {
-  match arrow_domain_binder_names(arrow: arrow) {
-    Empty => outcome_accepted(value: domain.children)
-    Cons { head: _, tail: _ } =>
-      match arrow_declared_parameter_order(arrow: arrow) {
-        ArrowParameterOrderDeclared { labels: labels } =>
-          if length(xs: labels) != length(xs: domain.children) {
-            outcome_rejected(
-              d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
-            )
-          } else {
-            fold_list(
-              xs: labels,
-              empty: outcome_accepted(value: Empty),
-              cons: fn(acc, label) {
+  match arrow_declared_parameter_order(arrow: arrow) {
+    ArrowParameterOrderDeclared { labels: labels } =>
+      if length(xs: labels) != length(xs: domain.children) {
+        outcome_rejected(
+          d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+        )
+      } else {
+        fold_list(
+          xs: labels,
+          empty: outcome_accepted(value: Empty),
+          cons: fn(acc, label) {
+            bind_outcome(
+              o: acc,
+              f: fn(so_far) {
                 bind_outcome(
-                  o: acc,
-                  f: fn(so_far) {
-                    bind_outcome(
-                      o: produced_decl_domain_binder(arrow: arrow, domain: domain, label: label),
-                      f: fn(edge) { outcome_accepted(value: list_snoc_item(xs: so_far, item: edge)) }
-                    )
-                  }
+                  o: produced_decl_domain_binder(arrow: arrow, domain: domain, label: label),
+                  f: fn(edge) { outcome_accepted(value: list_snoc_item(xs: so_far, item: edge)) }
                 )
               }
             )
           }
-        ArrowParameterOrderAbsent =>
-          outcome_rejected(
-            d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_absent, node: arrow)
-          )
-        ArrowParameterOrderMalformed =>
-          outcome_rejected(
-            d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
-          )
+        )
       }
+    ArrowParameterOrderAbsent =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_absent, node: arrow)
+      )
+    ArrowParameterOrderMalformed =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+      )
   }
 }
 
@@ -1174,7 +1156,15 @@ fn lex_pattern_fixed_spelling(pattern: LexPattern) -> Optional<String> {
   match pattern {
     LiteralPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
     KeywordPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
-    _ => optional_absent()
+    EmptyPattern => optional_absent()
+    CharPattern { char: _ } => optional_absent()
+    CharClassPattern { class: _ } => optional_absent()
+    SequencePattern { left: _, right: _ } => optional_absent()
+    ChoicePattern { left: _, right: _ } => optional_absent()
+    OptionalPattern { element: _ } => optional_absent()
+    RepeatPattern { element: _ } => optional_absent()
+    OneOrMorePattern { element: _ } => optional_absent()
+    DelimitedPattern { open: _, body: _, close: _ } => optional_absent()
   }
 }
 
@@ -14206,7 +14196,14 @@ fn target_project_transform_primitive_apply_in_arrow_scope(
   match canonical_op {
     CoercionCrossing { homomorphism_rule: _ } =>
       target_project_cast_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
-    _ => target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    AlgebraPrimitive { algebra_field: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    AlgebraInverseCompose { binary_field: _, inverse_field: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    OrderingComparison { compare_field: _, predicate: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    EqualityComparison { eq_field: _, predicate: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
   }
 }
 
@@ -15438,24 +15435,20 @@ fn symbol_list_contains(xs: List<Symbol>, wanted: Symbol) -> Bool {
 // arrow_declared_parameter_order, the one reader of ^arrow_signature_order_edge) -- never the domain
 // Conj's stored sequence, which canonicalization sorts by label and is not the signature (#12361). Scope
 // MEMBERSHIP for captures stays arrow_domain_binder_names, an unordered set question. A domain that
-// binds names but carries no readable order refuses typed, exactly as eval's
-// eval_param_labels_in_declared_order does: there is no domain-order fallback. A domain that binds
-// no name emits no parameter.
+// carrying no readable order refuses typed, exactly as eval's eval_param_labels_in_declared_order
+// does: there is no domain-order fallback. A nullary closure declares the empty order, so there is
+// no "domain binding no names" arm (Program P, one Arrow encoding).
 fn realized_closure_ordered_params(closure: Node) -> Outcome<List<Symbol>> {
-  match arrow_domain_binder_names(arrow: closure) {
-    Empty => outcome_accepted(value: Empty)
-    Cons { head: _, tail: _ } =>
-      match arrow_declared_parameter_order(arrow: closure) {
-        ArrowParameterOrderDeclared { labels: labels } => outcome_accepted(value: labels)
-        ArrowParameterOrderAbsent =>
-          outcome_rejected(
-            target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_absent, node: closure)
-          )
-        ArrowParameterOrderMalformed =>
-          outcome_rejected(
-            target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_malformed, node: closure)
-          )
-      }
+  match arrow_declared_parameter_order(arrow: closure) {
+    ArrowParameterOrderDeclared { labels: labels } => outcome_accepted(value: labels)
+    ArrowParameterOrderAbsent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_absent, node: closure)
+      )
+    ArrowParameterOrderMalformed =>
+      outcome_rejected(
+        target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_malformed, node: closure)
+      )
   }
 }
 

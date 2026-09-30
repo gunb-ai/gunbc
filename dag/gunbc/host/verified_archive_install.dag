@@ -96,7 +96,10 @@ fn verified_archive_install(
 fn verified_archive_install_holds(outcome: VerifiedArchiveInstallOutcome) -> Bool {
   match outcome {
     ArchiveInstalled => true
-    _ => false
+    ArchiveFetchRefused { archive: _, reason: _ } => false
+    ArchiveDigestMismatched { archive: _ } => false
+    ArchiveDigestUnverified { archive: _, reason: _ } => false
+    ArchiveInstallRefused { archive: _, reason: _ } => false
   }
 }
 

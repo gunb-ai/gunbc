@@ -7,7 +7,8 @@ import extdeps.languages.rust.emit { rust_enum_derives_copy, rust_struct_derives
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.arrow_signature { anonymous_signature_arrow }
+import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -129,11 +130,7 @@ test fn semantic_record_routes_to_struct_emit() -> Bool {
 }
 
 fn semantic_arrow_type() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [ Edge { label: Positional, target: sdr_atom_type(name: ^Int) } ],
-    occurrence_id: OccurrenceSynthetic
-  }
+  anonymous_signature_arrow(domain_types: [sdr_atom_type(name: ^Int)], codomain: sdr_atom_type(name: ^Int), source: sdr_atom_type(name: ^Int))
 }
 
 fn semantic_arrow_refuses() -> Bool {
