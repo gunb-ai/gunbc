@@ -149,7 +149,7 @@ test fn a_stream_without_source_answers_unknown_holds() -> Bool {
 // THE IDENTITY CONTROL: carrying the source changes nothing the grammar did not ask about. This module
 // reaches no layout-conditioned production (it has no `-` after an operand, where the dag grammar asks
 // one), so the same tokens parse to the same tree (content hash) with the source attached and absent.
-data identity_module_text: String = "module probe.layout_identity\n\nfn f(x: Int) -> Int {\n  x + 1\n}\n"
+data identity_module_text: String = "module probe.layout_identity\n\ndata d: Int = x + 1\n"
 
 // Against the prepared dag grammar the floor warms once (v2.compiler.program_assembly
 // dag_prepared_grammar), so the claim pays two parses and no grammar preparation.

@@ -99,7 +99,6 @@ import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
 import std.realization { Materialization }
 import v2.std.integer { integer_int_content_digest }
-import std.unicode.types { unicode_char_code_point }
 import v2.compiler.materialization_carriers {
   parse_table_memo_artifact_kind,
   parse_table_memo_provider_id,
@@ -900,9 +899,9 @@ fn parse_token_stream_source_digest(all_tokens: List<Token>, layout: Optional<St
       combine_hash(
         a: parse_token_stream_digest(all_tokens: all_tokens),
         b: fold_list(
-          xs: l.source,
+          xs: l.line_break_starts,
           empty: symbol_identity_digest(sym: ^parse_token_stream_source_digest_nil),
-          cons: fn(acc, c) { combine_hash(a: acc, b: integer_int_content_digest(value: unicode_char_code_point(c: c))) }
+          cons: fn(acc, start) { combine_hash(a: acc, b: integer_int_content_digest(value: start)) }
         )
       )
   }
@@ -954,7 +953,8 @@ fn parse_table_for_production_analyzed(
 }
 
 // The stream's layout rides on the table so a layout-conditioned production can ask its question at
-// the point of use (v2.std.compilers.lexing token_stream_line_break_before), and its source is part of the
+// the point of use (v2.std.compilers.lexing token_stream_line_break_before), and its layout (the starts of
+// the line-break-preceded tokens) is part of the
 // stream's digest: two sources can lex to byte-identical tokens and differ only in layout, and a memo
 // entry must never serve one's answer to the other.
 fn parse_table_for_stream_analyzed(
