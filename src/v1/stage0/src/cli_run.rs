@@ -9596,6 +9596,31 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
 /// the same declarations the census folds). The claim is checked for every name of the live pool
 /// by `entry_resolve::pool_census_for_name_differential`.
 fn pool_census_for_name(index: &MultiEntryIndex, name: &str) -> Result<Rc<SymbolIndex>, String> {
+    let started = std::time::Instant::now();
+    #[cfg(test)]
+    PER_NAME_CENSUS_DISTINCT.with(|d| {
+        d.borrow_mut().insert(name.to_string());
+    });
+    let census = pool_census_for_name_uncounted(index, name);
+    resolve_stage_slot_add(|st| {
+        st.bare_per_name_census_calls += 1;
+        st.bare_per_name_census += started.elapsed().as_nanos();
+    });
+    census
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Distinct names `pool_census_for_name` was asked about on this thread: with the call count
+    /// in `ResolveStageNanos`, the repetition a shared answer would remove.
+    pub(crate) static PER_NAME_CENSUS_DISTINCT: RefCell<std::collections::HashSet<String>> =
+        RefCell::new(std::collections::HashSet::new());
+}
+
+fn pool_census_for_name_uncounted(
+    index: &MultiEntryIndex,
+    name: &str,
+) -> Result<Rc<SymbolIndex>, String> {
     let pool = pool_parse(index)?;
     let names = entry_resolve::reference_pool_names_for_index(index)?;
     let Some(modules) = names.decl_index.get(name) else {
@@ -15532,6 +15557,9 @@ pub struct ResolveStageNanos {
     pub edge_index_bare_candidates: u128,
     pub edge_index_bare_name_universe: u128,
     pub edge_index_bare_resolve_loop: u128,
+    /// `pool_census_for_name`: the out-of-tree question per bare name -- calls and their time.
+    pub bare_per_name_census_calls: u128,
+    pub bare_per_name_census: u128,
     /// `Rc::new` + hand-off of the finished index.
     pub edge_index_publish: u128,
     /// `build_both_closure_edge_index` (memoized on the index; nonzero here is the first build).

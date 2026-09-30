@@ -3877,3 +3877,105 @@ mod pool_census_for_name_differential {
         assert!(divergent.is_empty(), "{} names diverge", divergent.len());
     }
 }
+
+/// THE SPECIMEN of `gunbc.recurring_failure_mode.an_import_turns_an_ambiguous_bare_name_into_a_transitive_pick`,
+/// a v1 semantic defect owned by the resolver lane (routed by neat-boar-16), not by this change.
+/// One source tree declares `bar` in `ta.dep` and `ta.other`. With no imports a bare `bar()`
+/// refuses as ambiguous; with one unrelated import whose module imports `ta.dep`, the same call
+/// RESOLVES -- silently binding `bar` to the transitively reached `ta.dep.bar`. This test pins
+/// that behaviour as observed. WHEN THE DEFECT IS FIXED IT MUST FAIL: flip its second assertion
+/// to expect the ambiguity refusal and keep it as the regression control (DESIGN §4b(4)).
+#[cfg(test)]
+mod import_transitive_bare_pick_specimen {
+    use super::*;
+
+    fn w(root: &Path, rel: &str, c: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir");
+        std::fs::write(p, c).expect("write dag");
+    }
+
+    #[test]
+    fn an_unrelated_import_turns_an_ambiguous_bare_name_into_a_transitive_pick() {
+        let base = process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-import-pick-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let a = base.join("a");
+        w(
+            &a,
+            "dep.dag",
+            "module ta.dep\n\nfn bar() -> Int {\n  1\n}\n\nfn z() -> Int {\n  0\n}\n",
+        );
+        w(
+            &a,
+            "other.dag",
+            "module ta.other\n\nfn bar() -> Int {\n  2\n}\n",
+        );
+        w(
+            &a,
+            "lib.dag",
+            "module ta.lib\n\nimport ta.dep { z }\n\nfn y() -> Int {\n  z()\n}\n",
+        );
+        w(
+            &a,
+            "bare_user.dag",
+            "module ta.bare_user\n\nfn main() -> Int {\n  bar()\n}\n",
+        );
+        w(
+            &a,
+            "import_user.dag",
+            "module ta.import_user\n\nimport ta.lib { y }\n\nfn main() -> Int {\n  bar()\n}\n",
+        );
+        let index = build_multi_entry_index(&[a.to_string_lossy().into_owned()]);
+        let bare = resolve_entry_with_index(&index, &a.join("bare_user.dag").to_string_lossy());
+        let imported =
+            resolve_entry_with_index(&index, &a.join("import_user.dag").to_string_lossy());
+        let _ = std::fs::remove_dir_all(&base);
+        let err = bare.expect_err("with no imports, an ambiguous bare name refuses");
+        assert!(err.contains("ambiguous reference 'bar'"), "{err}");
+        // THE DEFECT, pinned as observed: flip to expect_err when it is fixed.
+        imported.expect("observed: one unrelated import makes the same bare name resolve");
+    }
+}
+
+/// THE INSTRUMENT for the floor's whole-pool bare admission (`admit_pool_bare_references`) on the
+/// live `[dag, src/v2]` pool, with what both routes share -- the pool heads parse, both tree name
+/// censuses and the heads name index -- warmed first, so the timed term is the admission alone.
+/// It prints the admission time, the per-name census calls and time (`ResolveStageNanos`) and the
+/// distinct names asked; calls against distinct names is the repetition a shared answer would
+/// remove. It reports; it asserts only that the admission completes.
+#[cfg(test)]
+mod live_pool_bare_admission_attribution {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn live_pool_bare_admission_attribution() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let _ = super::super::pool_parse(&index).expect("pool parse");
+        for r in index.source_roots.iter() {
+            let _ = super::super::closure_name_census(&index, Some(r)).expect("tree census");
+        }
+        let _ = reference_pool_names_for_index(&index).expect("names");
+        let before = resolve_stage_totals();
+        let t = std::time::Instant::now();
+        let verdict = super::super::admit_pool_bare_references(&index);
+        let elapsed = t.elapsed();
+        let after = resolve_stage_totals();
+        let distinct = super::super::PER_NAME_CENSUS_DISTINCT.with(|d| d.borrow().len());
+        eprintln!(
+            "ADMIT whole_pool_admission={elapsed:?} ok={} per_name_calls={} per_name_ms={} \
+             per_name_distinct={distinct} pool_census_built={}",
+            verdict.is_ok(),
+            after.bare_per_name_census_calls - before.bare_per_name_census_calls,
+            (after.bare_per_name_census - before.bare_per_name_census) / 1_000_000,
+            index.closure_name_censuses.borrow().contains_key(&None),
+        );
+        verdict.expect("the live pool admits");
+    }
+}
