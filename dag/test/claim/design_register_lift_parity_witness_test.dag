@@ -451,7 +451,10 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // witness_inline_assignment_context_chip_html_carries_the_profile_display, the register censuses
 // unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
 // 13bfe2bf4b369f2f); this digest only pins bytes.
-data roadmap_css_lift_parity_digest: String = "92e195a172bf1ad9"
+// 2026-09-30: the .issue-avatar-badge rule is deleted -- the workflow kind no longer renders as
+// clipped text inside the 24px avatar circle (it rides the chip's class and hover title), so the
+// rule has no consumer. Derived by execution (roadmap_css_derived_digest on this tree).
+data roadmap_css_lift_parity_digest: String = "8729f6aae8bd4ae4"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

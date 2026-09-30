@@ -1266,16 +1266,26 @@ fn serve_issue_comment_response_over(
 // THE COMMENT RESPONSE, factored pure over the recorded comments so the witness drives it without
 // a carrier: the deep link /issue/<id>#comment-N is the answer a retry and a first write share —
 // the client re-anchors instead of re-posting.
+// POST/REDIRECT/GET: the composer is a native form, so a 200 body strands the browser on a text
+// page. A recorded comment -- first write or an idempotent retry -- answers 303 to its own numbered
+// anchor, which is the one canonical location for it; the retry reaches the same address. A
+// readback that does not carry the committed comment names no anchor at all: it refuses, loudly,
+// rather than linking #comment-0.
 fn serve_comment_recorded_response(node_id: String, comments: List<IssueComment>, comment: String, event_id: String, already_present: Bool) -> ServeHttpResponse {
-  let ordinal = match (filter(comments, c => (c.comment as String) == comment)).first() {
-    Present { value: c } => c.ordinal
-    Absent => 0
-  }
-  let link = join(["/issue/", node_id, "#comment-", to_string(value: ordinal)], "")
-  if already_present {
-    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["comment recorded (already present): ", link, "\n"], ""))
-  } else {
-    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["comment recorded: ", link, " (event ", event_id, ")\n"], ""))
+  match (filter(comments, c => (c.comment as String) == comment)).first() {
+    Absent =>
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["comment ", comment, " was committed (event ", event_id, ") but the issue's readback does not carry it; reload /issue/", node_id, "\n"], ""))
+    Present { value: c } => {
+      let link = join(["/issue/", node_id, "#comment-", to_string(value: c.ordinal)], "")
+      let body = if already_present {
+        join(["comment recorded (already present): ", link, "\n"], "")
+      } else {
+        join(["comment recorded: ", link, " (event ", event_id, ")\n"], "")
+      }
+      serve_text_response_with_headers(status: 303, content_type: text_plain_utf8, body: body, headers: [
+        ServeResponseHeaderLocation { location: link as NonEmptyStr },
+      ])
+    }
   }
 }
 

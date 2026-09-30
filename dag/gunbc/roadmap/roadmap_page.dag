@@ -842,13 +842,19 @@ fn issue_avatar_chip_node(display: EventPrincipalDisplay, workflow: Bool) -> Fra
       if workflow { " issue-avatar-workflow" } else { "" },
     ], "") ),
     attr(name: "data-avatar", value: issue_avatar_standing_wire(a: display.avatar) ),
-  ], concat(
-    [ txt(display.initials) ],
-    if workflow {
-      [ el_class("span", "issue-avatar-badge", [ txt("workflow") ]) ]
-    } else {
-      []
-    }))
+    attr(name: "title", value: issue_avatar_title(display: display, workflow: workflow) ),
+  ], [ txt(display.initials) ])
+}
+
+// THE CIRCLE HOLDS ONLY THE INITIAL. It is a fixed 24px chip with overflow hidden, so prose placed
+// inside it is clipped ("workfl…"); the workflow kind is carried by the chip's class (its own
+// fill) and named in full in the hover title, never as text inside the circle.
+fn issue_avatar_title(display: EventPrincipalDisplay, workflow: Bool) -> String {
+  if workflow {
+    join([display.name, " — workflow · ", display.detail], "")
+  } else {
+    join([display.name, " — ", display.detail], "")
+  }
 }
 
 // THE RESULTS TABLE'S ASSIGNEE CHIP (owner ruling 2026-09-25, "make assignee always be the pfp (or
@@ -868,14 +874,8 @@ fn issue_assignee_chip_node(holder: EventPrincipal, profiles: List<PrincipalProf
       if event_principal_is_fabric(p: holder) { " issue-avatar-workflow" } else { "" },
     ], "") ),
     attr(name: "data-avatar", value: issue_avatar_standing_wire(a: display.avatar) ),
-    attr(name: "title", value: join([display.name, " — ", display.detail], "") ),
-  ], concat(
-    [ txt(display.initials) ],
-    if event_principal_is_fabric(p: holder) {
-      [ el_class("span", "issue-avatar-badge", [ txt("workflow") ]) ]
-    } else {
-      []
-    }))
+    attr(name: "title", value: issue_avatar_title(display: display, workflow: event_principal_is_fabric(p: holder)) ),
+  ], [ txt(display.initials) ])
   match issue_assignee_chip_text(holder: holder, profiles: profiles) {
     Absent => [ chip ]
     Present { value: text } => concat([ chip ], [ el_class("span", "issue-assignee-text", [ txt(text) ]) ])

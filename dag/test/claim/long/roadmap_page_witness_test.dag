@@ -2020,7 +2020,8 @@ test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee
         && !string_contains(s: body, pattern: "<option value=\"principal:")
         && occurrence_count(s: body, pattern: "class=\"issue-assign-suggestion\"") == 3
         && string_contains(s: body, pattern: "data-principal=\"principal:gunbc/workflows/fabric\" data-kind=\"workflow\"")
-        && string_contains(s: body, pattern: "class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\">F<span class=\"issue-avatar-badge\">workflow</span>")
+        && string_contains(s: body, pattern: "class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\" title=\"Fabric — workflow · fabric@gunb.ai\">F</span>")
+        && !string_contains(s: body, pattern: "issue-avatar-badge")
         && string_contains(s: body, pattern: "name=\"expected_revision\" type=\"hidden\"")
         && occurrence_count(s: body, pattern: "class=\"issue-action\"") == 0
         && string_contains(s: body, pattern: "data-action=\"Assign\" data-idiom=\"text\" data-action-route=\"assign\" data-action-state=\"enabled\"")
@@ -2263,7 +2264,7 @@ test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() 
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "data-event-kind=\"publication_observed\"") == 2
-        && string_contains(s: h, pattern: "<span class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\">F<span class=\"issue-avatar-badge\">workflow</span></span>")
+        && string_contains(s: h, pattern: "<span class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\" title=\"Fabric — workflow · fabric@gunb.ai\">F</span>")
         && string_contains(s: h, pattern: "published gunb-ai/gunbc#12210 at 52c56a8 — reassigned for merge to principal:google-oidc/accounts/sub-viewer")
         && string_contains(s: h, pattern: "ready for review — published gunb-ai/gunbc#12210 at 52c56a8; reassigned for merge to principal:google-oidc/accounts/sub-viewer")
         && string_contains(s: h, pattern: "issue-comment issue-publication")

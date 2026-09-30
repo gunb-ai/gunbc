@@ -1343,11 +1343,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "issue-avatar-workflow" }, decls: [
       decl(prop: Background, value: "var(--issue-action)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-avatar-badge" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_10)),
-      decl(prop: MarginLeft, value: scale_var(t: space_2)),
-      decl(prop: Color, value: "var(--issue-action)"),
-    ] },
     StaticRule { selector: ClassSelector { name: "issue-assignee-text" }, decls: [
       decl(prop: MarginLeft, value: scale_var(t: space_4)),
       decl(prop: FontSize, value: scale_var(t: text_13)),
