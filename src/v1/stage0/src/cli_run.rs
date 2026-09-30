@@ -9281,6 +9281,24 @@ fn parsed_file_references_of(
     reading
 }
 
+/// How many files of this index were read by a full parse for their reference set
+/// (`parsed_references`), by the compile front end (`parse_cache`), and by BOTH. Each map holds
+/// one entry per parse it performed and neither reads the other, so a file in both was parsed
+/// twice on this index.
+pub(crate) fn reference_and_front_end_parse_overlap(
+    index: &MultiEntryIndex,
+) -> (usize, usize, usize) {
+    let reference: HashSet<String> = index.parsed_references.borrow().keys().cloned().collect();
+    let front_end: HashSet<String> = index
+        .parse_cache
+        .borrow()
+        .keys()
+        .map(|path| workspace_relative_repo_path(path))
+        .collect();
+    let both = reference.intersection(&front_end).count();
+    (reference.len(), front_end.len(), both)
+}
+
 fn pool_module_names(index: &MultiEntryIndex) -> Rc<HashSet<String>> {
     index
         .pool_module_names

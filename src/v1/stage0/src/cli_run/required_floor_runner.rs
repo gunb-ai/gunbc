@@ -7329,6 +7329,17 @@ pub fn run_required_floor(
         warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
     ));
     shared_build_warms.extend(pure_producer_warms);
+    for (which, roots) in [
+        ("source-roots", source_roots.to_vec()),
+        ("witness-layer-roots", witness_layer_roots()),
+    ] {
+        let (reference, front_end, both) =
+            super::reference_and_front_end_parse_overlap(&process_shared_index(&roots));
+        eprintln!(
+            "[floor-phase] phase=full-parse-overlap roots={which} reference_reading={reference} \
+             front_end={front_end} parsed_by_both={both}"
+        );
+    }
     // The two earlier phases already printed their own lines at the point they ran; only the
     // edge-index entries are reported here, so a phase is reported exactly once and under its own
     // name. Every entry — all three phases — is adjudicated together further down.
