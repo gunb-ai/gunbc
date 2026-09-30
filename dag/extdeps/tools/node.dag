@@ -1,6 +1,6 @@
 module extdeps.tools.node
 
-import extdeps.exec.program { cataloged_program }
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { NonEmptyStr, Bool, Unit, Int, List }
 import extdeps.exec.command { ArgvCommand, argv_command }
@@ -18,8 +18,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn node_program() -> ProgramIdentity = cataloged_program(invocation: "node")
+
 data node_cli_tool: CliTool = CliTool {
-  name: "node",
+  program: node_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_nodejs, bin_dir: apt_bin_dir }],
 }

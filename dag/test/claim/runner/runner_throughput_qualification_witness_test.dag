@@ -6,12 +6,12 @@ import std.types { Int, List, NonEmptyStr, String, WorkflowRunId }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure {
   ByteSize, byte_size, byte_size_count, EvalStepCount, eval_step_count, eval_step_count_value,
-  eval_steps_per_millisecond_count, hardware_thread_count, hardware_thread_count_value,
+  eval_steps_per_millisecond_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
   Millisecond, millisecond, second, MoneyPerSecond, money_amount_micro,
 }
 import std.decl_ref { decl_ref }
 import extdeps.currency.currency { Usd }
-import extdeps.toolchain.types { Aarch64 }
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import product.placement_supply { HostIdentity }
 import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity, Shape, HardRequirements }
 import product.fabric.envelope { cpu_memory_envelope }
@@ -43,7 +43,7 @@ import v2.workflow.floor_eval_step_calibration {
   floor_eval_step_calibration, calibration_rate, calibration_specimen_eval_steps, calibration_specimen_identity,
 }
 import gunbc.runner_throughput_qualification {
-  FloorWorkloadPin, PeerScratchExport, WorkspaceBytesLocus, OnSubjectChargedToSlot, OnSubjectUncharged, OffSubject,
+  FloorWorkloadPin, SelectedRunnerRuntime, PeerScratchExport, WorkspaceBytesLocus, OnSubjectChargedToSlot, OnSubjectUncharged, OffSubject,
   workspace_bytes_locus,
   PhaseWall, RateSpecimenRead, CgroupMemoryReading, CgroupMemoryRead, CgroupMemoryUnreadable, EffectiveSlotProperties,
   ObservedRunnerQualificationRun, observed_run,
@@ -165,6 +165,10 @@ fn owned_route() -> ProviderRoute {
 // THE SELECTED OFFER IS AN INPUT. Nothing here derives it from a measurement; it is what the fleet
 // selected to be assessed, and the assessment is bound to its identity.
 fn selected_offer(key: String) -> SupplierOffer<HostIdentity> {
+  selected_offer_stating(key: key, architecture: Present { value: Aarch64 })
+}
+
+fn selected_offer_stating(key: String, architecture: Architecture?) -> SupplierOffer<HostIdentity> {
   SupplierOffer {
     id: FabricIdentity { principal: "mtcollins1", key: key },
     executor: "mtcollins1",
@@ -173,7 +177,7 @@ fn selected_offer(key: String) -> SupplierOffer<HostIdentity> {
       hard: HardRequirements { threads: hardware_thread_count(count: 160) },
       envelope: cpu_memory_envelope(
         min_threads: hardware_thread_count(count: 160),
-        architecture: Present { value: Aarch64 },
+        architecture: architecture,
         min_bytes: gunbc_runner_slot_desired().memory_max,
       ),
     },
@@ -198,13 +202,25 @@ fn control_plane_sanction() -> ExecutorSanction {
 
 // THE SELECTION IS MADE BY THE FLEET'S SELECTION FOLD from the fleet's own authorities -- the live
 // slot shape, the plan fold, the conservation verdict -- never assembled by hand here.
+// THE SELECTED RUNTIME, and the observed run below reads the same row, so a join failure on either
+// runtime axis is the variation a claim introduced and never a spelling drift between two literals.
+data fixture_runtime: SelectedRunnerRuntime = SelectedRunnerRuntime {
+  image_digest: "sha256:fixture-image" as NonEmptyStr,
+  runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt" as NonEmptyStr,
+}
+
 fn inputs_with(sampling: SamplingPolicy, ceilings: PhaseCeilings, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> RunnerQualificationInputs<HostIdentity> {
+  inputs_offered(offer: selected_offer(key: "offer-mtcollins1-qual-1"), sampling: sampling, ceilings: ceilings, plan: plan, allocation: allocation)
+}
+
+fn inputs_offered(offer: SupplierOffer<HostIdentity>, sampling: SamplingPolicy, ceilings: PhaseCeilings, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> RunnerQualificationInputs<HostIdentity> {
   select_runner_qualification(
-    offer: selected_offer(key: "offer-mtcollins1-qual-1"),
+    offer: offer,
     host: "mtcollins1",
     executor_sanction: control_plane_sanction(),
     requirements: floor_execution_requirements(),
     workload: pin(),
+    runtime: fixture_runtime,
     plan: plan,
     allocation: allocation,
     slot: gunbc_runner_slot_desired(),
@@ -289,8 +305,8 @@ fn run_with(
     program: "gunbc.claim_executor --required-ci" as NonEmptyStr,
     revision: pin_revision,
     specimen: specimen,
-    image_digest: "sha256:fixture-image" as NonEmptyStr,
-    runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt" as NonEmptyStr,
+    image_digest: fixture_runtime.image_digest,
+    runtime_closure: fixture_runtime.runtime_closure,
     slot_unit: slot_unit(),
     incarnation: "1" as NonEmptyStr,
     effective: effective,
@@ -391,6 +407,49 @@ test fn a_run_from_another_host_is_refused_on_the_host_axis() -> Bool {
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "host"
     && (match a.phase_roster { PhaseRosterNotAssessed { because: _ } => true _ => false })
     && a.assessed_facts.length() == 0
+}
+
+// THE GOOD RUN WITH ONLY ITS RUNTIME AND HOST FACTS REPLACED, so each claim below varies exactly one.
+fn good_run_in(image_digest: NonEmptyStr, runtime_closure: NonEmptyStr, host_threads: HardwareThreadCount, host_architecture: Architecture) -> ObservedRunnerQualificationRun {
+  let g = good_run(id: run_a)
+  observed_run(
+    run: g.run, attempt_label: g.attempt_label, observed_at: g.observed_at, host: g.host,
+    program: g.program, revision: g.revision, specimen: g.specimen,
+    image_digest: image_digest, runtime_closure: runtime_closure,
+    slot_unit: g.slot_unit, incarnation: g.incarnation, effective: g.effective,
+    host_threads: host_threads, host_architecture: host_architecture, workspace: g.workspace,
+    phase_wall: g.phase_wall, floor_eval_steps: g.floor_eval_steps,
+    rate_specimen: g.rate_specimen, memory: g.memory,
+  )
+}
+
+fn refused_on(selection: SelectedRunnerQualification<HostIdentity>, run: ObservedRunnerQualificationRun, axis: String) -> Bool {
+  let a = assess_runner_throughput(selection: selection, runs: [run])
+  !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == axis && a.assessed_facts.length() == 0
+}
+
+// THE RUNTIME AND HOST FACTS WERE OBSERVED AND NEVER JOINED; NOW EACH ONE REFUSES ALONE. Every run
+// below is the good run with one fact changed, and the good run itself still joins, so a claim that
+// passes here is about that axis and nothing else.
+test fn a_run_in_another_image_or_toolchain_is_refused_on_its_runtime_axis() -> Bool {
+  let t = hardware_thread_count(count: 160)
+  assessment_holds(a: assess_runner_throughput(selection: selection(), runs: [good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: t, host_architecture: Aarch64)]))
+    && refused_on(selection: selection(), run: good_run_in(image_digest: "sha256:another-image" as NonEmptyStr, runtime_closure: fixture_runtime.runtime_closure, host_threads: t, host_architecture: Aarch64), axis: "image digest")
+    && refused_on(selection: selection(), run: good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: "gunbc.toolchain.rust-1.92.0" as NonEmptyStr, host_threads: t, host_architecture: Aarch64), axis: "runtime closure")
+}
+
+test fn a_run_on_another_host_shape_is_refused_on_its_host_axis() -> Bool {
+  refused_on(selection: selection(), run: good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: hardware_thread_count(count: 80), host_architecture: Aarch64), axis: "host threads")
+    && refused_on(selection: selection(), run: good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: hardware_thread_count(count: 160), host_architecture: X86_64), axis: "host architecture")
+}
+
+// AN OFFER THAT STATES NO ARCHITECTURE ADMITS NONE: the good run, unchanged, refuses on the axis.
+test fn an_offer_stating_no_architecture_refuses_the_architecture_join() -> Bool {
+  let s = inputs_offered(
+    offer: selected_offer_stating(key: "offer-mtcollins1-qual-1", architecture: Absent),
+    sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves,
+  ).selection
+  refused_on(selection: s, run: good_run(id: run_a), axis: "host architecture")
 }
 
 // THE SAME STEP COUNT ON A DIFFERENT SPECIMEN IS A DIFFERENT PROGRAM: the identity is joined, not
