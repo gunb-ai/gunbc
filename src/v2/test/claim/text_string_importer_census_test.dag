@@ -234,11 +234,19 @@ test fn tsic_crossing_into_an_imported_string_parameter_stays_undecided() -> Boo
 data fixpoint_decls: List<ModuleDeclarationFact> = [
   ModuleDeclarationFact { module: "m.caller", path: "caller.dag" },
   ModuleDeclarationFact { module: "m.host", path: "host.dag" },
-  ModuleDeclarationFact { module: "m.loop", path: "loop.dag" }
+  ModuleDeclarationFact { module: "m.loop", path: "loop.dag" },
+  ModuleDeclarationFact { module: "m.mixed_drops", path: "mixed_drops.dag" },
+  ModuleDeclarationFact { module: "m.mixed_keeps", path: "mixed_keeps.dag" },
+  ModuleDeclarationFact { module: "m.host_caller", path: "host_caller.dag" },
+  ModuleDeclarationFact { module: "m.keep_caller", path: "keep_caller.dag" }
 ]
 
+// A MIXED callee with no OTHER site DROPS its import, so a crossing into it is host to host; a
+// MIXED callee with an OTHER site KEEPS it (ruling (1)), so a crossing into it is structural.
+data fixpoint_disposition_lines: FreeMonoid<String> = Cons { head: "M\tmixed_drops.dag\tMIXED\t1\t1\t0\t1\t0", tail: Cons { head: "M\tmixed_keeps.dag\tMIXED\t1\t1\t1\t1\t0", tail: Cons { head: "M\thost_caller.dag\tHOST\t1\t0\t0\t1\t1", tail: Cons { head: "M\tkeep_caller.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1", tail: Cons { head: "X\thost_caller.dag\tf\tbinder_argument\tg\tt\tm.mixed_drops\tUNDECIDED\tm.mixed_drops.g.t is itself declared with the imported bare String", tail: Cons { head: "X\tkeep_caller.dag\tf\tbinder_argument\tg\tt\tm.mixed_keeps\tUNDECIDED\tm.mixed_keeps.g.t is itself declared with the imported bare String", tail: Empty } } } } } }
+
 fn fixpoint_verdict_for(path: String) -> String {
-  let lines = Cons { head: "M\tcaller.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1", tail: Cons { head: "M\thost.dag\tHOST\t1\t0\t0\t1\t0", tail: Cons { head: "M\tloop.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1", tail: Cons { head: "X\tcaller.dag\tf\tbinder_argument\ttake\tt\tm.host\tUNDECIDED\tm.host.take.t is itself declared with the imported bare String", tail: Cons { head: "X\tloop.dag\tping\tbinder_argument\tpong\tt\t\tUNDECIDED\t<this module>.pong.t is itself declared with the imported bare String", tail: Empty } } } } }
+  let lines = Cons { head: "M\tcaller.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1", tail: Cons { head: "M\thost.dag\tHOST\t1\t0\t0\t1\t0", tail: Cons { head: "M\tloop.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1", tail: Cons { head: "X\tcaller.dag\tf\tbinder_argument\ttake\tt\tm.host\tUNDECIDED\tm.host.take.t is itself declared with the imported bare String", tail: Cons { head: "X\tloop.dag\tping\tbinder_argument\tpong\tt\t\tUNDECIDED\t<this module>.pong.t is itself declared with the imported bare String", tail: fixpoint_disposition_lines } } } } }
   match fixpoint_over_lines(lines: lines, decls: fixpoint_decls) {
     FixpointBoundExceeded { rounds: _ } => "bound exceeded"
     FixpointReached { nodes: nodes, rounds: _ } => fold_list(xs: nodes, empty: "absent", cons: fn(acc, n) { if n.path == path { fixpoint_verdict(n: n) } else { acc } })
@@ -251,4 +259,14 @@ test fn tsic_fixpoint_decides_a_crossing_into_a_host_module() -> Bool {
 
 test fn tsic_fixpoint_leaves_a_self_cycle_undecided() -> Bool {
   fixpoint_verdict_for(path: "loop.dag") == "UNCLASSIFIED:UndecidedAtFixpoint"
+}
+
+// The regression the real rows exposed: inheriting a MIXED callee's flags turned HOST modules
+// MIXED although both ends drop the import.
+test fn tsic_fixpoint_crossing_into_a_dropping_mixed_callee_stays_host() -> Bool {
+  fixpoint_verdict_for(path: "host_caller.dag") == "HOST"
+}
+
+test fn tsic_fixpoint_crossing_into_a_keeping_callee_is_structural() -> Bool {
+  fixpoint_verdict_for(path: "keep_caller.dag") == "STRUCTURAL"
 }

@@ -1086,19 +1086,26 @@ fn module_final_verdict(path: String, r: Rosters, roots: List<String>) -> Import
 }
 
 // THE FIXPOINT (neat-boar-16's ruling on #12840): a crossing whose callee parameter is itself an
-// imported bare `String` is decided by that callee module's own verdict, so verdicts are propagated
-// to a fixpoint over those edges. It reads the census's own rows -- it classifies nothing anew.
-// Each module carries two monotone flags, host and structural, seeded from its decided evidence
-// (the `M` row's counts); a module inherits the flags of every module its undecided crossings point
-// at, and the iteration stops when no flag changes. Flags only turn on, so it terminates within
-// 2n + 1 rounds; the bound is checked, not assumed, and exceeding it refuses. What is still
-// undecided at the fixpoint (a cycle, or an edge into a module with no decided evidence) is
-// UndecidedAtFixpoint and is listed with its pending targets. A local callee (declared in the same module) is an edge to the
-// module itself: it can only be decided by the module's own other evidence.
+// imported bare `String` is decided by what that parameter BECOMES in the deletion's terminal
+// state, which is the callee module's DISPOSITION -- not its verdict flags. A callee that drops
+// the import (HOST, MIXED with no OTHER site, no-evidence) turns the parameter into kernel host
+// text, so the crossing is HOST; a callee that keeps it (STRUCTURAL only, MIXED with an OTHER site
+// per ruling (1), a v2 parse refusal per ruling (4)) leaves the structural carrier, so the
+// crossing is a lawful call-argument STRUCTURAL crossing; an undecided callee contributes nothing
+// yet. Inheriting the callee's FLAGS instead was measured wrong on the real rows: a crossing into
+// a MIXED callee inherited its structural flag and turned 18 HOST modules MIXED, although both ends
+// drop the import and the crossing is host to host. Each round recomputes every node from its own
+// evidence plus its targets' dispositions in the previous round; it stops when the whole state
+// repeats and refuses if it has not within 2n + 1 rounds. What stays undecided (a cycle, or an
+// edge into an undecided or unmeasured module) is UndecidedAtFixpoint, listed with its targets. A
+// local callee is an edge to the module itself.
 type FixpointNode {
   path: String
   module: String
   census_verdict: String
+  own_host: Bool
+  own_structural: Bool
+  own_other: Bool
   host: Bool
   structural: Bool
   targets: FreeMonoid<String>
@@ -1157,6 +1164,9 @@ fn fixpoint_rows(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>) 
           path: path,
           module: module_of_path(modules: modules, path: path),
           census_verdict: field_at(fields: f, i: 2),
+          own_host: !(field_at(fields: f, i: 3) == "0"),
+          own_structural: !(field_at(fields: f, i: 4) == "0"),
+          own_other: !(field_at(fields: f, i: 5) == "0"),
           host: !(field_at(fields: f, i: 3) == "0"),
           structural: !(field_at(fields: f, i: 4) == "0"),
           targets: empty_strings
@@ -1180,28 +1190,63 @@ fn fixpoint_nodes(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>)
         if member(xs: ts, x: target) { ts } else { Cons { head: target, tail: ts } }
       } else { ts }
     })
-    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, host: n.host, structural: n.structural, targets: targets }, tail: acc }
+    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, own_host: n.own_host, own_structural: n.own_structural, own_other: n.own_other, host: n.host, structural: n.structural, targets: targets }, tail: acc }
   })
 }
 
-fn node_flags(nodes: FreeMonoid<FixpointNode>, module: String) -> FixpointNode {
-  fold_list(xs: nodes, empty: FixpointNode { path: "", module: "", census_verdict: "", host: false, structural: false, targets: empty_strings }, cons: fn(acc, n) {
-    if n.module == module { n } else { acc }
+type CalleeDisposition
+  = CalleePending
+  | CalleeDropsImport
+  | CalleeKeepsImport
+
+fn is_parse_refused(census_verdict: String) -> Bool {
+  census_verdict == "UNCLASSIFIED:SourceParseRejected"
+}
+
+fn is_census_undecided(census_verdict: String) -> Bool {
+  census_verdict == "UNCLASSIFIED:UndecidedCrossings"
+}
+
+// A node's disposition in a round. A module the census could not decide is pending until it has
+// decided evidence; a module absent from the rows (not measured) is pending forever.
+fn node_disposition(n: FixpointNode) -> CalleeDisposition {
+  if is_parse_refused(census_verdict: n.census_verdict) {
+    CalleeKeepsImport
+  } else if !n.host && !n.structural && is_census_undecided(census_verdict: n.census_verdict) {
+    CalleePending
+  } else if n.own_other || (n.structural && !n.host) {
+    CalleeKeepsImport
+  } else {
+    CalleeDropsImport
+  }
+}
+
+fn disposition_of(nodes: FreeMonoid<FixpointNode>, module: String) -> CalleeDisposition {
+  fold_list(xs: nodes, empty: CalleePending, cons: fn(acc, n) {
+    if n.module == module { node_disposition(n: n) } else { acc }
   })
 }
 
 fn fixpoint_round(nodes: FreeMonoid<FixpointNode>) -> FreeMonoid<FixpointNode> {
   list_reverse(xs: fold_list(xs: nodes, empty: Empty, cons: fn(acc, n) {
-    let inherited = fold_list(xs: n.targets, empty: FixpointNode { path: "", module: "", census_verdict: "", host: n.host, structural: n.structural, targets: empty_strings }, cons: fn(f, t) {
-      let tn = node_flags(nodes: nodes, module: t)
-      FixpointNode { path: "", module: "", census_verdict: "", host: f.host || tn.host, structural: f.structural || tn.structural, targets: empty_strings }
+    let host = fold_list(xs: n.targets, empty: n.own_host, cons: fn(h, tgt) {
+      match disposition_of(nodes: nodes, module: tgt) {
+        CalleeDropsImport => true
+        _ => h
+      }
     })
-    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, host: inherited.host, structural: inherited.structural, targets: n.targets }, tail: acc }
+    let structural = fold_list(xs: n.targets, empty: n.own_structural, cons: fn(s, tgt) {
+      match disposition_of(nodes: nodes, module: tgt) {
+        CalleeKeepsImport => true
+        _ => s
+      }
+    })
+    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, own_host: n.own_host, own_structural: n.own_structural, own_other: n.own_other, host: host, structural: structural, targets: n.targets }, tail: acc }
   }))
 }
 
-fn flag_count(nodes: FreeMonoid<FixpointNode>) -> Int {
-  fold_list(xs: nodes, empty: 0, cons: fn(acc, n) { acc + (if n.host { 1 } else { 0 }) + (if n.structural { 1 } else { 0 }) })
+fn state_signature(nodes: FreeMonoid<FixpointNode>) -> String {
+  join(fold_list(xs: nodes, empty: [], cons: fn(acc, n) { list_push(acc, concat(if n.host { "H" } else { "-" }, if n.structural { "S" } else { "-" })) }), "")
 }
 
 type FixpointOutcome
@@ -1213,7 +1258,7 @@ fn iterate_fixpoint(nodes: FreeMonoid<FixpointNode>, rounds: Int, bound: Int) ->
     FixpointBoundExceeded { rounds: rounds }
   } else {
     let next = fixpoint_round(nodes: nodes)
-    if flag_count(nodes: next) == flag_count(nodes: nodes) { FixpointReached { nodes: next, rounds: rounds + 1 } } else { iterate_fixpoint(nodes: next, rounds: rounds + 1, bound: bound) }
+    if state_signature(nodes: next) == state_signature(nodes: nodes) { FixpointReached { nodes: next, rounds: rounds + 1 } } else { iterate_fixpoint(nodes: next, rounds: rounds + 1, bound: bound) }
   }
 }
 
