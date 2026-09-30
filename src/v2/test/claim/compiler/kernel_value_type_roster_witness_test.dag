@@ -1,6 +1,7 @@
 module v2.test.claim.compiler.kernel_value_type_roster_witness_test
 
 import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
 import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
@@ -31,13 +32,10 @@ import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }
 import std.types { is_kernel_type }
 import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test {
-  RcfInferAccepted,
-  RcfInferRefused,
-  RcfResolveRefused,
   rcf_member_accepted_and_decided,
+  rcf_member_arrow,
   rcf_read,
-  rcf_refuses_with,
-  rcf_verdict
+  rcf_refuses_with
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -178,11 +176,21 @@ test fn kvr_a_declared_bool_return_holding_a_bool_is_accepted_and_decided_holds(
 }
 
 // THE FORMAL, PINNED AS IT IS: a named call's Bool formal holding an Int is accepted with a counted
-// UndecidableFormalUnresolved, because the callee reference is not typed by its declaration.
+// UndecidableFormalUnresolved, because the callee reference is not typed by its declaration. The
+// subject is the calling fn's member alone, handed the module's own indexes: the callee's
+// declaration beside it is not what the claim is about, and inferring both is more than one
+// claim's budget on the required floor.
 test fn kvr_a_named_calls_bool_formal_is_counted_not_judged_holds() -> Bool {
-  match rcf_verdict(resolved: kvr_resolved_formal()) {
-    RcfInferAccepted { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
-    RcfInferRefused { diagnostics: _ } => false
-    RcfResolveRefused => false
+  match kvr_resolved_formal() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match rcf_member_arrow(root: tree.root, name: ^kvr_g) {
+        Absent => false
+        Present { value: arrow } =>
+          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations }) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
+          }
+      }
   }
 }
