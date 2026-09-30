@@ -1,0 +1,1 @@
+Six claims passed with MemoryMax=6G and MemorySwapMax=0 using binary SHA256 717e9b4159dc7bc722e94a235325e6760f5acd246e63d8bed14b828dac970243. The source manifest was rechecked against the tree after completion. No host resource boundary was changed. This qualifies the pure admission and scope distinction; exact installed boundary readback remains required before commissioning.

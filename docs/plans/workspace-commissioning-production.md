@@ -30,3 +30,9 @@ Storage prerequisite #12657 remains on review HOLD. Its corrected read-only plan
 The current host-observation/controller slice passed six directive/history controls and the full 777-module controller composition under 6 GiB/no swap. [Exact dependency snapshots and logs](receipts/workspace-commissioning-host-observers-2026-09-29/README.md) distinguish pure controls from actual host acceptance. Full serve startup at `c2528d9ef3451d53dde3a0a47523e9d712e0016c` subsequently reached loopback readiness in 240.323 seconds under 12 GiB/no swap with no OOM events, and the check stopped its owned process. This is integrated startup, not live deployment or allocation acceptance.
 
 All ten initial-sanitation controls subsequently passed under 6 GiB/no swap, including late process appearance, unreadable TAP ownership, and an old-attempt mount. The same receipt directory records their exact dependency snapshot.
+
+## Review 5359751040 follow-up
+
+The original no-op storage replan 36637771191 failed because the runner could not enumerate the correctly installed 0700 directories. Repair is in the storage prerequisite branch; permissions remain unchanged.
+
+CPU provenance now must exactly equal the desired slot CPU boundary. A workspace-designated shakedown cell derives that finite boundary from the largest supported workspace profile (four CPUs); other slots retain the existing runner CPU policy. Six controls passed under 6 GiB/no swap, including refusal of an eight-CPU credential and preservation of an unrelated slot’s unbounded runner policy. Installation must still establish and read back that desired boundary. This source change is not a live limit change.

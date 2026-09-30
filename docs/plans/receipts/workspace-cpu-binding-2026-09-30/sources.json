@@ -1,0 +1,2708 @@
+[
+  {
+    "module": "extdeps.abi",
+    "source": "dag/extdeps/abi.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.abi.dag",
+    "sha256": "598bcdd3af7fc0f9a68e494347571155cdd22a6fbb42fe8c2b88e59802ea751f"
+  },
+  {
+    "module": "extdeps.access.posix",
+    "source": "dag/extdeps/access/posix.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.access.posix.dag",
+    "sha256": "b4bdc1b42701b947b3643fa2b720cdd6572d1a301a430dbb3ec95d82a7fbc482"
+  },
+  {
+    "module": "extdeps.accounting.budget",
+    "source": "dag/extdeps/accounting/budget.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.accounting.budget.dag",
+    "sha256": "807844aad0b892cc0944df5c14b5c6211ea637697bb117c12bd6eb21e7cd3462"
+  },
+  {
+    "module": "extdeps.accounting.encumbrance",
+    "source": "dag/extdeps/accounting/encumbrance.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.accounting.encumbrance.dag",
+    "sha256": "ef8f15505f7e4b6a1bf603dfa22cbd69cf643d793cf6aef895b39baee75c54d7"
+  },
+  {
+    "module": "extdeps.apt",
+    "source": "dag/extdeps/package_managers/apt.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.apt.dag",
+    "sha256": "e6cdee51ae42c792a7a55698302dd4e12ed2e8f5ece07efad733a01b3de8fc06"
+  },
+  {
+    "module": "extdeps.archive.format",
+    "source": "dag/extdeps/archive/format.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.archive.format.dag",
+    "sha256": "de91f0209288d706b59eba7598b2b25f34635a0c149beacd9f37aae4f2b869ca"
+  },
+  {
+    "module": "extdeps.assurance.claim_evidence",
+    "source": "dag/extdeps/assurance/claim_evidence.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.assurance.claim_evidence.dag",
+    "sha256": "d0700ef31aaba2b7775b672b035f7d83555146f97c4a498f912d4ff1a03b645c"
+  },
+  {
+    "module": "extdeps.auth.jwt",
+    "source": "dag/extdeps/auth/jwt.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.auth.jwt.dag",
+    "sha256": "5dd4a233cf87366a397357213e80cdeaca92487b3c922204cd43991a0006d385"
+  },
+  {
+    "module": "extdeps.auth.oidc",
+    "source": "dag/extdeps/auth/oidc.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.auth.oidc.dag",
+    "sha256": "39772d3c928af1c4923340af6830f72d7756039de8c309cf30edbf970ba1892c"
+  },
+  {
+    "module": "extdeps.bmc.access_profile",
+    "source": "dag/extdeps/bmc/access_profile.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.bmc.access_profile.dag",
+    "sha256": "1131243c482f6179dd852cda12060d3fbb5de4bc4c4b0fd474939125650f2258"
+  },
+  {
+    "module": "extdeps.bmc.capability",
+    "source": "dag/extdeps/bmc/capability.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.bmc.capability.dag",
+    "sha256": "fb9a217e5b3473d1cd3ebbadef4b429e539e10002216b988ec57e76ac00078ae"
+  },
+  {
+    "module": "extdeps.bmc.endpoint",
+    "source": "dag/extdeps/bmc/endpoint.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.bmc.endpoint.dag",
+    "sha256": "c37db4fd1b0c0cdcbbfe57ee0bb0758574ffb30f718e536b2464b30c89f08e2c"
+  },
+  {
+    "module": "extdeps.bmc.megarac",
+    "source": "dag/extdeps/bmc/megarac.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.bmc.megarac.dag",
+    "sha256": "b47c16bee009cfbf5c9001375805f1c4898611a43b98f5564a502b1cc7185fe9"
+  },
+  {
+    "module": "extdeps.bmc.redfish_virtual_media",
+    "source": "dag/extdeps/bmc/redfish_virtual_media.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.bmc.redfish_virtual_media.dag",
+    "sha256": "489d86a38fee4b7e7adccc238b74b2a11fcf072a76fc410e9f4c87d604ed8e75"
+  },
+  {
+    "module": "extdeps.bmc.types",
+    "source": "dag/extdeps/bmc/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.bmc.types.dag",
+    "sha256": "fc498428478478f8af59692945f275ae31752fb2388cd8d927ea23b6eee9f451"
+  },
+  {
+    "module": "extdeps.bmc.virtual_media",
+    "source": "dag/extdeps/bmc/virtual_media.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.bmc.virtual_media.dag",
+    "sha256": "9b723f0d72128fa3d6b63d412ea4a0339986fd2730424afa0978353d845c7ed3"
+  },
+  {
+    "module": "extdeps.bmc.webui.nbd_proxy",
+    "source": "dag/extdeps/bmc/webui/nbd_proxy.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.bmc.webui.nbd_proxy.dag",
+    "sha256": "6efa8dfc4b93cb0e743a07faf4149b7a6d09cc22dd1fb51c1f5b198874e9a3e4"
+  },
+  {
+    "module": "extdeps.boards.asrock_rack",
+    "source": "dag/extdeps/boards/asrock_rack.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.boards.asrock_rack.dag",
+    "sha256": "a7e5eff4bb86f4a2774f12c0e6f256734096f36aa474e6d92d39370f0eb46c47"
+  },
+  {
+    "module": "extdeps.boards.types",
+    "source": "dag/extdeps/boards/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.boards.types.dag",
+    "sha256": "35515005ad3ff7e9df45f09b38d566df17ffa44a2453b889baeef7f0f5338f51"
+  },
+  {
+    "module": "extdeps.brew",
+    "source": "dag/extdeps/package_managers/brew.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.brew.dag",
+    "sha256": "e1d06f7223f16e86f8c20c77521bc01a26f459bbfb8ef4d1cc8bc6cc5dfb7502"
+  },
+  {
+    "module": "extdeps.cache.catalog_io",
+    "source": "dag/extdeps/cache/catalog_io.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cache.catalog_io.dag",
+    "sha256": "a1dee6c80c29923e563512bb37a545863e46c1c0e2783775ee029a7d5ff59a0b"
+  },
+  {
+    "module": "extdeps.cache.catalog_placement",
+    "source": "dag/extdeps/cache/catalog_placement.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cache.catalog_placement.dag",
+    "sha256": "e2d0bdfbf57d24373096f3dfe4a150aee14ff80bddd886b630010a95d98064b5"
+  },
+  {
+    "module": "extdeps.cache.materialization",
+    "source": "dag/extdeps/cache/materialization.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cache.materialization.dag",
+    "sha256": "b4dc9757a5b23db54fa92026da589501cc470464270ab9b710201dd8d58f0fc1"
+  },
+  {
+    "module": "extdeps.cache.sccache",
+    "source": "dag/extdeps/cache/sccache.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cache.sccache.dag",
+    "sha256": "9220d832056bb6cc66ea8d8a27bb4e070e3161cb0985712c1e713a63080be8c1"
+  },
+  {
+    "module": "extdeps.cache.types",
+    "source": "dag/extdeps/cache/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cache.types.dag",
+    "sha256": "e45541ebe73c1e7e0ad4d5ec1fa17cb893831497ff8ed9922bd237204d206239"
+  },
+  {
+    "module": "extdeps.climbing_holds.types",
+    "source": "dag/extdeps/climbing_holds/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.climbing_holds.types.dag",
+    "sha256": "7cecccb75fec79d1e287e6a84ff3e235c52564c8c5198d71730fd614918b4fe0"
+  },
+  {
+    "module": "extdeps.cloud.gcp.errors",
+    "source": "dag/extdeps/cloud/gcp/errors.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cloud.gcp.errors.dag",
+    "sha256": "a1d72d0ad12ca45bc23f3204a451b1b5d956fa9bfe2ff061f36215503b4deb78"
+  },
+  {
+    "module": "extdeps.cloud.gcp.gcp",
+    "source": "dag/extdeps/cloud/gcp/gcp.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cloud.gcp.gcp.dag",
+    "sha256": "f7a779f5022bcb1795bf20ffdeef2b098528b678eba69f1421f0c0e1779b6793"
+  },
+  {
+    "module": "extdeps.cloud.gcp.iam",
+    "source": "dag/extdeps/cloud/gcp/iam.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cloud.gcp.iam.dag",
+    "sha256": "12733d44c4162210424148336f3c6f11696ac96432d858073333a6b5d5090846"
+  },
+  {
+    "module": "extdeps.cloud.gcp.secret_manager",
+    "source": "dag/extdeps/cloud/gcp/secret_manager.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cloud.gcp.secret_manager.dag",
+    "sha256": "8d0c3e3c468f0e33733827b0ad32afe3af4ed366f10ee5d30f9a5881c97a3846"
+  },
+  {
+    "module": "extdeps.cloud.gcp.secret_ref",
+    "source": "dag/extdeps/cloud/gcp/secret_ref.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cloud.gcp.secret_ref.dag",
+    "sha256": "843fc306be22696575eb1463875c225bcd2f8e4950ad32db248e48f1d23efb1e"
+  },
+  {
+    "module": "extdeps.communication.fidelity_carriers",
+    "source": "dag/extdeps/communication/fidelity_carriers.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.communication.fidelity_carriers.dag",
+    "sha256": "135d1c63cf56d1020e613e021818dfd2207cf997c4320cd644636f11a23410a1"
+  },
+  {
+    "module": "extdeps.communication.medium",
+    "source": "dag/extdeps/communication/medium.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.communication.medium.dag",
+    "sha256": "a09c4f10d7098a6ad40d94e6a9e19a69e53deba6863edb3285727cf7ba3afae9"
+  },
+  {
+    "module": "extdeps.container.docker_engine",
+    "source": "dag/extdeps/container/docker_engine.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.container.docker_engine.dag",
+    "sha256": "9769f885d5d4715e3fa84a2e764b1e2edec674bcfc8f8ac7bdc5f2be5d8a14e5"
+  },
+  {
+    "module": "extdeps.container.engine",
+    "source": "dag/extdeps/container/engine.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.container.engine.dag",
+    "sha256": "9c1394afbdda534f3a29d583c3fbf2344a3741d2f376a49ab331b09b47643889"
+  },
+  {
+    "module": "extdeps.container.oci.descriptor",
+    "source": "dag/extdeps/container/oci/descriptor.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.container.oci.descriptor.dag",
+    "sha256": "612c3262c0de612344920945dd4bad9cb0c9c15bbb794a7aa7000a2e520373ef"
+  },
+  {
+    "module": "extdeps.container.oci.digest",
+    "source": "dag/extdeps/container/oci/digest.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.container.oci.digest.dag",
+    "sha256": "6fea6eb799ab09a198d898d9130353cf51d6af5ae5daae13ee2262e67ede5704"
+  },
+  {
+    "module": "extdeps.container.oci.image_config",
+    "source": "dag/extdeps/container/oci/image_config.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.container.oci.image_config.dag",
+    "sha256": "3e66f4af7e64bf50ac2f49bc2d58d2c4e6f02f30876da2926816c8b76d75a7d8"
+  },
+  {
+    "module": "extdeps.container.oci.manifest",
+    "source": "dag/extdeps/container/oci/manifest.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.container.oci.manifest.dag",
+    "sha256": "fa79bed6e1d2dafc47d216e33e0de0c6565293ef141665599b38439d9ed32943"
+  },
+  {
+    "module": "extdeps.container.oci.media_types",
+    "source": "dag/extdeps/container/oci/media_types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.container.oci.media_types.dag",
+    "sha256": "d0e577cbdb01180296beef34031ff776af2aed1bfe9e3420302ceb628094c3b7"
+  },
+  {
+    "module": "extdeps.container.oci.reference",
+    "source": "dag/extdeps/container/oci/reference.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.container.oci.reference.dag",
+    "sha256": "be2af3886c46e676b688ff0dc02457d6788f0a83ab435eb4eb677fd162625efe"
+  },
+  {
+    "module": "extdeps.container.oci.types",
+    "source": "dag/extdeps/container/oci/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.container.oci.types.dag",
+    "sha256": "a179eeb05502e5e06a4a280e19194cd738470e76471891219bcd3cb349eaee79"
+  },
+  {
+    "module": "extdeps.coverage",
+    "source": "dag/extdeps/coverage.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.coverage.dag",
+    "sha256": "1496e2c45039583852e4df7a1aab2e5e604bc44a1be28b449665ce22294e1bc4"
+  },
+  {
+    "module": "extdeps.cpu",
+    "source": "dag/extdeps/cpu.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cpu.dag",
+    "sha256": "9e18c2a187bfc39edaacd46b68befb0a2054608e1f0c08eee390ea0732a1a1a2"
+  },
+  {
+    "module": "extdeps.cpu.ampere",
+    "source": "dag/extdeps/cpu/ampere.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cpu.ampere.dag",
+    "sha256": "dee493bfe5feb83f242519c67ff3bf9f7574e89ef1130f27c51310a95c1d466b"
+  },
+  {
+    "module": "extdeps.cpu.types",
+    "source": "dag/extdeps/cpu/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cpu.types.dag",
+    "sha256": "0b793105133d86f9ff3d02619a820958348a0a0d32ee5e8d88782f6a7dd75336"
+  },
+  {
+    "module": "extdeps.cron.schedule_model",
+    "source": "dag/extdeps/cron/schedule_model.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.cron.schedule_model.dag",
+    "sha256": "5c5e356cc09f7d55ba27d8b561dbb1581a1d3bce6028ab352a2206a34db710c2"
+  },
+  {
+    "module": "extdeps.crypto.hash",
+    "source": "dag/extdeps/crypto/hash.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.crypto.hash.dag",
+    "sha256": "2d97152d4053fb3d51723c11ef936123b8fe6d3712986a6d1695e5d70f397c41"
+  },
+  {
+    "module": "extdeps.crypto.mac",
+    "source": "dag/extdeps/crypto/mac.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.crypto.mac.dag",
+    "sha256": "015a8c62476004416065d70c09dd4b0aa9c90818ed9103c4ee3b38f25baed2a1"
+  },
+  {
+    "module": "extdeps.currency.currency",
+    "source": "dag/extdeps/currency/currency.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.currency.currency.dag",
+    "sha256": "3016615f96e07bea627ba31aca76c1b6bbf0a95979928f9038e7c6c1143eede8"
+  },
+  {
+    "module": "extdeps.dhcp.v4",
+    "source": "dag/extdeps/dhcp/v4.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.dhcp.v4.dag",
+    "sha256": "7345654bdfaced990fd42629af87fa715fb3abc146cd275b10e40e49befc1fa5"
+  },
+  {
+    "module": "extdeps.dns.domain_name",
+    "source": "dag/extdeps/dns/domain_name.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.dns.domain_name.dag",
+    "sha256": "75c7f92dbd2b358b7a22a4b730fc2d459bac5358a26c2af1415985faae18da3d"
+  },
+  {
+    "module": "extdeps.exec.command",
+    "source": "dag/extdeps/exec/command.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.exec.command.dag",
+    "sha256": "226fdee25b18bdb3ce7a272e01ce2ef43de39db63b9beb9e39d44a6bc96c6c1d"
+  },
+  {
+    "module": "extdeps.exec.exec_arg_limit",
+    "source": "dag/extdeps/exec/exec_arg_limit.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.exec.exec_arg_limit.dag",
+    "sha256": "e8298e58a6d4f70fce35245c4f3b7ff2b5d06cfe48a0a9f6804533f9454b4541"
+  },
+  {
+    "module": "extdeps.exec.program",
+    "source": "dag/extdeps/exec/program.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.exec.program.dag",
+    "sha256": "bd73ff85787842f626037b809364022b2c9eb19780d221398e2d7880ae75f594"
+  },
+  {
+    "module": "extdeps.external_authority",
+    "source": "dag/extdeps/external_authority.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.external_authority.dag",
+    "sha256": "88e4aeb78428f3cbd583016c8e4dea926b6a9ff0a9d81b613e22d736e5fba1b4"
+  },
+  {
+    "module": "extdeps.filesystem.filesystem_io",
+    "source": "dag/extdeps/filesystem/filesystem_io.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.filesystem.filesystem_io.dag",
+    "sha256": "befeac5fa2d367ec2250bbb2c8f3a9747cb20ef078126e80dca4b2c526d2fb47"
+  },
+  {
+    "module": "extdeps.filesystem.linux",
+    "source": "dag/extdeps/filesystem/linux.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.filesystem.linux.dag",
+    "sha256": "02255828e052cf01689a8c0e8a28dcbdc5d3be05bd3fb9f53807ddf3d398f9f4"
+  },
+  {
+    "module": "extdeps.firmware.types",
+    "source": "dag/extdeps/firmware/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.firmware.types.dag",
+    "sha256": "626f0b0d3056e511bdf56b5fb3ad97c92c4e45abebfc107b679ba58ddcc0d335"
+  },
+  {
+    "module": "extdeps.git",
+    "source": "dag/extdeps/git/git.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.git.dag",
+    "sha256": "6762a7baaaa5628001b1e7eb5a87258157b7423ecf888de2c1568f1881baca99"
+  },
+  {
+    "module": "extdeps.git.object_store",
+    "source": "dag/extdeps/git/object_store.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.git.object_store.dag",
+    "sha256": "501378bcee1750f8f6ba782e234aea61cd53f00db9e4dd87851ddaadf5a8e7b1"
+  },
+  {
+    "module": "extdeps.github.action_release",
+    "source": "dag/extdeps/github/action_release.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.github.action_release.dag",
+    "sha256": "929ed31990a4372d8ae27b925c013fa8efb9d2eb1380d4ce8e0412d178106d38"
+  },
+  {
+    "module": "extdeps.github.actions",
+    "source": "dag/extdeps/github/actions.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.github.actions.dag",
+    "sha256": "14100b1ab8d98e55b09a3724b3061ea2a32dd0b9881c832f966dbc4557d93b2f"
+  },
+  {
+    "module": "extdeps.github.checks",
+    "source": "dag/extdeps/github/checks.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.github.checks.dag",
+    "sha256": "d854406c68c3f02ce105c960bdd09aa02bc3b2a907e3849c7fddfaae81d4b2af"
+  },
+  {
+    "module": "extdeps.github.checks_contracts",
+    "source": "dag/extdeps/github/checks_contracts.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.github.checks_contracts.dag",
+    "sha256": "23a64841ab6c8195397d435d5354114df3b146b943c853cfe73d512f31e52335"
+  },
+  {
+    "module": "extdeps.github.ci_runner",
+    "source": "dag/extdeps/github/ci_runner.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.github.ci_runner.dag",
+    "sha256": "7adfb4c64cf1f827f47b352f7a2384ed442c11acf5e9769410140c88e4a2bab9"
+  },
+  {
+    "module": "extdeps.github.errors",
+    "source": "dag/extdeps/github/errors.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.github.errors.dag",
+    "sha256": "07ddeb7c6a19ebeab2414a29a8f102ac704cd45837edc118dd53a848dcb44a88"
+  },
+  {
+    "module": "extdeps.github.github",
+    "source": "dag/extdeps/github/github.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.github.github.dag",
+    "sha256": "d7493b711821a510d6dc83d74865c9d1456db012f3fbff1165af4cdab07d8f76"
+  },
+  {
+    "module": "extdeps.github.github_contracts",
+    "source": "dag/extdeps/github/github_contracts.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.github.github_contracts.dag",
+    "sha256": "a0f651f690a3aed53ad21c1b773963df9e7942974cb9169b3181c272496d23f0"
+  },
+  {
+    "module": "extdeps.github.log_annotations",
+    "source": "dag/extdeps/github/log_annotations.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.github.log_annotations.dag",
+    "sha256": "48c9c9cd6febee6d001c0627ea42297b423c0783dee38738990192543fe469f7"
+  },
+  {
+    "module": "extdeps.github.pulls",
+    "source": "dag/extdeps/github/pulls.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.github.pulls.dag",
+    "sha256": "1028c0eb10bd4057ba64705bcaf301f41260190044eda382106b553e723d4e3d"
+  },
+  {
+    "module": "extdeps.github.pulls_contracts",
+    "source": "dag/extdeps/github/pulls_contracts.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.github.pulls_contracts.dag",
+    "sha256": "d733eef06b05dd42ba6496c658601a97891a1f58d6b841fbc820459aff28565a"
+  },
+  {
+    "module": "extdeps.gpu.types",
+    "source": "dag/extdeps/gpu/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.gpu.types.dag",
+    "sha256": "5dda0a842a124b8d5922d3899f9fac4686b1ca842afafbbbaefe37abdb97ebd8"
+  },
+  {
+    "module": "extdeps.hardware",
+    "source": "dag/extdeps/hardware.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.hardware.dag",
+    "sha256": "97741b53d621ff8afaad36ae423ea22ca6d060de5a0916a51d8b9597d35cd6a2"
+  },
+  {
+    "module": "extdeps.http.client",
+    "source": "dag/extdeps/http/client.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.http.client.dag",
+    "sha256": "ea76e400a91195ecf7b13b56102bed52fcc1819fb87fa68eee44e647aec973bc"
+  },
+  {
+    "module": "extdeps.http.server",
+    "source": "dag/extdeps/http/server.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.http.server.dag",
+    "sha256": "8fd70566a68ce44721e6945072ab636dcf4a4e907af7fcc77a027897c9151fb1"
+  },
+  {
+    "module": "extdeps.ietf.http_semantics",
+    "source": "dag/extdeps/ietf/http_semantics.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.ietf.http_semantics.dag",
+    "sha256": "606fc53707bbf45632049ea67659287eb25b95291f9138e68fbbe803553054ab"
+  },
+  {
+    "module": "extdeps.jobserver",
+    "source": "dag/extdeps/jobserver.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.jobserver.dag",
+    "sha256": "9ed87d620f863138266c7fc0e019bf914f55207becb5ec3324daa80bc8135ad2"
+  },
+  {
+    "module": "extdeps.languages.html",
+    "source": "dag/extdeps/languages/html.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.languages.html.dag",
+    "sha256": "ff049643c5cf8bf2392659731b016da8402ce9e0cd1486d67fd3885bbf69328a"
+  },
+  {
+    "module": "extdeps.languages.html_fragment",
+    "source": "dag/extdeps/languages/html_fragment.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.languages.html_fragment.dag",
+    "sha256": "88f64ca15c214f379b6b66219d63e4188a5edbf7920c0581754684b3b2225ba9"
+  },
+  {
+    "module": "extdeps.languages.json.emit",
+    "source": "dag/extdeps/languages/json/emit.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.languages.json.emit.dag",
+    "sha256": "a40f075c87c09dd9f0dc8819e746cb0a2bf613abe54f4eba0579963149f16d58"
+  },
+  {
+    "module": "extdeps.languages.json.grammar",
+    "source": "dag/extdeps/languages/json/grammar.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.languages.json.grammar.dag",
+    "sha256": "5a5114ac942b635a21490bda26b8d896aba9358af7a16ec708f31909f9affe2a"
+  },
+  {
+    "module": "extdeps.languages.json.parse",
+    "source": "dag/extdeps/languages/json/parse.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.languages.json.parse.dag",
+    "sha256": "44b89df89e7610ef9d978992d434a4b9fc46ed6b34f37d0b23bddc147e7053cf"
+  },
+  {
+    "module": "extdeps.languages.markdown",
+    "source": "dag/extdeps/languages/markdown.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.languages.markdown.dag",
+    "sha256": "2ce3b6f160550c98fe63c3018f352229f706df7993edb2f7919be70c02f59116"
+  },
+  {
+    "module": "extdeps.languages.yaml.types",
+    "source": "dag/extdeps/languages/yaml/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.languages.yaml.types.dag",
+    "sha256": "089bd3f3ee26b4ea27b5d12ea058f23b4da80c50038612e21617eb84301a1da9"
+  },
+  {
+    "module": "extdeps.linux.cgroup_v2",
+    "source": "dag/extdeps/linux/cgroup_v2.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.linux.cgroup_v2.dag",
+    "sha256": "fbb9d57d4adba1c2a551cbd73cbf9828faf1fa7b40b5e3e1e38f51f0a65da5e3"
+  },
+  {
+    "module": "extdeps.linux.proc_self_cgroup",
+    "source": "dag/extdeps/linux/proc_self_cgroup.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.linux.proc_self_cgroup.dag",
+    "sha256": "a3db0d941a3a10c530d1b8003dca61042a5a426f844075fed749032e416e1c91"
+  },
+  {
+    "module": "extdeps.linux.procfs",
+    "source": "dag/extdeps/linux/procfs.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.linux.procfs.dag",
+    "sha256": "be3e4580e6a033ad60f47be8d5e55255aada7a13137bf56985facd04390dd60e"
+  },
+  {
+    "module": "extdeps.llm.codex_app_server",
+    "source": "dag/extdeps/llm/codex_app_server.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.llm.codex_app_server.dag",
+    "sha256": "efd8ddb237f03160d9d9f8a4b940c077e4f928cec3c4913838631d0c805cd458"
+  },
+  {
+    "module": "extdeps.llm.codex_auth",
+    "source": "dag/extdeps/llm/codex_auth.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.llm.codex_auth.dag",
+    "sha256": "ef833cc27292c54641cb073e09888181ff9038db146c228fe1d241735134c1ad"
+  },
+  {
+    "module": "extdeps.memory",
+    "source": "dag/extdeps/memory.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.memory.dag",
+    "sha256": "c382d180c73bac2bb68cb1ae13d29880ec4aa0975cf2910eb21d186b9cc28a4e"
+  },
+  {
+    "module": "extdeps.memory.samsung",
+    "source": "dag/extdeps/memory/samsung.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.memory.samsung.dag",
+    "sha256": "dec7e4039baace8c3ccbb225f898a2490c637f4cd366cabf62d6443211340ec7"
+  },
+  {
+    "module": "extdeps.memory.sk_hynix",
+    "source": "dag/extdeps/memory/sk_hynix.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.memory.sk_hynix.dag",
+    "sha256": "be0d3af89d1973a865b44785289414ad457d45d67b17c3df3b893fe63d15a303"
+  },
+  {
+    "module": "extdeps.memory.types",
+    "source": "dag/extdeps/memory/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.memory.types.dag",
+    "sha256": "d03770f4f2e2f22f5481ea5bbe691b82a7b07f957085ff804ba6c2a7f574fc1d"
+  },
+  {
+    "module": "extdeps.netfilter.iptables_legacy",
+    "source": "dag/extdeps/netfilter/iptables_legacy.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.netfilter.iptables_legacy.dag",
+    "sha256": "61984221e395c81ae47794f44895c1380e827a580f4cc7ee440ceec6c781bad9"
+  },
+  {
+    "module": "extdeps.netfilter.nfct",
+    "source": "dag/extdeps/netfilter/nfct.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.netfilter.nfct.dag",
+    "sha256": "3464ac683331116dfb3a73fe772eb1e6c74d9eecc96c6ac94cdc53439bed8d56"
+  },
+  {
+    "module": "extdeps.network.address",
+    "source": "dag/extdeps/network/address.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.network.address.dag",
+    "sha256": "ec16c313201ab6d85f6377fb41c886ed682521d27dff8dd425bcbcfa80c59f52"
+  },
+  {
+    "module": "extdeps.network.endpoint",
+    "source": "dag/extdeps/network/endpoint.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.network.endpoint.dag",
+    "sha256": "366cf716a13cd977ad44b5689a9a5480e89fccf434d686da4331612d2bbb13bc"
+  },
+  {
+    "module": "extdeps.network.ipv4",
+    "source": "dag/extdeps/network/ipv4.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.network.ipv4.dag",
+    "sha256": "a3243a396abcd171c868b451906ee3d708b5e077f64d83bb9b1338d2ee6ff697"
+  },
+  {
+    "module": "extdeps.network.ipv6",
+    "source": "dag/extdeps/network/ipv6.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.network.ipv6.dag",
+    "sha256": "912b70fbe05375103a1ee36980cc57592f9e1742f1c3cfb18bdaab952cba8bd2"
+  },
+  {
+    "module": "extdeps.network.reach",
+    "source": "dag/extdeps/network/reach.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.network.reach.dag",
+    "sha256": "38b0394d8dc2dc61aa361b68197c189b1657096d136b03dabc558f7e2faa6002"
+  },
+  {
+    "module": "extdeps.nftables.ruleset",
+    "source": "dag/extdeps/nftables/ruleset.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.nftables.ruleset.dag",
+    "sha256": "55acebfa65bed9929f4aeb1d837c7a571d51a9195a5f936f4518fd88c77b14d2"
+  },
+  {
+    "module": "extdeps.npm",
+    "source": "dag/extdeps/npm.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.npm.dag",
+    "sha256": "ba65b047e4bf1f33a088f355dea9fcfacdde13e5940940ee7b7808911b4503ca"
+  },
+  {
+    "module": "extdeps.numeric.base16",
+    "source": "dag/extdeps/numeric/base16.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.numeric.base16.dag",
+    "sha256": "3623dd73f3681a6e292b627cb9b456818effd393624626683b954e7d146c0e64"
+  },
+  {
+    "module": "extdeps.object_storage",
+    "source": "dag/extdeps/object_storage/object_storage.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.object_storage.dag",
+    "sha256": "a29465155d57c1faed1ddca8cb5537fcede68d7d7e4722105cda254726c23294"
+  },
+  {
+    "module": "extdeps.object_storage.content_addressed",
+    "source": "dag/extdeps/object_storage/content_addressed.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.object_storage.content_addressed.dag",
+    "sha256": "3484768b85c4d5c25edbbe656896e17b8aed3bbfd9cc95684f7ccb1cccec17fb"
+  },
+  {
+    "module": "extdeps.ollama.binary_release",
+    "source": "dag/extdeps/ollama/binary_release.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.ollama.binary_release.dag",
+    "sha256": "fa580666afbf10ee0bcba2f722ac34bd8eb3039df898fa5477136d4b281c250a"
+  },
+  {
+    "module": "extdeps.os.ubuntu_autoinstall",
+    "source": "dag/extdeps/os/ubuntu_autoinstall.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.os.ubuntu_autoinstall.dag",
+    "sha256": "f77985f6dc906897c4a916c4fcd0d52d13dce50217cbee3266021d96bddd194a"
+  },
+  {
+    "module": "extdeps.package",
+    "source": "dag/extdeps/package.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.package.dag",
+    "sha256": "ae95e5ee95da2b391fac14de9040c74af6adbd2ae6abc7a95e3d26541607cd09"
+  },
+  {
+    "module": "extdeps.pin",
+    "source": "dag/extdeps/pin.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.pin.dag",
+    "sha256": "b9c184a3731d5427619ca3253b722618fe0b1def28be2726690bebeea2f850b3"
+  },
+  {
+    "module": "extdeps.posix.shell_command_language",
+    "source": "dag/extdeps/posix/shell_command_language.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.posix.shell_command_language.dag",
+    "sha256": "6e7268a08bd58cb9d5a70fc074adbcdcb61f1beeb3cea1221953a50d19c18d5c"
+  },
+  {
+    "module": "extdeps.process.gnu_bash_exit",
+    "source": "dag/extdeps/process/gnu_bash_exit.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.process.gnu_bash_exit.dag",
+    "sha256": "a15a59808e4c996318f62f68db463b836fc6203421fe1214d2969d499c025c42"
+  },
+  {
+    "module": "extdeps.process.posix_exit",
+    "source": "dag/extdeps/process/posix_exit.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.process.posix_exit.dag",
+    "sha256": "57b76d62b3ca996426e6f669c55e3e82a849225c59824613458d4dc813c6d8f5"
+  },
+  {
+    "module": "extdeps.provisioning.dhcp_client_arch",
+    "source": "dag/extdeps/provisioning/dhcp_client_arch.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.provisioning.dhcp_client_arch.dag",
+    "sha256": "1fb59d9fc436aad4ee836b36cc3da85b66e3a6376b5f2a919deb4f7cea80ed57"
+  },
+  {
+    "module": "extdeps.provisioning.network_boot",
+    "source": "dag/extdeps/provisioning/network_boot.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.provisioning.network_boot.dag",
+    "sha256": "c4194d133180018bf9b7f09a1388ce75ad44dc3fe44dd77175eeeb102a8a6780"
+  },
+  {
+    "module": "extdeps.publication",
+    "source": "dag/extdeps/publication.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.publication.dag",
+    "sha256": "7ef7e8fbb50dbe23b54e181f0b04f3ca5000342e5a0a3464aeda14b2e7897fe6"
+  },
+  {
+    "module": "extdeps.realization.compile_stage_memo",
+    "source": "dag/extdeps/realization/compile_stage_memo.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.realization.compile_stage_memo.dag",
+    "sha256": "4f0bd3b2d1db88281eff9de0a033efdf486258b38926042da1ddbfee8dc29a21"
+  },
+  {
+    "module": "extdeps.realization.parse_table_memo",
+    "source": "dag/extdeps/realization/parse_table_memo.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.realization.parse_table_memo.dag",
+    "sha256": "85609359830fad1e83b670701c092fe5a215bd57bb32018eb8542a4282fe43b5"
+  },
+  {
+    "module": "extdeps.router.verizon_cr1000a",
+    "source": "dag/extdeps/router/verizon_cr1000a.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.router.verizon_cr1000a.dag",
+    "sha256": "31676cd07b8d069ff6b857ddf4ca05e3349f391690b8ebab3f43aaa817f0c41a"
+  },
+  {
+    "module": "extdeps.runtime.abi.aapcs64",
+    "source": "dag/extdeps/runtime/abi/aapcs64.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.runtime.abi.aapcs64.dag",
+    "sha256": "44fad81b1ecbbf31b378ef80416cf55992ea0944cc121f318ea1360844774dee"
+  },
+  {
+    "module": "extdeps.runtime.abi.sysv_amd64",
+    "source": "dag/extdeps/runtime/abi/sysv_amd64.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.runtime.abi.sysv_amd64.dag",
+    "sha256": "dec8e88108d5098c1810ebe1bcff882af480c1c47bf3906ec1fb4572d2eab16a"
+  },
+  {
+    "module": "extdeps.runtime.architecture.x86_64_linux",
+    "source": "dag/extdeps/runtime/architecture/x86_64_linux.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.runtime.architecture.x86_64_linux.dag",
+    "sha256": "c742e341ea507b7ea5b067b5bc2fd7bb3910e8ce12841b30da710f8b788bfcf2"
+  },
+  {
+    "module": "extdeps.runtime.errno",
+    "source": "dag/extdeps/runtime/errno.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.runtime.errno.dag",
+    "sha256": "021d7615c82df3d00fab2a4d57f1822d26783f9f674c7aa84bbedbba02085d98"
+  },
+  {
+    "module": "extdeps.runtime.syscalls.linux",
+    "source": "dag/extdeps/runtime/syscalls/linux.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.runtime.syscalls.linux.dag",
+    "sha256": "53fd24ad1f02950ea687285043699f732973cde905108a5b946ed30648a50041"
+  },
+  {
+    "module": "extdeps.rust.std_process",
+    "source": "dag/extdeps/rust/std_process.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.rust.std_process.dag",
+    "sha256": "28fa7dbd8acb2587393c914289f8de7c70255bba13d32e9aff3cab8a4e178756"
+  },
+  {
+    "module": "extdeps.rustup",
+    "source": "dag/extdeps/rust/rustup.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.rustup.dag",
+    "sha256": "d9232129751b35c5881af0831a30f87deabef91aaf47db22b7bc5fcc98cb01dd"
+  },
+  {
+    "module": "extdeps.shell",
+    "source": "dag/extdeps/shell.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.shell.dag",
+    "sha256": "3bdcaca3dc02bcf50c6d1e9d415825ac27aaa6187b4cee5386e7decdc04b5696"
+  },
+  {
+    "module": "extdeps.shell.exec",
+    "source": "dag/extdeps/shell/exec.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.shell.exec.dag",
+    "sha256": "8d23901294b092c1bb97d19db6d0b4992d1636e2442b25742ea9ecc071d20e2f"
+  },
+  {
+    "module": "extdeps.software",
+    "source": "dag/extdeps/software.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.software.dag",
+    "sha256": "359dffb6f44d85df85e213933aabcea0a55799e243d57b1e22fac63c7fe1bf22"
+  },
+  {
+    "module": "extdeps.ssh",
+    "source": "dag/extdeps/ssh/keys.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.ssh.dag",
+    "sha256": "9e247283dce00a934061eb655de01bad503f797b9a8110746e1f760748976e0c"
+  },
+  {
+    "module": "extdeps.standards.micro_atx",
+    "source": "dag/extdeps/standards/micro_atx.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.standards.micro_atx.dag",
+    "sha256": "86664d46c29f8a6a8954aa0c0ab78723cf06de2a2bebf2c37690d224b2563aa7"
+  },
+  {
+    "module": "extdeps.storage.samsung",
+    "source": "dag/extdeps/storage/samsung.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.storage.samsung.dag",
+    "sha256": "c55f7b21cda2abc5dede4c88e0af9f75b36a484af36666664eebc140157b5d42"
+  },
+  {
+    "module": "extdeps.storage.types",
+    "source": "dag/extdeps/storage/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.storage.types.dag",
+    "sha256": "bfb19271a1ed212c2d780afde332f9162a97e8e447d1953ed640d3b99b2f84f3"
+  },
+  {
+    "module": "extdeps.storage.western_digital",
+    "source": "dag/extdeps/storage/western_digital.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.storage.western_digital.dag",
+    "sha256": "9989cf70f0dc593806fe71338913104d66dd3d0554eac370ad87dda819f9b61f"
+  },
+  {
+    "module": "extdeps.sudo.elevation",
+    "source": "dag/extdeps/sudo/elevation.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.sudo.elevation.dag",
+    "sha256": "262f4a96a1de712c5493599edfd5d292ad65fb3e76cdb5cd25467b5df9c02e9d"
+  },
+  {
+    "module": "extdeps.sudo.nopasswd_execute_probe",
+    "source": "dag/extdeps/sudo/nopasswd_execute_probe.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.sudo.nopasswd_execute_probe.dag",
+    "sha256": "3ff63fdcb4ea117272473b325f50586a9c21d3374b52bd0b7c4e5b89db03cae0"
+  },
+  {
+    "module": "extdeps.systemd",
+    "source": "dag/extdeps/systemd/systemd.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.systemd.dag",
+    "sha256": "0a0e8b6ea1bd7c68580fbcbaf3a02f725c1898dd1362644e9981be1de1ef53fc"
+  },
+  {
+    "module": "extdeps.systemd.oomd",
+    "source": "dag/extdeps/systemd/oomd.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.systemd.oomd.dag",
+    "sha256": "dfbf8d2134902d43c6c722d134ac78cb47934d8a64bb51a1ba1a2e71b84a99ae"
+  },
+  {
+    "module": "extdeps.systemd.systemctl",
+    "source": "dag/extdeps/systemd/systemctl.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.systemd.systemctl.dag",
+    "sha256": "69c6114d66ff04189a0c80f4703eb139664b0ae3d21d127669480a3c55be348c"
+  },
+  {
+    "module": "extdeps.systemd.systemd_contracts",
+    "source": "dag/extdeps/systemd/systemd_contracts.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.systemd.systemd_contracts.dag",
+    "sha256": "722527b719ffb710a286668f06ce3e07287e4d7997261d55fd889f6746596008"
+  },
+  {
+    "module": "extdeps.systems.nvidia_fleet_lifecycle",
+    "source": "dag/extdeps/systems/nvidia_fleet_lifecycle.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.systems.nvidia_fleet_lifecycle.dag",
+    "sha256": "3cd7d368ef8577f0b7dab9dfc90d5f7cf7ee6348bdbd204c0726941bde0ace14"
+  },
+  {
+    "module": "extdeps.tailscale.identity",
+    "source": "dag/extdeps/tailscale/identity.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tailscale.identity.dag",
+    "sha256": "4dd7dfdde01e2f59b772435f1859eda375a4c4bfa88ef9a4e9e3e32f71a47c76"
+  },
+  {
+    "module": "extdeps.tailscale.serve",
+    "source": "dag/extdeps/tailscale/serve.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tailscale.serve.dag",
+    "sha256": "f6e30594b3c69ef79b471e81886b82e056350dc924d966d0121c6922752518e2"
+  },
+  {
+    "module": "extdeps.time.rfc3339",
+    "source": "dag/extdeps/time/rfc3339.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.time.rfc3339.dag",
+    "sha256": "f1377fe08c3aebda7aadb464fe1b91cb0976026f4d39e83c70dcd35fcfcfbbdb"
+  },
+  {
+    "module": "extdeps.toolchain.architecture_profile",
+    "source": "dag/extdeps/toolchain/architecture_profile.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.toolchain.architecture_profile.dag",
+    "sha256": "f52f7b937d8a2090abc1622669544d8f80501f1189967ab9b7183fbd83f47ae8"
+  },
+  {
+    "module": "extdeps.toolchain.types",
+    "source": "dag/extdeps/toolchain/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.toolchain.types.dag",
+    "sha256": "cedf999e801ef28b73105996d0b591dea8c14722d05f88745ef41a34fd54c81f"
+  },
+  {
+    "module": "extdeps.tools",
+    "source": "dag/extdeps/tools.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.dag",
+    "sha256": "00c1d49c96732aa80073467f01f9ed9a2a44a928d160fe44d01efc481055a785"
+  },
+  {
+    "module": "extdeps.tools.conntrack",
+    "source": "dag/extdeps/tools/conntrack.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.conntrack.dag",
+    "sha256": "843ecd900beeaa29c38a0e7c0667e08aa07b000d998600f8db29b0a81e58f59f"
+  },
+  {
+    "module": "extdeps.tools.curl",
+    "source": "dag/extdeps/tools/curl.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.curl.dag",
+    "sha256": "fcd66de1dae4818b478acf8d28e61141c340710e17ad33e06030ad84cbbaef5d"
+  },
+  {
+    "module": "extdeps.tools.env",
+    "source": "dag/extdeps/tools/env.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.env.dag",
+    "sha256": "5a6e868a9693e27881ca5433f463a8e0a12421f0dafb2a173fa94f230721765a"
+  },
+  {
+    "module": "extdeps.tools.gh",
+    "source": "dag/extdeps/tools/gh.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.gh.dag",
+    "sha256": "a0baadc00ee7de5c696220c78f90f13e7b28e4266f9a3aef33b1eb9d8e6cd3ba"
+  },
+  {
+    "module": "extdeps.tools.gnu_coreutils",
+    "source": "dag/extdeps/tools/gnu_coreutils.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.gnu_coreutils.dag",
+    "sha256": "2c700fc39e918270f96a9a58ed5fdc1bc44539477151bd93caeb7a831ed02c7a"
+  },
+  {
+    "module": "extdeps.tools.node",
+    "source": "dag/extdeps/tools/node.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.node.dag",
+    "sha256": "9b2e190793158b6990908e401402bf6a812137728ddb5754ebafad2438a68f31"
+  },
+  {
+    "module": "extdeps.tools.npm",
+    "source": "dag/extdeps/tools/npm.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.npm.dag",
+    "sha256": "ada366ba46c6a997cbfcbed30f23143cc6c01855ab556112b839428e8cf8faf4"
+  },
+  {
+    "module": "extdeps.tools.openssl",
+    "source": "dag/extdeps/tools/openssl.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.openssl.dag",
+    "sha256": "3c05fd3dedc1bac341a94b1151620a33093fae2f727a695e84b51ce76aa554de"
+  },
+  {
+    "module": "extdeps.tools.sed",
+    "source": "dag/extdeps/tools/sed.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.sed.dag",
+    "sha256": "8be98a7aa6c0e0480cbcd3e5cb71f418fe0d2a52199c9c39bf775e7231ee1d2a"
+  },
+  {
+    "module": "extdeps.tools.sha256sum",
+    "source": "dag/extdeps/tools/sha256sum.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.sha256sum.dag",
+    "sha256": "ddad5a7bed339916b024eb6177d2b3ad8ec45bb0ee702c154cbaf8a3170f45c9"
+  },
+  {
+    "module": "extdeps.tools.sha512sum",
+    "source": "dag/extdeps/tools/sha512sum.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.sha512sum.dag",
+    "sha256": "06d44f1a1a4b8b5676553a6fe48776724d556d2fc522cea10f49ad8f0a5d2d1f"
+  },
+  {
+    "module": "extdeps.tools.sshpass",
+    "source": "dag/extdeps/tools/sshpass.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.sshpass.dag",
+    "sha256": "c8b98277a88affbab50651993a1449a9ce227285b64a9cdf80a77c1df39d7c43"
+  },
+  {
+    "module": "extdeps.tools.stat",
+    "source": "dag/extdeps/tools/stat.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.tools.stat.dag",
+    "sha256": "b2970d48a1ab5c0c94097f14b7ba33880b925603c335e6116f79776b6642c5e4"
+  },
+  {
+    "module": "extdeps.transports.rest",
+    "source": "dag/extdeps/transports/rest.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.transports.rest.dag",
+    "sha256": "7619e219e56d4769a615705e2f411ee7a176a2be1c691346cf6046062ecb31e1"
+  },
+  {
+    "module": "extdeps.transports.shell",
+    "source": "dag/extdeps/transports/shell.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.transports.shell.dag",
+    "sha256": "93cab3f3bfbe424c74a28d13e52cab3efcba91efa0af9f5fb323b8163d29c5e6"
+  },
+  {
+    "module": "extdeps.units.dimensionless",
+    "source": "dag/extdeps/units/dimensionless.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.units.dimensionless.dag",
+    "sha256": "4ce0c3cf4268976852663dc5faec7c4a8555ad232f8bebe1a6240ebe920f2f99"
+  },
+  {
+    "module": "extdeps.units.iec_80000_13",
+    "source": "dag/extdeps/units/iec_80000_13.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.units.iec_80000_13.dag",
+    "sha256": "81b1def06b779d7df8985e96aed48d3843c1d229f913821f0e7b73d7c204d1e9"
+  },
+  {
+    "module": "extdeps.units.iso8601",
+    "source": "dag/extdeps/units/iso8601.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.units.iso8601.dag",
+    "sha256": "3c65b8483141ebdf694baca379b0fab620f4a53d6df10d0adc7958dbb16a7c6f"
+  },
+  {
+    "module": "extdeps.units.iso_80000_3",
+    "source": "dag/extdeps/units/iso_80000_3.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.units.iso_80000_3.dag",
+    "sha256": "9b2b5204077998805292431b096a121f0ad16b8e272064012a8d455928e23eef"
+  },
+  {
+    "module": "extdeps.uri",
+    "source": "dag/extdeps/uri.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.uri.dag",
+    "sha256": "97d3c7fcbadb72d3d1ca0875fb0af711bce9edd290ebaa8597a5176a944f80a9"
+  },
+  {
+    "module": "extdeps.uri_path",
+    "source": "dag/extdeps/uri_path.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.uri_path.dag",
+    "sha256": "bdc372c881a09577849b46690cd019e825fb6dd34d03c3ac18f1f17f2425e2df"
+  },
+  {
+    "module": "extdeps.uri_validation",
+    "source": "dag/extdeps/uri_validation.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.uri_validation.dag",
+    "sha256": "fa2782da063fd5279df0f77a44c37d0c5aa70ab319acdd3c099b0aa35d2dfbea"
+  },
+  {
+    "module": "extdeps.uuid",
+    "source": "dag/extdeps/uuid/uuid.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.uuid.dag",
+    "sha256": "0ae99e52da571b657b5230f1094785e55025dd43dc083991aebd9306a9b51063"
+  },
+  {
+    "module": "extdeps.vendor",
+    "source": "dag/extdeps/vendor.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.vendor.dag",
+    "sha256": "c2d9a3dd2f6ea4cb70c7d2f33023c369facc958d3f659ac10734a7160089ed2f"
+  },
+  {
+    "module": "extdeps.vendor.amd",
+    "source": "dag/extdeps/vendor/amd.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.vendor.amd.dag",
+    "sha256": "40efd85193853acebb214dfa1dd75a3f3fc920c4838fb4c1adf53cf46f3e12df"
+  },
+  {
+    "module": "extdeps.vendor.ami",
+    "source": "dag/extdeps/vendor/ami.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.vendor.ami.dag",
+    "sha256": "dd0e449e42892f4b2ea2c7443b186226679a173f8d96dbd2885a29296b57dcd5"
+  },
+  {
+    "module": "extdeps.vendor.ampere",
+    "source": "dag/extdeps/vendor/ampere.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.vendor.ampere.dag",
+    "sha256": "a0bd59c646330e05d5b502835097cda9ba83633560257a379f6404d750230850"
+  },
+  {
+    "module": "extdeps.vendor.asrock_rack",
+    "source": "dag/extdeps/vendor/asrock_rack.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.vendor.asrock_rack.dag",
+    "sha256": "3cd1a5b041d92db21c4cd76eee1f3dfd04e7a97eca55f23171bd4a4562c79855"
+  },
+  {
+    "module": "extdeps.vendor.docker_inc",
+    "source": "dag/extdeps/vendor/docker_inc.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.vendor.docker_inc.dag",
+    "sha256": "decb98596a273baa7f6dab78149b3a31fdedcc2830cc9d90e8ed0aa156b2318b"
+  },
+  {
+    "module": "extdeps.vendor.nvidia",
+    "source": "dag/extdeps/vendor/nvidia.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.vendor.nvidia.dag",
+    "sha256": "fde4dcd0b4409b1103c630b1d9ef8d7af00201236c7aabb2fa79ba018c5c062d"
+  },
+  {
+    "module": "extdeps.vendor.samsung",
+    "source": "dag/extdeps/vendor/samsung.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.vendor.samsung.dag",
+    "sha256": "a82d66651ba266d18852e8c28fe7b68336e82b2dc1a88b6219427935205d8426"
+  },
+  {
+    "module": "extdeps.vendor.sk_hynix",
+    "source": "dag/extdeps/vendor/sk_hynix.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.vendor.sk_hynix.dag",
+    "sha256": "d978472afc3690f45b88debbecef0c6abcd2b1050e3898daff100aa35c27a450"
+  },
+  {
+    "module": "extdeps.vendor.verizon",
+    "source": "dag/extdeps/vendor/verizon.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.vendor.verizon.dag",
+    "sha256": "129ac3d44f08ef3ed818b93b1341cccf7b8691bc7d2632a01c47431e7396ae30"
+  },
+  {
+    "module": "extdeps.vendor.western_digital",
+    "source": "dag/extdeps/vendor/western_digital.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.vendor.western_digital.dag",
+    "sha256": "bde9239423030a04138fb8f53195948ce8c698c64845a3e7b61ff21c11186cbb"
+  },
+  {
+    "module": "extdeps.version",
+    "source": "dag/extdeps/version.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.version.dag",
+    "sha256": "4760c88ff448447d176e49c0417e0541298573d566e56f78af9605e70aa8d90b"
+  },
+  {
+    "module": "extdeps.version.semver",
+    "source": "dag/extdeps/version/semver.dag",
+    "copy": "target/commissioning-cpu-binding-final/extdeps.version.semver.dag",
+    "sha256": "9e7fed48b0f0fc4163cc406d41f7ed079bd37dc270dd3854dad0ae02bd9eac02"
+  },
+  {
+    "module": "gunbc.bmc_fan_alignment_standing",
+    "source": "dag/gunbc/bmc/bmc_fan_alignment_standing.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.bmc_fan_alignment_standing.dag",
+    "sha256": "ba2471755cde56c6e5c845c54050f78a5caa506eea8628cd044ceda28f03d230"
+  },
+  {
+    "module": "gunbc.bmc_fan_projection",
+    "source": "dag/gunbc/bmc/bmc_fan_projection.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.bmc_fan_projection.dag",
+    "sha256": "47780c9ab89a650908afc725dfc886ab74b886512ffec74e1f703212cf6f0570"
+  },
+  {
+    "module": "gunbc.bmc_intent",
+    "source": "dag/gunbc/bmc/bmc_intent.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.bmc_intent.dag",
+    "sha256": "d91b54af42a1470c09b76437a07188093163ac35aeecd719a58adadf2c2d0969"
+  },
+  {
+    "module": "gunbc.boot_artifact",
+    "source": "dag/gunbc/boot_artifact.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.boot_artifact.dag",
+    "sha256": "0455d4cf4dd1e6fc15845c070e1141ed798305cef20c40ff04334d82d93d09c9"
+  },
+  {
+    "module": "gunbc.boot_artifact_delivery",
+    "source": "dag/gunbc/boot_artifact_delivery.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.boot_artifact_delivery.dag",
+    "sha256": "fca11e8843649647af7f66d2f8629b4dbba4b58aa74f74c58bbe8074b6304f90"
+  },
+  {
+    "module": "gunbc.build_cache_instance",
+    "source": "dag/gunbc/build_cache/build_cache_instance.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.build_cache_instance.dag",
+    "sha256": "9e25995b5e9340b1138d3939dbd404cb3aa4e5991266ef219dbea5aa2f72f34e"
+  },
+  {
+    "module": "gunbc.ci_failure_class",
+    "source": "dag/gunbc/ci/ci_failure_class.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.ci_failure_class.dag",
+    "sha256": "ad5bd83502442017b110a95d3d1b2b0a3e3aeb3e046a8a7cefc6ad9e4657758d"
+  },
+  {
+    "module": "gunbc.ci_fleet",
+    "source": "dag/gunbc/ci/ci_fleet.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.ci_fleet.dag",
+    "sha256": "6e6a94bfc9d64d965939e82e14f34aa494860d876a41031110df6cb483a5d85f"
+  },
+  {
+    "module": "gunbc.ci_floor_measurement",
+    "source": "dag/gunbc/ci/ci_floor_measurement.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.ci_floor_measurement.dag",
+    "sha256": "4d873ec11ad9849868e8ab60126670eab247c4572041a5698da52ccc6d698348"
+  },
+  {
+    "module": "gunbc.ci_gate",
+    "source": "dag/gunbc/ci/ci_gate.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.ci_gate.dag",
+    "sha256": "b78cf9683f8f3993032d0e28f949ce682ed16cad3e34b588308de6edad394ff3"
+  },
+  {
+    "module": "gunbc.ci_layer_roots",
+    "source": "dag/gunbc/ci/ci_layer_roots.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.ci_layer_roots.dag",
+    "sha256": "bd690098c2d1b58805921386c60eb141580ac02d84aa2a3541494d6c15c95e1f"
+  },
+  {
+    "module": "gunbc.cli_invoke",
+    "source": "dag/gunbc/cli_invoke.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.cli_invoke.dag",
+    "sha256": "0bc8f59e4c6d64d0af44a1a11dec07f0fb219825343f1c0eb8787235ef219605"
+  },
+  {
+    "module": "gunbc.codex_runtime_paths",
+    "source": "dag/gunbc/codex_runtime_paths.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.codex_runtime_paths.dag",
+    "sha256": "ad0dbe144669687570c35ebef60c87554d790edad85eb702645a7f2713374f1b"
+  },
+  {
+    "module": "gunbc.command_runner",
+    "source": "dag/gunbc/command_runner.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.command_runner.dag",
+    "sha256": "d117008c0f8a4d7a8144bda0055b65b9da73faa277866358097f8fbcfd06d31d"
+  },
+  {
+    "module": "gunbc.commit_workflow",
+    "source": "dag/gunbc/commit_workflow.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.commit_workflow.dag",
+    "sha256": "7474017f18b66688ff70b5405b9e1584cd42e178eb7c4b801fb1e2b2abfe8b58"
+  },
+  {
+    "module": "gunbc.ensure",
+    "source": "dag/gunbc/ensure.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.ensure.dag",
+    "sha256": "4321b4d3d6b5720d43db5b15b53376d28e77b9331ddb518ef70b761e7863bf10"
+  },
+  {
+    "module": "gunbc.explicit_witness_admission",
+    "source": "dag/gunbc/explicit_witness_admission.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.explicit_witness_admission.dag",
+    "sha256": "68bb62d6e27fbaf6cc31b2dcfc7d7e2939caa273214e56b5cd4173ec2f5c21cc"
+  },
+  {
+    "module": "gunbc.fabric_control_plane_charge",
+    "source": "dag/gunbc/fabric/fabric_control_plane_charge.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fabric_control_plane_charge.dag",
+    "sha256": "2a16a341f30a0e4b280b620c3f7181e538523a597449c8ccffc1e9bc3dc602c1"
+  },
+  {
+    "module": "gunbc.fabric_memory_grant_policy",
+    "source": "dag/gunbc/fabric/fabric_memory_grant_policy.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fabric_memory_grant_policy.dag",
+    "sha256": "9c99ab7d0c2275a048f1586d9931afa33ce32f41039b4802d1fcfce4cc09669c"
+  },
+  {
+    "module": "gunbc.fleet_asset_identity",
+    "source": "dag/gunbc/fleet/fleet_asset_identity.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_asset_identity.dag",
+    "sha256": "a00b779cc9782c449a034a24746814cacb9678b69a5be4a44763cd26e6b01f2e"
+  },
+  {
+    "module": "gunbc.fleet_bmc_firmware_evidence",
+    "source": "dag/gunbc/fleet/fleet_bmc_firmware_evidence.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_bmc_firmware_evidence.dag",
+    "sha256": "ebd94ccd1b36bf2de8df1122b8bb019005f56cd29cc51ee5c65c0db0dc62be61"
+  },
+  {
+    "module": "gunbc.fleet_bmc_observation",
+    "source": "dag/gunbc/fleet/fleet_bmc_observation.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_bmc_observation.dag",
+    "sha256": "e9b4e2f8e8e566e134f203b951e6183b972bf1124bb6090ba0246680d6f31e30"
+  },
+  {
+    "module": "gunbc.fleet_container",
+    "source": "dag/gunbc/fleet/fleet_container.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_container.dag",
+    "sha256": "50670117939d1c9cf61be1b9633d869763a94eeb200382ecc3c9214514394b3c"
+  },
+  {
+    "module": "gunbc.fleet_host_budget",
+    "source": "dag/gunbc/fleet/fleet_host_budget.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_host_budget.dag",
+    "sha256": "0e0deef5eeb03c81c81b3aa86a97e664127b4c98720bf964f21ff2a4e6f3c51c"
+  },
+  {
+    "module": "gunbc.fleet_intent",
+    "source": "dag/gunbc/fleet/fleet_intent.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_intent.dag",
+    "sha256": "57a44e0c62b90b436210aa700cac64461e6c0df2b7019e426f446183f8633b5f"
+  },
+  {
+    "module": "gunbc.fleet_intent_network",
+    "source": "dag/gunbc/fleet/fleet_intent_network.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_intent_network.dag",
+    "sha256": "a7ab3839f3d262daf09df8cd63dfcc7ef8fb52e85a6a4db2f232030e7183bf86"
+  },
+  {
+    "module": "gunbc.fleet_lifecycle_observation",
+    "source": "dag/gunbc/fleet/fleet_lifecycle_observation.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_lifecycle_observation.dag",
+    "sha256": "8636d75006da322f7d032773dc1e44a4610fad3fee2a36ed2a660ff8d53d3c61"
+  },
+  {
+    "module": "gunbc.fleet_posix_accounts",
+    "source": "dag/gunbc/fleet/fleet_posix_accounts.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_posix_accounts.dag",
+    "sha256": "7d2b7df06e95f9b0f24ed90e468414c0a2331d4cf4f1930c6b09f0bb56432d45"
+  },
+  {
+    "module": "gunbc.fleet_reach",
+    "source": "dag/gunbc/fleet/fleet_reach.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_reach.dag",
+    "sha256": "606a961ebc6f053c1628a8ef4d428f4b829f0d54ecbf42f6a266af804a899d01"
+  },
+  {
+    "module": "gunbc.fleet_secrets_config",
+    "source": "dag/gunbc/fleet/fleet_secrets_config.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_secrets_config.dag",
+    "sha256": "07a0ac5ee8e0d52b0a4b77d7e8ba48807a934f8c5abbdf7f9c698c7fb2a42f4e"
+  },
+  {
+    "module": "gunbc.fleet_shell_transport_observation",
+    "source": "dag/gunbc/fleet/fleet_shell_transport_observation.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_shell_transport_observation.dag",
+    "sha256": "c18be4cec277d651facbbd3a5e4e72aede1fd39f5d550309f29736af2e215026"
+  },
+  {
+    "module": "gunbc.fleet_ssh_access",
+    "source": "dag/gunbc/fleet/fleet_ssh_access.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.fleet_ssh_access.dag",
+    "sha256": "3744b56fb38175658ab6c73c5f0c40a711b292c1ccd72d646042b930b89b873c"
+  },
+  {
+    "module": "gunbc.floor_demand",
+    "source": "dag/gunbc/floor/floor_demand.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.floor_demand.dag",
+    "sha256": "c4fc8f7c793b39640aedd7e3c75cc93745dd32d9da0c6dbc70533322a64423d8"
+  },
+  {
+    "module": "gunbc.generated_artifact",
+    "source": "dag/gunbc/generated_artifact.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.generated_artifact.dag",
+    "sha256": "63f5f3fdad2111479549d5d7b2f33307a7dea2a9097476d728aa41e5851e780a"
+  },
+  {
+    "module": "gunbc.generated_artifact_merge_driver",
+    "source": "dag/gunbc/generated_artifact_merge_driver.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.generated_artifact_merge_driver.dag",
+    "sha256": "4bfd90eb0214d2e6b794d6671eeb40f526b21031e80042deba74c63bc637bea9"
+  },
+  {
+    "module": "gunbc.guarantee_measurement",
+    "source": "dag/gunbc/guarantee_measurement.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.guarantee_measurement.dag",
+    "sha256": "74018bf47975334a80c164995d209ce8c8dbd6efa49c35bfff789c419fe9a821"
+  },
+  {
+    "module": "gunbc.guarantee_rung",
+    "source": "dag/gunbc/guarantee_rung.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.guarantee_rung.dag",
+    "sha256": "ec18121f814976b68b8a4db2cf6dbf8008466308d4ec89f1edff1f12149a9166"
+  },
+  {
+    "module": "gunbc.host_budget_source",
+    "source": "dag/gunbc/host/host_budget_source.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.host_budget_source.dag",
+    "sha256": "21d3c0d424d83ae471ee7179871fe1b7652577ab8fd005edba32e259b1bb50f2"
+  },
+  {
+    "module": "gunbc.host_cli_dependency",
+    "source": "dag/gunbc/host/host_cli_dependency.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.host_cli_dependency.dag",
+    "sha256": "88aa08bfae0e46c055a85320fec2b73aa8e60b421b92a03d64407d3754a27c5e"
+  },
+  {
+    "module": "gunbc.host_convergence_census",
+    "source": "dag/gunbc/host_convergence_census.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.host_convergence_census.dag",
+    "sha256": "fde7e2e5e2c56b181af9bf47d0da083abb03fd0dab8f47222eb3f577fe509a20"
+  },
+  {
+    "module": "gunbc.host_convergence_protocol",
+    "source": "dag/gunbc/host_convergence_protocol.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.host_convergence_protocol.dag",
+    "sha256": "0d96b1340d0017dfb459dde1ad1d0eb2689d61dedf00c6327718934d8518456b"
+  },
+  {
+    "module": "gunbc.host_layout",
+    "source": "dag/gunbc/host/host_layout.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.host_layout.dag",
+    "sha256": "703a25a7f5f9329d2cd5262d4318f008a21e32a40389cd5b5bcb18f6b06762d1"
+  },
+  {
+    "module": "gunbc.host_memory_observation",
+    "source": "dag/gunbc/host/host_memory_observation.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.host_memory_observation.dag",
+    "sha256": "337b19749d671ec32254dc7e678248d72519778c9df535df9c4c61ba7ea61c54"
+  },
+  {
+    "module": "gunbc.install_transport_qualification",
+    "source": "dag/gunbc/install_transport_qualification.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.install_transport_qualification.dag",
+    "sha256": "41f2c98d9c186b60d39a2ac052de6092a8397d57b18820e3b24a63b875e1dbdb"
+  },
+  {
+    "module": "gunbc.live_deploy.served_slice_charge",
+    "source": "dag/gunbc/live_deploy/served_slice_charge.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.live_deploy.served_slice_charge.dag",
+    "sha256": "732f5b446ecb23dc78b0a16becbc918732bf7334433f682e5a94f9f40555da32"
+  },
+  {
+    "module": "gunbc.live_deploy.slice_bounds",
+    "source": "dag/gunbc/live_deploy/slice_bounds.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.live_deploy.slice_bounds.dag",
+    "sha256": "1b2e4a32a93efef0f99c620accae2aabdc8e6973d1d6ed25bc7bc2894322c30b"
+  },
+  {
+    "module": "gunbc.machine_intake_access",
+    "source": "dag/gunbc/machine_intake/access.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.machine_intake_access.dag",
+    "sha256": "b96da0b94d9160bcf9dd024ba09990ea7de5341e667904da093374575b6f6f8b"
+  },
+  {
+    "module": "gunbc.machine_intake_phase",
+    "source": "dag/gunbc/machine_intake/phase.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.machine_intake_phase.dag",
+    "sha256": "0d1d1fe8dec5cf4384da9f76059d5974ea244c808e4e5a7db9288316196327bf"
+  },
+  {
+    "module": "gunbc.machine_intake_receipt",
+    "source": "dag/gunbc/machine_intake/receipt.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.machine_intake_receipt.dag",
+    "sha256": "859a89c5c48389b58f08373b8f47ba8aaf03d3ea62865d3d165bf710a599dbdd"
+  },
+  {
+    "module": "gunbc.machine_intake_subject",
+    "source": "dag/gunbc/machine_intake/subject.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.machine_intake_subject.dag",
+    "sha256": "1d2d48d9ee1f14a848d84c614f8b1a4ac267af0c2e531869233742e558abe101"
+  },
+  {
+    "module": "gunbc.memory_stall_refusal",
+    "source": "dag/gunbc/host/memory_stall_refusal.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.memory_stall_refusal.dag",
+    "sha256": "710187be7b11bde382f5f0413f0738439a133bc61b258db936cc7367277da1ab"
+  },
+  {
+    "module": "gunbc.merge_admission",
+    "source": "dag/gunbc/merge_admission.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.merge_admission.dag",
+    "sha256": "7ab665e06aea317c8078435933a247c5498102dd27bc65e48f774132297afb67"
+  },
+  {
+    "module": "gunbc.merge_admission_subject",
+    "source": "dag/gunbc/merge_admission_subject.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.merge_admission_subject.dag",
+    "sha256": "4880f1534406454506cf27ff37d9920ab953cd33e954cdca9c4fd0bb24c477fe"
+  },
+  {
+    "module": "gunbc.network_boot_delivery",
+    "source": "dag/gunbc/network_boot_delivery.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.network_boot_delivery.dag",
+    "sha256": "b73d5fecb003691c6d31ee2618e1b27bc0a6fc9bd0ed0d35241dc2e5db608e16"
+  },
+  {
+    "module": "gunbc.oomd_install",
+    "source": "dag/gunbc/oomd_install.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.oomd_install.dag",
+    "sha256": "271877d7d0833136035d29d965da872d176516d954862b37ee919ba4955672c2"
+  },
+  {
+    "module": "gunbc.os_install",
+    "source": "dag/gunbc/os_install.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.os_install.dag",
+    "sha256": "a0b226afc832b5a86a9f3322455f7a0909efb229ea6f2196cbfa1c9ebbf96930"
+  },
+  {
+    "module": "gunbc.os_install_mechanism",
+    "source": "dag/gunbc/os_install_mechanism.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.os_install_mechanism.dag",
+    "sha256": "1949b9e39d7ef83ea89b61e60ea226815fe3f80329a85318f836759ed119ac16"
+  },
+  {
+    "module": "gunbc.output_policy",
+    "source": "dag/gunbc/output_policy.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.output_policy.dag",
+    "sha256": "8c84d835ef0c764716e5b5b9793e391e498545bc6f4c489cb47878b718596920"
+  },
+  {
+    "module": "gunbc.package_delivery",
+    "source": "dag/gunbc/package_delivery.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.package_delivery.dag",
+    "sha256": "251dae873e356e361e9ea2427f38305ceca1f0a136d7331af3742aab2317def1"
+  },
+  {
+    "module": "gunbc.plan",
+    "source": "dag/gunbc/plan.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.plan.dag",
+    "sha256": "c8324706153252c9e972b2a587472872fbaed8502e2918ad6a699e2c3cc2d2fe"
+  },
+  {
+    "module": "gunbc.principal_projection",
+    "source": "dag/gunbc/principal_projection.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.principal_projection.dag",
+    "sha256": "b515bdccc2c5789b23b08c399e9a14df1ead4fd4dd6e2f14778363320f37678d"
+  },
+  {
+    "module": "gunbc.provider_account",
+    "source": "dag/gunbc/provider_account.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.provider_account.dag",
+    "sha256": "7a831423140036e413297904156f0d52dc5a7ac8330d74497337dff74ef41d05"
+  },
+  {
+    "module": "gunbc.recurring_failure_mode",
+    "source": "dag/gunbc/recurring_failure_mode.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.recurring_failure_mode.dag",
+    "sha256": "377378f6145d8a9f5969d4c4a68fc1f0befa729bbdf4e9fda4273dcb20afbad2"
+  },
+  {
+    "module": "gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming",
+    "source": "dag/gunbc/recurring_failure_mode/command_not_found_exit_cannot_distinguish_eviction_from_misnaming.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming.dag",
+    "sha256": "94c85d22f477e3744ab45358ae70241808f6a4f27478b9b9f59bad72338ba3b9"
+  },
+  {
+    "module": "gunbc.remote_shell_command",
+    "source": "dag/gunbc/remote_shell_command.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.remote_shell_command.dag",
+    "sha256": "fff7b91c77c02034f7454f9908dda590d69472b3139cfd9bf345800e696ad699"
+  },
+  {
+    "module": "gunbc.repo_identity",
+    "source": "dag/gunbc/repo/repo_identity.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.repo_identity.dag",
+    "sha256": "2d0229ec71f17228cba7ed4a0e8b2fc4f3c48587379e2fd0d92720677f3423e1"
+  },
+  {
+    "module": "gunbc.repository_census_observation",
+    "source": "dag/gunbc/repository_census_observation.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.repository_census_observation.dag",
+    "sha256": "c6f711fc84531a3fed0298cd35f089b0c8c21a2be2361ab881d3f51d6d155009"
+  },
+  {
+    "module": "gunbc.roadmap_execution_contract",
+    "source": "dag/gunbc/roadmap/roadmap_execution_contract.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.roadmap_execution_contract.dag",
+    "sha256": "86756677b37fc35bca6c432cb4a7b374b787ea47e8c2af26b26817bd96159e31"
+  },
+  {
+    "module": "gunbc.roadmap_model",
+    "source": "dag/gunbc/roadmap/roadmap_model.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.roadmap_model.dag",
+    "sha256": "4ef109d22a07da697e435c963a094106ee2fe28fe70dd2954a30755ef731d793"
+  },
+  {
+    "module": "gunbc.roadmap_sizing",
+    "source": "dag/gunbc/roadmap/roadmap_sizing.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.roadmap_sizing.dag",
+    "sha256": "8c5e6d3532d3d757e615d6c7b2f8281dbb47e099b2fb41f019e48fe43727685a"
+  },
+  {
+    "module": "gunbc.roadmap_status",
+    "source": "dag/gunbc/roadmap/roadmap_status.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.roadmap_status.dag",
+    "sha256": "83234a00a95ba20be9724b2ae13c6984492ab1cc5d462615e77dedf4d5a0219a"
+  },
+  {
+    "module": "gunbc.rung_drop",
+    "source": "dag/gunbc/rung_drop.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.rung_drop.dag",
+    "sha256": "37b1b491bf35150fe6bf899b7b3e4f697545a7624f5081a506944412cc96e7f2"
+  },
+  {
+    "module": "gunbc.rung_drop.transitional_admission_exception",
+    "source": "dag/gunbc/rung_drop/transitional_admission_exception.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.rung_drop.transitional_admission_exception.dag",
+    "sha256": "a0023a849b27d54d823db6f6690a34e37f9c8f420bd1eba725717319ea496790"
+  },
+  {
+    "module": "gunbc.runner_microvm_attempt_identity",
+    "source": "dag/gunbc/runner/runner_microvm_attempt_identity.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.runner_microvm_attempt_identity.dag",
+    "sha256": "13131845d977b6e70e0e61a94e89fbb6afd78afe8837f68de4b96d78dadf1453"
+  },
+  {
+    "module": "gunbc.runner_microvm_cell_readiness",
+    "source": "dag/gunbc/runner/runner_microvm_cell_readiness.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.runner_microvm_cell_readiness.dag",
+    "sha256": "d8d536d076dc7412e98c4ffe4f8e3f2a73c899d21372c732aa5c541b89f43eb0"
+  },
+  {
+    "module": "gunbc.runner_slot_allocation",
+    "source": "dag/gunbc/runner/runner_slot_allocation.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.runner_slot_allocation.dag",
+    "sha256": "9ed5e75381da07c34bd6dd6ebc20c450afd5fda5d77197a3e5860376529f2691"
+  },
+  {
+    "module": "gunbc.runner_slot_desired",
+    "source": "dag/gunbc/runner/runner_slot_desired.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.runner_slot_desired.dag",
+    "sha256": "d0a98d4ebca17a889d761fa9f18fff147cb5cd97a8d8cdedf0e4d3bf53d3272c"
+  },
+  {
+    "module": "gunbc.seed_growth",
+    "source": "dag/gunbc/seed_growth.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.seed_growth.dag",
+    "sha256": "94ded00430c2178da0c42b91be86819de149ede00710d53f8c09c731435751f1"
+  },
+  {
+    "module": "gunbc.session_admission_policy",
+    "source": "dag/gunbc/session_admission_policy.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.session_admission_policy.dag",
+    "sha256": "d64364192859cc1e76a2b8a981f0e297eecf85661b251326d3a9087c8a59da74"
+  },
+  {
+    "module": "gunbc.session_reservation_policy",
+    "source": "dag/gunbc/session_reservation_policy.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.session_reservation_policy.dag",
+    "sha256": "90409f86c1f497c1b627dd447337ce97bd650b18b96d87f1bc0c1c7d885b8f6e"
+  },
+  {
+    "module": "gunbc.session_residency",
+    "source": "dag/gunbc/session_residency.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.session_residency.dag",
+    "sha256": "091821f29bd5dd136f23b638b68f2d3529ce0f0a89a224702e5edebb0ffed0ed"
+  },
+  {
+    "module": "gunbc.shell_bash_runner",
+    "source": "dag/gunbc/shell_bash_runner.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.shell_bash_runner.dag",
+    "sha256": "e5029d9a446f5fa6b3d6c900617ededd98db5dc469afcbb0697a1dce3fbee09d"
+  },
+  {
+    "module": "gunbc.source_root_read",
+    "source": "dag/gunbc/source_root_read.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.source_root_read.dag",
+    "sha256": "55e5556a40fedfcfa2a111c820b0ff9590efd738b57a1376c468cc103ae6520d"
+  },
+  {
+    "module": "gunbc.whole_corpus_compile_admission",
+    "source": "dag/gunbc/whole_corpus_compile_admission.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.whole_corpus_compile_admission.dag",
+    "sha256": "d70194b9185734aeb7da597872d4537b572be059352b143e1f35200102a74749"
+  },
+  {
+    "module": "gunbc.whole_corpus_compile_demand_projection",
+    "source": "dag/gunbc/whole_corpus_compile_demand_projection.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.whole_corpus_compile_demand_projection.dag",
+    "sha256": "362d3c898d55d62f72fbb6fae3e37fb526166b1f1abce7057b182cf0b185dd19"
+  },
+  {
+    "module": "gunbc.workspace_allocation",
+    "source": "dag/gunbc/workspace_allocation.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.workspace_allocation.dag",
+    "sha256": "c8016f542b1f37f32c61fb1517b2643bc604216ff38b2a480472d13e7748d4fe"
+  },
+  {
+    "module": "gunbc.workspace_commissioning",
+    "source": "dag/gunbc/workspace_commissioning.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.workspace_commissioning.dag",
+    "sha256": "4e4dcda349bdfac1982d421edf380cbe5724d1d5661acedeba7e20d64cd1641b"
+  },
+  {
+    "module": "gunbc.workspace_commissioning_evidence",
+    "source": "dag/gunbc/workspace_commissioning_evidence.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.workspace_commissioning_evidence.dag",
+    "sha256": "d2e3e0371a65c76bdbfb51994295b9fe054332141ff4341c76ac9cebeea555bf"
+  },
+  {
+    "module": "gunbc.workspace_money_codec",
+    "source": "dag/gunbc/workspace_money_codec.dag",
+    "copy": "target/commissioning-cpu-binding-final/gunbc.workspace_money_codec.dag",
+    "sha256": "987af58e34574ed15b24e66f52790c0cdb3cfb8dd002d51bf012e602d8ce2908"
+  },
+  {
+    "module": "product.budget_tree",
+    "source": "dag/gunbc/product/budget_tree.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.budget_tree.dag",
+    "sha256": "1040e961840397f6746d93a79b78ba9c27515d6082fa11639762c24f29165139"
+  },
+  {
+    "module": "product.data_category",
+    "source": "dag/gunbc/product/data_category.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.data_category.dag",
+    "sha256": "82a2a3fcb105ff4970ac54d6787bbbc4e2e6a9264a1dd1c6066cc9c68dbe767c"
+  },
+  {
+    "module": "product.data_class",
+    "source": "dag/gunbc/product/data_class.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.data_class.dag",
+    "sha256": "efbd2eb8fad6f3171096dd53456f410f7f2dcfc6fa60d6b745ae169ef38f5f62"
+  },
+  {
+    "module": "product.fabric.budget",
+    "source": "dag/gunbc/product/fabric/budget.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.budget.dag",
+    "sha256": "3d6fb174cb3c3764c3c5222aa3cf7aed64ea151bca383efc3307bf6c0c258463"
+  },
+  {
+    "module": "product.fabric.customer_image",
+    "source": "dag/gunbc/product/fabric/customer_image.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.customer_image.dag",
+    "sha256": "34b66865245c3ec5210223b4a196ea1cf6c3619b911096c4c9438fd7f8490fec"
+  },
+  {
+    "module": "product.fabric.demand",
+    "source": "dag/gunbc/product/fabric/demand.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.demand.dag",
+    "sha256": "5906ee873be9ef8890969022e0067b1be6b133f6c7c984263be38e7abd70131c"
+  },
+  {
+    "module": "product.fabric.envelope",
+    "source": "dag/gunbc/product/fabric/envelope.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.envelope.dag",
+    "sha256": "c6e62d4169476de2e12aebea6fac64592bdbc8424bba22b3ce8c29f84c527b7a"
+  },
+  {
+    "module": "product.fabric.execution",
+    "source": "dag/gunbc/product/fabric/execution.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.execution.dag",
+    "sha256": "16552dd6fcd80a9218cadc56b0e0a93b025cf4d57e65ce1ee2b7ab01d937bc51"
+  },
+  {
+    "module": "product.fabric.identity",
+    "source": "dag/gunbc/product/fabric/identity.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.identity.dag",
+    "sha256": "1fa58a3371de0f80e54e105caf343406487a9ae960f0ccb823b93fe3ead26723"
+  },
+  {
+    "module": "product.fabric.isolation",
+    "source": "dag/gunbc/product/fabric/isolation.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.isolation.dag",
+    "sha256": "c453e1053a70ca6149be942d4a647103154e518f4948c7aa79fb1169b237e7d9"
+  },
+  {
+    "module": "product.fabric.memory_grant",
+    "source": "dag/gunbc/product/fabric/memory_grant.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.memory_grant.dag",
+    "sha256": "c77512c9863b96e298dd316b740b7d8f247421d5257b73ada3564fb050d518f9"
+  },
+  {
+    "module": "product.fabric.provider_admission",
+    "source": "dag/gunbc/product/fabric/provider_admission.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.provider_admission.dag",
+    "sha256": "be3dbe0b9e51f2c6a0b1e4fce505b0def089a9bdb6d73f8710da7aa7cfa0c948"
+  },
+  {
+    "module": "product.fabric.provider_route",
+    "source": "dag/gunbc/product/fabric/provider_route.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.provider_route.dag",
+    "sha256": "05539613a70a8f300b4148f0d7ba433a72009de177bf1302bf663cae2c96f133"
+  },
+  {
+    "module": "product.fabric.sanitation",
+    "source": "dag/gunbc/product/fabric/sanitation.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.sanitation.dag",
+    "sha256": "3688fc957f7df7a33d56f1c5834ac8ff1cd2fb753fef88703d6fe6b47137fcf8"
+  },
+  {
+    "module": "product.fabric.supply",
+    "source": "dag/gunbc/product/fabric/supply.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.supply.dag",
+    "sha256": "6381115f1e14a73fd553ab6d8df205d20cd5331d7e7eab9ec6dea3c0092a4529"
+  },
+  {
+    "module": "product.fabric.work",
+    "source": "dag/gunbc/product/fabric/work.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.fabric.work.dag",
+    "sha256": "dbb357020e02f7185bb042d3351d57f2334ce02051fcc782be3be1a014c4e886"
+  },
+  {
+    "module": "product.network_topology",
+    "source": "dag/gunbc/product/network_topology.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.network_topology.dag",
+    "sha256": "b1e643d5ae05dfe283a002c2c7a6e2fec897a1d9f1d8bd6881a1434ed5001264"
+  },
+  {
+    "module": "product.placement_supply",
+    "source": "dag/gunbc/product/placement_supply.dag",
+    "copy": "target/commissioning-cpu-binding-final/product.placement_supply.dag",
+    "sha256": "48559ce2a18f6cfda6319dd331413c01387f7b9ba15077612a19d08c5d7545aa"
+  },
+  {
+    "module": "std.access",
+    "source": "dag/std/access.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.access.dag",
+    "sha256": "82b70a77ff0032f3b61427edb73fc3b839eed8f2d9eec9a12142c0170eae1ffa"
+  },
+  {
+    "module": "std.affine_space",
+    "source": "dag/std/affine_space.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.affine_space.dag",
+    "sha256": "7b53590565c3bef6075a3610e57201b2f0171a3eb32229881c9d2363373c3826"
+  },
+  {
+    "module": "std.algebra",
+    "source": "dag/std/algebra.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.algebra.dag",
+    "sha256": "33a01d4e6bc16487014cd4a651f135973c4951d9fc5aedba436dce9dfd7e3adb"
+  },
+  {
+    "module": "std.approximate_field",
+    "source": "dag/std/approximate_field.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.approximate_field.dag",
+    "sha256": "0331840b2cbb13c18a4da12c815d4f9de570cdd089d906d2bd53f359b61aaed0"
+  },
+  {
+    "module": "std.authorization_profile",
+    "source": "dag/std/authorization_profile.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.authorization_profile.dag",
+    "sha256": "8eb7a8762462dce18733b6fd7897802bb5770346f751df58aad36b0689f36ed7"
+  },
+  {
+    "module": "std.bit",
+    "source": "dag/std/bit.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.bit.dag",
+    "sha256": "bd7780103bc8adde799202cd33f0a75c51554a51f1caab051975193b9af2150f"
+  },
+  {
+    "module": "std.bytes",
+    "source": "dag/std/bytes.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.bytes.dag",
+    "sha256": "85df447a3a423406e88bfd7885d1ecfb0924c6ebb39c12ffd43660d7a8abb312"
+  },
+  {
+    "module": "std.cache_identity",
+    "source": "dag/std/cache_identity.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.cache_identity.dag",
+    "sha256": "c45c49d869cb817d1164d91cc93497c6dee7939be3dcb3a906888cfefe40fe12"
+  },
+  {
+    "module": "std.cache_interface",
+    "source": "dag/std/cache_interface.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.cache_interface.dag",
+    "sha256": "cb7731b075f7dc2ec9703f48fb391c5f9b05cdabf968e6f92f66efb313e3f51e"
+  },
+  {
+    "module": "std.change",
+    "source": "dag/std/change.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.change.dag",
+    "sha256": "ec737b529b252e72062823cbedffe6fb2a59c4b7599aedb4272c2cde07de25ca"
+  },
+  {
+    "module": "std.checked_arithmetic",
+    "source": "dag/std/checked_arithmetic.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.checked_arithmetic.dag",
+    "sha256": "f7217d0f7f2151c185bbf35035039e52292ddd5f5df2665119673268eff7ea3d"
+  },
+  {
+    "module": "std.citation",
+    "source": "dag/std/citation.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.citation.dag",
+    "sha256": "2a8aa865da1504e2f289eeb004434611aec96c1153f6923bdf2d8ee748ffa7d8"
+  },
+  {
+    "module": "std.claim_evidence",
+    "source": "dag/std/claim_evidence.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.claim_evidence.dag",
+    "sha256": "5e13abee888b03b0eae5ece847b2a1e87a5bb7ca351b958d0147e041ae3edf46"
+  },
+  {
+    "module": "std.computation",
+    "source": "dag/std/computation.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.computation.dag",
+    "sha256": "9398241ad9a76f7eef90c26306d662c6622d8951ee238fe0ea26380ac2a2c095"
+  },
+  {
+    "module": "std.constructors",
+    "source": "dag/std/constructors.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.constructors.dag",
+    "sha256": "2402a8a41df34a71e6c03bc82fc9d58215e7de558d4160277f4b0acc0bbf576c"
+  },
+  {
+    "module": "std.content_hash",
+    "source": "dag/std/content_hash.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.content_hash.dag",
+    "sha256": "8ba1a2f1bdcd8a0fb1699a7a637d5d37c908f17072ca5ed6cef6d6d147375c85"
+  },
+  {
+    "module": "std.coordinate_frame",
+    "source": "dag/std/coordinate_frame.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.coordinate_frame.dag",
+    "sha256": "c529958bd977133a1a5ccdf54d182b68a1d03837c5a1b9da481bf4a329abe4c8"
+  },
+  {
+    "module": "std.credentials",
+    "source": "dag/std/credentials.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.credentials.dag",
+    "sha256": "650ead23b620333525dcfbf9f39ae7c7a3907d9f1259442bf638c32f2d84f2a4"
+  },
+  {
+    "module": "std.decimal",
+    "source": "dag/std/decimal.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.decimal.dag",
+    "sha256": "f3c3bce89ef9931f7b15448e6489f69e243d4ec307b3d9db9b0a66bbc340a178"
+  },
+  {
+    "module": "std.decl_ref",
+    "source": "dag/std/decl_ref.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.decl_ref.dag",
+    "sha256": "26082e2d3b20e94c666088be09a38af7004dd0a3585a23d001819eae838c097c"
+  },
+  {
+    "module": "std.disposition",
+    "source": "dag/std/disposition.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.disposition.dag",
+    "sha256": "40cd746f00554945e53e85d17c3d0e2728652ca991927f95db731cfc2eaa5902"
+  },
+  {
+    "module": "std.dissolution",
+    "source": "dag/std/dissolution.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.dissolution.dag",
+    "sha256": "16bac1ef13d250b8e8e5b119fb50b8b9bdd8b85ca1b4b255a91b29c6ecba3fa4"
+  },
+  {
+    "module": "std.durable_compare_and_set",
+    "source": "dag/std/durable_compare_and_set.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.durable_compare_and_set.dag",
+    "sha256": "2afbc04750db9b6b28a71990a70384e7ece8e395d655e392ed0aca0dcbdce33c"
+  },
+  {
+    "module": "std.effect_grant",
+    "source": "dag/std/effect_grant.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.effect_grant.dag",
+    "sha256": "c112ab5a6196d3a4183b2571e80699b1cecccfe48bc04f99770e95b0870e5617"
+  },
+  {
+    "module": "std.effects",
+    "source": "dag/std/effects.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.effects.dag",
+    "sha256": "62951c43ccd8a52e0d7b01e45b233957d167df645e54b9d8ebcd315e959a7e22"
+  },
+  {
+    "module": "std.encoding",
+    "source": "dag/std/encoding.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.encoding.dag",
+    "sha256": "b958d1189112f2fce616c0e640b5b8cbd09735658b88af9d207cd9919fc4ddc0"
+  },
+  {
+    "module": "std.error_primitives",
+    "source": "dag/std/error_primitives.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.error_primitives.dag",
+    "sha256": "9dafc12f20fa0592a0cc74159a8ec11462308e577d28bb80a74d3166a670c69d"
+  },
+  {
+    "module": "std.euclidean_geometry",
+    "source": "dag/std/euclidean_geometry.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.euclidean_geometry.dag",
+    "sha256": "ae96df1d09b73cf9ae0a3ccff36361debd73baca29192a4527c4a2d8688e9c97"
+  },
+  {
+    "module": "std.execution_mode",
+    "source": "dag/std/execution_mode.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.execution_mode.dag",
+    "sha256": "c0f66cc1914de3bbf40b49dd9a5bb533bf1f3ec96b854a2eff35b53d95f35ddb"
+  },
+  {
+    "module": "std.fermi",
+    "source": "dag/std/fermi.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.fermi.dag",
+    "sha256": "e3e1762717457e08f185b8ee5328893806e3812f9c14976f1b5f19da885b329f"
+  },
+  {
+    "module": "std.fidelity",
+    "source": "dag/std/fidelity.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.fidelity.dag",
+    "sha256": "7f15f69ef1e14b04ebc93b32ea77cf2c5b99b2cee99621389cd3555995d0ee37"
+  },
+  {
+    "module": "std.filesystem.types",
+    "source": "dag/std/filesystem/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.filesystem.types.dag",
+    "sha256": "630ac15915a035d08c0d3ad33f201c552e4e4ee17f977eddc7a97d0be1556379"
+  },
+  {
+    "module": "std.float",
+    "source": "dag/std/float.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.float.dag",
+    "sha256": "7c6259e6ba904af324aa858189eb204347cf8876475092423a2df38d5d8ebe5c"
+  },
+  {
+    "module": "std.goal_assessment",
+    "source": "dag/std/goal_assessment.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.goal_assessment.dag",
+    "sha256": "76dcc64334098456ff026ad3979a6e606746d46180d11c5e7229067e3ce3b256"
+  },
+  {
+    "module": "std.induction",
+    "source": "dag/std/induction.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.induction.dag",
+    "sha256": "452e0389b6fddea7b2bd4af3c8d21469afd61cb95b31661e7b88d3d9809b3bbe"
+  },
+  {
+    "module": "std.integer",
+    "source": "dag/std/integer.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.integer.dag",
+    "sha256": "da2e701838e23ce32db6c1ceb1a509370a743e38bac31d1ea4166daaebae4861"
+  },
+  {
+    "module": "std.interval",
+    "source": "dag/std/interval.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.interval.dag",
+    "sha256": "27bf64e0b74bb1a10176d5d3bb88b6d45e80a53777027a714b3a52bb27a70c24"
+  },
+  {
+    "module": "std.key_relation",
+    "source": "dag/std/key_relation.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.key_relation.dag",
+    "sha256": "22d2cc609e47bd49d0e8fef86aaa23497dc75caec192929962d6e89f2b603160"
+  },
+  {
+    "module": "std.keyed_roster",
+    "source": "dag/std/keyed_roster.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.keyed_roster.dag",
+    "sha256": "41f346765f15aed3ecf28ff990ebb111864d524ab9bf95e03131638717abe584"
+  },
+  {
+    "module": "std.keyed_row",
+    "source": "dag/std/keyed_row.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.keyed_row.dag",
+    "sha256": "e5bce67aea16eabf826cf18ccd4a542142c42bf6950da0b1b977edaa02fba1dc"
+  },
+  {
+    "module": "std.layout",
+    "source": "dag/std/layout.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.layout.dag",
+    "sha256": "e7b769e93c44d34d70d4c821588f7fcda4108c4403a2db24cc5abbd9e0080043"
+  },
+  {
+    "module": "std.logic",
+    "source": "dag/std/logic.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.logic.dag",
+    "sha256": "f508ba9750df53d5d3021119a1ec7870b9f10671a1882d1cf9224c7319fd0689"
+  },
+  {
+    "module": "std.machine_constraints",
+    "source": "dag/std/machine_constraints.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.machine_constraints.dag",
+    "sha256": "dcf59511c69d268cedf9fd403741253850bd741badd20b5ea6bd0c5b4f9db78b"
+  },
+  {
+    "module": "std.machine_shape",
+    "source": "dag/std/machine_shape.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.machine_shape.dag",
+    "sha256": "a3b1b78649a86dcbaea370a34aa0682befc8856c440bd72611faf1893bc2b5bc"
+  },
+  {
+    "module": "std.machine_word",
+    "source": "dag/std/machine_word.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.machine_word.dag",
+    "sha256": "352bad38972aaa048d2c24eafc92779370423b2afc259fc5fc986f44fd1c1bf8"
+  },
+  {
+    "module": "std.magnitude",
+    "source": "dag/std/magnitude.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.magnitude.dag",
+    "sha256": "76bf8826e9986a021a6baa5abd18dd9958fda4d8178ccbe8112d1551be273b9b"
+  },
+  {
+    "module": "std.markdown",
+    "source": "dag/std/markdown.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.markdown.dag",
+    "sha256": "9341d3988db3cb8c61f16cb39c78215bdceb4192450da9d20f16f0f74598e520"
+  },
+  {
+    "module": "std.markup",
+    "source": "dag/std/markup.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.markup.dag",
+    "sha256": "4fd26219f611748357be80d6876d36c9d5f578ac7614068e55e983f8dedd9079"
+  },
+  {
+    "module": "std.materialization_ladder",
+    "source": "dag/std/materialization_ladder.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.materialization_ladder.dag",
+    "sha256": "03f0b84b9344c1d2b459d4e2c3c495282282b634dc6c54c87aaf48e0911c26bf"
+  },
+  {
+    "module": "std.measure",
+    "source": "dag/std/measure.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.measure.dag",
+    "sha256": "7c9f67965114ed1b12cf22d885a7b7d555becde93be32d866892ca09e96d998b"
+  },
+  {
+    "module": "std.nat",
+    "source": "dag/std/nat.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.nat.dag",
+    "sha256": "70f854bda16ffc0e5ae6e2b46c155cd8fc05f894133a8c18155924752aa613c0"
+  },
+  {
+    "module": "std.observation",
+    "source": "dag/std/observation.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.observation.dag",
+    "sha256": "8869633bcf4df4d97b16f2d5aef0b6ddae68a1937fe4b54f5042898b80004a70"
+  },
+  {
+    "module": "std.occurrence_identity",
+    "source": "dag/std/occurrence_identity.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.occurrence_identity.dag",
+    "sha256": "2c8934d5c379a18f2d8fae4372fd7be5025b6d3bf46da9d9f105c5e12ed3116e"
+  },
+  {
+    "module": "std.orthogonal_geometry",
+    "source": "dag/std/orthogonal_geometry.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.orthogonal_geometry.dag",
+    "sha256": "5c784c0b4a17e95ec6935e038c28b974c3527875e2093e0c0241e32dcc6420ef"
+  },
+  {
+    "module": "std.os.invocation",
+    "source": "dag/std/os/invocation.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.os.invocation.dag",
+    "sha256": "727b46a158a9ff2e39a32bbc868e4e7efd42cc8bcc918dbacf85a36b28acb58c"
+  },
+  {
+    "module": "std.os.types",
+    "source": "dag/std/os/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.os.types.dag",
+    "sha256": "923e5e48eee3e0ca89d2c07e9767af5f0adde3668f46eccb732184fc757c02c0"
+  },
+  {
+    "module": "std.pareto",
+    "source": "dag/std/pareto.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.pareto.dag",
+    "sha256": "df8cb6b3943d9fea248d323bb14af15bd746c4fda63363d3bb4904d3f52354a0"
+  },
+  {
+    "module": "std.path_intent",
+    "source": "dag/std/path_intent.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.path_intent.dag",
+    "sha256": "2b067f69ff573a4ce091d4d0051c518d68cd4e32bf77e8f6557827b6d2f5ea26"
+  },
+  {
+    "module": "std.primitives",
+    "source": "dag/std/primitives.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.primitives.dag",
+    "sha256": "b34cfff5738abdcab80b584efd8c6b09054b1bdb84ccafca2afc257b8f2b34f1"
+  },
+  {
+    "module": "std.process",
+    "source": "dag/std/process.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.process.dag",
+    "sha256": "718c0e29480409fddb47bc3ad7d18fc588288aab9188dc5f82efafae105259b3"
+  },
+  {
+    "module": "std.process_termination",
+    "source": "dag/std/process_termination.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.process_termination.dag",
+    "sha256": "ec4a657d62b7f208e2267008cef187313cee090cffca5eb7823929b9520b1f3c"
+  },
+  {
+    "module": "std.realization",
+    "source": "dag/std/realization.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.realization.dag",
+    "sha256": "77211ca0e368d8abdebf0a823f10a5ff307ee97404c7b4dc98a0625a9bafb3b5"
+  },
+  {
+    "module": "std.realization_measurement",
+    "source": "dag/std/realization_measurement.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.realization_measurement.dag",
+    "sha256": "3c0b776a5345195653be424bc0630e69c40b71695a083105bfffb91b507fcda0"
+  },
+  {
+    "module": "std.realization_reconcile",
+    "source": "dag/std/realization_reconcile.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.realization_reconcile.dag",
+    "sha256": "6dcd02545863ed9fba7fb9886a2ff895b31040b5915a53a40a0989494adcbd13"
+  },
+  {
+    "module": "std.realization_schedule",
+    "source": "dag/std/realization_schedule.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.realization_schedule.dag",
+    "sha256": "60a2d0b8354ad341b04baf3a493302c98afaa82f11907e7018765cc8af38c82f"
+  },
+  {
+    "module": "std.realization_width",
+    "source": "dag/std/realization_width.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.realization_width.dag",
+    "sha256": "3a6628f1b86e3563c5ee8f3930264e29258ea09c1de51d9c0157e6c2825ae13c"
+  },
+  {
+    "module": "std.render_repeat_string_bootstrap",
+    "source": "dag/std/render_repeat_string_bootstrap.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.render_repeat_string_bootstrap.dag",
+    "sha256": "006044620a11c6c78ac51173d3a24c06f0492138df798ad46235938d19966e8a"
+  },
+  {
+    "module": "std.roster_frontier",
+    "source": "dag/std/roster_frontier.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.roster_frontier.dag",
+    "sha256": "1254294a5d4be2a8312c2ab563786dde1f6b022570fba8a78041b292774e9998"
+  },
+  {
+    "module": "std.scoped_authorization",
+    "source": "dag/std/scoped_authorization.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.scoped_authorization.dag",
+    "sha256": "41c22f76f84f7f95fbfd9d6597ff86dd30092145f3e46d6ac79055d92fcafac9"
+  },
+  {
+    "module": "std.serialization",
+    "source": "dag/std/serialization.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.serialization.dag",
+    "sha256": "c3093200fcd2d53ddb95cb5cae63f06cb00bc72191240d41de1eba1f3aa0e6c2"
+  },
+  {
+    "module": "std.source_annotation",
+    "source": "dag/std/source_annotation.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.source_annotation.dag",
+    "sha256": "096f7cd4233564cb72722cf9694b5d7154a7d087d57e4e30fe070bdcff5b0f62"
+  },
+  {
+    "module": "std.spatial_frame",
+    "source": "dag/std/spatial_frame.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.spatial_frame.dag",
+    "sha256": "3fc05c9b127a48fc80692562eb4b7a0703c3b46601c011fa6128f6e389a0f9a6"
+  },
+  {
+    "module": "std.state_durability",
+    "source": "dag/std/state_durability.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.state_durability.dag",
+    "sha256": "d6088eb6ce58544e937fd4d76321a5560991df812491206459d3590b1f3a3617"
+  },
+  {
+    "module": "std.string_type",
+    "source": "dag/std/string_type.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.string_type.dag",
+    "sha256": "54300558500e6c0d8988d1dc5dbe679c3b5fce52db229b1282fe5f163ad1cd18"
+  },
+  {
+    "module": "std.symbols",
+    "source": "dag/std/symbols.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.symbols.dag",
+    "sha256": "b72965de39285e3f2f7034a4f73486d7408811f8acd3116ff15efded23e4dc91"
+  },
+  {
+    "module": "std.temporal_effect",
+    "source": "dag/std/temporal_effect.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.temporal_effect.dag",
+    "sha256": "555f44690043e0b41b558f562cb68cd4f51c5b40f18c19b8fc6f0b4c5ae4106d"
+  },
+  {
+    "module": "std.termination",
+    "source": "dag/std/termination.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.termination.dag",
+    "sha256": "ae22e516e67037d9a4f916ea70f98e1d625e55a8c510ea70c21e3a9900104d54"
+  },
+  {
+    "module": "std.types",
+    "source": "dag/std/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.types.dag",
+    "sha256": "2abfc53c499aa0063202944fc7321c02d194ab26006ea35cf32433d1b4187c4e"
+  },
+  {
+    "module": "std.unicode.types",
+    "source": "dag/std/unicode/types.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.unicode.types.dag",
+    "sha256": "d9729ed6cd4156e21ec64eb7ba0a6bc5cc52bc1b525bb370a131d25c85e2dede"
+  },
+  {
+    "module": "std.upsert_decision",
+    "source": "dag/std/upsert_decision.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.upsert_decision.dag",
+    "sha256": "1c1f47c52f77b0183238feddfd253a75497c2a0f73fdb173bdb4bf8866bb21ff"
+  },
+  {
+    "module": "std.witness_admission",
+    "source": "dag/std/witness_admission.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.witness_admission.dag",
+    "sha256": "ef3bf6354631729f2da05b633a16934f6b6c3f281b935b12cf9b20e845fac967"
+  },
+  {
+    "module": "std.workspace_artifact",
+    "source": "dag/std/workspace_artifact.dag",
+    "copy": "target/commissioning-cpu-binding-final/std.workspace_artifact.dag",
+    "sha256": "088fa4ac5b0177f418278e86d38ce338b097429481574219532263dd91b14030"
+  },
+  {
+    "module": "test.claim.workspace_commissioning_witness_test",
+    "source": "dag/test/claim/workspace_commissioning_witness_test.dag",
+    "copy": "target/commissioning-cpu-binding-final/test.claim.workspace_commissioning_witness_test.dag",
+    "sha256": "5d829850cbc8515891301928ae8bd5128e9b7c2914cfc73c6e1313b9c560c6ed"
+  },
+  {
+    "module": "v2.compiler.body_lowering_fold",
+    "source": "src/v2/compiler/body_lowering_fold.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.body_lowering_fold.dag",
+    "sha256": "bc64692c7183a78c6f1d918576863471d91bb03248a479865c528a4f89c2bd5e"
+  },
+  {
+    "module": "v2.compiler.body_producer_forward",
+    "source": "src/v2/compiler/body_producer_forward.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.body_producer_forward.dag",
+    "sha256": "b5b891a810598d27a0c43de53ede4ee1137bed88e5572a4ea3e551a5a57e832a"
+  },
+  {
+    "module": "v2.compiler.fold_lowering",
+    "source": "src/v2/compiler/fold_lowering.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.fold_lowering.dag",
+    "sha256": "b4e3e5749ea6fd3f8ff8e0958e6cdb50ed5b32547c524032121ad02491439e53"
+  },
+  {
+    "module": "v2.compiler.materialization_carriers",
+    "source": "src/v2/compiler/materialization_carriers.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.materialization_carriers.dag",
+    "sha256": "c9021056fd507a54f968e1789c3d15e616207c0b53c6daa6b023677f94b28b3a"
+  },
+  {
+    "module": "v2.compiler.namespace_graft",
+    "source": "src/v2/compiler/namespace_graft.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.namespace_graft.dag",
+    "sha256": "a4f79dba01c77ca762287e7fca696788316d3264612dce1935dfb3090b9c82a4"
+  },
+  {
+    "module": "v2.compiler.normalize",
+    "source": "src/v2/compiler/03_normalize.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.normalize.dag",
+    "sha256": "abf0f952db520cf969bc055b5bcecb2fa2d4752dd59ac2279d179765beb6ec6e"
+  },
+  {
+    "module": "v2.compiler.normalized_tree",
+    "source": "src/v2/compiler/normalized_tree.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.normalized_tree.dag",
+    "sha256": "e34361fd8536ea7a427e1d6754aa88c21ddeb897e4f7037268530a0b10b74915"
+  },
+  {
+    "module": "v2.compiler.parse",
+    "source": "src/v2/compiler/02_parse.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.parse.dag",
+    "sha256": "bb43d21eb921c5995d26ebddfd83fdb2ce187b70180ee34938d0d5e5cba718b6"
+  },
+  {
+    "module": "v2.compiler.parse_diagnostic",
+    "source": "src/v2/compiler/parse_diagnostic.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.parse_diagnostic.dag",
+    "sha256": "8d8b2af7e5d68144a2c26a5774b703dc4a5f3c0bc37e0101290f2591cf01a024"
+  },
+  {
+    "module": "v2.compiler.resolve",
+    "source": "src/v2/compiler/03_resolve.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.resolve.dag",
+    "sha256": "a756e485ab38d20533d21ae8e6526169f5a268396ff31a913518dbd9b8d5094f"
+  },
+  {
+    "module": "v2.compiler.source_authority",
+    "source": "src/v2/compiler/source_authority.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.source_authority.dag",
+    "sha256": "3dfb52ca3217252dbe20c1856678c3fc6b0985f1928a6f0e4eabb786f3a6027b"
+  },
+  {
+    "module": "v2.compiler.symbol_index_fill",
+    "source": "src/v2/compiler/symbol_index_fill.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.symbol_index_fill.dag",
+    "sha256": "d7ec609d767b43968c46ed5973031425853e40c4e7f5a8d78747a2f9bfe056d4"
+  },
+  {
+    "module": "v2.compiler.target_carriers",
+    "source": "src/v2/compiler/07_target_carriers.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.target_carriers.dag",
+    "sha256": "1d0e2afdaf8d7705b7717edb99b45f100c16e626c7eae7d5b1b2ca876ec5813e"
+  },
+  {
+    "module": "v2.compiler.target_serialize",
+    "source": "src/v2/compiler/target_serialize.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.target_serialize.dag",
+    "sha256": "64953b95eeab2212151739f97ac344b4ca874ef4975b7331e6ec363a1d530e30"
+  },
+  {
+    "module": "v2.compiler.test_marker_capture",
+    "source": "src/v2/compiler/test_marker_capture.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.test_marker_capture.dag",
+    "sha256": "e7c4356fefc20a0e88bbda79f24505092af9e3a4367be8543ce481c2c59e6b84"
+  },
+  {
+    "module": "v2.compiler.tokenize",
+    "source": "src/v2/compiler/01_tokenize.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.tokenize.dag",
+    "sha256": "3e8bf3bbd4f72bf9352146eb6c0f695733619e7819a77eaa75b4c6649e276ebc"
+  },
+  {
+    "module": "v2.compiler.wrap_decision",
+    "source": "src/v2/compiler/wrap_decision.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.compiler.wrap_decision.dag",
+    "sha256": "55c8a518dd91b8e97e43daabdf35a7af5c9e299c933b99018db61bad157e6e94"
+  },
+  {
+    "module": "v2.extdeps.languages.bash",
+    "source": "src/v2/extdeps/languages/bash.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.extdeps.languages.bash.dag",
+    "sha256": "ff5c95ad54e0739e62693726a4542ca047ee1477c57ac46e6eb17b4a6916aa35"
+  },
+  {
+    "module": "v2.extdeps.languages.bash_build",
+    "source": "src/v2/extdeps/languages/bash_build.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.extdeps.languages.bash_build.dag",
+    "sha256": "24d5f4a6f20d23a74839390d8562fc7c60eecca51d3a27dc5e5fdd2180a2f3d5"
+  },
+  {
+    "module": "v2.extdeps.languages.bash_command_fold",
+    "source": "src/v2/extdeps/languages/bash_command_fold.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.extdeps.languages.bash_command_fold.dag",
+    "sha256": "0be8fdc96eed625cc88894e9ec6167a0030774e3ff474bec907032d35b0ce46a"
+  },
+  {
+    "module": "v2.extdeps.languages.bash_orch_if",
+    "source": "src/v2/extdeps/languages/bash_orch_if.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.extdeps.languages.bash_orch_if.dag",
+    "sha256": "c7703ac60f37d0eb5cfc4724dd9090be77d7e1791126ad9fc83dbac425d3adda"
+  },
+  {
+    "module": "v2.extdeps.languages.bash_orch_tier2",
+    "source": "src/v2/extdeps/languages/bash_orch_tier2.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.extdeps.languages.bash_orch_tier2.dag",
+    "sha256": "2cb9c9955e7412938674a5fe0d1bc229ebdd208c88ae49d5ca0d8f779b77adb0"
+  },
+  {
+    "module": "v2.extdeps.languages.bash_proc_self_cgroup",
+    "source": "src/v2/extdeps/languages/bash_proc_self_cgroup.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.extdeps.languages.bash_proc_self_cgroup.dag",
+    "sha256": "9ce7e304d6232d7553a0b2e42299cdadab1d0a4516fe9d615c56ac912306e267"
+  },
+  {
+    "module": "v2.extdeps.languages.dag",
+    "source": "src/v2/extdeps/languages/dag.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.extdeps.languages.dag.dag",
+    "sha256": "23ae5d2c73bb0c30a69f867d2e39daccbc2168cf84c201f9bbf2767951d230e6"
+  },
+  {
+    "module": "v2.extdeps.languages.fidelity",
+    "source": "src/v2/extdeps/languages/fidelity.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.extdeps.languages.fidelity.dag",
+    "sha256": "3d832517376fe724b83fdf5175f7d7d25e0a10259418691de1dd3e96c751879f"
+  },
+  {
+    "module": "v2.std.algebra",
+    "source": "src/v2/std/algebra.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.algebra.dag",
+    "sha256": "5be90c2411ad93003bb3b020766ddbb587684cda3f7deb3b72d8bcd51cf02387"
+  },
+  {
+    "module": "v2.std.anonymous_binder",
+    "source": "src/v2/std/anonymous_binder.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.anonymous_binder.dag",
+    "sha256": "3990e713a899b905f9f41093ec0520f5edb2adfebb819a3c52cf32b1c2075df9"
+  },
+  {
+    "module": "v2.std.anti_unification",
+    "source": "src/v2/std/anti_unification.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.anti_unification.dag",
+    "sha256": "7b0fb7082df5e1d38d62500f1b9fdf86eb5353eb2fe09bcb5f9f05ecaedc4689"
+  },
+  {
+    "module": "v2.std.arrow_signature",
+    "source": "src/v2/std/arrow_signature.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.arrow_signature.dag",
+    "sha256": "13dce4554854a945a2776e77f67616ffd11c033c47e9503e725d79a8072b6af0"
+  },
+  {
+    "module": "v2.std.artifact",
+    "source": "src/v2/std/artifact.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.artifact.dag",
+    "sha256": "c0312504be92076163840f02013f7956ab7ca4577b3dd9f5e8efd805b80004e3"
+  },
+  {
+    "module": "v2.std.collection",
+    "source": "src/v2/std/collection.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.collection.dag",
+    "sha256": "f160775b65f55c663418ec482d53cafc612f95aed905fe449f35f433f865abb4"
+  },
+  {
+    "module": "v2.std.compilers.body_lowering",
+    "source": "src/v2/std/compilers/body_lowering.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.compilers.body_lowering.dag",
+    "sha256": "dbd08c047a4adafedfaa3fab64fe9618a8afb8d0107e1e4f803530dd86f9ee13"
+  },
+  {
+    "module": "v2.std.compilers.cli_surface",
+    "source": "src/v2/std/compilers/cli_surface.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.compilers.cli_surface.dag",
+    "sha256": "bf7dfe36956eef72e1803401b7f9e839a6fb0404954ab375d8a087590f271cf3"
+  },
+  {
+    "module": "v2.std.compilers.lexing",
+    "source": "src/v2/std/compilers/lexing.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.compilers.lexing.dag",
+    "sha256": "901598991078a8e035d017d988c1240f614b9c4e22410c47543979aff6daf04e"
+  },
+  {
+    "module": "v2.std.compilers.sugar",
+    "source": "src/v2/std/compilers/sugar.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.compilers.sugar.dag",
+    "sha256": "e261d9cbc5b942d9c13ade14ef94fc3d8ae01e17fec405409eacea31ec40c4c9"
+  },
+  {
+    "module": "v2.std.compilers.target_model",
+    "source": "src/v2/std/compilers/target_model.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.compilers.target_model.dag",
+    "sha256": "a95f3a04280580f2a72ddf738943a8041dfbaca54884e7cbf79f424a082d6218"
+  },
+  {
+    "module": "v2.std.constraint_satisfaction_predicate",
+    "source": "src/v2/std/constraint_satisfaction_predicate.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.constraint_satisfaction_predicate.dag",
+    "sha256": "360768b2ed38cdd33c5b80e1cc37d6dac54ae0ec2d2765f5f8cd9efef3627b2d"
+  },
+  {
+    "module": "v2.std.cross_tree.import_model",
+    "source": "src/v2/std/cross_tree/import_model.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.cross_tree.import_model.dag",
+    "sha256": "d338205ca7d76dfe9a8009cadbdd118aa455cebebfb321db6a005d1b243b926d"
+  },
+  {
+    "module": "v2.std.cross_tree.resolution",
+    "source": "src/v2/std/cross_tree/resolution.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.cross_tree.resolution.dag",
+    "sha256": "8da66d79a2cb6f449565220b9598272bbb7e2976c1f204aeaa173e35f622247e"
+  },
+  {
+    "module": "v2.std.declaration_marker",
+    "source": "src/v2/std/declaration_marker.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.declaration_marker.dag",
+    "sha256": "33e20e13f06efcce545731d57c9af4001f69a4db1196ce8792ef9db8cd39aae5"
+  },
+  {
+    "module": "v2.std.diagnostic",
+    "source": "src/v2/std/diagnostic.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.diagnostic.dag",
+    "sha256": "42e23757590aa65c08c8ebcdf18267c32c2eddfb3ca1921b74c930d32417a8cb"
+  },
+  {
+    "module": "v2.std.exact_structural_equality_zip_fold_predicate",
+    "source": "src/v2/std/exact_structural_equality_zip_fold_predicate.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.exact_structural_equality_zip_fold_predicate.dag",
+    "sha256": "d574b778c094b0d9fb1345c9555fe4034e10ad81dce1a5f2bade5f2917c741cf"
+  },
+  {
+    "module": "v2.std.find_witness",
+    "source": "src/v2/std/find_witness.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.find_witness.dag",
+    "sha256": "7787623f8d31015e4036adcc034eb0a8dc68ae142eff70d048a6ad5c64e3b149"
+  },
+  {
+    "module": "v2.std.fold_assembly",
+    "source": "src/v2/std/fold_assembly.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.fold_assembly.dag",
+    "sha256": "d38c67aa005a8ff4e8f81c89e5808b6911cc00ed8ee5a04152ca3d72ccf3cacf"
+  },
+  {
+    "module": "v2.std.grammar",
+    "source": "src/v2/std/grammar.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.grammar.dag",
+    "sha256": "f374a9b3042fe5112fd2b2d3b30fdad1523cc904e4c4f6f4bf688a3627da343e"
+  },
+  {
+    "module": "v2.std.grammar_choice_ambiguity",
+    "source": "src/v2/std/grammar_choice_ambiguity.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.grammar_choice_ambiguity.dag",
+    "sha256": "129f4769000e4de831221fd40fd74aa07339a476bd3ef19532d56fea0ef84657"
+  },
+  {
+    "module": "v2.std.host_transport",
+    "source": "src/v2/std/host_transport.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.host_transport.dag",
+    "sha256": "0908d1bc00ad9a556854033c5e290cfe8a8d449c7e98263c832b55c39197b52a"
+  },
+  {
+    "module": "v2.std.integer",
+    "source": "src/v2/std/integer.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.integer.dag",
+    "sha256": "5a21823025d21ea197ed1f3089d1d0e52210ee93a050523bd565f1d1fa2a5dbb"
+  },
+  {
+    "module": "v2.std.integer_value_set",
+    "source": "src/v2/std/integer_value_set.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.integer_value_set.dag",
+    "sha256": "8eaad2efc01ba052691f5cea5baf6863b6d11e196853ab03cbecd5494e634e26"
+  },
+  {
+    "module": "v2.std.language_model",
+    "source": "src/v2/std/language_model.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.language_model.dag",
+    "sha256": "ab92fa354e6e4a1837c6ffaf7173efbeca71840a4d7a4fc3bf073e74b90bc3a5"
+  },
+  {
+    "module": "v2.std.layer",
+    "source": "src/v2/std/layer.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.layer.dag",
+    "sha256": "b3cfb7d689f56906864dc555ad1343b5856d0273e52d34b986bfd9a1d4e8275b"
+  },
+  {
+    "module": "v2.std.list_introduction",
+    "source": "src/v2/std/list_introduction.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.list_introduction.dag",
+    "sha256": "82eb489e302a7d0b92d0f088a3d96e7c08b6c0ddc544e537baaf59b04b517fe4"
+  },
+  {
+    "module": "v2.std.logic",
+    "source": "src/v2/std/logic.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.logic.dag",
+    "sha256": "367d6fb4ed51c8bf83e32faad414c5fed094c16483cb115b2868d89016df53dd"
+  },
+  {
+    "module": "v2.std.machine",
+    "source": "src/v2/std/machine.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.machine.dag",
+    "sha256": "294512f1f4d45c55d06fee6dc1911e3bd51ec1d1c4dcb1f5e6afc657ab478fad"
+  },
+  {
+    "module": "v2.std.model_core",
+    "source": "src/v2/std/model_core.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.model_core.dag",
+    "sha256": "d71cece1bcb3ee10faaa1f3376b32521ef5947df0807810b78600027ea5f54e1"
+  },
+  {
+    "module": "v2.std.namespace_alias",
+    "source": "src/v2/std/namespace_alias.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.namespace_alias.dag",
+    "sha256": "3178cd910cc7d6528b109fa3c5b65474cc1fc688d9ad72c426a8535ba698e328"
+  },
+  {
+    "module": "v2.std.nat",
+    "source": "src/v2/std/nat.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.nat.dag",
+    "sha256": "143bdb9e0ba746ffb3342b93b1131175a1fd4b5919467a85d422025a3111ebd5"
+  },
+  {
+    "module": "v2.std.node",
+    "source": "src/v2/std/node.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.node.dag",
+    "sha256": "8c3ba48f6953f285ca3ed112bb292c48b97982504388d0d6093e3d137c384e60"
+  },
+  {
+    "module": "v2.std.node_query",
+    "source": "src/v2/std/node_query.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.node_query.dag",
+    "sha256": "cb3a9c3436e59eb25268a90d41a1f94c9ecc5e102c2d69ac1a97320014edf183"
+  },
+  {
+    "module": "v2.std.node_shape",
+    "source": "src/v2/std/node_shape.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.node_shape.dag",
+    "sha256": "a1bfb36024f7c0cba48489c0b1ca3c285ebb4eb304a7bec38093b20370937c38"
+  },
+  {
+    "module": "v2.std.occurrence_id",
+    "source": "src/v2/std/occurrence_id.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.occurrence_id.dag",
+    "sha256": "83e240623a57b7e98b1b03b5cd1a53ac47e1b7f58b2f5b016123b5c6c6a79738"
+  },
+  {
+    "module": "v2.std.operation_argv",
+    "source": "src/v2/std/operation_argv.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.operation_argv.dag",
+    "sha256": "3aebeb4b28f225578592bb4ccaaebeb15c7d951ee9beeb76c08fd9c69990437d"
+  },
+  {
+    "module": "v2.std.optional",
+    "source": "src/v2/std/optional.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.optional.dag",
+    "sha256": "6a686cbc761854f5bbbd83c07e21ff87b8154fe4f466be8b4d46f2fd85d3347b"
+  },
+  {
+    "module": "v2.std.orchestration",
+    "source": "src/v2/std/orchestration.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.orchestration.dag",
+    "sha256": "d03035c4421c3dcb9b2cd836ea8f1575fbae9dbccb0beba768df257a898d0449"
+  },
+  {
+    "module": "v2.std.passing_candidate_fold",
+    "source": "src/v2/std/passing_candidate_fold.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.passing_candidate_fold.dag",
+    "sha256": "3a9ace8eadb4cf10584e9839dbf529cac090847e57e6a22ada30e422992d6336"
+  },
+  {
+    "module": "v2.std.project_to_core_predicate",
+    "source": "src/v2/std/project_to_core_predicate.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.project_to_core_predicate.dag",
+    "sha256": "a444055743bfd137c4e4b69a316c2f6210aeb853667221c6f5d2ace51b8fd394"
+  },
+  {
+    "module": "v2.std.provenance",
+    "source": "src/v2/std/provenance.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.provenance.dag",
+    "sha256": "5a5862968e1c2d2ad301174b25b99bced2250a5152d6198affec834600366c32"
+  },
+  {
+    "module": "v2.std.qualified_name",
+    "source": "src/v2/std/qualified_name.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.qualified_name.dag",
+    "sha256": "30e8ff017e3fd2960b29f1b8e81986fde54caedb5b95b1d0044581ea4b4919c5"
+  },
+  {
+    "module": "v2.std.refinement",
+    "source": "src/v2/std/refinement.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.refinement.dag",
+    "sha256": "5cc136ae729754c0fb51a9cc972a5516d48f50c6706e0d7be482b6fa8309736b"
+  },
+  {
+    "module": "v2.std.refinement_widening_predicate",
+    "source": "src/v2/std/refinement_widening_predicate.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.refinement_widening_predicate.dag",
+    "sha256": "6a53373234541898a66f8093b231aaf6a551abdb8e425f5e160c6ebf48102c79"
+  },
+  {
+    "module": "v2.std.resolution_policy",
+    "source": "src/v2/std/resolution_policy.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.resolution_policy.dag",
+    "sha256": "003c57d263b88962ee0bc28b8b682ecfb3004b7a127f8553820759125cacebe3"
+  },
+  {
+    "module": "v2.std.runtime",
+    "source": "src/v2/std/runtime.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.runtime.dag",
+    "sha256": "3da9b7391a0a789aba535d0792b1c9aa7c292d1afdaa733bb8ea8e17c4b7559d"
+  },
+  {
+    "module": "v2.std.staging",
+    "source": "src/v2/std/staging.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.staging.dag",
+    "sha256": "812d95660a6dd909659cb6b05ea56a45635cf7161bdef46a3b94da91f61e9b96"
+  },
+  {
+    "module": "v2.std.symbol_index",
+    "source": "src/v2/std/symbol_index.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.symbol_index.dag",
+    "sha256": "770dc9c926bbde62546ac5a8b942f06efab1f58eb851105713032117117c9844"
+  },
+  {
+    "module": "v2.std.text",
+    "source": "src/v2/std/text.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.text.dag",
+    "sha256": "35fcf688ef21518acc1fbc932f3043e58fc1c954a2da38d29be6fdd9945b88bd"
+  },
+  {
+    "module": "v2.std.type_binder",
+    "source": "src/v2/std/type_binder.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.type_binder.dag",
+    "sha256": "c874e8d0e60e469c1d54599caaa9641d84c61c8c0a6e616dfdedb66c7373b745"
+  },
+  {
+    "module": "v2.std.witness",
+    "source": "src/v2/std/witness.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.std.witness.dag",
+    "sha256": "d01351415ee75b59f060b1916b150e9263f0c401c0872851ee578b7c8f868377"
+  },
+  {
+    "module": "v2.workflow.bash_command_fold_serialize",
+    "source": "src/v2/workflow/bash_command_fold_serialize.dag",
+    "copy": "target/commissioning-cpu-binding-final/v2.workflow.bash_command_fold_serialize.dag",
+    "sha256": "925226783f2adde4cf83553e3fcd0c7bf8c97b55f68c230c63c2007cff24d4d2"
+  }
+]

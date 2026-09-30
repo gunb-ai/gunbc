@@ -1,0 +1,28 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=10 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=12 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=2915 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1054 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1116 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=19 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=34 scale=closure
+[pre-entry] phase=closure_load ms=1296 scale=closure
+[pre-entry] phase=closure_parse ms=5407 scale=closure
+[pre-entry] phase=closure_resolve ms=182 scale=closure
+[pre-entry] phase=closure_normalize ms=610 scale=closure
+[pre-entry] phase=closure_typecheck ms=52144 scale=closure
+[pre-entry] phase=closure_parent_envs ms=5 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=101 scale=closure
+[pre-entry] phase=closure_ownership ms=795 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=76164 scale=closure
+[pre-entry] population pool_modules=451 closure_files=451
+[pre-entry] process_cpu user_ms=74467 sys_ms=1416 max_rss_kib=2720448
+PASS missing_stores_never_supply_commissioning_authority
+PASS commissioning_authority_cannot_erase_unreadable_obligations
+PASS competing_purpose_prevents_commissioning
+PASS initial_readiness_cannot_overwrite_existing_history
+PASS a_credential_cannot_overstate_the_installed_cpu_budget
+PASS workspace_cpu_binding_does_not_cap_another_slot
