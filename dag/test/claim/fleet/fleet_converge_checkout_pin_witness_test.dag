@@ -1,0 +1,22 @@
+module test.claim.fleet.fleet_converge_checkout_pin_witness_test
+
+import std.types { Bool, String, List }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_unpinned_checkout_jobs, checkout_ref_is_pinned, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr }
+
+// THE RED IS THE EXPRESSION main EMITTED BEFORE THIS CHANGE: with no expected_revision it fell back to
+// github.ref, so a consumer job that queued behind a merge checked out a later main than the build job
+// and release-bins refused it (ConsumerSourceTreeMismatch, runs 36764203649 and 36766990321).
+data branch_fallback_ref_expr: String = "${{ (github.event.inputs.mode == 'mtcollins1_boot') && github.sha || github.event.inputs.expected_revision || github.ref }}"
+
+test fn a_branch_fallback_checkout_ref_is_refused() -> Bool {
+  !checkout_ref_is_pinned(expr: branch_fallback_ref_expr)
+    && !checkout_ref_is_pinned(expr: "${{ github.ref }}")
+    && !checkout_ref_is_pinned(expr: "main")
+}
+
+// THE ROUTE: the real emitted workflow is walked job by job, and emission refuses on a non-empty list.
+test fn every_emitted_checkout_ref_is_pinned_to_the_dispatched_commit() -> Bool {
+  checkout_ref_is_pinned(expr: fleet_converge_checkout_ref_expr)
+    && checkout_ref_is_pinned(expr: fleet_converge_event_sha_checkout_ref_expr)
+    && list_length(fleet_converge_unpinned_checkout_jobs(workflow: fleet_converge_workflow)) == 0
+}

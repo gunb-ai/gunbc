@@ -8,7 +8,7 @@ import gunbc.ci_spec { gunbc_ci_namecheap_observe_invoke }
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
 import std.measure { minute_count, second_count }
 
-import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { YamlString, YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputChoice,
@@ -3225,8 +3225,11 @@ fn fleet_converge_spark_v41_row_store_readback_step() -> Step {
 // it failed three dispatches in a row (2026-09-04, RunRevisionRefused on srv2/srv3/srv4) for a
 // reason that had nothing to do with the fleet. Binding the checkout to the same input the guard
 // reads makes the guard a check on the workflow's own consistency rather than a race with the
-// merge queue. When no expected_revision is given the dispatched ref is checked out, exactly as
-// before. There is no expected_healed_sha preflight here (unlike ci.yml heal revalidation), so the
+// merge queue. When no expected_revision is given the DISPATCHED COMMIT (github.sha) is checked out,
+// never github.ref: a branch ref resolves when the runner fetches, so the build job and a consumer
+// job that queued behind a merge checked out different trees and release-bins refused the consumer
+// with ConsumerSourceTreeMismatch (runs 36764203649, 36766990321). fleet_converge_unpinned_checkout_jobs
+// refuses emission of any checkout ref that can resolve to a branch. There is no expected_healed_sha preflight here (unlike ci.yml heal revalidation), so the
 // ci_artifact_consumer_prelude_steps paste-through is still not used.
 //
 // THE MT. COLLINS BOOT IS THE EXCEPTION, AND ITS ARM COMES FIRST (side-chat review 5286225278 on
@@ -3243,7 +3246,7 @@ data fleet_converge_checkout_ref_expr: String = join([
   "${{ (github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot),
   "' || github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: GcpIamConverge),
   "' || github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: NamecheapObserve),
-  "') && github.sha || github.event.inputs.expected_revision || github.ref }}",
+  "') && github.sha || github.event.inputs.expected_revision || github.sha }}",
 ], "")
 
 // THE BOOT JOB'S OWN CHECKOUT NAMES ONLY THE EVENT SHA, with no input in the expression at all.
@@ -4009,7 +4012,46 @@ type FleetConvergeYamlGenerationOutcome
 // capabilities has nothing worth checking a budget against.
 data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
 
+// A CHECKOUT REF NAMES A COMMIT, NEVER A BRANCH. Every job of one run must read the same tree --
+// the release-bins pack is keyed on the build job's source closure and every consumer refuses a
+// different one -- so each checkout ref must resolve to github.sha (or a dispatch-supplied exact
+// revision in front of it) and may never fall back to github.ref, which resolves to whatever the
+// branch is when that job's runner fetches.
+fn checkout_ref_is_pinned(expr: String) -> Bool {
+  ends_with(s: expr, suffix: "github.sha }}") && !string_contains(s: expr, pattern: "github.ref")
+}
+
+fn with_entry_is_unpinned_ref(e: YamlKeyValue) -> Bool {
+  e.key == "ref" && match e.value {
+    YamlString { value: v } => !checkout_ref_is_pinned(expr: v)
+    _ => true
+  }
+}
+
+fn step_has_unpinned_checkout_ref(s: Step) -> Bool {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match w {
+        Present { value: ws } => any(ws, e => with_entry_is_unpinned_ref(e: e))
+        _ => false
+      }
+  }
+}
+
+fn fleet_converge_unpinned_checkout_jobs(workflow: Workflow) -> List<String> {
+  map(filter(workflow.jobs, j => any(j.steps, s => step_has_unpinned_checkout_ref(s: s))), j => j.id)
+}
+
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
+  match fleet_converge_unpinned_checkout_jobs(workflow: fleet_converge_workflow).first() {
+    Present { value: j } =>
+      FleetConvergeYamlGenerationRefused { reason: join(["REFUSED gunbc.fleet_converge_workflow: job ", j, " checks out a ref that is not pinned to github.sha, so a job that queues behind a merge reads a different tree than the build job (release-bins ConsumerSourceTreeMismatch). Pin the checkout ref."], "") }
+    Absent => expected_fleet_converge_yml_after_checkout_pin()
+  }
+}
+
+fn expected_fleet_converge_yml_after_checkout_pin() -> FleetConvergeYamlGenerationOutcome {
   match admit_workflow_action_uses(workflow: fleet_converge_workflow) {
     WorkflowActionUsesRefused { refusals: rs } =>
       FleetConvergeYamlGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.fleet_converge_workflow", refusals: rs) }
