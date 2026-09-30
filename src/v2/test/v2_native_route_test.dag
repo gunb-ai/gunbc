@@ -1774,12 +1774,14 @@ fn pinned() -> NativeRouteLivePairStanding {
 }
 
 // Enrolled and holding: both controls refuse at the pinned stage with the pinned reason, and the
-// otherwise-green receipt is admitted. The production standing (the data row) is exercised by the
-// same receipt through `native_route_admission`, so a data row pinned to anything else reds here.
+// otherwise-green receipt is admitted under a supplied enrollment. The production standing (the
+// data row) is exercised by the same receipt through `native_route_admission`: since gunbc#12048
+// flipped it to LivePairRequired, the pinned refusals must NOT be admitted there, so a data row
+// set back to an enrollment reds here.
 test fn an_enrolled_live_pair_holds_only_at_its_pinned_refusal() -> Bool {
   let r = receipt_with_controls(false_control: pinned_chain(), true_control: pinned_chain())
   native_route_admitted(admission: native_route_admission_with(receipt: r, live_pair: pinned()))
-  && native_route_admitted(admission: native_route_admission(receipt: r))
+  && !native_route_admitted(admission: native_route_admission(receipt: r))
   && !native_route_admitted(admission: native_route_admission_with(receipt: r, live_pair: LivePairRequired))
 }
 
