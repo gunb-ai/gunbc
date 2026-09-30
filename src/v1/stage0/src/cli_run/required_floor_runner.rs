@@ -10310,6 +10310,11 @@ pub fn run_required_floor(
             )),
         }
     }
+    // THE FOLD'S LAST SCOPE HAS NO READER AFTER THE FOLD. Each scope is dropped before the next is
+    // built; the last one was instead held to the end of this function, keeping its whole closure
+    // of prepared modules shared through publication and enrolment -- past its demanded lifetime,
+    // and the reason the teardown attribution found most prepared modules still owned elsewhere.
+    drop(current_scope);
     outcome.receipt_identities = receipted.len();
     // THE LEDGER IS PUBLISHED OVER THE PLANNED POPULATION, NEVER OVER THE PREFIX THAT RAN.
     //
