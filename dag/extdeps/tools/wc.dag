@@ -38,6 +38,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
+// `-c` rather than the GNU long form `--bytes` in ByteCount.File: wc(1) documents them as one
+// option, `-c` is the POSIX spelling, and the BSD wc on macOS accepts it where it rejects `--bytes`.
 service wc.ByteCount {
   operation File {
     input { path: FilePath }
@@ -46,8 +48,6 @@ service wc.ByteCount {
       success: Bool from "exit_success"
     }
     readonly
-    // `-c` rather than the GNU long form `--bytes`: wc(1) documents them as one option, `-c` is
-    // the POSIX spelling, and the BSD wc on macOS accepts it where it rejects `--bytes`.
     transport shell { argv: ["wc", "-c", "{path}"] }
   }
 }
