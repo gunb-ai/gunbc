@@ -1685,6 +1685,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
       check_fns: [
         "ingested_classical_not_arrow_has_match_holds",
+        "ingested_classical_not_arrow_has_match_rejected_producer_refuses_holds",
         "ingested_classical_not_canonical_emit_accepts_holds",
         "ingested_classical_not_staging_emit_accepts_holds",
         "ingested_classical_not_emit_accepts_holds",
