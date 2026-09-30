@@ -98,13 +98,17 @@ fn fold_call_head_symbol(fold_call: Node) -> Optional<Symbol> {
 // and slots are one fact, answered once here, and a head either has all three or is not in the
 // family (review 72539).
 //
-// THE SLOT NAMES ARE AUTHORED, ONE ROW PER HEAD, AND THAT IS A DECLARED FRONTIER. The template row
-// carries positions and no parameter names, and the corpus declarations' signatures are ordinary fn
-// declarations with no data projection this stage can read. So a name is written once, in its
-// head's row, beside the declaration it names; the trigger that retires it is a readable parameter
-// projection of those signatures. A corpus declaration answers no positions for the same reason, so
-// a positional call of one reads as StepByName (the counted FoldCallStepFormUnresolved state), and
-// no positional call site of any of them exists (DESIGN section 3c).
+// A CORPUS DECLARATION'S SLOTS ARE AUTHORED, ONE ROW PER HEAD, AND THAT IS A DECLARED FRONTIER. The
+// template row carries positions and no parameter names, and the corpus declarations' signatures are
+// ordinary fn declarations with no data projection this stage can read. So each declaration's
+// parameter names AND positions are written once, in its head's row, beside the declaration they
+// transcribe (v2.std.algebra fold_list(xs, empty, cons) and fold_list_right(xs, empty, snoc),
+// v2.std.node fold_node(n, algebra)). The roster operation's positions come from its row; its names
+// (`xs`, `init`, `f`) are the spellings the free call is written with. The trigger that retires the
+// authored rows is a readable parameter projection of those signatures. Both spellings of a slot are
+// needed: the native census of gunbc#12550 found `fold(xs: .., init: .., f: ..)` and
+// `fold_list(left, empty: .., cons: ..)` in the corpus, and a slot readable only one way refused a
+// whole file.
 type FoldSlot {
   name: Optional<Symbol>
   position: Optional<Int>
@@ -120,8 +124,8 @@ type FoldRealization
   = FoldRealizesRosterOperation { template: AlgebraFieldTemplate, row: DeclarationRef, slots: FoldSlots }
   | FoldRealizesDeclaration { declaration: DeclarationRef, slots: FoldSlots }
 
-fn fold_named_slot(name: Symbol) -> FoldSlot {
-  FoldSlot { name: optional_present(value: name), position: optional_absent() }
+fn fold_declared_slot(name: Symbol, position: Int) -> FoldSlot {
+  FoldSlot { name: optional_present(value: name), position: optional_present(value: position) }
 }
 
 fn fold_absent_slot() -> FoldSlot {
@@ -146,7 +150,7 @@ fn fold_row_position(position: Int?) -> Optional<Int> {
 // The collection operation's slots, positions read off its template row.
 fn collection_fold_slots(t: AlgebraFieldTemplate) -> FoldSlots {
   FoldSlots {
-    collection: FoldSlot { name: optional_absent(), position: fold_row_position(position: template_receiver_position(t: t)) },
+    collection: FoldSlot { name: optional_present(value: ^xs), position: fold_row_position(position: template_receiver_position(t: t)) },
     init: FoldSlot { name: optional_present(value: ^init), position: fold_row_position(position: template_accumulator_position(t: t)) },
     step: FoldSlot { name: optional_present(value: ^f), position: fold_row_position(position: template_step_position(t: t)) }
   }
@@ -162,15 +166,15 @@ fn fold_family_realization(head: Symbol) -> Optional<FoldRealization> {
     })
   } else if head == ^fold_list {
     fold_realizes_declaration(module_path: "v2.std.algebra", decl_name: "fold_list", slots: FoldSlots {
-      collection: fold_named_slot(name: ^xs), init: fold_named_slot(name: ^empty), step: fold_named_slot(name: ^cons)
+      collection: fold_declared_slot(name: ^xs, position: 0), init: fold_declared_slot(name: ^empty, position: 1), step: fold_declared_slot(name: ^cons, position: 2)
     })
   } else if head == ^fold_list_right {
     fold_realizes_declaration(module_path: "v2.std.algebra", decl_name: "fold_list_right", slots: FoldSlots {
-      collection: fold_named_slot(name: ^xs), init: fold_named_slot(name: ^empty), step: fold_named_slot(name: ^snoc)
+      collection: fold_declared_slot(name: ^xs, position: 0), init: fold_declared_slot(name: ^empty, position: 1), step: fold_declared_slot(name: ^snoc, position: 2)
     })
   } else if head == ^fold_node {
     fold_realizes_declaration(module_path: "v2.std.node", decl_name: "fold_node", slots: FoldSlots {
-      collection: fold_named_slot(name: ^n), init: fold_absent_slot(), step: fold_named_slot(name: ^algebra)
+      collection: fold_declared_slot(name: ^n, position: 0), init: fold_absent_slot(), step: fold_declared_slot(name: ^algebra, position: 1)
     })
   } else {
     optional_absent()
