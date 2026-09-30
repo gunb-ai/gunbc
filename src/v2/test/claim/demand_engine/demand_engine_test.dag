@@ -248,7 +248,7 @@ test fn share_admitted_demand_is_produced_once_holds() -> Bool {
   match demand_engine_entry(e: e, id: g_a()) {
     Absent => false
     Present { value: entry } =>
-      length(xs: e.entries) == 1 && entry.attachments == 2 && entry.productions == 0
+      length(xs: e.entry_order) == 1 && entry.attachments == 2 && entry.productions == 0
   }
 }
 
@@ -420,7 +420,7 @@ test fn a_completion_costs_its_out_degree_not_the_graph_holds() -> Bool {
   let sealed = g_lopsided()
   let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
   (after.readiness_computations - sealed.readiness_computations) == 1
-    && length(xs: sealed.entries) == 5
+    && length(xs: sealed.entry_order) == 5
     && g_state_is(e: after, id: g_b(), want: DemandReady)
 }
 

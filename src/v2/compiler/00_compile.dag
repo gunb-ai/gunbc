@@ -4557,9 +4557,13 @@ fn native_demand_plan_size(plan: NativeDemandPlan) -> Int {
 // it through here rather than reaching into the engine inside the run: a caller that walked two
 // records deep would be coupled to the engine's shape, and the engine's shape is not the driver's
 // business.
-// The planned population, read from the run so the driver needs no second handle on the plan.
+// The planned population, read from the run so the driver needs no second handle on the plan. It
+// counts `entry_order` and not `entries`: the engine's store is keyed by identity now, and the ORDER
+// is the population's enumeration. Counting the keyed store typechecked in .dag -- FreeMonoid is loose
+// enough interpreted -- and emitted Rust that could not compile, which is the one route that catches
+// it (v1.compiler.emit_rust; the rostered class is accepted_source_emits_uncompilable_target).
 fn native_demand_run_demand_count(run: NativeDemandRun) -> Int {
-  length(xs: run.engine.entries)
+  length(xs: run.engine.entry_order)
 }
 
 fn native_demand_run_readiness_derivations(run: NativeDemandRun) -> Int {
