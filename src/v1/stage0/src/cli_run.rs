@@ -10339,6 +10339,49 @@ mod closure_edge_demand_tests {
         reset_bare_reference_admission_completion_for_test();
     }
 
+    /// ONE PARSE PER FILE ON THE ENTRY ROUTE. A module reached only by a dotted reference is
+    /// pulled by the fixpoint's reference half, which reads the index's shared parse; the
+    /// per-entry module-path scan (`extend_with_reference_closure`, timed as
+    /// `load_reference_scan`) is not run at all. Red before: that scan parsed every closure
+    /// file a second time, once per entry.
+    #[test]
+    fn the_pool_entry_route_follows_dotted_references_without_a_second_parse() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module dotted_entry\nfn main() -> Int { dotted.provider.one() }\n",
+            ),
+            (
+                "provider.dag",
+                "module dotted.provider\nfn one() -> Int { 1 }\n",
+            ),
+            (
+                "unrelated.dag",
+                "module unrelated\nfn unused() -> Int { 1 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let scans_before = resolve_stage_slot_snapshot().load_reference_scan_calls;
+        let sources = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("entry.dag").to_string_lossy(),
+        )
+        .unwrap();
+        let modules: BTreeSet<_> = sources
+            .iter()
+            .map(|s| extract_module_path(&s.content).unwrap())
+            .collect();
+        assert_eq!(
+            modules,
+            BTreeSet::from(["dotted_entry".into(), "dotted.provider".into()])
+        );
+        assert_eq!(
+            resolve_stage_slot_snapshot().load_reference_scan_calls - scans_before,
+            0,
+            "the entry route must not re-parse closure files for module-path references"
+        );
+    }
+
     /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
     /// the whole pool, and the entry still reaches its bare provider.
     #[test]
