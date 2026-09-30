@@ -35,7 +35,7 @@ fn nbd_proxy_serve_cited_tool_names_includes_nbdkit() -> Bool {
   fold(
     nbd_proxy_serve_cited_tool_names,
     init: false,
-    f: (acc, name) => acc || name == nbdkit_cli_tool.name
+    f: (acc, name) => acc || name == nbdkit_cli_tool.program.invocation
   )
 }
 
@@ -43,7 +43,7 @@ fn nbd_proxy_serve_cited_tool_names_includes_websocat() -> Bool {
   fold(
     nbd_proxy_serve_cited_tool_names,
     init: false,
-    f: (acc, name) => acc || name == websocat_cli_tool.name
+    f: (acc, name) => acc || name == websocat_cli_tool.program.invocation
   )
 }
 
@@ -51,7 +51,7 @@ fn nbd_proxy_serve_cited_tool_names_includes_socat() -> Bool {
   fold(
     nbd_proxy_serve_cited_tool_names,
     init: false,
-    f: (acc, name) => acc || name == socat_cli_tool.name
+    f: (acc, name) => acc || name == socat_cli_tool.program.invocation
   )
 }
 
@@ -98,8 +98,8 @@ fn witness_bmcweb_session_login_argv_semantic_surface_holds() -> Bool {
     init: "",
     f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
   )
-  fold(argv, init: "", f: (acc, word) => if acc == "" { word } else { acc }) == curl_cli_tool.name
-    && curl_cli_tool.name == "curl"
+  fold(argv, init: "", f: (acc, word) => if acc == "" { word } else { acc }) == curl_cli_tool.program.invocation
+    && curl_cli_tool.program.invocation == "curl"
     && string_contains(s: argv_surface, pattern: curl_args_surface)
     && string_contains(s: argv_surface, pattern: "-o")
     && string_contains(s: argv_surface, pattern: body as String)

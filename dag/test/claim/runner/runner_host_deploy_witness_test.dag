@@ -3,8 +3,8 @@ module test.claim.runner_host_deploy
 import std.logic { Bool }
 import std.types { list_length }
 import extdeps.exec.command { shell_command_render }
-import extdeps.sudo.elevation { sudo_binary_path, sudo_non_interactive_flag }
-import extdeps.systemd.systemctl { systemctl_program }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
+import extdeps.systemd.systemctl { systemctl_path_resolved_program }
 import gunbc.runner_host_deploy {
   admitted_deploy_for,
   gunbc_ci_github_app,
@@ -104,7 +104,7 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
 // "'sudo' 'systemctl' 'enable' '--now'" -- correct against the hand-built argv this row was written
 // for, and false the moment runner_enable_command_argv started routing through
 // extdeps.systemd.systemctl systemctl_enable_now_command, which mints through the sealed
-// argv_command with sudo_binary_path as the program and inserts sudo's non-interactive flag. The
+// argv_command with sudo_program as the program and inserts sudo's non-interactive flag. The
 // spelling was a THIRD authoring of facts extdeps.sudo.elevation and extdeps.systemd.systemctl
 // already own, so it rotted exactly the way a re-spelling does (DESIGN section 3).
 //
@@ -130,13 +130,13 @@ test fn srv4_enables_its_declared_runner_instances() -> Bool {
         && string_contains(
              s: enable,
              pattern: concat(
-               concat("'", sudo_binary_path as String),
+               concat("'", sudo_program().invocation as String),
                concat("' '", concat(sudo_non_interactive_flag as String, "'")),
              ),
            )
         && string_contains(
              s: enable,
-             pattern: concat(concat("'", systemctl_program as String), "' 'enable' '--now'"),
+             pattern: concat(concat("'", systemctl_path_resolved_program().invocation as String), "' 'enable' '--now'"),
            )
     }
   }

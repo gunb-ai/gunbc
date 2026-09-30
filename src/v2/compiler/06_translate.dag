@@ -20,6 +20,7 @@ import v2.compiler.target_carriers {
   target_source_medium
 }
 import v2.std.compilers.target_model {
+  lex_literal_index,
   TargetModel,
   TargetValueExpression,
   target_value_expr_arrow_has_value_expression_body
@@ -240,17 +241,6 @@ import v2.compiler.target_serialize {
   type_expr_atom_binding
 }
 
-fn token_item_serialize_measure(item: Node, target: TargetModel) -> Outcome<Int> {
-  bind_outcome(
-    o: target_translation_rules_budget(target: target),
-    f: fn(rules_budget) {
-      Accepted {
-        value: node_subtree_count(n: item) + rules_budget + 1,
-        diagnostics: None
-      }
-    }
-  )
-}
 fn token_list_node_budget(tokens: List<Node>) -> Int {
   fold_list(
     xs: tokens,
@@ -506,19 +496,12 @@ fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnosti
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetText> {
-  bind_outcome(
-    o: token_item_serialize_measure(item: item, target: target),
-    f: fn(measure) {
-      token_item_to_source_bounded(measure, item, target)
-    }
-  )
-}
 fn token_sequence_to_source_bounded(
   remaining: Int,
   tokens: List<Node>,
   target: TargetModel
 ) -> Outcome<TargetText> {
+  let lex = lex_literal_index(rules: target.lex)
   fold_list(
     xs: tokens,
     empty: Accepted { value: target_text_empty, diagnostics: None },
@@ -526,7 +509,7 @@ fn token_sequence_to_source_bounded(
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: partial, diagnostics: ad } =>
-          match token_item_to_source_bounded(remaining - 1, token_node, target) {
+          match token_item_to_source_bounded(remaining - 1, token_node, target, lex) {
             Accepted { value: source, diagnostics: td } =>
               Accepted {
                 value: target_text_seq(acc: partial, next: source),

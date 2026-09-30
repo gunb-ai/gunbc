@@ -18,6 +18,7 @@ import v2.extdeps.languages.dag {
   dag_kernel_type_declaration_binding_optional,
   dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
+  dag_symbol_literal_name_optional,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_module_header_metadata_edge,
@@ -74,6 +75,7 @@ import v2.std.resolution_policy {
   NamespaceOnlyY,
   default_name_resolution_policy
 }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations }
 import v2.std.symbol_index {
   LexicalAmbiguous,
   LexicalBindingCandidate,
@@ -122,16 +124,52 @@ import v2.std.node {
   node_with_occurrence_id,
   well_formed,
 }
-import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_labels_conform, type_param_names }
+import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
   find_named_child,
+  is_wildcard_pattern,
   pattern_wildcard_name
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
 
-type ResolvedTree = Node
+// RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
+// stage that needs a reference's declaration asks the SAME authority resolution asked
+// (v2.std.symbol_index symbol_index_lookup) instead of reconstructing it from the tree: the index is
+// the Namespace.symbol_index the walk ran under, minted beside the root on the Accepted arm only, so
+// a refusal carries no index and no stage can read one for a tree that did not resolve.
+// CONSUMERS: .root is read by every stage after resolve (infer's gather reads it at its entry).
+// .symbol_index is the table resolve resolves against; no later stage reads it. A later stage that needs
+// a declaration reads .resolved_declarations below: v2.compiler.infer refinement_declaration (gunbc#12407,
+// stacked on this change) asks symbol_index_lookup there for the refinement declaration a cast
+// operand's type references, replacing an infer-private walk over the tree.
+// TWO INDEXES OVER THE SAME DECLARATIONS AT DIFFERENT PHASES, NEVER ONE QUESTION TWICE.
+// symbol_index is THE INDEX RESOLUTION CONSULTED: declarations as authored, before resolve, the table
+// resolve looks references up in. resolved_declarations is DECLARATIONS WITH RESOLVED BODIES: the same
+// module fold (v2.compiler.symbol_index_fill symbol_index_fill_module_declarations) run over the
+// RESOLVED root, so a declaration's body carries the identities resolve bound in it -- a where-refined
+// carrier `Int` is the kernel binding, a carrier naming a corpus type is its declaration reference. A
+// reader that needs a body's resolved type reads resolved_declarations; nothing reads symbol_index for
+// a body type (neat-boar-16 ruling), so the two never answer the same question.
+type ResolvedTree {
+  root: Node
+  symbol_index: SymbolIndex
+  resolved_declarations: SymbolIndex
+}
+
+// The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
+// qualified name is read from the root's own header, so a declaration is keyed at its full path (p.Pos).
+// A root whose module name cannot be read yields the empty index -- every lookup through it refuses.
+fn resolved_declarations_of(root: Node) -> SymbolIndex {
+  symbol_index_fill_module_declarations(index: empty_symbol_index(), root: root, record_declarations: Empty)
+}
+
+// THE ONE CONSTRUCTOR of an accepted resolution's carrier: the root, the index it was resolved
+// against, and its declarations as resolved.
+fn resolved_tree_of(root: Node, symbol_index: SymbolIndex) -> ResolvedTree {
+  ResolvedTree { root: root, symbol_index: symbol_index, resolved_declarations: resolved_declarations_of(root: root) }
+}
 
 // `test_code`, `declared_in` and `imported_origins` exist for one decision: whether a reference binds
 // to test code (owner ruling 2026-09-16/17). Root-scope bindings come from exactly two sources: the
@@ -1068,7 +1106,15 @@ fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending:
   }
 }
 
+// A symbol literal is a value, returned whole: its payload is never looked up as a reference.
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
+  match dag_symbol_literal_name_optional(node: n) {
+    Present { value: _ } => Accepted { value: n, diagnostics: None }
+    Absent => resolve_atom_not_symbol_literal(ctx: ctx, n: n, identity: identity)
+  }
+}
+
+fn resolve_atom_not_symbol_literal(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: n) {
     Accepted { value: n, diagnostics: None }
   } else if dag_node_is_float_literal_atom(node: n) {
@@ -1228,6 +1274,15 @@ fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
 fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
+    ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
+  }
+}
+
+// The stage exit: the same projection, with the index resolution consulted minted beside the root.
+fn resolved_tree_outcome(w: ResolveNodeWalk, symbol_index: SymbolIndex) -> Outcome<ResolvedTree> {
+  match w {
+    ResolveWalkAccepted { value: v, diagnostics: d } =>
+      Accepted { value: resolved_tree_of(root: v, symbol_index: symbol_index), diagnostics: d }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
   }
 }
@@ -1526,7 +1581,7 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
       fold(construct_field_edges(n: pat), init: acc, f: fn(m, e) {
         match e.target.kind {
           TypeNode { connective: Atom { identity: id } } =>
-            if id == pattern_wildcard_name() {
+            if is_wildcard_pattern(pattern: e.target) {
               m
             } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
               m
@@ -1540,7 +1595,7 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
 }
 
 // The pat resolves under the ARM frame: the tag and any nested constructor resolve as
-// references, a binder answers BoundInFrame and stays itself, and `_` is kept as it is.
+// references, a binder answers BoundInFrame and stays itself, and the wildcard is kept as it is.
 //
 // THESE ARE WALKS, ON gunbc#12116's CHILD WALK (XL-2 P4). A pattern, an arm and a match each fold
 // their children through child_walk_step and close with child_walk_node, so every independent
@@ -1550,18 +1605,13 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
 // come from resolve_pattern_binders over the pattern's SYNTAX and the symbol index, before the
 // fold runs, so a refused pattern does not leave the body under an invented scope and no site is
 // marked unobservable (P4's one exception, a Bind's binder, has no counterpart here).
-fn resolve_pattern_is_wildcard(pat: Node) -> Bool {
-  match pat.kind {
-    TypeNode { connective: Atom { identity: id } } => id == pattern_wildcard_name()
-    _ => false
-  }
-}
-
-// A pattern is the arm's whole `pat` or a constructor field's target, and `_` is the same pattern
-// form in both: it binds nothing and names nothing, so it is kept as it is at every depth rather
-// than looked up as a reference to a symbol spelled `_`.
+//
+// A pattern is the arm's whole `pat` or a constructor field's target, and the wildcard is the same
+// pattern FORM in both (v2.std.node_query is_wildcard_pattern): it binds nothing and names nothing,
+// so it is kept as it is at every depth. Lowering mints it, so it is recognised by form, never by
+// comparing an atom's spelling to `_`.
 fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk {
-  if resolve_pattern_is_wildcard(pat: pat) {
+  if is_wildcard_pattern(pattern: pat) {
     ResolveWalkAccepted { value: pat, diagnostics: None }
   } else {
     match construct_tag_optional(n: pat) {
@@ -2009,12 +2059,15 @@ fn resolve_with_namespace_policy(
   lm: LanguageModel,
   policy: NameResolutionPolicy
 ) -> Outcome<ResolvedTree> {
-  resolve_walk_outcome(w: resolve_walk_with_namespace_policy(
-    tree: tree,
-    namespace: namespace,
-    lm: lm,
-    policy: policy
-  ))
+  resolved_tree_outcome(
+    w: resolve_walk_with_namespace_policy(
+      tree: tree,
+      namespace: namespace,
+      lm: lm,
+      policy: policy
+    ),
+    symbol_index: namespace.symbol_index
+  )
 }
 
 fn resolve_walk_with_namespace_policy(
@@ -2029,6 +2082,15 @@ fn resolve_walk_with_namespace_policy(
       n: tree.root
     )
   } else {
-    resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree.root)))
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(
+      n: if well_formed(n: tree.root) {
+        match type_binder_first_mislabelled(root: tree.root) {
+          Present { value: at } => at
+          Absent => tree.root
+        }
+      } else {
+        tree.root
+      }
+    )))
   }
 }
