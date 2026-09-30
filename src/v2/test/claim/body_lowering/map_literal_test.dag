@@ -236,3 +236,41 @@ test fn ml_a_mixed_key_brace_refuses_at_lowering_holds() -> Bool {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_brace_key_kind_mismatch
   }
 }
+
+// PROBES (temporary, removed before review): locate where the shared failure is.
+test fn ml_probe_ingest_accepts_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ml_probe_headed_resolves_holds() -> Bool {
+  ml_accepts(o: ml_resolve_subject(subject: "v2.test.ml_headed"))
+}
+
+test fn ml_probe_headless_resolves_holds() -> Bool {
+  ml_accepts(o: ml_resolve_subject(subject: "v2.test.ml_headless"))
+}
+
+test fn ml_probe_headed_has_introduction_holds() -> Bool {
+  length(xs: ml_introduction_hashes(o: ml_resolve_subject(subject: "v2.test.ml_headed"))) == 1
+}
+
+test fn ml_probe_headless_has_introduction_holds() -> Bool {
+  length(xs: ml_introduction_hashes(o: ml_resolve_subject(subject: "v2.test.ml_headless"))) == 1
+}
+
+test fn ml_probe_ingest_reason_field_init_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_field_init_unlowered
+  }
+}
+
+test fn ml_probe_ingest_reason_key_kind_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_brace_key_kind_mismatch
+  }
+}
