@@ -5,6 +5,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { second, millisecond, millisecond_count }
 import v2.std.optional { Present, Absent }
+import v2.std.algebra { any }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
@@ -26,6 +27,7 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmJournalText, KvmJournalAbsent, KvmJournalUnread, kvm_journal_events_of,
   kvm_journal_event, kvm_journal_events, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
   mtcollins1_kvm_observer_start, mtcollins1_bmc_firmware, mtcollins1_kvm_observer_dir, kvm_observer_trigger,
+  KvmJournalWord, kvm_journal_event_words, kvm_journal_cause_words, mtcollins1_kvm_observer_script,
 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix }
 import gunbc.owned_process {
@@ -224,4 +226,20 @@ test fn the_start_refuses_without_driving_when_a_precondition_is_missing() -> Bo
 // RETAINED WITH THE BUNDLE: the observer's directory sits under the boot's upload prefix.
 test fn the_observer_directory_is_retained_with_the_boot_artifacts() -> Bool {
   starts_with(s: mtcollins1_kvm_observer_dir(attempt: "36335369059"), prefix: mtcollins1_boot_retained_artifact_prefix)
+}
+
+// ONE VOCABULARY, READ BOTH WAYS. Every event word the module declares reaches the observer script as
+// an EV constant and parses back to its own journal variant, never to Unparsed; every cause word reaches
+// it as a CA constant. A word added to the script but not to the rows is not written (the script only
+// has EV/CA), and a row whose word the parser does not read turns this red. The control: a word the rows
+// do not declare stays Unparsed.
+fn kvm_word_line(w: String) -> String { concat("1790000000000 2026-09-30T00:00:00.000Z ", concat(w, " detail=x")) }
+
+test fn the_journal_vocabulary_is_declared_once_and_read_back_by_the_parser() -> Bool {
+  let script = mtcollins1_kvm_observer_script
+  let events_rendered = !any(kvm_journal_event_words, w => !(string_contains(s: script, pattern: concat(w.id, concat(":'", concat(w.word, "'"))))))
+  let causes_rendered = !any(kvm_journal_cause_words, w => !(string_contains(s: script, pattern: concat(w.id, concat(":'", concat(w.word, "'"))))))
+  let parsed = !any(kvm_journal_event_words, w => !(match kvm_journal_event(line: kvm_word_line(w: w.word)) { KvmJournalUnparsed { line: _ } => false  _ => true }))
+  let control = match kvm_journal_event(line: kvm_word_line(w: "undeclared-word")) { KvmJournalUnparsed { line: _ } => true  _ => false }
+  events_rendered && causes_rendered && parsed && control && string_contains(s: script, pattern: "const EV=\{") && !string_contains(s: script, pattern: "j('")
 }

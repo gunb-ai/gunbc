@@ -104,7 +104,57 @@ data mtcollins1_kvm_observer_script_scaffold: Disposition = Scaffold {
 
 data mtcollins1_kvm_observer_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.kvm_observer LaunchObserver -- the held MegaRAC H5 viewer is a node -e script string launched as a bash background hold. RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO DRIVE THE MegaRAC H5 VIEWER AND READ ITS CANVAS -- navigate and evaluate in page, observe the /kvm WebSocket open and close, read canvas#kvm as image/jpeg on cadence and on trigger, and release the web session on every reachable exit -- held by a typed process-hold realization. An artifact that covers only part of that (navigation without WebSocket lifecycle, or a canvas read without the guaranteed release) does not retire it. Admission: operator escalation msg_d5eebfff, default-approved on recommendation A, 2026-09-28")
 
-data mtcollins1_kvm_observer_script: String = "const fs=require('fs');const path=require('path');const [base,user,pwFile,dir,attempt,cadenceMs,frameMs,maxPeriodic,pwModule]=process.argv.slice(1);const J=path.join(dir,'journal');function j(ev,kv)\{const t=Date.now();try\{fs.appendFileSync(J,t+' '+new Date(t).toISOString()+' '+ev+(kv?' '+kv:'')+'\\n')}catch(e)\{try\{process.stderr.write('journal write failed: '+ev+' '+String(e&&e.message)+'\\n')}catch(e2)\{}}}function one(e)\{return String(e&&e.message||e).replace(/[^ -~]+/g,' ').replace(/ +/g,' ').slice(0,300)}let browser=null,page=null,stopping=false,login='not-attempted',token=null,seq=0,periodic=0;let gen=0,live=null;async function teardown(why,code)\{if(stopping)return;stopping=true; j('stop-requested','by='+why); let rel; if(login==='accepted'&&page&&token)\{try\{rel=await page.evaluate(async t=>\{const r=await fetch('/api/session',\{method:'DELETE',headers:\{'X-CSRFTOKEN':t}});return r.ok?'released':'http-'+r.status},token)}catch(e)\{rel='release-failed detail='+JSON.stringify(one(e))}} else if(login==='unobserved')\{rel='login-unobserved'} else\{rel='no-session'} j('session-release','result='+rel); let closed='closed';try\{if(browser)await browser.close();else closed='no-browser'}catch(e)\{closed='close-failed detail='+JSON.stringify(one(e))} j('browser-close','result='+closed); j('stopped','session='+rel.split(' ')[0]+' browser='+closed.split(' ')[0]); process.exit(code)}process.on('SIGTERM',()=>teardown('sigterm',0));process.on('SIGINT',()=>teardown('sigint',0));async function still(reason)\{seq+=1;const n=seq;const g=gen;const startedMs=Date.now(); if(!live||live.gen!==g)\{j('acquisition-failed','seq='+n+' reason='+reason+' gen='+g+' cause=not-connected');return} try\{const url=await page.evaluate(()=>\{const c=document.getElementById('kvm');if(!c)throw new Error('no canvas#kvm');return c.toDataURL('image/jpeg')});  if(!live||live.gen!==g)\{j('acquisition-failed','seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause=connection-changed-during-acquisition');return}  if(!url.startsWith('data:image/jpeg;base64,'))throw new Error('toDataURL answered '+url.slice(0,40));  const b=Buffer.from(url.slice(url.indexOf(',')+1),'base64');const f='still-'+n+'.jpg';fs.writeFileSync(path.join(dir,f),b);  j('still','seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' file='+f+' bytes='+b.length)} catch(e)\{j('acquisition-failed','seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause=canvas-unreadable detail='+JSON.stringify(one(e)))}}(async()=>\{ let pw;try\{pw=fs.readFileSync(pwFile,'utf8')}catch(e)\{j('refused','cause=credential-unreadable detail='+JSON.stringify(one(e)));return teardown('refused',14)} let chromium;try\{chromium=require(pwModule).chromium}catch(e)\{j('refused','cause=toolchain detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{browser=await chromium.launch(\{headless:true})}catch(e)\{j('refused','cause=toolchain detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{const ctx=await browser.newContext(\{ignoreHTTPSErrors:true,viewport:\{width:1280,height:1024}});page=await ctx.newPage();  const expectedHost=new URL(base).host;  await page.goto(base+'/',\{waitUntil:'domcontentloaded'});  login='unobserved';  const reply=await page.evaluate(async([u,p])=>\{const r=await fetch('/api/session',\{method:'POST',headers:\{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(\{username:u,password:p})});let b=null;try\{b=await r.json()}catch(e)\{}return\{status:r.status,b:b}},[user,pw]);  if(reply.status!==200||!reply.b||reply.b.ok!==0)\{login='refused';j('refused','cause=login http='+reply.status);return teardown('refused',11)}  login='accepted';token=reply.b.CSRFToken;  await page.evaluate(([b,u])=>\{sessionStorage.setItem('garc',b.CSRFToken);sessionStorage.setItem('privilege_id',String(b.privilege));sessionStorage.setItem('extended_privilege',String(b.extendedpriv));sessionStorage.setItem('session_id',String(b.racsession_id));sessionStorage.setItem('username',u);sessionStorage.setItem('kvm_access','1');sessionStorage.setItem('vmedia_access','1')},[reply.b,user]);  const seat=await page.evaluate(async t=>\{const r=await fetch('/api/settings/services',\{headers:\{'X-CSRFTOKEN':t}});const a=await r.json();const k=Array.isArray(a)?a.find(s=>s.service_name==='kvm'):null;return k?k.viewer_count:null},token);  if(seat===null||seat===undefined)\{j('refused','cause=no-kvm-service');return teardown('refused',15)}  if(seat!==0)\{j('refused','cause=seat-busy viewer_count='+seat);return teardown('refused',10)}  page.on('websocket',ws=>\{let u;try\{u=new URL(ws.url())}catch(e)\{return}   if(u.host!==expectedHost||u.pathname!=='/kvm')return;   j('connection-requested','url='+JSON.stringify(ws.url()));let mine=null;   ws.on('framereceived',()=>\{if(!mine)\{gen+=1;mine=\{gen:gen};live=mine;j('connection-open','gen='+mine.gen+' url='+JSON.stringify(ws.url()))}});   ws.on('socketerror',e=>\{j('connection-error','gen='+(mine?mine.gen:0)+' detail='+JSON.stringify(one(e)));if(mine&&live===mine)live=null});   ws.on('close',()=>\{if(mine&&live===mine)\{live=null;j('connection-lost','gen='+mine.gen)}else if(!mine)\{j('connection-refused','url='+JSON.stringify(ws.url()))}})});  await page.goto(base+'/viewer.html',\{waitUntil:'domcontentloaded'});  try\{await page.waitForFunction(()=>\{const c=document.getElementById('kvm');return !!c&&c.width>1&&c.height>1},null,\{timeout:Number(frameMs)})}  catch(e)\{j('refused','cause=no-frame detail='+JSON.stringify(one(e)));return teardown('refused',12)}  const deadline=Date.now()+Number(frameMs);while(!live&&Date.now()<deadline)\{await new Promise(r=>setTimeout(r,100))}  if(!live)\{j('refused','cause=no-kvm-frame');return teardown('refused',12)}  j('established','host='+JSON.stringify(expectedHost)+' session='+String(reply.b.racsession_id)+' attempt='+attempt+' gen='+live.gen);  let next=Date.now()+Number(cadenceMs);  while(!stopping)\{   if(fs.existsSync(path.join(dir,'stop')))\{return teardown('stop-file',0)}   let tf=[];try\{tf=fs.readdirSync(dir).filter(n=>n.startsWith('trigger-')).sort()}catch(e)\{j('trigger-scan-failed','detail='+JSON.stringify(one(e)))}   for(const n of tf)\{const p=path.join(dir,n);try\{fs.unlinkSync(p)}catch(e)\{continue}await still('trigger:'+n.slice(8))}   if(Date.now()>=next&&periodic<Number(maxPeriodic))\{next=Date.now()+Number(cadenceMs);periodic+=1;await still('periodic')}   await new Promise(r=>setTimeout(r,250))} }catch(e)\{j('failed','detail='+JSON.stringify(one(e)));return teardown('failed',1)}})();"
+// THE OBSERVER'S JOURNAL VOCABULARY IS DECLARED HERE ONCE. The observer script receives it as the
+// EV (event) and CA (cause) constants mtcollins1_kvm_observer_vocabulary_js renders from these rows,
+// and kvm_journal_event / kvm_refusal_of / kvm_acquisition_cause_of read the journal against the same
+// rows -- so the words the observer writes and the words the boot parses cannot drift apart.
+type KvmJournalWord {
+  id: String
+  word: String
+}
+
+data kvm_event_established: KvmJournalWord = KvmJournalWord { id: "established", word: "established" }
+data kvm_event_connection_requested: KvmJournalWord = KvmJournalWord { id: "connectionRequested", word: "connection-requested" }
+data kvm_event_connection_refused: KvmJournalWord = KvmJournalWord { id: "connectionRefused", word: "connection-refused" }
+data kvm_event_connection_open: KvmJournalWord = KvmJournalWord { id: "connectionOpen", word: "connection-open" }
+data kvm_event_connection_lost: KvmJournalWord = KvmJournalWord { id: "connectionLost", word: "connection-lost" }
+data kvm_event_connection_error: KvmJournalWord = KvmJournalWord { id: "connectionError", word: "connection-error" }
+data kvm_event_still: KvmJournalWord = KvmJournalWord { id: "still", word: "still" }
+data kvm_event_acquisition_failed: KvmJournalWord = KvmJournalWord { id: "acquisitionFailed", word: "acquisition-failed" }
+data kvm_event_session_release: KvmJournalWord = KvmJournalWord { id: "sessionRelease", word: "session-release" }
+data kvm_event_browser_close: KvmJournalWord = KvmJournalWord { id: "browserClose", word: "browser-close" }
+data kvm_event_refused: KvmJournalWord = KvmJournalWord { id: "refused", word: "refused" }
+data kvm_event_failed: KvmJournalWord = KvmJournalWord { id: "failed", word: "failed" }
+data kvm_event_stop_requested: KvmJournalWord = KvmJournalWord { id: "stopRequested", word: "stop-requested" }
+data kvm_event_stopped: KvmJournalWord = KvmJournalWord { id: "stopped", word: "stopped" }
+data kvm_event_trigger_scan_failed: KvmJournalWord = KvmJournalWord { id: "triggerScanFailed", word: "trigger-scan-failed" }
+
+data kvm_cause_seat_busy: KvmJournalWord = KvmJournalWord { id: "seatBusy", word: "seat-busy" }
+data kvm_cause_login: KvmJournalWord = KvmJournalWord { id: "login", word: "login" }
+data kvm_cause_no_kvm_service: KvmJournalWord = KvmJournalWord { id: "noKvmService", word: "no-kvm-service" }
+data kvm_cause_no_frame: KvmJournalWord = KvmJournalWord { id: "noFrame", word: "no-frame" }
+data kvm_cause_no_kvm_frame: KvmJournalWord = KvmJournalWord { id: "noKvmFrame", word: "no-kvm-frame" }
+data kvm_cause_no_kvm_websocket: KvmJournalWord = KvmJournalWord { id: "noKvmWebsocket", word: "no-kvm-websocket" }
+data kvm_cause_toolchain: KvmJournalWord = KvmJournalWord { id: "toolchain", word: "toolchain" }
+data kvm_cause_credential_unreadable: KvmJournalWord = KvmJournalWord { id: "credentialUnreadable", word: "credential-unreadable" }
+data kvm_cause_not_connected: KvmJournalWord = KvmJournalWord { id: "notConnected", word: "not-connected" }
+data kvm_cause_connection_changed_during_acquisition: KvmJournalWord = KvmJournalWord { id: "connectionChangedDuringAcquisition", word: "connection-changed-during-acquisition" }
+data kvm_cause_canvas_unreadable: KvmJournalWord = KvmJournalWord { id: "canvasUnreadable", word: "canvas-unreadable" }
+
+data kvm_journal_event_words: List<KvmJournalWord> = [kvm_event_established, kvm_event_connection_requested, kvm_event_connection_refused, kvm_event_connection_open, kvm_event_connection_lost, kvm_event_connection_error, kvm_event_still, kvm_event_acquisition_failed, kvm_event_session_release, kvm_event_browser_close, kvm_event_refused, kvm_event_failed, kvm_event_stop_requested, kvm_event_stopped, kvm_event_trigger_scan_failed]
+data kvm_journal_cause_words: List<KvmJournalWord> = [kvm_cause_seat_busy, kvm_cause_login, kvm_cause_no_kvm_service, kvm_cause_no_frame, kvm_cause_no_kvm_frame, kvm_cause_no_kvm_websocket, kvm_cause_toolchain, kvm_cause_credential_unreadable, kvm_cause_not_connected, kvm_cause_connection_changed_during_acquisition, kvm_cause_canvas_unreadable]
+
+fn kvm_journal_words_js(name: String, words: List<KvmJournalWord>) -> String {
+  concat(concat(concat("const ", name), "=\{"), concat(join(map(words, w => concat(concat(w.id, ":'"), concat(w.word, "'"))), ","), "};"))
+}
+
+fn mtcollins1_kvm_observer_vocabulary_js() -> String {
+  concat(kvm_journal_words_js(name: "EV", words: kvm_journal_event_words), kvm_journal_words_js(name: "CA", words: kvm_journal_cause_words))
+}
+
+data mtcollins1_kvm_observer_script_body: String = "const fs=require('fs');const path=require('path');const [base,user,pwFile,dir,attempt,cadenceMs,frameMs,maxPeriodic,pwModule]=process.argv.slice(1);const J=path.join(dir,'journal');function j(ev,kv)\{const t=Date.now();try\{fs.appendFileSync(J,t+' '+new Date(t).toISOString()+' '+ev+(kv?' '+kv:'')+'\\n')}catch(e)\{try\{process.stderr.write('journal write failed: '+ev+' '+String(e&&e.message)+'\\n')}catch(e2)\{}}}function one(e)\{return String(e&&e.message||e).replace(/[^ -~]+/g,' ').replace(/ +/g,' ').slice(0,300)}let browser=null,page=null,stopping=false,login='not-attempted',token=null,seq=0,periodic=0;let gen=0,live=null;async function teardown(why,code)\{if(stopping)return;stopping=true; j(EV.stopRequested,'by='+why); let rel; if(login==='accepted'&&page&&token)\{try\{rel=await page.evaluate(async t=>\{const r=await fetch('/api/session',\{method:'DELETE',headers:\{'X-CSRFTOKEN':t}});return r.ok?'released':'http-'+r.status},token)}catch(e)\{rel='release-failed detail='+JSON.stringify(one(e))}} else if(login==='unobserved')\{rel='login-unobserved'} else\{rel='no-session'} j(EV.sessionRelease,'result='+rel); let closed='closed';try\{if(browser)await browser.close();else closed='no-browser'}catch(e)\{closed='close-failed detail='+JSON.stringify(one(e))} j(EV.browserClose,'result='+closed); j(EV.stopped,'session='+rel.split(' ')[0]+' browser='+closed.split(' ')[0]); process.exit(code)}process.on('SIGTERM',()=>teardown('sigterm',0));process.on('SIGINT',()=>teardown('sigint',0));async function still(reason)\{seq+=1;const n=seq;const g=gen;const startedMs=Date.now(); if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' cause='+CA.notConnected+'');return} try\{const url=await page.evaluate(()=>\{const c=document.getElementById('kvm');if(!c)throw new Error('no canvas#kvm');return c.toDataURL('image/jpeg')});  if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.connectionChangedDuringAcquisition+'');return}  if(!url.startsWith('data:image/jpeg;base64,'))throw new Error('toDataURL answered '+url.slice(0,40));  const b=Buffer.from(url.slice(url.indexOf(',')+1),'base64');const f='still-'+n+'.jpg';fs.writeFileSync(path.join(dir,f),b);  j(EV.still,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' file='+f+' bytes='+b.length)} catch(e)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.canvasUnreadable+' detail='+JSON.stringify(one(e)))}}(async()=>\{ let pw;try\{pw=fs.readFileSync(pwFile,'utf8')}catch(e)\{j(EV.refused,'cause='+CA.credentialUnreadable+' detail='+JSON.stringify(one(e)));return teardown('refused',14)} let chromium;try\{chromium=require(pwModule).chromium}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{browser=await chromium.launch(\{headless:true})}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{const ctx=await browser.newContext(\{ignoreHTTPSErrors:true,viewport:\{width:1280,height:1024}});page=await ctx.newPage();  const expectedHost=new URL(base).host;  await page.goto(base+'/',\{waitUntil:'domcontentloaded'});  login='unobserved';  const reply=await page.evaluate(async([u,p])=>\{const r=await fetch('/api/session',\{method:'POST',headers:\{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(\{username:u,password:p})});let b=null;try\{b=await r.json()}catch(e)\{}return\{status:r.status,b:b}},[user,pw]);  if(reply.status!==200||!reply.b||reply.b.ok!==0)\{login='refused';j(EV.refused,'cause='+CA.login+' http='+reply.status);return teardown('refused',11)}  login='accepted';token=reply.b.CSRFToken;  await page.evaluate(([b,u])=>\{sessionStorage.setItem('garc',b.CSRFToken);sessionStorage.setItem('privilege_id',String(b.privilege));sessionStorage.setItem('extended_privilege',String(b.extendedpriv));sessionStorage.setItem('session_id',String(b.racsession_id));sessionStorage.setItem('username',u);sessionStorage.setItem('kvm_access','1');sessionStorage.setItem('vmedia_access','1')},[reply.b,user]);  const seat=await page.evaluate(async t=>\{const r=await fetch('/api/settings/services',\{headers:\{'X-CSRFTOKEN':t}});const a=await r.json();const k=Array.isArray(a)?a.find(s=>s.service_name==='kvm'):null;return k?k.viewer_count:null},token);  if(seat===null||seat===undefined)\{j(EV.refused,'cause='+CA.noKvmService+'');return teardown('refused',15)}  if(seat!==0)\{j(EV.refused,'cause='+CA.seatBusy+' viewer_count='+seat);return teardown('refused',10)}  page.on('websocket',ws=>\{let u;try\{u=new URL(ws.url())}catch(e)\{return}   if(u.host!==expectedHost||u.pathname!=='/kvm')return;   j(EV.connectionRequested,'url='+JSON.stringify(ws.url()));let mine=null;   ws.on('framereceived',()=>\{if(!mine)\{gen+=1;mine=\{gen:gen};live=mine;j(EV.connectionOpen,'gen='+mine.gen+' url='+JSON.stringify(ws.url()))}});   ws.on('socketerror',e=>\{j(EV.connectionError,'gen='+(mine?mine.gen:0)+' detail='+JSON.stringify(one(e)));if(mine&&live===mine)live=null});   ws.on('close',()=>\{if(mine&&live===mine)\{live=null;j(EV.connectionLost,'gen='+mine.gen)}else if(!mine)\{j(EV.connectionRefused,'url='+JSON.stringify(ws.url()))}})});  await page.goto(base+'/viewer.html',\{waitUntil:'domcontentloaded'});  try\{await page.waitForFunction(()=>\{const c=document.getElementById('kvm');return !!c&&c.width>1&&c.height>1},null,\{timeout:Number(frameMs)})}  catch(e)\{j(EV.refused,'cause='+CA.noFrame+' detail='+JSON.stringify(one(e)));return teardown('refused',12)}  const deadline=Date.now()+Number(frameMs);while(!live&&Date.now()<deadline)\{await new Promise(r=>setTimeout(r,100))}  if(!live)\{j(EV.refused,'cause='+CA.noKvmFrame+'');return teardown('refused',12)}  j(EV.established,'host='+JSON.stringify(expectedHost)+' session='+String(reply.b.racsession_id)+' attempt='+attempt+' gen='+live.gen);  let next=Date.now()+Number(cadenceMs);  while(!stopping)\{   if(fs.existsSync(path.join(dir,'stop')))\{return teardown('stop-file',0)}   let tf=[];try\{tf=fs.readdirSync(dir).filter(n=>n.startsWith('trigger-')).sort()}catch(e)\{j(EV.triggerScanFailed,'detail='+JSON.stringify(one(e)))}   for(const n of tf)\{const p=path.join(dir,n);try\{fs.unlinkSync(p)}catch(e)\{continue}await still('trigger:'+n.slice(8))}   if(Date.now()>=next&&periodic<Number(maxPeriodic))\{next=Date.now()+Number(cadenceMs);periodic+=1;await still('periodic')}   await new Promise(r=>setTimeout(r,250))} }catch(e)\{j(EV.failed,'detail='+JSON.stringify(one(e)));return teardown('failed',1)}})();"
+
+data mtcollins1_kvm_observer_script: String = concat(mtcollins1_kvm_observer_vocabulary_js(), mtcollins1_kvm_observer_script_body)
 
 // THE LAUNCH is gunbc.owned_process's: the toolchain's node command in the background, its output in
 // observer.log beside the journal, its holder recorded as "<pid> <starttime>" in observer.pid, and its
@@ -187,6 +237,7 @@ type KvmJournalEvent
   | KvmJournalSessionRelease { at: KvmInstant, result: String }
   | KvmJournalBrowserClose { at: KvmInstant, result: String }
   | KvmJournalStopped { at: KvmInstant, session: String, browser: String }
+  | KvmJournalTriggerScanFailed { at: KvmInstant, detail: String }
   | KvmJournalUnparsed { line: String }
 
 // A field's value: the word after " key=", or for the free-text keys (detail, url), the rest of the
@@ -203,20 +254,20 @@ fn kvm_field(rest: String, key: String) -> String {
 fn kvm_refusal_of(rest: String) -> KvmObserverRefusal {
   let cause = kvm_field(rest: rest, key: "cause")
   let detail = kvm_field(rest: rest, key: "detail")
-  if cause == "seat-busy" { KvmSeatBusy { viewer_count: kvm_field(rest: rest, key: "viewer_count") } }
-  else if cause == "login" { KvmLoginRefused { detail: concat("http ", kvm_field(rest: rest, key: "http")) } }
-  else if cause == "no-kvm-service" { KvmNoKvmService }
-  else if cause == "no-frame" || cause == "no-kvm-frame" || cause == "no-kvm-websocket" { KvmNoFrame { detail: if detail == "" { cause } else { detail } } }
-  else if cause == "toolchain" { KvmToolchainUnavailable { detail: detail } }
-  else if cause == "credential-unreadable" { KvmCredentialUnreadable { detail: detail } }
+  if cause == kvm_cause_seat_busy.word { KvmSeatBusy { viewer_count: kvm_field(rest: rest, key: "viewer_count") } }
+  else if cause == kvm_cause_login.word { KvmLoginRefused { detail: concat("http ", kvm_field(rest: rest, key: "http")) } }
+  else if cause == kvm_cause_no_kvm_service.word { KvmNoKvmService }
+  else if cause == kvm_cause_no_frame.word || cause == kvm_cause_no_kvm_frame.word || cause == kvm_cause_no_kvm_websocket.word { KvmNoFrame { detail: if detail == "" { cause } else { detail } } }
+  else if cause == kvm_cause_toolchain.word { KvmToolchainUnavailable { detail: detail } }
+  else if cause == kvm_cause_credential_unreadable.word { KvmCredentialUnreadable { detail: detail } }
   else { KvmRefusedOther { cause: cause, detail: detail } }
 }
 
 fn kvm_acquisition_cause_of(rest: String) -> KvmAcquisitionCause {
   let cause = kvm_field(rest: rest, key: "cause")
-  if cause == "not-connected" { KvmNotConnected }
-  else if cause == "connection-changed-during-acquisition" { KvmConnectionChangedDuringAcquisition }
-  else if cause == "canvas-unreadable" { KvmCanvasUnreadable { detail: kvm_field(rest: rest, key: "detail") } }
+  if cause == kvm_cause_not_connected.word { KvmNotConnected }
+  else if cause == kvm_cause_connection_changed_during_acquisition.word { KvmConnectionChangedDuringAcquisition }
+  else if cause == kvm_cause_canvas_unreadable.word { KvmCanvasUnreadable { detail: kvm_field(rest: rest, key: "detail") } }
   else { KvmAcquisitionOther { cause: cause, detail: kvm_field(rest: rest, key: "detail") } }
 }
 
@@ -232,20 +283,21 @@ fn kvm_journal_event(line: String) -> KvmJournalEvent {
     Present { value: ms } => {
       let at = KvmInstant { since_epoch: millisecond(count: ms), iso: iso }
       let gen = kvm_field(rest: rest, key: "gen")
-      if event == "established" { KvmJournalEstablished { at: at, host: kvm_field(rest: rest, key: "host"), session: kvm_field(rest: rest, key: "session"), attempt: kvm_field(rest: rest, key: "attempt"), gen: gen } }
-      else if event == "connection-requested" { KvmJournalConnectionRequested { at: at } }
-      else if event == "connection-refused" { KvmJournalConnectionRefused { at: at } }
-      else if event == "connection-open" { KvmJournalConnectionOpen { at: at, gen: gen } }
-      else if event == "connection-lost" { KvmJournalConnectionLost { at: at, gen: gen } }
-      else if event == "connection-error" { KvmJournalConnectionError { at: at, gen: gen, detail: kvm_field(rest: rest, key: "detail") } }
-      else if event == "still" { KvmJournalStill { at: at, seq: kvm_field(rest: rest, key: "seq"), reason: kvm_field(rest: rest, key: "reason"), file: kvm_field(rest: rest, key: "file"), gen: gen } }
-      else if event == "acquisition-failed" { KvmJournalAcquisitionFailed { at: at, seq: kvm_field(rest: rest, key: "seq"), reason: kvm_field(rest: rest, key: "reason"), cause: kvm_acquisition_cause_of(rest: rest), gen: gen } }
-      else if event == "session-release" { KvmJournalSessionRelease { at: at, result: kvm_field(rest: rest, key: "result") } }
-      else if event == "browser-close" { KvmJournalBrowserClose { at: at, result: kvm_field(rest: rest, key: "result") } }
-      else if event == "refused" { KvmJournalRefused { at: at, refusal: kvm_refusal_of(rest: rest) } }
-      else if event == "failed" { KvmJournalFailed { at: at, detail: kvm_field(rest: rest, key: "detail") } }
-      else if event == "stop-requested" { KvmJournalStopRequested { at: at, by: kvm_field(rest: rest, key: "by") } }
-      else if event == "stopped" { KvmJournalStopped { at: at, session: kvm_field(rest: rest, key: "session"), browser: kvm_field(rest: rest, key: "browser") } }
+      if event == kvm_event_established.word { KvmJournalEstablished { at: at, host: kvm_field(rest: rest, key: "host"), session: kvm_field(rest: rest, key: "session"), attempt: kvm_field(rest: rest, key: "attempt"), gen: gen } }
+      else if event == kvm_event_connection_requested.word { KvmJournalConnectionRequested { at: at } }
+      else if event == kvm_event_connection_refused.word { KvmJournalConnectionRefused { at: at } }
+      else if event == kvm_event_connection_open.word { KvmJournalConnectionOpen { at: at, gen: gen } }
+      else if event == kvm_event_connection_lost.word { KvmJournalConnectionLost { at: at, gen: gen } }
+      else if event == kvm_event_connection_error.word { KvmJournalConnectionError { at: at, gen: gen, detail: kvm_field(rest: rest, key: "detail") } }
+      else if event == kvm_event_still.word { KvmJournalStill { at: at, seq: kvm_field(rest: rest, key: "seq"), reason: kvm_field(rest: rest, key: "reason"), file: kvm_field(rest: rest, key: "file"), gen: gen } }
+      else if event == kvm_event_acquisition_failed.word { KvmJournalAcquisitionFailed { at: at, seq: kvm_field(rest: rest, key: "seq"), reason: kvm_field(rest: rest, key: "reason"), cause: kvm_acquisition_cause_of(rest: rest), gen: gen } }
+      else if event == kvm_event_session_release.word { KvmJournalSessionRelease { at: at, result: kvm_field(rest: rest, key: "result") } }
+      else if event == kvm_event_browser_close.word { KvmJournalBrowserClose { at: at, result: kvm_field(rest: rest, key: "result") } }
+      else if event == kvm_event_refused.word { KvmJournalRefused { at: at, refusal: kvm_refusal_of(rest: rest) } }
+      else if event == kvm_event_failed.word { KvmJournalFailed { at: at, detail: kvm_field(rest: rest, key: "detail") } }
+      else if event == kvm_event_stop_requested.word { KvmJournalStopRequested { at: at, by: kvm_field(rest: rest, key: "by") } }
+      else if event == kvm_event_stopped.word { KvmJournalStopped { at: at, session: kvm_field(rest: rest, key: "session"), browser: kvm_field(rest: rest, key: "browser") } }
+      else if event == kvm_event_trigger_scan_failed.word { KvmJournalTriggerScanFailed { at: at, detail: kvm_field(rest: rest, key: "detail") } }
       else { KvmJournalUnparsed { line: line } }
     }
   }
@@ -770,6 +822,7 @@ fn kvm_event_text(e: KvmJournalEvent) -> String {
     KvmJournalSessionRelease { at: a, result: r } => concat(a.iso, " session release: ", r)
     KvmJournalBrowserClose { at: a, result: r } => concat(a.iso, " browser close: ", r)
     KvmJournalStopped { at: a, session: s, browser: b } => concat(a.iso, " stopped; session ", s, "; browser ", b)
+    KvmJournalTriggerScanFailed { at: a, detail: d } => concat(a.iso, concat(" trigger scan failed: ", d))
     KvmJournalUnparsed { line: l } => concat("unparsed journal line: ", l)
   }
 }
