@@ -648,6 +648,8 @@ import v2.std.collection { List }
 // THE XL-2 REIFY-OPERAND ROW: v2.test.claim.body_lowering.reify_operand_refusal ror_verdicts tokenizes
 // and parses two inline modules and reifies two supplied bodies over each; the stored value is four
 // verdicts (no Node, no closure), portable for the same reason cav_outcomes is.
+// THE XL-2 PARAMETER-SLOT ROW: v2.test.claim.body_lowering.parameter_slot_refusal psr_verdicts parses one
+// inline module and lowers a supplied and an unmodified fn declaration; the stored value is two verdicts.
 // THE XL-2 MATCH-POSITION ROW: v2.test.claim.body_lowering.match_position_structure mps_normalized
 // runs the production route (module_roots_from_source_root_ingest) over three inline modules; the
 // stored value is the normalized trees (Nodes, no resolution context and no closure), portable for
@@ -785,6 +787,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_lowered",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_third_arm_malformed",
   "v2.test.claim.body_lowering.reify_operand_refusal.ror_verdicts",
+  "v2.test.claim.body_lowering.parameter_slot_refusal.psr_verdicts",
   "v2.test.claim.namespace_xl0.return_tail_position.rtp_outcomes",
   "v2.test.claim.body_lowering.wildcard_pattern_form.wpf_patterns",
   "v2.test.claim.body_lowering.match_position_structure.mps_normalized",
