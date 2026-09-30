@@ -5180,25 +5180,20 @@ pub fn alias_declared_target_head_name(
     decl: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if ((((decl.connective.clone() != Connective::NoConnective)
-        || ((decl.params.clone().len() as i64) > 0))
-        || (decl.type_annotation.clone() != std::option::Option::None))
-        || ((decl.properties.clone().len() as i64) > 0))
     {
-        "".to_string()
-    } else {
-        match decl.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: target, .. }) => {
-                if (((target.connective.clone() == Connective::NoConnective)
-                    && (target.return_cardinality.clone() == Cardinality::Required))
-                    && (target.type_annotation.clone() == std::option::Option::None))
-                {
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), target.clone())
-                } else {
-                    "".to_string()
-                }
-            }
-            _ => "".to_string(),
+        let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), decl.clone());
+        if ((((((((decl.connective.clone() != Connective::NoConnective)
+            || ((decl.params.clone().len() as i64) > 0))
+            || (decl.type_annotation.clone() != std::option::Option::None))
+            || ((decl.properties.clone().len() as i64) > 0))
+            || (decl.return_cardinality.clone() != Cardinality::Required))
+            || (authored.clone() == "".to_string()))
+            || (decl.name.clone() == "".to_string()))
+            || (decl.name.clone() == authored.clone()))
+        {
+            "".to_string()
+        } else {
+            decl.name.clone()
         }
     }
 }
@@ -15783,11 +15778,83 @@ pub fn record_lit_expected_through_generic_alias(
                                     continue;
                                 }
                             } else {
-                                break expected.clone();
+                                match transparent_alias_application_at_head(
+                                    exp.clone(),
+                                    decl.clone(),
+                                    scope.clone(),
+                                ) {
+                                    Some(at_head) => {
+                                        let __tco_0 = Some(at_head.clone());
+                                        let __tco_1 = scope;
+                                        let __tco_2 = v1_rt::int_sub(fuel, 1);
+                                        __tco_loop_expected = __tco_0;
+                                        __tco_loop_scope = __tco_1;
+                                        __tco_loop_fuel = __tco_2;
+                                        continue;
+                                    }
+                                    std::option::Option::None => {
+                                        break expected.clone();
+                                    }
+                                }
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+pub fn transparent_alias_application_at_head(
+    exp: Rc<Node>,
+    decl: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    {
+        let head = alias_declared_target_head_name(
+            decl.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
+        if (head.clone() == "".to_string()) {
+            std::option::Option::None
+        } else {
+            match crate::v1_compiler_infer_env::lookup_type_by_name(
+                scope.type_env.clone(),
+                head.clone(),
+            ) {
+                Some(head_decl) => {
+                    if ((head_decl.params.clone().len() as i64)
+                        != (exp.children.clone().len() as i64))
+                    {
+                        std::option::Option::None
+                    } else {
+                        Some(Rc::new(Node {
+                            occurrence_identity: exp.occurrence_identity.clone(),
+                            name: exp.name.clone(),
+                            ident: exp.ident.clone(),
+                            span: exp.span.clone(),
+                            ident_span: head_decl.ident_span.clone(),
+                            children: exp.children.clone(),
+                            connective: exp.connective.clone(),
+                            params: exp.params.clone(),
+                            inferred: exp.inferred.clone(),
+                            return_cardinality: exp.return_cardinality.clone(),
+                            uses: exp.uses.clone(),
+                            body: exp.body.clone(),
+                            transport: exp.transport.clone(),
+                            properties: exp.properties.clone(),
+                            type_annotation: exp.type_annotation.clone(),
+                            is_self_recursive: exp.is_self_recursive.clone(),
+                            has_non_tail_self_call: exp.has_non_tail_self_call.clone(),
+                            match_pattern: exp.match_pattern.clone(),
+                            module_item_kind: exp.module_item_kind.clone(),
+                            declaration_marker: exp.declaration_marker.clone(),
+                            declaration: exp.declaration.clone(),
+                            expr_data: exp.expr_data.clone(),
+                        }))
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
             }
         }
     }
