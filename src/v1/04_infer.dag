@@ -1299,8 +1299,11 @@ fn collect_explicit_return_values(n: Node) -> List<Node> {
 fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: InferScope) -> List<ErrorNode> {
   collect_explicit_return_values(n: body_typed)
     |> flat_map(returned => declared_type_conformance_diags(
+         position: PositionDeclaredReturn,
+         subject: "",
          declared: declared,
          produced: expression_value_type(e: returned),
+         produced_by: returned,
          span: returned.span,
          scope: scope))
 }
@@ -1468,11 +1471,18 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 // set -- so this is consumption of the existing authority at a second declared-type position,
 // not a new relation (gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel,
 // specimen four).
-fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+fn declared_type_conformance_diags(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, produced_by: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
     && conformance_ground_type(n: produced, source_indices: si)
-  if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
+  let cardinality_diags = optional_at_required_value_obligation_diags(
+    obligation: DeclaredTypeObligation {
+      position: position, subject: subject, declared: declared, produced: produced, span: span
+    },
+    produced_by: produced_by,
+    scope: scope)
+  if (cardinality_diags |> count) > 0 { cardinality_diags }
+  else if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
@@ -2923,17 +2933,15 @@ fn list_literal_optional_member_diags(typed_elements: List<Node>, scope: InferSc
     Present { value: head } =>
       let head_type = resolved_type(n: head)
       flat_map(typed_elements |> skip(1), te =>
-        if optional_produced_at_required_declared(declared: head_type, produced: resolved_type(n: te), scope: scope) {
-          [make_error_node(
-            diagnostic: DeclaredTypeNotInhabited {
-              position: declared_type_position_label(position: PositionListElement, subject: ""),
-              expected: obligation_type_shape(n: head_type, source_indices: scope.type_env.source_indices),
-              got: obligation_type_shape(n: resolved_type(n: te), source_indices: scope.type_env.source_indices),
-              span: te.span
-            },
-            module_name: scope.module_name
-          )]
-        } else { [] }
+        optional_at_required_obligation_diags(
+          obligation: DeclaredTypeObligation {
+            position: PositionListElement,
+            subject: "",
+            declared: head_type,
+            produced: resolved_type(n: te),
+            span: te.span
+          },
+          scope: scope)
       )
     Absent => []
   }
@@ -3697,15 +3705,26 @@ fn foreign_concrete_coproduct_where_parent_required(
 // was produced; declared_type_inhabitance is the single relation that decides; the position
 // travels with the obligation so the diagnostic can locate the refusal without the decision
 // procedure forking per position.
-// THREE OF THE TWELVE ARE WIRED. THE OTHER NINE ARE DECLARED HERE AND PRODUCE NOTHING YET, AND
-// THAT IS STATED AS A COUNT RATHER THAN LEFT TO BE DISCOVERED FROM THE ABSENCE OF CALLERS.
-// Measured by construction site, not by reading: PositionDirectCallArgument,
-// PositionListElement, and PositionGenericTypeArgument are the only three members CONSTRUCTED
-// anywhere -- every other member occurs solely in declared_type_position_label's match, which
-// renders a name and judges nothing. So this coproduct is today an OBLIGATION VOCABULARY, of
-// which three positions have a producer.
+// THREE OF THE TWELVE RUN THE WHOLE RELATION, FOUR MORE RUN ITS CARDINALITY VERDICT, AND FIVE
+// PRODUCE NOTHING. That is stated as a count rather than left to be discovered from the absence of
+// callers, and the three grades are different facts that one word ("wired") may not hold.
 //
-// WHY THAT IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: an unwired position is a
+// WHOLE RELATION (declared_type_obligation_diags): PositionDirectCallArgument, PositionListElement,
+// PositionGenericTypeArgument.
+//
+// CARDINALITY VERDICT ONLY (optional_at_required_obligation_diags): PositionRecordLiteralField,
+// PositionDeclaredReturn, PositionLetAnnotation, PositionDataInitializer. Each builds the same
+// DeclaredTypeObligation and is refused when an optional stands where a required value is declared;
+// the relation's other arms are NOT consulted there, because those seams already carry their own
+// older chains (declared_type_conformance_diags, the record-literal field chain) whose agreement
+// with this relation has not been measured on the corpus. So at these four the honest claim is one
+// verdict judged, not the position judged.
+//
+// NO PRODUCER: PositionMapValue, PositionVariantPayload, PositionCastTarget,
+// PositionParameterDefault, PositionCallableReturn. These occur solely in
+// declared_type_position_label's match, which renders a name and judges nothing.
+//
+// WHY AN UNPRODUCED POSITION IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: it is a
 // MISSING OBLIGATION PRODUCER, not a fact the model cannot settle. It is absent from the census
 // rather than present with a verdict -- so it produces no diagnostic, blocking or advisory, and
 // nothing in the corpus is red on its account. Recording these as expected-red rows would be
@@ -3713,18 +3732,13 @@ fn foreign_concrete_coproduct_where_parent_required(
 // InhabitanceUndecidable would report "we did not look" as "it cannot be decided", which is the
 // same inflation aimed at this relation's own self-description.
 //
-// NEXT-RUNG TRIGGER, one per position and all the same shape: a producer at that grammar seam
-// that builds a DeclaredTypeObligation and hands it to declared_type_obligation_diags. The
-// decision procedure is already shared and position-agnostic, so wiring one is authoring a
-// construction site, never extending this relation -- which is the whole point of the carrier
-// and is why the residual nine cost a call each rather than a rule each.
-//
-// THE NINE AWAITING A PRODUCER: PositionRecordLiteralField, PositionMapValue,
-// PositionDataInitializer, PositionDeclaredReturn, PositionLetAnnotation, PositionVariantPayload,
-// PositionCastTarget, PositionParameterDefault, PositionCallableReturn. Wiring any of them is a
-// discriminating RED at that seam plus an accepted positive control, per 4b(1). Until then this
-// carrier's honest claim is THREE POSITIONS JUDGED, nine declared -- and any statement that it
-// judges "every grammar type position" is false.
+// NEXT-RUNG TRIGGERS. For the five: a producer at that grammar seam that builds a
+// DeclaredTypeObligation. For the four: the seam's older chain is measured against
+// declared_type_inhabitance on the corpus and replaced by declared_type_obligation_diags, which
+// deletes both that chain and optional_at_required_obligation_diags' call there. The decision
+// procedure is already shared and position-agnostic, so either step is authoring a construction
+// site, never extending this relation. Any statement that the carrier judges "every grammar type
+// position" is false until both lists above are empty.
 type DeclaredTypePosition
   = PositionRecordLiteralField
   | PositionListElement
@@ -3776,12 +3790,16 @@ type InhabitanceVerdict
 
 fn declared_type_position_label(position: DeclaredTypePosition, subject: String) -> String {
   match position {
-    PositionRecordLiteralField => "record literal field"
+    PositionRecordLiteralField =>
+      if subject == "" { "record literal field" }
+      else { concat("record literal field '", subject, "'") }
     PositionListElement => "list element"
     PositionMapValue => "map value"
     PositionDataInitializer => "data initializer"
     PositionDeclaredReturn => "declared return"
-    PositionLetAnnotation => "let annotation"
+    PositionLetAnnotation =>
+      if subject == "" { "let annotation" }
+      else { concat("let annotation for '", subject, "'") }
     PositionVariantPayload => "variant payload"
     PositionGenericTypeArgument => "generic type argument"
     PositionCastTarget => "cast target"
@@ -4059,6 +4077,22 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // producing `id-Present { value: ... }`. Refusal requires the declared side to be ESTABLISHED
 // Required and non-generic: a type variable may be instantiated at an Optional, and an unresolved
 // or erased declared identity is not a Required fact, so those stay with their own arms.
+//
+// A PRODUCED TYPE THAT IS OPTIONAL BY NAME ONLY IS NOT EVIDENCE WHEN THE DECLARED COPRODUCT OWNS THE
+// ARM NAME. std.upsert_decision ObservationVerdict and gunbc.host.host_converge ConvergeVerdict each
+// declare their own `Absent` arm, and a bare `Absent` at a position declared as one of them is typed
+// as the kernel Optional coproduct: the reference is elected to the kernel owner without consulting
+// the declared one. The value is the declared coproduct's arm and the program is correct, so
+// refusing it here is a fabricated refusal. Measured by the whole-root compile differential on the
+// change that wired the record-field and declared-return producers: sixteen such sites newly
+// refused (gunbc.fleet.fleet_converge_cli, gunbc.file_access), and six more already stood refused
+// on main at the direct-call argument (test.claim.fleet.fleet_converge_cli_witness_test). The
+// exclusion is keyed on the two facts that make the evidence unsound and nothing wider: the
+// produced side carries NO CardOptional (so optionality is asserted by the name alone), and the
+// declared coproduct declares `Absent` or `Present` at its own level. A CardOptional produced value
+// at such a coproduct is still refused. The defect it stands in for is upstream and is not repaired
+// here: variant-reference election should consult the declared coproduct before the kernel one, at
+// which point the produced type is the declared type and this exclusion has no subject.
 fn optional_produced_at_required_declared(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
@@ -4074,13 +4108,86 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
     || declared_peeled.return_cardinality == CardOptional
     || qualified_last_segment(name: declared_name) == "Optional"
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared_peeled)) == "Optional"
+  let declared_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: declared)) {
+    Present { value: resolved } => resolved
+    Absent => with_required_cardinality(n: declared)
+  }
+  let declared_expanded = expand_scrut_type_for_variant_lookup(scrut_node: declared_required, env: scope.type_env)
+  let declared_owns_an_optional_arm_name = declared_expanded.connective == Disj
+    && (has_child_named(n: declared_expanded, name: "Absent", source_indices: source_indices)
+      || has_child_named(n: declared_expanded, name: "Present", source_indices: source_indices))
+  let produced_optional_by_name_only = produced.return_cardinality != CardOptional
   produced_carries_optional
+    && !(produced_optional_by_name_only && declared_owns_an_optional_arm_name)
     && !declared_carries_optional
     && !declared_is_generic
     && declared_name != ""
     && !type_node_is_callable(n: declared)
     && !type_node_is_callable(n: produced)
     && !direct_call_formal_has_unbound_type_variable(n: declared)
+}
+
+// THE CARDINALITY VERDICT AT A POSITION WHOSE FULL RELATION IS NOT YET CONSULTED. A position either
+// hands its obligation to declared_type_obligation_diags (every arm of the relation) or, where the
+// other arms have not been measured against the corpus at that seam, hands it here and receives the
+// ONE verdict that is decided from cardinality alone. It is the same predicate
+// declared_type_inhabitance consults first, the same obligation carrier, the same diagnostic and the
+// same rendering, so a position moving from this producer to the full one changes which arms run
+// and nothing about how an optional at a required position is decided or reported. Before this, the
+// record-literal field, declared-return, let-annotation and data-initializer seams compared the two
+// types through node_type_compatible, which reads the type name and not return_cardinality, so
+// `Rec { code: parse_int(s) }` for `code: Int` was admitted with no row (review 73175 on
+// gunbc#12677). node_type_compatible is left cardinality-blind on purpose: it is an undirected
+// relation also asked of branch pairs and of the lift direction, and optional-into-required is a
+// DIRECTED fact about a declared position, which is what the obligation carries.
+//
+// AN INDEX ACCESS IS NOT JUDGED HERE, AND THAT IS A DECLARED RESIDUAL. v1.compiler.infer_access
+// check_index_access_node types `xs[i]` as optional, while the Rust realization of an index is the
+// bare element: the type and the realization disagree about the very fact this verdict reads, so
+// the optionality of an index value is not established across the two acceptance paths. The seed
+// itself stands on that disagreement -- v1.tokenize source_code_point and code_point_at return
+// `chars[pos]` at a declared `-> Int`, and the note on code_point_at says return-position checking
+// would red them. It did: the second-generation regeneration refused on exactly those two sites.
+// Eliminating the optional with a match there would author an elimination the Rust realization
+// cannot satisfy, so the repair is the reconciliation that note names (the index realizes as an
+// optional, or types as the element), not a rewrite of its consumers. Until then a value whose
+// tail expression is an index access produces no cardinality obligation at these four positions.
+// The direct-call argument and list-element positions are untouched by this: they run the whole
+// relation and keep whatever they decided before.
+fn expr_value_is_index_access(e: Node) -> Bool {
+  match e.expr_data {
+    ExprIndex => true
+    ExprLet =>
+      match let_body(texpr: e) {
+        Present { value: body } => expr_value_is_index_access(e: body)
+        Absent => false
+      }
+    ExprBlock =>
+      match e.children |> last {
+        Present { value: tail } => expr_value_is_index_access(e: tail)
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn optional_at_required_value_obligation_diags(obligation: DeclaredTypeObligation, produced_by: Node, scope: InferScope) -> List<ErrorNode> {
+  if expr_value_is_index_access(e: produced_by) { [] }
+  else { optional_at_required_obligation_diags(obligation: obligation, scope: scope) }
+}
+
+fn optional_at_required_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
+  if optional_produced_at_required_declared(declared: obligation.declared, produced: obligation.produced, scope: scope) {
+    [make_error_node(
+      diagnostic: DeclaredTypeNotInhabited {
+        position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
+        expected: obligation_type_shape(n: obligation.declared, source_indices: scope.type_env.source_indices),
+        got: obligation_type_shape(n: obligation.produced, source_indices: scope.type_env.source_indices),
+        span: obligation.span
+      },
+      module_name: scope.module_name
+    )]
+  } else { [] }
 }
 
 // COLLECTION DISJOINTNESS IS A RELATION BETWEEN THE TWO SIDES, NOT A PROPERTY OF ONE OF THEM.
@@ -8673,8 +8780,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: declared } =>
           let produced_value_type = expression_value_type(e: val_typed)
           let conformance = declared_type_conformance_diags(
+            position: PositionLetAnnotation,
+            subject: let_name,
             declared: declared,
             produced: produced_value_type,
+            produced_by: val_typed,
             span: val_expr.span,
             scope: scope)
           if (conformance |> count) > 0 { conformance }
@@ -10042,8 +10152,24 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let field_type_diags = match field_declared_type {
       Present { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
+        let field_cardinality_diags = if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
+          []
+        } else {
+          optional_at_required_value_obligation_diags(
+            obligation: DeclaredTypeObligation {
+              position: PositionRecordLiteralField,
+              subject: fi_name,
+              declared: expected_node,
+              produced: got_node,
+              span: ar_typed.span
+            },
+            produced_by: ar_typed,
+            scope: scope)
+        }
         if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
           []
+        } else if (field_cardinality_diags |> count) > 0 {
+          field_cardinality_diags
         } else if node_type_compatible(
           left: expected_node, right: got_node, source_indices: scope.type_env.source_indices) {
           []
@@ -12693,7 +12819,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
     let return_conformance_diags = if item.inferred != none {
       concat(
-        declared_type_conformance_diags(declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), span: item.body.value.span, scope: scope),
+        declared_type_conformance_diags(position: PositionDeclaredReturn, subject: "", declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), produced_by: body_typed, span: item.body.value.span, scope: scope),
         explicit_return_conformance_diags(declared: declared_return_type_node(item: item), body_typed: body_typed, scope: scope))
     } else { [] }
 
@@ -12721,7 +12847,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let val_diags = if item.type_annotation != none {
       concat(
         val_result.diagnostics,
-        declared_type_conformance_diags(declared: item.type_annotation.value, produced: expression_value_type(e: val_typed), span: item.body.value.span, scope: scope)
+        declared_type_conformance_diags(position: PositionDataInitializer, subject: "", declared: item.type_annotation.value, produced: expression_value_type(e: val_typed), produced_by: val_typed, span: item.body.value.span, scope: scope)
       )
     } else { val_result.diagnostics }
     let inferred_ret = if item.type_annotation != none { Present { value: Resolved { node: item.type_annotation.value } } } else { val_typed.inferred }
@@ -14071,21 +14197,20 @@ fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIn
   node_with_children(n: item, children: ops2)
 }
 
-fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let entry_keys = sorted_map_keys(index.entries)
-  let entries2 = fold(entry_keys, init: index.entries, f: (acc, k) =>
-    match map_get(index.entries, k) {
-      Present { value: node } =>
-        let upgraded = census_upgrade_binding(
-          binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown },
-          module_path: qualified_all_but_last(name: k),
-          census: index,
-          source_indices: source_indices
-        )
-        if upgraded.resolved == node { acc } else { map_insert(acc, k, upgraded.resolved) }
-      Absent => acc
-    }
-  )
+// THE BARE-FILL UNDERLAY'S UPGRADE: `global_bare` and `services` with resolved signatures, `entries`
+// left as the raw census. It is what a per-tree underlay is read for: `symbol_index_with_bare_fill`
+// takes the tree's `global_bare`, `services`, alias reps and exposures and keeps the CLOSURE's
+// `entries`, so upgrading the tree's entries produced a value no consumer read. Every upgrade below
+// reads the RAW `index` (entries included), never an upgraded one, so each bare and service value
+// is exactly the one `census_with_resolved_fn_sigs` produces.
+//
+// DECLARED FRONTIER: the bare upgrade here is still eager over every bare name of the tree, while
+// a closure's typecheck reads only the names it looks up. Scoping it to those demands needs a
+// demand identity for "this lookup, in this closure" -- the demand-identity carriers of
+// docs/plans/demand-engine-program.md (M1). Until that capability exists, no key of `global_bare`
+// can be marked undemanded without either a lazy cell or a new refusal arm in frozen v1 semantics,
+// both ruled out; this stays eager.
+fn census_bare_fill_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let bare_keys = sorted_map_keys(index.global_bare)
   let global2 = fold(bare_keys, init: index.global_bare, f: (acc, k) =>
     match map_get(index.global_bare, k) {
@@ -14110,7 +14235,26 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
       Absent => acc
     }
   )
-  SymbolIndex { entries: entries2, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures }
+  SymbolIndex { entries: index.entries, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures }
+}
+
+fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+  let entry_keys = sorted_map_keys(index.entries)
+  let entries2 = fold(entry_keys, init: index.entries, f: (acc, k) =>
+    match map_get(index.entries, k) {
+      Present { value: node } =>
+        let upgraded = census_upgrade_binding(
+          binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown },
+          module_path: qualified_all_but_last(name: k),
+          census: index,
+          source_indices: source_indices
+        )
+        if upgraded.resolved == node { acc } else { map_insert(acc, k, upgraded.resolved) }
+      Absent => acc
+    }
+  )
+  let fill = census_bare_fill_with_resolved_fn_sigs(index: index, source_indices: source_indices)
+  SymbolIndex { entries: entries2, global_bare: fill.global_bare, services: fill.services, transparent_alias_rep: fill.transparent_alias_rep, type_head_exposures: fill.type_head_exposures }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -15572,10 +15716,10 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
 fn effect_incompleteness_diagnostics(causes: List<EffectIncompleteness>) -> List<ErrorNode> {
   causes |> map(reason =>
     match reason {
-      UnresolvedCalleeEdge { item_identity: item_identity, spelling: spelling } =>
+      UnresolvedCalleeEdge { item_identity: item_identity, spelling: spelling, call_site: call_site } =>
         inference_error(
           message: concat("effect summary incomplete: call to '", spelling, "' in ", callable_identity(id: item_identity), " has no established callee identity, so its effects cannot be joined"),
-          span: no_span(),
+          span: call_site,
           module_name: item_identity.owner_module_path
         )
       ExpansionBudgetExhausted { remaining_delta: _ } =>
@@ -15584,20 +15728,20 @@ fn effect_incompleteness_diagnostics(causes: List<EffectIncompleteness>) -> List
           span: no_span(),
           module_name: ""
         )
-      ResolvedCalleeRegistryRowAbsent { caller: caller, callee: callee } =>
+      ResolvedCalleeRegistryRowAbsent { caller: caller, callee: callee, call_site: call_site } =>
         inference_error(
           message: concat("effect summary incomplete: ", callable_identity(id: caller), " calls ", callable_identity(id: callee), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does"),
-          span: no_span(),
+          span: call_site,
           module_name: caller.owner_module_path
         )
-      FunctionValueEffectsUnresolved { caller: caller } =>
+      FunctionValueEffectsUnresolved { caller: caller, call_site: call_site } =>
         make_error_node(
-          diagnostic: EffectSummaryIncompleteAtFunctionValue { caller: callable_identity(id: caller), span: no_span() },
+          diagnostic: EffectSummaryIncompleteAtFunctionValue { caller: callable_identity(id: caller), span: call_site },
           module_name: caller.owner_module_path
         )
-      LocalBindingEffectsUnresolved { caller: caller, name: name } =>
+      LocalBindingEffectsUnresolved { caller: caller, name: name, call_site: call_site } =>
         make_error_node(
-          diagnostic: EffectSummaryIncompleteAtLocalBinding { caller: callable_identity(id: caller), name: name, span: no_span() },
+          diagnostic: EffectSummaryIncompleteAtLocalBinding { caller: callable_identity(id: caller), name: name, span: call_site },
           module_name: caller.owner_module_path
         )
     }

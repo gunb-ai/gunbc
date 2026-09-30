@@ -166,3 +166,14 @@ test fn base64_decode_accepts_canonical_final_groups_holds() -> Bool {
     && (match base64_decode(s: "Zm8=", variant: Standard) { Present { value: d } => d == bytes_octets(b: utf8_encode_bytes(s: "fo"))  Absent => false })
     && (match base64_decode(s: "Zg", variant: Standard) { Present { value: d } => d == bytes_octets(b: utf8_encode_bytes(s: "f"))  Absent => false })
 }
+
+// CANONICAL PADDING (base64_decode_canonical): only the padding the encoder emits
+// (base64_padding_after) is admitted -- "Zg==" decodes, "Zg" and "Zg=" (the same octet, other padding)
+// are refused -- while base64_decode stays lenient about padding.
+test fn base64_decode_canonical_admits_only_the_encoders_padding_holds() -> Bool {
+  (match base64_decode_canonical(s: "Zg==", variant: Standard) { Present { value: d } => d == bytes_octets(b: utf8_encode_bytes(s: "f"))  Absent => false })
+    && (match base64_decode_canonical(s: "Zm8=", variant: Standard) { Present { value: d } => d == bytes_octets(b: utf8_encode_bytes(s: "fo"))  Absent => false })
+    && (match base64_decode_canonical(s: "Zg", variant: Standard) { Absent => true  Present { value: _ } => false })
+    && (match base64_decode_canonical(s: "Zg=", variant: Standard) { Absent => true  Present { value: _ } => false })
+    && (match base64_decode_canonical(s: "Zm8==", variant: Standard) { Absent => true  Present { value: _ } => false })
+}
