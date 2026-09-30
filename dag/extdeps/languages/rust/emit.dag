@@ -255,15 +255,7 @@ fn rust_refusing_int_operator_helper(op: BinOp) -> String? {
     Mul => Present { value: "v1_rt::int_mul" }
     Div => Present { value: "v1_rt::int_div" }
     Mod => Present { value: "v1_rt::int_rem" }
-    Eq => none
-    Ne => none
-    Lt => none
-    Gt => none
-    Le => none
-    Ge => none
-    And => none
-    Or => none
-    NullCoalesce => none
+    _ => none
   }
 }
 
