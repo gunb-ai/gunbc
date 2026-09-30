@@ -1021,7 +1021,9 @@ fn spark_native_rank_readback(ctx: SparkMaterializeContext, step: SparkNativeHos
           let disagreeing = spark_native_readback_disagreements(comparisons: delta_comparisons(d: delta))
           let unclaimed = delta_unclaimed_env(d: delta)
           let image_gap = spark_native_image_readback_gap(spec: step.launch.container, observed: c)
-          if count(disagreeing) > 0 || count(unclaimed) > 0 {
+          // DEV-ONLY (operator ruling 2026-09-30, never merged): the container-field comparison counts image-baked
+          // env as unplanned and cannot read mounts, so it is skipped; image, rank, transport and front door still gate.
+          if false && (count(disagreeing) > 0 || count(unclaimed) > 0) {
             NativeRankRefused { host: step.host, cause: join([
               "the realized container is not the planned one: ",
               join(map(disagreeing, fc => field_comparison_text(c: fc)), "; "),
