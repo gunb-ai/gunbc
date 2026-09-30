@@ -67,7 +67,10 @@ fn fixture_env() -> List<Node> {
       assign_sub(name: "T", body: cmdl(ls: ["mktemp", "-d", "/tmp/gunbc_release_bins.XXXXXX"])),
       cmdl(ls: ["trap", "rm -rf \"$T\"", "EXIT"]),
       cmdl(ls: ["unset", "RUSTC", "RUSTC_WORKSPACE_WRAPPER", "RUSTC_WRAPPER", "CARGO_TARGET_DIR", "CARGO_BUILD_TARGET", "CARGO_BUILD_TARGET_DIR", "CARGO_BUILD_RUSTC", "CARGO_BUILD_RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"]),
-      cmdl(ls: ["eval", join(["for v in $(env | grep -oE '", release_bins_credential_pattern, "' | sed 's/=$//'); do unset \"$v\"; done"], "")]),
+      cmd(ws: [lit(t: "unset"), bash_build_word_cmdsubst(body: bash_build_pipe(
+        left: bash_build_pipe(left: cmdl(ls: ["env"]), right: cmd(ws: [lit(t: "grep"), lit(t: "-oE"), lit(t: release_bins_credential_pattern)])),
+        right: cmdl(ls: ["cut", "-d=", "-f1"]),
+      ))]),
       cmd(ws: [fx(t: "mkdir"), fx(t: "-p"), in_t(path: "/bin"), in_t(path: "/rt"), in_t(path: "/ws/target/release")]),
       cmd(ws: [fx(t: "export"), words(ws: [fx(t: "RUNNER_TEMP="), in_t(path: "/rt")])]),
       cmd(ws: [fx(t: "export"), words(ws: [fx(t: "GITHUB_OUTPUT="), in_t(path: "/rt/output")])]),
