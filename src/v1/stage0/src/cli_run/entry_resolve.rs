@@ -1078,6 +1078,7 @@ pub(crate) fn new_multi_entry_index_shell(
         closure_name_censuses: RefCell::new(HashMap::new()),
         bare_reference_admission: RefCell::new(HashMap::new()),
         pool_module_names: std::cell::OnceCell::new(),
+        parsed_references: RefCell::new(HashMap::new()),
         live_read_manifest: RefCell::new(None),
     }
 }
@@ -2990,6 +2991,11 @@ pub(crate) struct ParsedFileReferences {
     /// return or field type in `inferred: Resolved`. Kept apart from `bare` so the reference-edge
     /// producer's population is unchanged by this reader.
     pub(crate) authored_types: std::collections::HashSet<String>,
+    /// The module paths the file's `import` lines name, as the parser read them.
+    pub(crate) imports: Vec<String>,
+    /// The names this module binds for itself (`module_self_bound_names`): a bare occurrence of
+    /// one is bound by that declaration and is never a reference out.
+    pub(crate) self_declared: BTreeSet<String>,
 }
 
 /// The authored type positions of a RAW parse (see `ParsedFileReferences::authored_types`),
@@ -3004,8 +3010,11 @@ fn raw_parse_authored_type_names(
     if let Some(ty) = &node.type_annotation {
         raw_type_names(ty, out);
     }
-    for param in node.params.iter() {
-        for ty in param.children.iter() {
+    // A `uses` binding (`uses net: std.resources.Network`) carries its resource type the way a
+    // parameter carries its type: as the binding node's child. Missing it dropped the declaring
+    // module from both the module-path closure and the bare gate.
+    for binding in node.params.iter().chain(node.uses.iter()) {
+        for ty in binding.children.iter() {
             raw_type_names(ty, out);
         }
     }
@@ -3111,11 +3120,18 @@ pub(crate) fn parsed_file_references(
     let positions = std::mem::take(&mut classify.bare_positions);
     let mut authored_types = std::collections::HashSet::new();
     raw_parse_authored_type_names(&tree, &mut authored_types);
+    let imports = crate::v1_std_core::module_imports(tree.clone())
+        .iter()
+        .map(|import| import.name.clone())
+        .filter(|path| !path.is_empty())
+        .collect();
     Ok(ParsedFileReferences {
         bare,
         chains,
         positions,
         authored_types,
+        imports,
+        self_declared: module_self_bound_names(&tree),
     })
 }
 
@@ -3505,6 +3521,41 @@ mod closure_parse_acquisition_differential {
         assert!(
             divergent.is_empty(),
             "pooled artifacts diverge: {divergent:?}"
+        );
+    }
+}
+
+/// THE LIVE IDENTITY DIFFERENTIAL for the census projecting rather than re-parsing: every file
+/// of the `[dag, src/v2]` shared index, in `pool_parse`'s order, through both readings, compared
+/// by `heads_projection_divergences`.
+#[cfg(test)]
+mod heads_projection_live_differential {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn projected_heads_equal_the_threaded_parse_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let mut keys: Vec<String> = index.source_files.keys().cloned().collect();
+        keys.sort();
+        let files: Vec<(String, String)> = keys
+            .iter()
+            .map(|k| {
+                let sf = &index.source_files[k];
+                (sf.path.clone(), sf.content.clone())
+            })
+            .collect();
+        let (n, divergent) = super::super::census_heads::heads_projection_divergences(&files);
+        eprintln!("DIFF compared={n} divergent={}", divergent.len());
+        assert!(n > 1000, "the live pool was read ({n} files)");
+        assert!(
+            divergent.is_empty(),
+            "divergent: {:?}",
+            &divergent[..divergent.len().min(20)]
         );
     }
 }
