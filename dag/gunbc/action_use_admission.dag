@@ -355,7 +355,7 @@ fn checkout_expression_names_a_commit(body: String) -> Bool {
 }
 
 fn checkout_ref_names_a_commit(ref_text: String) -> Bool {
-  if starts_with(s: ref_text, prefix: "${{") && ends_with(s: ref_text, suffix: "}}") {
+  if starts_with(s: ref_text, prefix: "${{") {
     checkout_expression_names_a_commit(body: join(split(s: join(split(s: ref_text, delimiter: "${{"), ""), delimiter: "}}"), ""))
   } else {
     commit_sha_text_holds(head: ref_text)
