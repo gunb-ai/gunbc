@@ -304,7 +304,23 @@ fn configfs_staging_refused_gadget_name(bad_name: String) -> ConfigfsStaging {
 // would have joined. The path operations are validated against THIS gadget's record; the link
 // operations validate their names and derive both endpoints from the gadget, which is what makes
 // the functions-to-configs relationship structural rather than checked.
-fn configfs_op_prepared(gadget: UsbGadget, op: ConfigfsOp) -> ConfigfsStaging {
+//
+// THE MINT IS CALLER-SEALED (review 5360613023 at e1bbd12223). This fn constructs the sealed
+// `ConfigfsPreparedOp`, and "configfs_staging_of is the sole caller today" is a census fact, not
+// an enforcement boundary: without a wall, a foreign module could import the mint and call it
+// directly with a slash-named gadget, because `configfs_path_verdict` compares against the same
+// slash-derived `usb_gadget_dir` and would classify the authored path as inside -- the content
+// verdicts would run against a containment root the gadget's own name redefined, and the mint
+// would return a sealed prepared operation to the caller who authored that root. The
+// admit_callers wall names the one production caller, so the direct call is a
+// `ConstructorCallAdmissionRefused` at resolve time -- the same wall the caller-sealed
+// `transport_script_seal` relies on. The wall gates CUSTODY of the construction route; the
+// verdicts gate CONTENT; both are enforced, and the witness keeps a foreign-module RED for each.
+fn configfs_op_prepared(gadget: UsbGadget, op: ConfigfsOp) -> ConfigfsStaging
+  admit_callers: [
+    decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "configfs_staging_of"),
+  ]
+{
   let g = usb_gadget_dir(gadget: gadget)
   match op {
     ConfigfsMkdir { path: p } =>

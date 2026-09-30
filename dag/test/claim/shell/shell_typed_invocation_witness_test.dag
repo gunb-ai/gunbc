@@ -394,16 +394,19 @@ test fn usb_gadget_teardown_walks_detach_unlink_then_five_rmdirs_inside_the_gadg
     })) == 1
 }
 
-// ---- THE CROSS-MODULE NEGATIVE CONTROL AND THE PRODUCTION-ROUTE NAME CONTROL (review at
-// 51c4ca9e3e blocker 1; review 5360078848 at a00c5f6a83) ----
+// ---- THE CROSS-MODULE NEGATIVE CONTROLS AND THE PRODUCTION-ROUTE NAME CONTROL (review at
+// 51c4ca9e3e blocker 1; reviews 5360078848 and 5360613023) ----
 
-// The typed tests above prove the honest route works; they do not prove the bypass is
-// unwritable. The probe compiles a FOREIGN module source through the guarantee probe corpus --
-// the same harness dag/test/claim/operation_admit_callers_inert_witness_test.dag uses -- and
-// asserts the compiler refuses the hand-authored construction. The source is compiled as DATA,
-// not as a module of this tree: a bypass that resolved would refuse inside the probe's own
-// compilation, never in this file. The probe distinguishes module ownership, not content; the
-// segment law's own control is the paired production-route test below it.
+// The typed tests above prove the honest route works; they do not prove the bypasses are
+// unwritable. Two RED probes compile FOREIGN module sources through the guarantee probe corpus
+// -- the same harness dag/test/claim/operation_admit_callers_inert_witness_test.dag uses: the
+// hand-authored prepared value (refused by the sole_constructor seal) and the direct call to the
+// prepared mint (refused by the admit_callers wall). A third control runs the production route
+// itself over both name spellings. The sources are compiled as DATA, not as modules of this
+// tree: a bypass that resolved would refuse inside the probe's own compilation, never in this
+// file. Sealed-value custody, construction-route custody, and name content are three different
+// laws; each control distinguishes its own, and the integration pair beside it distinguishes the
+// route behavior end to end.
 
 // The exact spelling the review sketched: a foreign module authors the prepared link by hand --
 // public disposition, a gadget_dir it chose -- and hands it straight to the realization,
@@ -420,6 +423,25 @@ test fn foreign_module_cannot_hand_author_a_prepared_op_to_the_realization() -> 
   match census_blocking_count_for_class(
     census: bypass_probe_census(source: prepared_op_bypass_probe_source),
     wanted: "SoleConstructorViolation"
+  ) {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING CONTROL FOR THE CALL WALL (review 5360613023 at e1bbd12223): a foreign
+// module imports the mint itself -- not the staging fold -- and calls it directly with the
+// slash-named gadget. Inside the direct call, `configfs_path_verdict` would compare the authored
+// path against the same slash-derived directory and classify it inside; the refusal is therefore
+// the CALL WALL, not the content law: the direct call is a `ConstructorCallAdmissionRefused` at
+// resolve time. The route-level pair below stays as the integration control; the wall probe
+// distinguishes custody of the construction route, which no content control can.
+data direct_mint_call_probe_source: String = "module probe.direct_mint_call\nimport extdeps.linux.usb_gadget { UsbGadget, MassStorageLun, ConfigfsMkdir, ConfigfsStaging, configfs_op_prepared }\n\nfn unadmitted_direct_mint() -> ConfigfsStaging {\n  configfs_op_prepared(\n    gadget: UsbGadget {\n      config_root: \"/sys/kernel/config/usb_gadget\",\n      name: \"a/b\",\n      id_vendor: \"0x1d6b\",\n      id_product: \"0x0104\",\n      manufacturer: \"gunbc\",\n      product: \"gunbc-virtual-media\",\n      serial: \"srv4-0001\",\n      config_label: \"c.1\",\n      lun: MassStorageLun {\n        backing_device: \"/dev/nbd0\",\n        cdrom: false,\n        read_only: true,\n        removable: true,\n      },\n      udc: \"1e6a0000.usb-vhub:p3\",\n    },\n    op: ConfigfsMkdir { path: \"/sys/kernel/config/usb_gadget/a/b\" },\n  )\n}\n"
+
+test fn foreign_module_cannot_call_the_prepared_mint_directly() -> Bool {
+  match census_blocking_count_for_class(
+    census: bypass_probe_census(source: direct_mint_call_probe_source),
+    wanted: "ConstructorCallAdmissionRefused"
   ) {
     Present { value: n } => n >= 1
     Absent => false
