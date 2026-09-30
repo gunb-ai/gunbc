@@ -27,7 +27,7 @@ type MassStorageLun {
 
 type UsbGadget {
   config_root: NonEmptyStr
-  name: UsbGadgetName
+  name: NonEmptyStr
   id_vendor: NonEmptyStr
   id_product: NonEmptyStr
   manufacturer: NonEmptyStr
@@ -56,7 +56,7 @@ type ConfigfsOp
   | ConfigfsRmdir { path: NonEmptyStr }
 
 fn usb_gadget_dir(gadget: UsbGadget) -> NonEmptyStr {
-  join([gadget.config_root as String, "/", gadget.name.segment as String], "") as NonEmptyStr
+  join([gadget.config_root as String, "/", gadget.name as String], "") as NonEmptyStr
 }
 
 fn gadget_bool_bit(b: Bool) -> String {
@@ -230,29 +230,6 @@ fn configfs_name_verdict(name: NonEmptyStr) -> ConfigfsNameVerdict {
   }
 }
 
-// ---- THE SEALED GADGET NAME (review at 51c4ca9e3e, blocker 2; review 72848, finding 2) ----
-
-// `usb_gadget_dir` is derived by JOINING the gadget's name under the class root, so a gadget
-// named `a/b` would define its own containment boundary: every path staged against it carries
-// the `<mount>/usb_gadget/a/b/` prefix and self-validates as inside a gadget directory the name
-// itself redefined. A bare `NonEmptyStr` cannot carry the "one segment" fact, so the name field
-// carries `UsbGadgetName`, whose construction is confined to this file. THE ENFORCEMENT IS THE
-// SEAL, stated plainly (review 72848, finding 2): a name outside this module can only be one
-// constructed here, and the only construction here is the authored estate constant below. There
-// is no runtime name verdict beside the seal, because a check nothing on the production path
-// calls is decoration, and a mint that cannot refuse -- this language has no bottom, so a
-// carrier-producing fn over a two-arm verdict needs an impossible fallback -- would duplicate
-// `configfs_name_verdict`'s law in a second copy. The segment law for names lives in exactly one
-// place, `configfs_name_verdict`, gating link and configuration names; the gadget's name is one
-// segment by this file's reviewed authorship, and the shell witness's cross-module probe proves
-// the boundary: authoring the carrier around `a/b` from outside is a compile-time refusal.
-type UsbGadgetName sole_constructor { segment: NonEmptyStr }
-
-// THE ESTATE'S GADGET NAME, authored here -- directly, where the segment law lives and where
-// alone the carrier can be constructed (review 72848, finding 2). Consumers import the value
-// instead of authoring the spelling.
-data gunbcvm_gadget_name: UsbGadgetName = UsbGadgetName { segment: "gunbcvm" }
-
 // THE VALIDATED SEMANTIC OPERATIONS staging returns: the same five operations with their paths
 // PROVEN descendants of this gadget's directory (or endpoints derived from this gadget's own
 // record), and with no process form in them at all -- a prepared operation says what configfs
@@ -309,6 +286,15 @@ fn configfs_staging_refused_name(bad_name: String) -> ConfigfsStaging {
   ConfigfsStagingRefused {
     reason: join(
       ["configfs operation name is not a single well-formed path segment: ", bad_name],
+      "",
+    ) as NonEmptyStr,
+  }
+}
+
+fn configfs_staging_refused_gadget_name(bad_name: String) -> ConfigfsStaging {
+  ConfigfsStagingRefused {
+    reason: join(
+      ["gadget name is not a single well-formed configfs path segment: ", bad_name],
       "",
     ) as NonEmptyStr,
   }
@@ -387,24 +373,41 @@ fn configfs_op_prepared(gadget: UsbGadget, op: ConfigfsOp) -> ConfigfsStaging {
   }
 }
 
-// The staged setup or teardown: fold the ops, refusing the WHOLE staging at the first op that
-// does not prepare. Ops before a refusal never become observable -- a refused staging carries no
-// operation list at all, so a caller cannot act on the good prefix and skip the bad op past it.
+// The staged setup or teardown: fold the ops, refusing the WHOLE staging at the first fault.
+// Ops before a refusal never become observable -- a refused staging carries no operation list at
+// all, so a caller cannot act on the good prefix and skip the bad op past it.
+//
+// THE GADGET'S OWN NAME IS THE FIRST LAW STAGING APPLIES (review 5360078848 at a00c5f6a83). The
+// gadget directory is derived by joining the name under the class root, so a name carrying `/`
+// or a dot segment would define its own containment boundary: every generated path would carry
+// the redefined prefix and self-validate as inside it. The segment verdict is therefore taken
+// HERE, in the only mint of sealed prepared operations, BEFORE `usb_gadget_dir` establishes the
+// containment root -- a refused name maps to the same whole-staging refusal as any other fault,
+// with a distinct reason spelling so the control can tie it off. This enforces the segment law
+// by ACCEPTANCE on the production route, not by a custody brand and not by reviewed authorship:
+// a slash-named gadget authors fine (the consumer owns its literal) and stages REFUSED; the
+// estate's own name stages READY on the identical route. `configfs_name_verdict` stays the one
+// place the law lives; it now gates link names, configuration names, and the gadget's own name.
 fn configfs_staging_of(gadget: UsbGadget, ops: List<ConfigfsOp>) -> ConfigfsStaging {
-  fold(
-    ops,
-    init: ConfigfsStagingReady { operations: [] },
-    f: (acc, op) =>
-      match acc {
-        ConfigfsStagingRefused { reason: r } => ConfigfsStagingRefused { reason: r },
-        ConfigfsStagingReady { operations: os } =>
-          match configfs_op_prepared(gadget: gadget, op: op) {
+  match configfs_name_verdict(name: gadget.name) {
+    ConfigfsNameNotASegment { name: bad } =>
+      configfs_staging_refused_gadget_name(bad_name: bad as String)
+    ConfigfsNameWellFormed { name: _ } =>
+      fold(
+        ops,
+        init: ConfigfsStagingReady { operations: [] },
+        f: (acc, op) =>
+          match acc {
             ConfigfsStagingRefused { reason: r } => ConfigfsStagingRefused { reason: r },
-            ConfigfsStagingReady { operations: minted } =>
-              ConfigfsStagingReady { operations: list_append(left: os, right: minted) },
+            ConfigfsStagingReady { operations: os } =>
+              match configfs_op_prepared(gadget: gadget, op: op) {
+                ConfigfsStagingRefused { reason: r } => ConfigfsStagingRefused { reason: r },
+                ConfigfsStagingReady { operations: minted } =>
+                  ConfigfsStagingReady { operations: list_append(left: os, right: minted) },
+              },
           },
-      },
-  )
+      )
+  }
 }
 
 fn usb_gadget_setup_staging(gadget: UsbGadget) -> ConfigfsStaging {

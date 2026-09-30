@@ -15,7 +15,6 @@ import extdeps.linux.usb_gadget {
   MassStorageLun,
   ConfigfsOp,
   ConfigfsStaging,
-  gunbcvm_gadget_name,
   usb_gadget_setup_ops,
   usb_gadget_setup_staging,
   usb_gadget_teardown_staging,
@@ -106,7 +105,7 @@ fn plan_nbd_client_attach(plan: BmcVirtualMediaPlan) -> NbdClientAttach {
 fn plan_vm_gadget(plan: BmcVirtualMediaPlan) -> UsbGadget {
   UsbGadget {
     config_root: "/sys/kernel/config/usb_gadget",
-    name: gunbcvm_gadget_name,
+    name: "gunbcvm",
     id_vendor: "0x1d6b",
     id_product: "0x0104",
     manufacturer: "gunbc",

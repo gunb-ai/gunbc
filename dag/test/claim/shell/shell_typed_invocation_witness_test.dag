@@ -24,7 +24,6 @@ import extdeps.linux.usb_gadget {
   ConfigfsNameVerdict,
   ConfigfsNameWellFormed,
   ConfigfsNameNotASegment,
-  gunbcvm_gadget_name,
   configfs_staging_of,
   configfs_path_verdict,
   configfs_name_verdict,
@@ -283,11 +282,13 @@ test fn usb_gadget_setup_is_typed_configfs_ops_under_the_gadget_root() -> Bool {
 // `/sys/kernel/config/usb_gadget/` while the gadget record carries `config_root`): a fixture
 // gadget whose config_root is a different -- equally permitted -- configfs mount stages READY,
 // because the containment verdict is taken against the gadget's OWN record, not against a
-// hard-coded root. The deleted row's spelling now exists nowhere in the estate.
+// hard-coded root. The gadget's name spelling is the consumer's literal again (review
+// 5360078848 at a00c5f6a83): the name field is a plain NonEmptyStr and the segment law is taken
+// by acceptance at the staging mint, so this fixture carries the spelling directly.
 fn alternate_mount_fixture() -> UsbGadget {
   UsbGadget {
     config_root: "/mnt/configfs/usb_gadget",
-    name: gunbcvm_gadget_name,
+    name: "gunbcvm",
     id_vendor: "0x1d6b",
     id_product: "0x0104",
     manufacturer: "gunbc",
@@ -393,32 +394,23 @@ test fn usb_gadget_teardown_walks_detach_unlink_then_five_rmdirs_inside_the_gadg
     })) == 1
 }
 
-// ---- CROSS-MODULE NEGATIVE CONTROLS (review at 51c4ca9e3e, blockers 1 and 2; review 72848) ----
+// ---- THE CROSS-MODULE NEGATIVE CONTROL AND THE PRODUCTION-ROUTE NAME CONTROL (review at
+// 51c4ca9e3e blocker 1; review 5360078848 at a00c5f6a83) ----
 
 // The typed tests above prove the honest route works; they do not prove the bypass is
-// unwritable. These probes compile FOREIGN module sources through the guarantee probe corpus --
+// unwritable. The probe compiles a FOREIGN module source through the guarantee probe corpus --
 // the same harness dag/test/claim/operation_admit_callers_inert_witness_test.dag uses -- and
-// assert the compiler refuses the hand-authored construction. The sources are compiled as DATA,
-// not as modules of this tree: a bypass that resolved would refuse inside the probe's own
-// compilation, never in this file. PROBE 2 IS ALSO THE GADGET-NAME RED (review at 51c4ca9e3e,
-// blocker 2): the sealed carrier constructed around the slash spelling from outside is a
-// SoleConstructorViolation, which is the whole enforcement surface the seal claims -- there is
-// no runtime name verdict beside it (review 72848, finding 2), and the ordinary-name positive is
-// the estate constant itself, authored inside the authority module, staging READY in every typed
-// test above.
+// asserts the compiler refuses the hand-authored construction. The source is compiled as DATA,
+// not as a module of this tree: a bypass that resolved would refuse inside the probe's own
+// compilation, never in this file. The probe distinguishes module ownership, not content; the
+// segment law's own control is the paired production-route test below it.
 
-// PROBE 1, the exact spelling the review sketched: a foreign module authors the prepared link
-// by hand -- public disposition, a gadget_dir it chose -- and hands it straight to the
-// realization, skipping both verdicts. The wrapper is a sole_constructor declared in
+// The exact spelling the review sketched: a foreign module authors the prepared link by hand --
+// public disposition, a gadget_dir it chose -- and hands it straight to the realization,
+// skipping both verdicts. The wrapper is a sole_constructor declared in
 // extdeps.linux.usb_gadget, so the foreign record literal is a SoleConstructorViolation: a
 // staged fact stays something only staging can mint.
 data prepared_op_bypass_probe_source: String = "module probe.prepared_op_bypass\nimport extdeps.linux.usb_gadget { ConfigfsPreparedOp, ConfigfsPreparedLinkFunction, ConfigfsOpCommand, configfs_prepared_realization }\n\ndata probe_bypass_prepared: ConfigfsPreparedOp = ConfigfsPreparedOp {\n  disposition: ConfigfsPreparedLinkFunction {\n    gadget_dir: \"/sys/kernel/config/usb_gadget/gunbcvm\",\n    function: \"mass_storage.0\",\n    configuration: \"c.1\",\n  },\n}\n\nfn probe_bypass_run(op: ConfigfsPreparedOp) -> ConfigfsOpCommand {\n  configfs_prepared_realization(op: op)\n}\n"
-
-// PROBE 2, the name carrier: a foreign module authors a gadget whose name carries a slash by
-// constructing the sealed carrier itself around the raw spelling. The carrier is confined to
-// extdeps.linux.usb_gadget, so the construction is refused -- the slash spelling cannot enter
-// any UsbGadget from outside, whatever the author's intent for it.
-data gadget_name_bypass_probe_source: String = "module probe.gadget_name_bypass\nimport extdeps.linux.usb_gadget { UsbGadget, MassStorageLun, UsbGadgetName }\n\ndata probe_bypass_gadget: UsbGadget = UsbGadget {\n  config_root: \"/sys/kernel/config/usb_gadget\",\n  name: UsbGadgetName { segment: \"a/b\" },\n  id_vendor: \"0x1d6b\",\n  id_product: \"0x0104\",\n  manufacturer: \"gunbc\",\n  product: \"gunbc-virtual-media\",\n  serial: \"srv4-0001\",\n  config_label: \"c.1\",\n  lun: MassStorageLun {\n    backing_device: \"/dev/nbd0\",\n    cdrom: false,\n    read_only: true,\n    removable: true,\n  },\n  udc: \"1e6a0000.usb-vhub:p3\",\n}\n"
 
 fn bypass_probe_census(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
@@ -434,12 +426,36 @@ test fn foreign_module_cannot_hand_author_a_prepared_op_to_the_realization() -> 
   }
 }
 
-test fn foreign_module_cannot_construct_the_gadget_name_carrier() -> Bool {
-  match census_blocking_count_for_class(
-    census: bypass_probe_census(source: gadget_name_bypass_probe_source),
-    wanted: "SoleConstructorViolation"
-  ) {
-    Present { value: n } => n >= 1
-    Absent => false
+// THE PRODUCTION ROUTE IS THE NAME LAW'S CONTROL (review 5360078848 at a00c5f6a83): a slash
+// spelling authors a gadget fine -- the field is a NonEmptyStr and the consumer owns its
+// literal -- and the paired control runs BOTH spellings through the SAME preparation route
+// staging uses in production. The slash-named gadget stages REFUSED with the distinct
+// gadget-name reason; the estate's own name stages READY with the identical sixteen operations
+// on the identical route. This distinguishes the segment law by acceptance, which the
+// foreign-construction probe alone cannot: that probe distinguishes module ownership, not
+// valid versus invalid content.
+test fn gadget_name_segment_law_refuses_slash_and_stages_the_estate_name_ready_on_the_production_route() -> Bool {
+  let slash_gadget = UsbGadget {
+    config_root: "/sys/kernel/config/usb_gadget",
+    name: "a/b",
+    id_vendor: "0x1d6b",
+    id_product: "0x0104",
+    manufacturer: "gunbc",
+    product: "gunbc-virtual-media",
+    serial: "srv4-0001",
+    config_label: "c.1",
+    lun: MassStorageLun {
+      backing_device: "/dev/nbd0",
+      cdrom: false,
+      read_only: true,
+      removable: true,
+    },
+    udc: "1e6a0000.usb-vhub:p3",
   }
+  let slash_staged = configfs_staging_of(gadget: slash_gadget, ops: usb_gadget_setup_ops(gadget: slash_gadget))
+  let ready_staged = configfs_staging_of(gadget: srv4_vm_gadget(), ops: usb_gadget_setup_ops(gadget: srv4_vm_gadget()))
+  !staging_ready(staging: slash_staged)
+    && string_contains(s: staging_reason(staging: slash_staged), pattern: "well-formed configfs path segment")
+    && staging_ready(staging: ready_staged)
+    && staging_ready_count(staging: ready_staged) == 16
 }
