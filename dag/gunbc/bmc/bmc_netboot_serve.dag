@@ -25,7 +25,12 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
-import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.os_install_emit {
+  autoinstall_user_data
+  AutoinstallUserData
+  AutoinstallUserDataRendered
+  AutoinstallUserDataRefused
+}
 
 type BmcNetbootServePlan {
   bmc_host: NonEmptyStr
@@ -100,7 +105,14 @@ fn bmc_netboot_http_boot_entry(plan: BmcNetbootServePlan) -> UefiHttpBootEntry {
   }
 }
 
-fn bmc_netboot_nocloud_user_data(plan: BmcNetbootServePlan) -> String {
+// The nocloud seed travels as the emitter's own verdict: the YAML emit either rendered the
+// document or refused with a reason, and there is no String here to widen that refusal into
+// (§5: a failure arm must refuse, never widen). The staged value carries only the rendered
+// content; a refused seed refuses the whole staging before any op is prepared. (This function
+// previously declared `-> String` while returning the emitter's sum — a declaration the
+// substrate let stand until a witness ran a strict string operation over the value, which is
+// why the floor caught it and this clause exists.)
+fn bmc_netboot_user_seed_verdict(plan: BmcNetbootServePlan) -> AutoinstallUserData {
   autoinstall_user_data(payload: plan.autoinstall)
 }
 
@@ -224,6 +236,15 @@ fn bmc_netboot_staging_refused_transport(name: String) -> BmcNetbootStaging {
   }
 }
 
+fn bmc_netboot_staging_refused_seed(cause: String) -> BmcNetbootStaging {
+  BmcNetbootStagingRefused {
+    reason: join(
+      ["bmc-netboot nocloud seed could not be rendered: ", cause],
+      "",
+    ) as NonEmptyStr,
+  }
+}
+
 // One op prepared alone: the validated semantic operation, or the refusal of the staging it
 // would have joined. Path-carrying ops validate their names and derive the remote path from the
 // plan, which is what makes "lands under the plan's serve root" structural rather than checked.
@@ -308,7 +329,7 @@ fn bmc_netboot_staging_of(plan: BmcNetbootServePlan, ops: List<BmcNetbootOp>) ->
 // launch, in the order they must act. This replaces the old hand-unrolled sequence -- a separate
 // mkdir run, then a per-file fold, then a serve launch gated on the fold's exit code -- whose
 // three argv call sites each reached the transport on their own.
-fn bmc_netboot_staging_ops(plan: BmcNetbootServePlan) -> List<BmcNetbootOp> {
+fn bmc_netboot_staging_ops(plan: BmcNetbootServePlan, user_seed: String) -> List<BmcNetbootOp> {
   [
     BmcNetbootMakeDir { name: "nocloud" },
     BmcNetbootPutArtifact { name: "busybox", artifact: bmc_netboot_artifact(name: "busybox") },
@@ -316,7 +337,7 @@ fn bmc_netboot_staging_ops(plan: BmcNetbootServePlan) -> List<BmcNetbootOp> {
     BmcNetbootPutArtifact { name: "initrd", artifact: bmc_netboot_artifact(name: "initrd") },
     BmcNetbootPutArtifact { name: "grubaa64.efi", artifact: bmc_netboot_artifact(name: "grubaa64.efi") },
     BmcNetbootPutText { name: "grub.cfg", text: bmc_netboot_grub_cfg_text(plan: plan) },
-    BmcNetbootPutText { name: "nocloud/user-data", text: bmc_netboot_nocloud_user_data(plan: plan) },
+    BmcNetbootPutText { name: "nocloud/user-data", text: user_seed },
     BmcNetbootPutText {
       name: "nocloud/meta-data",
       text: join(["instance-id: ", plan.autoinstall.identity.hostname as String], ""),
@@ -326,7 +347,12 @@ fn bmc_netboot_staging_ops(plan: BmcNetbootServePlan) -> List<BmcNetbootOp> {
 }
 
 fn bmc_netboot_provision_staging(plan: BmcNetbootServePlan) -> BmcNetbootStaging {
-  bmc_netboot_staging_of(plan: plan, ops: bmc_netboot_staging_ops(plan: plan))
+  match bmc_netboot_user_seed_verdict(plan: plan) {
+    AutoinstallUserDataRendered { content: t } =>
+      bmc_netboot_staging_of(plan: plan, ops: bmc_netboot_staging_ops(plan: plan, user_seed: t))
+    AutoinstallUserDataRefused { reason: r } =>
+      bmc_netboot_staging_refused_seed(cause: r)
+  }
 }
 
 // ---- THE REALIZATION BOUNDARY ----

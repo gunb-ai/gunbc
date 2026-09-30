@@ -17,7 +17,7 @@ import gunbc.bmc_netboot_serve {
   bmc_path_resolved_mkdir_applet,
   bmc_netboot_grub_cfg_text,
   bmc_netboot_http_boot_entry,
-  bmc_netboot_nocloud_user_data,
+  bmc_netboot_user_seed_verdict,
   bmc_netboot_staged_path,
   bmc_netboot_artifact,
   BmcNetbootPreparedOp,
@@ -34,6 +34,10 @@ import gunbc.bmc_netboot_serve {
   BmcNetbootOpStagesFile,
   bmc_netboot_provision_staging,
   bmc_netboot_prepared_realization,
+}
+import gunbc.os_install_emit {
+  AutoinstallUserDataRendered
+  AutoinstallUserDataRefused
 }
 
 // THE FIXTURE + TOOL-REALIZATION SIDE of the witness split. The domain gates over the typed
@@ -176,10 +180,13 @@ test fn srv4_http_boot_entry_targets_bmc() -> Bool {
 }
 
 test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
-  let ud = bmc_netboot_nocloud_user_data(plan: srv4_bmc_netboot_serve_plan)
-  string_contains(s: ud, pattern: "hostname: srv4")
-    && string_contains(s: ud, pattern: "allow-pw: false")
-    && string_contains(s: ud, pattern: "fleet-automation@gunbc")
+  match bmc_netboot_user_seed_verdict(plan: srv4_bmc_netboot_serve_plan) {
+    AutoinstallUserDataRendered { content: ud } =>
+      string_contains(s: ud, pattern: "hostname: srv4")
+        && string_contains(s: ud, pattern: "allow-pw: false")
+        && string_contains(s: ud, pattern: "fleet-automation@gunbc")
+    AutoinstallUserDataRefused { reason: _ } => false
+  }
 }
 
 // THE PROVISION REALIZES AS TWO ON-BMC COMMANDS, FOUR TRANSFERS, AND THREE STAGED TEXT PUTS --
@@ -213,8 +220,9 @@ test fn the_bmc_mkdir_acts_with_the_derived_directory() -> Bool {
 
 // THE BMC TRANSPORT COMPOSES ONE RFC 4254 STRING: the same builder the realization lowers to,
 // over the same derived path, through the plan's Dropbear-named SshExec transport, becomes
-// sshpass -e ssh <target> <ONE folded command string> -- four words total, the inner program
-// folded INTO the final word, never carried as a separate `mkdir` word. (The fold is
+// sshpass -e ssh <host-key override posture> <target> <ONE folded command string> -- eight
+// words total, the shared host-key posture carried exactly as the scp push carries it, and the
+// inner program folded INTO the final word, never as a separate `mkdir` word. (The fold is
 // extdeps.exec.command command_over_transport's SshExec arm, cited to IEEE 1003.1-2017 section
 // 2.2.2; the interpretation is the deployment's own determined fact, openbmc_dropbear_interpretation.)
 test fn the_bmc_transport_composes_one_rfc4254_string_for_the_mkdir() -> Bool {
@@ -227,9 +235,12 @@ test fn the_bmc_transport_composes_one_rfc4254_string_for_the_mkdir() -> Bool {
     CommandOverTransportRefused { cause: _ } => false
     CommandOverTransportBuilt { command: over } =>
       (over.program.invocation as String) == "sshpass"
-        && list_length(items: over.arguments) == 4
+        && list_length(items: over.arguments) == 8
         && any(over.arguments, w => w == "-e")
         && any(over.arguments, w => w == "ssh")
+        && any(over.arguments, w => w == "-o")
+        && any(over.arguments, w => w == "StrictHostKeyChecking=no")
+        && any(over.arguments, w => w == "UserKnownHostsFile=/dev/null")
         && any(over.arguments, w => w == "root@192.168.1.195")
         && count(filter(over.arguments, w => string_contains(s: w, pattern: "mkdir"))) == 1
         && count(filter(over.arguments, w => w == "mkdir")) == 0
