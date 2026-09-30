@@ -1585,7 +1585,7 @@ data gunbc_floor_job_wall_receipt_2026_09_19: FloorJobWallReceipt = FloorJobWall
 // CONSUMPTION STATUS: the fold that reads this (floor_offer_fungibility -> offer_fungibility_for)
 // has NO production consumer, like its siblings ShapeNotCovered and CapabilitiesNotOffered. It is
 // the modeled decision the broker will consume, not a live wall; calling it enforcement would be
-// the rung inflation recorded above for affordability. NEXT-RUNG TRIGGER is the same: a broker
+// the rung inflation recorded on gunbc.fabric_witness_run floor_work_contract (whose leading block covers affordability and the module's other unconsumed functions). NEXT-RUNG TRIGGER is the same: a broker
 // fold that selects an Offer for this Demand.
 fn floor_isolation_requirement() -> IsolationProfile {
   IsolationProfile { guarantees: [] }
