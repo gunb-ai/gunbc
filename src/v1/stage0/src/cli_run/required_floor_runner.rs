@@ -2107,12 +2107,17 @@ impl UnimportedBareProviderRosterReading {
     /// judgment compares in `.dag`, so the host never spells a base row's fields -- a base written
     /// before a view field existed (`not_a_reference`, gunbc#12609) is still a readable base.
     fn read(
-        roots: &[String],
+        index: &MultiEntryIndex,
         entry: &str,
         function: &str,
         decode_host_rows: bool,
     ) -> Result<Self, String> {
-        let (graph, indices) = resolve_entry_graph_shared(roots, entry)
+        // THE CALLER SUPPLIES THE INDEX: the head reads the floor tree's shared index, and the
+        // base reads its one-file scratch pool through an index of its own. Resolving the base
+        // through `resolve_entry_graph_shared` put that pool in the thread's shared slot,
+        // evicting the head tree's index, which the floor then rebuilt from scratch
+        // (neat-boar-16, #12761 subject: gen1 evicted at the base read, rebuilt as gen5).
+        let (graph, indices) = resolve_entry_with_index(index, entry)
             .map_err(|e| format!("unimported-bare-provider roster resolve ({entry}): {e}"))?;
         let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
         let rows_value = Self::call(&ctx, function, &[])?;
@@ -2166,8 +2171,9 @@ impl UnimportedBareProviderRosterReading {
     }
 
     fn head(source_roots: &[String]) -> Result<Self, String> {
+        let index: Rc<MultiEntryIndex> = try_process_shared_index(source_roots)?;
         Self::read(
-            source_roots,
+            &index,
             &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
             "unimported_bare_provider_head_rows",
             true,
@@ -2502,8 +2508,9 @@ fn unimported_bare_provider_base_reading(
     std::fs::write(&entry, base_source)
         .map_err(|e| format!("base roster write {}: {e}", entry.display()))?;
     let root = dir.to_string_lossy().to_string();
+    // A scratch pool is its own demand: its index lives for this read and drops with it.
     let reading = UnimportedBareProviderRosterReading::read(
-        &[root],
+        &build_multi_entry_index(&[root]),
         &entry.to_string_lossy(),
         "unimported_bare_provider_roster_rows",
         false,
@@ -6820,7 +6827,9 @@ pub fn run_required_floor(
     // ONE ENTRY INDEX FOR BOTH CLOSURES: building it is the expensive part (~75-110s on the
     // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
     // policy-closure prepare and the gate-closure prepare alike.
-    let gate_entry_index = build_multi_entry_index(source_roots);
+    // The process-shared index over these roots: the same name set every other floor consumer
+    // resolves against, so its files' readings are parsed once for all of them.
+    let gate_entry_index = process_shared_index(source_roots);
     floor_seam("changed-witness-planning");
     // ONE CORPUS READ FOR BOTH PREPARES, CARRIED FROM THE ANCESTOR THAT OWNS BOTH DEMANDS.
     //
@@ -7394,6 +7403,35 @@ pub fn run_required_floor(
         warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
     ));
     shared_build_warms.extend(pure_producer_warms);
+    // ONE FULL PARSE PER (INDEX, FILE), ASSERTED, and ONE INDEX PER NAME SET, ASSERTED below: the
+    // first bounds a file's reference reading to one parse on each index, the second the total.
+    for (which, roots) in [
+        ("source-roots", source_roots.to_vec()),
+        ("witness-layer-roots", witness_layer_roots()),
+    ] {
+        let index = process_shared_index(&roots);
+        let (files, parses) = super::reference_reading_parse_control(&index)
+            .map_err(|e| format!("REQUIRED-FLOOR REFUSAL roots={which} {e}"))?;
+        eprintln!(
+            "[floor-phase] phase=reference-reading-parses roots={which} index_generation={} \
+             files={files} full_parses={parses}",
+            index.generation
+        );
+    }
+    // ONE INDEX PER MODULE-NAME SET, ASSERTED. The floor legitimately demands more than one name
+    // set (its source roots, the dag-only environment closure, the v1 attribution roots when
+    // src/v1 is touched), so the invariant is not a count: it is that no set is indexed twice.
+    let builds = super::multi_entry_index_builds();
+    let name_sets = super::multi_entry_index_sharing_control(&builds)
+        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL cause={e}"))?;
+    eprintln!(
+        "[floor-phase] phase=multi-entry-index-builds builds={} name_sets={name_sets} sites={:?}",
+        builds.len(),
+        builds
+            .iter()
+            .map(|b| format!("{}@{}", b.modules, b.site))
+            .collect::<Vec<_>>(),
+    );
     // The two earlier phases already printed their own lines at the point they ran; only the
     // edge-index entries are reported here, so a phase is reported exactly once and under its own
     // name. Every entry — all three phases — is adjudicated together further down.
