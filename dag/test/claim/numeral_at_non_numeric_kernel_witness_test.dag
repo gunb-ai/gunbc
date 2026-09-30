@@ -1,0 +1,242 @@
+module test.claim.numeral_at_non_numeric_kernel_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+// A NUMERAL INHABITS A DECLARED KERNEL TYPE ONLY WHEN THAT TYPE ADMITS A NUMERAL (DESIGN 4b floor:
+// values inhabit declared types; DESIGN 4: a Bool literal is not an Int literal, no implicit route).
+// Class row: gunbc.recurring_failure_mode.numeral_admitted_at_every_kernel_declared_type.
+// Before the repair v1.compiler.infer declared_realizes_as_kernel_numeric answered Inhabits for an
+// Int or Float at ANY kernel-minted declared type. At the positions below the older kernel chain
+// already refused the pair, so these REDs pin that the state stays refused; the REDs that were
+// silent on main are the condition REDs at the end of this file.
+//
+// Each RED is one source with exactly one candidate site and asserts at least one blocking refusal
+// of the two classes below. Each control is one term away -- the same literal at the numeric
+// kernel type the carrier roster admits (Int, Float), or a Bool literal at Bool -- and asserts zero
+// such rows plus a clean Rust emission, so a blanket refusal of literals goes red on the controls.
+//
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+// TWO CLASSES REFUSE THIS STATE, AND WHICH ONE DEPENDS ON THE POSITION -- measured, not assumed.
+// At the record field, declared return, call argument and list element the older kernel chain
+// (v1.compiler.infer kernel_value_declared_type_mismatch) already refused an Int at Bool as a
+// TypeMismatch on main, masking the relation's wrong Inhabits; at the call argument and list element
+// the relation now refuses as well (DeclaredTypeNotInhabited). At a condition only the relation
+// judges. So the oracle counts blocking rows of EITHER class: a RED needs at least one, and a
+// control needs zero of both, which keeps -1 (not runnable) out of both arms.
+fn not_inhabited_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn nkt_field_bool_source() -> String {
+  "module nkt.field_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Flag {\n  Flag { on: 1 }\n}\n"
+}
+
+test fn an_int_literal_at_a_bool_record_field_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_field_bool_source()) >= 1
+}
+
+fn nkt_arg_bool_source() -> String {
+  "module nkt.arg_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Bool {\n  take_b(b: 1)\n}\n"
+}
+
+test fn an_int_literal_at_a_bool_call_argument_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_arg_bool_source()) >= 1
+}
+
+fn nkt_ret_bool_source() -> String {
+  "module nkt.ret_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Bool {\n  1\n}\n"
+}
+
+test fn an_int_literal_at_a_bool_declared_return_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_ret_bool_source()) >= 1
+}
+
+fn nkt_field_string_source() -> String {
+  "module nkt.field_string\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Label {\n  Label { text: 1 }\n}\n"
+}
+
+test fn an_int_literal_at_a_string_record_field_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_field_string_source()) >= 1
+}
+
+fn nkt_arg_string_source() -> String {
+  "module nkt.arg_string\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> String {\n  take_s(s: 1)\n}\n"
+}
+
+test fn an_int_literal_at_a_string_call_argument_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_arg_string_source()) >= 1
+}
+
+fn nkt_ret_string_source() -> String {
+  "module nkt.ret_string\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> String {\n  1\n}\n"
+}
+
+test fn an_int_literal_at_a_string_declared_return_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_ret_string_source()) >= 1
+}
+
+fn nkt_float_ret_bool_source() -> String {
+  "module nkt.float_ret_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Bool {\n  1.5\n}\n"
+}
+
+test fn a_float_literal_at_a_bool_declared_return_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_float_ret_bool_source()) >= 1
+}
+
+fn nkt_field_int_source() -> String {
+  "module nkt.field_int\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Count {\n  Count { n: 1 }\n}\n"
+}
+
+test fn an_int_literal_at_an_int_record_field_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: nkt_field_int_source()) == 0
+    && compile_dag_rust_emit_check(
+      nkt_field_int_source(),
+      "src/nkt_field_int.rs",
+      [],
+      []
+    )
+}
+
+fn nkt_arg_int_source() -> String {
+  "module nkt.arg_int\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Int {\n  take_i(i: 1)\n}\n"
+}
+
+test fn an_int_literal_at_an_int_call_argument_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: nkt_arg_int_source()) == 0
+    && compile_dag_rust_emit_check(
+      nkt_arg_int_source(),
+      "src/nkt_arg_int.rs",
+      [],
+      []
+    )
+}
+
+fn nkt_ret_int_source() -> String {
+  "module nkt.ret_int\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Int {\n  1\n}\n"
+}
+
+test fn an_int_literal_at_an_int_declared_return_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: nkt_ret_int_source()) == 0
+    && compile_dag_rust_emit_check(
+      nkt_ret_int_source(),
+      "src/nkt_ret_int.rs",
+      [],
+      []
+    )
+}
+
+fn nkt_field_float_source() -> String {
+  "module nkt.field_float\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Ratio {\n  Ratio { r: 1.5 }\n}\n"
+}
+
+test fn a_float_literal_at_a_float_record_field_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: nkt_field_float_source()) == 0
+    && compile_dag_rust_emit_check(
+      nkt_field_float_source(),
+      "src/nkt_field_float.rs",
+      [],
+      []
+    )
+}
+
+fn nkt_arg_float_source() -> String {
+  "module nkt.arg_float\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Float {\n  take_f(f: 1.5)\n}\n"
+}
+
+test fn a_float_literal_at_a_float_call_argument_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: nkt_arg_float_source()) == 0
+    && compile_dag_rust_emit_check(
+      nkt_arg_float_source(),
+      "src/nkt_arg_float.rs",
+      [],
+      []
+    )
+}
+
+fn nkt_ret_float_source() -> String {
+  "module nkt.ret_float\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Float {\n  1.5\n}\n"
+}
+
+test fn a_float_literal_at_a_float_declared_return_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: nkt_ret_float_source()) == 0
+    && compile_dag_rust_emit_check(
+      nkt_ret_float_source(),
+      "src/nkt_ret_float.rs",
+      [],
+      []
+    )
+}
+
+fn nkt_ret_bool_lit_source() -> String {
+  "module nkt.ret_bool_lit\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Bool {\n  true\n}\n"
+}
+
+test fn a_bool_literal_at_a_bool_declared_return_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: nkt_ret_bool_lit_source()) == 0
+    && compile_dag_rust_emit_check(
+      nkt_ret_bool_lit_source(),
+      "src/nkt_ret_bool_lit.rs",
+      [],
+      []
+    )
+}
+
+// THE CONDITION POSITION (gunbc.recurring_failure_mode.condition_position_unjudged_against_bool):
+// a match-arm guard and an if condition are declared Bool by the grammar and judged by the same
+// relation. The guard RED is the shape gunbc#12814 found (`x if 5`).
+
+fn nkt_guard_int_source() -> String {
+  "module nkt.guard_int\n\nimport std.types { Int, Bool }\n\nfn probe(n: Int) -> Int {\n  match n {\n    x if 5 => 1\n    _ => 2\n  }\n}\n"
+}
+
+test fn an_int_literal_as_a_match_arm_guard_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_guard_int_source()) >= 1
+}
+
+fn nkt_guard_bool_source() -> String {
+  "module nkt.guard_bool\n\nimport std.types { Int, Bool }\n\nfn probe(n: Int) -> Int {\n  match n {\n    x if x > 10 => 1\n    _ => 2\n  }\n}\n"
+}
+
+test fn a_bool_match_arm_guard_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: nkt_guard_bool_source()) == 0
+    && compile_dag_rust_emit_check(
+      nkt_guard_bool_source(),
+      "src/nkt_guard_bool.rs",
+      [],
+      []
+    )
+}
+
+fn nkt_if_int_source() -> String {
+  "module nkt.if_int\n\nimport std.types { Int, Bool }\n\nfn probe(n: Int) -> Int {\n  if 1 { n } else { 0 }\n}\n"
+}
+
+test fn an_int_literal_as_an_if_condition_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_if_int_source()) >= 1
+}
+
+fn nkt_if_bool_source() -> String {
+  "module nkt.if_bool\n\nimport std.types { Int, Bool }\n\nfn probe(n: Int) -> Int {\n  if n > 1 { n } else { 0 }\n}\n"
+}
+
+test fn a_bool_if_condition_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: nkt_if_bool_source()) == 0
+    && compile_dag_rust_emit_check(
+      nkt_if_bool_source(),
+      "src/nkt_if_bool.rs",
+      [],
+      []
+    )
+}

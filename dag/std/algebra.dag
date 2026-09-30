@@ -730,6 +730,36 @@ fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
   }
 }
 
+// WHICH CARRIERS A NUMERAL DENOTES AN ELEMENT OF. A numeral names the image of an integer under the
+// unique ring homomorphism out of the integers, so it has a denotation exactly in a profile that
+// carries ring structure: the ordered ring and the (approximate) field. A Boolean algebra, a free
+// monoid and every collection or function profile carry no such map, so a numeral at one of them
+// is a different value, never a spelling of one of theirs (DESIGN section 4: a Bool literal is not
+// an Int literal, and no implicit route exists). Every arm is spelled, so a new profile is a
+// decision here and never a silent admission.
+fn algebra_profile_admits_numeral(profile: AlgebraProfile) -> Bool {
+  match profile {
+    OrderedRingProfile => true
+    ApproximateFieldProfile => true
+    BooleanAlgebraProfile => false
+    FinitePowerSetProfile => false
+    PointwisePowerCollectionProfile => false
+    FreeMonoidScalarProfile => false
+    FreeMonoidCollectionProfile => false
+    PartialFunctionProfile => false
+    FinitelySupportedFunctionProfile => false
+  }
+}
+
+// The kernel-carrier reading of the same fact: a kernel scalar admits a numeral exactly when the
+// carrier roster assigns it a numeral-admitting profile. A name with no carrier row answers false.
+fn kernel_carrier_admits_numeral(name: String) -> Bool {
+  algebra_carriers() |> any(carrier =>
+    algebra_profile_admits_numeral(profile: carrier.profile)
+      && (carrier.spellings |> any(spelling =>
+        spelling.text == name && carrier_spelling_row_present(m: spelling.method_surface))))
+}
+
 fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
   match algebra_profile_support(profile: profile) {
     FiniteSupport => true

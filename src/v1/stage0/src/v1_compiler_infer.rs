@@ -15,12 +15,15 @@ pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
 pub use crate::gunbc_structural_realization_bindings::literal_homomorphism_rows;
-pub use crate::std_algebra::carrier_container_equality_rows;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
+pub use crate::std_algebra::{carrier_container_equality_rows, kernel_carrier_admits_numeral};
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
-pub use crate::std_coercion::SubtractionRefinement;
 use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
+use crate::std_coercion::TypeDeclarationProvenance::{
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+};
 pub use crate::std_coercion::{dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type};
+pub use crate::std_coercion::{SubtractionRefinement, TypeDeclarationProvenance};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_content_hash::ContentHash::*;
@@ -5329,6 +5332,7 @@ pub enum DeclaredTypePosition {
     PositionParameterDefault,
     PositionCallableReturn,
     PositionDirectCallArgument,
+    PositionCondition,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -5422,6 +5426,7 @@ pub fn declared_type_position_label(position: DeclaredTypePosition, subject: Str
                 )
             }
         }
+        DeclaredTypePosition::PositionCondition => subject.clone(),
     }
 }
 
@@ -6040,14 +6045,22 @@ pub fn declared_realizes_as_kernel_numeric(
     {
         let produced_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), produced.clone());
-        let produced_is_kernel_numeric = ((produced_name.clone() == "Int".to_string())
-            || (produced_name.clone() == "Float".to_string()));
-        if (produced_is_kernel_numeric.clone() == false) {
+        if (crate::std_algebra::kernel_carrier_admits_numeral(produced_name.clone()) == false) {
             false
         } else {
-            crate::v1_compiler_coercion::provenance_realizes_natively(
-                crate::v1_std_core::type_reference_provenance(declared.clone()),
-            )
+            match (*crate::v1_std_core::type_reference_provenance(declared.clone())).clone() {
+                TypeDeclarationProvenance::KernelMinted {
+                    minted_name: nm, ..
+                } => crate::std_algebra::kernel_carrier_admits_numeral(nm.clone()),
+                TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => {
+                    crate::v1_compiler_coercion::provenance_realizes_natively(Rc::new(
+                        TypeDeclarationProvenance::CorpusDeclared {
+                            decl_file: f.clone(),
+                        },
+                    ))
+                }
+                TypeDeclarationProvenance::DeclarationIdentityAbsent => false,
+            }
         }
     }
 }
@@ -6523,6 +6536,23 @@ pub fn obligation_type_shape(
             shape.clone()
         }
     }
+}
+
+pub fn condition_obligation_diags(
+    label: String,
+    typed: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    declared_type_obligation_diags(
+        Rc::new(DeclaredTypeObligation {
+            position: DeclaredTypePosition::PositionCondition,
+            subject: label.clone(),
+            declared: bool_type(),
+            produced: crate::v1_compiler_infer_types::resolved_type(typed.clone()),
+            span: typed.span.clone(),
+        }),
+        scope.clone(),
+    )
 }
 
 pub fn declared_type_obligation_diags(
@@ -13302,7 +13332,14 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             }),
                         };
                         let guard_diags = if (guard_result.clone() != std::option::Option::None) {
-                            guard_unwrapped.diagnostics.clone()
+                            v1_rt::concat(
+                                guard_unwrapped.diagnostics.clone(),
+                                condition_obligation_diags(
+                                    "match-arm guard".to_string(),
+                                    guard_unwrapped.typed.clone(),
+                                    arm_scope.clone(),
+                                ),
+                            )
                         } else {
                             Rc::new(vec![])
                         };
@@ -13484,7 +13521,14 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                         let guard_diags = if (guard_result.clone()
                                             != std::option::Option::None)
                                         {
-                                            guard_unwrapped.diagnostics.clone()
+                                            v1_rt::concat(
+                                                guard_unwrapped.diagnostics.clone(),
+                                                condition_obligation_diags(
+                                                    "match-arm guard".to_string(),
+                                                    guard_unwrapped.typed.clone(),
+                                                    arm_scope.clone(),
+                                                ),
+                                            )
                                         } else {
                                             Rc::new(vec![])
                                         };
@@ -13622,7 +13666,14 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let else_expr = crate::v1_std_core::if_else_branch(texpr.clone());
             let cond_result = infer_expr(cond.clone(), scope.clone(), std::option::Option::None);
             let cond_typed = cond_result.typed.clone();
-            let cond_diags = cond_result.diagnostics.clone();
+            let cond_diags = v1_rt::concat(
+                cond_result.diagnostics.clone(),
+                condition_obligation_diags(
+                    "if condition".to_string(),
+                    cond_typed.clone(),
+                    scope.clone(),
+                ),
+            );
             let then_result = infer_expr(then_expr.clone(), scope.clone(), expected.clone());
             let then_typed = then_result.typed.clone();
             let then_diags = then_result.diagnostics.clone();
@@ -29665,6 +29716,8 @@ pub struct PositionParameterDefault;
 pub struct PositionCallableReturn;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PositionDirectCallArgument;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionCondition;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UndecidableGenericFormal;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

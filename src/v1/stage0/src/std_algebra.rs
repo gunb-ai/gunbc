@@ -933,6 +933,44 @@ pub fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
     }
 }
 
+pub fn algebra_profile_admits_numeral(profile: AlgebraProfile) -> bool {
+    match profile.clone() {
+        AlgebraProfile::OrderedRingProfile => true,
+        AlgebraProfile::ApproximateFieldProfile => true,
+        AlgebraProfile::BooleanAlgebraProfile => false,
+        AlgebraProfile::FinitePowerSetProfile => false,
+        AlgebraProfile::PointwisePowerCollectionProfile => false,
+        AlgebraProfile::FreeMonoidScalarProfile => false,
+        AlgebraProfile::FreeMonoidCollectionProfile => false,
+        AlgebraProfile::PartialFunctionProfile => false,
+        AlgebraProfile::FinitelySupportedFunctionProfile => false,
+    }
+}
+
+pub fn kernel_carrier_admits_numeral(name: String) -> bool {
+    {
+        let mut __found = false;
+        for carrier in algebra_carriers().iter().cloned() {
+            if (algebra_profile_admits_numeral(carrier.profile.clone()) && {
+                let mut __found = false;
+                for spelling in carrier.spellings.clone().iter().cloned() {
+                    if ((spelling.text.clone() == name.clone())
+                        && carrier_spelling_row_present(spelling.method_surface.clone()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
     match algebra_profile_support(profile.clone()) {
         AlgebraSupportAxis::FiniteSupport => true,
