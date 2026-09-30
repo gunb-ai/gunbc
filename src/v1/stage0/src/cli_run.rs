@@ -5183,11 +5183,8 @@ fn module_paths_of_references(
         .filter(|path| module_names.contains(path.as_str()))
         .cloned()
         .collect();
-    // ONLY MAXIMAL CHAINS. The walk records a chain at every field-access node, so
-    // `extdeps.browser.chromium.anchor` also arrives as `extdeps.browser.chromium` and
-    // `extdeps.browser`; the shorter ones are receivers inside the longer one, not references of
-    // their own, and resolving one names the PARENT module (`extdeps.browser`), which the file
-    // never referenced. A chain that is a strict prefix of another recorded chain is skipped.
+    // The walk records only maximal field chains (`collect_node_refs_inner`), so no recorded
+    // chain is a receiver prefix naming a parent module the file never referenced.
     let chains: Vec<Vec<String>> = refs
         .chains
         .iter()
@@ -5195,11 +5192,7 @@ fn module_paths_of_references(
         .cloned()
         .chain(dotted_names)
         .collect();
-    let receivers: HashSet<&[String]> = chains
-        .iter()
-        .flat_map(|chain| (1..chain.len()).map(move |k| &chain[..k]))
-        .collect();
-    for chain in chains.iter().filter(|c| !receivers.contains(c.as_slice())) {
+    for chain in chains.iter() {
         if let Some(path) = longest_declared_module_prefix(chain, module_names) {
             if path.contains('.') {
                 out.insert(path);
@@ -10337,6 +10330,49 @@ mod closure_edge_demand_tests {
             None
         );
         reset_bare_reference_admission_completion_for_test();
+    }
+
+    /// ONE PARSE PER FILE ON THE ENTRY ROUTE. A module reached only by a dotted reference is
+    /// pulled by the fixpoint's reference half, which reads the index's shared parse; the
+    /// per-entry module-path scan (`extend_with_reference_closure`, timed as
+    /// `load_reference_scan`) is not run at all. Red before: that scan parsed every closure
+    /// file a second time, once per entry.
+    #[test]
+    fn the_pool_entry_route_follows_dotted_references_without_a_second_parse() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module dotted_entry\nfn main() -> Int { dotted.provider.one() }\n",
+            ),
+            (
+                "provider.dag",
+                "module dotted.provider\nfn one() -> Int { 1 }\n",
+            ),
+            (
+                "unrelated.dag",
+                "module unrelated\nfn unused() -> Int { 1 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let scans_before = resolve_stage_slot_snapshot().load_reference_scan_calls;
+        let sources = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("entry.dag").to_string_lossy(),
+        )
+        .unwrap();
+        let modules: BTreeSet<_> = sources
+            .iter()
+            .map(|s| extract_module_path(&s.content).unwrap())
+            .collect();
+        assert_eq!(
+            modules,
+            BTreeSet::from(["dotted_entry".into(), "dotted.provider".into()])
+        );
+        assert_eq!(
+            resolve_stage_slot_snapshot().load_reference_scan_calls - scans_before,
+            0,
+            "the entry route must not re-parse closure files for module-path references"
+        );
     }
 
     /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
@@ -16976,14 +17012,8 @@ fn parse_module_heads_for_pool_census(
 ) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
     note_source_hash(index, &source);
     // One acquisition, not one per walk -- see `cli_run::pool_acquire`.
-    let tokens = pool_acquire::tokens_for(&source.path, &source.content);
     let nl_index = pool_acquire::newline_index_for(&source.path, &source.content);
     let current_table = index.intern_table.borrow().clone();
-    let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
-        let mut m = HashMap::new();
-        m.insert(source.path.clone(), nl_index.clone());
-        m
-    });
     // The HEADS reading of the grammar, not the full one. Every declaration head is
     // parsed by the same productions; brace-delimited fn bodies and data initializer
     // values are skipped at token grain instead of being built, because
@@ -16999,11 +17029,16 @@ fn parse_module_heads_for_pool_census(
     // can depend on, because the normalizer overwrites it — so the heads reading cannot
     // drift from the full reading through the body slot, only through the heads, which is
     // the surface the differential receipt measures.
-    let parsed = v1_compiler_parse::parse_heads_with_table(tokens, single_si, current_table);
-    *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+    //
+    // ONE HEADS READING PER FILE: the file-local reading `module_path_index` already took is
+    // PROJECTED into this pool's threaded intern/occurrence space (`census_heads::
+    // project_heads_reading`, a total map), not parsed a second time.
+    let local = pool_acquire::heads_reading_for(&source.path, &source.content);
+    let (result, table) = census_heads::project_heads_reading(&local, &current_table)?;
+    *index.intern_table.borrow_mut() = table;
     // Pool census needs declaration heads only — do NOT install full-body ASTs into
     // `parse_cache` here. Closure resolve retains full bodies on its own cache miss.
-    if let Some(err) = &parsed.result.error {
+    if let Some(err) = &result.error {
         let span = diagnostic_to_span(err.diagnostic.clone());
         let loc = format_error_loc(&span.file, span.start, &Rc::new(HashMap::new()));
         return Err(format!(
@@ -17012,7 +17047,7 @@ fn parse_module_heads_for_pool_census(
             diagnostic_to_message(err.diagnostic.clone())
         ));
     }
-    match &parsed.result.module {
+    match &result.module {
         Some(module) => Ok((
             v1_compiler_compile::census_heads_module_node(module.clone()),
             nl_index,
@@ -17375,9 +17410,22 @@ fn tree_bare_census_for_root(
         );
     }
     let pool = pool_parse(index)?;
-    let nodes = tree_census_nodes(index, root)?;
-    let census =
-        v1_compiler_infer::build_symbol_index_census_nodes(nodes, pool.combined_si.clone());
+    // THE RAW CENSUS OF THIS ROOT IS ONE FACT. `build_symbol_index_census_nodes` is by definition
+    // `census_with_resolved_fn_sigs` over `build_symbol_index_census_raw_nodes(nodes, si)`, and
+    // `closure_name_census(index, Some(root))` already builds and memoizes exactly that raw census
+    // over the same `tree_census_nodes` and the same `combined_si`. So this upgrades the memoized
+    // raw census instead of rebuilding it. The raw build, when this is the first demand for it,
+    // is recorded on `closure_name_census_build`, not on this miss.
+    let (raw, raw_nanos) = {
+        let started = std::time::Instant::now();
+        let hit = index
+            .closure_name_censuses
+            .borrow()
+            .contains_key(&Some(root.to_string()));
+        let raw = closure_name_census(index, Some(root))?;
+        (raw, if hit { 0 } else { started.elapsed().as_nanos() })
+    };
+    let census = v1_compiler_infer::census_with_resolved_fn_sigs(raw, pool.combined_si.clone());
     index
         .tree_bare_census
         .borrow_mut()
@@ -17390,8 +17438,11 @@ fn tree_bare_census_for_root(
         .pool_parse
         .saturating_sub(pool_before);
     resolve_stage_slot_add(|st| {
-        st.edge_index_tree_census_miss_nanos +=
-            miss_started.elapsed().as_nanos().saturating_sub(pool_here);
+        st.edge_index_tree_census_miss_nanos += miss_started
+            .elapsed()
+            .as_nanos()
+            .saturating_sub(pool_here)
+            .saturating_sub(raw_nanos);
     });
     Ok(census)
 }
@@ -21299,6 +21350,7 @@ pub fn handle_serve(
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unset".to_string()),
     );
+    let listener_attests_peer = matches!(listener, ServeListener::Unix(..));
     v1_interpreter::with_active_context(&ctx, || {
         loop {
             let (mut conn, peer_user) = match listener.accept() {
@@ -21359,30 +21411,14 @@ pub fn handle_serve(
                     )
                 }
                 Ok(Some((method, path, body, tailscale_identity))) => {
-                    let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
-                        (Some("method".to_string()), str_value(method)),
-                        (Some("path".to_string()), str_value(path)),
-                        (Some("body".to_string()), str_value(body)),
-                        // Empty when the header was absent. The `.dag` side refuses on empty
-                        // rather than treating it as an anonymous caller, so a deployment that
-                        // stopped routing through the tailscale proxy fails closed.
-                        (
-                            Some("tailscale_identity".to_string()),
-                            str_value(tailscale_identity),
-                        ),
-                        // The kernel-attested peer of a unix-socket connection (SO_PEERCRED,
-                        // resolved to its account name); empty on TCP, where the kernel attests
-                        // nothing about the caller. A handler that does not declare it is not
-                        // handed it (the same as tailscale_identity).
-                        (Some("peer_user".to_string()), str_value(peer_user.clone())),
-                        // Captured once above and cloned per request: the value
-                        // is fixed for the process lifetime, so no request can
-                        // observe a different release than any other request.
-                        (
-                            Some("release_revision".to_string()),
-                            str_value(release_revision.clone()),
-                        ),
-                    ];
+                    let args = serve_handler_args(
+                        method,
+                        path,
+                        body,
+                        tailscale_identity,
+                        release_revision.clone(),
+                        if listener_attests_peer { Some(peer_user.clone()) } else { None },
+                    );
                     // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
                     // Before this existed the serve path armed nothing, so a route evaluation
                     // that did not return also prevented the `Err` arm below from ever running:
@@ -21626,6 +21662,39 @@ impl ServeListener {
             }
         }
     }
+}
+
+// THE HANDLER'S ARGUMENTS, NAMED. The tailscale identity is empty when the header was absent (the
+// `.dag` side refuses on empty rather than treating it as anonymous); the release revision is fixed
+// for the process lifetime. THE PEER IS AN ARGUMENT ONLY WHERE THE KERNEL ATTESTS ONE: a named
+// argument the handler does not declare is a call-contract refusal, not a dropped value, so handing
+// peer_user to a TCP handler (the roadmap's) refused every request with a 500 on srv1
+// (dashboard_deploy run 36584004074). Only the --unix-socket listener passes Some.
+fn serve_handler_args(
+    method: String,
+    path: String,
+    body: String,
+    tailscale_identity: String,
+    release_revision: String,
+    attested_peer: Option<String>,
+) -> Vec<(Option<String>, v1_interpreter::Value)> {
+    let mut args = vec![
+        (Some("method".to_string()), str_value(method)),
+        (Some("path".to_string()), str_value(path)),
+        (Some("body".to_string()), str_value(body)),
+        (
+            Some("tailscale_identity".to_string()),
+            str_value(tailscale_identity),
+        ),
+        (
+            Some("release_revision".to_string()),
+            str_value(release_revision),
+        ),
+    ];
+    if let Some(peer) = attested_peer {
+        args.push((Some("peer_user".to_string()), str_value(peer)));
+    }
+    args
 }
 
 fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String> {
@@ -33842,7 +33911,15 @@ fn collect_node_refs_inner(
                     .dotted_head_nodes
                     .insert(Rc::as_ptr(&head));
             }
-            chains.push(chain);
+            // ONLY THE MAXIMAL CHAIN IS A REFERENCE. On the receiver spine of a chain the
+            // enclosing field access already recorded whole, this node's chain is a strict
+            // prefix of that one: `a.b.c.d` also reaches here as `a.b.c` and `a.b`, and a prefix
+            // resolved by longest declared module names the PARENT module (`a.b`), which the
+            // source never referenced. Every consumer of `chains` resolves chains that way, so
+            // the prefix is withheld here, once, rather than filtered by each reader.
+            if !chain_receiver {
+                chains.push(chain);
+            }
             receiver_spine = true;
         }
     }
@@ -41063,8 +41140,8 @@ mod compile_clean_loader_closure_fork_regression {
     // `extend_with_bare_reference_closure`. The service-name → provider edge
     // (`gcp.STS` → dag/extdeps/cloud/gcp/sts.dag) and bare-name provider pulls
     // live ONLY in the bare closure, so an affected entry reaching a provider
-    // purely through a service call or bare name (dag/gunbc/auth/patterns.dag →
-    // `gcp.STS.Exchange`, zero imports) dropped that provider from the scoped
+    // purely through a service call or bare name (the zero-import
+    // fixture fixtures/bare_service_provider/consumer.dag; originally dag/gunbc/auth/patterns.dag) dropped that provider from the scoped
     // compile set and its names went unresolved. This surfaced non-locally when
     // #6937's import strip made patterns.dag affected. Fix = the gate loader runs
     // the same both-closure fixpoint as the witness loader.
@@ -41091,41 +41168,50 @@ mod compile_clean_loader_closure_fork_regression {
     #[ignore = "heavyweight (whole-tree index) + chdir-global; run explicitly"]
     fn scoped_gate_loader_pulls_bare_referenced_providers() {
         std::env::set_current_dir(workspace_root()).expect("chdir workspace root");
-        let roots = witness_layer_roots();
+        // A hermetic zero-import consumer whose only edge to its provider is a bare service call.
+        // The fixture root comes FIRST: `load_compile_clean_entry_sources` enumerates entries from
+        // `source_roots[0]` only, and the layer roots behind it supply `std`.
+        let mut roots = vec!["fixtures/bare_service_provider".to_string()];
+        roots.extend(witness_layer_roots());
         let mei = build_multi_entry_index_primary_precedence(&roots);
 
-        let patterns_rel = "dag/gunbc/auth/patterns.dag".to_string();
-        let filter: std::collections::HashSet<String> = [patterns_rel].into_iter().collect();
+        let consumer_rel = "fixtures/bare_service_provider/consumer.dag".to_string();
+        let filter: std::collections::HashSet<String> = [consumer_rel].into_iter().collect();
 
         // RED control: the OLD ref-only behavior, replicated inline. Resolve the
         // scoped entry + ONLY the module-path reference closure — no bare closure.
         // The service-only provider must be ABSENT and the closure must red.
-        let entry_source =
-            entry_source_from_index_or_disk(&mei.source_files, "dag/gunbc/auth/patterns.dag")
-                .expect("entry source");
+        let entry_source = entry_source_from_index_or_disk(
+            &mei.source_files,
+            "fixtures/bare_service_provider/consumer.dag",
+        )
+        .expect("entry source");
         let mut ref_only = resolve_transitively(
             vec![entry_source.clone()],
             &mei.source_files,
             &mei.module_graph_facts,
         )
         .expect("resolve");
-        if !ref_only.iter().any(|s| s.path.contains("patterns.dag")) {
+        if !ref_only
+            .iter()
+            .any(|s| s.path.contains("bare_service_provider/consumer.dag"))
+        {
             ref_only.push(entry_source);
         }
         let ref_only =
             extend_with_reference_closure(ref_only, &mei.source_files, &mei.module_graph_facts)
                 .expect("ref closure");
-        let sts_ref_only = ref_only
+        let provider_ref_only = ref_only
             .iter()
-            .any(|s| s.path.contains("cloud/gcp/sts.dag"));
+            .any(|s| s.path.contains("bare_service_provider/provider.dag"));
         let diags_ref_only = hard_diags(&ref_only);
         assert!(
-            !sts_ref_only,
-            "RED control broken: ref-only closure unexpectedly already contains sts.dag"
+            !provider_ref_only,
+            "RED control broken: ref-only closure unexpectedly already contains the provider"
         );
         assert!(
             !diags_ref_only.is_empty(),
-            "RED control broken: ref-only scoped closure of patterns.dag must produce unresolved-name \
+            "RED control broken: ref-only scoped closure of the zero-import consumer must produce unresolved-name \
              hard diagnostics (the fork this test guards). Got zero — the discriminating red is gone."
         );
 
@@ -41134,16 +41220,18 @@ mod compile_clean_loader_closure_fork_regression {
         // compile must be clean.
         let fixed = load_compile_clean_entry_sources(&roots, &mei, Some(&filter))
             .expect("fixed scoped load");
-        let sts_fixed = fixed.iter().any(|s| s.path.contains("cloud/gcp/sts.dag"));
+        let provider_fixed = fixed
+            .iter()
+            .any(|s| s.path.contains("bare_service_provider/provider.dag"));
         let diags_fixed = hard_diags(&fixed);
         assert!(
-            sts_fixed,
-            "fix regressed: the both-closure gate loader must pull the service provider sts.dag \
-             into patterns.dag's scoped closure"
+            provider_fixed,
+            "fix regressed: the both-closure gate loader must pull the service provider \
+             into the consumer's scoped closure"
         );
         assert!(
             diags_fixed.is_empty(),
-            "fix regressed: patterns.dag scoped compile must be clean under the both-closure loader, got: {diags_fixed:?}"
+            "fix regressed: the consumer's scoped compile must be clean under the both-closure loader, got: {diags_fixed:?}"
         );
     }
 }
@@ -41570,6 +41658,53 @@ mod annotation_erased_scan_projection {
             )
             .unwrap(),
             vec!["std.decl_ref.child".to_string()]
+        );
+    }
+
+    /// The over-pull at its producer: the walk records the chain `std.decl_ref.child.k` once,
+    /// never its receiver prefix `std.decl_ref`, so a consumer resolving every recorded chain
+    /// by longest declared prefix -- the reference-edge producer does, with no filter of its
+    /// own -- names only the child module. Red before the producer withheld receiver prefixes:
+    /// the edge set also held the parent `std.decl_ref`.
+    #[test]
+    fn the_reference_edge_producer_names_the_child_module_not_its_parent() {
+        let names = entry_resolve::ReferencePoolNames {
+            decl_index: Default::default(),
+            module_names: ["std.decl_ref", "std.decl_ref.child"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        };
+        let src = "module m\nfn g() -> Int { std.decl_ref.child.k }\n";
+        let entry_resolve::FileReferenceEdges::Edges(edges) =
+            entry_resolve::reference_edges_for_file("fixture/m.dag", Some(src), &names)
+        else {
+            panic!("an import-less parsed file has edges");
+        };
+        let targets: Vec<&str> = edges.iter().map(|e| e.target_module.as_str()).collect();
+        assert_eq!(targets, vec!["std.decl_ref.child"]);
+    }
+
+    #[test]
+    fn the_reference_walk_records_only_the_maximal_chain() {
+        let names = entry_resolve::ReferencePoolNames {
+            decl_index: Default::default(),
+            module_names: ["std.decl_ref", "std.decl_ref.child"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        };
+        let src = "module m\nfn g() -> Int { std.decl_ref.child.k }\n";
+        let refs =
+            entry_resolve::parsed_file_references("fixture/m.dag", src, "m", &names.module_names)
+                .unwrap_or_else(|e| panic!("fixture must parse: {e}"));
+        assert_eq!(
+            refs.chains,
+            vec![vec!["std", "decl_ref", "child", "k"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>()],
+            "only the maximal chain is recorded"
         );
     }
 
@@ -46447,6 +46582,44 @@ mod serve_unix_socket_door_tests {
         std::fs::write(&path, b"data").unwrap();
         assert!(serve_bind("127.0.0.1", 0, Some(&path)).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"data");
+    }
+
+    // A TCP handler is handed exactly the five arguments every existing handler declares -- never
+    // peer_user, whose presence refuses a handler that does not declare it (srv1 500, run 36584004074).
+    #[test]
+    fn a_tcp_handler_is_not_handed_peer_user() {
+        let names = |a: &Vec<(Option<String>, v1_interpreter::Value)>| -> Vec<String> {
+            a.iter()
+                .map(|(n, _)| n.clone().unwrap_or_default())
+                .collect()
+        };
+        let tcp = serve_handler_args(
+            "GET".into(),
+            "/x".into(),
+            String::new(),
+            String::new(),
+            "r".into(),
+            None,
+        );
+        assert_eq!(
+            names(&tcp),
+            vec![
+                "method",
+                "path",
+                "body",
+                "tailscale_identity",
+                "release_revision"
+            ]
+        );
+        let unix = serve_handler_args(
+            "GET".into(),
+            "/x".into(),
+            String::new(),
+            String::new(),
+            "r".into(),
+            Some("ghrunner".into()),
+        );
+        assert_eq!(names(&unix).last().map(|s| s.as_str()), Some("peer_user"));
     }
 
     // A TCP listener attests nothing: its peer is empty, which the fabric door refuses to admit.
