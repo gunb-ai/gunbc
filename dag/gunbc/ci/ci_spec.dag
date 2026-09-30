@@ -84,6 +84,7 @@ import std.nat { Nat }
 
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
 import gunbc.roadmap_dashboard_instance { srv1_dashboard_live_id }
+import gunbc.live_deploy.approval_broker_observe { approval_broker_observe_receipt_path }
 import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_dir_for,
   live_deploy_apply_receipt_artifact_path_for,
@@ -1155,6 +1156,14 @@ data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRun
   function: "approval_broker_dark_install_srv1_wet",
 }
 
+// THE APPROVAL BROKER'S READ-ONLY OBSERVATION follows the same convention: the wet fold on the
+// host-pinned runner, which already runs ON srv1, so reading the broker's unit, journal and slice
+// cgroup needs no operator shell on the host. It writes nothing there.
+data gunbc_ci_approval_broker_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/approval_broker_observe.dag",
+  function: "approval_broker_observe_srv1_wet",
+}
+
 // THE microVM SLOT CONTROLLER INSTALL follows the dark install's convention exactly: the wet fold
 // under ci_deploy_srv1_access, invoked on the host-pinned runner, never through apply_dispatch.
 data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1294,6 +1303,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_live_deploy_apply_srv1_target,
     gunbc_ci_live_deploy_transaction_target,
     gunbc_ci_approval_broker_dark_install_target,
+    gunbc_ci_approval_broker_observe_target,
     gunbc_ci_microvm_controller_install_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
@@ -1363,6 +1373,16 @@ fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
     function: gunbc_ci_approval_broker_dark_install_target.function,
     claim_run: false,
     receipt_rel: none
+  )
+}
+
+fn gunbc_ci_approval_broker_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_approval_broker_observe_target.entry,
+    function: gunbc_ci_approval_broker_observe_target.function,
+    claim_run: false,
+    receipt_rel: approval_broker_observe_receipt_path
   )
 }
 

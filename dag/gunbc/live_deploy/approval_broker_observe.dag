@@ -1,0 +1,251 @@
+module gunbc.live_deploy.approval_broker_observe
+
+import std.types { String, NonEmptyStr, List, Int, Bool }
+import std.algebra { trim }
+import std.measure { Second, second }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { any }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import extdeps.systemd { SystemdUnitProperty, ActiveState, SubState, MainPID, NRestarts, ActiveEnterTimestamp, ControlGroup, systemd_unit_property_wire }
+import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value }
+import extdeps.systemd.journalctl { journalctl_unit_tail_command }
+import extdeps.tools.gnu_coreutils { timeout_command }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryInterfaceFile, MemoryCurrentFile, MemoryPeakFile, MemoryHighFile, MemoryMaxFile, MemoryEventsFile, cgroup_memory_interface_file_name }
+import extdeps.linux.psi { psi_cgroup_memory_pressure_file }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessObserved, serve_liveness_read_reason }
+import gunbc.live_deploy.spec { DeploymentSpec, gunbc_approval_broker_unit_name, gunbc_approval_broker_slice_unit_name }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.readiness { live_deploy_liveness_get_local }
+
+// ── THE APPROVAL BROKER, READ WITHOUT A SHELL ON THE HOST ────────────────────────────────────────
+// On 2026-09-30 the broker sat reclaim-throttled at its 9 GiB MemoryHigh through boot
+// (memory.events high=506770, memory.pressure full ~85%), and the only way anyone saw it was one
+// operator-approved ssh read. That is a privileged interactive session standing in for a READ, which
+// DESIGN section 3b's authorization-pattern row sends the other way: a recurring read belongs on the
+// dispatched host-pinned job, which already runs on srv1 as the job user and needs no one's shell.
+//
+// IT WRITES NOTHING ON THE HOST. Every read below is `systemctl show`, `journalctl -n`, a cgroup
+// interface-file read, or one GET of /livez on loopback. The only write is the receipt under the
+// job's own workspace, which the CI step cats into the log.
+//
+// IT RETURNS READINGS, NOT A VERDICT (DESIGN section 3b, process observability: the owning domain
+// establishes the fact, std.observation represents its occurrence). Each read is a std.observation
+// Measured: the verbatim value, or MeasuredUnavailable naming the read that failed and why. One
+// unreadable file does not erase the others -- the incident this mode exists for was visible ONLY in
+// the cgroup files, and a journal read the job user may be refused must not hide them. What a
+// reading MEANS (is 506770 high events a problem?) is the reader's judgment, not this module's.
+//
+// THE /livez READ IS gunbc.live_deploy.readiness live_deploy_liveness_get_local, the same probe the
+// dark install's readback polls -- one reading of the endpoint, not a second client. It is read once:
+// this is an observation of now, not a wait for readiness.
+//
+// IT EXITS NONZERO ONLY WHEN NOTHING COULD BE READ AT ALL, or the receipt could not be written.
+// A broker that is down is a successful observation of a down broker; exiting red on it would make
+// the job's colour a second, lossy rendering of ActiveState.
+
+data approval_broker_observe_receipt_path: String = "target/approval-broker-observe-receipt.txt"
+
+// How many journal entries the receipt carries. Enough to cover one start's worth of the broker's
+// boot lines on srv1 (the 2026-09-30 boot logged well under this); bounded because the receipt is
+// catted into a job log.
+data approval_broker_observe_journal_lines: Int = 200
+
+data approval_broker_observe_read_timeout: Second = second(count: 15)
+data approval_broker_observe_read_kill_after: Second = second(count: 2)
+
+data approval_broker_observe_unit_properties: List<SystemdUnitProperty> = [ActiveState, SubState, MainPID, NRestarts, ActiveEnterTimestamp, ControlGroup]
+
+data approval_broker_observe_cgroup_memory_files: List<CgroupMemoryInterfaceFile> = [MemoryCurrentFile, MemoryPeakFile, MemoryHighFile, MemoryMaxFile, MemoryEventsFile]
+
+type ApprovalBrokerNamedReading { name: String, reading: Measured<String> }
+
+type ApprovalBrokerObservation {
+  unit: List<ApprovalBrokerNamedReading>
+  slice_control_group: Measured<String>
+  cgroup: List<ApprovalBrokerNamedReading>
+  livez: ServeLivenessRead
+  journal: Measured<String>
+}
+
+fn approval_broker_observe_command(command: ArgvCommand) -> Measured<String>
+  uses net: Network
+{
+  match run_shell_command_observe_outcome(
+    command: timeout_command(duration: approval_broker_observe_read_timeout, kill_after: approval_broker_observe_read_kill_after, command: command),
+    transport: LocalExec,
+  ) {
+    ProcessNotSpawned { program: p, cause: c } =>
+      MeasuredUnavailable { cause: join(["'", p as String, "' could not be spawned: ", c as String], "") as NonEmptyStr }
+    ProcessRan { observation: o } =>
+      if o.exit_code != 0 {
+        MeasuredUnavailable { cause: join(["exit ", to_string(o.exit_code), ": ", trim(s: o.stderr)], "") as NonEmptyStr }
+      } else {
+        MeasuredValue { value: o.stdout }
+      }
+  }
+}
+
+// One `systemctl show` line, by its wire key. A missing line is unavailable, never an empty value.
+fn approval_broker_unit_reading(shown: Measured<String>, property: SystemdUnitProperty) -> ApprovalBrokerNamedReading {
+  let key = systemd_unit_property_wire(property: property) as String
+  ApprovalBrokerNamedReading {
+    name: key,
+    reading: match shown {
+      MeasuredUnavailable { cause: c } => MeasuredUnavailable { cause: c }
+      MeasuredValue { value: text } => match systemctl_show_property_value(text: text, key: key) {
+        Present { value: v } => MeasuredValue { value: v }
+        Absent => MeasuredUnavailable { cause: join(["systemctl show printed no ", key, "= line"], "") as NonEmptyStr }
+      }
+    },
+  }
+}
+
+// The slice's cgroup directory, from the slice's OWN ControlGroup property rather than a spelled
+// path: systemd places a slice by its name's dash hierarchy, and the manager is the authority on
+// where it put it.
+fn approval_broker_slice_control_group(shown: Measured<String>) -> Measured<String> {
+  match approval_broker_unit_reading(shown: shown, property: ControlGroup).reading {
+    MeasuredUnavailable { cause: c } => MeasuredUnavailable { cause: c }
+    MeasuredValue { value: cg } =>
+      if trim(s: cg) == "" {
+        MeasuredUnavailable { cause: "the slice reports an empty ControlGroup: it is not realized (no member running)" as NonEmptyStr }
+      } else {
+        MeasuredValue { value: trim(s: cg) }
+      }
+  }
+}
+
+fn approval_broker_cgroup_file_reading(control_group: String, file: String) -> ApprovalBrokerNamedReading {
+  let path = join([cgroup_v2_mount_point as String, control_group, "/", file], "")
+  let read = Filesystem.Read(path: path)
+  ApprovalBrokerNamedReading {
+    name: file,
+    reading: if read.success {
+      MeasuredValue { value: read.content }
+    } else {
+      MeasuredUnavailable { cause: join(["reading ", path, ": ", read.error], "") as NonEmptyStr }
+    },
+  }
+}
+
+fn approval_broker_cgroup_file_names() -> List<String> {
+  concat(
+    map(approval_broker_observe_cgroup_memory_files, f => cgroup_memory_interface_file_name(f: f) as String),
+    [psi_cgroup_memory_pressure_file as String]
+  )
+}
+
+fn approval_broker_cgroup_readings(control_group: Measured<String>) -> List<ApprovalBrokerNamedReading> {
+  match control_group {
+    MeasuredUnavailable { cause: c } =>
+      map(approval_broker_cgroup_file_names(), f => ApprovalBrokerNamedReading { name: f, reading: MeasuredUnavailable { cause: c } })
+    MeasuredValue { value: cg } =>
+      map(approval_broker_cgroup_file_names(), f => approval_broker_cgroup_file_reading(control_group: cg, file: f))
+  }
+}
+
+fn approval_broker_observation(spec: DeploymentSpec) -> ApprovalBrokerObservation
+  uses net: Network
+{
+  let unit = approval_broker_observe_command(command: systemctl_show_properties_command(unit: gunbc_approval_broker_unit_name, properties: approval_broker_observe_unit_properties))
+  let slice = approval_broker_observe_command(command: systemctl_show_properties_command(unit: gunbc_approval_broker_slice_unit_name, properties: [ControlGroup]))
+  let control_group = approval_broker_slice_control_group(shown: slice)
+  ApprovalBrokerObservation {
+    unit: map(approval_broker_observe_unit_properties, p => approval_broker_unit_reading(shown: unit, property: p)),
+    slice_control_group: control_group,
+    cgroup: approval_broker_cgroup_readings(control_group: control_group),
+    livez: live_deploy_liveness_get_local(port: spec.approval_broker.listen.port, spec: spec),
+    journal: approval_broker_observe_command(command: journalctl_unit_tail_command(unit: gunbc_approval_broker_unit_name, lines: approval_broker_observe_journal_lines)),
+  }
+}
+
+fn approval_broker_measured_available(m: Measured<String>) -> Bool {
+  match m {
+    MeasuredValue { value: _ } => true
+    MeasuredUnavailable { cause: _ } => false
+  }
+}
+
+// Whether ANY reading was obtained. A refusal of every read is the one state in which the mode has
+// observed nothing, and it is the only one that exits red.
+fn approval_broker_observation_read_anything(o: ApprovalBrokerObservation) -> Bool {
+  any(o.unit, r => approval_broker_measured_available(m: r.reading))
+    || any(o.cgroup, r => approval_broker_measured_available(m: r.reading))
+    || approval_broker_measured_available(m: o.journal)
+    || match o.livez {
+      ServeLivenessObserved { revision: _ } => true
+      _ => false
+    }
+}
+
+// ── THE RENDERING: one `name value` line per reading, multi-line bodies indented under a header ──
+fn approval_broker_measured_text(m: Measured<String>) -> String {
+  match m {
+    MeasuredValue { value: v } => trim(s: v)
+    MeasuredUnavailable { cause: c } => join(["UNAVAILABLE (", c as String, ")"], "")
+  }
+}
+
+fn approval_broker_indent(text: String) -> String {
+  join(map(split(s: text, delimiter: "\n"), l => join(["  ", l, "\n"], "")), "")
+}
+
+fn approval_broker_named_reading_text(r: ApprovalBrokerNamedReading) -> String {
+  let text = approval_broker_measured_text(m: r.reading)
+  if string_contains(s: text, pattern: "\n") {
+    join([r.name, ":\n", approval_broker_indent(text: text)], "")
+  } else {
+    join([r.name, " ", text, "\n"], "")
+  }
+}
+
+fn approval_broker_livez_text(read: ServeLivenessRead) -> String {
+  match read {
+    ServeLivenessObserved { revision: r } => join(["livez revision=", r as String, "\n"], "")
+    _ => join(["livez UNAVAILABLE (", serve_liveness_read_reason(r: read) as String, ")\n"], "")
+  }
+}
+
+fn approval_broker_observation_text(o: ApprovalBrokerObservation, probed_at: String) -> String {
+  join([
+    "approval_broker_observe probed_at=", probed_at, " unit=", gunbc_approval_broker_unit_name as String, " slice=", gunbc_approval_broker_slice_unit_name as String, "\n",
+    "== unit ==\n",
+    join(map(o.unit, r => approval_broker_named_reading_text(r: r)), ""),
+    "== slice cgroup ==\n",
+    join(["control_group ", approval_broker_measured_text(m: o.slice_control_group), "\n"], ""),
+    join(map(o.cgroup, r => approval_broker_named_reading_text(r: r)), ""),
+    "== liveness ==\n",
+    approval_broker_livez_text(read: o.livez),
+    "== journal (last ", to_string(approval_broker_observe_journal_lines), " entries) ==\n",
+    approval_broker_indent(text: approval_broker_measured_text(m: o.journal)),
+  ], "")
+}
+
+fn approval_broker_observe_wet_with_spec(spec: DeploymentSpec) -> ProcessExit
+  uses net: Network
+{
+  let o = approval_broker_observation(spec: spec)
+  let body = approval_broker_observation_text(o: o, probed_at: clock_now_probed_at_or_unknown() as String)
+  let w = Filesystem.Write(path: approval_broker_observe_receipt_path, content: body)
+  if w.success == false {
+    exit_failure(reason: join(["approval_broker_observe: receipt write failed: ", w.error, "\n", body], ""))
+  } else if approval_broker_observation_read_anything(o: o) == false {
+    exit_failure(reason: join(["approval_broker_observe: every read was refused, so nothing about the broker was observed\n", body], ""))
+  } else {
+    ExitSuccess
+  }
+}
+
+fn approval_broker_observe_srv1_wet() -> ProcessExit
+  uses net: Network
+{
+  approval_broker_observe_wet_with_spec(spec: deployment_spec_srv1())
+}

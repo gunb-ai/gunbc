@@ -51,33 +51,37 @@ type CgroupMemoryMetricKind
 
 // The interface files this authority models, by their REAL names. Adding a file means adding a
 // variant, so the kind judgment stays exhaustive rather than defaulting.
+// THE VARIANTS CARRY A `File` SUFFIX because extdeps.systemd SystemdUnitProperty already names
+// MemoryCurrent, MemoryMax and MemoryHigh -- the manager's PROPERTIES over the same quantities, a
+// different interface -- and variant names resolve globally, so a closure reaching both refused.
+// The real file name is cgroup_memory_interface_file_name's answer, not the variant's spelling.
 type CgroupMemoryInterfaceFile
-  = MemoryCurrent
-  | MemoryPeak
-  | MemoryMax
-  | MemoryHigh
-  | MemorySwapCurrent
-  | MemoryEvents
+  = MemoryCurrentFile
+  | MemoryPeakFile
+  | MemoryMaxFile
+  | MemoryHighFile
+  | MemorySwapCurrentFile
+  | MemoryEventsFile
 
 fn cgroup_memory_interface_file_name(f: CgroupMemoryInterfaceFile) -> NonEmptyStr {
   match f {
-    MemoryCurrent => "memory.current"
-    MemoryPeak => "memory.peak"
-    MemoryMax => "memory.max"
-    MemoryHigh => "memory.high"
-    MemorySwapCurrent => "memory.swap.current"
-    MemoryEvents => "memory.events"
+    MemoryCurrentFile => "memory.current"
+    MemoryPeakFile => "memory.peak"
+    MemoryMaxFile => "memory.max"
+    MemoryHighFile => "memory.high"
+    MemorySwapCurrentFile => "memory.swap.current"
+    MemoryEventsFile => "memory.events"
   }
 }
 
 fn cgroup_memory_metric_kind(f: CgroupMemoryInterfaceFile) -> CgroupMemoryMetricKind {
   match f {
-    MemoryCurrent => Instantaneous
-    MemoryPeak => LifetimeEpochScoped
-    MemoryMax => Instantaneous
-    MemoryHigh => Instantaneous
-    MemorySwapCurrent => Instantaneous
-    MemoryEvents => CumulativeCounter
+    MemoryCurrentFile => Instantaneous
+    MemoryPeakFile => LifetimeEpochScoped
+    MemoryMaxFile => Instantaneous
+    MemoryHighFile => Instantaneous
+    MemorySwapCurrentFile => Instantaneous
+    MemoryEventsFile => CumulativeCounter
   }
 }
 

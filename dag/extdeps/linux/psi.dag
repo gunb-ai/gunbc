@@ -38,6 +38,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // The first kernel release that carries the interface, as psi.rst's version history states it.
 data psi_first_kernel_release: LinuxKernelRelease = "4.20" as LinuxKernelRelease
 
+// The per-cgroup memory pressure file, by its real name (psi.rst, "Cgroup2 interface"). Same
+// two-line format parse_psi reads.
+data psi_cgroup_memory_pressure_file: NonEmptyStr = "memory.pressure"
+
 // THE FILE IS TWO LINES, `some` AND `full`, each "avg10=A avg60=B avg300=C total=T". The averages
 // are the kernel's own exponentially-decayed ratios over windows the kernel chose; `total` is the
 // cumulative stall time in MICROSECONDS since boot (or cgroup creation). Only `total` is carried:
