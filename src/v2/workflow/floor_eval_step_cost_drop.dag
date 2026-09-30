@@ -237,10 +237,10 @@ data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalS
 ]
 
 // THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12533; `gunbc.rung_drop`
-// `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Nine identities, each running the real boot
+// `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Eleven identities, each running the real boot
 // entry end to end over the dry operation realization, which is the subject #12423 requires. The
-// matrix cases whose own subject stops before the boot's long loops -- the unit hold, the SOL acquire,
-// the share refusal, the interrupted attempt -- measure under the budget and are not
+// matrix cases whose own subject stops before the boot's long loops -- the unit hold and the SOL acquire
+// -- measure under the budget and are not
 // members.
 data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
@@ -278,6 +278,14 @@ data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasuremen
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_listing_that_names_the_image_twice_starts_nothing" as NonEmptyStr,
     measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions a_listing_that_names_the_image_twice_starts_nothing, over this branch merged with main after #12434 (tree at 66f58d5cb6b plus the #12434 route binding), 2026-09-29: PASS, eval_steps=77801 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.pinned_an_interrupted_attempt_locks_out_the_next_one" as NonEmptyStr,
+    measured_by: "PR required floor run 36648847499 of gunbc#12533 at bd99cbb4899, the COMPLETED-OVER-COST-REQUIREMENT line for this identity: verdict pass, eval_steps=74419 against the 72,300 new-witness budget, crossed once #12434's route was bound; the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.the_right_filename_on_the_wrong_share_refuses_before_any_power_action" as NonEmptyStr,
+    measured_by: "PR required floor run 36648847499 of gunbc#12533 at bd99cbb4899, the COMPLETED-OVER-COST-REQUIREMENT line for this identity: verdict pass, eval_steps=77423 against the 72,300 new-witness budget, crossed once #12434's route was bound; the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
 ]
 
