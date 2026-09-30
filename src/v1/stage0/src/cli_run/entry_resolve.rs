@@ -963,7 +963,25 @@ pub fn try_process_shared_index_for_pool(
         build_started.elapsed(),
     );
     PROCESS_RESOLVE_INDEX.with(|s| {
-        s.borrow_mut()[slot] = Some((roots_key, idx.clone()));
+        let mut slots = s.borrow_mut();
+        // AN EVICTION IS A REBUILD OWED LATER. The slot holds one index per precedence, so a
+        // caller with other roots displaces the resident one, and the next caller with the
+        // resident's roots builds it again -- every file re-parsed, typed caches lost. Reported
+        // with the demanding site so the second demand can be carried to its owner.
+        if let Some((evicted, old)) = slots[slot].as_ref() {
+            let site = std::panic::Location::caller();
+            eprintln!(
+                "[shared-index] evict slot={slot} evicted_generation={} evicted_roots={:?} \
+                 new_generation={} new_roots={:?} site={}:{}",
+                old.generation,
+                evicted.split('\u{1f}').collect::<Vec<_>>(),
+                idx.generation,
+                roots,
+                site.file(),
+                site.line()
+            );
+        }
+        slots[slot] = Some((roots_key, idx.clone()));
     });
     Ok(idx)
 }
