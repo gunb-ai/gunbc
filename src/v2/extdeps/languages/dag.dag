@@ -96,6 +96,7 @@ import v2.std.compilers.lexing {
 }
 import v2.std.node {
   symbol_lexeme,
+  symbol_type_node,
   Arrow,
   Atom,
   Bind,
@@ -1176,20 +1177,45 @@ fn dag_grammar_let_expr() -> GrammarExpr {
   )
 }
 
+// THE ORDER IS THE MEANING HERE, SO IT IS ARGUED RATHER THAN LEFT TO READ AS ARBITRARY.
+//
+// `Choice` is ordered and the first alternative that succeeds is taken, so an alternative placed
+// above a longer one that shares its prefix denies the longer one. `binary_expr` descends to
+// `dag_grammar_primary_expr_core`, whose final alternatives are `match_expr`, `if_expr` and
+// `loop_expr` -- a block-shaped expression is therefore ALREADY a legal binary operand by
+// construction. While those three stood above `binary_expr`, `match a { ... } && b` committed to
+// `match_expr`, which succeeded having consumed the match alone and left `&& b` reaching no
+// production: the parse ended with tokens remaining. Nothing was unrepresentable; the alternative
+// that represents it was never offered.
+//
+// `fn_literal`, `block_expr` and `arrow_lambda` stay ABOVE `binary_expr`, where they already were.
+// That is not incidental: `primary_expr_core` admits a braced field-initializer list, so a
+// `block_expr` offered after `binary_expr` could be taken as a record literal instead. Their first
+// tokens are disjoint from `match`/`if`/`loop`, so moving those three below changes nothing
+// between them.
+//
+// WHAT IS NOT ESTABLISHED: whether the trailing `match_expr`/`if_expr`/`loop_expr` alternatives are
+// now unreachable, which they are exactly if `binary_expr` never fails where they would succeed.
+// That argument is not made here, so they are retained rather than deleted; establishing it is
+// what would license removing them.
+//
+// Evidence: `v2.test.parse.block_expr_as_binary_operand_parse` -- two arms red before this reorder
+// (a `match` and an `if` heading a binary chain), three controls green on both sides (each block
+// form standing alone, and an operand that was never block-shaped).
 fn dag_grammar_expr_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_match_expr),
+    left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
     right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
+      left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
       right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_loop_expr),
+        left: dag_grammar_nonterminal(production: ^dag_production_arrow_lambda),
         right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
+          left: dag_grammar_nonterminal(production: ^dag_production_binary_expr),
           right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
+            left: dag_grammar_nonterminal(production: ^dag_production_match_expr),
             right: dag_grammar_choice(
-              left: dag_grammar_nonterminal(production: ^dag_production_arrow_lambda),
-              right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
+              left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
+              right: dag_grammar_nonterminal(production: ^dag_production_loop_expr)
             )
           )
         )
@@ -3012,6 +3038,7 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
       ^dag_binding_pick_lit_two,
       ^dag_binding_type_bool,
       ^bool_node_symbol,
+      ^symbol_node_symbol,
       ^dag_loop_measure_sym
     ]
   )
@@ -3668,6 +3695,8 @@ fn dag_kernel_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
     optional_present(value: dag_int_type_binding())
   } else if symbol_lexeme(sym: sym) == "Bool" {
     optional_present(value: ^bool_node_symbol)
+  } else if symbol_lexeme(sym: sym) == "Symbol" {
+    optional_present(value: ^symbol_node_symbol)
   } else {
     optional_absent()
   }
@@ -3687,6 +3716,8 @@ fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional
   } else if path == qualified_name_from_dotted_string(dotted: "v2.std.logic.Bool")
     || path == qualified_name_from_dotted_string(dotted: "std.types.Bool") {
     optional_present(value: ^bool_node_symbol)
+  } else if path == qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol") {
+    optional_present(value: ^symbol_node_symbol)
   } else {
     optional_absent()
   }
@@ -3695,10 +3726,10 @@ fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional
 // THE BINDING→DENOTATION JOIN, declared once at the language authority. The resolver binds the
 // surface spelling "Int" to the canonical binding symbol (dag_binding_spellings); what that
 // binding DENOTES is the value type its std authority owns: v2.std.integer integer_int_type_node
-// for Int, v2.std.logic bool_node for Bool. A row points at the authority and never mints a node
-// of its own. Until 2026-09-26 the Int row returned dag_int_inhabitant_node -- the roster's
-// RECORD about Int, not the Int type -- while every value-type consumer used the atom; that fork
-// is what this join now closes (docs/plans/arrow-elimination-model.md). Every
+// for Int, v2.std.logic bool_node for Bool, v2.std.node symbol_type_node for Symbol. A row points
+// at the authority and never mints a node of its own. Until 2026-09-26 the Int row returned
+// dag_int_inhabitant_node -- the roster's RECORD about Int, not the Int type -- while every
+// value-type consumer used the atom; that fork is what this join now closes (docs/plans/arrow-elimination-model.md). Every
 // hand-rolled fixture facts lookup re-authors this join (dag_add_canonical_grounding_for,
 // record_construct_canonical_grounding_for); the authority declares it once and infer consumes it
 // (v2.compiler.infer infer_node_facts). Specimen-scope interim in the same frame as
@@ -3710,6 +3741,8 @@ fn dag_binding_denotation(sym: Symbol) -> Optional<Node> {
     optional_present(value: integer_int_type_node())
   } else if sym == ^dag_binding_type_bool {
     optional_present(value: bool_node())
+  } else if sym == ^symbol_node_symbol {
+    optional_present(value: symbol_type_node())
   } else {
     optional_absent()
   }
@@ -4255,6 +4288,7 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
 type DagCanonicalLiteral
   = DagCanonicalBoolLiteral { value: Bool }
   | DagCanonicalIntLiteral { magnitude: Int }
+  | DagCanonicalSymbolLiteral { symbol: Symbol }
 
 fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
@@ -4268,25 +4302,35 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
 // It preserves the Bool-vs-Int distinction and the decoded integer magnitude in a coproduct instead
 // of publishing sibling is_* predicates over Node storage. Bool literals admit exactly the
 // childless true/false atoms. Int literals admit exactly one named, decodable magnitude child.
+// Symbol literals admit exactly the caret atom with one named name payload (dag_symbol_literal_node)
+// whose terminal carries an identity; the symbol is that identity.
 // Every other shape is a typed refusal.
 
 fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
-  if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
-    outcome_accepted(value: DagCanonicalBoolLiteral { value: true })
-  } else if dag_node_is_kw_false_atom(node: node) && (length(xs: node.children) == 0) {
-    outcome_accepted(value: DagCanonicalBoolLiteral { value: false })
-  } else if dag_node_is_int_literal_atom(node: node) && (length(xs: node.children) == 1) {
-    match dag_int_literal_magnitude_int_from_node(node: node) {
-      Accepted { value: magnitude, diagnostics: d } =>
-        Accepted {
-          value: DagCanonicalIntLiteral { magnitude: magnitude },
-          diagnostics: d
+  match dag_symbol_literal_name_optional(node: node) {
+    Present { value: name } =>
+      match node_atom_identity_optional(node: name) {
+        Present { value: symbol } => outcome_accepted(value: DagCanonicalSymbolLiteral { symbol: symbol })
+        Absent => outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
+      }
+    Absent =>
+      if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
+        outcome_accepted(value: DagCanonicalBoolLiteral { value: true })
+      } else if dag_node_is_kw_false_atom(node: node) && (length(xs: node.children) == 0) {
+        outcome_accepted(value: DagCanonicalBoolLiteral { value: false })
+      } else if dag_node_is_int_literal_atom(node: node) && (length(xs: node.children) == 1) {
+        match dag_int_literal_magnitude_int_from_node(node: node) {
+          Accepted { value: magnitude, diagnostics: d } =>
+            Accepted {
+              value: DagCanonicalIntLiteral { magnitude: magnitude },
+              diagnostics: d
+            }
+          Rejected { diagnostics: _ } =>
+            outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
         }
-      Rejected { diagnostics: _ } =>
+      } else {
         outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
-    }
-  } else {
-    outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
+      }
   }
 }
 
