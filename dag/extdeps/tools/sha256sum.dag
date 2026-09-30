@@ -12,6 +12,7 @@ import extdeps.crypto.hash { Digest, sha256_digest, sha256sum_program }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
+import std.algebra { trim }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

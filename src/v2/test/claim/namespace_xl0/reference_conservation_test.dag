@@ -447,13 +447,17 @@ test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -
 
 // ---- roles are observed whatever normalization does (review 5330814496) -----------------------
 
-// A module that parses and whose normalization refuses (an else-less `if` statement). Every
+// A module that parses and whose normalization refuses BY DESIGN: it holds a service with a transport
+// member, which every route except census grade refuses as
+// body_lowering_reason_service_realization_unreachable (gunbc.recurring_failure_mode
+// service_interface_member_has_no_carrier). An else-less `if` guard was the refusal here until
+// #12713 lowered early-return guards, which made this control lose its subject. Every
 // name-bearing production of the `.dag` grammar is now read, so a live gap no longer exists to observe;
 // the gap is PLANTED AT THE INTERFACE instead: the role table is the real one with its param_list row
 // supplied as NameRoleNotYetRead, and the module's one fn has one parameter list, so an observed role
 // pass counts exactly one not-yet-read node. Before the repair the refusal arm never ran the role
 // producer and reported zero, a gap nobody had observed.
-data normalization_refused_source: String = "module v2.test.reference_conservation_refused\n\nfn rc_guard(c: Bool, n: Int) -> Int {\n  if c { return n }\n  n\n}\n"
+data normalization_refused_source: String = "module v2.test.reference_conservation_refused\n\nservice rc.Svc {\n  operation RcOp {\n    transport shell { argv: [] }\n  }\n}\n\nfn rc_plain(n: Int) -> Int { n }\n"
 
 fn planted_param_list_unread_admission() -> NameProductionTableAdmission {
   name_production_table_admission(
