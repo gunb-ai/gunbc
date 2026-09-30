@@ -1,0 +1,40 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 25 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.translate done in 3 seconds
+✓ typecheck gunbc.spark.pair_serving_authority_log done in 2 seconds
+✓ typecheck gunbc.fleet_converge_plan done in 2 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 3 seconds
+✓ typecheck gunbc.roadmap_component done in 2 seconds
+✓ typecheck gunbc.roadmap_page done in 2 seconds
+✓ typecheck gunbc.live_deploy.emit done in 3 seconds
+✓ typecheck gunbc.host_effect_realize done in 21 seconds
+✓ typecheck gunbc.live_deploy.apply done in 3 seconds
+✓ typecheck gunbc.ci_spec done in 2 seconds
+✓ typecheck gunbc.fleet_converge_workflow done in 2 seconds
+✓ typecheck test.claim.fleet_converge_plan_witness done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=13 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=113 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=11023 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=2 scale=tree
+[pre-entry] phase=pool_census_parse ms=3720 scale=tree
+[pre-entry] phase=closure_name_census_build ms=4531 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=74 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=112 scale=closure
+[pre-entry] phase=closure_load ms=6047 scale=closure
+[pre-entry] phase=closure_parse ms=21811 scale=closure
+[pre-entry] phase=closure_resolve ms=717 scale=closure
+[pre-entry] phase=closure_normalize ms=2281 scale=closure
+[pre-entry] phase=closure_typecheck ms=224911 scale=closure
+[pre-entry] phase=closure_parent_envs ms=25 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=408 scale=closure
+[pre-entry] phase=closure_ownership ms=0 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=351955 scale=closure
+[pre-entry] population pool_modules=1907 closure_files=refused
+[pre-entry] process_cpu user_ms=344922 sys_ms=5720 max_rss_kib=11445956
+error: resolve failed for target/fleet-generation-integration/test.claim.fleet_converge_plan_witness.dag
+  cause: target/fleet-generation-integration/gunbc.host_standup_assimilation_deduction.dag:19:15: error: unresolved type 'KvmObservedScreen'
+<synthetic>: error: effect summary incomplete: gunbc.host_standup.host_standup_step_is_effective_gap calls gunbc.host_standup_assimilation_deduction.srv3_pre_install_actuation_verdict, whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does
+<synthetic>: error: effect summary incomplete: gunbc.host_standup.host_standup_step_is_effective_gap_at_actuation_verdict calls gunbc.host_standup_assimilation_deduction.deduce_os_install_actuated_satisfied, whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does
+<synthetic>: error: effect summary incomplete: gunbc.host_standup.host_standup_gap_count calls gunbc.host_standup_assimilation_deduction.srv3_pre_install_actuation_verdict, whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does
+<synthetic>: error: effect summary incomplete: gunbc.host_phase_status.observe_host_phase calls gunbc.host_standup_assimilation_deduction.srv3_post_install_actuation_verdict, whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does

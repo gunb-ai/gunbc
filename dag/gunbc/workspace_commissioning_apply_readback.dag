@@ -3,6 +3,13 @@ module gunbc.workspace_commissioning_apply_readback
 import std.types { Bool, String, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import std.durable_compare_and_set { CasGeneration }
+import gunbc.workspace_commissioning_executor_journal {
+  WorkspaceExecutorRecord, WorkspaceExecutorPhase, ExecutorReadbackAccepted, ExecutorReleaseObserved,
+}
+import gunbc.workspace_commissioning_executor_store {
+  workspace_executor_journal_observe, WorkspaceExecutorJournalObserved,
+  workspace_executor_journal_publish, WorkspaceExecutorJournalPublished,
+}
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent }
 import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead }
 import gunbc.runner_microvm_slot_unit { workspace_launch_credential_source_path }
@@ -155,6 +162,35 @@ fn workspace_commissioning_credential_remove(provenance: WorkspaceCommissioningP
   }
 }
 
+// Only the effect-owning finalizer may publish these obligations. The sealed readback joins
+// the actual successful invocation to its protected executor record; the store then enforces
+// adjacent CAS transitions. Failure retains the outstanding obligation for recovery.
+fn workspace_commissioning_executor_settlement(readback: WorkspaceCommissioningApplyReadback,
+  acquired: CasGeneration, phase: WorkspaceExecutorPhase) -> Bool
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_apply_finish"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_apply_recover_completed"),
+  ]
+{
+  if phase != ExecutorReadbackAccepted && phase != ExecutorReleaseObserved { false } else {
+    match workspace_executor_journal_observe(slot_key: runner_slot_instance_name(slot: readback.provenance.slot)) {
+      WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+        Present { value: record } => if record.subject.plan_hash != readback.provenance.plan_hash
+          || record.subject.mutation_generation != acquired || record.invocation != (readback.invocation as String) { false }
+          else { match workspace_executor_journal_publish(snapshot: snapshot, record: WorkspaceExecutorRecord {
+            subject: record.subject, submitter: record.submitter, previous_invocation: record.previous_invocation,
+            invocation: record.invocation, phase: phase,
+          }) {
+            WorkspaceExecutorJournalPublished { snapshot: _ } => true
+            _ => false
+          } }
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
+
 fn workspace_commissioning_apply_finish(readback: WorkspaceCommissioningApplyReadback,
   lease: WorkspaceSlotMutationLease, release_dir: NonEmptyStr, login: NonEmptyStr,
   network: SlotNetworkSanitationSubject) -> WorkspaceCommissioningApplyFinish {
@@ -171,8 +207,14 @@ fn workspace_commissioning_apply_finish(readback: WorkspaceCommissioningApplyRea
         WorkspaceCommissioningApplyFinishRefused { reason: "canonical commissioning credential could not be removed and read back absent; exclusion retained" }
       } else if !workspace_slot_mutation_still_owned(held: held) {
         WorkspaceCommissioningApplyFinishRefused { reason: "commissioning exclusion changed during credential removal" }
+      } else if !workspace_commissioning_executor_settlement(readback: fresh, acquired: held.generation,
+        phase: ExecutorReadbackAccepted) {
+        WorkspaceCommissioningApplyFinishRefused { reason: "accepted readback could not be durably recorded; exclusion retained" }
       } else if !workspace_slot_mutation_release_fenced(lease: lease) {
         WorkspaceCommissioningApplyFinishRefused { reason: "commissioning exclusion release is unsettled; recover before reporting FullyApplied" }
+      } else if !workspace_commissioning_executor_settlement(readback: fresh, acquired: held.generation,
+        phase: ExecutorReleaseObserved) {
+        WorkspaceCommissioningApplyFinishRefused { reason: "release occurred but executor settlement is outstanding; recover before reporting FullyApplied" }
       } else { WorkspaceCommissioningApplyFinished { completed: WorkspaceCommissioningApplyCompleted {
         provenance: provenance, invocation: fresh.invocation,
       } } }
@@ -200,9 +242,12 @@ fn workspace_commissioning_apply_recover_completed(provenance: WorkspaceCommissi
           WorkspaceCommissioningApplyFinishRefused { reason: "released commissioning still has a credential or unreadable credential path" }
         } else { match workspace_commissioning_mutation_recover(slot_key: slot_key,
           plan_hash: provenance.plan_hash, acquired: acquired) {
-          WorkspaceCommissioningMutationReleased => WorkspaceCommissioningApplyFinished {
-            completed: WorkspaceCommissioningApplyCompleted { provenance: provenance, invocation: readback.invocation },
-          }
+          WorkspaceCommissioningMutationReleased => if workspace_commissioning_executor_settlement(
+            readback: readback, acquired: acquired, phase: ExecutorReleaseObserved) {
+            WorkspaceCommissioningApplyFinished {
+              completed: WorkspaceCommissioningApplyCompleted { provenance: provenance, invocation: readback.invocation },
+            }
+          } else { WorkspaceCommissioningApplyFinishRefused { reason: "released mutation has no matching durable accepted-readback obligation" } }
           _ => WorkspaceCommissioningApplyFinishRefused { reason: "commissioning mutation changed during completed-release recovery" }
         } }
         _ => WorkspaceCommissioningApplyFinishRefused { reason: "recorded commissioning exclusion is absent, changed or unreadable; no recovery authority established" }

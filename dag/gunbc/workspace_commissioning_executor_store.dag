@@ -1,6 +1,7 @@
 module gunbc.workspace_commissioning_executor_store
 
 import std.types { NonEmptyStr, String }
+import std.decl_ref { decl_ref }
 import std.durable_compare_and_set {
   CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasObservedReadable, CasReadableAbsent, CasReadablePresent,
@@ -70,7 +71,12 @@ fn workspace_executor_journal_observe(slot_key: NonEmptyStr) -> WorkspaceExecuto
 // The production adapter must supply the actual start/readback/release/generation evidence.
 // This function does not mint a start or supply permit, remove credentials, or free a guard.
 fn workspace_executor_journal_publish(snapshot: WorkspaceExecutorJournalSnapshot,
-  record: WorkspaceExecutorRecord) -> WorkspaceExecutorJournalPublication {
+  record: WorkspaceExecutorRecord) -> WorkspaceExecutorJournalPublication
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_commissioning_executor_fence", decl_name: "workspace_executor_claim_controller"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_executor_settlement"),
+  ]
+{
   let admitted = record.subject.slot == snapshot.slot_key && workspace_executor_record_coherent(record: record)
     && (match snapshot.record {
       Absent => record.phase == ExecutorSubmissionRecorded

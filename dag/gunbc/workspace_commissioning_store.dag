@@ -4,7 +4,9 @@ import gunbc.workspace_commissioning { WorkspaceCommissionedSlot, WorkspaceCommi
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import std.decl_ref { decl_ref }
 import gunbc.workspace_slot_mutation { workspace_slot_mutation_supply_open }
-import std.types { String, NonEmptyStr }
+import gunbc.workspace_commissioning_executor_store { workspace_executor_journal_observe, WorkspaceExecutorJournalObserved }
+import gunbc.workspace_commissioning_executor_journal { ExecutorGenerationCommitted }
+import std.types { String, NonEmptyStr, Bool }
 import std.measure { byte_size_count, hardware_thread_count_value }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int, json_bool, serialize_json }
 import gunbc.build_cache_instance { runner_slot_instance_name }
@@ -163,6 +165,8 @@ type WorkspaceCommissioningSupplyReadback
 fn workspace_commissioning_store_admit_supply(snapshot: WorkspaceCommissioningStoreSnapshot) -> WorkspaceCommissioningSupplyReadback {
   if !workspace_slot_mutation_supply_open(slot_key: runner_slot_instance_name(slot: snapshot.provenance.slot)) {
     WorkspaceCommissioningSupplyRefused { reason: "enclosing slot mutation is outstanding; committed controller provenance is not yet supply" }
+  } else if !workspace_commissioning_executor_complete(provenance: snapshot.provenance) {
+    WorkspaceCommissioningSupplyRefused { reason: "enclosing executor has not committed its fleet generation; a released guard alone is not supply" }
   } else {
   match workspace_commissioning_store_observe(root: snapshot.root, provenance: snapshot.provenance) {
     WorkspaceCommissioningStoreObserved { snapshot: current } =>
@@ -173,6 +177,19 @@ fn workspace_commissioning_store_admit_supply(snapshot: WorkspaceCommissioningSt
   }
 }
 
+}
+
+// The mutation guard is released before fleet publication. Do not expose generation-zero
+// readiness during that gap: the protected executor must have settled the SAME plan first.
+fn workspace_commissioning_executor_complete(provenance: WorkspaceCommissioningProvenance) -> Bool {
+  match workspace_executor_journal_observe(slot_key: runner_slot_instance_name(slot: provenance.slot)) {
+    WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+      Present { value: record } => record.phase == ExecutorGenerationCommitted
+        && record.subject.plan_hash == provenance.plan_hash
+      _ => false
+    }
+    _ => false
+  }
 }
 
 fn workspace_commissioning_current_supply(snapshot: WorkspaceCommissioningStoreSnapshot) -> WorkspaceCommissioningSupplyReadback
