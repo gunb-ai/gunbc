@@ -670,14 +670,14 @@ thread_local! {
     // would answer whichever mode ran first. Each slot keeps the original single-entry,
     // rebuild-on-roots-change shape, so an index is never held for a pool nobody is asking about.
     #[allow(clippy::type_complexity)]
-    pub(crate) static PROCESS_RESOLVE_INDEX: RefCell<[Option<(String, Rc<MultiEntryIndex>)>; 2]> =
-        const { RefCell::new([None, None]) };
-
-    /// Every roots key each slot has built on this thread. A run's roots are fixed (above), so a
-    /// key built a second time is an evicted index being rebuilt: the same pool indexed twice.
-    #[allow(clippy::type_complexity)]
-    static PROCESS_RESOLVE_INDEX_BUILT: RefCell<[BTreeSet<String>; 2]> =
-        const { RefCell::new([BTreeSet::new(), BTreeSet::new()]) };
+    //
+    // ONE INDEX PER ROOTS KEY WITHIN A SLOT, never one index per slot. A process may legitimately
+    // demand several pools on one thread (the regen round indexes [src/v1, dag] and [dag, src/v2]);
+    // a single entry per slot made each such demand evict the other, and the next demand for the
+    // evicted roots rebuilt it from scratch -- every file re-parsed, typed caches lost, the evicted
+    // index often still held. Distinct roots are distinct demands and are kept side by side.
+    pub(crate) static PROCESS_RESOLVE_INDEX: RefCell<[BTreeMap<String, Rc<MultiEntryIndex>>; 2]> =
+        const { RefCell::new([BTreeMap::new(), BTreeMap::new()]) };
 
     // While loading the materialization-provider authority, cross-process disk hits
     // must not re-enter provider routing (review 44268: bootstrap recursion).
@@ -877,7 +877,7 @@ pub(crate) fn on_live_pool_thread<T: Send + 'static>(
 fn release_per_entry_graphs_on_live_pool_thread() {
     PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
     PROCESS_RESOLVE_INDEX.with(|slots| {
-        for (_, index) in slots.borrow().iter().flatten() {
+        for index in slots.borrow().iter().flat_map(|slot| slot.values()) {
             clear_resolved_graph_memo_for_test(index);
         }
     });
@@ -890,11 +890,7 @@ pub(crate) fn memoized_process_shared_index(
     source_roots: &[String],
 ) -> Option<Rc<MultiEntryIndex>> {
     let roots_key = canonical_shared_index_roots(source_roots).join("\u{1f}");
-    PROCESS_RESOLVE_INDEX.with(|s| {
-        s.borrow()[0]
-            .as_ref()
-            .and_then(|(k, idx)| (*k == roots_key).then(|| idx.clone()))
-    })
+    PROCESS_RESOLVE_INDEX.with(|s| s.borrow()[0].get(&roots_key).cloned())
 }
 
 /// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
@@ -937,37 +933,9 @@ pub fn try_process_shared_index_for_pool(
     let slot = usize::from(primary_precedence);
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
-    let existing = PROCESS_RESOLVE_INDEX.with(|s| {
-        s.borrow()[slot].as_ref().and_then(|(k, idx)| {
-            if *k == roots_key {
-                Some(idx.clone())
-            } else {
-                None
-            }
-        })
-    });
+    let existing = PROCESS_RESOLVE_INDEX.with(|s| s.borrow()[slot].get(&roots_key).cloned());
     if let Some(idx) = existing {
         return Ok(idx);
-    }
-    // A REBUILD IS REFUSED WHERE IT HAPPENS, not counted at the end of a run it can prevent from
-    // ending: an evicted pool rebuilt re-parses every file and, while the evicted index is still
-    // held, doubles resident memory -- the shape that grew a floor past 40 GiB inside
-    // prepare-closure-resolve before any later control could look.
-    if PROCESS_RESOLVE_INDEX_BUILT.with(|b| b.borrow()[slot].contains(&roots_key)) {
-        let site = std::panic::Location::caller();
-        let resident = PROCESS_RESOLVE_INDEX.with(|s| {
-            s.borrow()[slot]
-                .as_ref()
-                .map(|(k, _)| k.split('\u{1f}').map(str::to_string).collect::<Vec<_>>())
-        });
-        return Err(format!(
-            "SharedIndexRebuiltAfterEviction: roots {roots:?} (slot {slot}) were already indexed \
-             on this thread and evicted by roots {resident:?}; rebuilding them would parse the same \
-             pool twice. Demanded at {}:{} -- carry an index from its owner instead of alternating \
-             roots through the shared slot",
-            site.file(),
-            site.line()
-        ));
     }
     #[cfg(test)]
     yield_live_pool_before_building_another();
@@ -989,28 +957,7 @@ pub fn try_process_shared_index_for_pool(
         build_started.elapsed(),
     );
     PROCESS_RESOLVE_INDEX.with(|s| {
-        let mut slots = s.borrow_mut();
-        // AN EVICTION IS A REBUILD OWED LATER. The slot holds one index per precedence, so a
-        // caller with other roots displaces the resident one, and the next caller with the
-        // resident's roots builds it again -- every file re-parsed, typed caches lost. Reported
-        // with the demanding site so the second demand can be carried to its owner.
-        if let Some((evicted, old)) = slots[slot].as_ref() {
-            let site = std::panic::Location::caller();
-            eprintln!(
-                "[shared-index] evict slot={slot} evicted_generation={} evicted_roots={:?} \
-                 new_generation={} new_roots={:?} site={}:{}",
-                old.generation,
-                evicted.split('\u{1f}').collect::<Vec<_>>(),
-                idx.generation,
-                roots,
-                site.file(),
-                site.line()
-            );
-        }
-        slots[slot] = Some((roots_key.clone(), idx.clone()));
-    });
-    PROCESS_RESOLVE_INDEX_BUILT.with(|b| {
-        b.borrow_mut()[slot].insert(roots_key);
+        s.borrow_mut()[slot].insert(roots_key, idx.clone());
     });
     Ok(idx)
 }
@@ -1027,15 +974,22 @@ pub(crate) fn process_resolve_census() -> String {
     let slots = PROCESS_RESOLVE_INDEX.with(|s| {
         s.borrow()
             .iter()
-            .map(|slot| match slot {
-                Some((_, idx)) => format!(
-                    "gen{}:parse={}:typed={}:graphs={}",
-                    idx.generation,
-                    idx.parse_cache.borrow().len(),
-                    idx.typed_module_cache.borrow().len(),
-                    idx.resolved_graph_memo.borrow().len()
-                ),
-                None => "empty".to_string(),
+            .map(|slot| {
+                if slot.is_empty() {
+                    return "empty".to_string();
+                }
+                slot.values()
+                    .map(|idx| {
+                        format!(
+                            "gen{}:parse={}:typed={}:graphs={}",
+                            idx.generation,
+                            idx.parse_cache.borrow().len(),
+                            idx.typed_module_cache.borrow().len(),
+                            idx.resolved_graph_memo.borrow().len()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("|")
             })
             .collect::<Vec<_>>()
             .join(",")
