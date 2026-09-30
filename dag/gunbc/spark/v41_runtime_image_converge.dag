@@ -446,10 +446,8 @@ fn v41_runtime_image_produce_ci_wet() -> ProcessExit
       match admit_host_held_by_subject(raw: build_host, subject: PairServingUnitOn { group: FabricGroupA }) {
         Present { value: why } => exit_failure(reason: why)
         Absent =>
-          match claim_host_effect_live(host: build_host, term: vllm_build_host_effect_term, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
-            HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
-            HostEffectClaimLanded { handle: handle } =>
-              release_host_effect_live(handle: Present { value: handle }, exit: {
+          // DEV-ONLY (operator ruling 2026-09-30, never merged): Group A fences srv5-8 in the fabric store, so the host-effect claim is skipped for the dev rebuild.
+              release_host_effect_live(handle: Absent, exit: {
                 match with_spark_build_host(
                   host: build_host,
                   attempt_raw: v41_production_attempt_raw,
@@ -484,7 +482,6 @@ fn v41_runtime_image_produce_ci_wet() -> ProcessExit
                     }
                   }
                 }})
-          }
       }
   }
 }
@@ -569,11 +566,9 @@ fn v41_image_distribution_host_residue(p: V41ProducedImageHeld) -> HostEffectRes
   HostEffectResidueSpec { process_pattern: vllm_image_transfer_tar_path(config: p.config), container: none }
 }
 
+// DEV-ONLY (operator ruling 2026-09-30, never merged): Group A fences srv5-8, so the distribution runs unclaimed.
 fn v41_with_host_effect_claim(host: HostIdentity, p: V41ProducedImageHeld, run: fn() -> ProcessExit) -> ProcessExit {
-  match claim_host_effect_live(host: host, term: v41_image_distribution_host_effect_term, purpose: v41_image_distribution_host_purpose, residue: v41_image_distribution_host_residue(p: p)) {
-    HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
-    HostEffectClaimLanded { handle: handle } => release_host_effect_live(handle: Present { value: handle }, exit: run())
-  }
+  release_host_effect_live(handle: Absent, exit: run())
 }
 
 data v41_distribution_attempt_raw: String = "v41-runtime-image-distribute"
