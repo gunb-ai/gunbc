@@ -2,7 +2,7 @@ module v2.test.claim.dnm.infer_gather_differential
 
 import v2.compiler.infer { infer }
 import v2.test.claim.dnm.infer_old_gather { infer_old }
-import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NonEmptyDiagnostics, None, Rejected, Some, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NonEmptyDiagnostics, None, Rejected, Some, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol, node_subtree_nodes }
@@ -18,6 +18,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // one answer per aspect, so the floor says WHICH of verdict / diagnostics / per-node facts differs.
 type DnmSplit { verdict: Bool, diagnostics: Bool, facts: Bool, root: Bool, assembled: Bool, new_key_conflict: Bool }
 
+// THE ONE STATED EXCEPTION (ruled by quiet-gull-780): two refusals agree when their chains are equal, or
+// when both stop at infer_facts_key_conflict naming the SAME key and locus -- the threaded gather refuses at
+// the first conflicting insert, the list gather at map build, so the chain before the fatal may be shorter.
+fn dnm_refusals_agree(rn: NonEmptyDiagnostics, ro: NonEmptyDiagnostics) -> Bool {
+  (rn == ro)
+    || ((diagnostics_fatal_reason(d: rn) == ^infer_facts_key_conflict)
+      && (diagnostics_fatal(d: rn) == diagnostics_fatal(d: ro)))
+}
+
 fn dnm_split(src: String) -> DnmSplit {
   match tpb_assemble(src: src) {
     Rejected { diagnostics: _ } => DnmSplit { verdict: true, diagnostics: true, facts: true, root: true, assembled: false, new_key_conflict: false }
@@ -25,7 +34,7 @@ fn dnm_split(src: String) -> DnmSplit {
       match infer(tree: tree) {
         Rejected { diagnostics: rn } =>
           match infer_old(tree: tree) {
-            Rejected { diagnostics: ro } => DnmSplit { verdict: true, diagnostics: rn == ro, facts: true, root: true, assembled: true, new_key_conflict: diagnostics_fatal_reason(d: rn) == ^infer_facts_key_conflict }
+            Rejected { diagnostics: ro } => DnmSplit { verdict: true, diagnostics: dnm_refusals_agree(rn: rn, ro: ro), facts: true, root: true, assembled: true, new_key_conflict: diagnostics_fatal_reason(d: rn) == ^infer_facts_key_conflict }
             Accepted { value: _, diagnostics: _ } => DnmSplit { verdict: false, diagnostics: false, facts: false, root: false, assembled: true, new_key_conflict: diagnostics_fatal_reason(d: rn) == ^infer_facts_key_conflict }
           }
         Accepted { value: tn, diagnostics: dn } =>
