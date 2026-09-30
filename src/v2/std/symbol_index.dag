@@ -28,6 +28,7 @@ import v2.std.optional {
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
+import v2.std.type_binder { AliasRenaming, NotARenaming, PureRenamingOf, type_alias_renaming }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_init,
@@ -84,6 +85,7 @@ type SymbolIndex {
   global_bare: Map<Symbol, GlobalBareBindingState>
   bound_declarings: Map<QualifiedName, FreeMonoid<QualifiedName>>
   declared_payloads: Map<QualifiedName, DeclaredPayloadKind>
+  renaming_aliases: Map<QualifiedName, Symbol>
   declared_type_params: Map<QualifiedName, List<Symbol>>
 }
 
@@ -103,6 +105,7 @@ fn empty_symbol_index() -> SymbolIndex {
     global_bare: empty_map(),
     bound_declarings: empty_map(),
     declared_payloads: empty_map(),
+    renaming_aliases: empty_map(),
     declared_type_params: empty_map()
   }
 }
@@ -179,6 +182,7 @@ fn symbol_index_track_global_bare(
               ),
               bound_declarings: index.bound_declarings,
               declared_payloads: index.declared_payloads,
+              renaming_aliases: index.renaming_aliases,
               declared_type_params: index.declared_type_params
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
@@ -196,6 +200,7 @@ fn symbol_index_track_global_bare(
                 ),
                 bound_declarings: index.bound_declarings,
                 declared_payloads: index.declared_payloads,
+                renaming_aliases: index.renaming_aliases,
                 declared_type_params: index.declared_type_params
               }
             }
@@ -209,12 +214,20 @@ fn symbol_index_track_global_bare(
               ),
               bound_declarings: index.bound_declarings,
               declared_payloads: index.declared_payloads,
+              renaming_aliases: index.renaming_aliases,
               declared_type_params: index.declared_type_params
             }
         }
         Rejected { diagnostics: _ } => index
       }
   }
+}
+
+// THE RENAMED HEAD OF A PURE-RENAMING ALIAS, as recorded when the declaration was recorded
+// (v2.std.type_binder type_alias_renaming, decided once on the declaration). Absent for every other
+// path, including an alias that reorders, drops or fixes its binders.
+fn symbol_index_renaming_alias_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Symbol> {
+  map_lookup(m: index.renaming_aliases, key: qualified_path)
 }
 
 fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolved: Node) -> SymbolIndex {
@@ -227,6 +240,10 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
     global_bare: index.global_bare,
     bound_declarings: index.bound_declarings,
     declared_payloads: index.declared_payloads,
+    renaming_aliases: match type_alias_renaming(target: resolved) {
+      PureRenamingOf { head: head } => map_insert(m: index.renaming_aliases, key: qualified_path, value: head)
+      NotARenaming => index.renaming_aliases
+    },
     declared_type_params: index.declared_type_params
   }
   symbol_index_track_global_bare(
@@ -254,6 +271,7 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
     global_bare: index.global_bare,
     bound_declarings: index.bound_declarings,
     declared_payloads: map_insert(m: index.declared_payloads, key: qualified_path, value: kind),
+    renaming_aliases: index.renaming_aliases,
     declared_type_params: index.declared_type_params
   }
 }
@@ -282,6 +300,7 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
     global_bare: index.global_bare,
     bound_declarings: index.bound_declarings,
     declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
     declared_type_params: map_insert(m: index.declared_type_params, key: qualified_path, value: params)
   }
 }
@@ -399,6 +418,7 @@ fn symbol_index_bind_at(
         value: list_snoc_item(xs: prior, item: declaring_path)
       ),
       declared_payloads: index.declared_payloads,
+      renaming_aliases: index.renaming_aliases,
       declared_type_params: index.declared_type_params
     }
     if is_empty(xs: prior) {
@@ -407,6 +427,7 @@ fn symbol_index_bind_at(
         global_bare: recorded.global_bare,
         bound_declarings: recorded.bound_declarings,
         declared_payloads: recorded.declared_payloads,
+        renaming_aliases: recorded.renaming_aliases,
         declared_type_params: recorded.declared_type_params
       }
     } else {
