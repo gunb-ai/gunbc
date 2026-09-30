@@ -287,28 +287,52 @@ fn cbor_map_unique_text_member(v: CborValue, key: String) -> CborMemberLookup {
         }
       }
     }
-    _ => CborMemberNotAMap
+    CborUnsigned { value: _ } => CborMemberNotAMap
+    CborNegative { value: _ } => CborMemberNotAMap
+    CborByteString { octets: _ } => CborMemberNotAMap
+    CborTextString { text: _ } => CborMemberNotAMap
+    CborArray { items: _ } => CborMemberNotAMap
+    CborTagged { tag: _, item: _ } => CborMemberNotAMap
+    CborSimple { value: _ } => CborMemberNotAMap
   }
 }
 
 fn cbor_byte_string_octets(v: CborValue) -> List<Int>? {
   match v {
     CborByteString { octets: o } => Present { value: o }
-    _ => none
+    CborUnsigned { value: _ } => none
+    CborNegative { value: _ } => none
+    CborTextString { text: _ } => none
+    CborArray { items: _ } => none
+    CborMap { entries: _ } => none
+    CborTagged { tag: _, item: _ } => none
+    CborSimple { value: _ } => none
   }
 }
 
 fn cbor_text_string_value(v: CborValue) -> String? {
   match v {
     CborTextString { text: t } => Present { value: t }
-    _ => none
+    CborUnsigned { value: _ } => none
+    CborNegative { value: _ } => none
+    CborByteString { octets: _ } => none
+    CborArray { items: _ } => none
+    CborMap { entries: _ } => none
+    CborTagged { tag: _, item: _ } => none
+    CborSimple { value: _ } => none
   }
 }
 
 fn cbor_array_items(v: CborValue) -> List<CborValue>? {
   match v {
     CborArray { items: i } => Present { value: i }
-    _ => none
+    CborUnsigned { value: _ } => none
+    CborNegative { value: _ } => none
+    CborByteString { octets: _ } => none
+    CborTextString { text: _ } => none
+    CborMap { entries: _ } => none
+    CborTagged { tag: _, item: _ } => none
+    CborSimple { value: _ } => none
   }
 }
 
@@ -318,7 +342,13 @@ fn cbor_array_items(v: CborValue) -> List<CborValue>? {
 fn cbor_unsigned_value(v: CborValue) -> Int? {
   match v {
     CborUnsigned { value: n } => Present { value: n }
-    _ => none
+    CborNegative { value: _ } => none
+    CborByteString { octets: _ } => none
+    CborTextString { text: _ } => none
+    CborArray { items: _ } => none
+    CborMap { entries: _ } => none
+    CborTagged { tag: _, item: _ } => none
+    CborSimple { value: _ } => none
   }
 }
 
@@ -327,35 +357,83 @@ fn cbor_values_equal(a: CborValue, b: CborValue) -> Bool {
   match a {
     CborUnsigned { value: x } => match b {
       CborUnsigned { value: y } => x == y
-      _ => false
+      CborNegative { value: _ } => false
+      CborByteString { octets: _ } => false
+      CborTextString { text: _ } => false
+      CborArray { items: _ } => false
+      CborMap { entries: _ } => false
+      CborTagged { tag: _, item: _ } => false
+      CborSimple { value: _ } => false
     }
     CborNegative { value: x } => match b {
       CborNegative { value: y } => x == y
-      _ => false
+      CborUnsigned { value: _ } => false
+      CborByteString { octets: _ } => false
+      CborTextString { text: _ } => false
+      CborArray { items: _ } => false
+      CborMap { entries: _ } => false
+      CborTagged { tag: _, item: _ } => false
+      CborSimple { value: _ } => false
     }
     CborByteString { octets: x } => match b {
       CborByteString { octets: y } => x == y
-      _ => false
+      CborUnsigned { value: _ } => false
+      CborNegative { value: _ } => false
+      CborTextString { text: _ } => false
+      CborArray { items: _ } => false
+      CborMap { entries: _ } => false
+      CborTagged { tag: _, item: _ } => false
+      CborSimple { value: _ } => false
     }
     CborTextString { text: x } => match b {
       CborTextString { text: y } => x == y
-      _ => false
+      CborUnsigned { value: _ } => false
+      CborNegative { value: _ } => false
+      CborByteString { octets: _ } => false
+      CborArray { items: _ } => false
+      CborMap { entries: _ } => false
+      CborTagged { tag: _, item: _ } => false
+      CborSimple { value: _ } => false
     }
     CborSimple { value: x } => match b {
       CborSimple { value: y } => x == y
-      _ => false
+      CborUnsigned { value: _ } => false
+      CborNegative { value: _ } => false
+      CborByteString { octets: _ } => false
+      CborTextString { text: _ } => false
+      CborArray { items: _ } => false
+      CborMap { entries: _ } => false
+      CborTagged { tag: _, item: _ } => false
     }
     CborTagged { tag: tx, item: ix } => match b {
       CborTagged { tag: ty, item: iy } => tx == ty && cbor_values_equal(a: ix, b: iy)
-      _ => false
+      CborUnsigned { value: _ } => false
+      CborNegative { value: _ } => false
+      CborByteString { octets: _ } => false
+      CborTextString { text: _ } => false
+      CborArray { items: _ } => false
+      CborMap { entries: _ } => false
+      CborSimple { value: _ } => false
     }
     CborArray { items: xs } => match b {
       CborArray { items: ys } => count(xs) == count(ys) && cbor_lists_equal(xs: xs, ys: ys, i: 0)
-      _ => false
+      CborUnsigned { value: _ } => false
+      CborNegative { value: _ } => false
+      CborByteString { octets: _ } => false
+      CborTextString { text: _ } => false
+      CborMap { entries: _ } => false
+      CborTagged { tag: _, item: _ } => false
+      CborSimple { value: _ } => false
     }
     CborMap { entries: xs } => match b {
       CborMap { entries: ys } => count(xs) == count(ys) && cbor_entries_equal(xs: xs, ys: ys, i: 0)
-      _ => false
+      CborUnsigned { value: _ } => false
+      CborNegative { value: _ } => false
+      CborByteString { octets: _ } => false
+      CborTextString { text: _ } => false
+      CborArray { items: _ } => false
+      CborTagged { tag: _, item: _ } => false
+      CborSimple { value: _ } => false
     }
   }
 }
