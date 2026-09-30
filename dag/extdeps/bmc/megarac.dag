@@ -615,31 +615,3 @@ service megarac.Media {
     }
   }
 }
-
-// THE FIRMWARE'S OWN UI BUNDLE, SERVED AT A FIXED PATH. The SP-X web UI is one minified bundle the
-// login page loads before any session exists, so the GET carries no cookie and no token and opens no
-// session to release. The codes this module cites as "recovered from source.min.js" (start-media's
-// 13410/13460, the served api/ surface, the KVM wire) were read from these bytes; the operation is the
-// route that re-reads them instead of a hand-run probe.
-//
-// THE BYTES ARE WRITTEN AS SERVED. `Accept-Encoding: gzip` without --compressed asks for the encoding
-// the 2026-09-27 read recorded (gzip) and leaves it undecoded, so a digest of dest_file is a digest of
-// the served bytes, comparable with that read. stdout carries only the write-out: the HTTP status and
-// the byte count, space-separated on one line.
-data megarac_ui_bundle_path: NonEmptyStr = "/source.min.js"
-
-service megarac.Ui {
-
-  operation GetServedBundle {
-    input { bmc_host: NonEmptyStr, bundle_path: NonEmptyStr, dest_file: NonEmptyStr, max_time: NonEmptyStr }
-    output { writeout: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-H", "Accept-Encoding: gzip", "-o", "{dest_file}", "-w", "%\{http_code} %\{size_download}", "https://{bmc_host}{bundle_path}"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "megarac UI bundle GET failed"
-    }
-  }
-}
