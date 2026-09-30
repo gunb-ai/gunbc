@@ -59,7 +59,12 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  node_subtree_count
+  node_subtree_count,
+  Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  ComputationNode
 }
 import v2.std.type_binder {
   type_param_names
@@ -586,7 +591,12 @@ fn grammar_tokens_fold_list_targets_into(remaining: Int, node: Node, acc: List<N
               }
           }
         }
-      _ => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
+      TypeNode { connective: Atom { identity: _ } } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
+      TypeNode { connective: Disj } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
+      TypeNode { connective: Arrow } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
+      TypeNode { connective: Cardinality } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
+      TypeNode { connective: Instantiation } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
+      ComputationNode { behavior: _ } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
     }
   }
 }
