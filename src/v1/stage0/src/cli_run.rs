@@ -9222,6 +9222,9 @@ fn parsed_file_references_of(
     }
     let module_names = pool_module_names(index);
     let self_module = extract_module_path(&sf.content).unwrap_or_default();
+    index
+        .reference_reading_parses
+        .set(index.reference_reading_parses.get() + 1);
     let reading =
         entry_resolve::parsed_file_references(&sf.path, &sf.content, &self_module, &module_names)
             .map(Rc::new);
@@ -9230,6 +9233,24 @@ fn parsed_file_references_of(
         .borrow_mut()
         .insert(file, reading.clone());
     reading
+}
+
+/// The full-parse control for one index: `Ok((files, parses))` when every full parse of a file's
+/// reference reading landed in a distinct `parsed_references` row (at most one parse per file),
+/// and a located refusal otherwise.
+pub(crate) fn reference_reading_parse_control(
+    index: &MultiEntryIndex,
+) -> Result<(usize, usize), String> {
+    let files = index.parsed_references.borrow().len();
+    let parses = index.reference_reading_parses.get();
+    if parses != files {
+        return Err(format!(
+            "ReferenceReadingReparsed: {parses} full parses for {files} files on index generation {} \
+             -- a file's reference reading was parsed more than once",
+            index.generation
+        ));
+    }
+    Ok((files, parses))
 }
 
 fn pool_module_names(index: &MultiEntryIndex) -> Rc<HashSet<String>> {
@@ -10388,6 +10409,17 @@ mod closure_edge_demand_tests {
             index.parsed_references.borrow().len(),
             read_after_first + 1,
             "the second entry parses only its own file; the provider's reading is shared"
+        );
+        // Every other reader of a file's references on this index reuses the same parse: the
+        // pool entry route and the whole-pool bare admission add no second parse of any file.
+        load_sources_for_entry_with_pool(&index, &fixture.0.join("a.dag").to_string_lossy())
+            .unwrap();
+        admit_pool_bare_references(&index).unwrap();
+        let (files, parses) = reference_reading_parse_control(&index).unwrap();
+        assert_eq!(
+            (files, parses),
+            (3, 3),
+            "one full parse per file on this index"
         );
     }
 
@@ -13108,6 +13140,9 @@ pub struct MultiEntryIndex {
     /// Workspace-relative and as-indexed path → source, over `source_files`. Derived once, for
     /// the same reason as `pool_module_names`: every closure walk looks pulled paths up in it.
     pool_path_lookup: std::cell::OnceCell<Rc<HashMap<String, Rc<v1_compiler_compile::SourceFile>>>>,
+    /// Full parses `parsed_file_references_of` performed on this index. Every one lands in
+    /// `parsed_references`, so this equals that map's size exactly when no file was parsed twice.
+    reference_reading_parses: Cell<usize>,
     /// Each demanded file's full-parse reference reading (`parsed_file_references_of`), refusals
     /// included, keyed by workspace-relative path. Both halves of a file's closure row -- its
     /// module-path references and its bare references -- and its bare-reference admission read
@@ -13484,9 +13519,16 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
 /// then proves only that two strings match, which is the shape of the question it was meant to
 /// answer. A counter is opaque, unforgeable from outside, and distinguishes two indices built over
 /// byte-identical source roots, which a content hash of the roots would not.
+static NEXT_INDEX_GENERATION: AtomicU64 = AtomicU64::new(1);
+
 fn next_index_generation() -> u64 {
-    static NEXT: AtomicU64 = AtomicU64::new(1);
-    NEXT.fetch_add(1, Ordering::Relaxed)
+    NEXT_INDEX_GENERATION.fetch_add(1, Ordering::Relaxed)
+}
+
+/// How many `MultiEntryIndex`es this process has built: each construction draws exactly one
+/// generation (`new_multi_entry_index_shell`).
+pub(crate) fn multi_entry_indexes_built() -> u64 {
+    NEXT_INDEX_GENERATION.load(Ordering::Relaxed) - 1
 }
 
 /// Parse-grade pool snapshot: every indexed module's declaration heads plus the
@@ -33657,6 +33699,10 @@ struct ExprVarClassification<'a> {
     /// `v2.std.node.Node` -- and never a reference to a declaration that happens to share its
     /// spelling anywhere in the pool.
     module_path_heads: std::collections::HashSet<*const crate::v1_std_core::Node>,
+    /// The head `ExprVar` nodes of field chains and method receivers, marked by the enclosing
+    /// node so the head is recorded as a dotted head. Walk scratch: pointers into the tree being
+    /// walked, so they live here and never in the `BarePositions` a reading retains.
+    dotted_head_nodes: std::collections::HashSet<*const crate::v1_std_core::Node>,
     tally: &'a mut BTreeMap<ExprVarClass, usize>,
     unclassified: &'a mut Vec<String>,
     /// The module currently being walked. ONE classification spans the whole index build so the
@@ -33702,8 +33748,6 @@ pub(crate) struct BarePositions {
     /// Receiver chain plus method (`cron.Tab.List` in `cron.Tab.List()`), which `chains` does not
     /// carry because it records field-access chains only.
     pub(crate) method_chains: Vec<Vec<String>>,
-    /// The head `ExprVar` nodes of those chains and receivers, marked by the enclosing node.
-    pub(crate) dotted_head_nodes: std::collections::HashSet<*const crate::v1_std_core::Node>,
 }
 
 impl ExprVarClassification<'_> {
@@ -33925,10 +33969,7 @@ fn collect_node_refs_inner(
                 }
             }
             if let Some(head) = ref_field_chain_head(node) {
-                classify
-                    .bare_positions
-                    .dotted_head_nodes
-                    .insert(Rc::as_ptr(&head));
+                classify.dotted_head_nodes.insert(Rc::as_ptr(&head));
             }
             // ONLY THE MAXIMAL CHAIN IS A REFERENCE. On the receiver spine of a chain the
             // enclosing field access already recorded whole, this node's chain is a strict
@@ -33953,10 +33994,7 @@ fn collect_node_refs_inner(
         }
         if let Some(receiver) = node.children.get(0) {
             if let ExprData::ExprVar { .. } = &*receiver.expr_data {
-                classify
-                    .bare_positions
-                    .dotted_head_nodes
-                    .insert(Rc::as_ptr(receiver));
+                classify.dotted_head_nodes.insert(Rc::as_ptr(receiver));
             }
         }
     }
@@ -33983,8 +34021,9 @@ fn collect_node_refs_inner(
                         chain_receiver && classify.module_path_heads.contains(&Rc::as_ptr(node));
                     if classify.classify(&node.name, bound_as, chain_receiver, module_path_head) {
                         bare.insert(node.name.clone());
+                        let dotted_head = classify.dotted_head_nodes.contains(&Rc::as_ptr(node));
                         let positions = &mut classify.bare_positions;
-                        if positions.dotted_head_nodes.contains(&Rc::as_ptr(node)) {
+                        if dotted_head {
                             positions.dotted_heads.insert(node.name.clone());
                         } else {
                             positions.undotted.insert(node.name.clone());
@@ -43126,6 +43165,7 @@ pub(crate) fn build_reference_closure_index(
         decl_index: Some(&decl_index),
         module_names: Some(&module_names),
         module_path_heads: std::collections::HashSet::new(),
+        dotted_head_nodes: std::collections::HashSet::new(),
         tally: &mut class_tally,
         unclassified: &mut unclassified,
         module: String::new(),
@@ -46288,6 +46328,7 @@ mod reference_collector_binder_fixtures {
             decl_index,
             module_names: None,
             module_path_heads: std::collections::HashSet::new(),
+            dotted_head_nodes: std::collections::HashSet::new(),
             tally: &mut tally,
             unclassified: &mut unclassified,
             module: "fixture".to_string(),

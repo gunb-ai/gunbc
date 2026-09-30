@@ -1090,6 +1090,7 @@ pub(crate) fn new_multi_entry_index_shell(
         bare_reference_admission: RefCell::new(HashMap::new()),
         pool_module_names: std::cell::OnceCell::new(),
         pool_path_lookup: std::cell::OnceCell::new(),
+        reference_reading_parses: std::cell::Cell::new(0),
         parsed_references: RefCell::new(HashMap::new()),
         live_read_manifest: RefCell::new(None),
     }
@@ -3106,6 +3107,7 @@ pub(crate) fn parsed_file_references(
         decl_index: None,
         module_names: Some(module_names),
         module_path_heads: std::collections::HashSet::new(),
+        dotted_head_nodes: std::collections::HashSet::new(),
         tally: &mut scratch_tally,
         unclassified: &mut scratch_unclassified,
         module: self_module.to_string(),

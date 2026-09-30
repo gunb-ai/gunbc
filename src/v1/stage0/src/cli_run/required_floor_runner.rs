@@ -7394,6 +7394,26 @@ pub fn run_required_floor(
         warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
     ));
     shared_build_warms.extend(pure_producer_warms);
+    // ONE FULL PARSE PER (INDEX, FILE), ASSERTED; the number of indexes, reported. The first
+    // bounds a file's reference reading to one parse on each index; the second is what bounds the
+    // total, and it is measured here before any expected value is pinned.
+    for (which, roots) in [
+        ("source-roots", source_roots.to_vec()),
+        ("witness-layer-roots", witness_layer_roots()),
+    ] {
+        let index = process_shared_index(&roots);
+        let (files, parses) = super::reference_reading_parse_control(&index)
+            .map_err(|e| format!("REQUIRED-FLOOR REFUSAL roots={which} {e}"))?;
+        eprintln!(
+            "[floor-phase] phase=reference-reading-parses roots={which} index_generation={} \
+             files={files} full_parses={parses}",
+            index.generation
+        );
+    }
+    eprintln!(
+        "[floor-phase] phase=multi-entry-index-builds count={}",
+        super::multi_entry_indexes_built()
+    );
     // The two earlier phases already printed their own lines at the point they ran; only the
     // edge-index entries are reported here, so a phase is reported exactly once and under its own
     // name. Every entry — all three phases — is adjudicated together further down.
