@@ -30,7 +30,7 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   mtcollins1_boot_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal, mtcollins1_unit_hold_key,
 }
-import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_attach_diskless_image, mtcollins1_media_gate, mtcollins1_observe_presentation }
+import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_attach_diskless_image, mtcollins1_stale_power_off_allowance, mtcollins1_media_gate, mtcollins1_observe_presentation }
 import gunbc.machine_intake_megarac_media_attach { PresentationStillReady, presentation_still_served }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff, MtCollins1HandoffResult, handoff_not_issued }
@@ -152,6 +152,7 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
     + second_count(s: mtcollins1_boot_prelude_allowance)
     + second_count(s: mtcollins1_boot_issue_allowance)
     + second_count(s: megarac_convergence_allowance())
+    + second_count(s: mtcollins1_stale_power_off_allowance())
     + 3 * second_count(s: megarac_presentation_look_allowance())
     + second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)
     + second_count(s: oob_power_readback_allowance())
@@ -1294,7 +1295,10 @@ fn sol_channel_reading(collector: SolCollectorObservation, client_diagnostics: S
 fn sol_collector_exit_established(collector: SolCollectorObservation) -> Bool {
   match collector {
     SolCollectorExited { evidence: _ } => true
-    _ => false
+    SolCollectorHeld => false
+    SolCollectorUnrecorded => false
+    SolCollectorUnobservable { cause: _ } => false
+    SolCollectorPathUnset => false
   }
 }
 
@@ -2001,7 +2005,10 @@ fn sol_release_is_clean(outcome: SolReleaseOutcome) -> Bool {
   match outcome {
     SolReleased { evidence: _ } => true
     SolReleaseNoRecord => true
-    _ => false
+    SolReleaseForeignRecord { record: _, receipt: _ } => false
+    SolReleaseStillHeld => false
+    SolReleaseUnobservable { cause: _ } => false
+    SolReleaseRetireFailed { detail: _ } => false
   }
 }
 

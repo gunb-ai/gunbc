@@ -1,5 +1,6 @@
 module gunbc.econ.llm_attempt_receipt
 
+import v2.std.algebra { fold_list }
 import std.algebra { FieldOfFractions }
 import std.measure { TokenCount, Nanosecond, Joule, nanosecond_count, token_count, token_count_value }
 import std.nat { Nat }
