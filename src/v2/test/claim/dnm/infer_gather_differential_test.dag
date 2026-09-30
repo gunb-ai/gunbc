@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // DO NOT MERGE. #12640 differential, split for the 7 specimens that differed in run 36621886463:
 // one answer per aspect, so the floor says WHICH of verdict / diagnostics / per-node facts differs.
-type DnmSplit { verdict: Bool, diagnostics: Bool, facts: Bool, root: Bool, assembled: Bool, new_key_conflict: Bool }
+type DnmSplit { verdict: Bool, diagnostics: Bool, facts: Bool, root: Bool, assembled: Bool, new_key_conflict: Bool, new_accepted: Bool, old_accepted: Bool }
 
 // THE ONE STATED EXCEPTION (ruled by quiet-gull-780): two refusals agree when their chains are equal, or
 // when both stop at infer_facts_key_conflict naming the SAME key and locus -- the threaded gather refuses at
@@ -29,17 +29,17 @@ fn dnm_refusals_agree(rn: NonEmptyDiagnostics, ro: NonEmptyDiagnostics) -> Bool 
 
 fn dnm_split(src: String) -> DnmSplit {
   match tpb_assemble(src: src) {
-    Rejected { diagnostics: _ } => DnmSplit { verdict: true, diagnostics: true, facts: true, root: true, assembled: false, new_key_conflict: false }
+    Rejected { diagnostics: _ } => DnmSplit { verdict: true, diagnostics: true, facts: true, root: true, assembled: false, new_key_conflict: false, new_accepted: false, old_accepted: false }
     Accepted { value: tree, diagnostics: _ } =>
       match infer(tree: tree) {
         Rejected { diagnostics: rn } =>
           match infer_old(tree: tree) {
-            Rejected { diagnostics: ro } => DnmSplit { verdict: true, diagnostics: dnm_refusals_agree(rn: rn, ro: ro), facts: true, root: true, assembled: true, new_key_conflict: diagnostics_fatal_reason(d: rn) == ^infer_facts_key_conflict }
-            Accepted { value: _, diagnostics: _ } => DnmSplit { verdict: false, diagnostics: false, facts: false, root: false, assembled: true, new_key_conflict: diagnostics_fatal_reason(d: rn) == ^infer_facts_key_conflict }
+            Rejected { diagnostics: ro } => DnmSplit { verdict: true, diagnostics: dnm_refusals_agree(rn: rn, ro: ro), facts: true, root: true, assembled: true, new_key_conflict: diagnostics_fatal_reason(d: rn) == ^infer_facts_key_conflict, new_accepted: false, old_accepted: false }
+            Accepted { value: _, diagnostics: _ } => DnmSplit { verdict: false, diagnostics: false, facts: false, root: false, assembled: true, new_key_conflict: diagnostics_fatal_reason(d: rn) == ^infer_facts_key_conflict, new_accepted: false, old_accepted: true }
           }
         Accepted { value: tn, diagnostics: dn } =>
           match infer_old(tree: tree) {
-            Rejected { diagnostics: _ } => DnmSplit { verdict: false, diagnostics: false, facts: false, root: false, assembled: true, new_key_conflict: false }
+            Rejected { diagnostics: _ } => DnmSplit { verdict: false, diagnostics: false, facts: false, root: false, assembled: true, new_key_conflict: false, new_accepted: true, old_accepted: false }
             Accepted { value: to, diagnostics: dold } =>
               DnmSplit {
                 verdict: true,
@@ -47,7 +47,9 @@ fn dnm_split(src: String) -> DnmSplit {
                 facts: fold(node_subtree_nodes(root: tn.root), init: true, f: fn(acc, n) { acc && (tn.facts.lookup(n) == to.facts.lookup(n)) }),
                 root: tn.facts.lookup(tn.root) == to.facts.lookup(tn.root),
                 assembled: true,
-                new_key_conflict: false
+                new_key_conflict: false,
+                new_accepted: true,
+                old_accepted: true
               }
           }
       }
@@ -936,3 +938,311 @@ test fn dnm_ig_097_old_and_new_gather_agree_holds() -> Bool {
   v.verdict && v.diagnostics && v.facts && v.root
 }
 
+
+test fn dnm_ig_041_verdict_split_holds() -> Bool {
+  dnm_ig_041().verdict
+}
+
+test fn dnm_ig_041_diagnostics_split_holds() -> Bool {
+  dnm_ig_041().diagnostics
+}
+
+test fn dnm_ig_041_facts_split_holds() -> Bool {
+  dnm_ig_041().facts
+}
+
+test fn dnm_ig_041_root_split_holds() -> Bool {
+  dnm_ig_041().root
+}
+
+test fn dnm_ig_041_new_key_conflict_split_holds() -> Bool {
+  dnm_ig_041().new_key_conflict
+}
+
+test fn dnm_ig_041_new_accepted_split_holds() -> Bool {
+  dnm_ig_041().new_accepted
+}
+
+test fn dnm_ig_041_old_accepted_split_holds() -> Bool {
+  dnm_ig_041().old_accepted
+}
+
+test fn dnm_ig_042_verdict_split_holds() -> Bool {
+  dnm_ig_042().verdict
+}
+
+test fn dnm_ig_042_diagnostics_split_holds() -> Bool {
+  dnm_ig_042().diagnostics
+}
+
+test fn dnm_ig_042_facts_split_holds() -> Bool {
+  dnm_ig_042().facts
+}
+
+test fn dnm_ig_042_root_split_holds() -> Bool {
+  dnm_ig_042().root
+}
+
+test fn dnm_ig_042_new_key_conflict_split_holds() -> Bool {
+  dnm_ig_042().new_key_conflict
+}
+
+test fn dnm_ig_042_new_accepted_split_holds() -> Bool {
+  dnm_ig_042().new_accepted
+}
+
+test fn dnm_ig_042_old_accepted_split_holds() -> Bool {
+  dnm_ig_042().old_accepted
+}
+
+test fn dnm_ig_043_verdict_split_holds() -> Bool {
+  dnm_ig_043().verdict
+}
+
+test fn dnm_ig_043_diagnostics_split_holds() -> Bool {
+  dnm_ig_043().diagnostics
+}
+
+test fn dnm_ig_043_facts_split_holds() -> Bool {
+  dnm_ig_043().facts
+}
+
+test fn dnm_ig_043_root_split_holds() -> Bool {
+  dnm_ig_043().root
+}
+
+test fn dnm_ig_043_new_key_conflict_split_holds() -> Bool {
+  dnm_ig_043().new_key_conflict
+}
+
+test fn dnm_ig_043_new_accepted_split_holds() -> Bool {
+  dnm_ig_043().new_accepted
+}
+
+test fn dnm_ig_043_old_accepted_split_holds() -> Bool {
+  dnm_ig_043().old_accepted
+}
+
+test fn dnm_ig_057_verdict_split_holds() -> Bool {
+  dnm_ig_057().verdict
+}
+
+test fn dnm_ig_057_diagnostics_split_holds() -> Bool {
+  dnm_ig_057().diagnostics
+}
+
+test fn dnm_ig_057_facts_split_holds() -> Bool {
+  dnm_ig_057().facts
+}
+
+test fn dnm_ig_057_root_split_holds() -> Bool {
+  dnm_ig_057().root
+}
+
+test fn dnm_ig_057_new_key_conflict_split_holds() -> Bool {
+  dnm_ig_057().new_key_conflict
+}
+
+test fn dnm_ig_057_new_accepted_split_holds() -> Bool {
+  dnm_ig_057().new_accepted
+}
+
+test fn dnm_ig_057_old_accepted_split_holds() -> Bool {
+  dnm_ig_057().old_accepted
+}
+
+test fn dnm_ig_060_verdict_split_holds() -> Bool {
+  dnm_ig_060().verdict
+}
+
+test fn dnm_ig_060_diagnostics_split_holds() -> Bool {
+  dnm_ig_060().diagnostics
+}
+
+test fn dnm_ig_060_facts_split_holds() -> Bool {
+  dnm_ig_060().facts
+}
+
+test fn dnm_ig_060_root_split_holds() -> Bool {
+  dnm_ig_060().root
+}
+
+test fn dnm_ig_060_new_key_conflict_split_holds() -> Bool {
+  dnm_ig_060().new_key_conflict
+}
+
+test fn dnm_ig_060_new_accepted_split_holds() -> Bool {
+  dnm_ig_060().new_accepted
+}
+
+test fn dnm_ig_060_old_accepted_split_holds() -> Bool {
+  dnm_ig_060().old_accepted
+}
+
+test fn dnm_ig_062_verdict_split_holds() -> Bool {
+  dnm_ig_062().verdict
+}
+
+test fn dnm_ig_062_diagnostics_split_holds() -> Bool {
+  dnm_ig_062().diagnostics
+}
+
+test fn dnm_ig_062_facts_split_holds() -> Bool {
+  dnm_ig_062().facts
+}
+
+test fn dnm_ig_062_root_split_holds() -> Bool {
+  dnm_ig_062().root
+}
+
+test fn dnm_ig_062_new_key_conflict_split_holds() -> Bool {
+  dnm_ig_062().new_key_conflict
+}
+
+test fn dnm_ig_062_new_accepted_split_holds() -> Bool {
+  dnm_ig_062().new_accepted
+}
+
+test fn dnm_ig_062_old_accepted_split_holds() -> Bool {
+  dnm_ig_062().old_accepted
+}
+
+test fn dnm_ig_074_verdict_split_holds() -> Bool {
+  dnm_ig_074().verdict
+}
+
+test fn dnm_ig_074_diagnostics_split_holds() -> Bool {
+  dnm_ig_074().diagnostics
+}
+
+test fn dnm_ig_074_facts_split_holds() -> Bool {
+  dnm_ig_074().facts
+}
+
+test fn dnm_ig_074_root_split_holds() -> Bool {
+  dnm_ig_074().root
+}
+
+test fn dnm_ig_074_new_key_conflict_split_holds() -> Bool {
+  dnm_ig_074().new_key_conflict
+}
+
+test fn dnm_ig_074_new_accepted_split_holds() -> Bool {
+  dnm_ig_074().new_accepted
+}
+
+test fn dnm_ig_074_old_accepted_split_holds() -> Bool {
+  dnm_ig_074().old_accepted
+}
+
+test fn dnm_ig_077_verdict_split_holds() -> Bool {
+  dnm_ig_077().verdict
+}
+
+test fn dnm_ig_077_diagnostics_split_holds() -> Bool {
+  dnm_ig_077().diagnostics
+}
+
+test fn dnm_ig_077_facts_split_holds() -> Bool {
+  dnm_ig_077().facts
+}
+
+test fn dnm_ig_077_root_split_holds() -> Bool {
+  dnm_ig_077().root
+}
+
+test fn dnm_ig_077_new_key_conflict_split_holds() -> Bool {
+  dnm_ig_077().new_key_conflict
+}
+
+test fn dnm_ig_077_new_accepted_split_holds() -> Bool {
+  dnm_ig_077().new_accepted
+}
+
+test fn dnm_ig_077_old_accepted_split_holds() -> Bool {
+  dnm_ig_077().old_accepted
+}
+
+test fn dnm_ig_078_verdict_split_holds() -> Bool {
+  dnm_ig_078().verdict
+}
+
+test fn dnm_ig_078_diagnostics_split_holds() -> Bool {
+  dnm_ig_078().diagnostics
+}
+
+test fn dnm_ig_078_facts_split_holds() -> Bool {
+  dnm_ig_078().facts
+}
+
+test fn dnm_ig_078_root_split_holds() -> Bool {
+  dnm_ig_078().root
+}
+
+test fn dnm_ig_078_new_key_conflict_split_holds() -> Bool {
+  dnm_ig_078().new_key_conflict
+}
+
+test fn dnm_ig_078_new_accepted_split_holds() -> Bool {
+  dnm_ig_078().new_accepted
+}
+
+test fn dnm_ig_078_old_accepted_split_holds() -> Bool {
+  dnm_ig_078().old_accepted
+}
+
+test fn dnm_ig_079_verdict_split_holds() -> Bool {
+  dnm_ig_079().verdict
+}
+
+test fn dnm_ig_079_diagnostics_split_holds() -> Bool {
+  dnm_ig_079().diagnostics
+}
+
+test fn dnm_ig_079_facts_split_holds() -> Bool {
+  dnm_ig_079().facts
+}
+
+test fn dnm_ig_079_root_split_holds() -> Bool {
+  dnm_ig_079().root
+}
+
+test fn dnm_ig_079_new_key_conflict_split_holds() -> Bool {
+  dnm_ig_079().new_key_conflict
+}
+
+test fn dnm_ig_079_new_accepted_split_holds() -> Bool {
+  dnm_ig_079().new_accepted
+}
+
+test fn dnm_ig_079_old_accepted_split_holds() -> Bool {
+  dnm_ig_079().old_accepted
+}
+
+test fn dnm_ig_082_verdict_split_holds() -> Bool {
+  dnm_ig_082().verdict
+}
+
+test fn dnm_ig_082_diagnostics_split_holds() -> Bool {
+  dnm_ig_082().diagnostics
+}
+
+test fn dnm_ig_082_facts_split_holds() -> Bool {
+  dnm_ig_082().facts
+}
+
+test fn dnm_ig_082_root_split_holds() -> Bool {
+  dnm_ig_082().root
+}
+
+test fn dnm_ig_082_new_key_conflict_split_holds() -> Bool {
+  dnm_ig_082().new_key_conflict
+}
+
+test fn dnm_ig_082_new_accepted_split_holds() -> Bool {
+  dnm_ig_082().new_accepted
+}
+
+test fn dnm_ig_082_old_accepted_split_holds() -> Bool {
+  dnm_ig_082().old_accepted
+}
