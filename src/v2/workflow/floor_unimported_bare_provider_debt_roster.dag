@@ -1482,7 +1482,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/namespace_step0_census_calibration_witness_test.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/namespace_structural_observations_acceptance_test.dag", name: "any", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/namespace_structural_observations_acceptance_test.dag", name: "filter", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/native_driver_cost_partition_witness_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/native_driver_cost_partition_witness_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/non_fold_residue_frontier_test.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/occurrence_binding_candidates_witness_test.dag", name: "empty_map", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/occurrence_identity_acceptance_closure_witness_test.dag", name: "any", standing: Retired { cause: NotAReference } },
