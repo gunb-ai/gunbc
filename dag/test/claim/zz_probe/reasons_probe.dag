@@ -1,0 +1,31 @@
+module test.claim.zz_probe.reasons_probe
+
+import std.types { Int, List, String }
+import std.measure { second }
+import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, WitnessInterrupted, witness_diagnostic_rendered_reason }
+import gunbc.megarac_media_model { MegaRacShare, MegaRacImage, megarac_cleared_cd }
+import gunbc.bmc_model { bmc_with_sol_session }
+import gunbc.machine_intake_mtcollins1_boot_dry_realization { MtCollins1BootWorld, with_bmc }
+import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test {
+  run_attempt, world_with_console, outcome_reason, media_varied, media_with, desired_image, real_share, no_withdrawal,
+}
+
+fn reason_of(w: MtCollins1BootWorld) -> String {
+  match run_attempt(world: w) {
+    WitnessReturned { value } => outcome_reason(a: value)
+    WitnessRefused { diagnostic } => concat("REFUSED ", witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+    WitnessInterrupted { at: _ } => "INTERRUPTED"
+  }
+}
+
+fn withdrawn_after(d: Int) -> String {
+  let img = [MegaRacImage { image_name: desired_image(), image_index: 5 }]
+  match std.checked_arithmetic.checked_int_to_nat(n: d) {
+    Absent => "bad"
+    Present { value: n } => concat(concat(to_string(d), ": "), reason_of(w: media_varied(media: media_with(images: img, share: real_share, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: Present { value: second(count: n) }))))
+  }
+}
+
+fn probe() -> String {
+  join(map([3, 5, 8, 12, 20], d => withdrawn_after(d: d)), " ||| ")
+}
