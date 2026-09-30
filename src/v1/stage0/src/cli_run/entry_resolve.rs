@@ -1062,7 +1062,7 @@ pub(crate) fn new_multi_entry_index_shell(
     source_roots: &[String],
     cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
 ) -> MultiEntryIndex {
-    record_multi_entry_index_site(std::panic::Location::caller());
+    record_multi_entry_index_site(std::panic::Location::caller(), &source_files);
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,

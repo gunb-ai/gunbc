@@ -6820,7 +6820,9 @@ pub fn run_required_floor(
     // ONE ENTRY INDEX FOR BOTH CLOSURES: building it is the expensive part (~75-110s on the
     // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
     // policy-closure prepare and the gate-closure prepare alike.
-    let gate_entry_index = build_multi_entry_index(source_roots);
+    // The process-shared index over these roots: the same name set every other floor consumer
+    // resolves against, so its files' readings are parsed once for all of them.
+    let gate_entry_index = process_shared_index(source_roots);
     floor_seam("changed-witness-planning");
     // ONE CORPUS READ FOR BOTH PREPARES, CARRIED FROM THE ANCESTOR THAT OWNS BOTH DEMANDS.
     //
@@ -7394,8 +7396,8 @@ pub fn run_required_floor(
         warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
     ));
     shared_build_warms.extend(pure_producer_warms);
-    // ONE FULL PARSE PER (INDEX, FILE), ASSERTED, and ONE INDEX PER RUN, ASSERTED below: the first
-    // bounds a file's reference reading to one parse on each index, the second bounds the total.
+    // ONE FULL PARSE PER (INDEX, FILE), ASSERTED, and ONE INDEX PER NAME SET, ASSERTED below: the
+    // first bounds a file's reference reading to one parse on each index, the second the total.
     for (which, roots) in [
         ("source-roots", source_roots.to_vec()),
         ("witness-layer-roots", witness_layer_roots()),
@@ -7409,26 +7411,20 @@ pub fn run_required_floor(
             index.generation
         );
     }
-    // ONE MODULE-NAME SET, ONE DEMAND, ONE INDEX. Every root set this floor asks for names the
-    // same pool, so the design admits exactly one `MultiEntryIndex` per run; a second is the same
-    // demand built twice, whose files would each be parsed again. Asserted, not pinned from a
-    // measurement: a larger count is a sharing defect to derive, never a new expected value.
-    const EXPECTED_MULTI_ENTRY_INDEXES: u64 = 1;
-    let built = super::multi_entry_indexes_built();
+    // ONE INDEX PER MODULE-NAME SET, ASSERTED. The floor legitimately demands more than one name
+    // set (its source roots, the dag-only environment closure, the v1 attribution roots when
+    // src/v1 is touched), so the invariant is not a count: it is that no set is indexed twice.
+    let builds = super::multi_entry_index_builds();
+    let name_sets = super::multi_entry_index_sharing_control(&builds)
+        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL cause={e}"))?;
     eprintln!(
-        "[floor-phase] phase=multi-entry-index-builds count={built} expected={EXPECTED_MULTI_ENTRY_INDEXES} \
-         source_roots_generation={} witness_layer_roots_generation={}",
-        process_shared_index(source_roots).generation,
-        process_shared_index(&witness_layer_roots()).generation,
+        "[floor-phase] phase=multi-entry-index-builds builds={} name_sets={name_sets} sites={:?}",
+        builds.len(),
+        builds
+            .iter()
+            .map(|b| format!("{}@{}", b.modules, b.site))
+            .collect::<Vec<_>>(),
     );
-    if built != EXPECTED_MULTI_ENTRY_INDEXES {
-        return Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=MultiEntryIndexBuiltMoreThanOnce count={built} \
-             expected={EXPECTED_MULTI_ENTRY_INDEXES} sites={:?} -- one module-name set was indexed \
-             more than once in this run, so its files' reference readings were parsed again per index",
-            super::multi_entry_index_sites()
-        ));
-    }
     // The two earlier phases already printed their own lines at the point they ran; only the
     // edge-index entries are reported here, so a phase is reported exactly once and under its own
     // name. Every entry — all three phases — is adjudicated together further down.

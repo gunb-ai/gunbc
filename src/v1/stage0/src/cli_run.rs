@@ -13522,33 +13522,80 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
 /// then proves only that two strings match, which is the shape of the question it was meant to
 /// answer. A counter is opaque, unforgeable from outside, and distinguishes two indices built over
 /// byte-identical source roots, which a content hash of the roots would not.
-static NEXT_INDEX_GENERATION: AtomicU64 = AtomicU64::new(1);
-
 fn next_index_generation() -> u64 {
-    NEXT_INDEX_GENERATION.fetch_add(1, Ordering::Relaxed)
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-/// How many `MultiEntryIndex`es this process has built: each construction draws exactly one
-/// generation (`new_multi_entry_index_shell`).
-pub(crate) fn multi_entry_indexes_built() -> u64 {
-    NEXT_INDEX_GENERATION.load(Ordering::Relaxed) - 1
+/// One `MultiEntryIndex` construction: the module-name set it indexes (as a digest over the sorted
+/// module paths, with its size) and the first caller outside the `#[track_caller]` chain of index
+/// builders that demanded it.
+#[derive(Clone, Debug)]
+pub(crate) struct MultiEntryIndexBuild {
+    pub(crate) name_set_digest: u64,
+    pub(crate) modules: usize,
+    pub(crate) site: String,
 }
 
-static MULTI_ENTRY_INDEX_SITES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+static MULTI_ENTRY_INDEX_BUILDS: std::sync::Mutex<Vec<MultiEntryIndexBuild>> =
+    std::sync::Mutex::new(Vec::new());
 
-/// Where each construction was demanded: the first caller outside the `#[track_caller]` chain of
-/// index builders, so a second index over one name set names the site that asked for it.
-pub(crate) fn record_multi_entry_index_site(site: &std::panic::Location<'_>) {
-    if let Ok(mut sites) = MULTI_ENTRY_INDEX_SITES.lock() {
-        sites.push(format!("{}:{}", site.file(), site.line()));
+pub(crate) fn record_multi_entry_index_site(
+    site: &std::panic::Location<'_>,
+    source_files: &ModuleSourceIndex,
+) {
+    use std::hash::{Hash, Hasher};
+    let mut names: Vec<&String> = source_files.keys().collect();
+    names.sort();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    names.hash(&mut hasher);
+    if let Ok(mut builds) = MULTI_ENTRY_INDEX_BUILDS.lock() {
+        builds.push(MultiEntryIndexBuild {
+            name_set_digest: hasher.finish(),
+            modules: names.len(),
+            site: format!("{}:{}", site.file(), site.line()),
+        });
     }
 }
 
-pub(crate) fn multi_entry_index_sites() -> Vec<String> {
-    MULTI_ENTRY_INDEX_SITES
+pub(crate) fn multi_entry_index_builds() -> Vec<MultiEntryIndexBuild> {
+    MULTI_ENTRY_INDEX_BUILDS
         .lock()
-        .map(|sites| sites.clone())
+        .map(|builds| builds.clone())
         .unwrap_or_default()
+}
+
+/// ONE INDEX PER MODULE-NAME SET. An index is a pure function of the name set it covers, so two
+/// constructions over one set are one demand built twice, and every file each serves is parsed
+/// again per index. Refuses with the sites of every set built more than once; distinct sets are
+/// distinct demands and are not limited.
+pub(crate) fn multi_entry_index_sharing_control(
+    builds: &[MultiEntryIndexBuild],
+) -> Result<usize, String> {
+    let mut by_set: BTreeMap<u64, Vec<&MultiEntryIndexBuild>> = BTreeMap::new();
+    for build in builds {
+        by_set.entry(build.name_set_digest).or_default().push(build);
+    }
+    let repeated: Vec<String> = by_set
+        .values()
+        .filter(|group| group.len() > 1)
+        .map(|group| {
+            format!(
+                "modules={} built={} sites={:?}",
+                group[0].modules,
+                group.len(),
+                group.iter().map(|b| b.site.as_str()).collect::<Vec<_>>()
+            )
+        })
+        .collect();
+    if !repeated.is_empty() {
+        return Err(format!(
+            "MultiEntryIndexBuiltTwiceForOneNameSet: {} -- one module-name set indexed more than \
+             once, so its files' reference readings were parsed again per index",
+            repeated.join("; ")
+        ));
+    }
+    Ok(by_set.len())
 }
 
 /// Parse-grade pool snapshot: every indexed module's declaration heads plus the
@@ -46836,5 +46883,43 @@ mod reference_closure_single_parse_differential {
             diverged.len()
         );
         assert!(diverged.is_empty(), "diverging entries: {:?}", diverged);
+    }
+}
+
+#[cfg(test)]
+mod multi_entry_index_sharing_control_tests {
+    use super::{multi_entry_index_sharing_control, MultiEntryIndexBuild};
+
+    fn build(digest: u64, site: &str) -> MultiEntryIndexBuild {
+        MultiEntryIndexBuild {
+            name_set_digest: digest,
+            modules: 7,
+            site: site.to_string(),
+        }
+    }
+
+    /// Distinct name sets are distinct demands: admitted, and counted.
+    #[test]
+    fn distinct_name_sets_are_admitted() {
+        assert_eq!(
+            multi_entry_index_sharing_control(&[build(1, "a:1"), build(2, "b:2")]),
+            Ok(2)
+        );
+    }
+
+    /// One name set built twice refuses, naming both sites.
+    #[test]
+    fn one_name_set_built_twice_refuses_with_both_sites() {
+        let err =
+            multi_entry_index_sharing_control(&[build(1, "a:1"), build(2, "b:2"), build(1, "c:3")])
+                .unwrap_err();
+        assert!(
+            err.contains("MultiEntryIndexBuiltTwiceForOneNameSet"),
+            "{err}"
+        );
+        assert!(
+            err.contains("a:1") && err.contains("c:3") && !err.contains("b:2"),
+            "{err}"
+        );
     }
 }
