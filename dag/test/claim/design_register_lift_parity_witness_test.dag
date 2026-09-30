@@ -454,7 +454,11 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // 2026-09-30: the .issue-avatar-badge rule is deleted -- the workflow kind no longer renders as
 // clipped text inside the 24px avatar circle (it rides the chip's class and hover title), so the
 // rule has no consumer. Derived by execution (roadmap_css_derived_digest on this tree).
-data roadmap_css_lift_parity_digest: String = "8729f6aae8bd4ae4"
+// 2026-09-30 (step 2): the .issue-rail-link rule -- the rail's relation counts open the
+// Dependencies tab as a text-styled button. Derived by execution (roadmap_css_derived_digest).
+// 2026-09-30 (robot mark): the .issue-avatar-mark rule sizes the Fabric chip's robot mark
+// (gunbc.site.robot_mark) inside the 24px circle. Derived by execution (roadmap_css_derived_digest).
+data roadmap_css_lift_parity_digest: String = "8735422222f6a261"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

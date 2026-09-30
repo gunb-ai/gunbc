@@ -1340,8 +1340,22 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Height, value: "100%"),
       decl(prop: RawProperty { name: "object-fit" }, value: "cover"),
     ] },
+    StaticRule { selector: ClassSelector { name: "issue-avatar-mark" }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: Width, value: scale_var(t: space_16)),
+      decl(prop: Height, value: scale_var(t: space_16)),
+    ] },
     StaticRule { selector: ClassSelector { name: "issue-avatar-workflow" }, decls: [
       decl(prop: Background, value: "var(--issue-action)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-rail-link" }, decls: [
+      decl(prop: FontFamily, value: "inherit"),
+      decl(prop: FontSize, value: "inherit"),
+      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Border, value: "0"),
+      decl(prop: Padding, value: scale_var(t: space_0)),
+      decl(prop: Cursor, value: "pointer"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-assignee-text" }, decls: [
       decl(prop: MarginLeft, value: scale_var(t: space_4)),

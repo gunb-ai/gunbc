@@ -194,6 +194,7 @@ import gunbc.roadmap_site_surface_render {
 import gunbc.roadmap_served_observation {
   DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
   served_observation_surface_response_for_instance,
+  served_attempt_revision_observations, served_current_revision_hex,
   served_observation_standing_response_for_instance,
 }
 import gunbc.roadmap.roadmap_event_carrier {
@@ -214,10 +215,13 @@ import gunbc.roadmap.roadmap_event_log {
 import extdeps.google.issue_tracker {
   issue_assignee_input_is_email, issue_assign_fabric_display,
 }
+import gunbc.roadmap_presentation { stale_attempt_nodes }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
+  belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
+  WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   belt_dispatch_result_for_label,
   belt_dispatch_all_status_labels,
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
@@ -868,6 +872,9 @@ fn approval_status_response(params: List<PathParamBinding>) -> ServeHttpResponse
 // or client fill), every other standing renders the empty field the write law refuses honestly,
 // and the response is NO-STORE because the page now carries a session secret (session-dependent
 // HTML is never reused for a different viewer — the allocation page's law, extended here).
+// THE WORK TAB READS THE SAME OBSERVATION THE DAILY PAGE DOES, scoped to this node: the
+// dispatch-ref census and current-attempt selection, then this node's progress. A census that
+// refuses stays a refusal on the page -- never an empty attempt list.
 fn serve_issue_detail_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
@@ -892,10 +899,24 @@ fn serve_issue_detail_response_over(
           _ => IssueFormContext { operation: "", csrf: "" }
         }
         let recents = match roadmap_events_read_all(layout: layout) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) _ => [] }
-        let page = issue_detail_page_for(proj: plan, node_id: node_id, attempts: [],
-          attempts_refused: Present { value: "The per-issue attempt observation is not connected; no claim of zero attempts is made." },
+        let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
+        let observed = belt_workflow_attempts_observe_scoped(instance: instance, scope: WorkflowAttemptsOneNode { node_id: node_id })
+        let attempts = match observed {
+          WorkflowAttemptsObserved { attempts: a } => a
+          WorkflowAttemptsRefused { reason: _ } => []
+        }
+        let attempts_refused = match observed {
+          WorkflowAttemptsObserved { attempts: _ } => none
+          WorkflowAttemptsRefused { reason: r } => Present { value: r }
+        }
+        let page = issue_detail_page_for(proj: plan, node_id: node_id, attempts: attempts,
+          attempts_refused: attempts_refused,
           standings: StandingsObserved { rows: [NodeStandingRow { node_id: node_id, standing: standing, assignment: state.assignment }] },
-          launch: belt_launch_host_standing_for_page_over(instance: instance, plan: plan), stale_nodes: [], events: envelopes,
+          launch: launch,
+          stale_nodes: stale_attempt_nodes(
+            observations: served_attempt_revision_observations(instance: instance, attempts: attempts),
+            current_revision_hex: served_current_revision_hex(launch: launch)),
+          events: envelopes,
           viewer: authenticated_viewer_label(evidence: request.security.authentication), recents: recents, command_context: context,
           profiles: serve_profiles_for_instance(instance: instance))
         let response = serve_page_response_with_status(page: page, status: 200)

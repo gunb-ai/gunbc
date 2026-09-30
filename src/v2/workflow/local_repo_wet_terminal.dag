@@ -1008,6 +1008,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/spark/v41_source_patch_converge_witness_test.dag",
       function: "empty_diff_has_a_real_digest",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.profile_store_real_path_witness_test", function: "profile_store_read_all_returns_the_upserted_profile_by_real_execution" },
+      entry: "dag/test/claim/auth/profile_store_real_path_witness_test.dag",
+      function: "profile_store_read_all_returns_the_upserted_profile_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.profile_store_real_path_witness_test", function: "profile_store_read_all_ignores_a_non_json_entry_by_real_execution" },
+      entry: "dag/test/claim/auth/profile_store_real_path_witness_test.dag",
+      function: "profile_store_read_all_ignores_a_non_json_entry_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.profile_store_real_path_witness_test", function: "profile_store_read_all_of_a_missing_directory_is_unread_at_list_by_real_execution" },
+      entry: "dag/test/claim/auth/profile_store_real_path_witness_test.dag",
+      function: "profile_store_read_all_of_a_missing_directory_is_unread_at_list_by_real_execution",
+      expectation: ExpectedToHold {}
     }
   ]
 }

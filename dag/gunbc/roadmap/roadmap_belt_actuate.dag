@@ -7953,8 +7953,31 @@ fn belt_verify_pass_outcome_from(outcomes: List<BeltVerifyOutcome>) -> BeltPassO
   }
 }
 
+// WHICH NODES AN OBSERVATION COVERS. The daily page observes every node once per tick; the issue
+// page observes one node per request. Both are the SAME observation -- the same dispatch-ref census,
+// the same current-attempt selection (dispatch_attempt_ref_first_per_node), the same progress
+// fold -- narrowed before the per-attempt progress is read, so the two surfaces cannot disagree
+// about what a node's current attempt is, and the issue request pays only for its own node.
+type WorkflowAttemptScope
+  = WorkflowAttemptsAllNodes
+  | WorkflowAttemptsOneNode { node_id: String }
+
+fn workflow_attempt_scope_admits(scope: WorkflowAttemptScope, attempt: DispatchAttemptRef) -> Bool {
+  match scope {
+    WorkflowAttemptsAllNodes => true
+    WorkflowAttemptsOneNode { node_id } => (attempt.node_id as String) == node_id
+  }
+}
+
 fn belt_workflow_attempts_observe_for_instance(
   instance: HostDashboardInstance,
+) -> BeltWorkflowAttempts {
+  belt_workflow_attempts_observe_scoped(instance: instance, scope: WorkflowAttemptsAllNodes)
+}
+
+fn belt_workflow_attempts_observe_scoped(
+  instance: HostDashboardInstance,
+  scope: WorkflowAttemptScope,
 ) -> BeltWorkflowAttempts {
   match belt_attempts_observe_for_instance(instance: instance) {
     AttemptsRefused { reason } =>
@@ -7963,6 +7986,7 @@ fn belt_workflow_attempts_observe_for_instance(
       let panes = belt_attempt_panes_observe_for_instance(instance: instance)
       WorkflowAttemptsObserved {
         attempts: dispatch_attempt_ref_first_per_node(attempts: attempts)
+          |> filter(attempt => workflow_attempt_scope_admits(scope: scope, attempt: attempt))
           |> map(attempt => belt_workflow_progress_for_attempt_ref(
             instance: instance,
             panes: panes,
