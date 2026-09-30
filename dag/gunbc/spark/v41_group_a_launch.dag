@@ -77,7 +77,7 @@ import gunbc.spark.remote_step_sequence { run_remote_step_sequence, remote_step_
 import gunbc.host_effect { FleetSsh }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.spark.managed_access_bootstrap { spark_managed_executor_login }
-import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
 import gunbc.spark.v41_capacity_measurement { V41MeasurementLaunchShape, v41_measurement_launch_shape }
@@ -149,9 +149,8 @@ data v41_engram_touch_receipt_env_name: NonEmptyStr = "GUNBC_ENGRAM_TOUCH_RECEIP
 // a path the manifest names and a path the engine opens are one string. The manifest is read-only to
 // the engine; the receipt directory is the one place it writes. The row stores are mounted read-only
 // at their own path for the same reason: the manifest names them by the path the encode wrote them to.
-// DEV-ONLY (never merged): user-writable, because the Engram staging runs unprivileged over the fleet edge.
-data v41_engram_manifest_dir: NonEmptyStr = "/home/briansrls/.gunbc/v41-engram-manifest" as NonEmptyStr
-data v41_engram_touch_receipt_dir: NonEmptyStr = "/home/briansrls/.gunbc/v41-engram-touch" as NonEmptyStr
+data v41_engram_manifest_dir: NonEmptyStr = "/var/lib/gunbc/v41-engram-manifest" as NonEmptyStr
+data v41_engram_touch_receipt_dir: NonEmptyStr = "/var/lib/gunbc/v41-engram-touch" as NonEmptyStr
 
 fn v41_engram_manifest_path() -> NonEmptyStr {
   join([v41_engram_manifest_dir as String, "/row-store-manifest.json"], "") as NonEmptyStr
@@ -814,6 +813,31 @@ fn v41_stage_engram_on(hosts: List<HostIdentity>, manifest_text: String, context
   }
 }
 
+// DEV-ONLY (operator ruling 2026-09-30, never merged): the modeled staging runs over the fleet SSH edge,
+// which does not reach the Group A Sparks from the runner; stage through the same privileged password
+// session the occupancy reads and the arm apply use.
+fn v41_dev_stage_engram_privileged(hosts: List<HostIdentity>, manifest_text: String, ctx: SparkMaterializeContext) -> V41StagingOutcome {
+  let script = join([
+    "set -e; mkdir -p ", v41_engram_manifest_dir as String, " ", v41_engram_touch_receipt_dir as String,
+    "; printf '%s' \"$1\" > ", v41_engram_manifest_path() as String, "; chmod 644 ", v41_engram_manifest_path() as String,
+  ], "")
+  fold(hosts, init: V41StagedEverywhere { receipt: "" }, f: fn(acc, h) {
+    match acc {
+      V41StagingStopped { receipt: _ } => acc
+      V41StagedEverywhere { receipt: so_far } =>
+        match spark_remote_run(ctx: vllm_image_target_ctx(source_ctx: ctx, host: h), argv: ["sh", "-c", script, "engram-stage", manifest_text]) {
+          RemoteUnreachable { cause: c } => V41StagingStopped { receipt: join([so_far, "engram staging host=", h as String, " UNREACHABLE: ", c, "\n"], "") }
+          RemoteRan { exit_code: code, stdout: _, stderr: err } =>
+            if code == 0 {
+              V41StagedEverywhere { receipt: join([so_far, "engram staging host=", h as String, " ok\n"], "") }
+            } else {
+              V41StagingStopped { receipt: join([so_far, "engram staging host=", h as String, " FAILED (non-zero exit): ", err, "\n"], "") }
+            }
+        }
+    }
+  })
+}
+
 // THE SESSION: everything the launch reads, then -- only on admission -- the staging and the arm
 // transaction (gunbc.spark.native_serving_apply spark_native_apply_transaction, the same preflight,
 // preserve, head-first apply, readback and commit-or-rollback Group B's relaunch runs). Every read is
@@ -857,7 +881,7 @@ fn v41_group_a_launch_session(now_word: String, context: FleetSshExecutionContex
           match v41_group_a_steps(p: plan) {
             NativeArmStepsRefused { cause: c } => SparkBuildHostWork { receipt: join([reads_receipt, "NOT LAUNCHED: the units did not render: ", c as String, "\n"], ""), converged: false }
             NativeArmSteps { steps: steps, master_endpoint: _ } =>
-              match v41_stage_engram_on(hosts: map(steps, st => st.host), manifest_text: manifest, context: context) {
+              match v41_dev_stage_engram_privileged(hosts: map(steps, st => st.host), manifest_text: manifest, ctx: ctx) {
                 V41StagingStopped { receipt: r } => SparkBuildHostWork { receipt: join([reads_receipt, r, "NOT LAUNCHED: the Engram staging stopped; no serving unit was touched\n"], ""), converged: false }
                 V41StagedEverywhere { receipt: r } => {
                   let run = spark_native_apply_transaction(context: context, trust: ctx.trust, path: ctx.path, administrator: ctx.admin_credential, steps: steps, at_word: now_word)
