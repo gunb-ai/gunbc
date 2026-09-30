@@ -34298,33 +34298,18 @@ mod reference_edge_producer_tests {
         (path, target)
     }
 
-    fn dependency_edges_from_free_monoid(
+    // The list decode is the interpreter's one authority, which reads every List<T> realization
+    // (host Value::List and the FreeMonoid Cons/Empty spelling); a local Cons-only decoder here
+    // went stale when dependency_resolution_facts moved to the host and returned Value::List.
+    fn dependency_edges_from_list(
         ctx: &crate::v1_interpreter::InterpContext,
         value: &crate::v1_interpreter::Value,
     ) -> Vec<(String, String)> {
-        match value {
-            crate::v1_interpreter::Value::Variant {
-                variant_name,
-                fields,
-                ..
-            } if ctx.sym_eq(*variant_name, "Empty") => Vec::new(),
-            crate::v1_interpreter::Value::Variant {
-                variant_name,
-                fields,
-                ..
-            } if ctx.sym_eq(*variant_name, "Cons") => {
-                let head = ctx
-                    .field(fields, "head")
-                    .expect("Cons.head must be present");
-                let tail = ctx
-                    .field(fields, "tail")
-                    .expect("Cons.tail must be present");
-                let mut edges = vec![edge_from_record(ctx, head)];
-                edges.extend(dependency_edges_from_free_monoid(ctx, tail));
-                edges
-            }
-            other => panic!("expected FreeMonoid Cons/Empty, got {other}"),
-        }
+        crate::v1_interpreter::free_monoid_to_vec(value)
+            .unwrap_or_else(|| panic!("expected a List<ModuleDependencyEdge>, got {value}"))
+            .iter()
+            .map(|edge| edge_from_record(ctx, edge))
+            .collect()
     }
 
     // Divergence control for the §3 producer fork dissolved in #6935: an import-less file that
@@ -34401,7 +34386,7 @@ mod reference_edge_producer_tests {
                 str_list_value(&[] as &[String]),
             ),
         ];
-        let dag_edges = dependency_edges_from_free_monoid(
+        let dag_edges = dependency_edges_from_list(
             &ctx,
             &v1_interpreter::run_in_context_with_args(
                 &ctx,
