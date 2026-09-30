@@ -376,10 +376,14 @@ fn profile_store_decode_entries(
           { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["read failed: ", read_result.error], "") }]) }
         } else {
           match principal_profile_of_json(text: read_result.content) {
-            ProfileFileMalformed { detail } =>
-              { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["malformed: ", detail], "") }]) }
-            ProfileFileDecoded { profile: p } =>
-              { profiles: concat(acc, [p]), skipped: skipped_acc }
+            ProfileFileMalformed { detail } => {
+              let skipped_file = { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["malformed: ", detail], "") }]) }
+              skipped_file
+            }
+            ProfileFileDecoded { profile: p } => {
+              let decoded_file = { profiles: concat(acc, [p]), skipped: skipped_acc }
+              decoded_file
+            }
           }
         }
       }

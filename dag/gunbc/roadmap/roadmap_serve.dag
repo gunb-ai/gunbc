@@ -2862,13 +2862,15 @@ fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHtt
 }
 
 fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonValue> {
+  let unreadable = [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ] as List<JsonValue>
+  let partial = [ json_kv(key: "profile_standing", value: json_string(s: "one or more profile records unreadable; the affected members render their fallback")) ] as List<JsonValue>
   match roster {
-    ProfileStoreUnread { step: _, reason: _ } => [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ]
+    ProfileStoreUnread { step: _, reason: _ } => unreadable
     ProfileStoreRead { profiles: _, skipped } =>
       if count(skipped) == 0 {
-        []
+        [] as List<JsonValue>
       } else {
-        [ json_kv(key: "profile_standing", value: json_string(s: join([to_string(value: count(skipped)), " profile record(s) unreadable; the affected members render their fallback"], ""))) ]
+        partial
       }
   }
 }
