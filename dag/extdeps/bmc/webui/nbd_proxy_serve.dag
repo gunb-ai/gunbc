@@ -41,9 +41,9 @@ type NbdProxyServeTransportIntent {
 }
 
 data nbd_proxy_serve_cited_tool_names: List<NonEmptyStr> = [
-  nbdkit_cli_tool.name,
-  websocat_cli_tool.name,
-  socat_cli_tool.name,
+  nbdkit_cli_tool.program.invocation,
+  websocat_cli_tool.program.invocation,
+  socat_cli_tool.program.invocation,
 ]
 
 fn nbd_proxy_serve_transport_intent(
@@ -102,7 +102,7 @@ fn bmcweb_session_login_argv(
       request_body_file: request_body_file,
       response_path: response_path,
     ),
-    init: [curl_cli_tool.name as String],
+    init: [curl_cli_tool.program.invocation as String],
     f: (acc, word) => list_push(acc, word),
   )
 }
@@ -121,7 +121,7 @@ fn nbd_proxy_serve_websocat_unit_name(lease_key: NonEmptyStr) -> NonEmptyStr {
 
 fn nbd_proxy_serve_nbdkit_argv(intent: NbdProxyServeTransportIntent) -> List<String> {
   [
-    nbdkit_cli_tool.name as String,
+    nbdkit_cli_tool.program.invocation as String,
     "-p",
     to_string(intent.local_nbd_port),
     "--readonly",
