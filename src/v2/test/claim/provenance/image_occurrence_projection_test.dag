@@ -207,33 +207,24 @@ test fn occurrence_wall_admits_a_closed_allocated_image_holds() -> Bool {
   }
 }
 
-// THE REAL PATH. One function declaration with two parameters -- whose image is the Arrow with a
-// domain, an order transform, a head spine and one label per parameter -- through the real parse and
-// normalize. The token stream is SUPPLIED (tokenize is not this claim's subject, and paying for it
-// here is what put the claim over its budget); the next claim pairs that supply with the real
+// THE REAL PATH. One where-refined type -- whose where clause lowers to an image of an outer Conj (the
+// root) with a production, an identity atom and a predicate atom -- through the real parse and
+// normalize. It is the cheapest authored input with a multi-member image: a function declaration
+// has one too, but its body lowering alone put this claim over its eval-step budget. The token stream
+// is SUPPLIED (tokenize is not this claim's subject); the next claim pairs that supply with the real
 // tokenizer, so supplying it removes no execution of the real path (DESIGN section 3).
-data iop_real_text: String = "module m\n\nfn f(a: Int, b: Int) -> Int {\n  a\n}\n"
+data iop_real_text: String = "module m\ntype P = Int where non_empty\n"
 
 fn iop_real_tokens() -> TokenStream {
   token_stream_new(all: [
     Token { class: ^dag_token_kw_module, lexeme: "module", file: ^image_occurrence_real_probe, start: 0, end: 6 },
     Token { class: ^dag_token_ident, lexeme: "m", file: ^image_occurrence_real_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^image_occurrence_real_probe, start: 10, end: 12 },
-    Token { class: ^dag_token_ident, lexeme: "f", file: ^image_occurrence_real_probe, start: 13, end: 14 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^image_occurrence_real_probe, start: 14, end: 15 },
-    Token { class: ^dag_token_ident, lexeme: "a", file: ^image_occurrence_real_probe, start: 15, end: 16 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^image_occurrence_real_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^image_occurrence_real_probe, start: 9, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "P", file: ^image_occurrence_real_probe, start: 14, end: 15 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^image_occurrence_real_probe, start: 16, end: 17 },
     Token { class: ^dag_token_ident, lexeme: "Int", file: ^image_occurrence_real_probe, start: 18, end: 21 },
-    Token { class: ^dag_token_comma, lexeme: ",", file: ^image_occurrence_real_probe, start: 21, end: 22 },
-    Token { class: ^dag_token_ident, lexeme: "b", file: ^image_occurrence_real_probe, start: 23, end: 24 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^image_occurrence_real_probe, start: 24, end: 25 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^image_occurrence_real_probe, start: 26, end: 29 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^image_occurrence_real_probe, start: 29, end: 30 },
-    Token { class: ^dag_token_arrow, lexeme: "->", file: ^image_occurrence_real_probe, start: 31, end: 33 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^image_occurrence_real_probe, start: 34, end: 37 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^image_occurrence_real_probe, start: 38, end: 39 },
-    Token { class: ^dag_token_ident, lexeme: "a", file: ^image_occurrence_real_probe, start: 42, end: 43 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^image_occurrence_real_probe, start: 44, end: 45 }
+    Token { class: ^dag_token_kw_where, lexeme: "where", file: ^image_occurrence_real_probe, start: 22, end: 27 },
+    Token { class: ^dag_token_ident, lexeme: "non_empty", file: ^image_occurrence_real_probe, start: 28, end: 37 }
   ])
 }
 
