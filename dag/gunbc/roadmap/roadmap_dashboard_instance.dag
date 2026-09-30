@@ -792,10 +792,14 @@ data macbook_local_codex_home: FilePath = codex_account_state_root(
 // revision and still refuses, which is the correct answer while the admitting authority for a
 // development checkout is unmodeled. This row makes the machine nameable; it does not answer for
 // what may be launched on it.
+// The host identity is what the executor's own short hostname reads (os.Hostname.ReadShort, the
+// lookup key of dashboard_instance_for_host); on this machine that is "MacBook-Pro", not the
+// instance's name. A harness seat bound from here refused with "no dashboard instance is declared
+// for host MacBook-Pro" until the row said so (ac-dialogue, 2026-09-30).
 fn macbook_local_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
     instance_id: macbook_local_dashboard_id,
-    host_identity: "macbook" as NonEmptyStr,
+    host_identity: "MacBook-Pro" as NonEmptyStr,
     provision_parent_root: "/Users/briansrls/.local/share" as FilePath,
     instance_root: macbook_local_instance_root,
     local_origin_root: macbook_local_repo_root,
