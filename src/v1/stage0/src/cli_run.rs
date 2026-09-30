@@ -21915,13 +21915,17 @@ fn serve_handler_args(
     args
 }
 
-fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String> {
-    use std::os::unix::io::AsRawFd;
+// THE PEER UID IS THE KERNEL'S ANSWER ON EITHER PLATFORM. Linux exposes it through the
+// SO_PEERCRED socket option (unix(7)); the BSDs and macOS expose the same fact through
+// getpeereid(2) and have no SO_PEERCRED. Both read the credentials the kernel recorded at connect
+// time, so a unix-socket listener attests peers the same way on a developer's Mac as on srv1.
+#[cfg(target_os = "linux")]
+fn serve_peer_uid(fd: std::os::unix::io::RawFd) -> std::io::Result<libc::uid_t> {
     let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
     let rc = unsafe {
         libc::getsockopt(
-            s.as_raw_fd(),
+            fd,
             libc::SOL_SOCKET,
             libc::SO_PEERCRED,
             &mut cred as *mut libc::ucred as *mut libc::c_void,
@@ -21931,15 +21935,31 @@ fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String
     if rc != 0 {
         return Err(std::io::Error::last_os_error());
     }
+    Ok(cred.uid)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn serve_peer_uid(fd: std::os::unix::io::RawFd) -> std::io::Result<libc::uid_t> {
+    let mut uid: libc::uid_t = 0;
+    let mut gid: libc::gid_t = 0;
+    let rc = unsafe { libc::getpeereid(fd, &mut uid, &mut gid) };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(uid)
+}
+
+fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String> {
+    use std::os::unix::io::AsRawFd;
+    let uid = serve_peer_uid(s.as_raw_fd())?;
     let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
     let mut buf = vec![0 as libc::c_char; 4096];
     let mut result: *mut libc::passwd = std::ptr::null_mut();
-    let rc =
-        unsafe { libc::getpwuid_r(cred.uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+    let rc = unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
     if rc != 0 || result.is_null() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
-            format!("peer uid {} resolves to no account", cred.uid),
+            format!("peer uid {} resolves to no account", uid),
         ));
     }
     let name = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) };
