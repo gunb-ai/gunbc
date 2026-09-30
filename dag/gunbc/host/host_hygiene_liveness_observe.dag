@@ -36,12 +36,19 @@ fn host_hygiene_journal_matching_lines(stdout: String) -> List<String> {
 // journalctl -o short-unix prints "SECONDS.MICROSECONDS host proc[pid]: msg" — the first
 // whitespace field is the epoch stamp; the fractional part is dropped the same way the
 // deleted script's `last_int=$\{last%%.*}` did.
-fn host_hygiene_line_epoch_field(line: String) -> String {
+fn host_hygiene_line_epoch_field(line: String) -> String? {
   split(s: trim(line), delimiter: " ").first()
 }
 
-fn host_hygiene_epoch_field_whole_seconds(field: String) -> Int? {
-  parse_int(s: split(s: field, delimiter: ".").first())
+fn host_hygiene_epoch_field_whole_seconds(field: String?) -> Int? {
+  match field {
+    Absent => none
+    Present { value: stamp } =>
+      match split(s: stamp, delimiter: ".").first() {
+        Absent => none
+        Present { value: whole } => parse_int(s: whole)
+      }
+  }
 }
 
 type SlotListeningReadOutcome
