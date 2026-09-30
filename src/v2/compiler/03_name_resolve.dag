@@ -131,7 +131,8 @@ type ValidatedModuleRoots {
 // subjects binds the returned one. A caller that drops it does not get a stale answer -- it pays the
 // build again -- and `namespaces_built` is what makes that countable: it increments on every miss, so
 // a context that resolved N distinct subjects and reports more than N builds rebuilt one
-// (v2.test.claim.name_resolve.namespace_provider_test).
+// (v2.test.name_resolve.admission_fail_closed
+// namespace_provider_builds_each_module_at_most_once_per_context).
 //
 // SCOPE: the modules this ingest read. A demand for a module outside `roots` refuses at the provider
 // (resolve_module_not_found, located at the requested name), is recorded like any other outcome, and
