@@ -21,7 +21,7 @@ import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage
 import gunbc.machine_intake_mtcollins1_boot_dry_realization {
   MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
   mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher, with_fs,
-  worker_process_started, worker_process_killed, proc_stat_path, proc_stat_line, worker_process,
+  worker_process_started, worker_process_killed, proc_stat_path, proc_stat_line, worker_process, healthy_kvm_viewer,
 }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, OperationObserved, OperationWorkerKilled,
@@ -77,6 +77,7 @@ fn matrix_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
 data matrix_services: List<String> = [
   "diagnostic.ipmi.Tool", "megarac.Media", "Filesystem", "shell.Env", "sleep.Delay",
   "gunbc.machine_intake.sol_hold", "shell.Exec", "ssh.Session", "Clock", "linux.Procfs", "shell.Move", "os.Hostname", "shell.Mkdir", "shell.Path",
+  "gunbc.owned_process.launch", "sha256sum.Sha256",
 ]
 
 fn matrix_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
@@ -99,6 +100,11 @@ fn matrix_frame_over(realization: OperationRealization<MtCollins1BootWorld>) -> 
 // tree against its pin, the host libraries, the versions and a launch probe -- which is a different
 // subject with its own witnesses. The matrix supplies each resolution arm the boot can meet, built from
 // the production location and probe values, and the inner entry calls it where the observer starts.
+// PAIRING (DESIGN s3): the real resolution is executed by
+// test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness
+// a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound, whose rig calls
+// runner_browser_toolchain_here_wet on the floor pool and returns false on every arm but Ready, so
+// deleting that integration turns it red; it also launches the real observer over the resolved location.
 fn srv1_toolchain_location() -> RunnerBrowserToolchainLocation? {
   match runner_browser_toolchain_host_admission(host: "srv1" as NonEmptyStr) {
     BrowserToolchainHostAdmitted { deploy: _, location: loc } => Present { value: loc }
@@ -213,6 +219,7 @@ fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
     worker: ModeledWorker { next_pid: 4000, processes: [], uptime_at_origin: 86400 },
     console: ModeledHostConsole { lines: lines, emitted: 0, boot: none },
     media: healthy_media(),
+    screen: healthy_kvm_viewer(),
   })
 }
 
@@ -328,6 +335,41 @@ test fn a_healthy_census_completes_and_releases_its_collector() -> Bool {
         && first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ReleaseHeld") < first_ordinal(route: route, name: "Filesystem.Delete")
         && count_named(route: route, name: "Filesystem.Delete") == 2
         && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// THE RUNNER'S BROWSER TOOLCHAIN IS NOT READY, OR CANNOT BE RESOLVED (operator-accepted ruling A: the
+// matrix supplies the resolution). The observer is REQUIRED for the handoff, so neither arm starts a
+// viewer with a toolchain it could not vouch for: no observer directory is made, no process is launched,
+// and the handoff refuses with the toolchain's own standing as its cause -- before any boot override or
+// power action.
+fn run_attempt_with_toolchain(world: MtCollins1BootWorld, toolchain: RunnerBrowserToolchainResolution) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
+  evaluate_in_witness_frame(frame: matrix_frame(world: world), subject: fn(_scope) { boot_with_toolchain(toolchain: toolchain) })
+}
+
+fn no_observer_and_no_power_action(route: List<DispatchRecord>) -> Bool {
+  count_named(route: route, name: "shell.Mkdir.Parents") == 0
+    && count_named(route: route, name: "gunbc.owned_process.launch.LaunchOwned") == 0
+    && reached_no_power_action(route: route)
+}
+
+test fn a_toolchain_that_is_not_ready_starts_no_observer_and_no_power_action() -> Bool {
+  match run_attempt_with_toolchain(world: world_with_console(lines: []), toolchain: not_ready_toolchain()) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "the required KVM observer was not established")
+        && string_contains(s: outcome_reason(a: value), pattern: "the runner browser toolchain is not ready")
+        && no_observer_and_no_power_action(route: route)
+    _ => false
+  }
+}
+
+test fn an_unresolved_toolchain_starts_no_observer_and_no_power_action() -> Bool {
+  match run_attempt_with_toolchain(world: world_with_console(lines: []), toolchain: unresolved_toolchain()) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "the required KVM observer was not established")
+        && string_contains(s: outcome_reason(a: value), pattern: "the runner browser toolchain is unresolved")
+        && no_observer_and_no_power_action(route: route)
     _ => false
   }
 }
@@ -597,7 +639,7 @@ fn as_another_run(w: MtCollins1BootWorld, run_id: String) -> MtCollins1BootWorld
 fn as_another_run_in(w: MtCollins1BootWorld, run_id: String, pid_namespace: String) -> MtCollins1BootWorld {
   let env = map(w.environment, v => if v.name == "GITHUB_RUN_ID" { ModeledVariable { name: v.name, value: run_id } } else { v })
   let fs = worker_process_started(fs: w.fs, boot_id: worker_boot_id, pid_namespace: pid_namespace, pid: first_worker_pid + 1, start_ticks: first_worker_start + 9000)
-  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
+  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen }
 }
 
 // THE NEXT ATTEMPT RECOVERS THE DEAD RUN'S HOLD (finding 2, repaired in #12555). The interrupted run
@@ -678,7 +720,7 @@ fn with_clock_jump(w: MtCollins1BootWorld, at: Second, by: Int) -> MtCollins1Boo
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
     clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_append(w.clock.jumps, ModeledClockStep { at: at, by: std.measure.second_displacement(count: by) }) },
-    worker: w.worker, console: w.console, media: w.media,
+    worker: w.worker, console: w.console, media: w.media, screen: w.screen,
   }
 }
 
