@@ -9,7 +9,8 @@ import v2.std.algebra {
   contains,
   fold_list,
   is_empty,
-  length
+  length,
+  list_map,
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -64,7 +65,7 @@ type ReferenceSite {
 // is canonically ordered by. This is a SCOPE PATH, not an identity: no reader decides what a label
 // IS from it.
 fn reference_site_scope_path(site: ReferenceSite) -> QualifiedName {
-  map(site.position, fn(label) { label_sort_key(label: label) })
+  list_map(xs: site.position, f: fn(label) { label_sort_key(label: label) })
 }
 
 type ResolutionProvenance

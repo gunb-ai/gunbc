@@ -92,7 +92,7 @@ data cfp_roster: FreeMonoid<QualifiedName> = module_roster_from_roots(roots: cfp
 // A bare name mentioned in the consumer whose only declaration lives in the
 // producer: the one name answered across a file boundary.
 fn cfp_authored_position(qn: QualifiedName) -> List<EdgeLabel> {
-  map(qn, fn(segment) { Authored { name: segment } })
+  list_map(xs: qn, f: fn(segment) { Authored { name: segment } })
 }
 
 data cfp_cross_file_site: ReferenceSite = ReferenceSite {
