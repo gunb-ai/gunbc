@@ -190,3 +190,34 @@ test fn a_truncated_refusal_record_is_could_not_tell() -> Bool {
     _ => false
   }
 }
+
+// NON-TARGET STATUS RED: a parsed checksum mismatch (22) or an uncatalogued code is a different
+// decoder failure. It is not a reproduction, and it is unclear, not refusing, in the partition.
+data status_22_boot: CensusBootCapture = CensusBootCapture { source: "status 22", placement: DefaultPlacement, lines: ["[   10.374590] ZSTD-decompression failed with status 22\r"] }
+
+data status_42_boot: CensusBootCapture = CensusBootCapture { source: "status 42", placement: DefaultPlacement, lines: ["[   10.374590] ZSTD-decompression failed with status 42\r"] }
+
+test fn a_parsed_non_target_status_is_not_reproduced() -> Bool {
+  (match census_qemu_probe_verdict(capture: status_22_boot) {
+    QemuCouldNotTell { source: _, cause: c } => string_contains(s: c, pattern: "different status")
+    _ => false
+  }) && (match census_qemu_probe_verdict(capture: status_42_boot) {
+    QemuCouldNotTell { source: _, cause: c } => string_contains(s: c, pattern: "zstd error 42")
+    _ => false
+  })
+}
+
+// UNPARSED-ONLY AND NON-TARGET BOOTS ENTER RECURRENCE AND PLACEMENT AS UNCLEAR, beside one target
+// refusal: the tally is refusing 1, clean 0, unclear 2.
+data truncated_boot: CensusBootCapture = CensusBootCapture { source: "truncated", placement: DefaultPlacement, lines: ["[   10.374590] ZSTD-decompression failed with sta"] }
+
+test fn unparsed_and_non_target_refusals_are_unclear_in_recurrence_and_placement() -> Bool {
+  let readings = map([refusing_run, truncated_boot, status_22_boot], c => census_boot_reading(capture: c))
+  (match refusal_recurrence(readings: readings) {
+    RefusalOnSomeBoots { refusing: a, clean: b, unclear: u } => a == 1 && b == 0 && u == 2
+    _ => false
+  }) && (match first(placement_tallies(readings: readings)) {
+    Absent => false
+    Present { value: t } => t.refusing == 1 && t.clean == 0 && t.unclear == 2
+  })
+}

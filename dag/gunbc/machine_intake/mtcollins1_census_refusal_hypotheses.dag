@@ -7,8 +7,9 @@ import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.linux.xhci_hcd { linux_xhci_host_controller_product_desc, linux_xhci_hcd_driver_name, linux_xhci_pci_module_name, linux_xhci_pci_renesas_module_name }
+import extdeps.linux.module_decompress { ZstdCorruptionDetected, ZstdErrorCodeOther, zstd_error_code_name }
 import gunbc.machine_intake_kernel_module_decompression_observation {
-  KernelModuleDecompressionObservation, NoRefusalRecorded, RefusalRecorded,
+  KernelModuleDecompressionObservation, ModuleDecompressionRefusal, NoRefusalRecorded, RefusalRecorded,
   RefusalIdentityReading, RefusalIdentityUnread, RefusalIdentityCandidates,
   kernel_module_decompression_observation, stamped,
 }
@@ -87,10 +88,33 @@ fn census_boot_reading(capture: CensusBootCapture) -> CensusBootReading {
   }
 }
 
-fn boot_refused(r: CensusBootReading) -> Bool {
+// THE INCIDENT'S SUBJECT IS STATUS 20, ZSTD_error_corruption_detected. The observation parses any
+// numeric status (a checksum mismatch is 22; an uncatalogued code is kept as its integer), and a
+// parsed refusal with a DIFFERENT status is a different decoder failure, not this incident. So the
+// partition is three-valued and shared by every reading below: a TARGET refusal is refusing; no
+// refusal record plus an observed xHCI registration is clean; everything else -- a different
+// parsed status, a refusal record that could not be parsed, a capture that never reached the
+// xHCI -- is unclear.
+fn is_target_refusal(x: ModuleDecompressionRefusal) -> Bool {
+  match x.status { ZstdCorruptionDetected => true  ZstdErrorCodeOther { code: _ } => false }
+}
+
+fn target_refusal_count(r: CensusBootReading) -> Int {
   match r.decompression {
-    NoRefusalRecorded { insert_failures: _, unparsed_insert_records: _ } => false
-    RefusalRecorded { refusals: _, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: _ } => true
+    NoRefusalRecorded { insert_failures: _, unparsed_insert_records: _ } => 0
+    RefusalRecorded { refusals: rs, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: _ } =>
+      count(filter(rs, x => is_target_refusal(x: x)))
+  }
+}
+
+fn boot_refused(r: CensusBootReading) -> Bool {
+  target_refusal_count(r: r) > 0
+}
+
+fn no_refusal_record(r: CensusBootReading) -> Bool {
+  match r.decompression {
+    NoRefusalRecorded { insert_failures: _, unparsed_insert_records: _ } => true
+    RefusalRecorded { refusals: _, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: _ } => false
   }
 }
 
@@ -98,7 +122,7 @@ fn boot_refused(r: CensusBootReading) -> Bool {
 // A capture with neither -- silent, truncated, ended before coldplug -- is UNCLEAR, never clean,
 // because the absence of a refusal line there is the absence of the observation.
 fn boot_clean(r: CensusBootReading) -> Bool {
-  !boot_refused(r: r) && r.xhci_bound
+  no_refusal_record(r: r) && r.xhci_bound
 }
 
 // THE CANDIDATE MODULE NAMES A REFUSING BOOT CARRIES, deduplicated. An identity the capture could
@@ -118,6 +142,7 @@ fn name_set_equal(a: List<String>, b: List<String>) -> Bool {
 }
 
 fn refusing_boot_identity(r: CensusBootReading) -> List<RefusingBootIdentity> {
+  if !boot_refused(r: r) { [] } else {
   match r.decompression {
     NoRefusalRecorded { insert_failures: _, unparsed_insert_records: _ } => []
     RefusalRecorded { refusals: _, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: id } =>
@@ -126,6 +151,7 @@ fn refusing_boot_identity(r: CensusBootReading) -> List<RefusingBootIdentity> {
         RefusalIdentityCandidates { candidates: cs } =>
           [RefusingIdentityNamed { source: r.source, modules: distinct_names(xs: map(cs, c => c.module_name)) }]
       }
+  }
   }
 }
 
@@ -275,7 +301,7 @@ fn census_refusal_hypotheses_text(captures: List<CensusBootCapture>) -> String {
 }
 
 // THE OFF-MACHINE QEMU PROBE'S VERDICT OVER ONE ARM'S SERIAL CAPTURE, three-valued. REPRODUCED needs
-// a PARSED refusal record; NOT-REPRODUCED needs the route to have run -- no refusal record AND the
+// a PARSED refusal with the incident's status (is_target_refusal); NOT-REPRODUCED needs the route to have run -- no refusal record AND the
 // xHCI controller's registration line, which is the load the refusal is about; everything else is
 // COULD-NOT-TELL, with the reason. A silent capture, a truncated or unparsable refusal record, and a
 // capture that ended before the xHCI bound all land there: "no refusal line" from a boot that never
@@ -289,8 +315,10 @@ fn census_qemu_probe_verdict(capture: CensusBootCapture) -> CensusQemuProbeVerdi
   let r = census_boot_reading(capture: capture)
   match r.decompression {
     RefusalRecorded { refusals: rs, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: _ } =>
-      if count(rs) > 0 {
+      if boot_refused(r: r) {
         QemuReproduced { reading: r, candidates: flat_map(refusing_boot_identity(r: r), i => named_modules(i: i)) }
+      } else if count(rs) > 0 {
+        QemuCouldNotTell { source: capture.source, cause: concat("a ZSTD refusal was parsed with a different status (", join(map(rs, x => zstd_error_code_name(code: x.status)), ", "), "), not the incident's corruption_detected; a different decoder failure is not a reproduction") }
       } else {
         QemuCouldNotTell { source: capture.source, cause: "a refusal record was recognised but none could be parsed" }
       }
