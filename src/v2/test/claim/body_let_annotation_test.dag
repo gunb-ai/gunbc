@@ -14,6 +14,7 @@ import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_magnitude_node_optional, dag_symbol_literal_name_optional, dag_type_atom_node }
 import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }
 import v2.std.integer { integer_decimal_digit_type_node }
+import std.types { Int }
 import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
 import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated }
 import v2.std.collection { List, list_at_optional }
