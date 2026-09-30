@@ -2,11 +2,16 @@ module test.claim.machine_intake.mtcollins1_boot_authorization_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
+import v2.std.optional { Present }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   mtcollins1_boot_subject,
   mtcollins1_boot_medium,
   mtcollins1_boot_medium_image_name,
   mtcollins1_boot_medium_image_sha256,
+  mtcollins1_boot_medium_candidate,
+  mtcollins1_medium_of_row,
+  PinnedMediumRow,
+  CandidateMediumRow,
 }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
@@ -28,4 +33,29 @@ test fn subject_names_the_selected_medium() -> Bool {
     && s.selection.persistence == IpmiBootOnce
     && s.selection.device == IpmiBootCdrom
     && (ipmi_boot_selection_label(selection: s.selection) as String) == "cdrom/efi/once"
+}
+
+// THE BOOT NEVER RESOLVES THE CANDIDATE. The subject the boot signs and the attach verifies is built by
+// mtcollins1_boot_subject from the PINNED row; the candidate row names an image published for a later
+// attempt. The claim reads the boot's own resolver, so pointing it at the candidate goes red here, and
+// the candidate is required to be a different image (otherwise the check could not tell them apart).
+test fn the_boot_subject_resolves_the_pinned_row_and_never_the_candidate() -> Bool {
+  let subject = mtcollins1_boot_subject(execution_revision: "0000000000000000000000000000000000000000")
+  let pinned_sha = mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium)
+  (subject.image_sha256 as String) == (pinned_sha as String)
+    && match mtcollins1_medium_of_row(row: PinnedMediumRow) { Absent => false Present { value: m } => (mtcollins1_boot_medium_image_sha256(medium: m) as String) == (pinned_sha as String) }
+    && match mtcollins1_boot_medium_candidate {
+      Absent => true
+      Present { value: c } =>
+        (mtcollins1_boot_medium_image_sha256(medium: c) as String) != (pinned_sha as String)
+          && (subject.image_sha256 as String) != (mtcollins1_boot_medium_image_sha256(medium: c) as String)
+    }
+}
+
+// The candidate row is read through the same selector; its image is the published 161b98b9... .
+test fn the_candidate_row_names_the_published_module_identity_image() -> Bool {
+  match mtcollins1_medium_of_row(row: CandidateMediumRow) {
+    Absent => false
+    Present { value: c } => (mtcollins1_boot_medium_image_sha256(medium: c) as String) == "161b98b9bb389a803805b582203fe73fa9a3ec421e3783b6463528124c2bd513"
+  }
 }

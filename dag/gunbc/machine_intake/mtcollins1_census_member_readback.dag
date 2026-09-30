@@ -22,7 +22,7 @@ import gunbc.host_command_binding {
   CreationNotRequested,
 }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
-import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium }
+import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, MtCollins1MediumRow, PinnedMediumRow, CandidateMediumRow, mtcollins1_medium_of_row, mtcollins1_medium_row_label }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_on_iso }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_host_target }
@@ -454,20 +454,40 @@ fn census_member_readback(medium: MtCollins1BootMedium) -> CensusMemberReadbackA
   }
 }
 
-// CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode mtcollins1_census_member_readback,
-// which consumes the fleet SSH key; the receipt is uploaded as that run's artifact whatever the
-// verdict. The run exits nonzero unless the chain is identical AND the workspace was removed.
+// CONSUMPTION (DESIGN §3c): the fleet-converge modes mtcollins1_census_member_readback (the PINNED
+// row, the image the next boot reads) and mtcollins1_census_candidate_readback (the CANDIDATE row, the
+// image published for a later attempt and not yet pinned) each invoke one entry below over the same
+// fold; which row is read is the input, and the receipt names it. Each consumes the fleet SSH key; the
+// receipt is uploaded whatever the verdict, and the run exits nonzero unless the chain is identical
+// AND the workspace was removed.
 fn mtcollins1_census_member_readback_wet() -> ProcessExit {
-  let attempt = census_member_readback(medium: mtcollins1_boot_medium)
-  let attributes = census_member_mapped_attributes(medium: mtcollins1_boot_medium)
-  let rendered = concat(render_census_member_attempt(attempt: attempt), "census_mapped_attributes=\n", attributes, "\n")
-  let written = Filesystem.Write(path: census_member_readback_receipt_path, content: rendered)
-  if written.success == false {
-    exit_failure(reason: concat("mtcollins1 census member readback: the receipt could not be written: ", written.error, "\n", rendered))
-  } else if census_member_attempt_holds(attempt: attempt) {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("mtcollins1 census member readback did not hold:\n", rendered))
+  mtcollins1_census_member_readback_of_row(row: PinnedMediumRow)
+}
+
+fn mtcollins1_census_candidate_readback_wet() -> ProcessExit {
+  mtcollins1_census_member_readback_of_row(row: CandidateMediumRow)
+}
+
+fn mtcollins1_census_member_readback_of_row(row: MtCollins1MediumRow) -> ProcessExit {
+  match mtcollins1_medium_of_row(row: row) {
+    Absent => {
+      let rendered = concat("medium_row=", mtcollins1_medium_row_label(row: row), "\nverdict=no_medium_in_row\n")
+      let written = Filesystem.Write(path: census_member_readback_receipt_path, content: rendered)
+      exit_failure(reason: concat("mtcollins1 census member readback: the ", mtcollins1_medium_row_label(row: row), " medium row is empty; there is no image to read back", if written.success { "" } else { concat(" (and the receipt could not be written: ", written.error, ")") }))
+    }
+    Present { value: medium } => {
+      let attempt = census_member_readback(medium: medium)
+      let attributes = census_member_mapped_attributes(medium: medium)
+      let rendered = concat("medium_row=", mtcollins1_medium_row_label(row: row), "\n", render_census_member_attempt(attempt: attempt), "census_mapped_attributes=\n", attributes, "\n")
+      let written = Filesystem.Write(path: census_member_readback_receipt_path, content: rendered)
+      if written.success == false {
+        exit_failure(reason: concat("mtcollins1 census member readback: the receipt could not be written: ", written.error, "\n", rendered))
+      } else if census_member_attempt_holds(attempt: attempt) {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("mtcollins1 census member readback did not hold:\n", rendered))
+      }
+    }
   }
 }
 

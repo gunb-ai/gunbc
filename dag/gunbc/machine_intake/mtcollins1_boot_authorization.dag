@@ -1,5 +1,7 @@
 module gunbc.machine_intake_mtcollins1_boot_authorization
 
+import v2.std.optional { Present }
+
 import std.types { NonEmptyStr, String }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name, mtcollins1_boot_export_dir }
 import gunbc.machine_intake_mtcollins1_boot_image_fetch { mtcollins1_boot_image_sha256 }
@@ -56,6 +58,46 @@ type MtCollins1BootMedium
 // re-measures the served path on srv2 before the signed subject is minted, every run.
 data mtcollins1_boot_medium: MtCollins1BootMedium = MtCollins1CensusMedium {
   output_digest: "30ca88d43f8913995078f6c2c917d5049842f927f3fc886a103f460dd146a706",
+}
+
+// THE NEXT ATTEMPT'S MEDIUM, published but NOT pinned. The boot reads mtcollins1_boot_medium only; this
+// row names the image the attempt after the next one will use, so it can be read back on srv2
+// (gunbc.machine_intake_mtcollins1_census_member_readback) without moving the next boot onto it --
+// operator decision 2026-09-29: the next boot uses the current image, the module-identity image is for
+// the attempt after. The repin moves this digest into mtcollins1_boot_medium; until then it is a
+// candidate and nothing boots it.
+//
+// The digest is the publish receipt of fleet-converge run 36651495873 (mode
+// mtcollins1_census_image_publish, main at 032664dc, fleet SSH to srv2 as gunbc-fleet), artifact
+// mtcollins1-census-image sha256:ca40bf02982bb1dd71d9adf4663aa74e97b99b03109d9c8626dc9ff53f9ddbcf:
+// regression reproduced eb23f174... with the stock boot chain, then image_name
+// gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso, build_key c001ac127d718e72,
+// published create-only beside the pinned image.
+data mtcollins1_boot_medium_candidate: MtCollins1BootMedium? = Present {
+  value: MtCollins1CensusMedium {
+    output_digest: "161b98b9bb389a803805b582203fe73fa9a3ec421e3783b6463528124c2bd513",
+  },
+}
+
+// WHICH MEDIUM ROW A READER READS: one medium identity type, two rows. The boot resolves ONLY the
+// pinned row (mtcollins1_boot_subject reads mtcollins1_boot_medium); readers that verify an image
+// before it is pinned name the row they read. An empty candidate is an answer, not a default.
+type MtCollins1MediumRow
+  = PinnedMediumRow
+  | CandidateMediumRow
+
+fn mtcollins1_medium_of_row(row: MtCollins1MediumRow) -> MtCollins1BootMedium? {
+  match row {
+    PinnedMediumRow => Present { value: mtcollins1_boot_medium }
+    CandidateMediumRow => mtcollins1_boot_medium_candidate
+  }
+}
+
+fn mtcollins1_medium_row_label(row: MtCollins1MediumRow) -> String {
+  match row {
+    PinnedMediumRow => "pinned"
+    CandidateMediumRow => "candidate"
+  }
 }
 
 // THE CENSUS ARM AUTHORS ONE FACT, THE MEASURED OUTPUT DIGEST from the publish receipt. The image name

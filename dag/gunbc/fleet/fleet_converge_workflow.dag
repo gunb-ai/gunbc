@@ -126,6 +126,7 @@ import gunbc.ci_spec {
   gunbc_ci_fabric_writer_identity_observe_invoke,
   gunbc_ci_mtcollins1_census_image_publish_invoke,
   gunbc_ci_mtcollins1_census_member_readback_invoke,
+  gunbc_ci_mtcollins1_census_candidate_readback_invoke,
   gunbc_ci_r2_mint_preflight_invoke,
   gunbc_ci_r2_bucket_ensure_invoke,
   gunbc_ci_r2_bucket_admin_mint_invoke,
@@ -299,6 +300,7 @@ type FleetConvergeWorkflowMode
   | FabricWriterIdentityObserve
   | MtCollins1CensusImagePublish
   | MtCollins1CensusMemberReadback
+  | MtCollins1CensusCandidateReadback
   | MicrovmRunnerGroupEnsure
   | OrgRunnerRosterObserve
   | GcpIamConverge
@@ -359,6 +361,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     FabricWriterIdentityObserve => "fabric_writer_identity_observe"
     MtCollins1CensusImagePublish => "mtcollins1_census_image_publish"
     MtCollins1CensusMemberReadback => "mtcollins1_census_member_readback"
+    MtCollins1CensusCandidateReadback => "mtcollins1_census_candidate_readback"
     MicrovmRunnerGroupEnsure => "microvm_runner_group_ensure"
     OrgRunnerRosterObserve => "org_runner_roster_observe"
   }
@@ -385,7 +388,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkV41RuntimeImageBuild, SparkV41RuntimeImageDistribute, SparkV41GroupALaunch, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkV41RuntimeImageBuild, SparkV41RuntimeImageDistribute, SparkV41GroupALaunch, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusCandidateReadback, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -461,6 +464,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     FabricWriterIdentityObserve => none
     MtCollins1CensusImagePublish => none
     MtCollins1CensusMemberReadback => none
+    MtCollins1CensusCandidateReadback => none
     MicrovmRunnerGroupEnsure => none
     OrgRunnerRosterObserve => none
   }
@@ -589,6 +593,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     FabricWriterIdentityObserve => FleetSshKeyNotConsumed
     MtCollins1CensusImagePublish => FleetSshKeyConsumed
     MtCollins1CensusMemberReadback => FleetSshKeyConsumed
+    MtCollins1CensusCandidateReadback => FleetSshKeyConsumed
     MicrovmRunnerGroupEnsure => FleetSshKeyNotConsumed
     GcpIamConverge => FleetSshKeyNotConsumed
     NamecheapObserve => FleetSshKeyNotConsumed
@@ -1211,6 +1216,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     FabricWriterIdentityObserve => ExecutorDomain
     MtCollins1CensusImagePublish => ExecutorDomain
     MtCollins1CensusMemberReadback => ExecutorDomain
+    MtCollins1CensusCandidateReadback => ExecutorDomain
     MicrovmRunnerGroupEnsure => ExecutorDomain
     OrgRunnerRosterObserve => ExecutorDomain
     GcpIamConverge => ExecutorDomain
@@ -2225,6 +2231,43 @@ fn fleet_converge_mtcollins1_census_member_readback_receipt_upload_step() -> Ste
     ] },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_member_readback_step_if) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE CANDIDATE ROW'S IMAGE, read back before it is pinned: the same member readback fold over
+// gunbc.machine_intake_mtcollins1_boot_authorization mtcollins1_boot_medium_candidate. The boot never
+// reads this row.
+data fleet_converge_mtcollins1_census_candidate_readback_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1CensusCandidateReadback)
+
+fn fleet_converge_mtcollins1_census_candidate_readback_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins census image: read the CANDIDATE (published, not pinned) image back against the stock medium" },
+    id: Present { value: "mtcollins1_census_candidate_readback" },
+    run: gunbc_ci_mtcollins1_census_candidate_readback_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_census_candidate_readback_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_mtcollins1_census_image_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_mtcollins1_census_candidate_readback_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload Mt. Collins census candidate readback receipt" },
+    id: Present { value: "mtcollins1_census_candidate_readback_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "mtcollins1-census-candidate-readback")),
+      kv(key: "path", value: yaml_string(s: census_member_readback_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_candidate_readback_step_if) },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -3430,6 +3473,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_mtcollins1_census_image_publish_receipt_upload_step(),
         fleet_converge_mtcollins1_census_member_readback_step(),
         fleet_converge_mtcollins1_census_member_readback_receipt_upload_step(),
+        fleet_converge_mtcollins1_census_candidate_readback_step(),
+        fleet_converge_mtcollins1_census_candidate_readback_receipt_upload_step(),
         fleet_converge_r2_mint_preflight_step(),
         fleet_converge_r2_mint_preflight_receipt_upload_step(),
         fleet_converge_r2_bucket_admin_mint_step(),
@@ -3669,6 +3714,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     MtCollins1FanObserve => fleet_converge_shared_job_id
     MtCollins1CensusImagePublish => fleet_converge_shared_job_id
     MtCollins1CensusMemberReadback => fleet_converge_shared_job_id
+    MtCollins1CensusCandidateReadback => fleet_converge_shared_job_id
     HostCredentialCustodyConverge => fleet_converge_shared_job_id
     AppKeyVersionVerify => fleet_converge_shared_job_id
     R2BucketEnsure => fleet_converge_shared_job_id
