@@ -24,6 +24,7 @@ import gunbc.spark.serving_arm_launch {
 import gunbc.spark.glm_group_b_launch { glm_group_b_launch_plan }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { Cons, Empty }
 
 // ── THE NATIVE FOUR-RANK ARM AS A DECLARED UNIT SET ────────────────────────────────────────────
 //

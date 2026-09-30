@@ -117,7 +117,11 @@ fn json_member_int(value: JsonValue, key: String) -> JsonIntField {
   match json_object_unique_member(v: value, key: key) {
     JsonMemberFound { value: found } =>
       match found {
-        JsonNumber { lexeme: lex } => JsonIntPresent { value: parse_int(s: lex as String) }
+        JsonNumber { lexeme: lex } =>
+          match parse_int(s: lex as String) {
+            Present { value: n } => JsonIntPresent { value: n }
+            Absent => JsonIntUnreadable
+          }
         JsonNull => JsonIntUnreadable
         JsonBool { value: _ } => JsonIntUnreadable
         JsonString { value: _ } => JsonIntUnreadable

@@ -2044,10 +2044,21 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
 // at declaration grade in v2.compiler.body_lowering_fold body_lower_service_decl, which reads the
 // interface and sets realization (transport, config, exit, response, mock_response) and unmodeled
 // interface members aside, typed and located.
+// A STATUS PATTERN IS AN EXACT CODE (`404`), A CLASS (`5xx`) OR A NAME (`nonzero`). The lexer reads
+// `5xx` as the int literal `5` then the identifier `xx`, so the class is that pair, written as the int
+// followed by the literal terminal `xx` and tried before the bare int -- the reading v1 02_parse
+// parse_status_pattern makes. Without it every response block with a status class refused its whole
+// module as parse_g0_tokens_remain at the `xx`.
 fn dag_grammar_status_pattern_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
-    right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+    left: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
+      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "xx"))
+    ),
+    right: dag_grammar_choice(
+      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
+      right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+    )
   )
 }
 
