@@ -5,6 +5,9 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 import std.algebra { trim }
 
 import extdeps.bmc.capability {
+  bmc_firmware_version_from_wire,
+  BmcFirmwareVersionParsed,
+  BmcFirmwareVersionRefused,
   CurrentEvidenceUnclaimed,
   BmcFirmwareIntent,
   BmcFirmwareIntentMismatch,
@@ -594,15 +597,20 @@ fn bmc_fan_parse_os_release_identity(
       reason: "BMC fan identity observer omitted target machine",
     }
   } else {
-    BmcFanLiveIdentityObserved {
-      identity: BmcFanLiveIdentity {
-        firmware: BmcFirmwareVersion {
-          family: OpenBmc,
-          version: unquoted_firmware as NonEmptyStr,
+    match bmc_firmware_version_from_wire(wire: unquoted_firmware) {
+      BmcFirmwareVersionRefused { wire: _ } => BmcFanLiveIdentityRefused {
+        reason: concat("BMC fan identity observer reported a firmware version that is not major.minor.patch: ", unquoted_firmware),
+      }
+      BmcFirmwareVersionParsed { version: v } => BmcFanLiveIdentityObserved {
+        identity: BmcFanLiveIdentity {
+          firmware: BmcFirmwareVersion {
+            family: OpenBmc,
+            version: v,
+          },
+          machine: unquoted_machine as NonEmptyStr,
+          stable_machine_id: stable_machine_id,
         },
-        machine: unquoted_machine as NonEmptyStr,
-        stable_machine_id: stable_machine_id,
-      },
+      }
     }
   }
 }
