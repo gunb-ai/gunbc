@@ -1,0 +1,222 @@
+module v2.test.claim.text_string_importer_census
+
+import v2.lens.text_string_importer_census {
+  ImporterVerdict,
+  HostUsing,
+  StructuralUsing,
+  Mixed,
+  ImportUnused,
+  Unclassified,
+  NotEstablished,
+  NoOperationEvidence,
+  UndecidedCrossings,
+  module_final_verdict,
+  ModuleStanding,
+  ModuleParsed,
+  ModuleNotEstablished,
+  RostersStanding,
+  RostersEstablished,
+  RostersRefused,
+  Site,
+  StructuralCall,
+  ResultAtOtherPosition,
+  ResultAtCallArgument,
+  NoTextResult,
+  HostPlusConcatenation,
+  HostMethodCall,
+  HostLiteralAtStringAnnotation,
+  HostPrimitiveCall,
+  member,
+  rosters,
+  module_standing,
+  verdict_of
+}
+import v2.lens.common.source_analysis_standing { SourceParseRejected }
+import v2.std.algebra { any, fold_list }
+import std.algebra { Empty, FreeMonoid }
+import v2.lens.common.source_analysis_standing { LanguageGrammarUnavailable }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// Each row asserts the EXACT verdict arm its fixture exists for, never "not" another arm: a
+// subject the lens could not read is UNCLASSIFIED, and a row written as `not STRUCTURAL` would be
+// satisfied by a fold that read nothing. The MIXED row also asserts the ROUTE -- which
+// declaration's structural result is OTHER and which is CALL-ARGUMENT -- because a verdict alone
+// could be reached by the right counts at the wrong sites.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data fixture_root: String = "test/fixture_roots/text_string_importer_census/"
+data unparseable_root: String = "test/fixture_roots/text_string_importer_census_unparseable/"
+data fixture_pool: List<String> = ["test/fixture_roots/text_string_importer_census"]
+
+// A roster refusal is not a module's parse refusal. It is carried as LanguageGrammarUnavailable,
+// a cause no row below expects, so every row that reaches it is red rather than satisfied by an
+// UNCLASSIFIED verdict over a module it never read.
+fn census_standing(path: String) -> ModuleStanding {
+  match rosters() {
+    RostersRefused { reason: _ } => ModuleNotEstablished { cause: LanguageGrammarUnavailable }
+    RostersEstablished { rosters: r } => module_standing(path: path, r: r)
+  }
+}
+
+// The verdict through the census's own composition (sites plus resolved crossings), with callee
+// modules read from the fixture pool.
+fn verdict_at(path: String) -> ImporterVerdict {
+  match rosters() {
+    RostersRefused { reason: _ } => Unclassified { cause: NotEstablished { cause: LanguageGrammarUnavailable } }
+    RostersEstablished { rosters: r } => module_final_verdict(path: path, r: r, roots: fixture_pool)
+  }
+}
+
+fn fixture_verdict(name: String) -> ImporterVerdict {
+  verdict_at(path: concat(concat(fixture_root, name), ".dag"))
+}
+
+fn fixture_sites(name: String) -> FreeMonoid<Site> {
+  match census_standing(path: concat(concat(fixture_root, name), ".dag")) {
+    ModuleNotEstablished { cause: _ } => Empty
+    ModuleParsed { imports_text_string: _, sites: sites } => sites
+  }
+}
+
+fn is_host_verdict(v: ImporterVerdict) -> Bool {
+  match v {
+    HostUsing => true
+    _ => false
+  }
+}
+
+test fn tsic_literal_at_bare_string_annotation_is_host() -> Bool {
+  is_host_verdict(v: fixture_verdict(name: "host_literal"))
+    && any(xs: fixture_sites(name: "host_literal"), predicate: fn(s) {
+      match s.kind {
+        HostLiteralAtStringAnnotation => true
+        _ => false
+      }
+    })
+}
+
+test fn tsic_host_primitive_call_is_host() -> Bool {
+  is_host_verdict(v: fixture_verdict(name: "host_primitive"))
+    && any(xs: fixture_sites(name: "host_primitive"), predicate: fn(s) {
+      match s.kind {
+        HostPrimitiveCall { name: n } => n == "string_length"
+        _ => false
+      }
+    })
+}
+
+test fn tsic_host_method_call_is_host() -> Bool {
+  is_host_verdict(v: fixture_verdict(name: "host_method"))
+    && any(xs: fixture_sites(name: "host_method"), predicate: fn(s) {
+      match s.kind {
+        HostMethodCall { name: n } => n == "split"
+        _ => false
+      }
+    })
+}
+
+// `+` over two binders annotated bare `String` is host concatenation; the same `+` over Int is
+// not, which is why the route is asserted and not only the verdict.
+test fn tsic_plus_over_string_binders_is_host() -> Bool {
+  is_host_verdict(v: fixture_verdict(name: "host_plus"))
+    && any(xs: fixture_sites(name: "host_plus"), predicate: fn(s) {
+      match s.kind {
+        HostPlusConcatenation => true
+        _ => false
+      }
+    })
+}
+
+test fn tsic_structural_only_is_structural() -> Bool {
+  match fixture_verdict(name: "structural") {
+    StructuralUsing => true
+    _ => false
+  }
+}
+
+test fn tsic_both_is_mixed_with_the_other_site_at_the_let() -> Bool {
+  let sites = fixture_sites(name: "mixed")
+  let mixed = match fixture_verdict(name: "mixed") {
+    Mixed => true
+    _ => false
+  }
+  let other_at_let = any(xs: sites, predicate: fn(s) {
+    match s.kind {
+      StructuralCall { name: n, result: ResultAtOtherPosition } => (n == "string_join") && (s.decl == "joined")
+      _ => false
+    }
+  })
+  let argument_at_call = any(xs: sites, predicate: fn(s) {
+    match s.kind {
+      StructuralCall { name: n, result: ResultAtCallArgument } => (n == "string_join") && (s.decl == "joined_is_empty")
+      _ => false
+    }
+  })
+  mixed && other_at_let && argument_at_call
+}
+
+test fn tsic_import_without_a_bare_spelling_is_import_unused() -> Bool {
+  match fixture_verdict(name: "import_unused") {
+    ImportUnused => true
+    _ => false
+  }
+}
+
+test fn tsic_bare_spelling_without_operations_is_unclassified_no_evidence() -> Bool {
+  match fixture_verdict(name: "no_evidence") {
+    Unclassified { cause: NoOperationEvidence } => true
+    _ => false
+  }
+}
+
+test fn tsic_parse_refusal_is_listed_unclassified_with_its_cause() -> Bool {
+  match verdict_at(path: concat(unparseable_root, "parse_refused.dag")) {
+    Unclassified { cause: NotEstablished { cause: SourceParseRejected } } => true
+    _ => false
+  }
+}
+
+test fn tsic_import_without_string_member_is_outside_the_population() -> Bool {
+  match census_standing(path: concat(fixture_root, "not_a_member.dag")) {
+    ModuleParsed { imports_text_string: imports, sites: _ } => !imports
+    ModuleNotEstablished { cause: _ } => false
+  }
+}
+
+// INHABITANCE OF THE REAL ROSTER: the structural roster is read from src/v2/std/text.dag by the
+// same fold, so this row fails if that read stops producing the functions the module declares or
+// misreads which of them return a text carrier.
+test fn tsic_structural_roster_is_read_from_v2_std_text() -> Bool {
+  match rosters() {
+    RostersRefused { reason: _ } => false
+    RostersEstablished { rosters: r } =>
+      member(xs: r.structural, x: "string_head")
+        && member(xs: r.structural, x: "string_is_empty")
+        && member(xs: r.structural_text_result, x: "string_join")
+        && !member(xs: r.structural_text_result, x: "string_is_empty")
+        && member(xs: r.host, x: "string_length")
+  }
+}
+
+// CROSSINGS: a bare-`String` binder passed to a call off both rosters is decided by the callee's
+// declared parameter. The three rows are one call shape with three callee declarations, so each
+// can only be green through the parameter read.
+test fn tsic_crossing_into_a_kernel_string_parameter_is_host() -> Bool {
+  is_host_verdict(v: fixture_verdict(name: "crossing_host"))
+}
+
+test fn tsic_crossing_into_a_free_monoid_parameter_is_structural() -> Bool {
+  match fixture_verdict(name: "crossing_structural") {
+    StructuralUsing => true
+    _ => false
+  }
+}
+
+test fn tsic_crossing_into_an_imported_string_parameter_stays_undecided() -> Bool {
+  match fixture_verdict(name: "crossing_ambiguous") {
+    Unclassified { cause: UndecidedCrossings } => true
+    _ => false
+  }
+}
