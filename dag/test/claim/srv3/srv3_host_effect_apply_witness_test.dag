@@ -93,7 +93,7 @@ test fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash
     init: "" as String,
     f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
   )
-  string_contains(s: argv_surface, pattern: curl_cli_tool.name as String)
+  string_contains(s: argv_surface, pattern: curl_cli_tool.program.invocation as String)
     && string_contains(s: argv_surface, pattern: curl_args_surface)
     && string_contains(s: argv_surface, pattern: srv3_bmcweb_login_body_path)
     && string_contains(s: argv_surface, pattern: srv3_bmcweb_login_response_path)
