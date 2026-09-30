@@ -325,16 +325,19 @@ test fn dpo_positional_binding_refuses_an_arrow_without_order() -> Bool {
 
 // (6b) THE BINDING-TIME REFUSAL STAYS ITS OWN ENROLLED PATH. Admission now refuses the order-less Arrow
 // first, but both binders still refuse it on their own -- never falling back to label order -- so a
-// route that reaches binding without passing admission still refuses: infer and eval with
-// application_parameter_order_absent.
+// route that reaches binding without passing admission still refuses. The reason is
+// application_parameter_order_malformed, not _absent: the one order reader
+// (v2.std.arrow_signature arrow_declared_parameter_order) checks the Arrow's edges conform before it
+// reads the order, and since A4 a Named-binder domain without its order does not conform. _absent
+// remains the answer for an Arrow whose domain binds no name.
 test fn dpo_binding_refuses_an_arrow_without_order() -> Bool {
   let arrows = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
   (count(arrows) == 1)
     && fold(arrows, init: true, f: fn(acc, a) {
       let bare = dpo_with_order(arrow: a, labels: [], keep: false)
       acc
-        && (dpo_refusal_reason(arrow: bare) == [^application_parameter_order_absent])
-        && dpo_eval_refuses_with(arrow: bare, reason: ^application_parameter_order_absent)
+        && (dpo_refusal_reason(arrow: bare) == [^application_parameter_order_malformed])
+        && dpo_eval_refuses_with(arrow: bare, reason: ^application_parameter_order_malformed)
     })
 }
 
