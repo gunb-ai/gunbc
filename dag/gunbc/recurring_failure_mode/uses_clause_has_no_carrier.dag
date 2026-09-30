@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.uses_clause_has_no_carrier
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data uses_clause_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
+  identity: "uses_clause_has_no_carrier" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a fn declaration's `uses` clause (`uses net: Network, fs: Filesystem`) states the resources the fn requires, and v2 has no carrier for that requirement: no field of the lowered Arrow, no effect-requirement type the declaration lowers onto. v1 reads it (`v1` `02_parse` `parse_uses_clause`, a resource-use node per entry) and v1's CLI admits a resource method only where the fn declares that resource there, so it is a semantic fact, not trivia.",
+    "HARM: a lowering that parsed the clause and dropped it would erase an effect requirement silently -- a fn would lower as if it used no resource, and nothing downstream could refuse a resource method it calls. Until this lands, such fns cannot be observed by the v2 route at all.",
+    "CONTAINED, NOT SILENT: the grammar parses the clause (`v2.extdeps.languages.dag` `dag_grammar_uses_clause_expr`) and body lowering refuses every fn carrying one on BOTH arms, full and census, located at the clause, as `body_lowering_reason_uses_clause_unmodeled` (`v2.compiler.body_lowering_fold` `body_lower_fn_uses_refusal_optional`). The module refuses at normalize; it never lowers without its requirement. These modules are therefore outside the XL-2 reference census until the carrier exists.",
+    "RUNG FOUND AT: mitigated (typed, located refusal; the module refuses at normalize). CEILING: structurally impossible -- a fn's resource requirement is a field of its lowered signature, so a lowered fn cannot exist without it. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a v2 effect-requirement carrier on the lowered fn signature that body lowering reads each `uses` entry onto (name, resource type, config), so that every fn in the corpus that declares a `uses` clause lowers with its requirement and `body_lowering_reason_uses_clause_unmodeled` has no producer.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.parse.uses_clause", decl_name: "a_fn_with_a_uses_clause_parses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.uses_clause", decl_name: "a_fn_with_a_uses_clause_refuses_at_the_clause_holds", field: WholeDeclaration },
+  ],
+}
