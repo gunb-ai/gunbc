@@ -38,6 +38,7 @@ import v2.std.node_query {
   declared_field_named,
   find_arrow_body_child,
   find_named_child,
+  is_wildcard_pattern,
   node_labeled_child_edges,
   node_positional_child_targets,
   positional_payload_field_name
@@ -175,6 +176,11 @@ fn vf_type_atom_is(n: Node, lexeme: String) -> Bool {
   }
 }
 
+// A TYPE ATOM LEAVES NORMALIZE SPELLED AS WRITTEN. Since gunbc#12540 a kernel spelling (`Int`) is
+// bound to the kernel type by RESOLVE, after the scope walk, so a module's own `type Int` can shadow
+// it; normalize no longer rewrites it to dag_binding_type_int. These claims are about normalize, so
+// they read the source spelling; the kernel binding is asserted at resolve by
+// v2.test.claim.body_let_annotation.
 fn vf_field_is(f: DeclaredField, name: String, type_lexeme: String, required: Cardinality) -> Bool {
   (symbol_lexeme(sym: f.name) == name)
     && vf_type_atom_is(n: f.type_node, lexeme: type_lexeme)
@@ -195,7 +201,7 @@ test fn vf_positional_variant_declares_one_required_field_zero() -> Bool {
       (vf_field_count(payload: payload) == 1)
         && (match declared_field_named(payload: payload, name: positional_payload_field_name()) {
           Absent => false
-          Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "dag_binding_type_int", required: Required)
+          Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "Int", required: Required)
         })
   }
 }
@@ -218,7 +224,7 @@ test fn vf_braced_variant_declares_named_field() -> Bool {
       (vf_field_count(payload: payload) == 1)
         && (match declared_field_named(payload: payload, name: ^v) {
           Absent => false
-          Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "dag_binding_type_int", required: Required)
+          Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "Int", required: Required)
         })
   }
 }
@@ -235,7 +241,7 @@ test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
           (vf_field_count(payload: payload) == 3)
             && (match declared_field_named(payload: payload, name: ^v) {
               Absent => false
-              Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "dag_binding_type_int", required: Required)
+              Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "Int", required: Required)
             })
             && (match declared_field_named(payload: payload, name: ^w) {
               Absent => false
@@ -244,7 +250,7 @@ test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
                   && (match f.type_node.kind {
                     TypeNode { connective: Cardinality } =>
                       match list_at_optional(xs: node_positional_child_targets(node: f.type_node), index: 0) {
-                        Present { value: inner } => vf_type_atom_is(n: inner, lexeme: "dag_binding_type_int")
+                        Present { value: inner } => vf_type_atom_is(n: inner, lexeme: "Int")
                         Absent => false
                       }
                     _ => false
@@ -407,11 +413,21 @@ test fn vf_shorthand_pattern_binds_field_to_its_own_name() -> Bool {
   }
 }
 
-// A wildcard payload is the same construct with `_` in field 0 -- nothing is dropped.
+// A wildcard payload is the same construct with the wildcard form in field 0 -- nothing is
+// dropped. Since gunbc#12597 an authored `_` lowers to its own unauthorable form, so the field is
+// read through the one recogniser, v2.std.node_query is_wildcard_pattern, not an atom spelled `_`.
 test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
   match vf_first_arm_pattern_of(o: vfs_normalized_8(), fn_lexeme: "tag") {
     Absent => false
-    Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "_")
+    Present { value: pat } =>
+      (match construct_tag_optional(n: pat) { Present { value: t } => symbol_lexeme(sym: t) == "A"  Absent => false })
+        && (count(construct_field_edges(n: pat)) == 1)
+        && (match list_at_optional(xs: construct_field_edges(n: pat), index: 0) {
+          Present { value: e } =>
+            (match e.label { Named { name: nm } => symbol_lexeme(sym: nm) == "0"  Positional => false })
+              && is_wildcard_pattern(pattern: e.target)
+          Absent => false
+        })
   }
 }
 
@@ -435,7 +451,7 @@ test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
               Absent => false
               Present { value: domain } =>
                 match find_named_child(root: domain, name: ^x) {
-                  Accepted { value: t, diagnostics: _ } => vf_type_atom_is(n: t, lexeme: "dag_binding_type_int")
+                  Accepted { value: t, diagnostics: _ } => vf_type_atom_is(n: t, lexeme: "Int")
                   Rejected { diagnostics: _ } => false
                 }
             }

@@ -186,7 +186,7 @@ test fn curl_sigv4_builders_require_the_sigv4_curl_pin() -> Bool {
     Present { value: v } =>
       (v as String) == (curl_aws_sigv4_min_version as String)
         && (curl_aws_sigv4_min_version as String) == ">= 7.75"
-        && first_word(words: words_of_upload(create_only: true)) == (curl_aws_sigv4_cli_tool.name as String)
+        && first_word(words: words_of_upload(create_only: true)) == (curl_aws_sigv4_cli_tool.program.invocation as String)
         && match curl_cli_tool.min_version {
           Present { value: fleet } => (fleet as String) == ">= 7.68"
           none => false

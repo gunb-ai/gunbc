@@ -56,6 +56,7 @@ import gunbc.machine_intake_ampere_socket_console_observation {
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_slots, mtcollins1_census_sol_artifact_path }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_kvm_still { KvmObserverRecord, kvm_observer_record_text }
 import gunbc.machine_intake_mount_establishment { RemoteMediaMountStanding }
 import gunbc.machine_intake_megarac_media_attach {
   AttachReadiness,
@@ -271,12 +272,24 @@ fn bmc_ipmitool_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: In
   let detail = first_line(s: stderr)
   if exit_code == coreutils_timeout_expired_exit_code {
     BmcTimeout { endpoint: endpoint, at: at, detail: concat("no answer within the diagnostics deadline (coreutils timeout exit 124)", if detail == "" { "" } else { concat("; ", detail) }) }
-  } else if string_contains(s: stderr, pattern: "RAKP 2 HMAC is invalid") || string_contains(s: stderr, pattern: "Unauthorized name") || string_contains(s: stderr, pattern: "Insufficient privilege level") {
-    BmcAuthRefused { endpoint: endpoint, at: at, detail: detail }
-  } else if string_contains(s: stderr, pattern: "Unable to establish IPMI v2") {
-    BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail }
   } else {
-    BmcReadFailed { endpoint: endpoint, at: at, exit_code: exit_code, detail: detail }
+    match bmc_ipmitool_session_cause(endpoint: endpoint, at: at, stderr: stderr) {
+      Present { value: c } => c
+      Absent => BmcReadFailed { endpoint: endpoint, at: at, exit_code: exit_code, detail: detail }
+    }
+  }
+}
+
+// The session-setup half of that reading, which needs no exit code: a backgrounded collector
+// (gunbc.machine_intake_sol_hold) has no exit status the workflow can read, only the lines it wrote.
+fn bmc_ipmitool_session_cause(endpoint: NonEmptyStr, at: NonEmptyStr, stderr: String) -> BmcReadCause? {
+  let detail = first_line(s: stderr)
+  if string_contains(s: stderr, pattern: "RAKP 2 HMAC is invalid") || string_contains(s: stderr, pattern: "Unauthorized name") || string_contains(s: stderr, pattern: "Insufficient privilege level") {
+    Present { value: BmcAuthRefused { endpoint: endpoint, at: at, detail: detail } }
+  } else if string_contains(s: stderr, pattern: "Unable to establish IPMI v2") {
+    Present { value: BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail } }
+  } else {
+    none
   }
 }
 
@@ -738,7 +751,10 @@ fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
 fn boot_override_pending(readback: String, selection: IpmiBootSelection) -> Bool {
   match boot_readback_verdict(readback: readback, selection: selection) {
     BootReadbackConfirmed => true
-    _ => false
+    BootReadbackFlagInvalid => false
+    BootReadbackNotOneShot => false
+    BootReadbackFirmwareMismatch => false
+    BootReadbackSelectorAbsent => false
   }
 }
 
@@ -863,6 +879,10 @@ fn run_record_text(r: MtCollins1BootRunRecord) -> String {
   ], "\n")
 }
 
+// `screen` is the attempt's KVM screen: the held observer's establishment, its journal of boundary
+// and lifecycle events, every still with its instant and sha256 (or why it is not hash-bound), the
+// gaps between stills, and the separately timestamped teardown. Evidence only: no finding and no
+// verdict reads it (gunbc.machine_intake_mtcollins1_kvm_still).
 type MtCollins1BootDiagnosticBundle {
   attempt: AttemptIdentityReading
   outcome: String
@@ -874,6 +894,7 @@ type MtCollins1BootDiagnosticBundle {
   inventory: InventoryReading
   console: ConsoleReading
   run: MtCollins1BootRunRecord
+  screen: KvmObserverRecord
 }
 
 fn inventory_not_taken(reason: NonEmptyStr) -> InventoryReading {
@@ -921,7 +942,7 @@ fn sel_event_kind_text(event: SelWindowEvent) -> String {
 }
 
 fn sel_event_is_oem(event: SelWindowEvent) -> Bool {
-  match event.kind { OemTimestamped { payload: _ } => true _ => false }
+  match event.kind { OemTimestamped { payload: _ } => true BootRestart { offset: _ } => false FirmwareProgressRecord { offset: _ } => false OtherStandardEvent { rendering: _ } => false }
 }
 
 fn sel_event_text(event: SelWindowEvent) -> String {
@@ -938,8 +959,9 @@ fn sel_event_is_memory_or_processor(event: SelWindowEvent) -> Bool {
       let sensor = sel_field(fields: map(split(s: r as String, delimiter: "|"), f => trim(f)), index: 3)
       starts_with(s: sensor, prefix: "Memory") || starts_with(s: sensor, prefix: "Processor")
     }
-    FirmwareProgressRecord { offset: o } => match o { FirmwareProgress { progress_rendering: _ } => false _ => true }
-    _ => false
+    FirmwareProgressRecord { offset: o } => match o { FirmwareProgress { progress_rendering: _ } => false FirmwareError => true FirmwareHang => true }
+    BootRestart { offset: _ } => false
+    OemTimestamped { payload: _ } => false
   }
 }
 
@@ -1167,9 +1189,9 @@ fn smpro_channel(s: SmproReading) -> BmcChannelRead {
   BmcChannelRead { channel: "ipmi master write-read (smpro)", standing: match s {
     SmproNotTaken { reason: _ } => BmcChannelNotAttempted
     SmproProbed { outcomes: os } =>
-      if any(os, o => match o { SmproWordRead { raw: _, word: _ } => true SmproControllerRefused { raw: _, completion: _ } => true SmproResponseMalformed { raw: _, detail: _ } => true _ => false }) { BmcChannelAnswered }
+      if any(os, o => match o { SmproWordRead { raw: _, word: _ } => true SmproControllerRefused { raw: _, completion: _ } => true SmproResponseMalformed { raw: _, detail: _ } => true SmproTransportFailed { raw: _, timed_out: _ } => false SmproNotSent { socket: _, register: _, reason: _ } => false SmproRequestUnencodable { socket: _, register: _, detail: _ } => false }) { BmcChannelAnswered }
       else {
-        match flat_map(os, o => match o { SmproTransportFailed { raw: r, timed_out: _ } => [r] _ => [] }).first() {
+        match flat_map(os, o => match o { SmproTransportFailed { raw: r, timed_out: _ } => [r] SmproWordRead { raw: _, word: _ } => [] SmproControllerRefused { raw: _, completion: _ } => [] SmproResponseMalformed { raw: _, detail: _ } => [] SmproNotSent { socket: _, register: _, reason: _ } => [] SmproRequestUnencodable { socket: _, register: _, detail: _ } => [] }).first() {
           Absent => BmcChannelNotAttempted
           Present { value: r } => BmcChannelFailed { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: r.at, exit_code: r.exit_code, stderr: r.stderr) }
         }
@@ -1200,11 +1222,11 @@ fn bmc_channel_reads(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChannelR
 }
 
 fn channel_answered(r: BmcChannelRead) -> Bool {
-  match r.standing { BmcChannelAnswered => true _ => false }
+  match r.standing { BmcChannelAnswered => true BmcChannelFailed { cause: _ } => false BmcChannelNotAttempted => false }
 }
 
 fn channel_cause(r: BmcChannelRead) -> BmcReadCause? {
-  match r.standing { BmcChannelFailed { cause: c } => Present { value: c } _ => none }
+  match r.standing { BmcChannelFailed { cause: c } => Present { value: c } BmcChannelAnswered => none BmcChannelNotAttempted => none }
 }
 
 // EVERY BMC READ THAT WAS ATTEMPTED FAILED, AND NONE ANSWERED: the failed channels, in read order.
@@ -1378,6 +1400,8 @@ fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String
     memory_members_text(m: bundle.inventory.memory),
     "== pre-os console ==",
     console_text(c: bundle.console),
+    "== bmc kvm screen (held observer; stills retained, not interpreted) ==",
+    kvm_observer_record_text(rec: bundle.screen),
     "",
   ], "\n")
 }
@@ -1502,6 +1526,7 @@ fn mtcollins1_boot_param5(username: NonEmptyStr, password_file: NonEmptyStr) -> 
 fn mtcollins1_boot_chassis_power(username: NonEmptyStr, password_file: NonEmptyStr) -> ChassisPowerObservation
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_channel_lost"),
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
   ]
 {
@@ -1513,6 +1538,47 @@ fn mtcollins1_boot_chassis_power(username: NonEmptyStr, password_file: NonEmptyS
     kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
   )
   chassis_observation(success: r.success, stdout: r.stdout)
+}
+
+// WHETHER AN `mc info` READ SUCCEEDED, AS ITS OWN FRESH OBSERVATION. A lost SOL channel says nothing
+// about the BMC or the chassis by itself. A read that did not succeed is NOT a statement that the
+// controller gave no answer: a local tool failure, an authentication refusal or a session that could
+// not be set up all fail the read while the controller may be answering. So the failed arm carries
+// the typed BmcReadCause and nothing stronger; only its BmcTimeout arm says no answer arrived within
+// the deadline.
+type BmcReachability
+  = BmcAnswered { at: NonEmptyStr }
+  | BmcReadNotSucceeded { cause: BmcReadCause }
+
+fn bmc_reachability_text(reading: BmcReachability) -> String {
+  match reading {
+    BmcAnswered { at: at } => concat("BMC answered mc info at ", at as String)
+    BmcReadNotSucceeded { cause: c } => concat("mc info did not succeed: ", bmc_read_cause_text(cause: c))
+  }
+}
+
+fn bmc_reachability_of_read(at: NonEmptyStr, success: Bool, exit_code: Int, stderr: String) -> BmcReachability {
+  if success {
+    BmcAnswered { at: at }
+  } else {
+    BmcReadNotSucceeded { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: exit_code, stderr: stderr) }
+  }
+}
+
+fn mtcollins1_boot_bmc_reachability(username: NonEmptyStr, password_file: NonEmptyStr) -> BmcReachability
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_channel_lost"),
+  ]
+{
+  let at = clock_now_probed_at_or_unknown()
+  let r = diagnostic.ipmi.Tool.McInfo(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+  )
+  bmc_reachability_of_read(at: at, success: r.success, exit_code: r.exit_code, stderr: r.transport_stderr)
 }
 
 fn sel_snapshot_of_read(at: NonEmptyStr, success: Bool, stdout: String, exit_code: Int, stderr: String) -> SelSnapshotReading {
@@ -1564,7 +1630,7 @@ fn redfish_collection_assembly(pages: List<RedfishCollectionPage>, member_bound:
         Present { value: total } => {
           let links = fold(pages, init: [], f: (acc, p) => concat(acc, p.member_links))
           let last_has_next = match reverse(pages).first() { Absent => false Present { value: p } => p.next_link != none }
-          let refused_links = filter(links, l => match redfish_same_origin_link(link: l) { RedfishLinkRefused { cause: _ } => true _ => false })
+          let refused_links = filter(links, l => match redfish_same_origin_link(link: l) { RedfishLinkRefused { cause: _ } => true RedfishLinkSameOrigin { path: _ } => false })
           let disagreeing = filter(pages, p => p.member_count != Present { value: total })
           let duplicated = first_duplicate(xs: links)
           if count(disagreeing) > 0 {
