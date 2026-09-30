@@ -96,8 +96,8 @@ import v2.std.compilers.lexing {
 }
 import v2.std.node {
   symbol_lexeme,
-  symbol_type_node,
   construct_tag_marker,
+  symbol_type_node,
   Arrow,
   Atom,
   Bind,
