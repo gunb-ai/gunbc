@@ -236,6 +236,12 @@ fn harness_member_int(doc: JsonValue, key: String) -> HarnessIntRead {
   }
 }
 
+// The one refusal every non-Int usage read answers: the arms of the IntRead matches over the
+// input and output usage keys delegate here rather than each spelling the cause.
+fn harness_usage_unreadable(key: String, read: HarnessIntRead) -> HarnessUsageRead {
+  UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: key, read: read)], "") }
+}
+
 fn harness_int_read_gap(key: String, read: HarnessIntRead) -> String {
   match read {
     IntRead { value: n } => join(["member '", key, "' was read as ", to_string(value: n)], "")
@@ -297,17 +303,17 @@ fn harness_usage_read(doc: JsonValue, input_key: String, output_key: String) -> 
                   output_tokens: harness_token_count_of(n: ov),
                 }
               }
-            IntAbsent => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
-            IntDuplicated => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
-            IntNotAnObject => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
-            IntNotANumber => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
-            IntNotAnInteger { lexeme: _ } => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
+            IntAbsent => harness_usage_unreadable(key: output_key, read: o)
+            IntDuplicated => harness_usage_unreadable(key: output_key, read: o)
+            IntNotAnObject => harness_usage_unreadable(key: output_key, read: o)
+            IntNotANumber => harness_usage_unreadable(key: output_key, read: o)
+            IntNotAnInteger { lexeme: _ } => harness_usage_unreadable(key: output_key, read: o)
           }
-        IntAbsent => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
-        IntDuplicated => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
-        IntNotAnObject => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
-        IntNotANumber => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
-        IntNotAnInteger { lexeme: _ } => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
+        IntAbsent => harness_usage_unreadable(key: input_key, read: i)
+        IntDuplicated => harness_usage_unreadable(key: input_key, read: i)
+        IntNotAnObject => harness_usage_unreadable(key: input_key, read: i)
+        IntNotANumber => harness_usage_unreadable(key: input_key, read: i)
+        IntNotAnInteger { lexeme: _ } => harness_usage_unreadable(key: input_key, read: i)
       }
     }
     JsonMemberAbsent => UsageUnreadable {
