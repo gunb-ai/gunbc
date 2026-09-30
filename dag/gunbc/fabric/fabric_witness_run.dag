@@ -40,6 +40,7 @@ import gunbc.claim_executor_cli { claim_executor_command, claim_executor_program
 import gunbc.repo_self_build { repo_self_build_all_bins_command }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.types { String, List }
+import std.algebra { Cons, Empty }
 
 // THE EXACT BUILD-LANE WORK, NOT ANOTHER CI COMMAND.
 //

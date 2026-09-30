@@ -289,14 +289,18 @@ fn class_has_symbol_authority(c: OccurrenceClass) -> Bool {
 fn class_is_a_conversion(c: OccurrenceClass) -> Bool {
   match c.disposition {
     ConvertAtRosterGrainFirst { roster_to_rekey: _, gate_to_rekey: _, why_call_site_first_is_wrong: _ } => true
-    _ => false
+    IrreducibleUntilAuthorityExists { finding: _ } => false
+    CorrectAsPosition { why: _ } => false
+    DissolvesWithTheHelper { why: _ } => false
   }
 }
 
 fn class_is_irreducible(c: OccurrenceClass) -> Bool {
   match c.disposition {
     IrreducibleUntilAuthorityExists { finding: _ } => true
-    _ => false
+    ConvertAtRosterGrainFirst { roster_to_rekey: _, gate_to_rekey: _, why_call_site_first_is_wrong: _ } => false
+    CorrectAsPosition { why: _ } => false
+    DissolvesWithTheHelper { why: _ } => false
   }
 }
 

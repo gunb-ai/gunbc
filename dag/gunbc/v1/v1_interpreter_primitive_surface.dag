@@ -507,6 +507,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.sha256_hex_of_text" },
+      form: FreeCall,
+      authored_spelling: "sha256_hex_of_text",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.hmac_sha256_hex" },
       form: FreeCall,
       authored_spelling: "hmac_sha256_hex",

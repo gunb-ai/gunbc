@@ -226,7 +226,13 @@ fn scratch_removal_of(kind: HostTransportKind, dir: NonEmptyStr, leg: HostLeg) -
 fn scratch_removed(o: ScratchOutcome) -> Bool {
   match o {
     Removed { dir: _ } => true
-    _ => false
+    CreationNotRequested => false
+    CreationNotDispatched { reason: _ } => false
+    CreationFailed { exit_code: _, stderr: _ } => false
+    CreationUnconfirmed { exit_code: _, stdout: _, stderr: _ } => false
+    RemovalFailed { dir: _, exit_code: _, stderr: _ } => false
+    RemovalUnconfirmed { dir: _, exit_code: _, stderr: _ } => false
+    RemovalNotDispatched { dir: _, reason: _ } => false
   }
 }
 
