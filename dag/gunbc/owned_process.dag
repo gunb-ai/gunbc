@@ -22,9 +22,8 @@ import gunbc.machine_intake_sol_hold
 // assumed from the signal.
 //
 // This is the lifecycle the SOL collector hold already runs, lifted out so the KVM observer and the
-// loopback BMC transport hold their processes the same way. gunbc.machine_intake_mtcollins1_boot_run
-// sol_holder_record still parses the SOL record on its own; moving it onto owned_process_record is a
-// follow-up for that module's owner.
+// loopback BMC transport hold their processes the same way; gunbc.machine_intake_mtcollins1_boot_run
+// reads the SOL collector's record through owned_process_record too, so the record format has one parser.
 data owned_process_launch_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -34,7 +33,7 @@ data owned_process_launch_scaffold: Disposition = Scaffold {
   }
 }
 
-data owned_process_launch_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.owned_process LaunchOwned -- a bash -c background launch that publishes (pid, starttime) and records the exit. RETIRED BY THE CAPABILITY: a typed process-hold realization SUFFICIENT TO start a process detached from the evaluation, publish its (pid, start time) identity atomically, stop exactly the child it started when publication fails, and record its exit status and instant -- the same capability gunbc.machine_intake_sol_hold ActivateHeld waits on. Admission: operator escalation msg_d5eebfff, default-approved on recommendation A, 2026-09-28")
+data owned_process_launch_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.owned_process LaunchOwned -- a bash -c background launch that publishes (pid, starttime) and records the exit. RETIRED BY THE CAPABILITY: a typed process-hold realization SUFFICIENT TO start a process detached from the evaluation, publish its (pid, start time) identity atomically, stop exactly the child it started when publication fails, and record its exit status and instant -- the same capability gunbc.machine_intake_sol_hold ActivateHeld waits on. Admission: PENDING -- not covered by msg_d5eebfff; escalated to the operator by eager-owl-205 on 2026-09-30 (see #12492 issuecomment-5903675796)")
 
 data owned_process_exit_prefix: String = "gunbc-owned: exited status="
 
