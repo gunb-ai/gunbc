@@ -1873,8 +1873,8 @@ fn infer_match_bool(
 
 // A MATCH OVER A DECLARED COPRODUCT. Which arm family a match takes is decided by its PATTERNS, not
 // by whether its scrutinee's type happened to derive: an arm pattern that is a Bool or Int literal is
-// the literal family (infer_match_bool, unchanged), and every other match is eliminating a declared
-// coproduct. Deciding by the scrutinee's type instead would route a coproduct match whose scrutinee
+// the literal family (infer_match_bool, unchanged), and a match with a constructor pattern is
+// eliminating a declared coproduct. Deciding by the scrutinee's type instead would route a coproduct match whose scrutinee
 // is not yet typed into the literal family, which refuses it as infer_match_scrutinee_not_bool -- a
 // verdict about the wrong question.
 fn infer_match_arm_pattern_is_literal(arm: Node) -> Bool {
@@ -1884,6 +1884,23 @@ fn infer_match_arm_pattern_is_literal(arm: Node) -> Bool {
       match dag_canonical_literal_from_node(node: pat) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// A match reaches the coproduct family only when some arm IS a constructor pattern. A match whose
+// patterns are neither literals nor constructors -- bare atoms naming nothing, say -- keeps the literal
+// family's refusal (infer_match_pattern_not_bool_literal): routing it here instead would meet an
+// untyped scrutinee and accept it at the frontier, widening a refusal into an admission
+// (v2.test.claim.manual.match_infer_fail_open_audit complement_body_real_infer_refuses_unsupported_pattern_holds).
+fn infer_match_arm_pattern_is_constructor(arm: Node) -> Bool {
+  match find_named_child(root: arm, name: match_arm_pattern) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: pat, diagnostics: _ } =>
+      match infer_coproduct_arm_pattern(pat: pat) {
+        ArmPatternVariant { tag: _, fields: _ } => true
+        ArmPatternWildcard => false
+        ArmPatternUnread => false
       }
   }
 }
@@ -1900,8 +1917,10 @@ fn infer_match(
     TailFound { tail: arms } =>
       if any(xs: arms, predicate: fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
         infer_match_bool(node: node, partials: partials, entries: entries, tree: resolved.root)
-      } else {
+      } else if any(xs: arms, predicate: fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
         infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved)
+      } else {
+        infer_match_bool(node: node, partials: partials, entries: entries, tree: resolved.root)
       }
   }
 }
