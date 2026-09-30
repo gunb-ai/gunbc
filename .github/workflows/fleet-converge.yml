@@ -1639,7 +1639,7 @@ jobs:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'spark_v41_group_a_launch'
-        timeout-minutes: 60
+        timeout-minutes: 150
       - name: "Runner host files: observe the teardown drop-in, the needrestart deferral and the loaded teardown (no writes)"
         id: runner_host_file_observe
         run: |-
