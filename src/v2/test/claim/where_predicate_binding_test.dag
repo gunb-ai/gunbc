@@ -6,6 +6,7 @@ import v2.compiler.name_resolve {
   ResolutionSubject
 }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest
@@ -17,7 +18,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Symbol }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -60,18 +61,18 @@ fn wpb_admission() -> Admission {
   }
 }
 
-fn wpb_assemble(src: String) -> Outcome<Node> {
+fn wpb_assemble(src: String) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(ingest: wpb_ingest_for(src: src), admission: wpb_admission(), lm: dag_language_model())
 }
 
-fn wpb_outcome_accepts(o: Outcome<Node>) -> Bool {
+fn wpb_outcome_accepts(o: Outcome<ResolvedTree>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn wpb_outcome_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
+fn wpb_outcome_refuses_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
@@ -80,19 +81,19 @@ fn wpb_outcome_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
 
 // Nullary and pure: the resolved Outcome per subject is the share point (see
 // v2.test.claim.match_arm_binder_frame for why the language model itself cannot be).
-fn wpb_resolved_declared() -> Outcome<Node> {
+fn wpb_resolved_declared() -> Outcome<ResolvedTree> {
   wpb_assemble(src: "module p\n\ntype T = Int where wpb_positive\n\nfn wpb_positive(value: Int) -> Bool {\n  true\n}\n\nfn f() -> Int {\n  1\n}\n")
 }
 
-fn wpb_resolved_undeclared() -> Outcome<Node> {
+fn wpb_resolved_undeclared() -> Outcome<ResolvedTree> {
   wpb_assemble(src: "module p\n\ntype T = Int where wpb_missing\n\nfn f() -> Int {\n  1\n}\n")
 }
 
-fn wpb_resolved_labelled_then_undeclared() -> Outcome<Node> {
+fn wpb_resolved_labelled_then_undeclared() -> Outcome<ResolvedTree> {
   wpb_assemble(src: "module p\n\ntype T = Int where wpb_at_least(min: 0), wpb_missing\n\nfn wpb_at_least(value: Int, min: Int) -> Bool {\n  true\n}\n\nfn f() -> Int {\n  1\n}\n")
 }
 
-fn wpb_resolved_labelled_and_marker() -> Outcome<Node> {
+fn wpb_resolved_labelled_and_marker() -> Outcome<ResolvedTree> {
   wpb_assemble(src: "module p\n\ntype wpb_brand = Nominal {}\n\ntype T = Int where wpb_at_least(min: 0, max: 9), wpb_brand(\"T\")\n\nfn wpb_at_least(value: Int, min: Int, max: Int) -> Bool {\n  true\n}\n\nfn f() -> Int {\n  1\n}\n")
 }
 
