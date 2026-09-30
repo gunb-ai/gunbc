@@ -1,7 +1,5 @@
 module v2.test.manual.scheduler_runnable_frontier
 
-import v2.std.node { Authored }
-
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

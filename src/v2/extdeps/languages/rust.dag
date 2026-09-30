@@ -307,7 +307,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Authored,
+  Authored, StructuralLabel,
   Node,
   Positional,
   Symbol,
@@ -4962,6 +4962,7 @@ fn rust_sg2_emitted_without_named_edge(base: Node, field: Symbol) -> Node {
           } else {
             list_snoc_item(xs: acc, item: e)
           }
+        StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: e)
         Positional => list_snoc_item(xs: acc, item: e)
       }
     }),

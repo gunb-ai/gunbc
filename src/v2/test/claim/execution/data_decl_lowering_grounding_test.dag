@@ -39,6 +39,7 @@ import v2.std.node {
   node_subtree_nodes,
   ArrowBodyEdge,
   edge_is_core,
+  StructuralLabel,
 }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.algebra { fold_list }
@@ -217,6 +218,7 @@ fn ddl_is_nullary_literal_arrow(n: Node) -> Bool {
 
 fn ddl_edge_names_value_member(e: Edge) -> Bool {
   match e.label {
+    StructuralLabel { label: _ } => false
     Authored { name: n } => (n == ^ddl_value) && ddl_is_nullary_literal_arrow(n: e.target)
     Positional => false
   }

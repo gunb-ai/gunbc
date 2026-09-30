@@ -1,7 +1,5 @@
 module v2.test.impossible_bug.transport_type_drift
 
-import v2.std.node { Authored }
-
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: OccurrenceSynthetic

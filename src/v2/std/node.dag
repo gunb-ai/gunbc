@@ -153,6 +153,27 @@ fn edge_is_production(e: Edge, language: Symbol, edge: Symbol) -> Bool {
   }
 }
 
+// THE CLOSED SET, listed once, for a codec that must invert a wire marker (gunbc.scm.object_table_json).
+fn core_edge_labels() -> List<CoreEdgeLabel> {
+  [
+    ArrowBodyEdge,
+    ArrowSignatureOrderEdge,
+    LoopBoundEdge,
+    LoopCarrierEdge,
+    LoopDomainEdge,
+    MatchArmPatternEdge,
+    MatchArmBodyEdge,
+    CastTargetEdge,
+    TypeAnnotationEdge,
+    TypeParamsEdge,
+    TypeBodyEdge,
+    TypeAliasEdge,
+    DeclarationReferenceEdge,
+    FieldProjectionBaseEdge,
+    FieldProjectionFieldEdge,
+  ]
+}
+
 // The Symbol a core marker contributes to CANONICAL ORDER AND CONTENT HASH ONLY. It is not a
 // reading key: a reader that compares it with a label's text re-opens the defect this type closes.
 fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {

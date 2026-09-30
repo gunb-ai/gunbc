@@ -28,6 +28,7 @@ import v2.std.node {
   node_subtree_nodes,
   symbol_lexeme,
   MatchArmPatternEdge,
+  StructuralLabel,
 }
 import std.constructors { Cardinality, Required, Optional }
 import v2.std.node_query {
@@ -116,6 +117,7 @@ fn vf_named_member_optional(root: Node, lexeme: String) -> Optional<Node> {
             Present { value: _ } => inner
             Absent =>
               match e.label {
+                StructuralLabel { label: _ } => Absent
                 Authored { name: sym } =>
                   match symbol_lexeme(sym: sym) == lexeme {
                     true => Present { value: e.target }

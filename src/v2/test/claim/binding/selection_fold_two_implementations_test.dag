@@ -1,8 +1,5 @@
 module v2.test.claim.binding.selection_fold_two_implementations
 
-import v2.std.node { Authored }
-
-import v2.extdeps.languages.dag { dag_surface_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

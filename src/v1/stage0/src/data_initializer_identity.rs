@@ -684,7 +684,7 @@ fn projection_edge_named(ctx: &InterpContext, name: &str, target: Value) -> Valu
                 ctx.sym("label"),
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
-                    variant_name: ctx.sym("Named"),
+                    variant_name: ctx.sym("Authored"),
                     fields: Rc::new(vec![(ctx.sym("name"), str_value(name.to_string()))]),
                 },
             ),

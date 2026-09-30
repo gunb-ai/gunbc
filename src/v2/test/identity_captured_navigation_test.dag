@@ -1,7 +1,5 @@
 module v2.test.lens_identity_captured_navigation
 
-import v2.std.node { Authored }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Required-floor semantic controls hand-construct the exact synthetic Node shape

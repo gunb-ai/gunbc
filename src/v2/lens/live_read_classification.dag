@@ -1,6 +1,6 @@
 module v2.lens.live_read_classification
 
-import v2.std.node { Authored }
+import v2.std.node { Authored, StructuralLabel }
 
 // THE IMPORT THIS MODULE'S BARE REFERENCES WERE RELYING ON THE POOL TO SUPPLY. Every call to
 // witness_import_closure here resolved only when some unrelated module elsewhere in the assembled
@@ -215,6 +215,7 @@ fn carrier_for_callee_text(
 fn positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: empty_node_list, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => acc
       Positional => list_snoc_item(xs: acc, item: e.target)
       Authored { name: _ } => acc
     }

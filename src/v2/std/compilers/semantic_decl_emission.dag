@@ -66,7 +66,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Authored,
+  Authored, StructuralLabel,
   Node,
   Positional,
   Symbol,
@@ -1454,6 +1454,12 @@ fn target_semantic_decl_field_surface_from_edge(
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
       }
+    StructuralLabel { label: _ } =>
+      outcome_rejected(d: Diagnostic {
+            reason: ^target_semantic_decl_field_not_named,
+            at: node_locus(node: edge.target),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
     Positional =>
       outcome_rejected(d: Diagnostic {
             reason: ^target_semantic_decl_field_not_named,
@@ -1944,6 +1950,12 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
       } else {
         outcome_accepted(value: target_semantic_decl_surface_variant_nullary(name: vname))
       }
+    StructuralLabel { label: _ } =>
+      outcome_rejected(d: Diagnostic {
+            reason: ^target_semantic_decl_variant_not_named,
+            at: node_locus(node: edge.target),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
     Positional =>
       outcome_rejected(d: Diagnostic {
             reason: ^target_semantic_decl_variant_not_named,
@@ -2000,6 +2012,12 @@ fn target_semantic_decl_variant_surface_from_edge(
       } else {
         outcome_accepted(value: target_semantic_decl_surface_variant_nullary(name: vname))
       }
+    StructuralLabel { label: _ } =>
+      outcome_rejected(d: Diagnostic {
+            reason: ^target_semantic_decl_variant_not_named,
+            at: node_locus(node: edge.target),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
     Positional =>
       outcome_rejected(d: Diagnostic {
             reason: ^target_semantic_decl_variant_not_named,

@@ -1,7 +1,5 @@
 module v2.test.name_resolve.test_code_reference_wall
 
-import v2.std.node { ArrowBodyEdge, core_edge_label, Authored }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE WALL AT ONE INTERFACE: name resolution (v2.compiler.name_resolve resolve_with_admission, the

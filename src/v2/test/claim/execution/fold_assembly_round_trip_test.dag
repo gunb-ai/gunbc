@@ -1,7 +1,5 @@
 module v2.test.execution.fold_assembly_round_trip
 
-import v2.std.node { Authored }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

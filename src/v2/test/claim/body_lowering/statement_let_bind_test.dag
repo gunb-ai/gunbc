@@ -11,7 +11,7 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.std.type_binder { type_annotation_optional }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_node_optional, dag_node_is_int_literal_atom }
-import v2.std.node { Bind, ComputationNode, Authored, Node, Positional, node_subtree_nodes }
+import v2.std.node { Bind, ComputationNode, Authored, Node, Positional, node_subtree_nodes, StructuralLabel }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -127,6 +127,7 @@ fn let_in_bind_values_with_magnitude() -> List<Bool> {
 fn positional_target_at(n: Node, index: Int) -> Optional<Node> {
   fold(n.children, init: LetInPositionalScan { at: 0, found: optional_absent() }, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => acc
       Positional =>
         if acc.at == index {
           LetInPositionalScan { at: acc.at + 1, found: optional_present(value: e.target) }

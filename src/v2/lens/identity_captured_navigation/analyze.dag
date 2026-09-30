@@ -1,7 +1,5 @@
 module v2.lens.identity_captured_navigation.analyze
 
-import v2.std.node { Authored }
-
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match find_named_child(root: cap, name: name) {
     Accepted { value: c, diagnostics: _ } => Present { value: c }
@@ -79,6 +77,7 @@ fn symbol_list_length(xs: List<Symbol>) -> Int {
 fn edge_is_identity_projection(e: Edge) -> Bool {
   match e.label {
     Authored { name: nm } => nm == ^grammar_production_identity_node_projection
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }

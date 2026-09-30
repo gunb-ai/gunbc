@@ -1,7 +1,5 @@
 module v2.test.manual.emit_ingest_same_language_row_fold
 
-import v2.std.node { Authored }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -99,6 +97,7 @@ fn emit_ingest_fold_rules_all_rows_bijectivity_holds(rules: Node) -> Bool {
         init: true,
         f: fn(acc, edge) {
           match edge.label {
+            StructuralLabel { label: _ } => acc
             Authored { name: _ } =>
               acc
                 && emit_ingest_fold_row_selector_bijectivity_holds(

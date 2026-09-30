@@ -7,7 +7,7 @@ import v2.std.node {
   Bind,
   ComputationNode,
   Edge,
-  Authored,
+  Authored, StructuralLabel,
   Node,
   NodeFold,
   Positional,
@@ -180,6 +180,7 @@ fn classify_named_edge_usage(parent: Node, sym: Symbol) -> DependencyKind {
 fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
   match edge.label {
     Authored { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
+    StructuralLabel { label: _ } => Contains
     Positional => Contains
   }
 }

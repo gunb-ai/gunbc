@@ -44,6 +44,7 @@ import v2.std.node {
   well_formed,
   ArrowSignatureOrderEdge,
   edge_is_core,
+  StructuralLabel,
 }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node_query { node_positional_child_targets }
@@ -196,6 +197,7 @@ type DpoDomainWalk {
 fn dpo_canonical_domain(arrow: Node) -> Node {
   let seen = fold(arrow.children, init: DpoDomainWalk { done: false, edges: [] }, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => DpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
       Positional =>
         if acc.done {
           DpoDomainWalk { done: true, edges: concat(acc.edges, [e]) }

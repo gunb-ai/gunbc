@@ -12,6 +12,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   fold_node_topdown,
+  StructuralLabel,
 }
 import v2.std.verification {
   CompilesClaim,
@@ -68,6 +69,7 @@ fn depth_edge_dispatch_algebra() -> NodeFoldTopDown<Int, Int> {
     init: fn(_, depth) { depth },
     child_context: fn(_, depth, e) {
       match e.label {
+        StructuralLabel { label: _ } => depth + 1
         Authored { name: lbl } =>
           if lbl == ^topdown_right_child { depth + 2 } else { depth + 1 }
         Positional => depth + 1

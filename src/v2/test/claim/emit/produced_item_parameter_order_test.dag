@@ -21,6 +21,7 @@ import v2.std.node {
   core_edge_label,
   ArrowSignatureOrderEdge,
   edge_is_core,
+  StructuralLabel,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -72,6 +73,7 @@ type IpoDomainWalk {
 fn ipo_canonical_domain(arrow: Node) -> Node {
   let seen = fold(arrow.children, init: IpoDomainWalk { done: false, edges: [] }, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => IpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
       Positional =>
         if acc.done {
           IpoDomainWalk { done: true, edges: concat(acc.edges, [e]) }
@@ -99,6 +101,7 @@ fn ipo_without_order(arrow: Node) -> Node {
 fn ipo_param_symbols(params: List<Edge>) -> List<Symbol> {
   fold(params, init: [], f: fn(acc, e) {
     let name = match e.label {
+      StructuralLabel { label: _ } => ^ipo_structural
       Authored { name: n } => n
       Positional => ^ipo_positional
     }

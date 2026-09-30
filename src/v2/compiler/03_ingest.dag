@@ -37,7 +37,7 @@ import extdeps.communication.medium { Medium }
 import v2.compiler.translate { coerce_grounded_node }
 import v2.compiler.target_serialize { target_bundle_child }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
-import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Conj }
+import v2.std.node { Edge, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, Conj }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -134,6 +134,7 @@ fn grammar_relation_binding_to_token_class_map(rules: Node) -> Map<Symbol, Symbo
         f: fn(acc, e) {
           match e.label {
             Authored { name: _ } => binding_class_map_merge_row(acc: acc, row: e.target)
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
         }
@@ -166,6 +167,7 @@ fn grammar_relation_token_class_set(rules: Node) -> Map<Symbol, Symbol> {
         f: fn(acc, e) {
           match e.label {
             Authored { name: _ } => token_class_set_merge_row(acc: acc, row: e.target)
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
         }
@@ -237,6 +239,13 @@ fn operational_parse_tree_project_to_formal_captures(
                       token_classes: token_classes
                     )
                   }
+                StructuralLabel { label: _ } =>
+                  parse_tree_frontier_extend(
+                    prefix: prefix,
+                    child: edge.target,
+                    binding_to_class: binding_to_class,
+                    token_classes: token_classes
+                  )
                 Positional =>
                   parse_tree_frontier_extend(
                     prefix: prefix,

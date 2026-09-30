@@ -21,7 +21,7 @@ import v2.compiler.namespace_graft {
   namespace_graft_strip_provenance_marker
 }
 import v2.std.node_query { find_named_child }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, ComputationNode, well_formed }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, ComputationNode, well_formed, StructuralLabel }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
@@ -317,6 +317,7 @@ fn ng_has_type_decl_identity_projection(n: Node) -> Bool {
 
 fn ng_edge_carries_type_decl_identity(e: Edge) -> Bool {
   match e.label {
+    StructuralLabel { label: _ } => ng_has_type_decl_identity_projection(n: e.target)
     Authored { name: sym } =>
       if (sym == ^grammar_production_identity_node_projection) && ng_is_type_decl_atom(n: e.target) {
         true

@@ -32,7 +32,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   node_subtree_nodes,
-  Authored,
+  Authored, StructuralLabel,
 }
 
 
@@ -153,6 +153,7 @@ fn decl_first_unrecognised_atom(decl: Node) -> Optional<Symbol> {
           Absent =>
             match edge.label {
               Authored { name: _ } => first_unrecognised_atom(target: edge.target)
+              StructuralLabel { label: _ } => acc
               Positional => acc
             }
         }
@@ -192,6 +193,7 @@ fn decl_has_keyed_population_field(decl: Node) -> Bool {
       fold(decl.children, init: false, f: fn(acc, edge) {
         match edge.label {
           Authored { name: _ } => acc || type_expr_is_keyed_population(target: edge.target)
+          StructuralLabel { label: _ } => acc
           Positional => acc
         }
       })
@@ -205,6 +207,7 @@ fn decl_has_syntax_field(decl: Node) -> Bool {
       fold(decl.children, init: false, f: fn(acc, edge) {
         match edge.label {
           Authored { name: _ } => acc || type_expr_holds_syntax(target: edge.target)
+          StructuralLabel { label: _ } => acc
           Positional => acc
         }
       })

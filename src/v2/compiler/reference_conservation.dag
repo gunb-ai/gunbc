@@ -36,7 +36,7 @@ import v2.std.diagnostic {
 }
 import v2.std.language_model { LanguageModel }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme }
+import v2.std.node { Atom, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, symbol_lexeme }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
 import v2.std.text { String }
@@ -729,6 +729,7 @@ fn rebuilt_spelling_pool(acc: Map<Symbol, Int>, node: Node) -> Map<Symbol, Int> 
   fold(node.children, init: here, f: fn(inner, edge) {
     let labelled = match edge.label {
       Authored { name: name } => pool_add(pool: inner, sym: pool_key_of_label(label: name))
+      StructuralLabel { label: _ } => inner
       Positional => inner
     }
     rebuilt_spelling_pool(acc: labelled, node: edge.target)
@@ -748,6 +749,7 @@ fn named_child_optional(node: Node, label: Symbol) -> Optional<Node> {
       Absent =>
         match edge.label {
           Authored { name: name } => if name == label { optional_present(value: edge.target) } else { acc }
+          StructuralLabel { label: _ } => acc
           Positional => acc
         }
     }
@@ -781,6 +783,7 @@ fn declaration_pools(tree: NormalizedTree, module_qn: Outcome<FreeMonoid<Symbol>
             match edge.label {
               Authored { name: name } =>
                 map_insert(m: acc, key: name, value: rebuilt_spelling_pool(acc: pool_add(pool: empty_map(), sym: name), node: edge.target))
+              StructuralLabel { label: _ } => acc
               Positional => acc
             }
           })

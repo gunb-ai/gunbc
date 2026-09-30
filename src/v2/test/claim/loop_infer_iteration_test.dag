@@ -1,7 +1,5 @@
 module v2.test.claim.loop_infer_iteration
 
-import v2.std.node { LoopBoundEdge, core_edge_label }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // FLAG C witness (body-lowering design, operator-signed): the refinement-shaped case stands in for

@@ -1,6 +1,6 @@
 module v2.extdeps.languages.rust_test
 
-import v2.std.node { ArrowBodyEdge, core_edge_label, Authored }
+import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel }
 
 import std.algebra { Cons, Empty }
 
@@ -1104,6 +1104,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
             } else {
               list_snoc_item(xs: acc, item: edge)
             }
+          StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: edge)
           Positional => list_snoc_item(xs: acc, item: edge)
         }
       }
@@ -3622,6 +3623,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
             } else {
               list_snoc_item(xs: acc, item: edge)
             }
+          StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: edge)
           Positional => list_snoc_item(xs: acc, item: edge)
         }
       }

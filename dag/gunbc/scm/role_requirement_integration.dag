@@ -6,7 +6,7 @@ import v2.std.node {
   Node,
   Edge,
   Symbol,
-  Authored,
+  Authored, StructuralLabel,
   EdgeLabel,
   TypeNode,
   Conj,
@@ -273,6 +273,7 @@ type RoleRequirementIntegrationOutcome
 fn edge_label_role(label: EdgeLabel) -> Symbol? {
   match label {
     Authored { name: name } => Present { value: name }
+    StructuralLabel { label: _ } => none
     Positional => none
   }
 }

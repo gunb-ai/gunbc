@@ -1,7 +1,5 @@
 module v2.test.lens_structural_resolution.module_import_out_of_scope
 
-import v2.std.node { Authored }
-
 data sr_mod_claim_hash: Hash = sr_mod_claim_hash
 
 fn sr_mod_claim_atom(s: Symbol) -> Node {

@@ -1,10 +1,6 @@
 module v2.test.claim.provenance.cross_file_provenance
 
-import v2.std.collection { List }
 
-import v2.std.node { Authored, EdgeLabel }
-
-import v2.extdeps.languages.dag { dag_surface_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -27,7 +27,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.node { Arrow, Conj, Disj, Edge, Authored, Node, node_synthetic, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.std.logic { Bool }
@@ -107,6 +107,7 @@ fn produced_decl_edge_is_decl(edge: Edge) -> Bool {
         TypeNode { connective: Arrow } => true
         _ => false
       }
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }
@@ -167,6 +168,7 @@ type ModuleMemberClass
 
 fn module_member_class(edge: Edge) -> ModuleMemberClass {
   match edge.label {
+    StructuralLabel { label: _ } => ModuleMemberUnsupported
     Positional => ModuleMemberUnsupported
     Authored { name: n } =>
       match edge.target.kind {
@@ -211,6 +213,7 @@ fn emit_module_member(edge: Edge, target: TargetModel) -> Outcome<Medium<String>
 fn produced_module_edge_is_production_marker(edge: Edge) -> Bool {
   match edge.label {
     Authored { name: n } => n == ^grammar_production_identity_node_projection
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }

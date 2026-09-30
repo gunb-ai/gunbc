@@ -19,7 +19,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Authored, Node, Positional, TypeNode, symbol_intern_lexeme }
+import v2.std.node { Atom, Authored, Node, Positional, TypeNode, symbol_intern_lexeme, StructuralLabel }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -42,6 +42,7 @@ test fn char_unicode_scalar_expression_carries_a_symbol_identity() -> Bool {
         init: false,
         f: fn(acc, edge) {
           match edge.label {
+            StructuralLabel { label: _ } => acc
             Positional => acc
             Authored { name: name } =>
               acc || (name == ^target_value_expression_field_codepoint

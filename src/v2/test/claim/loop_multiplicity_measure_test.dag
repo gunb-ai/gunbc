@@ -1,7 +1,5 @@
 module v2.test.claim.loop_multiplicity_measure
 
-import v2.std.node { LoopBoundEdge, core_edge_label, Authored }
-
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
