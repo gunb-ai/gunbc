@@ -3915,8 +3915,22 @@ pub(crate) fn typed_graph_byte_attribution(
         shared_modules.len(),
         start.saturating_sub(last),
     );
-    for (name, bytes) in parts {
-        eprintln!("[floor-heap] bytes label={label} class={name} freed={bytes}");
+    // EVERY LINE SAYS WHAT KIND OF READING IT IS, because the figure alone invites the wrong one:
+    // a class dropped after others is also credited every node it SHARED with them, so its
+    // `freed` is what its last reference kept alive, not what removing it would save. Read as a
+    // saving, the 4.06 GB this probe credited `emit_graph_info` at #12381 predicted a peak cut
+    // that measured -0.07 GB (neat-boar-16's A/B on gunbc#12832). Only the first class dropped
+    // reads exclusive bytes; the TypeEnv maps split before it are exclusive only after the
+    // environment shells went. A removal's saving is a leave-one-out reading, not this one.
+    for (order, (name, bytes)) in parts.into_iter().enumerate() {
+        let reading = match order {
+            0 => "exclusive",
+            1..=8 => "exclusive_lower_bound_after_shells",
+            _ => "includes_shared_residue",
+        };
+        eprintln!(
+            "[floor-heap] bytes label={label} order={order} class={name} freed={bytes} reading={reading}"
+        );
     }
 }
 
