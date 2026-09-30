@@ -137,11 +137,8 @@ import v2.std.node_query {
   construct_node,
   construct_node_elided,
   construct_tag_elided_reference,
-<<<<<<< HEAD
-  construct_tag_target_is_elided,
-=======
   construct_tag_is_elided,
->>>>>>> origin/session/sleek-fox-423-cut
+  construct_tag_target_is_elided,
   construct_tag_optional,
   field_projection_node,
   field_projection_optional,
