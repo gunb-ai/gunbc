@@ -38,6 +38,7 @@ import v2.extdeps.languages.dag {
   dag_lex_token_symbol,
   dag_loop_measure_node,
   dag_node_is_int_literal_atom,
+  dag_string_literal_value_symbol_optional,
   dag_match_arm_node,
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
@@ -572,6 +573,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
     ComputationNode { behavior: _ } => true
     _ =>
       (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
+        || (match body_lower_string_literal_value_optional(node: node) { Present { value: _ } => true  Absent => false })
         || qualified_name_spine_shape_present(root: node)
         || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
         || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
@@ -5474,6 +5476,9 @@ fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
 // int literal with its magnitude, a branded binding, `true`/`false`, or a reference. Both readers
 // below call it, so the classification has one home.
 fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
+  match body_lower_string_literal_value_optional(node: stripped) {
+    Present { value: literal } => optional_present(value: literal)
+    Absent =>
   match dag_node_is_int_literal_atom(node: stripped) {
     true => body_lower_int_literal_with_magnitude_optional(node: stripped)
     false =>
@@ -5495,6 +5500,17 @@ fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
         Absent => optional_absent()
       }
   }
+  }
+  }
+}
+
+// A STRING LITERAL IS READ WHOLE, value payload and occurrence kept: the parser built it carrying
+// its decoded value (v2.extdeps.languages.dag dag_string_literal_node_from_lexeme), and rebuilding
+// it as a bare atom would drop that value, which is the defect this arm exists to prevent.
+fn body_lower_string_literal_value_optional(node: Node) -> Optional<Node> {
+  match dag_string_literal_value_symbol_optional(node: node) {
+    Present { value: _ } => optional_present(value: node)
+    Absent => optional_absent()
   }
 }
 

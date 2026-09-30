@@ -162,7 +162,7 @@ import v2.std.compilers.target_model {
   derive_bodied_arrow_scaffold}
 import v2.std.logic { Bool, bool_node }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_map }
+import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_init, list_map, skip }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -484,23 +484,44 @@ fn dag_float_literal_lex_rule() -> LexRule {
   }
 }
 
+// THE STRING ESCAPE VOCABULARY, ONE ROW PER ESCAPE: the character spelled after the backslash and
+// the scalar it denotes. Both readers derive from these rows -- the lex pattern below admits exactly
+// the spelled characters, and dag_string_literal_value_decode maps each to its value -- so an escape
+// the lexer admits and the decoder does not know (or the reverse) is unwritable. The six rows:
+//   \"  -> U+0022 quote        \\  -> U+005C backslash
+//   \n  -> U+000A line feed    \t  -> U+0009 tab
+//   \{  -> U+007B left brace   \}  -> U+007D right brace
+// A brace escape is a literal brace and never interpolation (dag/test/claim
+// string_brace_escape_witness_test). Any other character after a backslash is malformed.
+type DagStringEscape {
+  spelled: Int
+  value: Int
+}
+
+// The last row is carried apart so the derived pattern keeps its right-nested shape: a choice over
+// every other row whose innermost alternative is this row's character.
+data dag_string_escape_last: DagStringEscape = DagStringEscape { spelled: 125, value: 125 }
+
+fn dag_string_escape_leading() -> List<DagStringEscape> {
+  [
+    DagStringEscape { spelled: 34, value: 34 },
+    DagStringEscape { spelled: 92, value: 92 },
+    DagStringEscape { spelled: 110, value: 10 },
+    DagStringEscape { spelled: 116, value: 9 },
+    DagStringEscape { spelled: 123, value: 123 }
+  ]
+}
+
+fn dag_string_escapes() -> List<DagStringEscape> {
+  list_append(left: dag_string_escape_leading(), right: [dag_string_escape_last])
+}
+
 fn dag_string_escape_char_pattern() -> LexPattern {
-  ChoicePattern {
-    left: CharPattern { char: 34 },
-    right: ChoicePattern {
-      left: CharPattern { char: 92 },
-      right: ChoicePattern {
-        left: CharPattern { char: 110 },
-        right: ChoicePattern {
-          left: CharPattern { char: 116 },
-          right: ChoicePattern {
-            left: CharPattern { char: 123 },
-            right: CharPattern { char: 125 }
-          }
-        }
-      }
-    }
-  }
+  fold_list(
+    xs: dag_string_escape_leading(),
+    empty: CharPattern { char: dag_string_escape_last.spelled },
+    cons: fn(rest, row) { ChoicePattern { left: CharPattern { char: row.spelled }, right: rest } }
+  )
 }
 
 fn dag_string_escape_sequence_pattern() -> LexPattern {
@@ -3875,6 +3896,156 @@ fn dag_float_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurre
       }
     ],
     occurrence_id: occurrence_id
+  }
+}
+
+// A STRING LITERAL CARRIES ITS VALUE. The token's lexeme is its spelling -- the framing quotes and
+// every escape as written -- and the value is that spelling decoded through dag_string_escapes: the
+// quotes removed, each escape replaced by the scalar its row names. The node is the string-literal
+// class atom with the decoded value as its one named payload (^string_literal_value_field), the
+// shape the int literal's magnitude and the float literal's lexeme already use, so two different
+// literals are two different nodes. Before this, every string literal parsed to one childless
+// ^dag_token_string_literal atom and its value was dropped. The payload is host text interned as a
+// Symbol; how it relates to v2.std.text String (FreeMonoid<Char>) is not decided here
+// (gunbc.rung_drop text_boundary_identity_wall), and nothing coerces it.
+type DagStringDecode
+  = DagStringDecodeText { text: String }
+  | DagStringDecodeEscape { text: String }
+  | DagStringDecodeMalformed { spelled: Int }
+
+fn dag_string_escape_value_optional(spelled: Int) -> Optional<Int> {
+  fold_list(
+    xs: dag_string_escapes(),
+    empty: optional_absent(),
+    cons: fn(found, row) { if row.spelled == spelled { optional_present(value: row.value) } else { found } }
+  )
+}
+
+fn dag_string_decode_step(state: DagStringDecode, c: Int) -> DagStringDecode {
+  match state {
+    DagStringDecodeText { text: t } =>
+      if c == 92 {
+        DagStringDecodeEscape { text: t }
+      } else {
+        DagStringDecodeText { text: concat(t, from_code_point(cp: c)) }
+      }
+    DagStringDecodeEscape { text: t } =>
+      match dag_string_escape_value_optional(spelled: c) {
+        Present { value: v } => DagStringDecodeText { text: concat(t, from_code_point(cp: v)) }
+        Absent => DagStringDecodeMalformed { spelled: c }
+      }
+    DagStringDecodeMalformed { spelled: m } => DagStringDecodeMalformed { spelled: m }
+  }
+}
+
+// The lexeme's scalars in order; a lexeme is framed when its first and last scalars are the quote
+// and there are at least two of them.
+fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
+  let cs = chars(s: lexeme)
+  let n = length(xs: cs)
+  if n < 2 {
+    optional_absent()
+  } else {
+    match list_at_optional(xs: cs, index: 0) {
+      Present { value: open } =>
+        match list_at_optional(xs: cs, index: n - 1) {
+          Present { value: close } =>
+            if (open == 34) && (close == 34) {
+              optional_present(value: list_init(xs: skip(xs: cs, n: 1)))
+            } else {
+              optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      Absent => optional_absent()
+    }
+  }
+}
+
+fn dag_string_literal_refusal(reason: Symbol, at: Node) -> Outcome<Node> {
+  outcome_rejected(
+    d: Diagnostic {
+      reason: reason,
+      at: node_locus(node: at),
+      correction: Unavailable { reason: CorrectionNotModeled }
+    }
+  )
+}
+
+// Refuses, located at the literal's own occurrence, when the lexeme is not quote-framed
+// (^dag_string_literal_lexeme_unframed) or carries a backslash followed by a character with no
+// dag_string_escapes row, or a backslash with nothing after it (^dag_string_literal_escape_malformed).
+// The raw spelling is never carried as the value.
+fn dag_string_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
+  let bare = Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
+    children: [],
+    occurrence_id: occurrence_id
+  }
+  match dag_string_literal_body_optional(lexeme: lexeme) {
+    Absent => dag_string_literal_refusal(reason: ^dag_string_literal_lexeme_unframed, at: bare)
+    Present { value: body } =>
+      match fold(body, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
+        DagStringDecodeText { text: value } =>
+          outcome_accepted(value: dag_string_literal_node(value: value, occurrence_id: occurrence_id))
+        DagStringDecodeEscape { text: _ } =>
+          dag_string_literal_refusal(reason: ^dag_string_literal_escape_malformed, at: bare)
+        DagStringDecodeMalformed { spelled: _ } =>
+          dag_string_literal_refusal(reason: ^dag_string_literal_escape_malformed, at: bare)
+      }
+  }
+}
+
+fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
+    children: [
+      Edge {
+        label: Named { name: ^string_literal_value_field },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: value) } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+        }
+      }
+    ],
+    occurrence_id: occurrence_id
+  }
+}
+
+// The decoded value a string-literal node carries: its payload atom's interned identity. Absent for
+// every other node, including a payload-less string-literal atom.
+fn dag_string_literal_value_symbol_optional(node: Node) -> Optional<Symbol> {
+  match node_atom_identity_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: id } =>
+      if (id == ^dag_token_string_literal) && (length(xs: node.children) == 1) {
+        match list_at_optional(xs: node.children, index: 0) {
+          Present { value: Edge { label: Named { name: field }, target: payload } } =>
+            if field == ^string_literal_value_field {
+              node_atom_identity_optional(node: payload)
+            } else {
+              optional_absent()
+            }
+          _ => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn dag_string_literal_value_optional(node: Node) -> Optional<String> {
+  match dag_string_literal_value_symbol_optional(node: node) {
+    Present { value: v } => optional_present(value: symbol_lexeme(sym: v))
+    Absent => optional_absent()
+  }
+}
+
+fn dag_node_is_string_literal_atom(node: Node) -> Bool {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_string_literal
+    Absent => false
   }
 }
 
