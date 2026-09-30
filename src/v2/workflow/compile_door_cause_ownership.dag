@@ -139,12 +139,6 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "a return lowers only as the tail statement of a function's own body; every other return refuses here, located at it, rather than lowering to its operand as the value of whatever block held it (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). Flips when the value readers carry the tail position, so a structured tail return in an if or match arm, and the else-less guard, lower to Branch(c, arm, rest); count on the PR"
   },
   CauseOwnership {
-    cause: ^body_lowering_reason_caret_symbol_not_lowered,
-    grain: FatalGrain,
-    lane: SharedSelfHostCriticalPath,
-    flip_trigger: "caret lowers to LitSymbol: owned by the MQ-1 symbol-literal slice (the grammar stamps the caret's name with its lexeme, and body lowering produces a std.syntax LitSymbol atom the resolver accepts without lookup). Until then every caret symbol in value position refuses here, located at the `^` token, rather than lowering to that token with its symbol dropped, as it did in all ten value positions on main b1b7aea9aa7 (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form)"
-  },
-  CauseOwnership {
     cause: ^body_lowering_reason_service_realization_unreachable,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
