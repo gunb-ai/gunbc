@@ -1,6 +1,7 @@
 module v2.std.node
 
 import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.optional { Present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceAllocatorSnapshot,
@@ -840,6 +841,20 @@ data construct_tag_marker_symbol: Symbol = symbol_intern_lexeme(lexeme: "<constr
 
 fn construct_tag_marker() -> Symbol {
   construct_tag_marker_symbol
+}
+
+// AN ANONYMOUS RECORD LITERAL'S TAG IS ELIDED, NOT GUESSED. `data x: T = { f: v }` names no
+// constructor; the constructor is chosen by the EXPECTED type, which lowering (before resolve) cannot
+// know. So lowering writes the ONE construct shape with its tag edge present and targeting this
+// marker, and resolve's construct-tag writer replaces it with the declaration reference of the
+// expected type's record, or refuses (docs/plans/anonymous-record-literal-design.md). Keeping the
+// tag edge rather than omitting it keeps a headless literal distinct from a bare Conj of Named edges,
+// which is the anonymous record TYPE. A Core structural marker beside construct_tag_marker, in its
+// form, for the same #12473 cut.
+data construct_tag_elided_marker_symbol: Symbol = symbol_intern_lexeme(lexeme: "<construct-tag-elided>")
+
+fn construct_tag_elided_marker() -> Symbol {
+  construct_tag_elided_marker_symbol
 }
 
 // A RESOLVED DECLARATION REFERENCE IS NOT A RECORD CONSTRUCT. `data d: D = A` lowers to a nullary
