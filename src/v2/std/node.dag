@@ -769,46 +769,61 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
   }
 }
 
-// A Conj body that is not a marked declaration reference is one of two things, and this admits both.
+// A Conj body that is not a marked declaration reference is admitted on one of two readings.
 //
 // A CONSTRUCT: the tag edge is FIRST and carries v2.std.node construct_tag_marker, and its target is a
 // reference, which is a Conj in both of its forms (an authored spine, a marked declaration
 // reference); every edge is Named. Which Conj is a well-formed reference is v2.std.qualified_name's to
 // read (v2.std.node_query construct_tag_path_optional), not repeated here.
 //
-// AN AUTHORED PATH BEFORE RESOLUTION: `fn f() -> T { m.C }` has the qualified-name spine as its body
-// until resolve replaces it with the marked reference. Its first edge is Named and targets the head
-// segment's Atom. This module cannot name the spine's labels -- v2.std.algebra fold_list_node owns
-// them and imports this module -- so the admission is the one this function made before the tag
-// became a marker, stated as what it is rather than left to accident. A typed arm for an unresolved
-// reference body would let the classifier say so; it is a follow-up named in
-// docs/plans/construct-tag-reference-design.md, not a change this package makes.
+// ANY OTHER UNMARKED Conj is admitted exactly as it was before the tag became a marker: every edge
+// Named and SOME Named edge targeting an Atom. That population is not constructs -- it is an authored
+// path before resolution (`fn f() -> T { m.C }`, the spine whose head targets an Atom) and a field
+// projection body (`fn f() -> Symbol { g(x).reason }`, v2.std.node_query field_projection_node,
+// whose field edge targets an Atom). This module cannot name either shape's labels -- v2.std.algebra
+// and v2.std.node_query own them and import this module -- so the admission is kept unchanged rather
+// than narrowed; narrowing it refused v2.std.diagnostic diagnostics_fatal_reason, measured on the
+// native route. A typed arm per body form would let the classifier say which one it holds; it is a
+// follow-up named in docs/plans/construct-tag-reference-design.md, not a change this package makes.
 fn arrow_body_record_construct_conforms(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
-      if !all_edges_named(children: node.children) {
-        false
-      } else {
-        fold(node.children, init: 0, f: fn(seen, edge) {
-          if seen != 0 {
-            seen
-          } else {
-            match edge.label {
-              Named { name: label } =>
-                match edge.target.kind {
-                  TypeNode { connective: Conj } =>
-                    if symbol_eq(a: label, b: construct_tag_marker()) { 1 } else { 2 }
-                  TypeNode { connective: Atom { identity: _ } } =>
-                    if symbol_eq(a: label, b: construct_tag_marker()) { 2 } else { 1 }
-                  _ => 2
-                }
-              Positional => 2
-            }
-          }
-        }) == 1
-      }
+      all_edges_named(children: node.children)
+        && (arrow_body_construct_tag_leads(node: node) || arrow_body_some_edge_targets_an_atom(node: node))
     _ => false
   }
+}
+
+fn arrow_body_construct_tag_leads(node: Node) -> Bool {
+  fold(node.children, init: 0, f: fn(seen, edge) {
+    if seen != 0 {
+      seen
+    } else {
+      match edge.label {
+        Named { name: label } =>
+          if symbol_eq(a: label, b: construct_tag_marker())
+            && (match edge.target.kind {
+              TypeNode { connective: Conj } => true
+              _ => false
+            }) { 1 } else { 2 }
+        Positional => 2
+      }
+    }
+  }) == 1
+}
+
+fn arrow_body_some_edge_targets_an_atom(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(found, edge) {
+    found || (match edge.label {
+      Named { name: label } =>
+        !symbol_eq(a: label, b: construct_tag_marker())
+          && (match edge.target.kind {
+            TypeNode { connective: Atom { identity: _ } } => true
+            _ => false
+          })
+      Positional => false
+    })
+  })
 }
 
 fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
