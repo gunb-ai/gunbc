@@ -363,6 +363,40 @@ fn bla_admits(o: Outcome<Bool>) -> Bool {
   }
 }
 
+fn bla_plain_let_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos) -> Int {\n  let y = x\n  0\n}\n"))
+}
+
+fn bla_plain_let_pos2() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos2) -> Int {\n  let y = x\n  0\n}\n"))
+}
+
+// THE LET ITSELF WAS DECIDED: the annotated let is admitted and adds no inhabitance-undecidable
+// advisory over the same fn with the annotation removed. The enclosing fn's declared return sees a
+// let block whose type is not derived and counts it on both sides, so an absolute "no advisory"
+// would read that return, not the let.
+fn bla_undecided_count(o: Outcome<Bool>) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: _, diagnostics: None } => 0
+    Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
+      fold(Cons { head: d.head, tail: d.tail }, init: 0, f: fn(acc, x) {
+        if (x.reason == ^inhabitance_undecidable_argument_type_not_derived)
+          || (x.reason == ^inhabitance_undecidable_formal_unresolved)
+          || (x.reason == ^inhabitance_undecidable_optional_carrier)
+          || (x.reason == ^inhabitance_undecidable_generic_formal) { acc + 1 } else { acc }
+      })
+  }
+}
+
+fn bla_let_admits_decided(annotated: Outcome<Bool>, plain: Outcome<Bool>) -> Bool {
+  match annotated {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } =>
+      bla_undecided_count(o: annotated) == bla_undecided_count(o: plain)
+  }
+}
+
 // ADMITTED AND DECIDED: an admission that carries an inhabitance-undecidable advisory was never
 // judged, so it is no evidence the relation admitted the pair.
 fn bla_admits_decided(o: Outcome<Bool>) -> Bool {
@@ -391,13 +425,13 @@ test fn bla_optional_at_a_required_let_refuses_as_a_return_and_a_field_do() -> B
 }
 
 test fn bla_refinement_inhabits_its_declared_carrier_at_a_let_a_return_and_a_field() -> Bool {
-  bla_admits_decided(o: bla_let_pos_int())
+  bla_let_admits_decided(annotated: bla_let_pos_int(), plain: bla_plain_let_pos())
     && bla_admits_decided(o: bla_ret_pos_int())
     && bla_admits_decided(o: bla_fld_pos_int())
 }
 
 test fn bla_refinement_of_a_refinement_widens_one_step_at_a_let_a_return_and_a_field() -> Bool {
-  bla_admits_decided(o: bla_let_pos2_pos())
+  bla_let_admits_decided(annotated: bla_let_pos2_pos(), plain: bla_plain_let_pos2())
     && bla_admits_decided(o: bla_ret_pos2_pos())
     && bla_admits_decided(o: bla_fld_pos2_pos())
     && bla_refuses_for(o: bla_let_pos2_int(), reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
