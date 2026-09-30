@@ -428,8 +428,21 @@ fn sol_drop_fired_in(w: MtCollins1BootWorld) -> Bool {
   bmc_sol_drop_fired(world: w.bmc)
 }
 
-fn first_dispatch_second(route: List<DispatchRecord>, name: String) -> Int {
-  match filter(route, r => operation_name(r: r) == name).first() { Present { value: r } => std.measure.second_count(s: r.dispatched_at) as Int Absent => 0 - 1 }
+fn first_dispatch_second(route: List<DispatchRecord>, name: String) -> Int? {
+  match filter(route, r => operation_name(r: r) == name).first() { Present { value: r } => Present { value: std.measure.second_count(s: r.dispatched_at) as Int } Absent => none }
+}
+
+// The teardown's delay after the power action, required to exist on both ends -- an absent deactivate
+// or power action is not a zero -- and to be nonnegative and at most `bound` seconds (review of #12533
+// at bd99cbb489: a -1 sentinel let an absent or early teardown pass).
+fn teardown_within(route: List<DispatchRecord>, bound: Int) -> Bool {
+  match first_dispatch_second(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") {
+    Absent => false
+    Present { value: power } => match first_dispatch_second(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") {
+      Absent => false
+      Present { value: torn } => torn - power >= 0 && torn - power <= bound
+    }
+  }
 }
 
 test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
@@ -441,7 +454,9 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
         && string_contains(s: outcome_reason(a: value), pattern: "incident frozen to /run/sol.capture.loss")
         && string_contains(s: outcome_reason(a: value), pattern: "BMC answered mc info")
         && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
-        && first_dispatch_second(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") - first_dispatch_second(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") <= 60
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate")
+        && teardown_within(route: route, bound: 60)
         && match state { Present { value: end } => sol_drop_fired_in(w: end) Absent => false }
     _ => false
   }
