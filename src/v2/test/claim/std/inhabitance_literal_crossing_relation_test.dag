@@ -28,6 +28,10 @@ import v2.std.node { Conj, Node, TypeNode, node_synthetic }
 // declared Int), so the structural relation alone never admits it. Only the crossing's element key
 // differs between the admit and the refuse, which is what makes the row key the discriminator.
 
+// A HOMONYM OF std.types Char, declared here so the homonym claim cites a real declaration: it shares
+// the leaf spelling and is a different declaration, which is exactly what the row key must tell apart.
+type Char = Int
+
 fn lc_empty_domain() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [])
 }
@@ -75,7 +79,7 @@ test fn string_literal_at_free_monoid_of_char_inhabits_by_the_unfold_holds() -> 
 // ROW-KEY DISCRIMINATOR: the same crossing with a non-Char element reaches no row, so the
 // structurally mismatched obligation is NOT admitted.
 test fn string_literal_at_free_monoid_of_non_char_is_not_admitted_holds() -> Bool {
-  !lc_admitted_at_all(crossing: Present { value: lc_string_crossing(element: decl_ref(module_path: "std.types", decl_name: "Int")) })
+  !lc_admitted_at_all(crossing: Present { value: lc_string_crossing(element: decl_ref(module_path: "std.integer", decl_name: "Int")) })
 }
 
 // A HOMONYM ELEMENT IS NOT CHAR: the row keys on the exact declaration, so a Char declared in another
