@@ -2285,8 +2285,11 @@ pub(crate) fn floor_retention_census(
     for (_, graph) in graphs {
         for m in graph.modules.iter() {
             if seen.insert(Rc::as_ptr(m) as usize) {
+                // KEYED BY SOURCE, NOT ONLY BY MODULE PATH: the planning row reads the diff base's
+                // version of a changed module from a separate checkout, and two SOURCES under one
+                // module path are two modules, which legitimately wire differently.
                 copies
-                    .entry(m.type_env.module_path.clone())
+                    .entry(format!("{}@{}", m.type_env.module_path, m.module.span.file))
                     .or_default()
                     .push(m);
             }
