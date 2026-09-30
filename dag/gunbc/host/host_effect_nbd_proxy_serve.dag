@@ -232,18 +232,19 @@ fn host_effect_nbd_proxy_serve_websocat_command_materialized(
   )
 }
 
-// THE PLACEMENT PIN, at word grain instead of a joined surface. True means: the materialized
-// token IS one of the command's words, and the shell env-ref spelling
-// (bmcweb_session_token_env_ref) is NOT -- the same two facts the surface join used to answer,
-// read from the carrier's fields. The credential census names this assertion as one of the two
-// that must be INVERTED deliberately when the token leaves argv.
+// THE PLACEMENT PIN, at word grain instead of a joined surface. True means: some word of the
+// command CARRIES the materialized token (the --header word embeds it: `--header="Authorization:
+// Token <token>"`), and NO word carries the shell env-ref spelling (bmcweb_session_token_env_ref)
+// -- the same two substring facts the surface join used to answer, read word-by-word so no join
+// re-splits anything. The credential census names this assertion as one of the two that must be
+// INVERTED deliberately when the token leaves argv.
 fn host_effect_nbd_proxy_serve_websocat_command_materialized_omits_shell_env_ref(
   intent: NbdProxyServeTransportIntent,
   token: NonEmptyStr,
 ) -> Bool {
   let words = argv_words(command: host_effect_nbd_proxy_serve_websocat_command_materialized(intent: intent, token: token))
-  fold(words, init: false, f: (acc, word) => acc || word == (token as String))
-    && !fold(words, init: false, f: (acc, word) => acc || word == (bmcweb_session_token_env_ref as String))
+  fold(words, init: false, f: (acc, word) => acc || string_contains(s: word, pattern: token as String))
+    && !fold(words, init: false, f: (acc, word) => acc || string_contains(s: word, pattern: bmcweb_session_token_env_ref as String))
 }
 
 // String? here is the same real-reason-over-Bool move as the leaf functions above: the caller
