@@ -1616,11 +1616,51 @@ fn body_lower_tail_pipes_into_fold(tail: Node) -> Bool {
   }
 }
 
+// The operator of a tail's FIRST element -- the tail is sequence(operator, operand) or
+// sequence(sequence(operator, operand), rest) -- read from the node's own shape, no walk.
+fn body_lower_tail_first_operator_optional(tail: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: tail) {
+    Absent => optional_absent()
+    Present { value: pair } =>
+      match body_lower_operator_token_optional(node: pair.left, binary: true) {
+        Present { value: operator } => optional_present(value: operator)
+        Absent =>
+          match sugar_sequence_pair_optional(node: pair.left) {
+            Absent => optional_absent()
+            Present { value: element } => body_lower_operator_token_optional(node: element.left, binary: true)
+          }
+      }
+  }
+}
+
+// THE ROOT OF A PIPE TOWER, DECIDED FROM THE NODE'S OWN SHAPE IN CONSTANT TIME. body_lower_fold runs
+// at every node, so its guard may not walk anything: this reads one shell, the node's own sequence
+// pair and the first operator of its tail. The pipe is the outermost level of
+// v2.extdeps.languages.dag dag_grammar_binary_expr_expr, so a tower whose tail starts with `|>` is
+// at its root. A repeat-spine node inside the tail, sequence(sequence(operator, operand), rest), is
+// excluded by its left element being operator-headed, so the tower is decided once, at the root,
+// and never re-decided at every spine node beneath it (the per-node rescan the first cut paid).
+fn body_lower_is_pipe_tower_root(node: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: node) {
+    Absent => false
+    Present { value: pair } =>
+      match body_lower_tail_first_operator_optional(tail: pair.left) {
+        Present { value: _ } => false
+        Absent =>
+          match body_lower_tail_first_operator_optional(tail: pair.right) {
+            Present { value: operator } => body_lower_operator_is_pipe(operator: operator)
+            Absent => false
+          }
+      }
+  }
+}
+
 // A TOWER THAT PIPES INTO A FOLD IS READ WHOLE, BEFORE ITS OPERANDS ARE FOLDED. The bottom-up fold
 // lowers an operator expression's children first, so the fold call on the right of `|>` would be
 // lowered on its own -- with no collection, since the pipe supplies it -- before the tower could hand
-// it the pipe's input. So such a tower -- recognised by its structure, whatever production identity
-// the node it reaches carries, since the value reader unwraps shells before folding -- is read by the
+// it the pipe's input. So such a tower -- recognised at its ROOT by structure (body_lower_is_pipe_tower_root,
+// constant time), whatever production identity the node carries, since the value reader unwraps shells
+// before folding; only a root then pays the tail scan below, once per tower -- is read by the
 // raw tower reader, whose binary step
 // (body_lower_binary_apply) builds the fold encoding with the accumulated left operand as the
 // collection. Every other tower takes the ordinary bottom-up path unchanged.
@@ -2814,7 +2854,7 @@ fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
 fn body_lower_fold(node: Node) -> Outcome<Node> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: node)
-  } else if body_lower_tower_pipes_into_fold(node: node) {
+  } else if body_lower_is_pipe_tower_root(node: node) && body_lower_tower_pipes_into_fold(node: node) {
     match body_lower_read_operator_expression(node: node) {
       OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: lowered)
       OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
