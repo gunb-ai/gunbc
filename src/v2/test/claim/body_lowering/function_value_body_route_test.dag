@@ -68,7 +68,7 @@ type FvbOutcomes
   | FvbOutcomesDecided { direct: FvbVerdict, curried: FvbVerdict, curried_undeclared: FvbVerdict }
 
 fn fvb_verdict_in(context: NativeTestContext, module: String) -> FvbVerdict {
-  match native_test_prepare_module(context: context, module: qualified_name_from_dotted_string(dotted: module)) {
+  match native_test_prepare_module(context: context, module: qualified_name_from_dotted_string(dotted: module)).prepared {
     Accepted { value: _, diagnostics: _ } => FvbInferred
     Rejected { diagnostics: d } =>
       FvbRefused {
