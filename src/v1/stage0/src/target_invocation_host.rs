@@ -258,6 +258,7 @@ pub enum TargetProducer {
     CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
     FloorMemoryQualification,
+    TypedGraphExclusiveBytes,
     PrimitiveEgressCensus,
     PrimitiveEgressCensusV2,
     PrimitiveEgressCensusDag,
@@ -356,6 +357,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("floor-memory-qualification"),
             TargetProducer::FloorMemoryQualification,
+        ),
+        (
+            instrument_label("typed-graph-exclusive-bytes"),
+            TargetProducer::TypedGraphExclusiveBytes,
         ),
         (
             instrument_label("primitive-egress-census"),
@@ -772,6 +777,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             run_evaluation_store_address_exact_head()
         }
         TargetProducer::FloorMemoryQualification => run_floor_memory_qualification(),
+        TargetProducer::TypedGraphExclusiveBytes => run_typed_graph_exclusive_bytes(),
         TargetProducer::PrimitiveEgressCensus => {
             run_primitive_egress_census("primitive-egress-census", "primitive_egress_census_exit")
         }
@@ -1851,6 +1857,95 @@ fn floor_phase_attribution_rendered(
         ));
     }
     out.join("\n")
+}
+
+/// THE TYPED GRAPH'S BYTES BY CLASS, READ LEAVE-ONE-OUT. The floor's sequential byte attribution
+/// (`cli_run::typed_graph_byte_attribution`) credits a class dropped late with every node it shared
+/// with classes dropped before it, so its figures are an order-dependent upper bound -- read as a
+/// saving, its `emit_graph_info` share predicted a peak cut that measured -0.07 GB (gunbc#12832).
+/// What a removal SAVES is the bytes freed by dropping that class alone while every other class is
+/// still held, and that needs a fresh graph per class: a dropped class cannot be restored and a
+/// deep clone would double the heap under measurement.
+///
+/// THE SUBJECT IS THE WHOLE-TREE STRICT CLOSURE over `dag` and `src/v2`, the floor's own
+/// exclusions applied: at roughly five thousand modules it is the size at which the floor's
+/// superlinear growth is the question, and it needs no diff to reproduce. The graph is taken
+/// whether or not the typecheck refuses, since a refused graph is the same allocation a refusing
+/// floor holds. Six classes, the ones carrying the bytes; the rest are inside the shared residual.
+fn run_typed_graph_exclusive_bytes() -> InvocationOutcome {
+    use cli_run::TypedModuleClass as C;
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "typed-graph-exclusive-bytes: refused: could not anchor at the workspace root: {e}"
+            ),
+        };
+    }
+    let roots = vec!["dag".to_string(), "src/v2".to_string()];
+    let excludes = cli_run::floor_prepared_subject_exclusions();
+    let classes = [
+        C::TypeEnv,
+        C::Interface,
+        C::Items,
+        C::ModuleNodes,
+        C::FuncEnv,
+        C::OccurrenceTransport,
+    ];
+    let mut lines = Vec::new();
+    let mut sum_exclusive: u64 = 0;
+    let mut graph_total: Option<u64> = None;
+    for class in classes {
+        let picked = match cli_run::whole_tree_strict_sources(&roots, &excludes) {
+            Ok(p) => p,
+            Err(e) => {
+                return InvocationOutcome {
+                    termination: Termination::SubjectUnreached,
+                    message: format!("typed-graph-exclusive-bytes: subject unreached: {e}"),
+                }
+            }
+        };
+        let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(
+            picked.sources.into(),
+        ));
+        let graph = match std::rc::Rc::try_unwrap(result).ok().and_then(|r| r.graph) {
+            Some(g) => g,
+            None => {
+                return InvocationOutcome {
+                    termination: Termination::SubjectUnreached,
+                    message: "typed-graph-exclusive-bytes: the strict resolve produced no graph, or its result has another owner".to_string(),
+                }
+            }
+        };
+        match cli_run::typed_module_class_exclusive_bytes(graph, class) {
+            Ok(r) => {
+                sum_exclusive += r.exclusive;
+                graph_total.get_or_insert(r.graph_total);
+                lines.push(format!(
+                    "typed-graph-exclusive-bytes class={} exclusive={} graph_total={} in_use_all={} modules={}",
+                    class.name(), r.exclusive, r.graph_total, r.in_use_all, r.modules
+                ));
+            }
+            Err(cause) => {
+                return InvocationOutcome {
+                    termination: Termination::Refused,
+                    message: format!(
+                        "typed-graph-exclusive-bytes: class {} unattributable: {cause}",
+                        class.name()
+                    ),
+                }
+            }
+        }
+    }
+    let total = graph_total.unwrap_or(0);
+    lines.push(format!(
+        "typed-graph-exclusive-bytes graph_total={total} sum_of_exclusives={sum_exclusive} shared_or_unlisted={} (graph_total from the first run; every class read from its own fresh resolve)",
+        total.saturating_sub(sum_exclusive)
+    ));
+    InvocationOutcome {
+        termination: Termination::ObservationHeld,
+        message: lines.join("\n"),
+    }
 }
 
 fn run_floor_memory_qualification() -> InvocationOutcome {

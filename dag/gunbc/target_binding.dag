@@ -39,6 +39,7 @@ type TargetProducer
   | PrimitiveEgressCensusDagProducer
   | PrimitiveEgressCensusSeedProducer
   | FloorMemoryQualificationProducer
+  | TypedGraphExclusiveBytesProducer
   | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer

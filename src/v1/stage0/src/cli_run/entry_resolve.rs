@@ -4023,6 +4023,9 @@ pub(crate) struct ExclusiveBytesReading {
     pub modules: usize,
     pub in_use_all: u64,
     pub exclusive: u64,
+    /// Every class and the graph-level registry and diagnostics dropped: the graph's whole live
+    /// bytes, so `graph_total` less the sum of the classes' exclusives is what they SHARE.
+    pub graph_total: u64,
 }
 
 pub(crate) fn typed_module_class_exclusive_bytes(
@@ -4083,9 +4086,11 @@ pub(crate) fn typed_module_class_exclusive_bytes(
     drop(kept);
     drop(graph.item_registry);
     drop(graph.diagnostics);
+    let end = floor_heap_in_use().ok_or("no allocator reading on this target")?;
     Ok(ExclusiveBytesReading {
         modules: module_count,
         in_use_all,
         exclusive: in_use_all.saturating_sub(after),
+        graph_total: in_use_all.saturating_sub(end),
     })
 }

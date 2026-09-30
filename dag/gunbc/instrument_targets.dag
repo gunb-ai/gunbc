@@ -13,6 +13,7 @@ import gunbc.target_binding {
   BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
   FloorMemoryQualificationProducer,
+  TypedGraphExclusiveBytesProducer,
   CompileCleanDiagnosticCensusProducer,
   EvaluationStoreAddressExactHeadProducer,
   EmittedCrateWorkspaceProducer,
@@ -101,6 +102,16 @@ fn floor_memory_qualification_label() -> Label {
   Label {
     package: instruments_package()
     target: TargetName { name: "floor-memory-qualification" }
+  }
+}
+
+// THE TYPED GRAPH'S BYTES BY CLASS, LEAVE-ONE-OUT: what removing each class would save, which the
+// floor's sequential attribution cannot say (a late class is credited nodes it shared). A different
+// observation from floor-memory-qualification's demand verdict, over its own subject.
+fn typed_graph_exclusive_bytes_label() -> Label {
+  Label {
+    package: instruments_package()
+    target: TargetName { name: "typed-graph-exclusive-bytes" }
   }
 }
 
@@ -485,6 +496,13 @@ fn floor_memory_qualification_binding() -> TargetBinding {
   }
 }
 
+fn typed_graph_exclusive_bytes_binding() -> TargetBinding {
+  TargetBinding {
+    target: typed_graph_exclusive_bytes_label()
+    producer: TypedGraphExclusiveBytesProducer {}
+  }
+}
+
 fn primitive_egress_census_seed_binding() -> TargetBinding {
   TargetBinding { target: primitive_egress_census_seed_label() producer: PrimitiveEgressCensusSeedProducer {} }
 }
@@ -560,7 +578,7 @@ fn instrument_targets() -> List<Label> {
     compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
-    primitive_egress_census_seed_label(), floor_memory_qualification_label(),
+    primitive_egress_census_seed_label(), floor_memory_qualification_label(), typed_graph_exclusive_bytes_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
     self_host_behavioral_equivalence_label(),
     emitted_crate_workspace_label(),
@@ -575,7 +593,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
-    primitive_egress_census_seed_binding(), floor_memory_qualification_binding(),
+    primitive_egress_census_seed_binding(), floor_memory_qualification_binding(), typed_graph_exclusive_bytes_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
     self_host_behavioral_equivalence_binding(),
     emitted_crate_workspace_binding(),
