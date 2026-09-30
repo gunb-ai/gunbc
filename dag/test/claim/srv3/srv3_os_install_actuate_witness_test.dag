@@ -51,6 +51,10 @@ test fn srv3_actuate_prep_paths_are_declared() -> Bool {
     && srv3_os_install_actuate_runbook_is_declared()
 }
 
+// FIELD GRAIN, not a joined surface: the programs against their cited identity rows, and the
+// two words the intent's facts must reach (the file export and the wss URL) by membership. The
+// joined-string supervision-grammar arm this witness used to assert retired with the raw word
+// lists -- the law it enforced is structural on the transient-unit realization surface.
 test fn srv3_nbd_proxy_serve_argv_is_emittable_from_intent() -> Bool {
   let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(iso_path: "/var/lib/gunbc/artifacts/fixture.iso")
   let websocat = websocat_nbd_proxy_bridge_command(
@@ -63,16 +67,19 @@ test fn srv3_nbd_proxy_serve_argv_is_emittable_from_intent() -> Bool {
     port: intent.local_nbd_port,
     backing_path: intent.iso_path,
   )
-  // FIELD GRAIN, not a joined surface: the programs against their cited identity rows, and the
-  // two words the intent's facts must reach (the file export and the wss URL) by membership. The
-  // joined-string supervision-grammar arm this test used to assert retired with the raw word
-  // lists -- the law it enforced is structural on the transient-unit realization surface.
   websocat.program.invocation == websocat_install_path
     && nbdkit.program.invocation == nbdkit_cli_tool.program.invocation
     && fold(nbdkit.arguments, init: false, f: (acc, w) => acc || w == concat("file=", intent.iso_path as String))
     && fold(websocat.arguments, init: false, f: (acc, w) => acc || w == concat("wss://", concat(intent.bmc_host, intent.ws_path)))
 }
 
+// PINNED PLACEMENT, NOT AN ENDORSEMENT: the BMCWEB session token rides in the `--header=` argv
+// word -- gunbc.credential_argv_exposure instance 3, measured latent. This witness holds the
+// placement (word-for-word, quotes and all) so the repair that moves the token out of argv
+// cannot land silently beside it; the spelling it pins is the obligation
+// extdeps.tools.websocat websocat_header_argv_word_dissolution_trigger records. The word must
+// equal its derivation from the intent's own token, so a dropped header or a dead token
+// reference fails here.
 test fn nbd_proxy_serve_session_token_is_literal_in_websocat_argv() -> Bool {
   let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(iso_path: "/var/lib/gunbc/artifacts/fixture.iso")
   let websocat = websocat_nbd_proxy_bridge_command(
@@ -81,13 +88,6 @@ test fn nbd_proxy_serve_session_token_is_literal_in_websocat_argv() -> Bool {
     session_token: intent.session_token,
     local_nbd_port: intent.local_nbd_port,
   )
-  // PINNED PLACEMENT, NOT AN ENDORSEMENT: the BMCWEB session token rides in the `--header=` argv
-  // word -- gunbc.credential_argv_exposure instance 3, measured latent. This assertion holds the
-  // placement (word-for-word, quotes and all) so the repair that moves the token out of argv
-  // cannot land silently beside it; the spelling it pins is the obligation
-  // extdeps.tools.websocat websocat_header_argv_word_dissolution_trigger records. The word must
-  // equal its derivation from the intent's own token, so a dropped header or a dead token
-  // reference fails here.
   fold(argv_words(command: websocat), init: false, f: (acc, w) =>
     acc || w == concat("--header=\"", concat(concat("Authorization: Token ", intent.session_token as String), "\"")))
 }

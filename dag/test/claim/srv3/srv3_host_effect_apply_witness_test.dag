@@ -72,13 +72,13 @@ test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
   }
 }
 
+// FIELD GRAIN: the login is a described curl command minted at extdeps.tools.curl; the
+// assertions read its fields -- the program against the cited curl_cli_tool row, and the flag
+// and operand words by membership. The joined-surface spelling this witness used (and the
+// never-falsifiable "surface does not mention serialize_bash" arm, vacuous over a word list)
+// retired with the raw flag lists. No secret reaches argv in either form: the body path does,
+// the password bytes stay in the file.
 test fn witness_bmcweb_session_login_command_uses_curl_authority() -> Bool {
-  // FIELD GRAIN: the login is a described curl command minted at extdeps.tools.curl; the
-  // assertions read its fields -- the program against the cited curl_cli_tool row, and the flag
-  // and operand words by membership. The joined-surface spelling this witness used (and the
-  // never-falsifiable "surface does not mention serialize_bash" arm, vacuous over a word list)
-  // retired with the raw flag lists. No secret reaches argv in either form: the body path does,
-  // the password bytes stay in the file.
   let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
