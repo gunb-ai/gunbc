@@ -1420,9 +1420,22 @@ fn changed_and_enrolled_witness_identities_with_index(
     let touched_declarations =
         declaration_seeds_from_touched_declarations(&root, &edits.touched_declarations)?;
     let interface_consumers = interface_consumer_planning(planning_index, &touched_declarations)?;
+    // THE FIFTH PROJECTION IS THE DIFF'S PATHS THEMSELVES, for the checker-input rule
+    // (`v2.workflow.floor_subject_seed` `checker_subject_rule`): a changed non-.dag path is
+    // structural-empty for the .dag frontier above and still an input to every Strict verdict
+    // when the checker compiled it. Departed paths are included, since deleting a file the
+    // checker compiled changes the checker.
+    let mut diff_paths: Vec<String> = changed_paths
+        .iter()
+        .cloned()
+        .chain(departed_paths.iter().cloned())
+        .collect();
+    diff_paths.sort();
+    diff_paths.dedup();
     Ok(FloorDiffProjections {
         changed_witnesses: changed,
         newly_enrolled_witnesses: enrolled,
+        diff_paths,
         compile_subject: CompileSubjectSeeds {
             touched_modules,
             touched_outside_floor_roots,
@@ -1437,6 +1450,8 @@ fn changed_and_enrolled_witness_identities_with_index(
 pub(crate) struct FloorDiffProjections {
     pub changed_witnesses: Vec<String>,
     pub newly_enrolled_witnesses: Vec<String>,
+    /// Every path the diff names, changed or departed, as the checker-input rule reads them.
+    pub diff_paths: Vec<String>,
     pub compile_subject: CompileSubjectSeeds,
 }
 
@@ -6876,7 +6891,7 @@ pub fn run_required_floor(
     // `touched_entry_files`, and the match-bearing consumers of every coproduct whose arm set
     // that diff changed. Re-observing the diff after execution would create two authorities
     // over which identities this run promised to execute.
-    let (changed_witnesses, newly_enrolled_witnesses, compile_subject) =
+    let (changed_witnesses, newly_enrolled_witnesses, compile_subject, diff_paths) =
         match changed_and_enrolled_witness_identities_with_index(
             &gate_entry_index,
             source_roots,
@@ -6886,6 +6901,7 @@ pub fn run_required_floor(
                 Some(projections.changed_witnesses),
                 Some(projections.newly_enrolled_witnesses),
                 Some(projections.compile_subject),
+                Some(projections.diff_paths),
             ),
             Err(e) if commit != "local" && !commit.is_empty() => {
                 return Err(format!(
@@ -6901,7 +6917,7 @@ pub fn run_required_floor(
                 // `None` here is "this run could not look", which is a different fact from "this run
                 // looked and found nothing" (`Some(vec![])`) — the distinction the enrolment gate's
                 // own not-measured arm turns on, so it may not be lost at its source.
-                (None, None, None)
+                (None, None, None, None)
             }
         };
     let changed_witness_set: HashSet<String> = changed_witnesses
@@ -7114,11 +7130,99 @@ pub fn run_required_floor(
             }
         }
     }
+    // THE CHECKER IS A DEPENDENCY OF EVERY MODULE IT JUDGES (`v2.workflow.floor_subject_seed`
+    // `SeedCheckerSourceChanged`, decided by `checker_subject_rule`). When the diff names a file
+    // the running checker was compiled from, every admitted module is seeded into Strict
+    // preparation, because every one of their verdicts changed input. Claim planning does not
+    // read this: only preparation widens. gunbc#12441 is the receipt: a checker edit whose
+    // landing subject left out the module its new check refused.
+    let checker_module_seeds: Vec<String> = match &diff_paths {
+        Some(paths) => {
+            let observation = crate::cli_run::checker_dependency::observe_checker_input_paths(
+                &process_workspace_root(),
+            );
+            let application = crate::cli_run::checker_dependency::checker_subject_application(
+                source_roots,
+                &observation,
+                paths,
+            )?;
+            let dependency_count = observation.as_ref().map(Vec::len).unwrap_or(0);
+            use crate::cli_run::checker_dependency::CheckerSubjectApplication;
+            match &application {
+                CheckerSubjectApplication::CheckerSubjectApplicationRefused { reason } => {
+                    if commit != "local" && !commit.is_empty() {
+                        return Err(format!(
+                            "REQUIRED-FLOOR REFUSAL cause=CheckerSubjectRefused {reason} -- \
+                             whether this change reaches the checker is unknown, and the floor \
+                             neither narrows to the .dag frontier nor widens to the corpus on \
+                             that ignorance"
+                        ));
+                    }
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=CheckerSubjectRefused \
+                         state=not-evaluated reason={reason:?}"
+                    );
+                    Vec::new()
+                }
+                CheckerSubjectApplication::PrepareEveryAdmittedModule {
+                    changed_checker_paths,
+                } => {
+                    let seeds = crate::cli_run::checker_dependency::checker_module_seeds(
+                        &application,
+                        &floor_corpus,
+                    );
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=EveryAdmittedModule \
+                         applied=true seed_ground=SeedCheckerSourceChanged \
+                         checker_inputs={dependency_count} \
+                         changed_checker_paths={changed_checker_paths:?} modules_seeded={} -- \
+                         the checker is a dependency of every module it judges, so every \
+                         admitted module is Strict-prepared; claims are planned as before",
+                        seeds.len()
+                    );
+                    seeds
+                }
+                CheckerSubjectApplication::EveryAdmittedModuleWithheld {
+                    changed_checker_paths,
+                    drop_identity,
+                } => {
+                    // A DECLARED DROP, ANNOUNCED ON EVERY RUN IT BEARS ON: the rule chose the
+                    // whole corpus, and the standing drop says why this run does not prepare it.
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=EveryAdmittedModule \
+                         applied=false withheld_under=gunbc.rung_drop.{drop_identity} \
+                         checker_inputs={dependency_count} \
+                         changed_checker_paths={changed_checker_paths:?} modules_not_prepared={} \
+                         -- this checker change is judged over the narrow subject only; a module \
+                         its new check refuses outside that subject is not seen on this run",
+                        floor_corpus.inventory.len()
+                    );
+                    Vec::new()
+                }
+                CheckerSubjectApplication::NarrowSubject => {
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=CheckerInputsUnchanged \
+                         checker_inputs={dependency_count} diff_paths={}",
+                        paths.len()
+                    );
+                    Vec::new()
+                }
+            }
+        }
+        None => {
+            eprintln!(
+                "[floor-phase] phase=checker-input-subject state=not-evaluated (no CI diff \
+                 baseline on a local run)"
+            );
+            Vec::new()
+        }
+    };
     let closure_module_seeds: Vec<String> = required_floor_nominal_closure_module_seeds(
         &required_gate_authored_modules,
         &local_repo_wet_schedule_rows,
     )
     .into_iter()
+    .chain(checker_module_seeds)
     .chain(changed_module_seeds.iter().cloned())
     .chain(
         compile_subject
@@ -8679,10 +8783,15 @@ pub fn run_required_floor(
     // cannot be repaired by the aggregate counts coincidentally agreeing.
     let changed_disposition_set: HashSet<String> = disposition_rows
         .iter()
+        // A CHANGED BinWitnessWet ROW IS A CHANGED-WITNESS DISPOSITION TOO: the sublane selected
+        // it and decided it (`DeclinedNoCiWetLane`) instead of planning it. Leaving it out made
+        // the join refuse every such selection as `selected_without_disposition`, so the decline
+        // gunbc#12794 added could never be reached by the route it was written for.
         .filter(|row| {
             matches!(
                 row.disposition,
                 RequiredFloorDisposition::PlannedAsChangedWitness
+                    | RequiredFloorDisposition::DeclinedNoCiWetLane { .. }
             )
         })
         .map(|row| row.identity.clone())
@@ -13284,6 +13393,56 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
             "{refusal}"
         );
         assert!(rel.contains("target/"), "fixture under target/: {rel}");
+    }
+
+    // ── THE gunbc#12441 SHAPE, EXECUTED END TO END ───────────────────────────────────────────
+    //
+    // A checker edit that newly refuses a module outside the edited closure. `armset.victim` is
+    // in no seed the diff produces, so the narrow subject prepares green without it, which is how
+    // v2.test.claim.type_param_binder_frame reached main. The checker-input rule, evaluated from
+    // `v2.workflow.floor_subject_seed`, seeds every admitted module, and the same preparation then
+    // refuses on the victim. The positive control is the same fixture under a non-checker diff.
+    #[test]
+    fn a_checker_edit_prepares_the_module_its_check_refuses_outside_the_edited_closure() {
+        use crate::cli_run::checker_dependency::{
+            checker_module_seeds, checker_subject_application_when_applied,
+        };
+        const EDITED: &str = "module armset.edited\n\nfn ok() -> Int {\n  1\n}\n";
+        const VICTIM: &str = "module armset.victim\n\nfn wrong() -> String {\n  1\n}\n";
+        let fx = interface_fixture(
+            "checker_edge",
+            "head",
+            &[("edited.dag", EDITED), ("victim.dag", VICTIM)],
+        );
+        let roots = [fx.to_string_lossy().into_owned()];
+        let index = build_multi_entry_index(&roots);
+        let corpus = crate::cli_run::read_source_corpus_once(&roots);
+        let infer = "src/v1/stage0/src/v1_compiler_infer.rs".to_string();
+        let record = Ok(vec![infer.clone()]);
+        let authority_roots = default_source_roots();
+        let subject_under = |changed: &[String]| {
+            let application =
+                checker_subject_application_when_applied(&authority_roots, &record, changed)
+                    .expect("application");
+            let seeds: Vec<String> = std::iter::once("armset.edited".to_string())
+                .chain(checker_module_seeds(&application, &corpus))
+                .collect();
+            crate::cli_run::prepare_repository_from_corpus(
+                &corpus,
+                &[],
+                Some((&index, &[], &seeds)),
+            )
+        };
+        let narrow = subject_under(&["edited.dag".to_string()]);
+        let wide = subject_under(std::slice::from_ref(&infer));
+        let _ = std::fs::remove_dir_all(&fx);
+        let (_, views) = narrow.expect("a non-checker diff prepares the edited closure green");
+        let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
+        assert!(!modules.contains(&"armset.victim"), "{modules:?}");
+        let refusal = wide
+            .err()
+            .expect("a checker edit prepares every admitted module, and the victim refuses");
+        assert!(refusal.contains("victim"), "{refusal}");
     }
 
     // ── THE #11194 SHAPE, EXECUTED END TO END ──────────────────────────────────────────────

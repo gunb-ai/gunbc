@@ -86,6 +86,7 @@ use serde::Serialize;
 
 mod active_workset;
 mod census_heads;
+mod checker_dependency;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
