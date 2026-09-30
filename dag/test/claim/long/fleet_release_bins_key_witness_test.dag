@@ -13,6 +13,7 @@ import gunbc.fleet_release_bins_key {
   release_bins_emitted, release_bins_transport,
   release_bins_key_statements, release_bins_pack_statements, release_bins_outcome_statements,
   release_bins_consumer_statements, release_bins_download_dir, release_bins_main_lookup_ref, lookup_decode_statements,
+  release_bins_dispatch_lookup_ref, release_bins_dispatch_scope_ref_env,
   release_bins_lookup_file, release_bins_staging_dir, release_bins_manifest_name,
   release_bins_preimage_name, source_closure_statements, release_bins_environment_statements,
 }
@@ -385,6 +386,41 @@ test fn release_bins_RED_lookup_value_stream_refuses() -> Bool {
 
 test fn release_bins_RED_lookup_two_documents_refuses() -> Bool {
   refused_as(script: script_RED_lookup_two_documents_refuses, refusal: "LookupAnswerUnusable")
+}
+
+// ── A TAG DISPATCH'S OWN ENTRY IS PRESENT; ANOTHER TAG'S IS NOT ─────────────────────────────────
+// The cache API lists a tag dispatch's entry under refs/heads/<GITHUB_REF> (fleet-converge runs
+// 36653382960 and 36653490246 refused StoreTransportDisagreeAbsentHit over exactly such an entry).
+// The dispatch lookup reads RELEASE_BINS_DISPATCH_SCOPE_REF, which the step derives from github.ref;
+// here it is supplied as a tag's API spelling, and the real decoder runs over a real answer shape.
+// The RED is the same answer under a DIFFERENT tag's scope: still absence, so respelling the
+// dispatch's own ref admits no other scope.
+data dispatch_tag_scope_ref: String = "refs/heads/refs/tags/deploy/door-fixture"
+
+fn dispatch_answer(entry_ref: String) -> Outcome<String> {
+  e(statements: [bash_build_with_redir_to_file(
+    inner: cmd(ws: [fx(t: "printf"), fx(t: "%s"), words(ws: [
+      fx(t: "{\"total_count\":1,\"actions_caches\":[{\"id\":7,\"key\":\""), var(n: "RELEASE_BINS_KEY"),
+      fx(t: join(["\",\"ref\":\"", entry_ref, "\",\"version\":\"v\",\"created_at\":\"t\"}]}"], "")),
+    ])]),
+    path: fx(t: release_bins_lookup_file(r: release_bins_dispatch_lookup_ref())),
+  )])
+}
+
+data part_decode_dispatch: Outcome<String> = e(statements: concat(
+  concat([cmdl(ls: ["export", "STANDING=absent", "ENTRY=none", join([release_bins_dispatch_scope_ref_env, "=", dispatch_tag_scope_ref], "")])], lookup_decode_statements(r: release_bins_dispatch_lookup_ref())),
+  [cmd(ws: [fx(t: "echo"), words(ws: [fx(t: "decoded standing="), var(n: "STANDING")])])],
+))
+
+data script_tag_dispatch_entry_is_present: TransportScript? = release_bins_transport(parts: [part_fixture_env, part_supplied_key, dispatch_answer(entry_ref: dispatch_tag_scope_ref), part_decode_dispatch])
+data script_RED_other_tag_entry_is_absence: TransportScript? = release_bins_transport(parts: [part_fixture_env, part_supplied_key, dispatch_answer(entry_ref: "refs/heads/refs/tags/deploy/another"), part_decode_dispatch])
+
+test fn release_bins_tag_dispatch_entry_is_present() -> Bool {
+  succeeded_with(script: script_tag_dispatch_entry_is_present, marker: "decoded standing=present")
+}
+
+test fn release_bins_RED_other_tag_entry_is_absence() -> Bool {
+  succeeded_with(script: script_RED_other_tag_entry_is_absence, marker: "decoded standing=absent")
 }
 
 // ── P2-4 and review 5332937814: the effective build environment is keyed losslessly or refused ──
