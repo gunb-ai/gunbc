@@ -86,6 +86,7 @@ use serde::Serialize;
 
 mod active_workset;
 mod census_heads;
+mod checker_dependency;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
@@ -99,9 +100,9 @@ pub mod scope_rank_view;
 mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
-    run_native_claim_program, run_required_v2_native, run_self_host, run_v2_native_cli,
-    run_v2_native_frontier, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
-    NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
+    emitted_build_not_clean_cause, run_native_claim_program, run_required_v2_native, run_self_host,
+    run_v2_native_cli, run_v2_native_frontier, NativeClaimProgramRun, NativeFrontierRun,
+    NativeMemberTermination, NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -10449,6 +10450,28 @@ mod closure_edge_demand_tests {
             (3, 3),
             "one full parse per file on this index"
         );
+    }
+
+    /// The floor's index controls run over a shared index the caller already built, and pass when
+    /// each file's reading was parsed once and no name set was indexed twice.
+    #[test]
+    fn floor_index_controls_hold_over_a_shared_index_the_closure_already_read() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module ctl_entry\nfn main() -> Int { ctl.provider.one() }\n",
+            ),
+            (
+                "provider.dag",
+                "module ctl.provider\nfn one() -> Int { 1 }\n",
+            ),
+        ]);
+        let roots = vec![fixture.0.to_string_lossy().into_owned()];
+        let index = try_process_shared_index(&roots).unwrap();
+        load_sources_for_entry_with_pool(&index, &fixture.0.join("entry.dag").to_string_lossy())
+            .unwrap();
+        required_floor_runner::floor_index_controls("fixture", &[("fixture-roots", roots)])
+            .unwrap();
     }
 
     /// The residency bound refuses a second resident pool per slot and admits one.
@@ -33442,7 +33465,7 @@ pub fn dependency_resolution_facts(
 /// `reference_edges_as_import_facts` and unioned by `union_dedup_import_facts_reference_first`.
 /// Any row returned is the row the population read carries for that path, in the same order.
 ///
-/// WHAT IT DOES NOT DEMAND is the corpus. The declared-module set is the process-cached
+/// WHAT IT DOES NOT DEMAND is the corpus. The declared-module index is the process-cached
 /// `build_module_path_index` the population read also consults; the reference half's pool name
 /// index is built only when the importer carries no `import` line, which is the one case whose
 /// edges depend on other files' names. An importer the population would not walk -- outside every
@@ -33467,11 +33490,9 @@ pub fn dependency_resolution_facts_at(
     let Ok(content) = std::fs::read_to_string(&file) else {
         return Vec::new();
     };
-    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
-        .into_iter()
-        .map(|(k, _)| k)
-        .collect();
-    let import_edges = entry_resolve::import_facts_for_file(importer_path, &content, &declared);
+    let import_edges = with_module_path_index(&abs_pool_roots, |index| {
+        entry_resolve::import_facts_for_file(importer_path, &content, |m| index.contains_key(m))
+    });
     let reference_edges = match entry_resolve::reference_edges_for_file_on_demand(
         importer_path,
         Some(&content),
