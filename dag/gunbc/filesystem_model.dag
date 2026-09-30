@@ -290,7 +290,7 @@ fn fs_make_parents(fs: ModeledFilesystem, path: String) -> ModeledFileWrite {
   match blocked.first() {
     Present { value: b } => ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemNotDirectory, message: concat("mkdir: cannot create directory: Not a directory: ", b)) }
     Absent => ModeledFileWrite {
-      fs: ModeledFilesystem { directories: fold(chain, init: fs.directories, f: fn(acc, d) { if any_string(xs: acc, x: d) { acc } else { list_append(acc, d) } }), files: fs.files },
+      fs: ModeledFilesystem { directories: fold(chain, init: fs.directories, f: fn(acc, d) { if any_string(xs: acc, x: d) { acc } else { list_append(acc, d) } }), files: fs.files, refused_reads: fs.refused_reads },
       observation: FileOperationSucceeded { byte_count: byte_size(count: 0), content: "" },
     }
   }
