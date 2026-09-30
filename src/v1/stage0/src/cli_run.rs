@@ -9906,7 +9906,9 @@ fn visit_bare_reference_providers(
             }
             (None, state) => {
                 let (provider, _) = resolve_in(&pool_census_for_name(index, &name)?)?;
-                if let Some(provider) = provider {
+                // A provider that is a test row was never pulled (the loader skips test rows
+                // below), so it is not a cross-tree dependency and does not refuse.
+                if let Some((provider, false)) = provider {
                     return Err(format!(
                         "bare_reference_closure: CrossTreeBareReference -- bare reference \
                          '{name}' in '{file_rel}' is not provided by this file's source tree \
