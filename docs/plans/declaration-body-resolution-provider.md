@@ -53,6 +53,9 @@ per native ingest, built in `v2.compiler.compile`).
 **P2. The resolved declaration-body provider.**
 - Identity: `std.decl_ref` `DeclarationRef`, the identity `v2.compiler.resolve`
   `resolved_reference_node` already writes into resolved trees.
+- Subjects: every declaration whose TYPE POSITIONS a later stage reads -- type declarations
+  (record fields, variant payloads, alias right-hand sides, where-heads) AND function signatures
+  (parameter and return types), because infer reads a callee's Arrow across modules too.
 - Value: the declaration's body with every type position resolved in its declaring module's P1
   namespace, by the same `resolve_node_walk` (no second resolver).
 - Scope and retention: one ingest, beside P1.
@@ -88,8 +91,11 @@ replacement with no two structures, or must fold into PR2, is neat-boar-16's cal
 mechanical.
 
 **PR2: declaration-body provider (P2) and the reader cut, together.** P2 lands; resolve grafts P2
-bodies; `infer_projection_receiver` and `refinement_declaration` (#12407, per wise-bat-862) read the
-snapshot. `ResolvedTree.resolved_declarations` and `resolved_declarations_of` (#12629) are deleted
+bodies; three infer readers move to the snapshot in the same commit: `infer_projection_receiver`
+(field projection), `refinement_declaration` (#12407, per wise-bat-862), and
+`infer_declaration_reference_facts`'s callee-Arrow read (#12506, found by calm-pike-507: it reads
+`symbol_index_lookup` and gets unresolved atoms for the seven's cross-module
+`parse_module_prepared(...)` call). calm-pike-507 stacks the return-type derivation on this branch. `ResolvedTree.resolved_declarations` and `resolved_declarations_of` (#12629) are deleted
 in the same commit. The RFM row is retired, and its red stays enrolled.
 
 ## 4. Controls
@@ -105,6 +111,7 @@ in the same commit. The RFM row is retired, and its red stays enrolled.
 | C7 | wise-bat-862's `body_cast_node` rows 15, 15b, 15c, 15c2 and 15d stay green, and 15d, the miss, still refuses | regression |
 | C8 | #12629's where-head controls (`declaration_graft_where_alias_*`), re-pointed at the P2 read | regression |
 | C10 | SNAPSHOT IDENTITY: an entry in infer's per-module snapshot and the P2 provider entry it projects are the identical `DeclarationRef` and body; the snapshot is a derived projection, never re-resolved | positive |
+| C11 | a cross-module callee's Arrow read by `infer_declaration_reference_facts` carries resolved parameter and return types (calm-pike-507's measurement on the stacked branch) | red before PR2, green after |
 | C9 | the retired RFM row's discriminating red stays enrolled as a regression control (condition c) | regression |
 
 ## 5. Conditions this plan builds to (neat-boar-16, via quiet-gull-780)
