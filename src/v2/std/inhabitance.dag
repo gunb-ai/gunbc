@@ -33,7 +33,7 @@ import v2.std.node {
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 import std.decl_ref { DeclarationRef }
-import std.literal_elaboration { DirectLiteral, LiteralElaborationRefused, LiteralSourceKind, ViaHomomorphism, elaborate_literal_at }
+import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, LiteralElaborationRefused, LiteralSourceKind, ViaHomomorphism, elaborate_literal_at }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows }
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
@@ -246,8 +246,11 @@ fn declared_type_inhabitance_at(obligation: DeclaredTypeObligation, crossing: Op
               evidence: obligation.declared
             }
           }
-        LiteralElaborationRefused { cause: _ } =>
-          InhabitanceRefused { find_witness_reason: ^literal_elaboration_homomorphism_duplicated }
+        LiteralElaborationRefused { cause: cause } =>
+          match cause {
+            HomomorphismDuplicated { source_kind: _, destination: _, row_count: _ } =>
+              InhabitanceRefused { find_witness_reason: ^literal_elaboration_homomorphism_duplicated }
+          }
         DirectLiteral => declared_type_inhabitance(obligation: obligation)
       }
   }
