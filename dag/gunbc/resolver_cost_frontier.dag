@@ -1,12 +1,18 @@
 module gunbc.resolver_cost_frontier
 
+import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_row_path }
+import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
 
 // THE RESOLVER-COST LANE'S DECLARED FRONTIERS: work the v1 seed resolver still does eagerly or
 // retains, each named with the capability whose arrival retires it. Rostered through
 // gunbc.census_closure_frontier so the dissolution census reads them.
 data resolver_cost_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "v1.compiler.infer", decl_name: "census_bare_fill_with_resolved_fn_sigs"),
+    reason: "bare-fill signature upgrade is eager over every bare name of the tree, while a closure's typecheck reads only the names it looks up (gunbc#12716)",
+    dissolution: unbound_dissolution(description: "demand identity for 'this bare lookup, in this closure' exists as a carrier (docs/plans/demand-engine-program.md M1), so a global_bare key can be upgraded on demand without a lazy cell or a new refusal arm in frozen v1"),
+  ),
   frontier_row_path(
     path: "src/v1/stage0/src/cli_run/pool_acquire.rs",
     reason: "HeadsReading.module is retained for the process: every MultiEntryIndex whose pool contains the file projects it, and a run builds its indexes on demand by phase routing, so no release point is known when the first census projects it (gunbc#12768)",
