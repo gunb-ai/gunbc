@@ -38,8 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // field with the value that fills it and the one judge (infer_judge_declared_position, at
 // v2.std.inhabitance PositionRecordField) decides each pair under one instantiation of the record's
 // binders. The class is gunbc.recurring_failure_mode
-// construct_field_value_not_typed_against_the_record_declaration, and its specimen is the first
-// source below, verbatim.
+// construct_field_value_not_typed_against_the_record_declaration, and its specimen is rcf_bad_source.
 //
 // THE ROUTE IS REAL. Every claim reaches infer from inline source text through the production fold
 // (tokenize, parse, normalize with body lowering, resolve through v2.compiler.name_resolve
@@ -50,36 +49,36 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // stays per claim.
 //
 // EVERY RED HAS A CONTROL ONE TERM AWAY. The specimen differs from the accepted module only in
-// `m: 3` against `m: false`; the generic red only in `w: true` against `w: 2`. So no refusal here
+// `n: true` against `n: 1`; the generic red only in `w: true` against `w: 2`. So no refusal here
 // can be satisfied by a check that refuses every construct, and no acceptance by one that judges
 // nothing: the accepted module is also asserted DECIDED (no counted obligation at its constructs).
 //
 // WHAT IS NOT CLAIMED. A record declared in ANOTHER module has its field SET checked and its field
-// VALUES counted, not judged: the index holds a declaration as authored, and only the declaring
-// module's resolved tree holds it resolved. rcf_far_value pins that state as it is -- accepted, with
+// VALUES counted, not judged: v2.compiler.resolve ResolvedTree resolved_declarations holds the
+// subject module's declarations with resolved bodies, and no other module's. rcf_far_value pins that state as it is -- accepted, with
 // a counted UndecidableFormalUnresolved at the value -- so it flips when infer can read a resolved
 // declaration across modules (the row's trigger), and is then rewritten as a refusal.
-data rcf_provider_source: String = "module v2.test.rcfp\n\nimport v2.std.logic { Bool }\n\ntype RcfFar {\n  n: Bool\n  m: Bool\n}\n"
+data rcf_provider_source: String = "module v2.test.rcfp\n\ntype RcfFar {\n  n: Int\n  m: Int\n}\n"
 
-data rcf_bad_source: String = "module v2.test.rcf_bad\n\nimport v2.std.logic { Bool }\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ndata ar_bad: ArB = ArB { n: true, m: 3 }\n"
+data rcf_bad_source: String = "module v2.test.rcf_bad\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_bad: ArB = ArB { n: true, m: 3 }\n"
 
-data rcf_good_source: String = "module v2.test.rcf_good\n\nimport v2.std.logic { Bool }\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ntype Bx<T> {\n  v: T\n  w: T\n}\n\ndata ar_good: ArB = ArB { n: true, m: false }\n\ndata bx_good: Bx<Int> = Bx { v: 1, w: 2 }\n"
+data rcf_good_source: String = "module v2.test.rcf_good\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ntype Bx<T> {\n  v: T\n  w: T\n}\n\ntype ArOuter {\n  inner: ArB\n  count: Int\n}\n\ndata ar_good: ArB = ArB { n: 1, m: 3 }\n\ndata bx_good: Bx<Int> = Bx { v: 1, w: 2 }\n\ndata ar_outer: ArOuter = ArOuter { inner: ArB { n: 1, m: 2 }, count: 3 }\n"
 
-data rcf_missing_source: String = "module v2.test.rcf_missing\n\nimport v2.std.logic { Bool }\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ndata ar_missing: ArB = ArB { n: true }\n"
+data rcf_missing_source: String = "module v2.test.rcf_missing\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_missing: ArB = ArB { n: 1 }\n"
 
-data rcf_unknown_source: String = "module v2.test.rcf_unknown\n\nimport v2.std.logic { Bool }\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ndata ar_unknown: ArB = ArB { n: true, m: false, q: true }\n"
+data rcf_unknown_source: String = "module v2.test.rcf_unknown\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_unknown: ArB = ArB { n: 1, m: 3, q: 4 }\n"
 
 data rcf_generic_bad_source: String = "module v2.test.rcf_generic_bad\n\ntype Bx<T> {\n  v: T\n  w: T\n}\n\ndata bx_bad: Bx<Int> = Bx { v: 1, w: true }\n"
 
-data rcf_generic_return_source: String = "module v2.test.rcf_generic_return\n\nimport v2.std.logic { Bool }\n\ntype Bx<T> {\n  v: T\n  w: T\n}\n\ndata bx_wrong: Bx<Bool> = Bx { v: 1, w: 2 }\n"
+data rcf_other_source: String = "module v2.test.rcf_other\n\ntype ArA {\n  n: Int\n  m: Int\n}\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ntype ArOuter {\n  inner: ArB\n  count: Int\n}\n\ndata ar_outer: ArOuter = ArOuter { inner: ArA { n: 1, m: 2 }, count: 3 }\n"
 
-data rcf_other_record_source: String = "module v2.test.rcf_other\n\nimport v2.std.logic { Bool }\n\ntype ArA {\n  n: Bool\n  m: Bool\n}\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ndata ar_other: ArB = ArA { n: true, m: false }\n"
+data rcf_far_value_source: String = "module v2.test.rcf_far_value\n\nimport v2.test.rcfp { RcfFar }\n\ndata far_value: RcfFar = RcfFar { n: true, m: 3 }\n"
 
-data rcf_far_value_source: String = "module v2.test.rcf_far_value\n\nimport v2.std.logic { Bool }\nimport v2.test.rcfp { RcfFar }\n\ndata far_value: RcfFar = RcfFar { n: true, m: 3 }\n"
+data rcf_far_missing_source: String = "module v2.test.rcf_far_missing\n\nimport v2.test.rcfp { RcfFar }\n\ndata far_missing: RcfFar = RcfFar { n: 1 }\n"
 
-data rcf_far_missing_source: String = "module v2.test.rcf_far_missing\n\nimport v2.std.logic { Bool }\nimport v2.test.rcfp { RcfFar }\n\ndata far_missing: RcfFar = RcfFar { n: true }\n"
+data rcf_bool_field_source: String = "module v2.test.rcf_bool_field\n\nimport v2.std.logic { Bool }\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ndata ar_bool: ArB = ArB { n: true, m: 3 }\n"
 
-data rcf_pattern_source: String = "module v2.test.rcf_pattern\n\nimport v2.std.logic { Bool }\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\nfn rcf_read(a: ArB) -> Bool {\n  match a {\n    ArB { n: x } => x\n  }\n}\n"
+data rcf_pattern_source: String = "module v2.test.rcf_pattern\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\nfn rcf_take(a: ArB) -> Int {\n  match a {\n    ArB { n: x } => x\n  }\n}\n"
 
 fn rcf_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -97,10 +96,10 @@ data rcf_ingest: SourceRootIngest = [
   rcf_read(source: rcf_missing_source, id: ^rcf_missing_read, unit: ^rcf_missing_cu, path: "src/v2/test/fixture/record_construct_field/missing.dag"),
   rcf_read(source: rcf_unknown_source, id: ^rcf_unknown_read, unit: ^rcf_unknown_cu, path: "src/v2/test/fixture/record_construct_field/unknown.dag"),
   rcf_read(source: rcf_generic_bad_source, id: ^rcf_generic_bad_read, unit: ^rcf_generic_bad_cu, path: "src/v2/test/fixture/record_construct_field/generic_bad.dag"),
-  rcf_read(source: rcf_generic_return_source, id: ^rcf_generic_return_read, unit: ^rcf_generic_return_cu, path: "src/v2/test/fixture/record_construct_field/generic_return.dag"),
-  rcf_read(source: rcf_other_record_source, id: ^rcf_other_read, unit: ^rcf_other_cu, path: "src/v2/test/fixture/record_construct_field/other.dag"),
+  rcf_read(source: rcf_other_source, id: ^rcf_other_read, unit: ^rcf_other_cu, path: "src/v2/test/fixture/record_construct_field/other.dag"),
   rcf_read(source: rcf_far_value_source, id: ^rcf_far_value_read, unit: ^rcf_far_value_cu, path: "src/v2/test/fixture/record_construct_field/far_value.dag"),
   rcf_read(source: rcf_far_missing_source, id: ^rcf_far_missing_read, unit: ^rcf_far_missing_cu, path: "src/v2/test/fixture/record_construct_field/far_missing.dag"),
+  rcf_read(source: rcf_bool_field_source, id: ^rcf_bool_field_read, unit: ^rcf_bool_field_cu, path: "src/v2/test/fixture/record_construct_field/bool_field.dag"),
   rcf_read(source: rcf_pattern_source, id: ^rcf_pattern_read, unit: ^rcf_pattern_cu, path: "src/v2/test/fixture/record_construct_field/pattern.dag")
 ]
 
@@ -130,7 +129,7 @@ fn rcf_resolved_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "
 fn rcf_resolved_missing() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_missing") }
 fn rcf_resolved_unknown() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_unknown") }
 fn rcf_resolved_generic_bad() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_generic_bad") }
-fn rcf_resolved_generic_return() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_generic_return") }
+fn rcf_resolved_bool_field() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_bool_field") }
 fn rcf_resolved_other() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_other") }
 fn rcf_resolved_far_value() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_far_value") }
 fn rcf_resolved_far_missing() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_far_missing") }
@@ -222,31 +221,31 @@ fn rcf_names_record(correction_node: Node, dotted: String) -> Bool {
 fn rcf_names_type(correction_node: Node, name: Symbol, expected: Node) -> Bool {
   match rcf_named_target(node: correction_node, name: name) {
     Absent => false
-    Present { value: t } => exact_structural_equality_zip_fold(a: t, b: expected)
+    Present { value: t } => exact_structural_equality_zip_fold(source_facts: t, candidate: expected)
   }
 }
 
-// THE DISCRIMINATING RED, the row's specimen: `m` declares Bool and holds an Int.
+// THE DISCRIMINATING RED, the row's specimen: `n` declares Int and holds a Bool.
 test fn rcf_a_field_value_of_the_wrong_type_refuses_holds() -> Bool {
   rcf_refuses_with(resolved: rcf_resolved_bad(), reason: ^record_field_value_does_not_inhabit)
 }
 
-// THE REFUSAL IS TYPED AND LOCATED, AND IT NAMES ALL FOUR FACTS: it sits at the value `3`, and its
+// THE REFUSAL IS TYPED AND LOCATED, AND IT NAMES ALL FOUR FACTS: it sits at the value `true`, and its
 // correction carries the record (the construct's resolved constructor reference), the field under
 // its own name with the type the record declares for it, and the type the value produced.
 test fn rcf_the_refusal_names_the_record_the_field_and_both_types_holds() -> Bool {
   match rcf_refusal(resolved: rcf_resolved_bad(), reason: ^record_field_value_does_not_inhabit) {
     Absent => false
     Present { value: d } =>
-      match rcf_construct_field_value(resolved: rcf_resolved_bad(), field: ^m) {
+      match rcf_construct_field_value(resolved: rcf_resolved_bad(), field: ^n) {
         Absent => false
         Present { value: value } =>
           (d.at == node_locus(node: value))
             && (match d.correction {
               Suggested { node: c } =>
                 rcf_names_record(correction_node: c, dotted: "v2.test.rcf_bad.ArB")
-                  && rcf_names_type(correction_node: c, name: ^m, expected: bool_node())
-                  && rcf_names_type(correction_node: c, name: ^inhabitance_produced_type, expected: integer_int_type_node())
+                  && rcf_names_type(correction_node: c, name: ^n, expected: integer_int_type_node())
+                  && rcf_names_type(correction_node: c, name: ^inhabitance_produced_type, expected: bool_node())
               Unavailable { reason: _ } => false
             })
       }
@@ -262,9 +261,9 @@ fn rcf_accepted_without(resolved: Outcome<ResolvedTree>, reason: Symbol) -> Bool
 }
 
 // THE POSITIVE CONTROL, one term from the red, and DECIDED rather than waved through: the module
-// holds a monomorphic construct and a generic one at its instantiation, infer accepts it, and no
-// obligation in it was counted undecidable -- so both constructs derived their declared record and
-// both data initializers were judged at their declared type.
+// holds a monomorphic construct, a generic one at its instantiation and one nested in a field
+// declared as a record, infer accepts it, and no obligation in it was counted undecidable -- so every
+// construct derived its declared record and every data initializer was judged at its declared type.
 test fn rcf_inhabiting_field_values_are_accepted_and_decided_holds() -> Bool {
   rcf_accepted_without(resolved: rcf_resolved_good(), reason: ^inhabitance_undecidable_formal_unresolved)
     && rcf_accepted_without(resolved: rcf_resolved_good(), reason: ^inhabitance_undecidable_argument_type_not_derived)
@@ -280,7 +279,7 @@ test fn rcf_a_missing_field_refuses_and_is_named_holds() -> Bool {
       match d.correction {
         Suggested { node: c } =>
           rcf_names_record(correction_node: c, dotted: "v2.test.rcf_missing.ArB")
-            && rcf_names_type(correction_node: c, name: ^m, expected: bool_node())
+            && rcf_names_type(correction_node: c, name: ^m, expected: integer_int_type_node())
         Unavailable { reason: _ } => false
       }
   }
@@ -309,14 +308,26 @@ test fn rcf_a_generic_records_second_field_must_inhabit_the_instance_holds() -> 
   rcf_refuses_with(resolved: rcf_resolved_generic_bad(), reason: ^record_field_value_does_not_inhabit)
 }
 
-// THE CONSTRUCT'S TYPE IS THE RECORD AT ITS INSTANTIATION, so a declared type meets it: `Bx { v: 1,
-// w: 2 }` is a Bx<Int> and refuses at a declared Bx<Bool>, and a construct of ArA refuses at a
-// declared ArB although the two records declare the same fields. Both are the declared-return
-// judgment (the data initializer is a nullary Arrow's body); before record introduction the body's
-// type was not derived and neither was decided.
-test fn rcf_a_construct_is_its_declared_record_at_a_declared_type_holds() -> Bool {
-  rcf_refuses_with(resolved: rcf_resolved_generic_return(), reason: ^arrow_body_does_not_inhabit_declared_return)
-    && rcf_refuses_with(resolved: rcf_resolved_other(), reason: ^arrow_body_does_not_inhabit_declared_return)
+// THE CONSTRUCT'S TYPE IS THE RECORD IT CONSTRUCTS, so a field declared as a record meets it by
+// identity: `inner: ArB` holding `ArA { n: 1, m: 2 }` refuses although ArA and ArB declare the same
+// fields. The accepted module holds the same outer construct with an ArB inside and is decided, so
+// this is the nominal judgment and not a refusal of every nested construct. Before record
+// introduction a construct's type was not derived and neither case was decided.
+test fn rcf_a_construct_is_its_declared_record_at_a_declared_field_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_other(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// THE BOOL-DECLARED FORM, PINNED AS IT IS. `m: Bool` holding `3` is accepted with a counted
+// UndecidableFormalUnresolved: v2.extdeps.languages.dag dag_binding_spellings binds the spelling Int
+// and no other kernel type, so a declared Bool reaches the judge as an atom the binding->denotation
+// join does not denote. This claim goes red when that spelling binds on the resolve route, and is
+// then rewritten to assert the refusal.
+test fn rcf_a_bool_declared_field_value_is_counted_not_judged_holds() -> Bool {
+  match rcf_verdict(resolved: rcf_resolved_bool_field()) {
+    RcfInferAccepted { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
 }
 
 // THE CROSS-MODULE STATE, PINNED AS IT IS. The field SET of a record declared in another module is

@@ -32,8 +32,7 @@ import v2.extdeps.languages.dag {
   dag_canonical_literal_from_node,
   dag_declared_inhabitants_root,
   dag_declared_inhabitants_subject_field,
-  dag_grammar_production_member_declared_type,
-  qualified_name_from_module_node
+  dag_grammar_production_member_declared_type
 }
 import v2.extdeps.languages.python {
   python_declared_inhabitants_root,
@@ -62,8 +61,7 @@ import v2.std.optional {
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
 import v2.std.node_query { construct_field_edges, construct_tag_optional }
-import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, empty_symbol_index, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
-import v2.compiler.symbol_index_fill { symbol_index_fill_containment_node }
+import v2.std.symbol_index { RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.node { Ambiguous, Found, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of, match_arm_pattern_edge }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
@@ -3516,7 +3514,7 @@ fn infer_gather_fold_step(
   partials: List<Node>,
   kinds: List<RosterKindIndex>,
   tree: Node,
-  declarations: InferDeclarations,
+  resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
@@ -3530,7 +3528,7 @@ fn infer_gather_fold_step(
       partials: partials,
       kinds: kinds,
       tree: tree,
-      declarations: declarations
+      resolved: resolved
     )
   } else if child.failed {
     infer_gather_fold_acc_failed(
@@ -3566,7 +3564,7 @@ fn infer_gather_fold_step(
           partials: partials,
           kinds: kinds,
           tree: tree,
-          declarations: declarations
+          resolved: resolved
         )
     }
   } else if infer_literal_edge_diagnostics_derived(parent: acc.node, edge: edge) {
@@ -3589,7 +3587,7 @@ fn infer_gather_fold_step(
           partials: partials,
           kinds: kinds,
           tree: tree,
-          declarations: declarations
+          resolved: resolved
         )
     }
   } else {
@@ -3600,7 +3598,7 @@ fn infer_gather_fold_step(
       partials: partials,
       kinds: kinds,
       tree: tree,
-      declarations: declarations
+      resolved: resolved
     )
   }
 }
@@ -3612,7 +3610,7 @@ fn infer_gather_fold_step_merged(
   partials: List<Node>,
   kinds: List<RosterKindIndex>,
   tree: Node,
-  declarations: InferDeclarations,
+  resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
   let children_remaining = acc.children_remaining - 1
   if acc.await_branch_row && children_remaining == 0 {
@@ -3647,7 +3645,7 @@ fn infer_gather_fold_step_merged(
       tree: tree
     )
   } else if children_remaining == 0 {
-    infer_gather_settled_row(acc: acc, merged_entries: merged_entries, merged_pending: merged_pending, partials: partials, kinds: kinds, tree: tree, declarations: declarations)
+    infer_gather_settled_row(acc: acc, merged_entries: merged_entries, merged_pending: merged_pending, partials: partials, kinds: kinds, tree: tree, resolved: resolved)
   } else {
     infer_gather_fold_acc_ok(
       node: acc.node,
@@ -3670,41 +3668,22 @@ fn infer_gather_fold_step_merged(
 // fills it (v2.std.arrow_signature application_binding_plan_over), and the one judge decides each
 // pair under one instantiation (infer_judge_formal_args). Nothing here compares a type.
 //
-// TWO READINGS OF ONE DECLARATION, BECAUSE THE INDEX HOLDS IT AS AUTHORED. The index resolution
-// consulted (ResolvedTree.symbol_index) says which paths are records, which fields each declares
-// and which binders it has -- facts about NAMES, true of the declaration as written, so the field
-// set is checked for every record the tag can resolve to. It does not hold the declaration
-// RESOLVED: a field written `n: Int` is the authored atom there, not the binding resolution gives
-// that spelling in the declaring module, and the judge compares resolved types. The resolved form
-// of a declaration exists only in the resolved tree of the module that declares it, so the subject's
-// own declarations are indexed once per run from the resolved root (infer_declarations, the same
-// containment fill that built the index), and a record declared there is judged field by field. A
-// record declared in another module has no resolved form this stage can read: each of its field
-// values is a counted UndecidableFormalUnresolved obligation and the construct stays on the frontier
-// -- never compared against the authored spelling, which would refuse for the wrong reason. The
-// class's row, gunbc.recurring_failure_mode construct_field_value_not_typed_against_the_record_declaration,
-// carries that population and its trigger.
+// TWO READINGS OF ONE DECLARATION, EACH FROM THE INDEX THAT OWNS IT (v2.compiler.resolve
+// ResolvedTree). symbol_index, the index resolution consulted, holds a declaration AS AUTHORED: it
+// says which paths are records, which fields each declares and which binders it has -- facts about
+// NAMES, so the field set is checked for every record a tag can resolve to. resolved_declarations
+// holds the subject module's declarations WITH RESOLVED BODIES, and the judge compares resolved
+// types, so a record found there is judged field by field. A record declared in another module has
+// no resolved body this stage can read: each of its field values is a counted
+// UndecidableFormalUnresolved obligation and the construct stays on the frontier -- never compared
+// against the authored spelling, which would refuse for the wrong reason. That population and its
+// trigger are rostered in gunbc.recurring_failure_mode
+// construct_field_value_not_typed_against_the_record_declaration.
 //
 // ONLY A DECLARED RECORD IS READ HERE. The index says which kind of payload a path denotes
 // (symbol_index_declared_payload_at); a variant arm's construct, a tag the guarded reader does not
 // answer for, and a Conj with no tag at all are ConstructNotARecord and keep product introduction,
 // where an underived tag leaves them on the counted frontier as before.
-type InferDeclarations {
-  resolution: SymbolIndex
-  subject: SymbolIndex
-}
-
-fn infer_declarations(tree: ResolvedTree) -> InferDeclarations {
-  InferDeclarations {
-    resolution: tree.symbol_index,
-    subject: match qualified_name_from_module_node(root: tree.root) {
-      Accepted { value: module_qn, diagnostics: _ } =>
-        symbol_index_fill_containment_node(index: empty_symbol_index(), path: module_qn, node: tree.root)
-      Rejected { diagnostics: _ } => empty_symbol_index()
-    }
-  }
-}
-
 type InferRecordFormals
   = RecordFormalsResolved { payload: Node }
   | RecordFormalsAuthored { payload: Node }
@@ -3720,8 +3699,8 @@ type InferConstructRead
   = ConstructIsRecord { construct: InferRecordConstruct }
   | ConstructNotARecord
 
-fn infer_record_formals(declarations: InferDeclarations, path: QualifiedName, authored: Node) -> InferRecordFormals {
-  match symbol_index_lookup(index: declarations.subject, qualified_path: path) {
+fn infer_record_formals(resolved: ResolvedTree, path: QualifiedName, authored: Node) -> InferRecordFormals {
+  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
     Present { value: resolved } => RecordFormalsResolved { payload: resolved }
     Absent => RecordFormalsAuthored { payload: authored }
   }
@@ -3734,28 +3713,28 @@ fn infer_record_formals_payload(formals: InferRecordFormals) -> Node {
   }
 }
 
-fn infer_record_construct_read(node: Node, declarations: InferDeclarations) -> InferConstructRead {
+fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConstructRead {
   match construct_tag_optional(n: node) {
     Absent => ConstructNotARecord
     Present { value: reference } =>
       match declaration_reference_path_optional(node: reference) {
         Absent => ConstructNotARecord
         Present { value: path } =>
-          match symbol_index_declared_payload_at(index: declarations.resolution, qualified_path: path) {
+          match symbol_index_declared_payload_at(index: resolved.symbol_index, qualified_path: path) {
             Absent => ConstructNotARecord
             Present { value: kind } =>
               match kind {
                 VariantArmPayload => ConstructNotARecord
                 RecordTypePayload =>
-                  match symbol_index_lookup(index: declarations.resolution, qualified_path: path) {
+                  match symbol_index_lookup(index: resolved.symbol_index, qualified_path: path) {
                     Absent => ConstructNotARecord
                     Present { value: authored } =>
                       ConstructIsRecord {
                         construct: InferRecordConstruct {
                           record: reference,
                           path: path,
-                          formals: infer_record_formals(declarations: declarations, path: path, authored: authored),
-                          type_params: symbol_index_declared_type_params_at(index: declarations.resolution, qualified_path: path)
+                          formals: infer_record_formals(resolved: resolved, path: path, authored: authored),
+                          type_params: symbol_index_declared_type_params_at(index: resolved.symbol_index, qualified_path: path)
                         }
                       }
                   }
@@ -4072,7 +4051,7 @@ fn infer_gather_settled_row(
   partials: List<Node>,
   kinds: List<RosterKindIndex>,
   tree: Node,
-  declarations: InferDeclarations,
+  resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
   match type_annotation_optional(n: acc.node) {
     Present { value: _ } =>
@@ -4102,7 +4081,7 @@ fn infer_gather_settled_row(
             merged_entries: merged_entries,
             merged_pending: diagnostics_merge(outer: merged_pending, inner: rd),
             partials: partials,
-            declarations: declarations
+            resolved: resolved
           )
       }
   }
@@ -4154,10 +4133,10 @@ fn infer_gather_settled_unannotated_row(
   merged_entries: List<InferredFactsEntry>,
   merged_pending: Diagnostics,
   partials: List<Node>,
-  declarations: InferDeclarations,
+  resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
       if infer_gather_acc_awaits_product_row(node: acc.node, entries: merged_entries) {
-        match infer_record_construct_read(node: acc.node, declarations: declarations) {
+        match infer_record_construct_read(node: acc.node, resolved: resolved) {
           ConstructIsRecord { construct: construct } =>
             infer_gather_record_construct_row_on_entries(
               node: acc.node,
@@ -4188,13 +4167,13 @@ fn infer_gather_settled_unannotated_row(
       }
 }
 
-fn infer_gather_fold_algebra(partials: List<Node>, kinds: List<RosterKindIndex>, tree: Node, declarations: InferDeclarations) -> NodeFold<InferGatherFoldAcc> {
+fn infer_gather_fold_algebra(partials: List<Node>, kinds: List<RosterKindIndex>, tree: Node, resolved: ResolvedTree) -> NodeFold<InferGatherFoldAcc> {
   NodeFold {
     init: fn(n0) {
       infer_gather_fold_init(n: n0, partials: partials, kinds: kinds, tree: tree)
     },
     step: fn(acc, e, child) {
-      infer_gather_fold_step(acc: acc, edge: e, child: child, partials: partials, kinds: kinds, tree: tree, declarations: declarations)
+      infer_gather_fold_step(acc: acc, edge: e, child: child, partials: partials, kinds: kinds, tree: tree, resolved: resolved)
     }
   }
 }
@@ -4207,7 +4186,7 @@ fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree.root)
   let kinds = infer_language_inhabitants_kind_index()
   infer_gather_acc_to_outcome(
-    acc: fold_node(n: tree.root, algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, tree: tree.root, declarations: infer_declarations(tree: tree)))
+    acc: fold_node(n: tree.root, algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, tree: tree.root, resolved: tree))
   )
 }
 // INFER'S OUTPUT IS THE OBLIGATED FORM, never an InferredTree: v2.compiler.refinement_discharge
