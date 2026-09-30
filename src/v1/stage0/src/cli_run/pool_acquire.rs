@@ -78,6 +78,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::v1_compiler_parse::ParseWithTableResult;
 use crate::v1_compiler_tokenize::V1LexArtifact;
 use crate::v1_std_core::{build_newline_index, NewlineIndex, Token};
 use im::Vector as RtVec;
@@ -98,6 +99,9 @@ struct Acquired {
     content: Rc<String>,
     artifact: Rc<V1LexArtifact>,
     newline_index: Rc<NewlineIndex>,
+    /// The heads reading of these bytes, parsed in a FILE-LOCAL space (empty intern table,
+    /// occurrence ordinals from zero), filled on first demand. See `heads_reading_for`.
+    heads: RefCell<Option<Rc<ParseWithTableResult>>>,
 }
 
 thread_local! {
@@ -124,6 +128,7 @@ fn acquire(file: &str, content: &str) -> Rc<Acquired> {
         content: Rc::new(content.to_string()),
         artifact,
         newline_index,
+        heads: RefCell::new(None),
     });
     POOL.with(|p| p.borrow_mut().insert(key, acquired.clone()));
     acquired
@@ -142,4 +147,28 @@ pub fn artifact_for(file: &str, content: &str) -> Rc<V1LexArtifact> {
 /// The newline index `build_newline_index(file, content)` would produce, computed once.
 pub fn newline_index_for(file: &str, content: &str) -> Rc<NewlineIndex> {
     acquire(file, content).newline_index.clone()
+}
+
+/// THE ONE HEADS READING of a file, computed once per (spelling, bytes).
+///
+/// It is parsed in a FILE-LOCAL space: an empty intern table and occurrence ordinals from zero.
+/// That makes it a pure function of its key, which is what lets two consumers share it:
+/// `module_path_index::parse_module_binding` reads it as-is, since it projects only the module
+/// name, its span and the refusal, none of which carry an id. The pool census reads it through
+/// `census_heads::project_heads_reading`, which maps it into the pool's threaded intern table
+/// and occurrence space. That projection is total, so the census needs no second parse.
+pub fn heads_reading_for(file: &str, content: &str) -> Rc<ParseWithTableResult> {
+    let acquired = acquire(file, content);
+    if let Some(hit) = acquired.heads.borrow().clone() {
+        return hit;
+    }
+    let mut indices = im::HashMap::new();
+    indices.insert(file.to_string(), acquired.newline_index.clone());
+    let reading = crate::v1_compiler_parse::parse_heads_with_table(
+        acquired.artifact.tokens.clone(),
+        Rc::new(indices),
+        crate::v1_std_core::empty_intern_table(),
+    );
+    *acquired.heads.borrow_mut() = Some(reading.clone());
+    reading
 }
