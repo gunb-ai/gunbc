@@ -2264,6 +2264,55 @@ pub(crate) fn floor_retention_census(
             tallies[9].add(&m.items, m.items.len());
         }
     }
+    // THE ENTRY-INDEPENDENCE DIFFERENTIAL, over every module path held by more than one
+    // allocation. Each graph's assembly rewires its own copy (`finish_resolved_graph_assembly`);
+    // sharing one wired copy per module at the pool's index is lawful only if every copy is the
+    // same wiring. Compared at IDENTITY grain -- which node each binding resolves to, by `Rc`
+    // pointer, and which module each parent link names -- not by content, so an equal-looking
+    // copy that binds a different declaration reads as differing. A derived `==` would recurse
+    // through every parent environment without a pointer short-cut.
+    let mut copies: BTreeMap<String, Vec<&Rc<crate::v1_compiler_infer_items::TypedModule>>> =
+        BTreeMap::new();
+    let mut seen: HashSet<usize> = HashSet::new();
+    for (_, graph) in graphs {
+        for m in graph.modules.iter() {
+            if seen.insert(Rc::as_ptr(m) as usize) {
+                copies
+                    .entry(m.type_env.module_path.clone())
+                    .or_default()
+                    .push(m);
+            }
+        }
+    }
+    let mut identical = 0usize;
+    let mut differing: Vec<String> = Vec::new();
+    for (path, ms) in copies.iter().filter(|(_, ms)| ms.len() > 1) {
+        let prints: Vec<[u64; 6]> = ms.iter().map(|m| wiring_identity(m)).collect();
+        let parts = [
+            "module",
+            "type_bindings",
+            "ancestry",
+            "type_parents",
+            "func_local",
+            "func_parents",
+        ];
+        let diff: Vec<&str> = (0..6)
+            .filter(|i| prints.iter().any(|p| p[*i] != prints[0][*i]))
+            .map(|i| parts[i])
+            .collect();
+        if diff.is_empty() {
+            identical += 1;
+        } else {
+            differing.push(format!("{path}:{}", diff.join("+")));
+        }
+    }
+    eprintln!(
+        "[floor-heap] retained seam={seam} duplicated_paths={} identical_wiring={identical} \
+         differing_wiring={} [{}]",
+        identical + differing.len(),
+        differing.len(),
+        differing.join(","),
+    );
     let names: Vec<String> = graphs
         .iter()
         .map(|(name, g)| format!("{name}:{}", g.modules.len()))
@@ -2284,6 +2333,57 @@ pub(crate) fn floor_retention_census(
             t.spines.len(),
         );
     }
+}
+
+/// One copy's wiring at identity grain: the module node, each type binding's resolved node, each
+/// parent environment's module, each function signature, and each parent function environment's
+/// name -- the facts a rewire decides -- each folded to one hash so copies compare component-wise.
+fn wiring_identity(m: &crate::v1_compiler_infer_items::TypedModule) -> [u64; 6] {
+    use std::hash::{Hash, Hasher};
+    fn fold<I: IntoIterator<Item = (String, usize)>>(items: I) -> u64 {
+        let mut rows: Vec<(String, usize)> = items.into_iter().collect();
+        rows.sort();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        rows.hash(&mut h);
+        h.finish()
+    }
+    let te = &m.type_env;
+    let fe = &m.func_env;
+    [
+        fold([(String::new(), Rc::as_ptr(&m.module) as usize)]),
+        fold(
+            te.str_bindings
+                .iter()
+                .map(|(k, b)| (k.clone(), Rc::as_ptr(&b.resolved) as usize))
+                .chain(
+                    te.bindings
+                        .iter()
+                        .map(|(k, b)| (k.to_string(), Rc::as_ptr(&b.resolved) as usize)),
+                ),
+        ),
+        fold(
+            te.ancestry_str_bindings
+                .iter()
+                .map(|(k, b)| (k.clone(), Rc::as_ptr(&b.resolved) as usize)),
+        ),
+        fold(
+            te.parents
+                .iter()
+                .enumerate()
+                .map(|(i, p)| (p.module_path.clone(), i)),
+        ),
+        fold(
+            fe.local
+                .iter()
+                .map(|(k, sig)| (k.clone(), Rc::as_ptr(sig) as usize)),
+        ),
+        fold(
+            fe.parents
+                .iter()
+                .enumerate()
+                .map(|(i, p)| (p.name.clone(), i)),
+        ),
+    ]
 }
 
 /// Every graph the thread's process resolve store holds, by entry — the planning and prelude
