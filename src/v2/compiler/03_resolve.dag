@@ -1843,8 +1843,7 @@ fn resolve_map_entry_field(entry: Node, field: Symbol) -> Optional<Node> {
   resolve_named_edge_target_optional(edges: skip(xs: entry.children, n: 1), field: field)
 }
 
-// The target of the first edge labelled `field`. One reader for a record declaration's field list
-// and a map entry's two fields.
+// The target of a map entry's first edge labelled `field`.
 fn resolve_named_edge_target_optional(edges: List<Edge>, field: Symbol) -> Optional<Node> {
   fold(edges, init: optional_absent(), f: fn(acc, e) {
     match acc {
@@ -1971,7 +1970,17 @@ fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName
       }
       match member {
         Absent => optional_absent()
-        Present { value: m } => resolve_named_edge_target_optional(edges: m.children, field: field)
+        Present { value: m } =>
+          fold_list(xs: m.children, empty: optional_absent(), cons: fn(acc, fe) {
+            match acc {
+              Present { value: _ } => acc
+              Absent =>
+                match fe.label {
+                  Named { name: sym } => if symbol_eq(a: sym, b: field) { optional_present(value: fe.target) } else { optional_absent() }
+                  Positional => optional_absent()
+                }
+            }
+          })
       }
   }
 }

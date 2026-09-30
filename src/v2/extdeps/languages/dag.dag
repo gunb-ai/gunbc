@@ -557,15 +557,24 @@ fn dag_string_body_element_pattern() -> LexPattern {
   }
 }
 
+// THE STRING LITERAL'S DELIMITER, held once: the lex rule reads it for both ends, and
+// dag_lexeme_is_string_literal reads it to recover a string token's class from its lexeme once parsing
+// has carried the token as a plain atom (a field-init key, whose grammar admits a name OR a string).
+data dag_string_literal_delimiter_code_point: Int = 34
+
 fn dag_string_literal_lex_rule() -> LexRule {
   TokenRule {
     token_class: ^dag_token_string_literal,
     pattern: DelimitedPattern {
-      open: CharPattern { char: 34 },
+      open: CharPattern { char: dag_string_literal_delimiter_code_point },
       body: RepeatPattern { element: dag_string_body_element_pattern() },
-      close: CharPattern { char: 34 }
+      close: CharPattern { char: dag_string_literal_delimiter_code_point }
     }
   }
+}
+
+fn dag_lexeme_is_string_literal(sym: Symbol) -> Bool {
+  starts_with(s: symbol_lexeme(sym: sym), prefix: from_code_point(cp: dag_string_literal_delimiter_code_point))
 }
 
 fn dag_whitespace_trivia_rule() -> LexRule {
