@@ -55,7 +55,7 @@ import gunbc.machine_intake_ampere_socket_console_observation {
 }
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_slots, mtcollins1_census_sol_artifact_path }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_ipmi_read_deadline, mtcollins1_ipmi_kill_after }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.machine_intake_mtcollins1_kvm_still { KvmObserverRecord, kvm_observer_record_text }
 import gunbc.machine_intake_mount_establishment { RemoteMediaMountStanding }
 import gunbc.machine_intake_megarac_media_attach {
@@ -1464,7 +1464,7 @@ data mtcollins1_boot_collection_member_bound: Int = 40
 data mtcollins1_boot_publish_allowance: Second = second(count: 60)
 
 fn mtcollins1_boot_diagnostics_allowance() -> Second {
-  let sel = mtcollins1_boot_ipmi_read_count() * ((second_count(s: mtcollins1_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_ipmi_kill_after) as Int))
+  let sel = mtcollins1_boot_ipmi_read_count() * ((second_count(s: mtcollins1_boot_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_boot_ipmi_kill_after) as Int))
   let redfish = mtcollins1_boot_redfish_read_budget * (second_count(s: mtcollins1_boot_redfish_read_deadline) as Int)
   second(count: sel + redfish + (second_count(s: mtcollins1_boot_publish_allowance) as Int))
 }
@@ -1486,8 +1486,8 @@ fn mtcollins1_boot_sdr_cache(username: NonEmptyStr, password_file: NonEmptyStr, 
     username: username,
     password_file: password_file,
     sdr_cache_file: path,
-    deadline: coreutils_duration_operand(d: mtcollins1_ipmi_read_deadline) as NonEmptyStr,
-    kill_after: coreutils_duration_operand(d: mtcollins1_ipmi_kill_after) as NonEmptyStr,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
   )
   if r.success {
     SdrCacheDumped { path: path, at: at }
@@ -1506,8 +1506,8 @@ fn mtcollins1_boot_sensors(username: NonEmptyStr, password_file: NonEmptyStr, sd
         username: username,
         password_file: password_file,
         sdr_cache_file: p,
-        deadline: coreutils_duration_operand(d: mtcollins1_ipmi_read_deadline) as NonEmptyStr,
-        kill_after: coreutils_duration_operand(d: mtcollins1_ipmi_kill_after) as NonEmptyStr,
+        deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+        kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
       )
       if r.success {
         SensorsRead { lines: sdr_decode_lines(stdout: r.stdout), at: at }
@@ -1531,8 +1531,8 @@ fn mtcollins1_boot_param5(username: NonEmptyStr, password_file: NonEmptyStr) -> 
     username: username,
     password_file: password_file,
     parameter: "5",
-    deadline: coreutils_duration_operand(d: mtcollins1_ipmi_read_deadline) as NonEmptyStr,
-    kill_after: coreutils_duration_operand(d: mtcollins1_ipmi_kill_after) as NonEmptyStr,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
   )
   if r.success {
     BootParam5Read { readback: r.stdout, at: at }
@@ -1554,8 +1554,8 @@ fn mtcollins1_boot_chassis_power(username: NonEmptyStr, password_file: NonEmptyS
     bmc_host: mtcollins1_endpoint.host,
     username: username,
     password_file: password_file,
-    deadline: coreutils_duration_operand(d: mtcollins1_ipmi_read_deadline) as NonEmptyStr,
-    kill_after: coreutils_duration_operand(d: mtcollins1_ipmi_kill_after) as NonEmptyStr,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
   )
   chassis_observation(success: r.success, stdout: r.stdout)
 }
@@ -1595,8 +1595,8 @@ fn mtcollins1_boot_bmc_reachability(username: NonEmptyStr, password_file: NonEmp
     bmc_host: mtcollins1_endpoint.host,
     username: username,
     password_file: password_file,
-    deadline: coreutils_duration_operand(d: mtcollins1_ipmi_read_deadline) as NonEmptyStr,
-    kill_after: coreutils_duration_operand(d: mtcollins1_ipmi_kill_after) as NonEmptyStr,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
   )
   bmc_reachability_of_read(at: at, success: r.success, exit_code: r.exit_code, stderr: r.transport_stderr)
 }
@@ -1617,8 +1617,8 @@ fn mtcollins1_boot_sel_snapshot_uncached(at: NonEmptyStr, username: NonEmptyStr,
 fn mtcollins1_boot_sel_snapshot(username: NonEmptyStr, password_file: NonEmptyStr, sdr: SdrCacheReading) -> SelSnapshotReading
 {
   let at = clock_now_probed_at_or_unknown()
-  let deadline = coreutils_duration_operand(d: mtcollins1_ipmi_read_deadline) as NonEmptyStr
-  let kill_after = coreutils_duration_operand(d: mtcollins1_ipmi_kill_after) as NonEmptyStr
+  let deadline = coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr
+  let kill_after = coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr
   match sdr {
     SdrCacheDumped { path: p, at: _ } => {
       let r = diagnostic.ipmi.Tool.SelListAuthenticatedCached(bmc_host: mtcollins1_endpoint.host, username: username, password_file: password_file, sdr_cache_file: p, deadline: deadline, kill_after: kill_after)

@@ -6,7 +6,7 @@ import gunbc.namecheap.federation { namecheap_environment, namecheap_provider_re
 import gunbc.ci_spec { gunbc_ci_namecheap_observe_invoke }
 
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
-import std.measure { minute_count, second_count }
+import std.measure { Second, minute_count, second_count }
 
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.github.actions {
@@ -27,7 +27,7 @@ import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
-import gunbc.machine_intake_mtcollins1_ui_bundle_observe { mtcollins1_ui_bundle_bytes_path, mtcollins1_ui_bundle_receipt_path }
+import gunbc.machine_intake_mtcollins1_ui_bundle_observe { mtcollins1_ui_bundle_bytes_path, mtcollins1_ui_bundle_receipt_path, mtcollins1_ui_bundle_read_bound }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
@@ -2083,6 +2083,15 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
 // only, no web session. The receipt and the bytes are uploaded whatever the outcome, because a refused
 // run's receipt is the one that says why it holds no bytes; a step condition without a status
 // function is implicitly success() and would drop exactly that receipt.
+// A READ-ONLY MT. COLLINS PROBE STEP'S BUDGET IS A FOLD, NEVER A LITERAL: gunbc run's load of the
+// probe's closure, whose authority is the measured resolve budget
+// (gunbc.fleet_workflow_steps gunbc_ci_gunbc_run_resolve_step_timeout_minutes), plus the probe's own
+// declared read bound, rounded up to whole minutes. The flat aux budget is what killed the UI
+// bundle's first wet run (36759368077) while it was still typechecking.
+fn fleet_converge_mtcollins1_probe_step_timeout_minutes(read_bound: Second) -> Int {
+  gunbc_ci_gunbc_run_resolve_step_timeout_minutes + ((second_count(s: read_bound) as Int) + 59) / 60
+}
+
 data fleet_converge_mtcollins1_ui_bundle_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1UiBundleObserve)
 
 fn fleet_converge_mtcollins1_ui_bundle_observe_step() -> Step {
@@ -2097,7 +2106,7 @@ fn fleet_converge_mtcollins1_ui_bundle_observe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_ui_bundle_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(read_bound: mtcollins1_ui_bundle_read_bound()) }
   }
 }
 
