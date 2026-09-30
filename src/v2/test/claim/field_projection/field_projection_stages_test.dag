@@ -187,8 +187,23 @@ test fn fps_a_valid_field_projection_grounds_holds() -> Bool {
 // differ, and `.tree` must further agree with how the compiler types an Int-declared PARAMETER in an
 // unrelated fixture -- an independent route to the same answer, so the claim is not the implementation
 // compared with itself.
+// THE DECLARED RETURN TRACKS THE PROJECTED FIELD, AND IT HAS TO. This fixture used to declare `-> Int`
+// for both fields, so the `flag` case was `fn f(b: Box) -> Int { b.flag }` -- an ILL-TYPED program, a
+// Bool body at an Int return. It inferred anyway because v2.compiler.infer's declared-position judge
+// could not denote a declared Bool (it arrives as v2.std.logic bool_node, not as a binding, so the
+// binding->value-type join answered Absent and the comparison was SKIPPED). Once that gate consulted
+// infer_established_value_type_optional the mismatch refused, correctly, and this row went red -- so the
+// row had been resting on a defect, not on the property it claims.
+//
+// The property is unchanged: two fields of DIFFERENT declared types, projected from the same receiver,
+// must ground differently. Only the fixture is now well-typed, which is what lets the projection's
+// grounding be the thing under test rather than the refusal.
 fn fps_two_field_source(field: String) -> Outcome<ResolvedTree> {
-  fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n  flag: Bool\n}\n\nfn f(b: Box) -> Int {\n  b." + field + "\n}\n")
+  fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n  flag: Bool\n}\n\nfn f(b: Box) -> " + fps_field_declared_type(field: field) + " {\n  b." + field + "\n}\n")
+}
+
+fn fps_field_declared_type(field: String) -> String {
+  if field == "flag" { "Bool" } else { "Int" }
 }
 
 fn fps_inferred_of(o: Outcome<ResolvedTree>) -> Optional<InferredTree> {

@@ -119,20 +119,36 @@ test fn sfk_more_than_one_entry_shares_one_key_holds() -> Bool {
   sfk_count_under_key(o: cref_source()) > 1
 }
 
-// AND THEY DISAGREE. At least one derived and at least one not, under the same key -- so the relation
-// admits conflicting facts for one key, and the answer a consumer gets is decided by entry order
-// rather than by its subject. This is the claim the identity owner needs: it establishes a CONFLICT
-// rather than merely a coincidence of shape.
-test fn sfk_entries_under_one_key_disagree_on_grounding_holds() -> Bool {
+// AND THEY NOW AGREE, WHICH NARROWS THE FINDING WITHOUT DISSOLVING IT. This row asserted a DISAGREEMENT
+// -- at least one derived entry and at least one underived one under the same key -- and that was the
+// standing when it was written. It is no longer: every entry under the shared key reports grounding
+// derived. The underived entries were the named-call sites this lane has since repaired (a reference read
+// from the AUTHORED symbol_index whose return spelling would not denote, and a callee arrow read
+// facts-blind so no argument was judged), so the conflict this row observed was DOWNSTREAM of two defects
+// rather than intrinsic to the keying relation.
+//
+// WHAT IS STILL TRUE IS THE ROW ABOVE: more than one entry carries one key. The relation still admits a
+// conflict, because facts_map_from_entries checks each entry's own subject correspondence and establishes
+// NO uniqueness or conflict condition across entries that compare equal -- so today's agreement is a
+// property of this corpus, not a guarantee about the relation.
+//
+// SO THE CLAIM IS WRITTEN AT THE STANDING RATHER THAN AT THE SAFETY CONCLUSION (DESIGN section 4d: do not
+// assert as deduced what is only inferred). It does NOT say a consumer is currently misled -- the
+// observed misleading consumer was eval's refusal at a node that was not its subject, and that refusal is
+// gone. It says the entries under one key agree today, which is falsifiable and goes red the moment a
+// conflict reappears. That transition is the thing the identity owner needs to be told about, and a row
+// asserting a disagreement that no longer happens would never tell anyone anything again.
+test fn sfk_entries_under_one_key_currently_agree_on_grounding_holds() -> Bool {
   let total = sfk_count_under_key(o: cref_source())
   let derived = sfk_count_derived_under_key(o: cref_source())
-  (derived > 0) && (derived < total)
+  (total > 1) && (derived == total)
 }
 
-// THE SAME CONFLICT STANDS IN THE SECOND FIXTURE, so it is a property of the keying relation over
-// ordinary programs and not an artifact of one source text.
-test fn sfk_the_conflict_is_not_specific_to_one_fixture_holds() -> Bool {
+// THE SHARED KEY IS NOT AN ARTIFACT OF ONE SOURCE TEXT, which is the part of the original pair that
+// survives: a second fixture reaches the same collision, so it is a property of the keying relation over
+// ordinary programs. The agreement is asserted here too, for the same reason as above.
+test fn sfk_the_shared_key_is_not_specific_to_one_fixture_holds() -> Bool {
   let total = sfk_count_under_key(o: cref_bool_pair_source())
   let derived = sfk_count_derived_under_key(o: cref_bool_pair_source())
-  (total > 1) && (derived > 0) && (derived < total)
+  (total > 1) && (derived == total)
 }
