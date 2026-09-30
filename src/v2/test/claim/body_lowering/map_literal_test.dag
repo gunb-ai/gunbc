@@ -275,146 +275,303 @@ test fn ml_a_mixed_key_brace_refuses_at_lowering_holds() -> Bool {
 
 // PROBES (temporary)
 
-test fn ml_probe_headed_accepts_holds() -> Bool {
-  ml_accepts(o: ml_resolve_subject(subject: "v2.test.ml_headed"))
+test fn ml_probe_ingest_accepts_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
-test fn ml_probe_headed_resolve_reason_unbound_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_unbound_symbol)
+test fn ml_probe_ing_body_lowering_reason_argument_label_repeated_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_argument_label_repeated
+  }
 }
 
-test fn ml_probe_headed_resolve_reason_ambiguous_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_ambiguous_symbol)
+test fn ml_probe_ing_body_lowering_reason_arrow_domain_param_binding_repeated_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_arrow_domain_param_binding_repeated
+  }
 }
 
-test fn ml_probe_headed_resolve_reason_construct_tag_not_a_constructor_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_construct_tag_not_a_constructor)
+test fn ml_probe_ing_body_lowering_reason_brace_key_kind_mismatch_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_brace_key_kind_mismatch
+  }
 }
 
-test fn ml_probe_headed_resolve_anonymous_map_expected_type_not_map_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_expected_type_not_map)
+test fn ml_probe_ing_body_lowering_reason_call_argument_list_shape_unread_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_call_argument_list_shape_unread
+  }
 }
 
-test fn ml_probe_headed_resolve_anonymous_record_expected_type_not_record_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_record_expected_type_not_record)
+test fn ml_probe_ing_body_lowering_reason_call_argument_unread_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_call_argument_unread
+  }
 }
 
-test fn ml_probe_headed_resolve_anonymous_map_key_kind_mismatch_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_key_kind_mismatch)
+test fn ml_probe_ing_body_lowering_reason_caret_symbol_not_lowered_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_caret_symbol_not_lowered
+  }
 }
 
-test fn ml_probe_headed_resolve_anonymous_map_expected_type_not_closed_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_expected_type_not_closed)
+test fn ml_probe_ing_body_lowering_reason_else_less_if_unlowered_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_else_less_if_unlowered
+  }
 }
 
-test fn ml_probe_headed_resolve_anonymous_record_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_record_no_expected_type)
+test fn ml_probe_ing_body_lowering_reason_field_decl_unlowered_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_field_decl_unlowered
+  }
 }
 
-test fn ml_probe_headed_resolve_anonymous_map_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_no_expected_type)
+test fn ml_probe_ing_body_lowering_reason_field_init_unlowered_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_field_init_unlowered
+  }
 }
 
-test fn ml_probe_headed_resolve_anonymous_map_name_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_anonymous_map_name_key)
+test fn ml_probe_ing_body_lowering_reason_function_value_body_unread_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_function_value_body_unread
+  }
 }
 
-test fn ml_probe_headed_resolve_reason_malformed_tree_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headed"), reason: ^resolve_reason_malformed_tree)
+test fn ml_probe_ing_body_lowering_reason_function_value_shape_unread_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_function_value_shape_unread
+  }
 }
 
-test fn ml_probe_headless_accepts_holds() -> Bool {
-  ml_accepts(o: ml_resolve_subject(subject: "v2.test.ml_headless"))
+test fn ml_probe_ing_body_lowering_reason_if_navigation_refused_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_if_navigation_refused
+  }
 }
 
-test fn ml_probe_headless_resolve_reason_unbound_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_unbound_symbol)
+test fn ml_probe_ing_body_lowering_reason_interface_member_unmodeled_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_interface_member_unmodeled
+  }
 }
 
-test fn ml_probe_headless_resolve_reason_ambiguous_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_ambiguous_symbol)
+test fn ml_probe_ing_body_lowering_reason_let_binding_name_absent_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_let_binding_name_absent
+  }
 }
 
-test fn ml_probe_headless_resolve_reason_construct_tag_not_a_constructor_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_construct_tag_not_a_constructor)
+test fn ml_probe_ing_body_lowering_reason_let_body_not_reachable_from_node_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_let_body_not_reachable_from_node
+  }
 }
 
-test fn ml_probe_headless_resolve_anonymous_map_expected_type_not_map_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_expected_type_not_map)
+test fn ml_probe_ing_body_lowering_reason_let_bound_value_absent_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_let_bound_value_absent
+  }
 }
 
-test fn ml_probe_headless_resolve_anonymous_record_expected_type_not_record_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_record_expected_type_not_record)
+test fn ml_probe_ing_body_lowering_reason_let_navigation_refused_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_let_navigation_refused
+  }
 }
 
-test fn ml_probe_headless_resolve_anonymous_map_key_kind_mismatch_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_key_kind_mismatch)
+test fn ml_probe_ing_body_lowering_reason_list_element_unlowered_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_list_element_unlowered
+  }
 }
 
-test fn ml_probe_headless_resolve_anonymous_map_expected_type_not_closed_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_expected_type_not_closed)
+test fn ml_probe_ing_body_lowering_reason_list_literal_shape_unread_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_list_literal_shape_unread
+  }
 }
 
-test fn ml_probe_headless_resolve_anonymous_record_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_record_no_expected_type)
+test fn ml_probe_ing_body_lowering_reason_loop_navigation_refused_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_loop_navigation_refused
+  }
 }
 
-test fn ml_probe_headless_resolve_anonymous_map_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_no_expected_type)
+test fn ml_probe_ing_body_lowering_reason_match_arm_navigation_refused_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_match_arm_navigation_refused
+  }
 }
 
-test fn ml_probe_headless_resolve_anonymous_map_name_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_anonymous_map_name_key)
+test fn ml_probe_ing_body_lowering_reason_operator_operand_unread_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_operator_operand_unread
+  }
 }
 
-test fn ml_probe_headless_resolve_reason_malformed_tree_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_headless"), reason: ^resolve_reason_malformed_tree)
+test fn ml_probe_ing_body_lowering_reason_operator_tail_unread_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_operator_tail_unread
+  }
 }
 
-test fn ml_probe_duplicate_accepts_holds() -> Bool {
-  ml_accepts(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"))
+test fn ml_probe_ing_body_lowering_reason_paren_group_unread_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_paren_group_unread
+  }
 }
 
-test fn ml_probe_duplicate_resolve_reason_unbound_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_reason_unbound_symbol)
+test fn ml_probe_ing_body_lowering_reason_pattern_unlowered_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_pattern_unlowered
+  }
 }
 
-test fn ml_probe_duplicate_resolve_reason_ambiguous_symbol_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_reason_ambiguous_symbol)
+test fn ml_probe_ing_body_lowering_reason_positional_argument_after_named_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_positional_argument_after_named
+  }
 }
 
-test fn ml_probe_duplicate_resolve_reason_construct_tag_not_a_constructor_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_reason_construct_tag_not_a_constructor)
+test fn ml_probe_ing_body_lowering_reason_postfix_suffix_carried_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_postfix_suffix_carried
+  }
 }
 
-test fn ml_probe_duplicate_resolve_anonymous_map_expected_type_not_map_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_map_expected_type_not_map)
+test fn ml_probe_ing_body_lowering_reason_realization_member_set_aside_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_realization_member_set_aside
+  }
 }
 
-test fn ml_probe_duplicate_resolve_anonymous_record_expected_type_not_record_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_record_expected_type_not_record)
+test fn ml_probe_ing_body_lowering_reason_service_io_block_repeated_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_service_io_block_repeated
+  }
 }
 
-test fn ml_probe_duplicate_resolve_anonymous_map_key_kind_mismatch_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_map_key_kind_mismatch)
+test fn ml_probe_ing_body_lowering_reason_service_member_unread_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_service_member_unread
+  }
 }
 
-test fn ml_probe_duplicate_resolve_anonymous_map_expected_type_not_closed_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_map_expected_type_not_closed)
+test fn ml_probe_ing_body_lowering_reason_service_operation_repeated_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_service_operation_repeated
+  }
 }
 
-test fn ml_probe_duplicate_resolve_anonymous_record_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_record_no_expected_type)
+test fn ml_probe_ing_body_lowering_reason_service_realization_unreachable_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_service_realization_unreachable
+  }
 }
 
-test fn ml_probe_duplicate_resolve_anonymous_map_no_expected_type_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_map_no_expected_type)
+test fn ml_probe_ing_body_lowering_reason_statement_precedes_without_binding_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_statement_precedes_without_binding
+  }
 }
 
-test fn ml_probe_duplicate_resolve_anonymous_map_name_key_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_anonymous_map_name_key)
+test fn ml_probe_ing_body_lowering_reason_statement_spine_headless_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_statement_spine_headless
+  }
 }
 
-test fn ml_probe_duplicate_resolve_reason_malformed_tree_holds() -> Bool {
-  ml_refuses_with(o: ml_resolve_subject(subject: "v2.test.ml_duplicate"), reason: ^resolve_reason_malformed_tree)
+test fn ml_probe_ing_body_lowering_reason_test_marker_not_test_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_test_marker_not_test
+  }
+}
+
+test fn ml_probe_ing_body_lowering_reason_type_annotation_not_carried_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_type_annotation_not_carried
+  }
+}
+
+test fn ml_probe_ing_body_lowering_reason_type_decl_member_uncarried_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_type_decl_member_uncarried
+  }
+}
+
+test fn ml_probe_ing_body_lowering_reason_type_decl_unreadable_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_type_decl_unreadable
+  }
+}
+
+test fn ml_probe_ing_body_lowering_reason_type_params_unreadable_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_type_params_unreadable
+  }
+}
+
+test fn ml_probe_ing_body_lowering_reason_unsupported_form_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_unsupported_form
+  }
+}
+
+test fn ml_probe_ing_body_lowering_reason_value_unlowered_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_value_unlowered
+  }
+}
+
+test fn ml_probe_ing_normalize_reason_post_normalize_not_well_formed_holds() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^normalize_reason_post_normalize_not_well_formed
+  }
 }
