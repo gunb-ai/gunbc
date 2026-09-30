@@ -20,13 +20,14 @@ type WorkspaceExecutorPlanBytes sole_constructor {
   provenance: WorkspaceCommissioningProvenance
   receipt: FleetConvergePlanReceipt
   bundle: NonEmptyStr
+  prestate: NonEmptyStr
 }
 
 type WorkspaceExecutorPlanBytesRead
   = WorkspaceExecutorPlanBytesVerified { verified: WorkspaceExecutorPlanBytes }
   | WorkspaceExecutorPlanBytesRefused { reason: String }
 
-data workspace_executor_scope_wire: String = "workspace_slot_commissioning"
+data workspace_executor_scope_wire: String = "scope:workspace-slot-commissioning"
 data workspace_executor_credential_row_prefix: String = "workspace-commissioning-credential:"
 
 fn workspace_executor_credential_row(provenance: WorkspaceCommissioningProvenance) -> String {
@@ -44,6 +45,17 @@ fn workspace_executor_plan_has_exact_credential(plan_body: String, provenance: W
   })
 }
 
+fn workspace_executor_plan_prestate(plan_body: String) -> String? {
+  let marker = "commissioning-prestate:"
+  let rows: List<String> = filter(split(s: plan_body, delimiter: "\n"), line => starts_with(s: line, prefix: marker))
+  let first: String? = rows.first()
+  if rows.count() != 1 { none } else { match first {
+    Present { value: row } => if string_length(s: row) <= string_length(s: marker) { none }
+      else { Present { value: substring(s: row, start: string_length(s: marker), end: string_length(s: row)) } }
+    _ => none
+  } }
+}
+
 fn workspace_executor_plan_bytes(plan_body: String, apply_shell: String,
   receipt_text: String, credential: String) -> WorkspaceExecutorPlanBytesRead {
   match workspace_commissioning_directive_from_text(text: credential) {
@@ -59,9 +71,12 @@ fn workspace_executor_plan_bytes(plan_body: String, apply_shell: String,
       } else { match fleet_plan_bundle_hash(plan_body: plan_body, apply_shell: apply_shell) {
         Present { value: hash } => if (hash.digest as String) != receipt.plan_artifact_hash {
           WorkspaceExecutorPlanBytesRefused { reason: "reviewed fleet bundle digest does not match its bytes" }
-        } else { WorkspaceExecutorPlanBytesVerified { verified: WorkspaceExecutorPlanBytes {
-          provenance: provenance, receipt: receipt, bundle: hash.digest as NonEmptyStr,
-        } } }
+        } else { match workspace_executor_plan_prestate(plan_body: plan_body) {
+          Present { value: prestate } => WorkspaceExecutorPlanBytesVerified { verified: WorkspaceExecutorPlanBytes {
+            provenance: provenance, receipt: receipt, bundle: hash.digest as NonEmptyStr, prestate: prestate as NonEmptyStr,
+          } }
+          _ => WorkspaceExecutorPlanBytesRefused { reason: "reviewed commissioning prestate is missing or ambiguous" }
+        } }
         _ => WorkspaceExecutorPlanBytesRefused { reason: "reviewed fleet bundle identity is unavailable" }
       } }
       _ => WorkspaceExecutorPlanBytesRefused { reason: "reviewed fleet plan receipt is unreadable" }

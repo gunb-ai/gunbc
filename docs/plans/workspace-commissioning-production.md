@@ -81,3 +81,7 @@ After the explicit host-standup imports, all 87 fleet-plan witness controls pass
 ## Native publication and helper checkpoint
 
 The bounded helper now joins actual executor membership, protected controller binding, strong settlement and shared fleet-generation publication. The shared native writer has process-level interruption and racing-retry controls; historical publication receipts allow finalization without rolling back later fleet generations. This is still source qualification, not commissioning. Initial reviewed-plan preparation, uncertain-submission drainage, the helper CLI/installer and commissioning fleet scope remain required. See the [publication checkpoint receipt](receipts/workspace-executor-publication-2026-09-30/README.md).
+
+## Preparation and installer checkpoint
+
+The bounded helper now implements reviewed prestate admission, initial submission and fenced drainage/rearm; the controller checks a snapshotted submitter identity. The existing installer emits the executor/helper/unit and checks exact installed bytes. A shared unit renderer fixes installation/readback drift. The sealed commissioning observer is implemented, but the fleet scope and root-custodied dispatch/reattachment connection remain outstanding. See the [preparation receipt](receipts/workspace-executor-preparation-2026-09-30/README.md). This is not live commissioning evidence; HOLD remains.

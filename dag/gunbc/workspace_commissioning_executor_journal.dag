@@ -13,6 +13,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, j
 // than repeating commissioning after a slot has legitimately admitted its first allocation.
 type WorkspaceExecutorPhase
   = ExecutorSubmissionRecorded
+  | ExecutorSubmissionFenced
   | ExecutorInvocationRecorded
   | ExecutorReadbackAccepted
   | ExecutorReleaseObserved
@@ -41,6 +42,7 @@ type WorkspaceExecutorRecord {
 fn workspace_executor_phase_wire(phase: WorkspaceExecutorPhase) -> String {
   match phase {
     ExecutorSubmissionRecorded => "submission-recorded"
+    ExecutorSubmissionFenced => "submission-fenced"
     ExecutorInvocationRecorded => "invocation-recorded"
     ExecutorReadbackAccepted => "readback-accepted"
     ExecutorReleaseObserved => "release-observed"
@@ -51,6 +53,7 @@ fn workspace_executor_phase_wire(phase: WorkspaceExecutorPhase) -> String {
 fn workspace_executor_phase_from_wire(text: String) -> WorkspaceExecutorPhase? {
   match text {
     "submission-recorded" => Present { value: ExecutorSubmissionRecorded }
+    "submission-fenced" => Present { value: ExecutorSubmissionFenced }
     "invocation-recorded" => Present { value: ExecutorInvocationRecorded }
     "readback-accepted" => Present { value: ExecutorReadbackAccepted }
     "release-observed" => Present { value: ExecutorReleaseObserved }
@@ -70,24 +73,29 @@ fn workspace_executor_record_coherent(record: WorkspaceExecutorRecord) -> Bool {
     && (record.previous_invocation == "" || content_hash_validate_lower_hex_length(text: record.previous_invocation, expected_hex_digits: 32))
     && (match record.phase {
       ExecutorSubmissionRecorded => record.invocation == ""
+      ExecutorSubmissionFenced => record.invocation == ""
       _ => content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
         && record.invocation != record.previous_invocation
     })
 }
 
-// A retry cannot change owner, plan, either fleet generation, guard generation, or original
-// submitter. A new submitting actor requires a separate, observed drainage transition; it is
-// deliberately not represented by replacing submitter on an existing record.
+// The reviewed subject and mutation generation never change. A replacement submitter can
+// be published only after a fenced submission, with the actual drained predecessor recorded.
+// The privileged drainage adapter owns that transition; a normal retry cannot rearm a start.
 fn workspace_executor_record_follows(previous: WorkspaceExecutorRecord, next: WorkspaceExecutorRecord) -> Bool {
   workspace_executor_record_coherent(record: previous) && workspace_executor_record_coherent(record: next)
-    && previous.subject == next.subject && previous.submitter == next.submitter
-    && previous.previous_invocation == next.previous_invocation
+    && previous.subject == next.subject
     && (previous == next || (match previous.phase {
-      ExecutorSubmissionRecorded => next.phase == ExecutorInvocationRecorded
-      ExecutorInvocationRecorded => next.phase == ExecutorReadbackAccepted && previous.invocation == next.invocation
-      ExecutorReadbackAccepted => next.phase == ExecutorReleaseObserved && previous.invocation == next.invocation
-      ExecutorReleaseObserved => next.phase == ExecutorGenerationCommitted && previous.invocation == next.invocation
-      ExecutorGenerationCommitted => false
+      ExecutorSubmissionFenced => next.phase == ExecutorSubmissionRecorded
+        && previous.submitter != next.submitter
+      _ => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
+        && (match previous.phase {
+          ExecutorSubmissionRecorded => next.phase == ExecutorInvocationRecorded || next.phase == ExecutorSubmissionFenced
+          ExecutorInvocationRecorded => next.phase == ExecutorReadbackAccepted && previous.invocation == next.invocation
+          ExecutorReadbackAccepted => next.phase == ExecutorReleaseObserved && previous.invocation == next.invocation
+          ExecutorReleaseObserved => next.phase == ExecutorGenerationCommitted && previous.invocation == next.invocation
+          _ => false
+        })
     }))
 }
 
@@ -201,6 +209,7 @@ fn workspace_executor_recorded_directive(record: WorkspaceExecutorRecord) -> Str
   if !workspace_executor_record_coherent(record: record) { none } else {
     match record.phase {
       ExecutorSubmissionRecorded => none
+      ExecutorSubmissionFenced => none
       ExecutorInvocationRecorded => Present { value: concat("wait:", record.invocation) }
       ExecutorReadbackAccepted => Present { value: concat("settle:", record.invocation) }
       ExecutorReleaseObserved => Present { value: concat("settle:", record.invocation) }

@@ -15,7 +15,7 @@ import gunbc.workspace_commissioning_executor_plan {
 }
 
 fn executor_plan_fixture_body() -> String {
-  workspace_executor_credential_row(provenance: directive_fixture_provenance())
+  join([workspace_executor_credential_row(provenance: directive_fixture_provenance()), "commissioning-prestate:reviewed-prestate"], "\n")
 }
 
 fn executor_plan_fixture_receipt(body: String, shell: String, host: String, scope: String) -> String {
@@ -86,6 +86,26 @@ test fn generic_fleet_receipt_is_not_a_commissioning_subject() -> Bool {
     receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: "full_host"),
     credential: executor_plan_fixture_credential()) {
     WorkspaceExecutorPlanBytesRefused { reason } => reason == "commissioning credential and reviewed receipt disagree"
+    _ => false
+  }
+}
+
+test fn absent_prestate_refuses_even_a_self_consistent_bundle() -> Bool {
+  let body = workspace_executor_credential_row(provenance: directive_fixture_provenance())
+  match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
+    receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
+    credential: executor_plan_fixture_credential()) {
+    WorkspaceExecutorPlanBytesRefused { reason } => reason == "reviewed commissioning prestate is missing or ambiguous"
+    _ => false
+  }
+}
+
+test fn duplicate_prestate_refuses_even_a_self_consistent_bundle() -> Bool {
+  let body = concat(executor_plan_fixture_body(), "\ncommissioning-prestate:other")
+  match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
+    receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
+    credential: executor_plan_fixture_credential()) {
+    WorkspaceExecutorPlanBytesRefused { reason } => reason == "reviewed commissioning prestate is missing or ambiguous"
     _ => false
   }
 }

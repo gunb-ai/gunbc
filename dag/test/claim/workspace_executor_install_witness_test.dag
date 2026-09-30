@@ -1,0 +1,53 @@
+module test.claim.workspace_executor_install_witness
+
+import std.types { Bool, String }
+import gunbc.live_deploy.emit { microvm_controller_install_script, microvm_slot_unit_file_with_workspace_root }
+import gunbc.live_deploy.apply { microvm_controller_install_readback_exit }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+import gunbc.live_deploy.release_environment { installed_release_unit }
+import gunbc.runner_microvm_slot_unit { microvm_slot_unit_file, microvm_slot_unit_timeout_stop_sec, microvm_controller_requires_ci_reservation_unit }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import test.claim.workspace_executor_plan_witness {
+  exact_bundle_and_credential_join_without_a_circular_hash,
+  replaced_apply_bytes_refuse_even_with_the_same_credential,
+  duplicated_credential_row_refuses_a_self_consistent_bundle,
+  another_host_cannot_supply_a_commissioning_receipt,
+  generic_fleet_receipt_is_not_a_commissioning_subject,
+  absent_prestate_refuses_even_a_self_consistent_bundle,
+  duplicate_prestate_refuses_even_a_self_consistent_bundle,
+}
+
+fn workspace_install_fixture() -> String {
+  microvm_controller_install_script(revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" })
+}
+
+test fn installed_and_observed_controller_units_are_identical() -> Bool {
+  let dir = "/var/lib/gunbc/fixture-release"
+  serialize_systemd_unit_file(file: microvm_slot_unit_file_with_workspace_root(release_dir: dir))
+    == serialize_systemd_unit_file(file: installed_release_unit(file: microvm_slot_unit_file(
+      release_dir: dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()), release_dir: dir))
+}
+
+test fn workspace_install_includes_executor_without_starting_it() -> Bool {
+  let script = workspace_install_fixture()
+  string_contains(s: script, pattern: "workspace-commissioning-executor.sh")
+    && string_contains(s: script, pattern: "workspace-commissioning-helper")
+    && string_contains(s: script, pattern: "gunbc-workspace-commissioning@.service")
+    && !string_contains(s: script, pattern: "systemctl start")
+    && !string_contains(s: script, pattern: "systemctl enable")
+}
+
+test fn workspace_install_does_not_restore_competing_ci_reservation() -> Bool {
+  !microvm_controller_requires_ci_reservation_unit()
+    && !string_contains(s: workspace_install_fixture(), pattern: "gunbc-microvm-slot-reserve.service")
+}
+
+test fn reviewed_plan_binding_controls() -> Bool {
+  exact_bundle_and_credential_join_without_a_circular_hash()
+    && replaced_apply_bytes_refuse_even_with_the_same_credential()
+    && duplicated_credential_row_refuses_a_self_consistent_bundle()
+    && another_host_cannot_supply_a_commissioning_receipt()
+    && generic_fleet_receipt_is_not_a_commissioning_subject()
+    && absent_prestate_refuses_even_a_self_consistent_bundle()
+    && duplicate_prestate_refuses_even_a_self_consistent_bundle()
+}

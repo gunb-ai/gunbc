@@ -5,7 +5,7 @@ import gunbc.workspace_commissioning_executor_helper {
   workspace_executor_actor_observe, WorkspaceExecutorActorObserved,
 }
 import gunbc.workspace_commissioning_executor_journal {
-  WorkspaceExecutorRecord, WorkspaceExecutorPhase, ExecutorSubmissionRecorded,
+  WorkspaceExecutorRecord, WorkspaceExecutorPhase, ExecutorSubmissionRecorded, ExecutorSubmissionFenced,
   ExecutorInvocationRecorded, ExecutorReadbackAccepted, ExecutorReleaseObserved,
   ExecutorGenerationCommitted, workspace_executor_record_coherent,
 }
@@ -38,6 +38,7 @@ fn workspace_executor_recovery_phase(record: WorkspaceExecutorRecord) -> Workspa
     ExecutorSubmissionRecorded => WorkspaceExecutorRecoveryRefused {
       reason: "submission has no bound controller; queued start must be fenced or drained before another start",
     }
+    ExecutorSubmissionFenced => WorkspaceExecutorRecoveryRefused { reason: "fenced submission must finish drainage before rearming" }
     ExecutorInvocationRecorded => WorkspaceExecutorResumeWait { invocation: record.invocation as NonEmptyStr }
     ExecutorReadbackAccepted => WorkspaceExecutorResumeSettlement { invocation: record.invocation as NonEmptyStr }
     ExecutorReleaseObserved => WorkspaceExecutorResumeSettlement { invocation: record.invocation as NonEmptyStr }

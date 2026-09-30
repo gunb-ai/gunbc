@@ -1,0 +1,34 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.translate done in 3 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 3 seconds
+✓ typecheck gunbc.roadmap_component done in 3 seconds
+✓ typecheck gunbc.roadmap_page done in 2 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 5 seconds
+✓ typecheck gunbc.live_deploy.emit done in 3 seconds
+✓ typecheck gunbc.host_effect_realize done in 21 seconds
+✓ typecheck gunbc.live_deploy.apply done in 3 seconds
+[pre-entry] phase=workspace_discovery ms=14 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=31 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=7977 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=1 scale=tree
+[pre-entry] phase=pool_census_parse ms=2784 scale=tree
+[pre-entry] phase=closure_name_census_build ms=3119 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=50 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=69 scale=closure
+[pre-entry] phase=closure_load ms=4051 scale=closure
+[pre-entry] phase=closure_parse ms=15131 scale=closure
+[pre-entry] phase=closure_resolve ms=511 scale=closure
+[pre-entry] phase=closure_normalize ms=1695 scale=closure
+[pre-entry] phase=closure_typecheck ms=171608 scale=closure
+[pre-entry] phase=closure_parent_envs ms=15 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=255 scale=closure
+[pre-entry] phase=closure_ownership ms=2100 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=260212 scale=closure
+[pre-entry] population pool_modules=1125 closure_files=1125
+[pre-entry] process_cpu user_ms=255434 sys_ms=3912 max_rss_kib=8246900
+PASS installed_and_observed_controller_units_are_identical
+PASS workspace_install_includes_executor_without_starting_it
+PASS workspace_install_does_not_restore_competing_ci_reservation
+PASS reviewed_plan_binding_controls

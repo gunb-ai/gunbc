@@ -1,5 +1,7 @@
 module gunbc.workspace_commissioning_executor_fence
 
+import gunbc.workspace_commissioning_start_identity { workspace_commissioning_snapshotted_submitter }
+
 import std.types { NonEmptyStr, String, Bool }
 import std.decl_ref { decl_ref }
 import std.durable_exclusive_hold { HoldSlotHeld }
@@ -41,10 +43,12 @@ fn workspace_executor_claim_controller(provenance: WorkspaceCommissioningProvena
   invocation: NonEmptyStr) -> WorkspaceExecutorControllerAdmission
   admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "workspace_slot_dispatch_directive")]
 {
+  let submitter = workspace_commissioning_snapshotted_submitter()
   let slot_key = runner_slot_instance_name(slot: provenance.slot)
   match workspace_executor_journal_observe(slot_key: slot_key) {
     WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
-      Present { value: record } => if record.subject.plan_hash != provenance.plan_hash
+      Present { value: record } => if !workspace_executor_submission_identity_matches(record: record, submitter: submitter)
+        || record.subject.plan_hash != provenance.plan_hash
         || !workspace_executor_mutation_matches(record: record) {
         WorkspaceExecutorControllerRefused { reason: "executor plan or exact mutation generation does not match this commissioning" }
       } else { match record.phase {
@@ -77,6 +81,15 @@ fn workspace_executor_controller_still_owned(permit: WorkspaceExecutorController
       Present { value: record } => record == permit.record && workspace_executor_mutation_matches(record: record)
       _ => false
     }
+    _ => false
+  }
+}
+
+// The per-invocation credential is essential: a stopped old process or queued predecessor
+// cannot claim a rearmed journal merely because both submissions share reviewed provenance.
+fn workspace_executor_submission_identity_matches(record: WorkspaceExecutorRecord, submitter: NonEmptyStr?) -> Bool {
+  match submitter {
+    Present { value } => record.submitter == value
     _ => false
   }
 }

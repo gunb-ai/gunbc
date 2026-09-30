@@ -1,0 +1,27 @@
+module gunbc.workspace_commissioning_executor_artifact
+
+import std.types { String }
+import v2.std.orchestration { Pipeline, FailFast }
+import v2.workflow.orchestration_bash_emit_support { orch_bash_do, orch_bash_emit_pipeline }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import gunbc.cli_invoke { gunbc_run_invocation_words, invocation_words_bare }
+import gunbc.runner_microvm_slot_unit { microvm_controller_gunbc_binary, microvm_slot_source_roots }
+
+// The native waiter invokes this bounded adapter only at protocol transitions. Values are
+// environment DATA, never evaluated commands; the DAG entry validates actual cgroup membership.
+fn workspace_executor_helper_script(release_dir: String) -> String {
+  let words = [microvm_controller_gunbc_binary(release_dir: release_dir)]
+    + invocation_words_bare(words: gunbc_run_invocation_words(source_roots: microvm_slot_source_roots,
+      entry: "dag/gunbc/workspace_commissioning_executor_cli.dag", function: "workspace_executor_cli_main", claim_run: false))
+  let script = join([
+    "set -euo pipefail",
+    "[[ $# == 2 || $# == 3 ]] || exit 64",
+    "export GUNBC_WORKSPACE_EXECUTOR_ACTION=$1",
+    "export GUNBC_WORKSPACE_EXECUTOR_ACTOR=$2",
+    "export GUNBC_WORKSPACE_EXECUTOR_CONTROLLER=$\{3:-}",
+    concat("cd -- ", posix_single_quote(spelling: release_dir)),
+    concat("exec ", join(map(words, word => posix_single_quote(spelling: word)), " ")),
+  ], "\n")
+  orch_bash_emit_pipeline(p: Pipeline { steps: [orch_bash_do(command: script)], on_failure: FailFast },
+    refused_poison: "__WORKSPACE_HELPER_EMISSION_REFUSED__")
+}

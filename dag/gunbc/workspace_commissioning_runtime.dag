@@ -1,6 +1,8 @@
 module gunbc.workspace_commissioning_runtime
 
 import std.types { String, NonEmptyStr, Bool, CommitSha }
+import gunbc.live_deploy.release_environment { installed_release_unit }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import std.algebra { trim }
 import gunbc.auth.approval_broker_cutover { BrokerTreeReceiptRead, observe_broker_tree_receipt, TreeReceiptObserved }
 import std.measure { byte_size_count }
@@ -12,7 +14,7 @@ import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvena
 import gunbc.runner_slot_allocation { identity_is_workspace_execution_member, microvm_controller_slice_memory_max }
 import gunbc.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_gunbc_binary, microvm_controller_slice_unit_name,
-  microvm_slot_reserve_unit_name, microvm_slot_unit_path, microvm_slot_unit_text, microvm_slot_unit_timeout_stop_sec,
+  microvm_slot_reserve_unit_name, microvm_slot_unit_path, microvm_slot_unit_file, microvm_slot_unit_timeout_stop_sec,
 }
 import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_tree_receipt_path_for, RevisionBoundAtEmission }
 import gunbc.runner_microvm_cell_readiness { StoreRootOwned }
@@ -94,8 +96,9 @@ fn workspace_commissioning_locus_matches(provenance: WorkspaceCommissioningProve
 
 fn workspace_commissioning_unit_bytes_match(release_dir: NonEmptyStr) -> Bool {
   let unit = Filesystem.Read(path: microvm_slot_unit_path() as String)
-  unit.success && unit.content == microvm_slot_unit_text(release_dir: release_dir as String,
-    timeout_stop_sec: microvm_slot_unit_timeout_stop_sec())
+  unit.success && unit.content == serialize_systemd_unit_file(file: installed_release_unit(
+    file: microvm_slot_unit_file(release_dir: release_dir as String, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()),
+    release_dir: release_dir as String))
 }
 
 // The first commissioning cut requires the old reservation service to be absent, not merely

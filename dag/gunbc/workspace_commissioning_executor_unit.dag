@@ -1,7 +1,8 @@
 module gunbc.workspace_commissioning_executor_unit
 
 import std.types { String, NonEmptyStr }
-import std.measure { Second, second_count }
+import std.measure { Second, second_count, second }
+import gunbc.live_deploy.release_environment { installed_release_unit }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Description, ServiceType, ExecMode,
   ServiceUser, ServiceSlice, WorkingDirectory, Environment, ExecStart, Restart,
@@ -20,6 +21,12 @@ data workspace_executor_template_name: NonEmptyStr = "gunbc-workspace-commission
 
 fn workspace_executor_unit_instance_name(slot: NonEmptyStr) -> NonEmptyStr {
   join(["gunbc-workspace-commissioning@", slot as String, ".service"], "") as NonEmptyStr
+}
+
+data workspace_executor_wait_bound: Second = second(count: 1200)
+
+fn workspace_executor_unit_path() -> NonEmptyStr {
+  concat("/etc/systemd/system/", workspace_executor_template_name as String) as NonEmptyStr
 }
 
 data workspace_executor_script_name: String = "workspace-commissioning-executor.sh"
@@ -56,5 +63,6 @@ fn workspace_executor_unit_file(release_dir: String, fleet_lock: String, wait_bo
 }
 
 fn workspace_executor_unit_text(release_dir: String, fleet_lock: String, wait_bound: Second) -> String {
-  serialize_systemd_unit_file(file: workspace_executor_unit_file(release_dir: release_dir, fleet_lock: fleet_lock, wait_bound: wait_bound))
+  serialize_systemd_unit_file(file: installed_release_unit(
+    file: workspace_executor_unit_file(release_dir: release_dir, fleet_lock: fleet_lock, wait_bound: wait_bound), release_dir: release_dir))
 }

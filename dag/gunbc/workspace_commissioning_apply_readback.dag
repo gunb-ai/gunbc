@@ -1,5 +1,7 @@
 module gunbc.workspace_commissioning_apply_readback
 
+import gunbc.workspace_commissioning_start_identity { workspace_commissioning_submitter_path }
+
 import std.types { Bool, String, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import std.durable_compare_and_set { CasGeneration }
@@ -147,18 +149,20 @@ fn workspace_commissioning_credential_remove(provenance: WorkspaceCommissioningP
   admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_apply_finish")]
 {
   let path = workspace_launch_credential_source_path(instance: runner_slot_instance_name(slot: provenance.slot) as String)
-  let read = Filesystem.Read(path: path)
-  match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
-    FilesystemExactPathAbsent { path: _ } => true
-    FilesystemExactPathRead { path: _, content } => if content != (workspace_commissioning_record_text(record: WorkspaceCommissioningPrepared { provenance: provenance }) as String) { false }
-      else { match read_store_ownership(path: path) {
-        OwnershipRead { ownership: StoreRootOwned } => {
-          let removed = Filesystem.Delete(path: path)
-          removed.success && workspace_commissioning_credential_absent(path: path)
-        }
-        _ => false
-      } }
-    _ => false
+  if !workspace_commissioning_submitter_remove(provenance: provenance) { false } else {
+    let read = Filesystem.Read(path: path)
+    match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+      FilesystemExactPathAbsent { path: _ } => true
+      FilesystemExactPathRead { path: _, content } => if content != (workspace_commissioning_record_text(record: WorkspaceCommissioningPrepared { provenance: provenance }) as String) { false }
+        else { match read_store_ownership(path: path) {
+          OwnershipRead { ownership: StoreRootOwned } => {
+            let removed = Filesystem.Delete(path: path)
+            removed.success && workspace_commissioning_credential_absent(path: path)
+          }
+          _ => false
+        } }
+      _ => false
+    }
   }
 }
 
@@ -238,7 +242,8 @@ fn workspace_commissioning_apply_recover_completed(provenance: WorkspaceCommissi
         WorkspaceCommissioningMutationRetained { lease } => workspace_commissioning_apply_finish(
           readback: readback, lease: lease, release_dir: release_dir, login: login, network: network)
         WorkspaceCommissioningMutationReleased => if !workspace_commissioning_credential_absent(
-          path: workspace_launch_credential_source_path(instance: slot_key as String)) {
+          path: workspace_launch_credential_source_path(instance: slot_key as String))
+          || !workspace_commissioning_credential_absent(path: workspace_commissioning_submitter_path(instance: slot_key as String)) {
           WorkspaceCommissioningApplyFinishRefused { reason: "released commissioning still has a credential or unreadable credential path" }
         } else { match workspace_commissioning_mutation_recover(slot_key: slot_key,
           plan_hash: provenance.plan_hash, acquired: acquired) {
@@ -253,5 +258,35 @@ fn workspace_commissioning_apply_recover_completed(provenance: WorkspaceCommissi
         _ => WorkspaceCommissioningApplyFinishRefused { reason: "recorded commissioning exclusion is absent, changed or unreadable; no recovery authority established" }
       }
     }
+  }
+}
+
+// Remove only this protected journal's submitting identity. Removing the start credential
+// before the provenance credential prevents late workers from inheriting launch authority.
+fn workspace_commissioning_submitter_remove(provenance: WorkspaceCommissioningProvenance) -> Bool
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_credential_remove")]
+{
+  let slot = runner_slot_instance_name(slot: provenance.slot)
+  match workspace_executor_journal_observe(slot_key: slot) {
+    WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+      Present { value: record } => if record.subject.plan_hash != provenance.plan_hash { false } else {
+        let path = workspace_commissioning_submitter_path(instance: slot as String)
+        let read = Filesystem.Read(path: path)
+        match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+          FilesystemExactPathAbsent { path: _ } => true
+          FilesystemExactPathRead { path: _, content } => if content != (record.submitter as String) { false }
+            else { match read_store_ownership(path: path) {
+              OwnershipRead { ownership: StoreRootOwned } => {
+                let removed = Filesystem.Delete(path: path)
+                removed.success && workspace_commissioning_credential_absent(path: path)
+              }
+              _ => false
+            } }
+          _ => false
+        }
+      }
+      _ => false
+    }
+    _ => false
   }
 }

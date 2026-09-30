@@ -40,10 +40,11 @@ The bounded helper interface is intentionally not a new authorization authority:
 | Call | Obligation before returning successfully |
 | --- | --- |
 | `prepare <executor-invocation>` | Verify installed execution and reviewed plan under the lock; recover the old actor and pending jobs; acquire/recover the mutation guard; persist submission intent before returning `start:<prior-invocation>`, or return `wait:<recorded-invocation>` / `complete:<recorded-invocation>`. |
+| `rearm <executor-invocation>` | After CAS fencing and native blocking StopUnit, independently verify quiescence and fresh admission, snapshot the new submitter credential and CAS-publish its submission. |
 | `bind <executor-invocation> <slot-invocation>` | Persist the actual slot invocation against the exact prepared journal head. |
 | `finish <executor-invocation> <slot-invocation>` | Require strong controller/journal/readiness/artifact readbacks; remove and reread the credential; settle the mutation guard; publish/recover the exact fleet generation; return the committed terminal. |
 
-The production helper, its durable enclosing journal, installer wiring and reviewed fleet commissioning scope remain to be implemented. The native component and service model do **not** remove that gate. In particular, a fresh executor must not turn an unresolved earlier submission into another `start` simply because the unit currently looks inactive. Controls use explicit process-boundary doubles, not manufactured production permissions.
+The production helper, durable journal, fenced drainage/rearm and installer wiring now exist in source. The reviewed fleet commissioning scope and dispatcher remain to be connected; see the preparation checkpoint receipt. The native component and service model do **not** remove that gate. In particular, a fresh executor must not turn an unresolved earlier submission into another `start` simply because the unit currently looks inactive. Controls use explicit process-boundary doubles, not manufactured production permissions.
 
 The temporary additional-interpreter-service alternative was not selected.
 

@@ -36,7 +36,7 @@ data workspace_executor_admit_transport: String = join([
   "exec 9< \"$executor_lock\"",
   "flock -x 9",
   "executor_decision=$(\"$executor_helper\" prepare \"$INVOCATION_ID\")",
-  "[[ $executor_decision =~ ^(start|wait|settle|complete):([a-f0-9]\{32}|none)$ ]] || exit 65",
+  "[[ $executor_decision =~ ^(start|wait|settle|complete|drain):([a-f0-9]\{32}|none)$ ]] || exit 65",
   "executor_action=$\{executor_decision%%:*}",
   "executor_expected=$\{executor_decision#*:}",
 ], "\n")
@@ -57,6 +57,22 @@ data workspace_executor_read_systemd: String = join([
   "  executor_pid=$\{fields[MainPID]}",
   "  executor_job=$\{fields[Job]}",
   "}",
+], "\n")
+
+// The protected journal fence precedes StopUnit. A controller that already won CAS is never
+// stopped by this branch. Blocking stop replaces conflicting pending jobs; the rearm helper
+// independently reobserves quiescence and fresh admission before publishing a new submitter.
+data workspace_executor_drain_submission: String = join([
+  "if [[ $executor_action == drain ]]; then",
+  "  timeout --kill-after=5s \"$\{executor_polls}s\" \"$executor_systemctl\" stop \"$executor_unit\"",
+  "  executor_observe || exit 66",
+  "  [[ $executor_active == inactive || $executor_active == failed ]] || exit 67",
+  "  [[ $executor_pid == 0 && -z $executor_job ]] || exit 67",
+  "  executor_decision=$(\"$executor_helper\" rearm \"$INVOCATION_ID\")",
+  "  [[ $executor_decision =~ ^start:([a-f0-9]\{32}|none)$ ]] || exit 65",
+  "  executor_action=start",
+  "  executor_expected=$\{executor_decision#*:}",
+  "fi",
 ], "\n")
 
 data workspace_executor_submit_once: String = join([
@@ -109,6 +125,7 @@ fn workspace_commissioning_executor_script() -> String {
     steps: [
       orch_bash_do(command: workspace_executor_admit_transport),
       orch_bash_do(command: workspace_executor_read_systemd),
+      orch_bash_do(command: workspace_executor_drain_submission),
       orch_bash_do(command: workspace_executor_submit_once),
       orch_bash_do(command: workspace_executor_await_invocation),
       orch_bash_do(command: workspace_executor_settle),

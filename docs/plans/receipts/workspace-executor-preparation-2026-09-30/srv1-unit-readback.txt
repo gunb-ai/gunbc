@@ -1,0 +1,15 @@
+Read-only SSH observation, 2026-09-30. No start, stop, install or other host mutation.
+
+MainPID=0
+Id=gunbc-workspace-commissioning@srv1-13.service
+LoadState=not-found
+ActiveState=inactive
+Job=
+InvocationID=
+
+MainPID=0
+Id=gunbc-microvm-slot@srv1-13.service
+LoadState=loaded
+ActiveState=failed
+Job=
+InvocationID=c0fceefc7d9643b0aaff0617907b1335

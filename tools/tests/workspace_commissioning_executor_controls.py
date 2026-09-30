@@ -29,6 +29,12 @@ a=sys.argv[1]
 if a=='prepare':
     if config.get('prepare_refuse'): sys.exit(1)
     print(config.get('decision','start:'+('1'*32)))
+elif a=='stop':
+    if config.get('stop_refuse'): sys.exit(1)
+    (root/'stopped').write_text('yes')
+elif a=='rearm':
+    if config.get('rearm_refuse'): sys.exit(1)
+    print(config.get('rearm_decision','start:'+('1'*32)))
 elif a=='bind':
     if config.get('bind_refuse'): sys.exit(1)
     (root/'bound').write_text(sys.argv[3])
@@ -72,6 +78,11 @@ with tempfile.TemporaryDirectory(prefix='workspace-executor-controls-') as tmp:
         return [json.loads(x) for x in (root/'calls').read_text().splitlines()] if (root/'calls').exists() else []
     for name,config,code,starts,finish in [
         ('start-and-settle',{},0,1,True),
+        ('fence-drain-rearm',{'decision':'drain:none'},0,1,True),
+        ('drain-stop-refused',{'decision':'drain:none','stop_refuse':True},1,0,False),
+        ('drain-job-remains',{'decision':'drain:none','fields':{'Job':'123'}},67,0,False),
+        ('drain-rearm-refused',{'decision':'drain:none','rearm_refuse':True},1,0,False),
+        ('drain-invalid-rearm',{'decision':'drain:none','rearm_decision':'complete:'+NEW},65,0,False),
         ('missing-lock-refuses',{'missing_lock':True},1,0,False),
         ('reattach-no-start',{'decision':'wait:'+NEW,'existing':True},0,0,True),
         ('recover-completed',{'decision':'complete:'+NEW,'existing':True},0,0,True),
@@ -102,6 +113,9 @@ with tempfile.TemporaryDirectory(prefix='workspace-executor-controls-') as tmp:
         assert run.returncode==code,(name,run.returncode,run.stderr)
         assert sum(c[0]=='start' for c in seen)==starts,name
         assert any(c[0]=='finish' for c in seen)==finish,name
+        if name=='fence-drain-rearm':
+            order=[c[0] for c in seen]
+            assert order.index('prepare') < order.index('stop') < order.index('rearm') < order.index('start') < order.index('bind'),order
         if name in ('settle-after-reuse','complete-after-reuse'):
             assert not any(c[0]=='show' for c in seen),name
         assert ('commissioning-fleet-generation-committed' in run.stdout)==(code==0),name
