@@ -1,0 +1,112 @@
+module gunbc.machine_intake_megarac_ui_features
+
+import extdeps.tools.sha256sum
+import extdeps.tools.gzip
+import std.algebra { trim }
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }
+
+// THE FEATURE LIST THE VENDOR UI HANDS ITS KVM VIEWER, READ FROM THE UI'S OWN BYTES (eager-owl-205,
+// 2026-09-30; operator rule: derived, never hand-typed). The served viewer.min.js (fleet-converge crawl
+// run 36787375313) initialises its KVM view with UNGUARDED sessionStorage.features.indexOf(...) reads
+// (KVM_SESSION_RECONNECT, VMEDIA_MAX_COUNT_FOR_KVM, HOST_CURSOR_ENABLED_DEFAULT): with `features` unset
+// it throws, the view never initialises, and /kvm is never opened -- KVM probe run 36788605665 journalled
+// exactly that page error and no WebSocket. The real UI stores JSON.stringify of its
+// project-configurations collection, which is seeded from the STATIC `features` module compiled into
+// source.min.js:
+//   o("features",[],function(){var e=[{feature:"RMEDIA_MULTI_IMAGE_SUPPORT"},...];return e})
+// so the list is parsed out of those bytes, and only out of the build this unit's facts are keyed on:
+// the served source.min.js must digest to the 2026-09-27 read's sha256, or nothing is read.
+//
+// THE LIST IS A COMMITTED FIRMWARE-0.32 FACT (extdeps.bmc.megarac megarac_ui_features_0_32), not read at
+// run time: it is the vendor's compiled-in list for that build, so it is emitted ONCE from the retained
+// bytes by megarac_ui_features_row_emit below, and the observer seeds from the row.
+
+data megarac_ui_features_module_open: String = "o(\"features\",[],function()\{var e=["
+
+data megarac_ui_features_module_close: String = "];return e}"
+
+data megarac_ui_feature_key: String = "feature:\""
+
+// THE NAMES IN THE MODULE, IN ITS ORDER: every `feature:"NAME"` between the module's opening and its
+// `];return e}`. Absent when the module is not in the text, or holds no name.
+fn megarac_ui_features_of_bundle(text: String) -> List<String>? {
+  match split(s: text, delimiter: megarac_ui_features_module_open).skip(n: 1).first() {
+    Absent => none
+    Present { value: after } => {
+      let body = match split(s: after, delimiter: megarac_ui_features_module_close).first() { Present { value: b } => b  Absent => "" }
+      let names = map(split(s: body, delimiter: megarac_ui_feature_key).skip(n: 1), rest => match split(s: rest, delimiter: "\"").first() { Present { value: n } => n  Absent => "" })
+      if count(names) == 0 { none } else { Present { value: names } }
+    }
+  }
+}
+
+// A FEATURE NAME IS THE VENDOR'S IDENTIFIER SHAPE: upper-case letters, digits and underscores, nonempty.
+// Anything else is refused rather than written into a JSON string it could escape from.
+data megarac_ui_feature_name_characters: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+
+fn megarac_ui_feature_name_admitted(name: String) -> Bool {
+  name != "" && all(split(s: name, delimiter: ""), c => c == "" || string_contains(s: megarac_ui_feature_name_characters, pattern: c))
+}
+
+
+type MegaRacUiFeatures
+  = MegaRacUiFeaturesRead { names: List<String>, source_sha256: NonEmptyStr }
+  | MegaRacUiFeaturesUnread { cause: NonEmptyStr }
+
+// THE READING FROM ALREADY-DECODED BUNDLE TEXT AND ITS DIGEST: refused unless the digest is the pinned
+// build's and the module yields only admitted names.
+fn megarac_ui_features_reading(observed_sha256: String, text: String) -> MegaRacUiFeatures {
+  if observed_sha256 != (megarac_source_min_js_sha256_2026_09_27 as String) {
+    MegaRacUiFeaturesUnread { cause: concat(concat("source.min.js digests to ", observed_sha256), concat(", not the pinned ", megarac_source_min_js_sha256_2026_09_27 as String)) as NonEmptyStr }
+  } else {
+    match megarac_ui_features_of_bundle(text: text) {
+      Absent => MegaRacUiFeaturesUnread { cause: "the features module was not found in source.min.js, or holds no name" }
+      Present { value: names } =>
+        if all(names, n => megarac_ui_feature_name_admitted(name: n)) {
+          MegaRacUiFeaturesRead { names: names, source_sha256: megarac_source_min_js_sha256_2026_09_27 }
+        } else {
+          MegaRacUiFeaturesUnread { cause: concat("the features module holds a name outside the vendor identifier shape: ", join(filter(names, n => !megarac_ui_feature_name_admitted(name: n)), " ")) as NonEmptyStr }
+        }
+    }
+  }
+}
+
+// THE ROW'S EMITTER (the entry extdeps.bmc.megarac megarac_ui_features_0_32 names): read a RETAINED
+// source.min.js as served -- the mtcollins1-ui-bundle artifact of a crawl run -- refuse unless it
+// digests to the pinned 2026-09-27 build, decode it, parse the features module, and write the
+// extdeps row's text to `out`. Run:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/machine_intake/megarac_ui_features.dag
+//     --function megarac_ui_features_row_emit --arg bundle=<retained source.min.js> --arg out=<file>
+fn megarac_ui_features_row_text(names: List<String>) -> String {
+  concat(concat("data megarac_ui_features_0_32: List<NonEmptyStr> = [\n", join(map(names, n => concat(concat("  \"", n), "\",")), "\n")), "\n]\n")
+}
+
+fn megarac_ui_features_row_emit(bundle: String, out: String) -> ProcessExit {
+  let digest = sha256sum.Sha256.DigestFile(path: bundle as NonEmptyStr)
+  let observed = match split(s: trim(s: digest.line), delimiter: " ").first() { Present { value: d } => d  Absent => "" }
+  if !digest.success || observed == "" {
+    return exit_failure(reason: concat("megarac ui features: the retained bundle could not be digested: ", digest.line))
+  }
+  let decoded = gzip.Gzip.DecodeToStdout(path: bundle as NonEmptyStr)
+  if !decoded.success {
+    return exit_failure(reason: concat("megarac ui features: the retained bundle could not be decoded: ", trim(s: decoded.stderr)))
+  }
+  match megarac_ui_features_reading(observed_sha256: observed, text: decoded.text) {
+    MegaRacUiFeaturesUnread { cause: c } => exit_failure(reason: concat("megarac ui features: ", c as String))
+    MegaRacUiFeaturesRead { names: n, source_sha256: _ } => {
+      let w = Filesystem.Write(path: out, content: megarac_ui_features_row_text(names: n))
+      if w.success { ExitSuccess } else { exit_failure(reason: concat("megarac ui features: the row could not be written: ", w.error)) }
+    }
+  }
+}
+
+fn megarac_ui_features_text(f: MegaRacUiFeatures) -> String {
+  match f {
+    MegaRacUiFeaturesRead { names: n, source_sha256: s } => join([to_string(count(n)), " features read from source.min.js sha256 ", s as String], "")
+    MegaRacUiFeaturesUnread { cause: c } => concat("features UNREAD: ", c as String)
+  }
+}
