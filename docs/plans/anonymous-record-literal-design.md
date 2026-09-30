@@ -185,7 +185,7 @@ file can have later blockers beyond its first.
 |---|---|---|---|
 | dag/std/algebra | 359, `{ name: "filter", .. }` | the body of `fn collection_filter_shape() -> AlgebraFieldTemplate`; 88 more rows of the same record inside list literals | yes: declared return, and list element |
 | dag/std/primitives | 17, `data char_at_contract: PrimitiveContract = {` | data initializer | yes |
-| dag/std/termination | 45, `data .. : BoundedLattice<DescentEvidence> = {` | data initializer, generic, newline-separated fields | yes, via generic instantiation. The newline separator is to be confirmed in PR2. |
+| dag/std/termination | 45, `data .. : BoundedLattice<DescentEvidence> = {` | data initializer, generic, newline-separated fields | yes, by HEAD lookup: `BoundedLattice` resolves to a single record. Its type argument is not substituted and chooses nothing, and none of its field inits is headless. The newline separator is to be confirmed in PR2. |
 | dag/extdeps/realization/compile_stage_memo | 39, `key_derivation: {` | record field under a headless data initializer (lowering refuses the inner brace first) | yes: data initializer plus record field |
 | dag/extdeps/realization/parse_table_memo | 50, `key_derivation: {` | same | yes |
 | dag/std/types | 5, `data kernel_type_set: Map<String, Bool> = {` | MAP literal | **no: MAP arm.** Reaches the elided-tag writer in resolve and refuses located `map_literal_construction_not_modeled`, as a declared population (below). |
