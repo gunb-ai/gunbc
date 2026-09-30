@@ -108,6 +108,7 @@ import v2.std.symbol_index {
   symbol_index_lookup
 }
 import v2.std.node {
+  StructuralLabel,
   Arrow,
   is_positional,
   Atom,
@@ -383,6 +384,7 @@ fn body_lower_arrow_domain_named_bindings(root: Node) -> List<Symbol> {
     TypeNode { connective: Conj } =>
       fold(root.children, init: Empty, f: fn(acc, e) {
         match e.label {
+          StructuralLabel { label: _ } => acc
           Authored { name: sym } => Cons { head: sym, tail: acc }
           Positional => acc
         }
@@ -407,6 +409,7 @@ fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<Sy
         init: Empty,
         f: fn(acc, e) {
           match e.label {
+            StructuralLabel { label: _ } => acc
             Authored { name: sym } => Cons { head: sym, tail: acc }
             Positional => acc
           }
@@ -601,6 +604,7 @@ fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
 
 fn body_lower_is_identity_projection_edge(edge: Edge) -> Bool {
   match edge.label {
+    StructuralLabel { label: _ } => false
     Authored { name: n } => n == ^grammar_production_identity_node_projection
     Positional => false
   }
@@ -4154,6 +4158,8 @@ fn body_lower_function_value_signature(binders: List<FunctionValueBinder>) -> Fu
   let minted: DeclaredParameterList = anonymous_binder_mint_parameter_list(edges: authored)
   fold(minted.edges, init: FunctionValueSignature { domain: no_edges, type_params: no_edges, order: minted.order }, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } =>
+        FunctionValueSignature { domain: list_snoc_item(xs: acc.domain, item: e), type_params: acc.type_params, order: acc.order }
       Authored { name: label } =>
         let tv = fresh_type_variable(path: body_lower_unpositioned_path(), label: label)
         FunctionValueSignature {
@@ -4257,6 +4263,7 @@ fn body_lower_fresh_type_variable_renames(arrow: Node, path: List<Int>) -> Map<S
 fn body_lower_fresh_type_variable_domain_renames(edges: List<Edge>, path: List<Int>, init: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   fold(edges, init: init, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => acc
       Authored { name: l } =>
         map_insert(m: acc, key: fresh_type_variable(path: body_lower_unpositioned_path(), label: l), value: fresh_type_variable(path: path, label: l))
       Positional => acc
@@ -4281,6 +4288,7 @@ fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbo
           kind: node.kind,
           children: fold(node.children, init: body_lower_no_type_param_edges(), f: fn(acc, e) {
             let label = match e.label {
+              StructuralLabel { label: _ } => e.label
               Authored { name: n } =>
                 match map_lookup(m: renames, key: n) {
                   Present { value: renamed } => Authored { name: renamed }
@@ -4531,6 +4539,10 @@ fn body_lower_call_arg_edges(items: List<Node>) -> Outcome<List<Edge>> {
       bind_outcome(o: acc, f: fn(state) {
         bind_outcome(o: body_lower_call_arg_edge(arg_capture: item), f: fn(edge) {
           match edge.label {
+            StructuralLabel { label: _ } =>
+              outcome_rejected(
+                d: body_lower_diagnostic(reason: ^body_lowering_reason_call_argument_list_shape_unread, n: item)
+              )
             Positional =>
               if state.seen_named {
                 outcome_rejected(

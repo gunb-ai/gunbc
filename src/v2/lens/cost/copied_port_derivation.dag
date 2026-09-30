@@ -27,6 +27,7 @@ import v2.std.node {
   Authored,
   Node,
   Positional,
+  StructuralLabel,
   Symbol,
   TypeNode,
   arrow_body_target_lookup,
@@ -75,12 +76,14 @@ fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
                 fold(e.target.children, init: acc, f: fn(a, de) {
                   match de.label {
                     Authored { name: _ } => Cons { head: de.target, tail: a }
+                    StructuralLabel { label: _ } => a
                     Positional => a
                   }
                 })
               _ => acc
             }
           Authored { name: _ } => acc
+          StructuralLabel { label: _ } => acc
         }
       })
     _ => Empty

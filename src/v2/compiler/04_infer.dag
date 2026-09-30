@@ -124,6 +124,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node {
+  StructuralLabel,
   Arrow,
   Atom,
   Bind,
@@ -1126,6 +1127,7 @@ fn infer_atom_binding_sym(node: Node) -> Optional<Symbol> {
 
 fn infer_conj_edge_named_type_for_binding(edge: Edge, binding: Symbol) -> Optional<Node> {
   match edge.label {
+    StructuralLabel { label: _ } => optional_absent()
     Authored { name: sym } =>
       if sym == binding {
         optional_present(value: edge.target)
@@ -1847,6 +1849,7 @@ fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> 
           Absent => Absent
           Present { value: formals } =>
             match e.label {
+              StructuralLabel { label: _ } => Absent
               Authored { name: nme } =>
                 Present {
                   value: list_snoc_item(
@@ -3182,6 +3185,7 @@ fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
   match dag_canonical_literal_from_node(node: parent) {
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       match edge.label {
+        StructuralLabel { label: _ } => false
         Authored { name: field } => field == ^integer_literal_magnitude_field
         Positional => false
       }
@@ -3374,6 +3378,7 @@ fn infer_sum_nullary_payload_edge(parent: Node, edge: Edge) -> Bool {
   match parent.kind {
     TypeNode { connective: Disj } =>
       (match edge.label {
+        StructuralLabel { label: _ } => false
         Authored { name: _ } => true
         Positional => false
       })
@@ -3403,6 +3408,7 @@ fn infer_disj_is_named_sum(n: Node) -> Bool {
   (length(xs: n.children) > 0)
     && fold(n.children, init: true, f: fn(acc, e) {
       acc && match e.label {
+        StructuralLabel { label: _ } => false
         Authored { name: _ } => true
         Positional => false
       }

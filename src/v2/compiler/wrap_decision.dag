@@ -36,7 +36,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, StructuralLabel, Symbol, TypeNode }
 
 type WrapDecisionBundleChildLookup
   = WrapDecisionBundleChildMissing
@@ -60,6 +60,7 @@ fn wrap_decision_bundle_child_lookup_step(
           } else {
             acc
           }
+        StructuralLabel { label: _ } => WrapDecisionBundleChildInvalidEdge
         Positional => WrapDecisionBundleChildInvalidEdge
       }
     WrapDecisionBundleChildFound { value: _ } =>
@@ -70,6 +71,7 @@ fn wrap_decision_bundle_child_lookup_step(
           } else {
             acc
           }
+        StructuralLabel { label: _ } => WrapDecisionBundleChildInvalidEdge
         Positional => WrapDecisionBundleChildInvalidEdge
       }
   }

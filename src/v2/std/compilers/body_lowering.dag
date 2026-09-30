@@ -33,6 +33,7 @@ import v2.std.node {
   Authored,
   Node,
   Positional,
+  StructuralLabel,
   Symbol,
   Transform,
   TypeNode,
@@ -242,6 +243,7 @@ fn view_whole_positional_children(site: Node) -> Outcome<List<Node>> {
       Accepted { value: xs, diagnostics: _ } =>
         match e.label {
           Authored { name: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
+          StructuralLabel { label: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
           Positional =>
             match operand_slot_of(n: e.target) {
               ResidueOperand { node: r } => view_refusal(reason: ^body_view_operand_residue, at: r)

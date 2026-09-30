@@ -46,6 +46,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  StructuralLabel,
 }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.compilers.target_model {
@@ -784,6 +785,7 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
                     Violates { diagnostic: d } => Violates { diagnostic: d }
                   }
                 Authored { name: _ } => acc
+                StructuralLabel { label: _ } => acc
               }
           }
         }
@@ -899,6 +901,7 @@ fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<L
                 grammar_relation_rules_formal_productions_step(acc: acc, row: edge.target)
               }
             Positional => acc
+            StructuralLabel { label: _ } => acc
           }
         }
       )
@@ -955,6 +958,7 @@ fn formal_productions_from_catalog_node(node: Node) -> Outcome<List<FormalProduc
                     Violates { diagnostic: d } => outcome_rejected(d)
                   }
                 Authored { name: _ } => outcome_accepted(value: productions)
+                StructuralLabel { label: _ } => outcome_accepted(value: productions)
               }
             }
           )
@@ -1100,6 +1104,7 @@ fn conj_positional_children(parent: Node) -> List<Node> {
           match edge.label {
             Positional => list_snoc_item(xs: acc, item: edge.target)
             Authored { name: _ } => acc
+            StructuralLabel { label: _ } => acc
           }
         }
       )
@@ -2838,6 +2843,7 @@ fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> O
                     )
                   }
                 Positional => acc
+                StructuralLabel { label: _ } => acc
               }
             }
           ) {
@@ -2912,6 +2918,7 @@ fn grammar_relation_row_forward_select(
                 )
               }
             Positional => acc
+            StructuralLabel { label: _ } => acc
           }
         }
       )
@@ -3038,6 +3045,11 @@ fn grammar_node_carries_surface_identity(node: Node, surface_identity: Symbol) -
                   node: e.target,
                   surface_identity: surface_identity
                 )
+            StructuralLabel { label: _ } =>
+              grammar_node_carries_surface_identity(
+                node: e.target,
+                surface_identity: surface_identity
+              )
             Positional =>
               grammar_node_carries_surface_identity(
                 node: e.target,

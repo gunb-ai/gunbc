@@ -108,6 +108,7 @@ import v2.std.node {
   Authored,
   Node,
   Positional,
+  StructuralLabel,
   Symbol,
   Transform,
   TypeNode,
@@ -3800,6 +3801,7 @@ fn dag_symbol_literal_name_edge_target_optional(edge: Edge) -> Optional<Node> {
       } else {
         optional_absent()
       }
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }
@@ -4138,6 +4140,7 @@ fn dag_string_literal_value_edge_target_optional(edge: Edge) -> Optional<Node> {
       } else {
         optional_absent()
       }
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }
@@ -6527,6 +6530,12 @@ fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: QualifiedName
             node: edge.target,
             acc: qualified_name_snoc(qn: acc, segment: seg)
           )
+        StructuralLabel { label: _ } =>
+          outcome_rejected(Diagnostic {
+            reason: ^qualified_name_structure_invalid,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
         Positional =>
           outcome_rejected(Diagnostic {
             reason: ^qualified_name_structure_invalid,

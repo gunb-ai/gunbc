@@ -117,6 +117,7 @@ fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
             false
           } else {
             match e.label {
+              StructuralLabel { label: _ } => false
               Authored { name: sym } => parse_tree_projection_edge(name: sym)
               Positional => true
             }
@@ -472,6 +473,7 @@ fn namespace_graft_named_list_has_name(edges: List<Edge>, name: Symbol) -> Bool 
       true
     } else {
       match edge.label {
+        StructuralLabel { label: _ } => false
         Authored { name: n } => n == name
         Positional => false
       }
@@ -482,6 +484,7 @@ fn namespace_graft_named_list_has_name(edges: List<Edge>, name: Symbol) -> Bool 
 fn namespace_graft_flatten_minus_decl_names(from_decls: List<Edge>, flattened: List<Edge>) -> List<Edge> {
   fold(flattened, init: [], f: fn(acc, edge) {
     match edge.label {
+      StructuralLabel { label: _ } => acc
       Authored { name: n } =>
         if namespace_graft_named_list_has_name(edges: from_decls, name: n) {
           acc

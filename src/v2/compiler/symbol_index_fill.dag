@@ -189,6 +189,7 @@ fn symbol_index_fill_containment_node(
     TypeNode { connective: Disj } =>
       fold(node.children, init: index, f: fn(acc, edge) {
         match edge.label {
+          StructuralLabel { label: _ } => acc
           Authored { name: sym } =>
             let variant_path = qualified_name_snoc(qn: path, segment: sym)
             let with_variant = symbol_index_mark_declared_payload(
@@ -251,6 +252,7 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
         TypeNode { connective: Disj } =>
           fold(n.children, init: counts, f: fn(c, e) {
             match e.label {
+              StructuralLabel { label: _ } => c
               Authored { name: sym } =>
                 map_insert(
                   m: c,
@@ -400,6 +402,7 @@ fn symbol_index_fill_unique_variant_aliases(
         TypeNode { connective: Disj } =>
           fold(n.children, init: acc, f: fn(a2, e) {
             match e.label {
+              StructuralLabel { label: _ } => a2
               Authored { name: sym } =>
                 if disj_variant_count_of(counts: counts, sym: sym) == 1 {
                   symbol_index_mark_declared_payload(

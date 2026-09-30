@@ -116,13 +116,13 @@ import v2.std.node {
   TypeNode,
   fold_node,
   arrow_first_positional_target,
-  arrow_signature_order_label,
   FirstPositionalAbsent,
   FirstPositionalFound,
   edge_label_of,
   node_with_occurrence_id,
   well_formed,
   MatchArmPatternEdge,
+  ArrowSignatureOrderEdge,
   edge_is_core,
   StructuralLabel,
   label_sort_key,
@@ -1464,12 +1464,13 @@ fn resolve_transform_children(
           } else {
             resolve_node_walk(ctx: ctx, n: e.target)
           }
-        Authored { name: _ } =>
+        StructuralLabel { label: _ } =>
           if edge_is_cast_target(e: e) {
             resolve_type_role_target(ctx: ctx, target: e.target)
           } else {
             resolve_node_walk(ctx: ctx, n: e.target)
           }
+        Authored { name: _ } => resolve_node_walk(ctx: ctx, n: e.target)
       }
     )
   }))
@@ -1918,10 +1919,10 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
   let scope_body = ScopeFrame { locals: value_params, outer: ctx.scope }
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     match e.label {
-      Authored { name: _ } =>
+      StructuralLabel { label: _ } =>
         if edge_is_type_params(e: e) {
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
-        } else if (edge_label_of(e: e) == arrow_signature_order_label) {
+        } else if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
           child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
         } else {
           child_walk_step(
@@ -1930,6 +1931,12 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
             r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_body), n: e.target)
           )
         }
+      Authored { name: _ } =>
+        child_walk_step(
+          w: acc,
+          e: e,
+          r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_body), n: e.target)
+        )
       Positional =>
         child_walk_step(
           w: acc,

@@ -1,6 +1,6 @@
 module v2.lens.complexity_accumulator_copy.analyze
 
-import v2.std.node { Authored }
+import v2.std.node { Authored, StructuralLabel }
 
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match v2.std.node_query.find_named_child(root: cap, name: name) {
@@ -82,6 +82,7 @@ fn postfix_expr_capture(node: Node) -> Optional<Node> {
 fn edge_skips_identifier_count(e: Edge) -> Bool {
   match e.label {
     Authored { name: nm } => nm == ^grammar_production_identity_node_projection
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }

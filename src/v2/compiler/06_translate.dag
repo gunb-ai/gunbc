@@ -66,6 +66,7 @@ import v2.std.witness {
   Violates
 }
 import v2.std.node {
+  StructuralLabel,
   Arrow,
   Atom,
   Cardinality,
@@ -1236,6 +1237,10 @@ fn translate_algebra(
             TypeExprTranslateDone { node: _ } => Accepted { value: done, diagnostics: d }
             TypeExprTranslateSlots { slots: slots } =>
               match e.label {
+                StructuralLabel { label: _ } =>
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: e.target)
+                  )
                 Authored { name: label } =>
                   match child {
                     Rejected { diagnostics: cr } =>
@@ -1281,6 +1286,10 @@ fn translate_algebra(
               }
             TypeExprTranslateVariants { variants: variants } =>
               match e.label {
+                StructuralLabel { label: _ } =>
+                  outcome_rejected(
+                    translate_type_expression_shape_missing_diagnostic(node: e.target)
+                  )
                 Authored { name: label } =>
                   match child {
                     Rejected { diagnostics: cr } =>

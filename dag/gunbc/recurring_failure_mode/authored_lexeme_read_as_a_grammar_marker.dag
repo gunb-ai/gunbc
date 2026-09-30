@@ -1,5 +1,7 @@
 module gunbc.recurring_failure_mode.authored_lexeme_read_as_a_grammar_marker
 
+import v2.std.node { Authored, EdgeLabel, StructuralLabel }
+
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
@@ -13,6 +15,7 @@ data authored_lexeme_read_as_a_grammar_marker: RecurringFailureMode = RecurringF
     "CENSUS (this change): 222 non-test references to the 65 marker symbols (every `emitted:` identity in `v2.extdeps.languages.dag`, plus the four sugar keys). 185 read the marker through its emission (`parse_production_emitted_identity_optional`) or are declarations; 19 are prose; 10 are BARE; 8 are UNCLEAR. The four ^dag_c3_surface_sugar_* rules had NO producer anywhere (src/v2, dag, seed): only test fixtures built those atoms, so the rules, the SurfaceAtomKey arm and their two fixture claims were deleted rather than re-keyed.",
     "OPEN, EDGE-LABEL CHANNEL (not fixed here; its fix is a Node-model change the owning lane routes): lowering and the graft put authored parameter, field and declaration names into `Named` edge labels, and edge labels carry no record of whether the grammar or the author named them. Four helpers match marker labels there: `v2.extdeps.languages.dag` `dag_surface_module_header_metadata_edge`, the Absent-emission fallback arm of `dag_node_is_module_root_conj`, `v2.compiler.body_lowering_fold` `body_lower_edge_names_where_clause`, and `v2.lens.module_graph` `site_is_import_syntax_mention`. Specimen, read and not run: `fn f(dag_surface_module_header: Int)` gives the parameter Conj a member edge named like the header, so `dag_node_is_module_root_conj` answers true for it in resolve.",
     "RUNG FOUND AT: below the floor (a silent rewrite of an identifier) on the atom channel. RUNG NOW: structurally guaranteed on the atom channel -- no marker reader keys on a bare atom, so authored text cannot reach one. The edge channel stays below the floor. CEILING: structurally impossible -- a grammar marker is a construct authored text has no constructor for. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a `Named` edge label carries whether the grammar or the author named it, and every marker-label reader reads that provenance, so no authored name can inhabit a marker label.",
+    "EDGE-LABEL CHANNEL, CLIMBED (quiet-koi-814, the EdgeLabel cut). The four helpers named above match the StructuralLabel arm, so an authored name spelled like a marker label is an Authored value and reaches none of them; the climb, its rung and the frontier that still compares grammar labels by text inside the Authored arm are recorded once, on `gunbc.recurring_failure_mode` `behavior_named_edge_label_validated_not_constructed`, not here.",
   ],
 
   evidence: [
