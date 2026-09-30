@@ -12,7 +12,7 @@ import std.measure { TokenCount, token_count, token_count_value, Second, second,
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
-  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, harness_tool_contract_wire,
+  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnAlignmentCheckpointDue, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label,
   harness_outcome_detail,
 }
@@ -234,6 +234,7 @@ fn harness_macbook_config(backend_url: String, model: NonEmptyStr, unit: Harness
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_default_system_prompt,
+    alignment_chain_fingerprint: "",
     request_scratch_path: harness_request_scratch_path,
     events_path: harness_probe_events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -262,11 +263,16 @@ fn harness_probe_outcome(backend_url: String, model: NonEmptyStr, unit: HarnessS
 // happened rather than whether the task succeeded. Nothing here inspects the assistant's text for
 // correctness: that is external verification's subject, and a harness that graded its own worker's
 // answer would be the same conflation DCH-2 forbids between a stop reason and a completed task.
+// CHECKPOINT-DUE IS A CONTROL TRANSFER, NOT A FAILURE (review 5358022153): it gets its own admitted
+// exit standing (3) rather than the generic failure code, so a consumer matching on 1 never reads a
+// planned adjudication handoff as a crash. The belt's authority remains the provider event stream.
 fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
   match outcome {
     TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
       ExitSuccess
     TurnCompletedByArtifact { path: _, steps_taken: _ } => ExitSuccess
+    TurnAlignmentCheckpointDue { steps_taken: _ } =>
+      ExitFailure { code: 3, reason: harness_outcome_label(outcome: outcome) }
     _ =>
       ExitFailure {
         code: 1,
@@ -508,6 +514,7 @@ fn harness_worker_config(
   model: NonEmptyStr,
   unit: HarnessServingUnit,
   system_prompt: String,
+  alignment_chain_fingerprint: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend_url,
@@ -517,6 +524,7 @@ fn harness_worker_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
+    alignment_chain_fingerprint: alignment_chain_fingerprint,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -566,6 +574,7 @@ fn harness_worker_cli(
   repo_root: String,
   gunbc_program: String,
   attempt_identity: String,
+  alignment_chain_fingerprint: String,
 ) -> ProcessExit {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
   let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, policy: harness_seat_policy)
@@ -583,6 +592,7 @@ fn harness_worker_cli(
           model: bound_model,
           unit: bound_unit,
           system_prompt: system_prompt,
+          alignment_chain_fingerprint: alignment_chain_fingerprint,
         ),
         prompt: brief,
         step_budget: harness_worker_step_budget,
@@ -631,6 +641,7 @@ fn harness_reviewer_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
+    alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -712,6 +723,7 @@ fn harness_auditor_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
+    alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -802,6 +814,7 @@ fn harness_supervisor_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
+    alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),

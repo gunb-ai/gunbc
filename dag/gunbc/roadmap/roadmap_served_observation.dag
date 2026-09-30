@@ -254,7 +254,7 @@ fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: 
 
 fn served_observation_profiles_for_instance(instance: HostDashboardInstance) -> List<PrincipalProfile> {
   match profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance)) {
-    ProfileStoreRead { profiles } => profiles
+    ProfileStoreRead { profiles, skipped: _ } => profiles
     ProfileStoreUnread { step: _, reason: _ } => []
   }
 }

@@ -166,6 +166,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved,
   AlignmentChained, AlignmentChainLink, AlignmentChainForked, AlignmentRowUndeclared,
+  AlignmentWalkUnrooted, AlignmentEdgeContributionRefused, AlignmentNestingCyclic,
   alignment_resolve, alignment_resolve_chain, alignment_base_cadence_state, alignment_refusal_reason,
 }
 import std.decl_ref { decl_ref }
@@ -210,11 +211,16 @@ fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDoc
 fn fixture_ready_resolution(node_id: String, project_ids: List<String>) -> AlignmentResolution {
   alignment_resolve_chain(
     chain: AlignmentChained {
-      task: AlignmentChainLink { node_id: node_id, purpose: "Fixture purpose", boundary: "Fixture boundary" },
+      task: AlignmentChainLink { node_id: node_id, purpose: "Fixture purpose", boundary: "Fixture boundary", current_approach: "fixture approach", red_control: "fixture red", handback: "fixture handback", displaced_cost: "fixture cost", contribution_to_parent: "fixture contribution" },
       projects: map(project_ids, pid => AlignmentChainLink {
         node_id: pid,
         purpose: join(["Purpose of ", pid], ""),
         boundary: join(["Boundary of ", pid], ""),
+        current_approach: "fixture approach",
+        red_control: "fixture red",
+        handback: "fixture handback",
+        displaced_cost: "fixture cost",
+        contribution_to_parent: "fixture contribution",
       }),
       root: decl_ref(module_path: "gunbc.design_document", decl_name: "design_document"),
     },
@@ -1221,11 +1227,11 @@ fn authority_node_opt(id: String) -> RoadmapNode? {
 
 // THE ONE-AUTHORITY PREAMBLE (review finding 2026-09-26): the preamble IS the resolution's
 // rendered_prompt — gunbc.roadmap.roadmap_alignment owns the alignment answer and this lane only
-// concatenates. For the REAL node namespace-occurrence-transport the derived chain refuses one
-// level up — namespace-binding-kernel has three declared dependents, so the honest preamble is the
-// refusal marker naming the fork, never the confident single-level projection the old string
-// helpers rendered while execution proceeded.
-test fn the_preamble_names_the_derived_refusal_for_a_real_forked_node() -> Bool {
+// concatenates. For the REAL node namespace-occurrence-transport the derived chain now refuses
+// UNROOTED — it holds no membership arc and is not the admitted root, so the honest preamble is
+// the refusal marker naming where the walk halted (review 5354823380), never a confident
+// projection rendered while execution proceeded.
+test fn the_preamble_names_the_derived_refusal_for_an_unrooted_node() -> Bool {
   let resolution = alignment_resolve(
     node_id: "namespace-occurrence-transport",
     turns_elapsed: 2,
@@ -1236,37 +1242,43 @@ test fn the_preamble_names_the_derived_refusal_for_a_real_forked_node() -> Bool 
     AlignmentUnresolved { cause } =>
       preamble.contains("Alignment UNRESOLVED")
         && (match cause {
-          AlignmentChainForked { at, dependents, walked: _ } =>
-            at == "namespace-binding-kernel" && count(dependents) == 3
+          AlignmentWalkUnrooted { at, walked } =>
+            at == "namespace-occurrence-transport" && count(walked) == 0
+          AlignmentChainForked { at: _, dependents: _, walked: _ } => false
+          AlignmentEdgeContributionRefused { member: _, project: _, detail: _ } => false
           AlignmentRowUndeclared { node_id: _ } => false
+          AlignmentNestingCyclic { node_id: _ } => false
         })
-        && string_contains(s: preamble, pattern: "namespace-binding-kernel")
-        && !preamble.contains("this task serves project")
+        && string_contains(s: preamble, pattern: "namespace-occurrence-transport")
     AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
   }
 }
 
-// A RESOLVED CHAIN RENDERS EVERY LEVEL NODE TO ROOT through the same preamble: the L0 pointer, the
-// nearest project with its carried contribution, deeper levels above it, the task contract, and
-// the bounded ask — not just the immediate L1 the deleted projection stopped at.
+// A RESOLVED CHAIN RENDERS EVERY LEVEL ROOT TO LEAF through the same preamble (review
+// 5354823380): the L0 pointer, the root-most project first, the nearer project below it, the task
+// contract last, and the bounded ask — each level carrying its ticket's approach and red control,
+// not a two-field reduction.
 test fn the_preamble_renders_every_chain_level_when_the_resolution_is_ready() -> Bool {
   let preamble = dispatch_continuation_alignment_preamble(
     resolution: fixture_ready_resolution(node_id: "ts-alignment-deep", project_ids: ["arc-near", "arc-far"]),
   )
   preamble.contains(continuation_alignment_l0_pointer)
-    && preamble.contains("this task serves project arc-near: Purpose of arc-near -- boundary: Boundary of arc-near")
-    && preamble.contains("L1 project intent (level 2 above the task): this level serves project arc-far: Purpose of arc-far -- boundary: Boundary of arc-far")
-    && preamble.contains("L2 task contract: ts-alignment-deep: Fixture purpose -- boundary: Fixture boundary")
+    && preamble.contains("L1 project intent: arc-far: Purpose of arc-far")
+    && preamble.contains("L2 project intent: arc-near: Purpose of arc-near")
+    && preamble.contains("L3 task contract: ts-alignment-deep: Fixture purpose")
+    && preamble.contains("approach: fixture approach")
+    && preamble.contains("red control: fixture red")
     && preamble.contains(continuation_alignment_ask)
 }
 
-// A PROJECT-OF-ONE PROJECTS ITS OWN ROW: a node no arc depends on has no arc intent to serve, so
-// its own declared headline and boundary are the L1 line.
-test fn a_project_of_one_names_its_own_row_as_the_project_intent() -> Bool {
+// A CHAIN WITH NO PROJECT LEVELS renders its task contract as the single level below the
+// principles pointer — the shape the admitted root's own chain takes.
+test fn a_projectless_ready_chain_renders_its_task_as_the_single_level() -> Bool {
   let preamble = dispatch_continuation_alignment_preamble(
     resolution: fixture_ready_resolution(node_id: "ts-alignment-project-of-one", project_ids: []),
   )
-  preamble.contains("this node is a project of one, so its own declared row is the intent: Fixture purpose -- boundary: Fixture boundary")
+  preamble.contains("L1 task contract: ts-alignment-project-of-one: Fixture purpose")
+    && preamble.contains("contribution to parent: fixture contribution")
 }
 
 // THE INITIAL BRIEF IS UNCHANGED: the preamble exists only on continuation origins, the fresh
@@ -1293,23 +1305,30 @@ test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() ->
     && !fresh.contains("Alignment (re-checked")
     && cont.starts_with("CONTINUATION: this is turn 2 of 3")
     && cont.contains("verification failed: sandbox render red")
-    && cont.contains("\nAlignment (re-checked at every continuation turn):\n")
+    && cont.contains("\nAlignment (re-checked at every checkpoint adjudication):\n")
     && cont.contains(continuation_alignment_ask)
     && (match fresh_resolution {
-      AlignmentUnresolved { cause } => (match cause { AlignmentRowUndeclared { node_id } => node_id == "ts-alignment-fresh"  AlignmentChainForked { at: _, dependents: _, walked: _ } => false })
+      AlignmentUnresolved { cause } => (match cause { AlignmentRowUndeclared { node_id } => node_id == "ts-alignment-fresh"  AlignmentChainForked { at: _, dependents: _, walked: _ } => false  AlignmentWalkUnrooted { at: _, walked: _ } => false
+        AlignmentEdgeContributionRefused { member: _, project: _, detail: _ } => false  AlignmentNestingCyclic { node_id: _ } => false })
       AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
     })
 }
 
 // NO SPAWN ON AN UNRESOLVED CHAIN — THE REAL PRODUCER, THE REAL AUTHORITY (the review finding's
-// discriminating control). The production node shell-dag-cron-entry-line-builder's chain refuses
-// at the shell-gate-migration fork ON THE LIVE AUTHORITY; the same resolution the belt derives at
-// spawn time is handed to the real spawn fold, and the fold's answer is DispatchSpawnRefused at
-// the alignment gate — the Refused arm carries no DispatchSpawnCommands, so zero spawn commands
-// exist: no worktree add, no state prepare, no session container. Execution cannot proceed on a
-// chain the authority cannot read.
+// discriminating control). The production node extended-admission-cardinality's chain refuses
+// UNROOTED on the live authority (its membership walk never reaches the admitted root project,
+// review 5354823380); the same resolution the belt derives at spawn time is handed to the real
+// spawn fold, and the fold's answer is DispatchSpawnRefused at the alignment gate — the Refused
+// arm carries no DispatchSpawnCommands, so zero spawn commands exist: no worktree add, no state
+// prepare, no session container. Execution cannot proceed on a chain the authority cannot read.
+//
+// Lane B (review 5358022153, 2026-09-30) rooted every dispatchable node and LEFT THIS NODE
+// UNROOTED ON PURPOSE: it is the named refusal subject keeping this control discriminating, and
+// it carries ExecutionContractUnspecified, so dispatch would refuse it at launch admission long
+// before alignment either way. Re-rooting it (or any future contract-bearing node) requires
+// choosing a new unrooted subject for this claim first.
 test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands() -> Bool {
-  match authority_node_opt(id: "shell-dag-cron-entry-line-builder") {
+  match authority_node_opt(id: "extended-admission-cardinality") {
     Absent => false
     Present { value: node } =>
       match dispatch_spawn_commands_for_resolved_instance(
@@ -1321,13 +1340,12 @@ test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands()
         effort: ReasoningMedium,
         model: dispatch_codex_default_model,
         origin: FreshFromBase,
-        resolution: alignment_resolve(node_id: "shell-dag-cron-entry-line-builder", turns_elapsed: 1, state: alignment_base_cadence_state()),
+        resolution: alignment_resolve(node_id: "extended-admission-cardinality", turns_elapsed: 1, state: alignment_base_cadence_state()),
       ) {
         DispatchSpawnRefused { step, detail } =>
           step as String == "alignment"
-            && string_contains(s: detail, pattern: "shell-gate-migration")
-            && string_contains(s: detail, pattern: "fleet-closed-loop-converge")
-            && string_contains(s: detail, pattern: "shell-residue-zero")
+            && string_contains(s: detail, pattern: "extended-admission-cardinality")
+            && string_contains(s: detail, pattern: "admitted root")
         DispatchSpawnReady { commands: _ } => false
       }
   }

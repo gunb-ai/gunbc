@@ -10,7 +10,7 @@ import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, Form
 
 import gunbc.roadmap_allocation_location { allocation_page_path }
 import gunbc.auth.profile_projection {
-  profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all,
+  profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
 }
 import gunbc.roadmap_allocation_page { allocation_page, allocation_client_path }
@@ -156,8 +156,15 @@ import gunbc.roadmap_launch_admission {
 import gunbc.roadmap_page {
   roadmap_page_for_projection_launch, roadmap_fleet_page,
   issue_detail_page_for, issue_detail_node_exists,
+  project_suite_headline, project_suite_not_found_page, project_suite_page_launch, project_suite_rows,
 }
-import gunbc.roadmap_authority { RoadmapAuthorityProjection, roadmap_authority_projection }
+import gunbc.roadmap_authority {
+  RoadmapAuthorityProjection, roadmap_authority_projection,
+  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+  declared_roadmap_edges,
+}
+import gunbc.roadmap_nesting { declared_roadmap_memberships }
+import gunbc.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
   sandbox_client_js_source, sandbox_asset_path,
@@ -345,6 +352,7 @@ type RoadmapServeHandler
   | IssueAssignHandler
   | IssueAssignmentContextHandler
   | IssueCommentHandler
+  | ProjectSuitePageHandler
   | AuthLoginHandler
   | AuthGoogleCallbackHandler
   | AuthLogoutHandler
@@ -437,6 +445,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/project/\{node_id\}", handler: ProjectSuitePageHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/issue/\{node_id\}/assignment", handler: IssueAssignmentContextHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
@@ -896,12 +905,51 @@ fn serve_issue_detail_response_over(
   } }
 }
 
+// THE PROJECT SUITE ROUTE (GET /project/<node_id>): ONE project's direct membership listing
+// rendered live from the same authorities the issue detail route reads -- the declared nesting
+// for the member set, the declared dependency edges for the topological layering, the plan's own
+// rows for the titles. The heading is the project row's own ticket headline; an absent row or a
+// non-ticket row renders the not-found document at 404, the issue route's grain. The page carries
+// no form and no session secret, so it renders for every viewer standing exactly alike; the
+// viewer label is still resolved here, so the render entry keeps the issue route's signature
+// shape. A refused plan is a located 503, never a silent empty page.
+fn serve_project_suite_response_over(
+  plan: RoadmapAuthorityProjection,
+  params: List<PathParamBinding>,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  let viewer = authenticated_viewer_label(evidence: request.security.authentication)
+  match plan {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      serve_text_response(status: 503, content_type: text_plain_utf8,
+        body: join(["project suite unavailable: the roadmap authority refused at ", detail], ""))
+    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } =>
+      match project_suite_headline(nodes: doc_all_nodes(doc: doc), node_id: node_id) {
+        Absent =>
+          serve_page_response_with_status(page: project_suite_not_found_page(node_id: node_id, viewer: viewer), status: 404)
+        Present { value: headline } =>
+          serve_page_response_with_status(
+            page: project_suite_page_launch(
+              headline: headline,
+              node_id: node_id,
+              rows: project_suite_rows(
+                memberships: declared_roadmap_memberships(),
+                edges: declared_roadmap_edges(),
+                nodes: doc_all_nodes(doc: doc),
+                project: node_id),
+              viewer: viewer),
+            status: 200)
+      }
+  }
+}
+
 // THE AUTH PROFILE ROSTER, read once per render under the never-blocks law: the store's refusal
 // (or absence) degrades to the empty roster — the page renders every assignee surface's fallback
 // exactly as before, never a failed page on a profile read.
 fn serve_profiles_for_instance(instance: HostDashboardInstance) -> List<PrincipalProfile> {
   match profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance)) {
-    ProfileStoreRead { profiles } => profiles
+    ProfileStoreRead { profiles, skipped: _ } => profiles
     ProfileStoreUnread { step: _, reason: _ } => []
   }
 }
@@ -1403,13 +1451,14 @@ fn roadmap_serve_invoke_over(
     ApprovalStatusHandler => approval_status_response(params: params)
     SandboxEchoHandler => sandbox_echo_response(request: request)
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan, params: params, request: request)
+    ProjectSuitePageHandler => serve_project_suite_response_over(plan: plan, params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan, request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
     AuthLoginHandler => auth_login_response(instance: instance, request: request)
     AuthGoogleCallbackHandler => auth_google_callback_response(instance: instance, path: request.path)
     AuthLogoutHandler => auth_logout_response(instance: instance, request: request)
-    AuthSessionHandler => auth_session_response(request: request)
+    AuthSessionHandler => auth_session_response_over(instance: instance, request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
@@ -2795,6 +2844,89 @@ fn auth_session_response(request: ServeHttpRequest<RequestAuthenticationEvidence
     content_type: application_json_utf8,
     body: auth_session_body(evidence: request.security.authentication),
   )
+}
+
+// THE SESSION STANDING READS THE DURABLE PROJECTION (Cut B): the header displays the profile the
+// projection carries, not a freshly parsed session wire, so merge-retained members cannot be
+// silently reverted by a login that omitted a claim. The session stays the identity authority;
+// the projection is the display authority; a member the projection does not hold falls back to
+// the session's. The roster's degradation standing (unreadable store, skipped records) is
+// reported as data -- a missing-looking avatar must not read as 'nobody published'.
+fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  let roster = profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance))
+  serve_text_response(
+    status: 200,
+    content_type: application_json_utf8,
+    body: auth_session_body_over(roster: roster, evidence: request.security.authentication),
+  )
+}
+
+fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonValue> {
+  let unreadable = [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ] as List<JsonValue>
+  let partial = [ json_kv(key: "profile_standing", value: json_string(s: "one or more profile records unreadable; the affected members render their fallback")) ] as List<JsonValue>
+  match roster {
+    ProfileStoreUnread { step: _, reason: _ } => unreadable
+    ProfileStoreRead { profiles: _, skipped } =>
+      if count(skipped) == 0 {
+        [] as List<JsonValue>
+      } else {
+        partial
+      }
+  }
+}
+
+fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenticationEvidence) -> String {
+  serialize_json(v: json_object(members: match evidence {
+    GoogleOidcSession { session } => {
+      let found = match roster {
+        ProfileStoreRead { profiles, skipped: _ } =>
+          filter(profiles, p => principal_ref_eq(a: p.principal, b: session.principal)).first()
+        ProfileStoreUnread { step: _, reason: _ } => none
+      }
+      let name = match found {
+        Present { value: stored } => match stored.name {
+          Present { value: n } => Present { value: n }
+          Absent => session.profile.name
+        }
+        Absent => session.profile.name
+      }
+      let email = match found {
+        Present { value: stored } => match stored.email {
+          Present { value: e } => Present { value: e }
+          Absent => session.profile.email
+        }
+        Absent => session.profile.email
+      }
+      let picture = match found {
+        Present { value: stored } => match stored.picture {
+          Present { value: u } => Present { value: u }
+          Absent => session.profile.picture
+        }
+        Absent => session.profile.picture
+      }
+      concat([
+        json_kv(key: "authenticated", value: json_bool(b: true)),
+        json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
+        json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
+        json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+      ], concat(auth_session_picture_members(picture: picture), concat(auth_session_name_members(name: name), concat(auth_session_email_members(email: email), auth_session_roster_standing_members(roster: roster)))))
+    }
+    SessionStandingInvalid { standing } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: standing))),
+      json_kv(key: "viewer", value: json_string(s: "")),
+    ]
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
+    AuthAbsent => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
+      json_kv(key: "viewer", value: json_string(s: "")),
+    ]
+  }))
 }
 
 // THE OPTIONAL PICTURE MEMBER of the session wire: present only when the session's profile

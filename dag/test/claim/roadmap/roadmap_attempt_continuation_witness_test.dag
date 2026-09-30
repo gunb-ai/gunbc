@@ -32,7 +32,7 @@ import gunbc.roadmap_workflow_stage {
 }
 
 fn te(child: String, parent: String) -> RoadmapMembership {
-  RoadmapMembership { project: child, member: parent }
+  RoadmapMembership { project: child, member: parent, contribution: "fixture contribution" }
 }
 
 fn pri(

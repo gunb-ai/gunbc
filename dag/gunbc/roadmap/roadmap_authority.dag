@@ -3084,6 +3084,262 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the census, the wall or the frozen roster with its dissolution trigger, and both controls."
       )
     ),
+    active_small(
+      identity: "rn_GUNBCROOT0PROJECT0FACTORY0A",
+      id: "gunbc-project-root",
+      owner: "program",
+      path: "dag/gunbc/design_document.dag",
+      t: fields(
+        headline: "Build the self-hosting, proof-carrying LLM software factory",
+        boundary: "The admitted root of the functional decomposition: every dispatchable task reaches this node through authored membership, each edge carrying why the child's work advances its parent. DESIGN.md is the principles authority orthogonal to this hierarchy, not a level of it.",
+        displaced_cost: "Without a declared root, a projectless task reads as its own justification and drift has no chain to be measured against.",
+        first_slice: "Admit this root, attach the active harness lineage and the shell batch to it, and refuse alignment chains that end anywhere else.",
+        red_control: "A task whose membership walk ends at a node not declared a root refuses its alignment resolution; this node is the only parentless one the walk may end at.",
+        out_of_scope: "This node is never dispatched and never carried by an execution contract; it exists so the walk has an admitted end.",
+        handback: "The rooted hierarchy, the walk's refusal of unrooted chains, and the receipts binding both."
+      )
+    ),
+    active_small(
+      identity: "rn_HARNESS0WORK0LIFECYCLE00A",
+      id: "harness-work-lifecycle",
+      owner: "harness",
+      path: "docs/plans/harness-work-lifecycle.md",
+      t: fields(
+        headline: "Make the mandatory journey from intake through delivery workflow-owned, durable, recoverable, and autonomous",
+        boundary: "The steps every code change must traverse -- orientation, implementation, test, commit, publication, review -- are owned by the workflow as durable state, not by an agent's memory of its instructions.",
+        displaced_cost: "Every obligation left in prose is re-learned per session and silently dropped under pressure; the failures look like agent error but are missing structure.",
+        first_slice: "Name the mandatory steps of one real worker journey and drag the first of them into a durable, workflow-owned mechanism.",
+        red_control: "A step the workflow claims to own survives process death and controller restart; one that lives only in a prompt does not count.",
+        out_of_scope: "No change to what verification or review require; the lane is who owns the journey, not whether it happens.",
+        handback: "The lifecycle model, the durable state, and the receipt of one journey completed by workflow ownership."
+      )
+    ),
+    active_small(
+      identity: "rn_HARNESS0RECURSIVE0ALIGN0A",
+      id: "harness-recursive-alignment",
+      owner: "harness",
+      path: "docs/plans/harness-work-lifecycle.md",
+      t: fields(
+        headline: "Allow work to continue across durable epochs while preserving alignment to every project level and the task contract",
+        boundary: "Continuation is unbounded in time but bounded in grounding: at each epoch boundary an independent adjudication reads the attempt's evidence against its rooted chain and resumes, steers, re-plans, routes, or stops the lineage.",
+        displaced_cost: "A fixed round budget ends correct work mid-task; uncapped continuation without adjudication trades longer execution for quiet drift. Both failure shapes were measured on live workers.",
+        first_slice: "Turn the harness's round-count terminal into a checkpoint-due announcement the workflow adjudicates outside the worker loop.",
+        red_control: "A worker crosses two checkpoints on one lineage and submits one candidate; no checkpoint is reported as task failure or completion; a planted steer is accepted and visible in the next epoch.",
+        out_of_scope: "The checkpoint never establishes submission, verification, publication, or readiness; those gates are untouched.",
+        handback: "The checkpoint mechanism, the durable cadence state, the adjudication boundary, and the two-checkpoint acceptance receipt."
+      )
+    ),
+    active_small(
+      identity: "rn_HPROMPT0CONTEXT0MODEL00A",
+      id: "harness-prompt-context-model",
+      owner: "harness",
+      path: "dag/gunbc/harness/harness_prompt_context.dag",
+      t: fields(
+        headline: "A prompt is a projection of an admitted context snapshot, never an authored string",
+        boundary: "Prompt inputs are typed (authority declaration + revision, work contract + revision, evidence with standing, prior conversation turns, guidance receipts); a context snapshot binds them to an attempt lineage, epoch, and source revision; provider envelopes are late projections of a PromptPlan; a render receipt digests exactly what was rendered. A withdrawn item cannot render as established; a conversation turn cannot fork from bytes the lineage does not own.",
+        displaced_cost: "Today the modeled guidance premises collapse into system_prompt: String at the config boundary, so a contradiction between two inputs is concatenated and shipped to the model, and a stale conclusion can resurface from a provider session as if it were a fact.",
+        first_slice: "Stand up the PromptInput/PromptContextSnapshot/PromptSegment/PromptPlan types with the render receipt, and make harness_guidance emit modeled segments rather than the final system-prompt string.",
+        red_control: "Identical snapshots render identical digests; changing an authority revision invalidates the old render; a Withdrawn input cannot reach a rendered segment; compaction cannot drop unresolved guidance or a tool result's matching call; restart reconstructs the same prompt from durable inputs.",
+        out_of_scope: "Segment content is rendered prose, digested -- the type system guards input provenance and revision, not the prose itself. No semantic contradiction inference between free-text inputs; conflicts must be typed to refuse.",
+        handback: "The snapshot/segment/plan model, the render receipt, harness_guidance emitting segments, and the controls."
+      )
+    ),
+    active_small(
+      identity: "rn_HCHECKPOINT0PLANNER000A",
+      id: "harness-checkpoint-subject-planner",
+      owner: "harness",
+      path: "dag/gunbc/roadmap/roadmap_alignment.dag",
+      t: fields(
+        headline: "Freeze the checkpoint subject and derive the per-level probe obligations, purely",
+        boundary: "Given an AlignmentCheckpointIdentity and the resolved chain, derive the homogeneous probe population (principles, root project, each intermediate project, task), each obligation carrying its level contract, the edge contribution it judges against, the prior guidance outstanding at that level, and the PromptContextSnapshot identity it projects from. No model call, no workspace effect, no verdict: this is the pure plan the durable scheduler executes.",
+        displaced_cost: "If probe obligations are derived inside the execution loop, a crash mid-fan-out cannot say which probes existed, and reruns risk minting duplicate verdicts for one checkpoint.",
+        first_slice: "The obligation-derivation function and its witness: one checkpoint over the harness lineage derives exactly four obligations in root-to-leaf order, each keyed by the checkpoint identity.",
+        red_control: "The same checkpoint identity derives the identical obligation set (idempotent re-derivation after a crash); an obligation's level contract digest and contribution digest come from the chain, not re-authored; a checkpoint whose chain fingerprint moved refuses re-derivation.",
+        out_of_scope: "No probe execution, no roundup, no resume; those are the scheduler and adjudication folds. No PromptPlan rendering here either -- the probes' plans are assembled where they execute.",
+        handback: "The derivation, the obligation carrier, the idempotency witness, and the join key the scheduler consumes."
+      )
+    ),
+    active_small(
+      identity: "rn_HCONVO0LOG0FORK0POINTS0A",
+      id: "harness-conversation-log-forking",
+      owner: "harness",
+      path: "dag/gunbc/harness/harness_turn.dag",
+      t: fields(
+        headline: "The attempt lineage owns its conversation log; epochs resume and probes fork from typed fork points",
+        boundary: "Every round's exact wire (messages sent, blocks received) persists under the attempt's state directory keyed by round, so any (attempt, epoch, round) names an exact conversation state. Epoch resume replays the log to its tip and appends the guidance bundle; an alignment probe forks at the checkpoint's log tip: shared chain prefix plus one level-specific suffix branch. The engine's prefix cache only accelerates what the log already makes correct; nothing may depend on the cache being warm.",
+        displaced_cost: "Without a durable log, continuation re-briefs blind, a worker's hard-won context dies with its process, and 'fork from a known point' is impossible because no known point exists.",
+        first_slice: "Persist per-round request/response bodies keyed by round in the attempt state directory; wire continuation resume to replay from the log instead of a fresh brief.",
+        red_control: "A fork is typed: ForkAdmitted { tip } / ForkInvalid { cause }, where a model, weights, chat-template, or chain-fingerprint change invalidates the fork point; a crashed worker's next epoch resumes from the durable log, not from a re-authored brief; a probe can name the exact log tip it forked from.",
+        out_of_scope: "No engine-side KV pinning or replica affinity; the cache stays an opportunistic derivation. No change to what the alignment probes judge.",
+        handback: "The durable log, the fork-point typing, resume-from-log, and receipts for crash recovery and invalidation."
+      )
+    ),
+    active_small(
+      identity: "rn_HALIGN0CHECKPOINT0RESUME0A",
+      id: "harness-alignment-checkpoint-resume",
+      owner: "harness",
+      path: "dag/gunbc/harness/harness_turn.dag",
+      t: fields(
+        headline: "Replace fixed round exhaustion with an evidence-bound checkpoint whose verdict resumes, steers, re-plans, routes, or stops the same attempt lineage",
+        boundary: "At the epoch boundary the harness emits turn.alignment_checkpoint_due bound to the chain fingerprint and returns control; adjudication runs outside the worker loop against durable evidence; the verdict and next cadence state publish atomically; only adjudication resumes the lineage.",
+        displaced_cost: "An in-loop checkpoint that asks the worker to grade itself mints continuation on the worker's own word -- the drift the checkpoint exists to catch is exactly the drift such a worker would not report.",
+        first_slice: "Typed TurnAlignmentCheckpointDue outcome plus the durable event, the admitted-root chain projection, and the belt's adjudication-and-resume wiring.",
+        red_control: "An unrooted task refuses its chain; a worker's own aligned assertion cannot mint a continuation receipt; a changed node contract or edge contribution invalidates earlier receipts; a crash after verdict publication produces exactly one next epoch.",
+        out_of_scope: "No change to submission, verification, or publication gates; reviewers, auditors and probes keep hard step budgets.",
+        handback: "The outcome, the rooted projection, the adjudication boundary, durable cadence state, and witnesses for the red controls."
+      )
+    ),
+
+    // THE NATIVE-SCM AUTHORITY PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The
+    // dag-scm-design rows are one program (operator ruling 2026-09-13): native SCM becomes the
+    // authority for authoring, proposals, integration and history, with Git and GitHub demoted to
+    // compatibility projections. The three upstream models pin each system's own vocabulary, the
+    // compatibility shape extracts their shared roles, the P0 landing spine and P1 proof kernel
+    // make submit-to-landed real, and the native-authority rows cut the bridge over. This node is
+    // that shared alignment level; the bound row attaches to it, and the remaining rows attach as
+    // their execution contracts land.
+    active_small(
+      identity: "rn_1317A022JY9TLMSN5C9F142XA",
+      id: "dag-scm-program",
+      owner: "source-intent",
+      path: "docs/plans/dag-scm-design.md",
+      t: fields(
+        headline: "Make native SCM the authority, Git a projection",
+        boundary: "The native-SCM program: describe Git, Mercurial, and Pijul on their own terms and extract the compatibility realization shape from those receipts; carry one submitted change from result-finding through permission checks, committing, independent read-back, and compatibility projection; prove one bounded reconciliation rule for directly authored changes with data-driven invariants and certificates; and land the native authority -- CAS slot consumers, Git import wall, bridge cutover -- so authoring, proposals, integration and history no longer route through Git. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "While Git stays the hidden authority, every native refusal has a fallback that makes the PR the source of truth exactly when the native path is under stress, and the SCM domain model stays without a production authoring, submission, or landing route.",
+        first_slice: "Read the rows in the program's authored order: the three upstream models, the claim-indexed evidence carrier, the compatibility shape, the P0 landing spine, the P1 proof kernel, then the native write-spine acceptance and native-authority rows.",
+        red_control: "A dag-scm row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted dag-scm chain, every attached child's edge contribution readable against this intent, and no dag-scm row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE NAMESPACE PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The namespace lane's rows
+    // -- occurrence transport, binding kernel, structural observations, reference-derived closure,
+    // ambiguity discharge, the canonical changeover, and the consumer/import/retirement rows -- are
+    // one functional decomposition of a single claim: what a name means is worked out from where it
+    // is written and decided one canonical way. This node is that shared alignment level; the bound
+    // rows attach to it, and the remaining rows attach as their execution contracts land.
+    active_small(
+      identity: "rn_4K7LFFQ3V1B0NIZA5HUGNWWUD",
+      id: "namespace-unique-on-chain",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Decide every name one canonical way",
+        boundary: "The namespace program: carry occurrences exactly; decide none/one/many with one kernel handed the candidates; observe what a name can see on ordinary compiles; derive what each file depends on from those answers; discharge the genuinely-many cases from real compilation; land the canonical changeover and retire the older deciding mechanisms. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "Several mechanisms deciding the same name differently is how a program silently comes to mean something other than what was written; one reviewable decision is the correctness surface every later guarantee reads through.",
+        first_slice: "Read the rows in the lane's authored order: namespace-occurrence-transport, namespace-binding-kernel, namespace-structural-observations, namespace-reference-derived-closure, namespace-ambiguity-discharge, namespace-canonical-binding, then the consumer, import, and retirement rows.",
+        red_control: "A namespace row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted namespace chain, every attached child's edge contribution readable against this intent, and no namespace row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE V1 DELETION PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The v1_deletion_plan
+    // rows are one program: enumerate what still depends on the old interpreter and old emitter,
+    // observe the hand-written population from the host instead of transcribing it, carry test
+    // coverage across migration, and record the trust ruling that gates removal -- so deletion is a
+    // derived population and a recorded decision, never a judgment call. This node is that shared
+    // alignment level; the bound rows attach to it, and the remaining rows attach as their
+    // execution contracts land.
+    active_small(
+      identity: "rn_WNFHYN3C1DA917SQJMLCTUFX3",
+      id: "v1-deletion-program",
+      owner: "self-host",
+      path: "dag/gunbc/v1/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Delete the old compiler honestly",
+        boundary: "The v1 deletion program: the interpreter's primitive surface becomes enumerable and then model-authoritative; the hand-written Rust population is read from the repository at a known revision rather than transcribed; deleting old tests loses no coverage; the products build and run with the old directory absent; and the seed-honesty ruling records whether independent rebuild must precede removal. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "'Mostly migrated' is not a state anyone can verify; without a derived frontier and a recorded trust ruling, deletion either waits forever or lands silently incomplete.",
+        first_slice: "Read the rows in dependency order: the primitive-surface roster and dispatch authority, the host source observation, the honest-frontier census, test migration, the seed-honesty decision, then the queue drain, emitter deletion, and the v1-free product builds.",
+        red_control: "A deletion-program row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted deletion chain, every attached child's edge contribution readable against this intent, and no v1-deletion row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE V2 EMITTER PRODUCTION LANE (review 5358022153 lane B, 2026-09-30). The self-host claim has
+    // a measurable half: the v2 compiler writes the Rust the factory is built from, and every
+    // produced result records which generator made it. The two bound rows of that lane attach
+    // here; the remaining self-host rows attach as their execution contracts land.
+    active_small(
+      identity: "rn_YYXCOYJGPXICGC4YYL8TPFQH9",
+      id: "v2-emitter-production",
+      owner: "self-host",
+      path: "src/v2/compiler/self_host/candidate_generation.dag",
+      t: fields(
+        headline: "The new compiler writes its own Rust, with provenance",
+        boundary: "The emitter production lane: the v2 compiler reads source, works out the types, translates, and writes real Rust without the old generator deciding any of it; and every produced result says which generator made it and how far it got, as two separate facts that cannot be claimed ahead of their receipts. This node is the lane's decomposition level; the executable rows are its children.",
+        displaced_cost: "Until the new compiler can write Rust on its own, every improvement routes through the generator this lane exists to delete; and without per-generator provenance the transition cannot be measured, only asserted.",
+        first_slice: "Read the rows in dependency order: the producer-provenance roster, the direct-rust-door production walk, then the behavioral-module, compatible-corpus, native-crate-partition, and native-bootstrap rows.",
+        red_control: "An emitter row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this lane.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted emitter chain, every attached child's edge contribution readable against this intent, and no emitter row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE CI END-TO-END EXECUTION PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The
+    // ci-process-end-to-end rows are one program: CI owns its execution, and a verdict names the
+    // work that produced it. The bound row attaches here; the remaining rows attach as their
+    // execution contracts land.
+    active_small(
+      identity: "rn_GG8OZ558D0UB3R98N5MQCDPKB",
+      id: "ci-end-to-end-execution",
+      owner: "ci-control",
+      path: "docs/plans/ci-process-end-to-end.md",
+      t: fields(
+        headline: "CI owns its execution end to end",
+        boundary: "The CI process program: every required check carries the population it actually executed -- which witnesses, which corpus, how many -- a run that executed nothing refuses to report any verdict, and a failure ahead of the corpus is its own outcome, distinct from the corpus running and disagreeing. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "A check that spent days reporting failures while executing no corpus at all looked exactly like a real disagreement from outside; without the executed population on the verdict, CI output is evidence about pipeline health rather than about the corpus, and a genuine signal is invisible.",
+        first_slice: "Read the rows in authored order: the executed-coverage receipt, the check projection, actions-runner retirement, and remote-build containment.",
+        red_control: "A CI-program row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted CI chain, every attached child's edge contribution readable against this intent, and no CI-program row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE PROGRESS-OBSERVATION PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The
+    // progress-observation-design rows are one program: progress reaches operators through typed,
+    // classified observations derived from described operations, with the legacy raw-print channel
+    // inventoried to zero. The bound row attaches here; the remaining rows attach as their
+    // execution contracts land.
+    active_small(
+      identity: "rn_YLLQF42HU2BZ52OXASZVS77F9",
+      id: "progress-observation",
+      owner: "ci-observation",
+      path: "docs/plans/progress-observation-design.md",
+      t: fields(
+        headline: "One trustworthy progress-observation channel",
+        boundary: "The progress-observation program: progress is emitted as classified observation rows derived from described operations; every place that printed progress directly is inventoried and either moved onto described operations or declared real program output; and scoped-run reach-throughs into hand-written code carry their seed-growth justification and dissolution trigger. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "Two competing status channels means neither can be trusted and formatting decisions scatter across the codebase; one typed channel is how a distant operator supervises an autonomous factory without reading every attempt.",
+        first_slice: "Read the rows in authored order: the raw-print retirement census, the scoped-run consumer, and the scoped-run seed-growth justification.",
+        red_control: "An observation row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted observation chain, every attached child's edge contribution readable against this intent, and no observation row whose walk ends anywhere else."
+      )
+    ),
+
+    // THE ROADMAP ACCEPTANCE-INTEGRITY PROGRAM LEVEL (review 5358022153 lane B, 2026-09-30). The
+    // roadmap-workspace-ux rows governing acceptance records are one program: what the roadmap has
+    // accepted stays accepted unless a named revocation withdraws it exactly, and the append-only
+    // carrier's replay projection is the only authority over that history. The bound row attaches
+    // here; the remaining rows attach as their execution contracts land.
+    active_small(
+      identity: "rn_PJKPB0BU0MRQ1ILRI1D4GOK1M",
+      id: "roadmap-acceptance-integrity",
+      owner: "roadmap-runtime",
+      path: "docs/plans/roadmap-workspace-ux-plan.md",
+      t: fields(
+        headline: "Roadmap acceptance records are durable and derived",
+        boundary: "The roadmap-runtime acceptance program: acceptance history is one append-only JSONL carrier; the receipt projection is a replay of that carrier and nothing else; and a record that was valid refuses to quietly become unaccepted -- any withdrawal names the exact item, the exact record being withdrawn, a reason, and what follows from it. This node is the program's decomposition level; the executable rows are its children.",
+        displaced_cost: "An accepted fact that goes missing puts an item back on the board as if it had never been done; the only detector was a person redoing the work, and that already happened once.",
+        first_slice: "Read the rows in authored order: the receipt-continuity comparison, then the workspace UX rows that consume the replayed projection.",
+        red_control: "A roadmap-runtime row claimed by a second project refuses as typed ambiguity; a row whose membership walk does not arrive here refuses unrooted; each child's edge names what that row's work adds to this program.",
+        out_of_scope: "No executable work lives on this node -- it is never dispatched and never carried by an execution contract -- and its bar does not replace the per-row tickets' own bars.",
+        handback: "The rooted acceptance-integrity chain, every attached child's edge contribution readable against this intent, and no roadmap-runtime row whose walk ends anywhere else."
+      )
+    ),
   ], guarantee_ladder_nodes())
 }
 

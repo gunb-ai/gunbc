@@ -14,14 +14,14 @@ import std.decl_ref { DeclarationRef, decl_ref, decl_field_eq, WholeDeclaration 
 import gunbc.roadmap.roadmap_alignment {
   AlignmentChain, AlignmentChainCyclic,
   AlignmentChainLink,
-  AlignmentChained, AlignmentChainAmbiguous, AlignmentChainRowUndeclared,
+  AlignmentChained, AlignmentChainAmbiguous, AlignmentChainUnrooted, AlignmentChainRowUndeclared,
   alignment_chain, alignment_chain_for,
   AlignmentLevel,
   TaskContractLevel, ProjectIntentLevel, RootPrinciplesLevel,
   AlignmentResolvedChain,
   alignment_levels, alignment_levels_due,
   AlignmentRefusal,
-  AlignmentChainForked, AlignmentRowUndeclared, AlignmentNestingCyclic,
+  AlignmentChainForked, AlignmentWalkUnrooted, AlignmentEdgeContributionRefused, AlignmentRowUndeclared, AlignmentNestingCyclic,
   alignment_refusal_reason,
   AlignmentResolution,
   AlignmentReady, AlignmentUnresolved,
@@ -49,7 +49,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 }
 import gunbc.roadmap_model {  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, Unsized }
 import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_execution_contract { ExecutionContract, ExecutionContractUnspecified, NotAgentWork }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -89,7 +89,7 @@ fn fixture_node(id: String, headline: String, brief: String) -> RoadmapNode {
 }
 
 fn fixture_edge(child: String, parent: String) -> RoadmapMembership {
-  RoadmapMembership { project: child, member: parent }
+  RoadmapMembership { project: child, member: parent, contribution: join(["fixture contribution of ", parent, " to ", child], "") }
 }
 
 fn fixture_nodes() -> List<RoadmapNode> {
@@ -100,6 +100,7 @@ fn fixture_nodes() -> List<RoadmapNode> {
     fixture_node(id: "arc-two", headline: "Arc Two headline", brief: "Arc Two boundary"),
     fixture_node(id: "arc-three", headline: "Arc Three headline", brief: "Arc Three boundary"),
     fixture_node(id: "lone-task", headline: "Lone headline", brief: "Lone boundary"),
+    fixture_node(id: "gunbc-project-root", headline: "Root project headline", brief: "Root project boundary"),
   ]
 }
 
@@ -107,6 +108,7 @@ fn linear_edges() -> List<RoadmapMembership> {
   [
     fixture_edge(child: "arc-one", parent: "task-a"),
     fixture_edge(child: "arc-two", parent: "arc-one"),
+    fixture_edge(child: "gunbc-project-root", parent: "arc-two"),
   ]
 }
 
@@ -115,6 +117,7 @@ fn deep_linear_edges() -> List<RoadmapMembership> {
     fixture_edge(child: "arc-one", parent: "task-a"),
     fixture_edge(child: "arc-mid", parent: "arc-one"),
     fixture_edge(child: "arc-two", parent: "arc-mid"),
+    fixture_edge(child: "gunbc-project-root", parent: "arc-two"),
   ]
 }
 
@@ -139,9 +142,11 @@ test fn a_linear_chain_runs_task_then_projects_then_the_root_pointer() -> Bool {
       task.node_id == "task-a"
         && task.purpose == "Task A headline"
         && task.boundary == "Task A boundary"
-        && (map(projects, p => p.node_id)) == ["arc-one", "arc-two"]
-        && (map(projects, p => p.purpose)) == ["Arc One headline", "Arc Two headline"]
-        && (map(projects, p => p.boundary)) == ["Arc One boundary", "Arc Two boundary"]
+        && (map(projects, p => p.node_id)) == ["arc-one", "arc-two", "gunbc-project-root"]
+        && (map(projects, p => p.purpose)) == ["Arc One headline", "Arc Two headline", "Root project headline"]
+        && (map(projects, p => p.boundary)) == ["Arc One boundary", "Arc Two boundary", "Root project boundary"]
+        && task.contribution_to_parent == "fixture contribution of task-a to arc-one"
+        && (map(projects, p => p.contribution_to_parent)) == ["fixture contribution of arc-one to arc-two", "fixture contribution of arc-two to gunbc-project-root", ""]
         && root.module_path as String == "gunbc.design_document"
         && root.decl_name as String == "design_document"
         && decl_field_eq(a: root.field, b: WholeDeclaration)
@@ -155,15 +160,27 @@ test fn an_edge_edit_re_renders_the_chain_there_is_no_second_list() -> Bool {
   match alignment_chain(node_id: "task-a", memberships: deep_linear_edges(), nodes: fixture_nodes()) {
     AlignmentChained { task, projects, root: _ } =>
       task.node_id == "task-a"
-        && (map(projects, p => p.node_id)) == ["arc-one", "arc-mid", "arc-two"]
+        && (map(projects, p => p.node_id)) == ["arc-one", "arc-mid", "arc-two", "gunbc-project-root"]
     _ => false
   }
 }
 
-test fn a_projectless_node_chains_straight_from_its_task_to_the_root() -> Bool {
+// A STANDALONE END THAT IS NOT THE ADMITTED ROOT REFUSES (review 5354823380): lone-task has no
+// membership arc and is not a declared root, so the walk never reached the top of a functional
+// decomposition and the chain says so with the walked prefix intact. The admitted root itself is
+// the one node whose parentless chain resolves.
+test fn a_projectless_node_that_is_not_the_admitted_root_refuses_unrooted() -> Bool {
   match alignment_chain(node_id: "lone-task", memberships: [], nodes: fixture_nodes()) {
+    AlignmentChainUnrooted { walked, at } => at == "lone-task" && count(walked) == 0
+    _ => false
+  }
+}
+
+test fn the_admitted_roots_own_chain_resolves_with_no_parent_contribution() -> Bool {
+  match alignment_chain(node_id: "gunbc-project-root", memberships: [], nodes: fixture_nodes()) {
     AlignmentChained { task, projects, root } =>
-      task.node_id == "lone-task"
+      task.node_id == "gunbc-project-root"
+        && task.contribution_to_parent == ""
         && count(projects) == 0
         && root.module_path as String == "gunbc.design_document"
     _ => false
@@ -221,7 +238,7 @@ test fn an_undeclared_arc_row_mid_walk_refuses_rather_than_projecting_nothing() 
 
 test fn production_blockers_do_not_invent_project_ownership() -> Bool {
   match alignment_chain_for(node_id: "shell-dag-cron-entry-line-builder") {
-    AlignmentChained { task, projects, root: _ } => task.node_id == "shell-dag-cron-entry-line-builder" && map(projects, p => p.node_id) == ["shell-typed-invocation"]
+    AlignmentChained { task, projects, root: _ } => task.node_id == "shell-dag-cron-entry-line-builder" && map(projects, p => p.node_id) == ["shell-typed-invocation", "gunbc-project-root"]
     _ => false
   }
 }
@@ -477,11 +494,11 @@ test fn an_unknown_verdict_kind_refuses() -> Bool {
 // claims pass the variant to the resolution fold, never the record.
 fn four_level_resolved() -> AlignmentResolvedChain {
   AlignmentResolvedChain {
-    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary" },
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
     projects: [
-      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary" },
-      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary" },
-      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary" },
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
     ],
     root: alignment_root_pointer_fixture(),
   }
@@ -489,11 +506,11 @@ fn four_level_resolved() -> AlignmentResolvedChain {
 
 fn four_level_chained() -> AlignmentChain {
   AlignmentChained {
-    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary" },
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
     projects: [
-      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary" },
-      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary" },
-      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary" },
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
     ],
     root: alignment_root_pointer_fixture(),
   }
@@ -524,11 +541,19 @@ test fn turn_zero_is_dispatch_not_a_checkpoint_nothing_is_due() -> Bool {
     && count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 0 - 5, state: base_state())) == 0
 }
 
-test fn the_task_level_is_due_first_in_every_due_set() -> Bool {
+// DUE SETS READ ROOT TO LEAF like the levels themselves: at turn 2000 the arc-mid project (cadence
+// index 2, interval 2000), the arc-one project (index 1, interval 200) and the task (index 0,
+// interval 20) are due, and the task -- the most frequently checked level -- closes the list. The
+// cadence index of each level is unchanged (leaf distance), only the presentation order moved.
+test fn the_task_level_closes_every_due_set() -> Bool {
   let due = alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 2000, state: base_state())
   count(due) == 3
-    && match due.first() {
+    && match due.last() {
       Present { value: TaskContractLevel { link } } => link.node_id == "task-a"
+      _ => false
+    }
+    && match due.first() {
+      Present { value: ProjectIntentLevel { link } } => link.node_id == "arc-mid"
       _ => false
     }
 }
@@ -578,6 +603,8 @@ test fn a_refused_chain_resolves_unresolved_naming_the_fork_by_its_dependents() 
             && (map(walked, l => l.node_id)) == ["arc-one", "arc-mid"]
         AlignmentNestingCyclic { node_id: _ } => false
         AlignmentRowUndeclared { node_id: _ } => false
+        AlignmentWalkUnrooted { at: _, walked: _ } => false
+        AlignmentEdgeContributionRefused { member: _, project: _, detail: _ } => false
       }
     AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
   }
@@ -596,6 +623,8 @@ test fn an_undeclared_referenced_row_resolves_unresolved_refused_by_name() -> Bo
         AlignmentRowUndeclared { node_id } => node_id == "arc-missing"
         AlignmentNestingCyclic { node_id: _ } => false
         AlignmentChainForked { at: _, dependents: _, walked: _ } => false
+        AlignmentWalkUnrooted { at: _, walked: _ } => false
+        AlignmentEdgeContributionRefused { member: _, project: _, detail: _ } => false
       }
     AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
   }
@@ -662,24 +691,26 @@ test fn the_rendered_prompt_carries_every_level_from_the_node_to_the_root_in_ord
     AlignmentReady { chain: _, due_levels: _, rendered_prompt } =>
       string_contains(s: rendered_prompt, pattern: continuation_alignment_l0_pointer)
         && string_contains(s: rendered_prompt, pattern: continuation_alignment_ask)
-        && string_contains(s: rendered_prompt, pattern: "this task serves project arc-one: Arc One headline -- boundary: Arc One boundary")
-        && string_contains(s: rendered_prompt, pattern: "this level serves project arc-mid: Arc Mid headline -- boundary: Arc Mid boundary")
-        && string_contains(s: rendered_prompt, pattern: "this level serves project arc-two: Arc Two headline -- boundary: Arc Two boundary")
-        && string_contains(s: rendered_prompt, pattern: "L2 task contract: task-a: Task A headline -- boundary: Task A boundary")
-        && render_lists_ids_in_order(rendered: rendered_prompt, ordered_ids: ["arc-one", "arc-mid", "arc-two", "task-a"])
+        && string_contains(s: rendered_prompt, pattern: "L1 project intent: arc-two: Arc Two headline")
+        && string_contains(s: rendered_prompt, pattern: "L2 project intent: arc-mid: Arc Mid headline")
+        && string_contains(s: rendered_prompt, pattern: "L3 project intent: arc-one: Arc One headline")
+        && string_contains(s: rendered_prompt, pattern: "L4 task contract: task-a: Task A headline")
+        && string_contains(s: rendered_prompt, pattern: "red control: fixture red control")
+        && render_lists_ids_in_order(rendered: rendered_prompt, ordered_ids: ["arc-two", "arc-mid", "arc-one", "task-a"])
     AlignmentUnresolved { cause: _ } => false
   }
 }
 
-test fn a_projectless_chain_renders_its_own_row_as_the_intent() -> Bool {
-  let standalone = AlignmentResolvedChain {
-    task: AlignmentChainLink { node_id: "lone-task", purpose: "Lone headline", boundary: "Lone boundary" },
+test fn the_root_projects_own_chain_renders_its_row_as_the_top_level() -> Bool {
+  let root_chain = AlignmentResolvedChain {
+    task: AlignmentChainLink { node_id: "gunbc-project-root", purpose: "Root project headline", boundary: "Root project boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
     projects: [],
     root: alignment_root_pointer_fixture(),
   }
-  match alignment_resolve_chain(chain: AlignmentChained { task: standalone.task, projects: [], root: standalone.root }, turns_elapsed: 1, state: alignment_base_cadence_state()) {
+  match alignment_resolve_chain(chain: AlignmentChained { task: root_chain.task, projects: [], root: root_chain.root }, turns_elapsed: 1, state: alignment_base_cadence_state()) {
     AlignmentReady { chain: _, due_levels: _, rendered_prompt } =>
-      string_contains(s: rendered_prompt, pattern: "this node is a project of one, so its own declared row is the intent: Lone headline -- boundary: Lone boundary")
+      string_contains(s: rendered_prompt, pattern: "L1 task contract: gunbc-project-root: Root project headline")
+        && string_contains(s: rendered_prompt, pattern: "none -- this level is the admitted root project")
     AlignmentUnresolved { cause: _ } => false
   }
 }
@@ -691,20 +722,20 @@ test fn a_projectless_chain_renders_its_own_row_as_the_intent() -> Bool {
 test fn the_chain_fingerprint_moves_when_any_link_moves() -> Bool {
   let base = alignment_chain_fingerprint(chain: four_level_resolved())
   let retitled = alignment_chain_fingerprint(chain: AlignmentResolvedChain {
-    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary" },
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
     projects: [
-      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One retitled", boundary: "Arc One boundary" },
-      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary" },
-      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary" },
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One retitled", boundary: "Arc One boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
     ],
     root: alignment_root_pointer_fixture(),
   })
   let reordered = alignment_chain_fingerprint(chain: AlignmentResolvedChain {
-    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary" },
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
     projects: [
-      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary" },
-      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary" },
-      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary" },
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
     ],
     root: alignment_root_pointer_fixture(),
   })
@@ -721,26 +752,62 @@ test fn the_chain_fingerprint_moves_when_any_link_moves() -> Bool {
 // named, and reaches no worker-start effect downstream).
 test fn production_resolution_has_no_fabricated_dependency_parents() -> Bool {
   match alignment_resolve(node_id: "shell-dag-cron-entry-line-builder", turns_elapsed: 1, state: alignment_base_cadence_state()) {
-    AlignmentReady { chain, due_levels: _, rendered_prompt: _ } => map(chain.projects, p => p.node_id) == ["shell-typed-invocation"]
+    AlignmentReady { chain, due_levels: _, rendered_prompt: _ } => map(chain.projects, p => p.node_id) == ["shell-typed-invocation", "gunbc-project-root"]
     _ => false
   }
 }
 
-// A CLEAN PRODUCTION CHAIN RESOLVES READY, EVERY LEVEL DERIVED: the corpus's real rows climb two
-// live arcs — extended-admission-cardinality serves accepted-extended-obligation-closure, which
-// serves guarantee-residual-prevalence, a standalone root — and the render carries each derived
-// level: the positive inhabitance claim pairing with the fork refusal above. (The roadmap-runtime
-// rows refuse instead: their chain walks through superseded rows, and the walk names the halt —
-// both answers are the one authority reading the live authority.)
-test fn a_clean_production_chain_resolves_ready_rendering_every_derived_level() -> Bool {
+// A PRODUCTION NODE WHOSE WALK NEVER REACHES THE ADMITTED ROOT REFUSES, naming the halt (review
+// 5354823380): extended-admission-cardinality has no membership arc and is not a declared root,
+// so its alignment resolution is Unresolved with the unrooted cause -- the RED control for the
+// rooted-hierarchy rule, read off the live authority.
+//
+// Lane B (review 5358022153, 2026-09-30) rooted the whole dispatchable population and LEFT THIS
+// NODE UNROOTED ON PURPOSE: it is the named refusal subject for the unrooted controls in this
+// witness and in roadmap_dispatch_actuator_witness_test, and a witness whose red arm can never
+// fire is not a control. It carries ExecutionContractUnspecified, so it sits outside the
+// dispatchable population every_dispatchable_node_reaches_the_admitted_root covers.
+test fn an_unrooted_production_node_refuses_naming_where_the_walk_halted() -> Bool {
   match alignment_resolve(node_id: "extended-admission-cardinality", turns_elapsed: 1, state: alignment_base_cadence_state()) {
-    AlignmentReady { chain, due_levels: _, rendered_prompt } =>
-      chain.task.node_id == "extended-admission-cardinality"
-        && count(chain.projects) == 0
-        && string_contains(s: rendered_prompt, pattern: "extended-admission-cardinality")
-        && alignment_chain_fingerprint(chain: chain) != ""
-    AlignmentUnresolved { cause: _ } => false
+    AlignmentUnresolved { cause } =>
+      match cause {
+        AlignmentWalkUnrooted { at, walked: _ } =>
+          at == "extended-admission-cardinality"
+            && string_contains(s: alignment_refusal_reason(cause: cause), pattern: "extended-admission-cardinality")
+        AlignmentChainForked { at: _, dependents: _, walked: _ } => false
+        AlignmentEdgeContributionRefused { member: _, project: _, detail: _ } => false
+        AlignmentRowUndeclared { node_id: _ } => false
+        AlignmentNestingCyclic { node_id: _ } => false
+      }
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
   }
+}
+
+// EVERY DISPATCHABLE NODE REACHES THE ADMITTED ROOT (review 5358022153 lane B, 2026-09-30): the
+// dispatchable population -- every node in declared_roadmap_nodes() whose execution is an
+// ExecutionContract, derived here, never transcribed -- must derive AlignmentChained, because the
+// dispatch actuator refuses to spawn on any other resolution. This claim has NO named exclusions:
+// the deliberately unrooted control subject above carries ExecutionContractUnspecified and is not
+// a member of this population, and every ExecutionContract row was attached to the hierarchy in
+// the same change (the seven program-level parents live in roadmap_authority). A future node bound
+// to a contract without a membership arc reds this claim exactly as its author needs it to.
+fn dispatchable_node_ids() -> List<String> {
+  declared_roadmap_nodes()
+    |> filter(n => match n.execution {
+      ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots: _ } => true
+      ExecutionContractUnspecified => false
+      NotAgentWork { mode: _ } => false
+    })
+    |> map(n => n.node as String)
+}
+
+test fn every_dispatchable_node_reaches_the_admitted_root() -> Bool {
+  fold(dispatchable_node_ids(), init: true, f: fn(ok, id) {
+    ok && match alignment_chain_for(node_id: id) {
+      AlignmentChained { task: _, projects: _, root: _ } => true
+      _ => false
+    }
+  })
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -785,8 +852,70 @@ test fn a_binding_without_the_schema_wall_refuses() -> Bool {
 }
 
 test fn cyclic_nesting_refuses_instead_of_truncating_the_alignment_chain() -> Bool {
-  match alignment_chain(node_id: "task-a", memberships: [RoadmapMembership { member: "task-a", project: "arc-one" }, RoadmapMembership { member: "arc-one", project: "task-a" }], nodes: fixture_nodes()) {
+  match alignment_chain(node_id: "task-a", memberships: [RoadmapMembership { member: "task-a", project: "arc-one", contribution: "fixture" }, RoadmapMembership { member: "arc-one", project: "task-a", contribution: "fixture" }], nodes: fixture_nodes()) {
     AlignmentChainCyclic { node_id } => node_id == "task-a"
     _ => false
   }
 }
+
+// EVERY CARRIED FIELD MOVES THE FINGERPRINT (review 5358022153): a field that claims to define
+// alignment but does not move the digest is a silent context channel. One mutation per field, each
+// must change the fingerprint.
+fn link_with(node_id: String, field: String, value: String) -> AlignmentChainLink {
+  let base = AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: "A", red_control: "R", handback: "H", displaced_cost: "D", contribution_to_parent: "C" }
+  if field == "purpose" {
+    AlignmentChainLink { node_id: node_id, purpose: value, boundary: "B", current_approach: "A", red_control: "R", handback: "H", displaced_cost: "D", contribution_to_parent: "C" }
+  } else if field == "boundary" {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: value, current_approach: "A", red_control: "R", handback: "H", displaced_cost: "D", contribution_to_parent: "C" }
+  } else if field == "current_approach" {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: value, red_control: "R", handback: "H", displaced_cost: "D", contribution_to_parent: "C" }
+  } else if field == "red_control" {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: "A", red_control: value, handback: "H", displaced_cost: "D", contribution_to_parent: "C" }
+  } else if field == "handback" {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: "A", red_control: "R", handback: value, displaced_cost: "D", contribution_to_parent: "C" }
+  } else if field == "displaced_cost" {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: "A", red_control: "R", handback: "H", displaced_cost: value, contribution_to_parent: "C" }
+  } else {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: "A", red_control: "R", handback: "H", displaced_cost: "D", contribution_to_parent: value }
+  }
+}
+
+fn chain_with_task(link: AlignmentChainLink) -> AlignmentResolvedChain {
+  AlignmentResolvedChain { task: link, projects: [], root: alignment_root_pointer_fixture() }
+}
+
+test fn every_carried_field_moves_the_fingerprint() -> Bool {
+  let base = alignment_chain_fingerprint(chain: chain_with_task(link: link_with(node_id: "t", field: "", value: "")))
+  fold(["purpose", "boundary", "current_approach", "red_control", "handback", "displaced_cost", "contribution_to_parent"], init: true, f: fn(ok, field) {
+    ok && base != alignment_chain_fingerprint(chain: chain_with_task(link: link_with(node_id: "t", field: field, value: "MUTATED")))
+  })
+}
+
+// AN EMPTY CONTRIBUTION ON A NON-ROOT EDGE REFUSES (review 5358022153): the empty string used to
+// read as "this level is the admitted root". Now the walk reaches arc-one's link, its edge carries
+// no argument, and the chain refuses with the edge named.
+test fn an_empty_contribution_on_a_non_root_edge_refuses() -> Bool {
+  let edges = [
+    RoadmapMembership { member: "task-a", project: "arc-one", contribution: "" },
+    RoadmapMembership { member: "arc-one", project: "gunbc-project-root", contribution: "arc one contributes" },
+  ]
+  match alignment_chain(node_id: "task-a", memberships: edges, nodes: fixture_nodes()) {
+    AlignmentChainContributionRefused { member, project, detail: _ } =>
+      member == "task-a" && project == "arc-one"
+    _ => false
+  }
+}
+
+test fn conflicting_contributions_on_one_edge_refuse() -> Bool {
+  let edges = [
+    RoadmapMembership { member: "task-a", project: "arc-one", contribution: "one argument" },
+    RoadmapMembership { member: "task-a", project: "arc-one", contribution: "a different argument" },
+    RoadmapMembership { member: "arc-one", project: "gunbc-project-root", contribution: "arc one contributes" },
+  ]
+  match alignment_chain(node_id: "task-a", memberships: edges, nodes: fixture_nodes()) {
+    AlignmentChainContributionRefused { member, project, detail: _ } =>
+      member == "task-a" && project == "arc-one"
+    _ => false
+  }
+}
+

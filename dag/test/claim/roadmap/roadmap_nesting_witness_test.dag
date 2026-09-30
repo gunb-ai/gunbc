@@ -6,20 +6,20 @@ import gunbc.roadmap.roadmap_project { node_project_membership, project_member_i
 
 // The prerequisite is shared by two projects but belongs to neither by implication.
 test fn shared_prerequisite_does_not_assign_ownership() -> Bool {
-  let nesting = [RoadmapMembership { member: "task", project: "project-A" }]
+  let nesting = [RoadmapMembership { member: "task", project: "project-A", contribution: "fixture contribution" }]
   match node_project_membership(node_id: "shared-prerequisite", memberships: nesting) { MembershipStandalone => true _ => false }
     && project_member_ids(arc: "project-A", memberships: nesting) == ["task"]
     && project_member_ids(arc: "project-B", memberships: nesting) == []
 }
 
 test fn nesting_is_recursive_without_type_labels() -> Bool {
-  let nesting = [RoadmapMembership { member: "task", project: "subproject" }, RoadmapMembership { member: "subproject", project: "root" }]
+  let nesting = [RoadmapMembership { member: "task", project: "subproject", contribution: "fixture contribution" }, RoadmapMembership { member: "subproject", project: "root", contribution: "fixture contribution" }]
   project_root_for_node(node_id: "task", memberships: nesting) == Present { value: "root" }
     && project_root_for_node(node_id: "subproject", memberships: nesting) == Present { value: "root" }
     && project_root_for_node(node_id: "root", memberships: nesting) == Present { value: "root" }
 }
 
 test fn cycles_and_multiple_parents_have_no_focus_root() -> Bool {
-  project_root_for_node(node_id: "a", memberships: [RoadmapMembership { member: "a", project: "b" }, RoadmapMembership { member: "b", project: "a" }]) == none
-    && project_root_for_node(node_id: "a", memberships: [RoadmapMembership { member: "a", project: "b" }, RoadmapMembership { member: "a", project: "c" }]) == none
+  project_root_for_node(node_id: "a", memberships: [RoadmapMembership { member: "a", project: "b", contribution: "fixture contribution" }, RoadmapMembership { member: "b", project: "a", contribution: "fixture contribution" }]) == none
+    && project_root_for_node(node_id: "a", memberships: [RoadmapMembership { member: "a", project: "b", contribution: "fixture contribution" }, RoadmapMembership { member: "a", project: "c", contribution: "fixture contribution" }]) == none
 }

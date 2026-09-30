@@ -7,6 +7,9 @@ import gunbc.roadmap.roadmap_submission {
   submission_artifact_name, submission_schema, submission_text, submission_readiness_key,
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
 }
+import gunbc.harness.harness_prompt_context {
+  PromptInput, AuthorityInput, DerivedConclusionInput, PromptSegment, prompt_segment_render,
+}
 
 // THE PROMPT IS A SYLLOGISM: GROUNDED PREMISES IN, DERIVED CONCLUSIONS OUT.
 //
@@ -67,6 +70,7 @@ type HarnessConclusion
   | VerifyWithTheTool
   | ReadingAloneCompletesNothing
   | ActBeforeTheRoundsRun { rounds: Int }
+  | RoundsEndInAlignmentCheck
   | ReRunForDroppedOutput { rounds: Int }
   | TestWithTheProcess { command: String }
 
@@ -204,6 +208,8 @@ fn harness_conclusion_text(c: HarnessConclusion) -> String {
         "So if ", to_string(value: n),
         " rounds will not cover both more investigation and the change, make the change now.",
       ], "")
+    RoundsEndInAlignmentCheck =>
+      "When this execution epoch reaches its round boundary, the harness returns control for an independent alignment checkpoint. This is not task completion or task failure. The workflow may resume the same lineage with guidance."
     ReRunForDroppedOutput { rounds: n } =>
       join([
         "So re-run a command if you need output from one of those ",
@@ -258,32 +264,82 @@ fn first_rounds(rows: List<HarnessGroundedPremise>, f: fn(HarnessPremise) -> Int
 
 // THE INFERENCE. Each conclusion names the premises that entail it, so removing a premise removes
 // the imperative rather than leaving a sentence telling the model to do something unsupported.
-fn harness_conclusions(rows: List<HarnessGroundedPremise>) -> List<HarnessConclusion> {
-  let writes = any_premise(rows: rows, f: premise_asserts_write_form)
-  let differs = any_premise(rows: rows, f: premise_requires_difference)
-  let accepts = any_premise(rows: rows, f: premise_requires_acceptance)
+// THE CONCLUSION'S EXACT GROUNDS (review 5358022153): a conclusion derived from two premise kinds
+// does not depend on the whole population, and recording every premise as grounds would make a
+// moved test-process premise invalidate the write-form conclusion it never fed. The node carries
+// the population it was actually derived from; the conclusion's text is a projection of the node,
+// never a second spelling.
+type HarnessConclusionNode {
+  conclusion: HarnessConclusion
+  grounds: List<DeclarationRef>
+}
+
+fn harness_conclusion_key(c: HarnessConclusion) -> String {
+  match c {
+    ChangeTheTreeWithTheTool => "change-the-tree-with-the-tool"
+    VerifyWithTheTool => "verify-with-the-tool"
+    ReadingAloneCompletesNothing => "reading-alone-completes-nothing"
+    ActBeforeTheRoundsRun { rounds: _ } => "act-before-the-rounds-run"
+    RoundsEndInAlignmentCheck => "rounds-end-in-alignment-check"
+    ReRunForDroppedOutput { rounds: _ } => "rerun-for-dropped-output"
+    TestWithTheProcess { command: _ } => "test-with-the-process"
+  }
+}
+
+fn harness_grounds_of(matching: List<HarnessGroundedPremise>) -> List<DeclarationRef> {
+  map(matching, r => r.grounds)
+}
+
+fn harness_conclusion_nodes(rows: List<HarnessGroundedPremise>) -> List<HarnessConclusionNode> {
+  let write_rows = filter(rows, r => premise_asserts_write_form(p: r.premise))
+  let differ_rows = filter(rows, r => premise_requires_difference(p: r.premise))
+  let accept_rows = filter(rows, r => premise_requires_acceptance(p: r.premise))
+  let rounds_rows = filter(rows, r => match premise_rounds_remaining(p: r.premise) {
+    Present { value: _ } => true
+    Absent => false
+  })
+  let dropped_rows = filter(rows, r => match premise_rounds_dropped(p: r.premise) {
+    Present { value: _ } => true
+    Absent => false
+  })
+  let test_rows = filter(rows, r => match premise_test_process_command(p: r.premise) {
+    Present { value: _ } => true
+    Absent => false
+  })
+  let writes = count(write_rows) > 0
+  let differs = count(differ_rows) > 0
+  let accepts = count(accept_rows) > 0
   concat(
     concat(
-      if writes && differs { [ChangeTheTreeWithTheTool, ReadingAloneCompletesNothing] } else { [] },
-      if accepts { [VerifyWithTheTool] } else { [] },
+      if writes && differs {
+        [
+          HarnessConclusionNode { conclusion: ChangeTheTreeWithTheTool, grounds: harness_grounds_of(matching: concat(write_rows, differ_rows)) },
+          HarnessConclusionNode { conclusion: ReadingAloneCompletesNothing, grounds: harness_grounds_of(matching: concat(write_rows, differ_rows)) },
+        ]
+      } else { [] },
+      if accepts { [HarnessConclusionNode { conclusion: VerifyWithTheTool, grounds: harness_grounds_of(matching: accept_rows) }] } else { [] },
     ),
     concat(
       concat(
         match first_rounds(rows: rows, f: premise_rounds_remaining) {
-          Present { value: n } => [ActBeforeTheRoundsRun { rounds: n }]
+          Present { value: n } => [HarnessConclusionNode { conclusion: ActBeforeTheRoundsRun { rounds: n }, grounds: harness_grounds_of(matching: rounds_rows) }]
           Absent => []
         },
         match first_rounds(rows: rows, f: premise_rounds_dropped) {
-          Present { value: n } => [ReRunForDroppedOutput { rounds: n }]
+          Present { value: n } => [HarnessConclusionNode { conclusion: ReRunForDroppedOutput { rounds: n }, grounds: harness_grounds_of(matching: dropped_rows) }]
           Absent => []
         },
       ),
       match first_test_process(rows: rows) {
-        Present { value: c } => if accepts { [TestWithTheProcess { command: c }] } else { [] }
+        Present { value: c } => if accepts { [HarnessConclusionNode { conclusion: TestWithTheProcess { command: c }, grounds: harness_grounds_of(matching: concat(test_rows, accept_rows)) }] } else { [] }
         Absent => []
       },
     ),
   )
+}
+
+fn harness_conclusions(rows: List<HarnessGroundedPremise>) -> List<HarnessConclusion> {
+  map(harness_conclusion_nodes(rows: rows), n => n.conclusion)
 }
 
 fn harness_guidance_prose(rows: List<HarnessGroundedPremise>) -> String {
@@ -294,6 +350,36 @@ fn harness_guidance_prose(rows: List<HarnessGroundedPremise>) -> String {
     ),
     " ",
   )
+}
+
+// THE MODELED SEGMENTS (harness-prompt-context-model's first consumer). Every grounded premise
+// renders as a segment whose source names the declaration it is grounded on at the caller's source
+// revision; every conclusion renders as a segment whose source names the conclusion and its
+// grounds, so a retracted premise moves the conclusion's input digest with it. The prose above is
+// the render projection of exactly this population -- the parity witness
+// (test.claim.harness_guidance_test) pins that they cannot fork -- and the digests are what let a
+// later PromptPlan say precisely which guidance a worker was told.
+fn harness_guidance_segments(rows: List<HarnessGroundedPremise>, source_revision: String) -> List<PromptSegment> {
+  concat(
+    map(rows, r => prompt_segment_render(
+      purpose: "grounded premise",
+      source: AuthorityInput { declaration: r.grounds, revision: source_revision, required: true },
+      content: harness_premise_text(p: r.premise),
+    )),
+    map(harness_conclusion_nodes(rows: rows), n => prompt_segment_render(
+      purpose: "derived conclusion",
+      source: DerivedConclusionInput {
+        conclusion_key: harness_conclusion_key(c: n.conclusion),
+        grounds: n.grounds,
+        required: true,
+      },
+      content: harness_conclusion_text(c: n.conclusion),
+    )),
+  )
+}
+
+fn harness_guidance_prose_from_segments(segments: List<PromptSegment>) -> String {
+  join(map(segments, s => s.content), " ")
 }
 
 fn grounded(premise: HarnessPremise, module_path: String, decl_name: String) -> HarnessGroundedPremise {

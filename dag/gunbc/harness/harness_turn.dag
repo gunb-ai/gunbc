@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.harness.harness_guidance {
   HarnessPremise, RoundsRemaining, EarlierRoundsDropped, harness_premise_text,
-  HarnessConclusion, ActBeforeTheRoundsRun, ReRunForDroppedOutput, harness_conclusion_text,
+  HarnessConclusion, ActBeforeTheRoundsRun, RoundsEndInAlignmentCheck, ReRunForDroppedOutput, harness_conclusion_text,
 }
 import gunbc.harness.harness_wire {
   HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape, harness_decode_for_shape,
@@ -228,6 +228,14 @@ type HarnessTurnConfig {
   reasoning_mode: HarnessReasoningLevel
   wire_shape: HarnessWireShape
   system_prompt: String
+  // THE CHAIN FINGERPRINT THE ATTEMPT SPAWNED WITH, composed at dispatch from the node's resolved
+  // alignment chain (gunbc.roadmap.roadmap_alignment alignment_resolve). Empty means this turn has
+  // no chain -- reviewers, probes and ad-hoc runs -- and the step budget stays a hard terminal, the
+  // pre-chain behavior. Non-empty turns the budget boundary into a durable checkpoint-due
+  // announcement: the harness does NOT adjudicate (no provider call, no worker self-report); it
+  // records the due event bound to this fingerprint and returns control to the workflow, whose
+  // adjudication lane decides resume, steer, re-plan, route or stop (review 5354823380).
+  alignment_chain_fingerprint: String
   request_scratch_path: FilePath
   events_path: FilePath
   context_budget: TokenCount
@@ -261,8 +269,10 @@ fn harness_context_exhausted(input_tokens: TokenCount, budget: TokenCount) -> Bo
 
 // THE HARNESS EMITS THE PROVIDER EVENT SCHEMA ITSELF, rather than having its liveness reconstructed
 // from outside. gunbc.roadmap_provider_events already declares what an attempt's event stream is --
-// turn.started, item.started, item.completed, turn.completed, turn.budget_exhausted, turn.failed, error, read line by line
-// through jq -- and every consumer of agent evidence is written against it. A second stream shape
+// turn.started, item.started, item.completed, turn.completed, turn.budget_exhausted, turn.failed,
+// error, round.usage, the checkpoint announcement turn.alignment_checkpoint_due and the wire-log
+// refusal turn.wire_log_unwritable, read line by line through jq -- and every consumer of agent
+// evidence is written against it. A second stream shape
 // for this one provider would be the section 3 fork; emitting the existing one makes the harness a
 // first-class provider on a contract that already has readers.
 //
@@ -401,12 +411,33 @@ fn harness_event_turn_budget_exhausted(steps_taken: Int) -> String {
   ]))
 }
 
+fn harness_event_alignment_checkpoint_due(steps_taken: Int, chain_fingerprint: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.alignment_checkpoint_due")),
+    json_kv(key: "steps_taken", value: json_int(n: steps_taken)),
+    json_kv(key: "chain_fingerprint", value: json_string(s: chain_fingerprint)),
+  ]))
+}
+
 fn harness_event_turn_failed(message: String) -> String {
   serialize_json(v: json_object([
     json_kv(key: "type", value: json_string(s: "turn.failed")),
     json_kv(key: "error", value: json_object([
       json_kv(key: "message", value: json_string(s: message)),
     ])),
+  ]))
+}
+
+// THE WIRE LOG'S REFUSAL IS AN EVENT, NOT A TERMINAL. The event stream is the terminal record of a
+// turn; the wire log is recoverable evidence -- its bytes can be reconstructed from durable state,
+// and its absence degrades diagnosis, never the work. Killing the turn on a logging write would
+// trade the work for the receipt, so a refused wire-log write is recorded here with the host's
+// detail and the round proceeds exactly as it would have. The reader (gunbc.roadmap_provider_events)
+// admits it as non-terminal with provider state unchanged, following the round.usage arm.
+fn harness_event_wire_log_unwritable(detail: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.wire_log_unwritable")),
+    json_kv(key: "detail", value: json_string(s: detail)),
   ]))
 }
 
@@ -473,6 +504,7 @@ type HarnessTurnOutcome
   | TurnThinkingFormatInvalid { cause: String, steps_taken: Int }
   | TurnUsageUnavailable { cause: String, steps_taken: Int }
   | TurnSubmissionUndecodable { reason: String, steps_taken: Int }
+  | TurnAlignmentCheckpointDue { steps_taken: Int }
 
 fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
   match outcome {
@@ -490,6 +522,7 @@ fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
     TurnThinkingFormatInvalid { cause: _, steps_taken: _ } => "thinking-format-invalid"
     TurnUsageUnavailable { cause: _, steps_taken: _ } => "usage-unavailable"
     TurnSubmissionUndecodable { reason: _, steps_taken: _ } => "submission-undecodable"
+    TurnAlignmentCheckpointDue { steps_taken: _ } => "alignment-checkpoint-due"
   }
 }
 
@@ -538,6 +571,13 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
     TurnSubmissionUndecodable { reason, steps_taken: n } =>
       join([
         "after ", to_string(value: n), " tool rounds: ", harness_submission_terminal_cause(reason: reason),
+      ], "")
+    TurnAlignmentCheckpointDue { steps_taken: n } =>
+      join([
+        "after ", to_string(value: n),
+        " tool rounds the epoch boundary announced an alignment checkpoint; the turn returned",
+        " control to the workflow, whose adjudication lane decides whether the same lineage",
+        " resumes, steers, re-plans, routes or stops. This is not a failure and not a completion.",
       ], "")
     TurnTransportRefused { detail: d } => d
     TurnResponseUnreadable { cause: c } => c
@@ -761,17 +801,27 @@ fn harness_wire_block_json(block: HarnessWireBlock) -> JsonValue {
 // It rides on the tool-result message rather than a new message because the pairing after the
 // opening brief must stay assistant/user: an extra turn between them would break the alternation
 // the compaction logic depends on.
-fn harness_budget_notice_text(steps_remaining: Int) -> String {
+//
+// THE CONCLUSION DEPENDS ON WHAT ZERO MEANS. A chainless turn ends at zero, so the notice presses
+// to act before the rounds run; a chain-carrying turn meets an alignment checkpoint at zero that
+// refreshes the count on a pass, so the notice says THAT -- telling such a worker the turn is
+// ending would be a fabricated deadline, and the pressure it bought would be pressure toward a
+// finish line that does not exist.
+fn harness_budget_notice_text(steps_remaining: Int, checkpointed: Bool) -> String {
   join([
     harness_premise_text(p: RoundsRemaining { rounds: steps_remaining }), " ",
-    harness_conclusion_text(c: ActBeforeTheRoundsRun { rounds: steps_remaining }),
+    if checkpointed {
+      harness_conclusion_text(c: RoundsEndInAlignmentCheck)
+    } else {
+      harness_conclusion_text(c: ActBeforeTheRoundsRun { rounds: steps_remaining })
+    },
   ], "")
 }
 
-fn harness_budget_notice_block(steps_remaining: Int) -> JsonValue {
+fn harness_budget_notice_block(steps_remaining: Int, checkpointed: Bool) -> JsonValue {
   json_object([
     json_kv(key: "type", value: json_string(s: "text")),
-    json_kv(key: "text", value: json_string(s: harness_budget_notice_text(steps_remaining: steps_remaining))),
+    json_kv(key: "text", value: json_string(s: harness_budget_notice_text(steps_remaining: steps_remaining, checkpointed: checkpointed))),
   ])
 }
 
@@ -779,6 +829,7 @@ fn harness_tool_result_messages_json(
   shape: HarnessWireShape,
   results: List<HarnessToolResult>,
   steps_remaining: Int,
+  checkpointed: Bool,
 ) -> List<JsonValue> {
   match shape {
     AnthropicMessagesShape =>
@@ -787,7 +838,7 @@ fn harness_tool_result_messages_json(
         json_kv(key: "content", value: json_array(
           elements: concat(
             map(results, r => harness_tool_result_block(tool_use_id: r.tool_use_id, text: r.text, is_error: r.is_error)),
-            [harness_budget_notice_block(steps_remaining: steps_remaining)],
+            [harness_budget_notice_block(steps_remaining: steps_remaining, checkpointed: checkpointed)],
           ),
         )),
       ])]
@@ -800,7 +851,7 @@ fn harness_tool_result_messages_json(
         ])),
         [json_object([
           json_kv(key: "role", value: json_string(s: "user")),
-          json_kv(key: "content", value: json_string(s: harness_budget_notice_text(steps_remaining: steps_remaining))),
+          json_kv(key: "content", value: json_string(s: harness_budget_notice_text(steps_remaining: steps_remaining, checkpointed: checkpointed))),
         ])],
       )
   }
@@ -933,6 +984,33 @@ fn harness_thinking_format_cause(unit: HarnessServingUnit, blocks: List<HarnessW
   }
 }
 
+// THE WIRE LOG MAKES EVERY ROUND DURABLE, not just the last one. The request scratch pair is
+// overwritten each round -- its job is the POST and the decode -- so a finished turn left exactly
+// one round's bytes on disk and a multi-round conversation's earlier wire content existed only in
+// the process's memory. This log is the attempt lineage owning its wire record: one file per
+// round per direction under the attempt's log directory, named by the SAME round number the
+// round.usage event carries (round N is the request posted with steps_taken == N - 1), so the
+// event stream and the byte log cross-reference without a second numbering.
+//
+// THE LAYOUT DERIVES FROM events_path the way the response-keep derives from the request scratch
+// path: join([config.events_path as String, ".wire/", to_string(round), kind]) with kind one of
+// ".request.json" and ".response.json" -- beside the events file, in a directory the reader can
+// derive without guessing. Filesystem.Write does not create parent directories, and these writes
+// do not invent one: they rely on the wire directory already existing, the SAME reliance the
+// request scratch and response-keep writes carry for the attempt state directory the dispatch
+// layer provisions. Where the directory has not been provisioned the write refuses, the round
+// records turn.wire_log_unwritable, and the turn continues -- the wire log is recoverable
+// evidence, and trading the turn's work for its receipt would be the wrong trade in both
+// directions.
+type HarnessPostedRound {
+  read: HarnessResponseRead
+  wire_log_detail: String?
+}
+
+fn harness_wire_log_path(config: HarnessTurnConfig, round: Int, kind: String) -> String {
+  join([config.events_path as String, ".wire/", to_string(value: round), kind], "")
+}
+
 // THE LEVEL IS RESOLVED AGAINST THE UNIT BEFORE A BYTE IS WRITTEN, and a unit that cannot express
 // the requested level stops the line here rather than sending its nearest neighbour. The refusal is
 // typed, located and carries both names, so the run reports which unit refused which level instead
@@ -940,16 +1018,20 @@ fn harness_thinking_format_cause(unit: HarnessServingUnit, blocks: List<HarnessW
 fn harness_post_round(
   config: HarnessTurnConfig,
   messages: List<JsonValue>,
-) -> HarnessResponseRead {
+  round: Int,
+) -> HarnessPostedRound {
   match harness_reasoning_kwargs_for(unit: config.serving_unit, level: config.reasoning_mode) {
     ReasoningLevelUnsupported { unit, level, cause } =>
-      HarnessResponseUnreadable {
-        cause: join([
-          "the serving unit ", unit as String, " cannot express reasoning level ", level as String,
-          ": ", cause as String,
-        ], ""),
+      HarnessPostedRound {
+        read: HarnessResponseUnreadable {
+          cause: join([
+            "the serving unit ", unit as String, " cannot express reasoning level ", level as String,
+            ": ", cause as String,
+          ], ""),
+        },
+        wire_log_detail: none,
       }
-    ReasoningKwargsAdmitted { kwargs } => harness_post_round_admitted(config: config, messages: messages, reasoning_kwargs: kwargs)
+    ReasoningKwargsAdmitted { kwargs } => harness_post_round_admitted(config: config, messages: messages, reasoning_kwargs: kwargs, round: round)
   }
 }
 
@@ -957,38 +1039,64 @@ fn harness_post_round_admitted(
   config: HarnessTurnConfig,
   messages: List<JsonValue>,
   reasoning_kwargs: List<JsonKeyValue>,
-) -> HarnessResponseRead {
+  round: Int,
+) -> HarnessPostedRound {
   let body = serialize_json(v: harness_request_json(config: config, messages: messages, reasoning_kwargs: reasoning_kwargs))
   let written = Filesystem.Write(path: config.request_scratch_path as String, content: body)
   if !written.success {
-    HarnessResponseUnreadable {
-      cause: join([
-        "request body could not be written to ", config.request_scratch_path as String,
-        ": ", written.error,
-      ], ""),
+    HarnessPostedRound {
+      read: HarnessResponseUnreadable {
+        cause: join([
+          "request body could not be written to ", config.request_scratch_path as String,
+          ": ", written.error,
+        ], ""),
+      },
+      wire_log_detail: none,
     }
   } else {
+    let wire_request_path = harness_wire_log_path(config: config, round: round, kind: ".request.json")
+    let wire_request = Filesystem.Write(path: wire_request_path, content: body)
     let posted = http.Client.PostJsonFromFile(
       url: config.backend_url as NonEmptyStr,
       request_body_file: config.request_scratch_path as String as NonEmptyStr,
       max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
     )
+    let wire_response_path = harness_wire_log_path(config: config, round: round, kind: ".response.json")
+    let wire_response = Filesystem.Write(path: wire_response_path, content: posted.body)
     let kept = Filesystem.Write(
       path: join([config.request_scratch_path as String, ".response.json"], ""),
       content: posted.body,
     )
+    let wire_details = concat(
+      if wire_request.success { [] } else { [join(["request wire log ", wire_request_path, " could not be written: ", wire_request.error], "")] },
+      if wire_response.success { [] } else { [join(["response wire log ", wire_response_path, " could not be written: ", wire_response.error], "")] },
+    )
+    let wire_log_detail = if count(wire_details) == 0 {
+      none
+    } else {
+      Present { value: join(wire_details, "; ") }
+    }
     if !posted.success {
-      HarnessResponseUnreadable {
-        cause: join([
-          "the backend refused the request or the transport failed; body was: ", posted.body,
-        ], ""),
+      HarnessPostedRound {
+        read: HarnessResponseUnreadable {
+          cause: join([
+            "the backend refused the request or the transport failed; body was: ", posted.body,
+          ], ""),
+        },
+        wire_log_detail: wire_log_detail,
       }
     } else if !kept.success {
-      HarnessResponseUnreadable {
-        cause: join(["the response could not be kept beside the request: ", kept.error, "; refusing to decode a body no one can re-read"], ""),
+      HarnessPostedRound {
+        read: HarnessResponseUnreadable {
+          cause: join(["the response could not be kept beside the request: ", kept.error, "; refusing to decode a body no one can re-read"], ""),
+        },
+        wire_log_detail: wire_log_detail,
       }
     } else {
-      harness_decode_for_shape(unit: config.serving_unit, shape: config.wire_shape, body: posted.body)
+      HarnessPostedRound {
+        read: harness_decode_for_shape(unit: config.serving_unit, shape: config.wire_shape, body: posted.body),
+        wire_log_detail: wire_log_detail,
+      }
     }
   }
 }
@@ -1087,6 +1195,31 @@ fn harness_event_write_refusal(config: HarnessTurnConfig, detail: String) -> Har
   }
 }
 
+// THE ALIGNMENT CHECKPOINT, ANNOUNCED, NOT ADJUDICATED. At the epoch boundary a chain-carrying
+// turn does not call the provider again and does not ask the worker to grade itself: it records
+// that adjudication is due, bound to the chain fingerprint the attempt spawned with, and returns
+// control to the workflow durably (review 5354823380). The belt's adjudication lane -- independent
+// of this process -- reads the due event, examines the evidence, publishes the verdict and the next
+// cadence state, and only then resumes the same lineage. The harness's whole obligation here is
+// that the announcement is durable and the outcome is typed: a checkpoint is never a failure, a
+// completion, or a submission.
+fn harness_turn_checkpoint_due(
+  config: HarnessTurnConfig,
+  steps_taken: Int,
+  events: List<String>,
+) -> HarnessTurnOutcome {
+  let announced = concat(events, [
+    harness_event_alignment_checkpoint_due(
+      steps_taken: steps_taken,
+      chain_fingerprint: config.alignment_chain_fingerprint,
+    ),
+  ])
+  match harness_write_events(config: config, events: announced) {
+    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+    HarnessEventsWritten => TurnAlignmentCheckpointDue { steps_taken: steps_taken }
+  }
+}
+
 fn harness_turn_loop(
   config: HarnessTurnConfig,
   messages: List<JsonValue>,
@@ -1096,15 +1229,24 @@ fn harness_turn_loop(
   repairs_used: Int,
 ) -> HarnessTurnOutcome {
   if steps_remaining <= 0 {
-    let exhausted = concat(events, [harness_event_turn_budget_exhausted(steps_taken: steps_taken)])
-    match harness_write_events(config: config, events: exhausted) {
-      HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-      HarnessEventsWritten => TurnStepBudgetExhausted { steps_taken: steps_taken }
+    if config.alignment_chain_fingerprint == "" {
+      let exhausted = concat(events, [harness_event_turn_budget_exhausted(steps_taken: steps_taken)])
+      match harness_write_events(config: config, events: exhausted) {
+        HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+        HarnessEventsWritten => TurnStepBudgetExhausted { steps_taken: steps_taken }
+      }
+    } else {
+      harness_turn_checkpoint_due(config: config, steps_taken: steps_taken, events: events)
     }
   } else {
-    match harness_post_round(config: config, messages: messages) {
+    let posted_round = harness_post_round(config: config, messages: messages, round: steps_taken + 1)
+    let events_after_wire = match posted_round.wire_log_detail {
+      Present { value: detail } => concat(events, [harness_event_wire_log_unwritable(detail: detail)])
+      Absent => events
+    }
+    match posted_round.read {
       HarnessResponseUnreadable { cause: c } => {
-        let failed = concat(events, [harness_event_turn_failed(message: c)])
+        let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
         match harness_write_events(config: config, events: failed) {
           HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
           HarnessEventsWritten => TurnResponseUnreadable { cause: c }
@@ -1113,7 +1255,7 @@ fn harness_turn_loop(
       HarnessResponseParsed { blocks: raw_blocks, stop_reason, usage: usage_read } =>
         match usage_read {
           UsageUnreadable { cause: uc } => {
-            let unavailable = concat(events, [
+            let unavailable = concat(events_after_wire, [
               harness_event_round_usage_unavailable(step: steps_taken + 1, cause: uc, clock: clock_unix_millis_read()),
               harness_event_turn_failed(
                 message: join([
@@ -1131,7 +1273,7 @@ fn harness_turn_loop(
             harness_turn_round(
               config: config, messages: messages, raw_blocks: raw_blocks, stop_reason: stop_reason,
               input_tokens: input_tokens, output_tokens: output_tokens,
-              steps_remaining: steps_remaining, steps_taken: steps_taken, events: events,
+              steps_remaining: steps_remaining, steps_taken: steps_taken, events: events_after_wire,
               repairs_used: repairs_used,
             )
         }
@@ -1387,6 +1529,7 @@ fn harness_turn_continue(
                         shape: config.wire_shape,
                         results: results,
                         steps_remaining: steps_remaining - 1,
+                        checkpointed: config.alignment_chain_fingerprint != "",
                       ),
                     ),
                   ),

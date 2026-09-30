@@ -2626,11 +2626,16 @@ test fn the_checkpoint_lines_project_the_capture_record_verbatim() -> Bool {
 fn belt_test_ready_resolution(node_id: String, project_id: String) -> AlignmentResolution {
   alignment_resolve_chain(
     chain: AlignmentChained {
-      task: AlignmentChainLink { node_id: node_id, purpose: "Binding purpose", boundary: "Binding boundary" },
+      task: AlignmentChainLink { node_id: node_id, purpose: "Binding purpose", boundary: "Binding boundary", current_approach: "fixture approach", red_control: "fixture red", handback: "fixture handback", displaced_cost: "fixture cost", contribution_to_parent: "fixture contribution" },
       projects: [AlignmentChainLink {
         node_id: project_id,
         purpose: join(["Purpose of ", project_id], ""),
         boundary: join(["Boundary of ", project_id], ""),
+        current_approach: "fixture approach",
+        red_control: "fixture red",
+        handback: "fixture handback",
+        displaced_cost: "fixture cost",
+        contribution_to_parent: "fixture contribution",
       }],
       root: decl_ref(module_path: "gunbc.design_document", decl_name: "design_document"),
     },

@@ -616,8 +616,8 @@ test fn the_integration_receipt_codec_round_trips_both_states() -> Bool {
 
 fn batch_memberships() -> List<RoadmapMembership> {
   [
-    RoadmapMembership { project: "shell-arc", member: "task-one" },
-    RoadmapMembership { project: "shell-arc", member: "task-two" },
+    RoadmapMembership { project: "shell-arc", member: "task-one", contribution: "fixture contribution" },
+    RoadmapMembership { project: "shell-arc", member: "task-two", contribution: "fixture contribution" },
   ]
 }
 
@@ -645,7 +645,7 @@ test fn a_node_with_no_dependent_arc_is_a_project_of_one_keyed_by_itself() -> Bo
 
 test fn two_arcs_over_one_node_is_a_typed_ambiguity_not_a_default() -> Bool {
   let edges = concat(batch_memberships(), [
-    RoadmapMembership { project: "other-arc", member: "task-one" },
+    RoadmapMembership { project: "other-arc", member: "task-one", contribution: "fixture contribution" },
   ])
   match node_project_membership(node_id: "task-one", memberships: edges) {
     MembershipAmbiguous { arcs } => count(arcs) == 2
