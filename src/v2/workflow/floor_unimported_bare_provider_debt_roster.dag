@@ -2184,7 +2184,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "src/v2/test/manual/tm_probe.dag", name: "tokenize", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "src/v2/test/manual/token_stream_content_hash_witness.dag", name: "Accepted", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "src/v2/test/manual/token_stream_content_hash_witness.dag", name: "Filesystem", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "src/v2/test/manual/token_stream_content_hash_witness.dag", name: "Optional", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "src/v2/test/manual/token_stream_content_hash_witness.dag", name: "Optional", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "src/v2/test/manual/token_stream_content_hash_witness.dag", name: "Token", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "src/v2/test/manual/token_stream_content_hash_witness.dag", name: "TokenStream", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "src/v2/test/manual/token_stream_content_hash_witness.dag", name: "dag_language_model", standing: ActiveDebt },
