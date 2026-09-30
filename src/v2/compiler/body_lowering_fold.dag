@@ -7738,7 +7738,11 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
     Absent => refuse
     Present { value: pair } =>
       match body_lower_string_key_atom_optional(node: pair.left) {
-        Present { value: key } => body_lower_map_literal_entry_edge(key: key, after_key: pair.right, item: item, refuse: refuse)
+        Present { value: _ } =>
+          match body_lower_value_read(value: pair.left) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: key, diagnostics: _ } => body_lower_map_literal_entry_edge(key: key, after_key: pair.right, item: item, refuse: refuse)
+          }
         Absent =>
       match body_lower_field_init_name_optional(key: pair.left) {
         Absent => refuse
@@ -7762,8 +7766,9 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
 
 // A STRING-KEYED ITEM `"k": v` (a map literal's entry). The key is the item's sole atom when that
 // atom's lexeme is of the string-literal class (v2.extdeps.languages.dag dag_lexeme_is_string_literal);
-// it is kept as the value the literal lowers to, never read as a field name, so the key's kind
-// survives to resolve (docs/plans/map-literal-introduction-design.md).
+// the key is then lowered as the VALUE any string literal lowers to (body_lower_value_read), never
+// read as a field name and never kept as its raw token, so the key's kind survives to resolve and
+// the key is the same node an ordinary string value is (docs/plans/map-literal-introduction-design.md).
 fn body_lower_string_key_atom_optional(node: Node) -> Optional<Node> {
   match body_lower_value_sole_atom_optional(node: node) {
     Absent => optional_absent()
