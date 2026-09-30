@@ -43,6 +43,7 @@ import product.compute_board.spice_projection {
   project_analog_to_spice,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.compute_board.article { BoardArticleIdentity, article_identity_eq }
 
 data fixture_design: ElectricalDesignIdentity = "test.compute_board_spice_projection.fixture" as ElectricalDesignIdentity
 
@@ -51,7 +52,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // SYNTHETIC FIXTURES, sized to the boundaries they cross and no larger. Nothing here is a
 // realistic-looking circuit chosen for verisimilitude: each fixture is the smallest one that
 // crosses exactly one modelled boundary, per the witness-cost rule.
-data fixture_identity: NonEmptyStr = "synthetic fixture rev 0"
+data fixture_identity: BoardArticleIdentity = BoardArticleIdentity { name: "synthetic fixture", revision: "0" }
 
 data rail_net: NetIdentity = net_identity(design: fixture_design, local_identity: "rail")
 
@@ -153,7 +154,7 @@ test fn w_modelled_circuit_emits_expected_deck_bytes() -> Bool {
   ) {
     SpiceSliceProjected { receipt: r } =>
       r.source == "standby rail slice\nVrail_src rail 0 12\nRsense rail 0 10k\nCdecap rail 0 100n"
-        && (r.source_article as String) == "synthetic fixture rev 0"
+        && article_identity_eq(a: r.source_article, b: fixture_identity)
     SpiceSliceRefused { cause: _ } => false
   }
 }

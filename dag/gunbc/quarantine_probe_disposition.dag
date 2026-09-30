@@ -9,6 +9,7 @@ import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 import std.types { NonEmptyStr }
 import gunbc.quarantine_outside_gate_decline { QuarantineOutsideGateDecline }
+import std.algebra { Cons, Empty }
 
 // WHICH MECHANISM HOLDS A QUARANTINE PROBE, DERIVED TOTALLY -- NOT "IS IT IN THE ROSTER".
 //
