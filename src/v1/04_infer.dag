@@ -4075,6 +4075,22 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // producing `id-Present { value: ... }`. Refusal requires the declared side to be ESTABLISHED
 // Required and non-generic: a type variable may be instantiated at an Optional, and an unresolved
 // or erased declared identity is not a Required fact, so those stay with their own arms.
+//
+// A PRODUCED TYPE THAT IS OPTIONAL BY NAME ONLY IS NOT EVIDENCE WHEN THE DECLARED COPRODUCT OWNS THE
+// ARM NAME. std.upsert_decision ObservationVerdict and gunbc.host.host_converge ConvergeVerdict each
+// declare their own `Absent` arm, and a bare `Absent` at a position declared as one of them is typed
+// as the kernel Optional coproduct: the reference is elected to the kernel owner without consulting
+// the declared one. The value is the declared coproduct's arm and the program is correct, so
+// refusing it here is a fabricated refusal. Measured by the whole-root compile differential on the
+// change that wired the record-field and declared-return producers: sixteen such sites newly
+// refused (gunbc.fleet.fleet_converge_cli, gunbc.file_access), and six more already stood refused
+// on main at the direct-call argument (test.claim.fleet.fleet_converge_cli_witness_test). The
+// exclusion is keyed on the two facts that make the evidence unsound and nothing wider: the
+// produced side carries NO CardOptional (so optionality is asserted by the name alone), and the
+// declared coproduct declares `Absent` or `Present` at its own level. A CardOptional produced value
+// at such a coproduct is still refused. The defect it stands in for is upstream and is not repaired
+// here: variant-reference election should consult the declared coproduct before the kernel one, at
+// which point the produced type is the declared type and this exclusion has no subject.
 fn optional_produced_at_required_declared(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
@@ -4090,7 +4106,17 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
     || declared_peeled.return_cardinality == CardOptional
     || qualified_last_segment(name: declared_name) == "Optional"
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared_peeled)) == "Optional"
+  let declared_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: declared)) {
+    Present { value: resolved } => resolved
+    Absent => with_required_cardinality(n: declared)
+  }
+  let declared_expanded = expand_scrut_type_for_variant_lookup(scrut_node: declared_required, env: scope.type_env)
+  let declared_owns_an_optional_arm_name = declared_expanded.connective == Disj
+    && (has_child_named(n: declared_expanded, name: "Absent", source_indices: source_indices)
+      || has_child_named(n: declared_expanded, name: "Present", source_indices: source_indices))
+  let produced_optional_by_name_only = produced.return_cardinality != CardOptional
   produced_carries_optional
+    && !(produced_optional_by_name_only && declared_owns_an_optional_arm_name)
     && !declared_carries_optional
     && !declared_is_generic
     && declared_name != ""
