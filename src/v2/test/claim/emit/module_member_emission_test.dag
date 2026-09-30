@@ -1,7 +1,8 @@
 module v2.test.claim.emit.module_member_emission
 
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.emit_produced { ModuleDeclarationKinds, emit_module_member }
+import v2.compiler.emit_produced { emit_module_member }
+import v2.compiler.body_lowering_fold { DeclaredRefinement }
 import v2.compiler.self_host.closure_emission {
   ClosureEmissionLocated, ClosureMemberEmitted, ClosureMemberRefused, emit_closure_from_ingest_located,
 }
@@ -170,7 +171,7 @@ fn member_emission_supplied_refinement() -> String {
     edge: member,
     target: rust_target_model(),
     realization_host: rust_target_model(),
-    kinds: ModuleDeclarationKinds { records: [], refinements: [^Pos] }
+    kinds: [DeclaredRefinement { name: ^Pos }]
   ) {
     Accepted { value: m, diagnostics: _ } => m.carried
     Rejected { diagnostics: d } => concat("REFUSED ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
@@ -182,7 +183,7 @@ test fn a_refinement_with_a_lowered_carrier_emits_a_transparent_alias_holds() ->
   string_contains(s: text, pattern: "type Pos = i32;") && !string_contains(s: text, pattern: "struct")
 }
 
-// A record -- a Conj its module's record_declarations names -- emits as a struct beside the function, the
+// A record -- a Conj its module's declaration kinds call DeclaredRecord -- emits as a struct beside the function, the
 // record through the semantic-declaration emitter and its field's Int through the target's spelling.
 test fn a_record_beside_a_function_emits_as_a_struct_holds() -> Bool {
   match member_emission_record_verdict() {

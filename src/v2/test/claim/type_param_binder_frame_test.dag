@@ -519,17 +519,24 @@ fn tpb_box_member_mixed() -> Node {
   )
 }
 
-fn tpb_type_decl_emit_twin() -> Outcome<ResolvedTree> {
+fn tpb_type_decl_emit_twin() -> Outcome<Node> {
   translate_type_expression_project(node: tpb_box_member(with_params: false), target: rust_target_model(), projection: rust_type_expression_projection())
 }
 
-fn tpb_type_decl_emit_generic() -> Outcome<ResolvedTree> {
+fn tpb_type_decl_emit_generic() -> Outcome<Node> {
   translate_type_expression_project(node: tpb_box_member(with_params: true), target: rust_target_model(), projection: rust_type_expression_projection())
 }
 
 test fn tpb_translator_refuses_a_generic_type_decl_member() -> Bool {
-  tpb_accepts(o: tpb_type_decl_emit_twin())
-    && tpb_refuses_with(o: tpb_type_decl_emit_generic(), reason: ^translate_reason_generic_type_decl_not_rendered)
+  let accepted = match tpb_type_decl_emit_twin() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+  let refused = match tpb_type_decl_emit_generic() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^translate_reason_generic_type_decl_not_rendered
+  }
+  accepted && refused
 }
 
 // A GENERIC DECLARATION'S BINDERS SIT BESIDE ITS MEMBER (v2.std.type_binder type_decl_wrapper), so a

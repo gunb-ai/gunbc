@@ -4,11 +4,11 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import v2.compiler.emit { emit }
 import v2.compiler.emit_produced {
-  ModuleDeclarationKinds,
   emit_module_body_members,
-  no_module_declaration_kinds,
   produced_module_bodies_declare_members
 }
+import v2.compiler.body_lowering_fold { DeclaredTypeKind }
+import v2.compiler.normalized_tree { no_type_declaration_kinds }
 import v2.compiler.infer {
   InferredFacts,
   InferredFactsEntry,
@@ -611,7 +611,7 @@ fn emit_partition_with_target(
   partition: ProgramPartition,
   target: TargetModel,
   realization_host: TargetModel,
-  kinds: ModuleDeclarationKinds
+  kinds: FreeMonoid<DeclaredTypeKind>
 ) -> Outcome<Medium<String>> {
   if partition_segment_is_ambient_arrow_body_behavior(partition: partition) {
     bind_outcome(
@@ -646,7 +646,7 @@ fn emit_partition_with_target(
 fn emit_partition(
   partition: ProgramPartition,
   target: TargetModel,
-  kinds: ModuleDeclarationKinds
+  kinds: FreeMonoid<DeclaredTypeKind>
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: partition_derive_target_for_emit(partition: partition, target: target),
@@ -667,13 +667,13 @@ fn emit_for_target(
     segment: segment,
     target: target,
     boundary: boundary,
-    kinds: no_module_declaration_kinds()
+    kinds: no_type_declaration_kinds()
   )
 }
 
 // THE DECLARATION FACTS A MODULE'S EMISSION NEEDS AND ITS INFERRED TREE DOES NOT CARRY. Which members are
 // records is declaration provenance, not inferred type evidence, so it rides beside the tree rather than
-// in it: the caller that still holds the module's NormalizedTree passes its record_declarations (the
+// in it: the caller that still holds the module's NormalizedTree passes its type_declaration_kinds (the
 // closure door does), and emit_for_target, whose callers hold only the inferred tree, passes none -- so a
 // plain Conj member there refuses as undecided rather than being guessed a record.
 fn emit_for_target_with_declarations(
@@ -681,7 +681,7 @@ fn emit_for_target_with_declarations(
   segment: ProgramSegment,
   target: TargetModel,
   boundary: PartitionBoundaryPolicy,
-  kinds: ModuleDeclarationKinds
+  kinds: FreeMonoid<DeclaredTypeKind>
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: resolve_program_partition(

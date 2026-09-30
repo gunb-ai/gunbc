@@ -41,6 +41,7 @@ import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, Type
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl_resolving }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.std.logic { Bool }
+import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredTypeKind }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_arrow_body_child, named_child_lookup }
 import v2.extdeps.languages.dag { namespace_graft_node_is_module_body, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
@@ -152,31 +153,18 @@ fn produced_decl_conjs_in_tree(root: Node) -> FreeMonoid<Node> {
 
 
 
-// THE DECLARATION-KIND FACTS A MODULE'S EMISSION CONSUMES AND ITS INFERRED TREE DOES NOT CARRY: the
-// names this module declares as records and as where-refinements, captured at normalize from the parse
-// (v2.compiler.normalized_tree NormalizedTree record_declarations / refinement_declarations). Positive
-// facts only -- a plain Conj member named in neither is undecided, never inferred from the other's
-// absence. Per module, because each emission is one module's.
-type ModuleDeclarationKinds {
-  records: FreeMonoid<Symbol>
-  refinements: FreeMonoid<Symbol>
-}
-
-fn no_module_declaration_kinds() -> ModuleDeclarationKinds {
-  ModuleDeclarationKinds { records: Empty, refinements: Empty }
-}
-
 // EVERY DIRECT MEMBER OF A MODULE BODY HAS EXACTLY ONE TARGET REALIZATION OR ONE TYPED REFUSAL.
 // The class is decided once, here, from the member's own declaration edge and its module's declaration
 // facts -- never from target syntax and never by filtering: a member no class renders refuses the whole
 // module, located at that member, so `fn add` beside an unrenderable declaration is never published
 // alone. A bodied Arrow renders through the target's produced-declaration rows (emit_produced_decl); a
-// coproduct (a plain Disj, which only a coproduct lowers to) and a record (a plain Conj the module's
-// record_declarations names) render through v2.compiler.emit_semantic_decl emit_semantic_type_decl; a
-// where-refinement (a plain Conj its refinement_declarations names) takes its own class. A plain Conj
-// named in neither -- a payload-bearing single variant shares that shape after lowering -- is UNDECIDED
-// and refuses; reading the kind back from the lowered shape or its labels would be the heuristic
-// ModuleDeclarationKinds exists to replace. An alias, a bodyless declaration and a generic declaration
+// coproduct (a plain Disj, which only a coproduct lowers to) and a record (a plain Conj its module's
+// declaration kinds call DeclaredRecord) render through v2.compiler.emit_semantic_decl
+// emit_semantic_type_decl; a where-refinement (DeclaredRefinement) takes its own class. The kinds are
+// v2.compiler.normalized_tree NormalizedTree type_declaration_kinds, one coproduct value per declaration,
+// so a member has one kind or none. A plain Conj with none -- a payload-bearing single variant shares
+// that shape after lowering -- is UNDECIDED and refuses; reading the kind back from the lowered shape or
+// its labels would be the heuristic the captured kind exists to replace. An alias, a bodyless declaration and a generic declaration
 // refuse under their own reasons: no target realization exists for them yet.
 type ModuleMemberClass
   = ModuleMemberBodiedArrow
@@ -184,14 +172,13 @@ type ModuleMemberClass
   | ModuleMemberCoproduct { name: Symbol, coproduct: Node }
   | ModuleMemberRecord { name: Symbol, record: Node }
   | ModuleMemberRefinement { name: Symbol, refinement: Node }
-  | ModuleMemberKindConflict
   | ModuleMemberRecordOrRefinement
   | ModuleMemberAlias
   | ModuleMemberOpaque
   | ModuleMemberGeneric
   | ModuleMemberUnsupported
 
-fn module_member_class(edge: Edge, kinds: ModuleDeclarationKinds) -> ModuleMemberClass {
+fn module_member_class(edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>) -> ModuleMemberClass {
   match edge.label {
     Positional => ModuleMemberUnsupported
     Named { name: n } =>
@@ -210,12 +197,7 @@ fn module_member_class(edge: Edge, kinds: ModuleDeclarationKinds) -> ModuleMembe
               match m.kind {
                 TypeNode { connective: Disj } => ModuleMemberCoproduct { name: n, coproduct: m }
                 TypeNode { connective: Conj } =>
-                  module_member_conj_class(
-                    name: n,
-                    member: m,
-                    is_record: contains(xs: kinds.records, item: n, eq: fn(a, b) { a == b }),
-                    is_refinement: contains(xs: kinds.refinements, item: n, eq: fn(a, b) { a == b })
-                  )
+                  module_member_conj_class(name: n, member: m, kinds: kinds)
                 _ => ModuleMemberUnsupported
               }
           }
@@ -223,18 +205,24 @@ fn module_member_class(edge: Edge, kinds: ModuleDeclarationKinds) -> ModuleMembe
   }
 }
 
-// A plain Conj member is a record or a refinement only when its module's facts SAY so; named in both is
-// an invariant breach (the two are authored alternatives), refused rather than resolved by precedence.
-fn module_member_conj_class(name: Symbol, member: Node, is_record: Bool, is_refinement: Bool) -> ModuleMemberClass {
-  if is_record && is_refinement {
-    ModuleMemberKindConflict
-  } else if is_record {
-    ModuleMemberRecord { name: name, record: member }
-  } else if is_refinement {
-    ModuleMemberRefinement { name: name, refinement: member }
-  } else {
-    ModuleMemberRecordOrRefinement
-  }
+// A plain Conj member is a record or a refinement only when its module's captured kind SAYS so.
+fn module_member_conj_class(name: Symbol, member: Node, kinds: FreeMonoid<DeclaredTypeKind>) -> ModuleMemberClass {
+  fold_list(
+    xs: kinds,
+    empty: ModuleMemberRecordOrRefinement,
+    cons: fn(acc, k) {
+      match acc {
+        ModuleMemberRecordOrRefinement =>
+          match k {
+            DeclaredRecord { name: r } =>
+              if r == name { ModuleMemberRecord { name: name, record: member } } else { acc }
+            DeclaredRefinement { name: r } =>
+              if r == name { ModuleMemberRefinement { name: name, refinement: member } } else { acc }
+          }
+        _ => acc
+      }
+    }
+  )
 }
 
 // A WHERE-REFINEMENT DECLARATION THROUGH THE TARGET'S OWN REALIZATION ROW (target_model_edge_
@@ -362,13 +350,12 @@ fn emit_module_member_refused(reason: Symbol, at: Node) -> Outcome<Medium<String
   outcome_rejected(d: emit_produced_decl_diagnostic(reason: reason, node: at))
 }
 
-fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: ModuleDeclarationKinds) -> Outcome<Medium<String>> {
+fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>) -> Outcome<Medium<String>> {
   match module_member_class(edge: edge, kinds: kinds) {
     ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, realization_host: realization_host)
     ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl_resolving(name: n, params: [], node: c, target: target, type_binding: produced_type_binding(target: realization_host), host_binding_spellings: target.binding_spellings)
     ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl_resolving(name: n, params: [], node: r, target: target, type_binding: produced_type_binding(target: realization_host), host_binding_spellings: target.binding_spellings)
     ModuleMemberRefinement { name: n, refinement: m } => emit_refinement_declaration(name: n, refinement: m, target: target, realization_host: realization_host)
-    ModuleMemberKindConflict => emit_module_member_refused(reason: ^emit_module_member_record_and_refinement_conflict, at: edge.target)
     ModuleMemberBodylessArrow => emit_module_member_refused(reason: ^emit_module_member_arrow_has_no_body, at: edge.target)
     ModuleMemberRecordOrRefinement => emit_module_member_refused(reason: ^emit_module_member_record_or_refinement_undecided, at: edge.target)
     ModuleMemberAlias => emit_module_member_refused(reason: ^emit_module_member_alias_not_realized, at: edge.target)
@@ -417,7 +404,7 @@ fn produced_module_bodies_declare_members(root: Node) -> Bool {
 
 // Every module body's members, in order, each through its one realization; the first refusal refuses
 // the module with nothing partial published.
-fn emit_module_body_members(root: Node, target: TargetModel, realization_host: TargetModel, kinds: ModuleDeclarationKinds) -> Outcome<Medium<String>> {
+fn emit_module_body_members(root: Node, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>) -> Outcome<Medium<String>> {
   let members = fold(module_bodies_in_tree(node: root, acc: []), init: [], f: fn(acc, b) {
     concat(acc, module_body_member_edges(body: b))
   })

@@ -50,16 +50,16 @@ import v2.compiler.body_lowering_fold {
   body_lower_fn_decl_to_census_arrow,
   body_lower_service_decl,
   body_lower_is_deferred_lower_at_normalize,
-  body_lower_type_decl_record_name_optional,
-  body_lower_type_decl_refinement_name_optional
+  DeclaredTypeKind,
+  body_lower_type_decl_declared_kind_optional,
+  declared_record_names
 }
 import v2.compiler.normalized_tree {
   CensusTree,
   NormalizedTree,
   admit_census_tree,
   admit_normalized_tree,
-  admit_retention_free,
-  admit_normalized_tree_with_refinements
+  admit_retention_free
 }
 import v2.compiler.test_marker_capture { test_marker_capture }
 import v2.compiler.namespace_graft {
@@ -360,13 +360,12 @@ fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<FreeMon
   )
 }
 
-// WHICH OF THIS MODULE'S TYPES ARE RECORDS, read from the parse tree for the reason
-// import_binding_capture reads imports there: after lowering, a record is a bare
-// `Conj { R: payload }` that no reader can tell from a where-alias or a module spine. The question is
-// answered by the rehome's own predicate (v2.compiler.body_lowering_fold
-// body_lower_type_decl_record_name_optional), so what is carried and what was rehomed are one
-// decision, not two.
-fn record_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
+// WHICH KIND EACH OF THIS MODULE'S PLAIN-CONJ TYPES IS, read from the parse tree for the reason
+// import_binding_capture reads imports there: after lowering, a record, a where-refinement and a
+// payload-bearing single variant are one `Conj { R: payload }` shape. The question is answered by the
+// lowering's own predicate (v2.compiler.body_lowering_fold body_lower_type_decl_declared_kind_optional),
+// so what is carried and what was lowered are one decision, not two.
+fn type_declaration_kind_capture(nodes: List<Node>) -> FreeMonoid<DeclaredTypeKind> {
   fold_list(
     xs: nodes,
     empty: Empty,
@@ -377,9 +376,9 @@ fn record_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
           if id != ^dag_surface_type_decl {
             acc
           } else {
-            match body_lower_type_decl_record_name_optional(shell: n) {
+            match body_lower_type_decl_declared_kind_optional(shell: n) {
               Absent => acc
-              Present { value: name } => list_snoc_item(xs: acc, item: name)
+              Present { value: kind } => list_snoc_item(xs: acc, item: kind)
             }
           }
       }
@@ -387,28 +386,10 @@ fn record_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
   )
 }
 
-// WHICH OF THIS MODULE'S TYPES ARE WHERE-REFINEMENTS, read from the parse by the lowering's own predicate
-// (v2.compiler.body_lowering_fold body_lower_type_decl_refinement_name_optional), beside the record
-// capture above and for the same reason.
-fn refinement_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
-  fold_list(
-    xs: nodes,
-    empty: Empty,
-    cons: fn(acc, n) {
-      match parse_production_emitted_identity_optional(node: n) {
-        Absent => acc
-        Present { value: id } =>
-          if id != ^dag_surface_type_decl {
-            acc
-          } else {
-            match body_lower_type_decl_refinement_name_optional(shell: n) {
-              Absent => acc
-              Present { value: name } => list_snoc_item(xs: acc, item: name)
-            }
-          }
-      }
-    }
-  )
+// The record names alone, for the census and the fixtures that fill a symbol index: a projection of
+// the one capture above, never a second reading of the parse.
+fn record_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
+  declared_record_names(kinds: type_declaration_kind_capture(nodes: nodes))
 }
 
 fn bind_retention_free(o: Outcome<BodyLoweredTree>) -> Outcome<Node> {
@@ -439,12 +420,11 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
                   Rejected { diagnostics: r } =>
                     Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
                   Accepted { value: bindings, diagnostics: _ } =>
-                    admit_normalized_tree_with_refinements(
+                    admit_normalized_tree(
                       root: grafted,
                       test_markers: markers,
                       import_bindings: bindings,
-                      record_declarations: record_declaration_capture(nodes: parse_nodes),
-                      refinement_declarations: refinement_declaration_capture(nodes: parse_nodes),
+                      type_declaration_kinds: type_declaration_kind_capture(nodes: parse_nodes),
                       diagnostics: d1
                     )
                 }

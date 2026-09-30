@@ -1,5 +1,6 @@
 module v2.lens.module_graph
 
+import v2.compiler.normalized_tree { normalized_tree_record_declarations }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -300,7 +301,7 @@ fn located_roots_from_source_root_ingest(
               item: LocatedModuleRoot {
                 path: item.path,
                 root: item.tree.root,
-                record_declarations: item.tree.record_declarations
+                record_declarations: normalized_tree_record_declarations(t: item.tree)
               }
             )
           }

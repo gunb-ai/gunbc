@@ -4,7 +4,8 @@ import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Medium }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.emit { emit }
-import v2.compiler.emit_produced { emit_module_body_members, no_module_declaration_kinds, produced_module_bodies_declare_members }
+import v2.compiler.emit_produced { emit_module_body_members, produced_module_bodies_declare_members }
+import v2.compiler.normalized_tree { no_type_declaration_kinds }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -192,7 +193,7 @@ fn generate_rust_module_emission_candidate(
 ) -> Outcome<RustEmissionCandidate> {
   if produced_module_bodies_declare_members(root: inferred.root) {
     bind_outcome(
-      o: emit_module_body_members(root: inferred.root, target: target, realization_host: target, kinds: no_module_declaration_kinds()),
+      o: emit_module_body_members(root: inferred.root, target: target, realization_host: target, kinds: no_type_declaration_kinds()),
       f: fn(source) {
         outcome_accepted(
           value: RustEmissionCandidate {
