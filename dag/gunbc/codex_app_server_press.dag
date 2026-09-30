@@ -1074,7 +1074,10 @@ fn disposition_from_structured_rpc_error(err: JsonValue) -> AccountTripFrameDisp
         native_cause_from_json_rpc_error(err: err)
       }
     JsonMemberFound { value: JsonNumber { lexeme: n } } =>
-      AccountTripNativeCauseNumericCode { code: parse_int(s: n as String) }
+      match parse_int(s: n as String) {
+        Present { value: c } => AccountTripNativeCauseNumericCode { code: c }
+        Absent => native_cause_from_json_rpc_error(err: err)
+      }
     JsonMemberFound { value: _ } => native_cause_from_json_rpc_error(err: err)
     JsonMemberAbsent => native_cause_from_json_rpc_error(err: err)
     JsonMemberDuplicated { count: _ } => native_cause_from_json_rpc_error(err: err)
