@@ -300,6 +300,7 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
     global_bare: index.global_bare,
     bound_declarings: index.bound_declarings,
     declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
     declared_type_params: map_insert(m: index.declared_type_params, key: qualified_path, value: params)
   }
 }
