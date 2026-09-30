@@ -1334,6 +1334,41 @@ fn spark_native_apply_transaction(
   }
 }
 
+// DEV-ONLY (operator ruling 2026-09-30, never merged): the V4.1 dev launch skips the grant preflight,
+// which checks Group B's glm-native-tp4 inspect grant and says nothing about this arm.
+fn spark_native_apply_transaction_dev_no_grant_preflight(
+  context: FleetSshExecutionContext, trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
+  steps: List<SparkNativeHostStep>, at_word: String,
+) -> SparkNativeApplyRun
+{
+  let grants = map(map(steps, st => st.host), h => spark_native_grant_preflight_host(context: context, host: h))
+  let grant_lines = join(map(grants, p => spark_native_grant_preflight_wire(p: p)), "")
+  if false {
+    SparkNativeApplyRun {
+      body: join(["spark_native_serving_apply preflight: the offer's grant is not in place on every host of the arm; NO HOST WAS TOUCHED.\n", grant_lines], ""),
+      committed: false,
+    }
+  } else {
+    match spark_native_transaction_identity(at: at_word) {
+      NativeTransactionIdentityUnread { cause: c } =>
+        SparkNativeApplyRun { body: join(["spark_native_serving_apply: NO HOST WAS TOUCHED. ", c, "\n"], ""), committed: false }
+      NativeTransactionIdentified { id: transaction_id } => {
+        let outcome = spark_native_transaction_body(trust: trust, path: path, administrator: administrator, steps: steps, transaction_id: transaction_id)
+        SparkNativeApplyRun {
+          body: join([spark_native_transaction_headline(t: outcome), grant_lines, spark_native_transaction_receipt(t: outcome)], ""),
+          committed: match outcome {
+            NativeArmCommitted { receipt: _ } => true
+            NativeArmCommittedWithCleanupPending { receipt: _ } => false
+            NativeArmRefusedBeforeActuation { stage: _, receipt: _ } => false
+            NativeArmRollbackActuationAccepted { stage: _, dispositions: _, receipt: _ } => false
+            NativeArmDispositionUnestablished { stage: _, dispositions: _, receipt: _ } => false
+          },
+        }
+      }
+    }
+  }
+}
+
 fn spark_native_serving_apply_wet() -> ProcessExit
 {
   let now = clock_now_probed_at()

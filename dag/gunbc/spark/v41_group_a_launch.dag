@@ -39,7 +39,7 @@ import gunbc.spark.native_serving_realization {
 }
 import gunbc.spark.native_serving_apply {
   SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of,
-  spark_native_preflight_plans, spark_native_apply_stage_plans, spark_native_apply_transaction,
+  spark_native_preflight_plans, spark_native_apply_stage_plans, spark_native_apply_transaction, spark_native_apply_transaction_dev_no_grant_preflight,
 }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.pair_serving_authority {
@@ -884,7 +884,7 @@ fn v41_group_a_launch_session(now_word: String, context: FleetSshExecutionContex
               match v41_dev_stage_engram_privileged(hosts: map(steps, st => st.host), manifest_text: manifest, ctx: ctx) {
                 V41StagingStopped { receipt: r } => SparkBuildHostWork { receipt: join([reads_receipt, r, "NOT LAUNCHED: the Engram staging stopped; no serving unit was touched\n"], ""), converged: false }
                 V41StagedEverywhere { receipt: r } => {
-                  let run = spark_native_apply_transaction(context: context, trust: ctx.trust, path: ctx.path, administrator: ctx.admin_credential, steps: steps, at_word: now_word)
+                  let run = spark_native_apply_transaction_dev_no_grant_preflight(context: context, trust: ctx.trust, path: ctx.path, administrator: ctx.admin_credential, steps: steps, at_word: now_word)
                   SparkBuildHostWork { receipt: join([reads_receipt, r, run.body], ""), converged: run.committed }
                 }
               }
