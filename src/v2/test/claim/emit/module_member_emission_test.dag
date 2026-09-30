@@ -1,5 +1,7 @@
 module v2.test.claim.emit.module_member_emission
 
+import v2.extdeps.languages.dag { dag_surface_edge_label }
+
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_produced { emit_module_member }
 import v2.compiler.body_lowering_fold { DeclaredRefinement }
@@ -161,7 +163,7 @@ fn member_emission_supplied_refinement() -> String {
       kind: TypeNode { connective: Conj },
       children: [
         Edge { label: Authored { name: ^dag_surface_type_expr }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } }, children: []) },
-        Edge { label: Authored { name: ^dag_surface_where_refinement_clause }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^positive } }, children: []) }
+        Edge { label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause), target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^positive } }, children: []) }
       ]
     )
   }
