@@ -62,8 +62,10 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
-import v2.std.node { Ambiguous, Found, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
+import v2.std.node_query { construct_field_edges, construct_tag_optional }
+import v2.std.symbol_index { RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
+import v2.std.node { Ambiguous, Found, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of, match_arm_pattern_edge }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -74,6 +76,7 @@ import v2.std.arrow_signature {
   ArrowParameterOrderMalformed,
   application_actual_edges,
   application_binding_plan,
+  application_binding_plan_over,
   arrow_declared_parameter_order
 }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -102,6 +105,7 @@ import v2.std.inhabitance {
   inhabitance_node_undecidable_reason,
   inhabitance_undecidable_diagnostic,
   position_declared_return,
+  position_record_field,
   position_direct_call_argument,
   undecidable_argument_type_not_derived,
   undecidable_formal_unresolved
@@ -115,6 +119,7 @@ import v2.std.diagnostic {
   UserInputBoundary,
   node_locus,
   Outcome,
+  Suggested,
   Unavailable,
   Accepted,
   None,
@@ -2040,23 +2045,6 @@ fn infer_inhabitance_undecidable_accepted(
   }
 }
 
-fn infer_judge_application_argument(
-  application: Node,
-  entries: List<InferredFactsEntry>,
-  formal: InhabitanceFormal,
-  arg: Node,
-  type_params: List<Symbol>
-) -> Outcome<Bool> {
-  infer_judge_declared_position(
-    position: position_direct_call_argument(),
-    application: application,
-    entries: entries,
-    formal: formal,
-    produced_at: arg,
-    type_params: type_params
-  )
-}
-
 // ONE JUDGE FOR EVERY DECLARED POSITION. An argument at its formal and an Arrow body at its declared
 // return ask the same question -- does the type derived at `produced_at` inhabit `formal.declared`? --
 // so both build a DeclaredTypeObligation here and hand it to the one relation,
@@ -2183,6 +2171,7 @@ fn infer_no_type_variable_instances() -> List<TypeVariableInstance> {
 // declared_type_inhabitance fold an ordinary formal uses. An argument whose type is not derived
 // stays the counted frontier it is for any formal, and instantiates nothing.
 fn infer_judge_application_argument_instantiating(
+  position: DeclaredTypePosition,
   application: Node,
   entries: List<InferredFactsEntry>,
   formal: InhabitanceFormal,
@@ -2192,18 +2181,19 @@ fn infer_judge_application_argument_instantiating(
 ) -> Outcome<List<TypeVariableInstance>> {
   match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
     DeclaredType { declared: _ } =>
-      match infer_judge_application_argument(application: application, entries: entries, formal: formal, arg: arg, type_params: type_params) {
+      match infer_judge_declared_position(position: position, application: application, entries: entries, formal: formal, produced_at: arg, type_params: type_params) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
       }
     DeclaredTypeVariable { binder: binder } =>
       match type_variable_instance_lookup(instances: instances, binder: binder) {
         Present { value: instance } =>
-          match infer_judge_application_argument(
+          match infer_judge_declared_position(
+            position: position,
             application: application,
             entries: entries,
             formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: instance },
-            arg: arg,
+            produced_at: arg,
             type_params: type_params
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -2250,37 +2240,71 @@ fn infer_application_argument_inhabitance(
       match infer_application_formal_args(node: node, formals: formals) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: pairs, diagnostics: _ } =>
-          let type_params = infer_application_type_params(node: node)
-          match fold(
-            pairs,
-            init: Accepted { value: infer_no_type_variable_instances(), diagnostics: None },
-            f: fn(acc, pair) {
-              match acc {
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                Accepted { value: instances, diagnostics: pd } =>
-                  match infer_judge_application_argument_instantiating(
-                    application: node,
-                    entries: entries,
-                    formal: pair.formal,
-                    arg: pair.arg,
-                    type_params: type_params,
-                    instances: instances
-                  ) {
-                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                    Accepted { value: next, diagnostics: jd } =>
-                      Accepted {
-                        value: next,
-                        diagnostics: diagnostics_merge(outer: pd, inner: jd)
-                      }
-                  }
-              }
-            }
+          match infer_judge_formal_args(
+            position: position_direct_call_argument(),
+            site: JudgedAtApplication { application: node },
+            entries: entries,
+            pairs: pairs,
+            type_params: infer_application_type_params(node: node)
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
           }
       }
   }
+}
+
+// EVERY FORMAL-ACTUAL PAIR OF ONE SITE, JUDGED IN ORDER UNDER ONE INSTANTIATION. An application's
+// arguments at its callee's formals and a record construct's field values at the record's declared
+// fields are the same walk: each pair goes to infer_judge_application_argument_instantiating, the
+// first derived actual at a declared type variable instantiates it for this site, and the instances
+// the walk ends with are the site's instantiation. The site says where a pair's verdict is located:
+// an application's obligations are located at the application, a construct's at the field value
+// they judge.
+type InferJudgedSite
+  = JudgedAtApplication { application: Node }
+  | JudgedAtEachActual
+
+fn infer_judged_site_node(site: InferJudgedSite, actual: Node) -> Node {
+  match site {
+    JudgedAtApplication { application: application } => application
+    JudgedAtEachActual => actual
+  }
+}
+
+fn infer_judge_formal_args(
+  position: DeclaredTypePosition,
+  site: InferJudgedSite,
+  entries: List<InferredFactsEntry>,
+  pairs: List<InhabitanceFormalArg>,
+  type_params: List<Symbol>
+) -> Outcome<List<TypeVariableInstance>> {
+  fold(
+    pairs,
+    init: Accepted { value: infer_no_type_variable_instances(), diagnostics: None },
+    f: fn(acc, pair) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: instances, diagnostics: pd } =>
+          match infer_judge_application_argument_instantiating(
+            position: position,
+            application: infer_judged_site_node(site: site, actual: pair.arg),
+            entries: entries,
+            formal: pair.formal,
+            arg: pair.arg,
+            type_params: type_params,
+            instances: instances
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: next, diagnostics: jd } =>
+              Accepted {
+                value: next,
+                diagnostics: diagnostics_merge(outer: pd, inner: jd)
+              }
+          }
+      }
+    }
+  )
 }
 
 // EACH FORMAL WITH THE ACTUAL THAT FILLS IT, from the one binding plan
@@ -3487,7 +3511,24 @@ fn infer_gather_product_row_on_entries(
   pending: Diagnostics,
   partials: List<Node>,
 ) -> InferGatherFoldAcc {
-  match infer_formation_facts_from_entries(node: node, entries: entries, partials: partials) {
+  infer_gather_formed_facts_row(
+    node: node,
+    formed: infer_formation_facts_from_entries(node: node, entries: entries, partials: partials),
+    entries: entries,
+    pending: pending
+  )
+}
+
+// THE ROW A FORMED NODE ENTERS BY: its facts are admitted and appended, or the node fails with the
+// refusal. Product introduction and record introduction form their facts differently and enter the
+// same way.
+fn infer_gather_formed_facts_row(
+  node: Node,
+  formed: Outcome<InferredFacts>,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+) -> InferGatherFoldAcc {
+  match formed {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -3588,6 +3629,12 @@ fn infer_arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
   }
 }
 
+// A MATCH ARM'S PATTERN IS A BINDING FORM, NOT A VALUE, so this step carries its edge the way it
+// carries a declaration's binders (v2.std.node match_arm_pattern_edge). A fielded pattern is the
+// construct shape with binders where a construction has values, and may name any subset of its
+// constructor's fields; the match row reads it from the arm, and it is never judged as the
+// construction it is shaped like. The same edge is outside v2.std.type_binder
+// node_inferred_subtree_nodes.
 fn infer_gather_fold_step(
   acc: InferGatherFoldAcc,
   edge: Edge,
@@ -3598,7 +3645,9 @@ fn infer_gather_fold_step(
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
-  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge) || infer_declaration_binder_edge(parent: acc.node, edge: edge) {
+  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge)
+    || infer_declaration_binder_edge(parent: acc.node, edge: edge)
+    || match_arm_pattern_edge(parent: acc.node, edge: edge) {
     infer_gather_fold_step_merged(
       acc: acc,
       merged_entries: acc.entries,
@@ -3749,6 +3798,387 @@ fn infer_gather_fold_step_merged(
   }
 }
 
+// A RECORD CONSTRUCT IS ITS CONSTRUCTOR APPLIED BY NAME. `R { f: v }` is a Conj whose marked first
+// edge targets the constructor's resolved reference (v2.std.node_query construct_tag_optional) and
+// whose other edges are the field values. The formals it applies are the fields the record
+// DECLARES and the type variables are the record's declared binders. From there it is the
+// application's own route: the one binding plan pairs each declared field with the actual that
+// fills it (v2.std.arrow_signature application_binding_plan_over), and the one judge decides each
+// pair under one instantiation (infer_judge_formal_args). Nothing here compares a type.
+//
+// TWO READINGS OF ONE DECLARATION, EACH FROM THE INDEX THAT OWNS IT (v2.compiler.resolve
+// ResolvedTree). symbol_index, the index resolution consulted, holds a declaration AS AUTHORED: it
+// says which paths are records, which fields each declares and which binders it has -- facts about
+// NAMES, so the field set is checked for every record a tag can resolve to. resolved_declarations
+// holds the subject module's declarations WITH RESOLVED BODIES, and the judge compares resolved
+// types, so a record found there is judged field by field. A record declared in another module has
+// no resolved body this stage can read: each of its field values is a counted
+// UndecidableFormalUnresolved obligation and the construct stays on the frontier -- never compared
+// against the authored spelling, which would refuse for the wrong reason. That population and its
+// trigger are rostered in gunbc.recurring_failure_mode
+// construct_field_value_not_typed_against_the_record_declaration.
+//
+// ONLY A DECLARED RECORD IS READ HERE. The index says which kind of payload a path denotes
+// (symbol_index_declared_payload_at); a variant arm's construct, a tag the guarded reader does not
+// answer for, and a Conj with no tag at all are ConstructNotARecord and keep product introduction,
+// where an underived tag leaves them on the counted frontier as before.
+type InferRecordFormals
+  = RecordFormalsResolved { payload: Node }
+  | RecordFormalsAuthored { payload: Node }
+
+type InferRecordConstruct {
+  record: Node
+  path: QualifiedName
+  formals: InferRecordFormals
+  type_params: List<Symbol>
+}
+
+type InferConstructRead
+  = ConstructIsRecord { construct: InferRecordConstruct }
+  | ConstructNotARecord
+
+fn infer_record_formals(resolved: ResolvedTree, path: QualifiedName, authored: Node) -> InferRecordFormals {
+  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
+    Present { value: resolved } => RecordFormalsResolved { payload: resolved }
+    Absent => RecordFormalsAuthored { payload: authored }
+  }
+}
+
+fn infer_record_formals_payload(formals: InferRecordFormals) -> Node {
+  match formals {
+    RecordFormalsResolved { payload: payload } => payload
+    RecordFormalsAuthored { payload: payload } => payload
+  }
+}
+
+fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConstructRead {
+  match construct_tag_optional(n: node) {
+    Absent => ConstructNotARecord
+    Present { value: reference } =>
+      match declaration_reference_path_optional(node: reference) {
+        Absent => ConstructNotARecord
+        Present { value: path } =>
+          match symbol_index_declared_payload_at(index: resolved.symbol_index, qualified_path: path) {
+            Absent => ConstructNotARecord
+            Present { value: kind } =>
+              match kind {
+                VariantArmPayload => ConstructNotARecord
+                RecordTypePayload =>
+                  match symbol_index_lookup(index: resolved.symbol_index, qualified_path: path) {
+                    Absent => ConstructNotARecord
+                    Present { value: authored } =>
+                      ConstructIsRecord {
+                        construct: InferRecordConstruct {
+                          record: reference,
+                          path: path,
+                          formals: infer_record_formals(resolved: resolved, path: path, authored: authored),
+                          type_params: symbol_index_declared_type_params_at(index: resolved.symbol_index, qualified_path: path)
+                        }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// EVERY FIELD-SET REFUSAL NAMES THE RECORD AND THE FIELD. Located at the value for a field the
+// record does not declare, names twice, or does not name at all; located at the construct for a
+// declared field it leaves out, whose declared type rides beside its name.
+fn infer_record_construct_refusal(reason: Symbol, at: Node, record: Node, field: Edge) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: at),
+    correction: Suggested {
+      node: Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge { label: Named { name: ^inhabitance_record }, target: record },
+          field
+        ],
+        occurrence_id: at.occurrence_id
+      }
+    }
+  }
+}
+
+// The binding plan's reasons, said of a record: an unknown label is a field the record does not
+// declare, an unfilled slot a declared field left out, a slot filled twice a field named twice. Any
+// other plan reason is passed through as it is, never renamed into one of these.
+fn infer_record_construct_field_not_declared_reason() -> Symbol {
+  ^record_construct_field_not_declared
+}
+
+fn infer_record_construct_field_missing_reason() -> Symbol {
+  ^record_construct_field_missing
+}
+
+fn infer_record_construct_field_bound_twice_reason() -> Symbol {
+  ^record_construct_field_bound_twice
+}
+
+fn infer_record_construct_binding_reason(plan_reason: Symbol) -> Symbol {
+  if plan_reason == ^application_argument_label_unknown {
+    infer_record_construct_field_not_declared_reason()
+  } else if plan_reason == ^application_positional_deficit {
+    infer_record_construct_field_missing_reason()
+  } else if plan_reason == ^application_argument_slot_bound_twice {
+    infer_record_construct_field_bound_twice_reason()
+  } else {
+    plan_reason
+  }
+}
+
+fn infer_record_actual_label_set(actuals: List<Edge>) -> Map<Symbol, Bool> {
+  fold(actuals, init: empty_map(), f: fn(m, e) {
+    match e.label {
+      Named { name: label } => map_insert(m: m, key: label, value: true)
+      Positional => m
+    }
+  })
+}
+
+fn infer_record_first_missing_formal(formals: List<InhabitanceFormal>, actuals: List<Edge>) -> Optional<InhabitanceFormal> {
+  let named = infer_record_actual_label_set(actuals: actuals)
+  fold(formals, init: optional_absent(), f: fn(acc, formal) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match map_lookup(m: named, key: formal.parameter_identity) {
+          Present { value: _ } => acc
+          Absent => optional_present(value: formal)
+        }
+    }
+  })
+}
+
+fn infer_record_first_positional_actual(actuals: List<Edge>) -> Optional<Edge> {
+  fold(actuals, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Positional => optional_present(value: e)
+          Named { name: _ } => acc
+        }
+    }
+  })
+}
+
+fn infer_record_construct_binding_refusal(
+  node: Node,
+  construct: InferRecordConstruct,
+  formals: List<InhabitanceFormal>,
+  actuals: List<Edge>,
+  plan_reason: Symbol,
+  at: Int
+) -> Diagnostic {
+  let reason = infer_record_construct_binding_reason(plan_reason: plan_reason)
+  if plan_reason == ^application_positional_deficit {
+    match infer_record_first_missing_formal(formals: formals, actuals: actuals) {
+      Present { value: missing } =>
+        infer_record_construct_refusal(
+          reason: reason,
+          at: node,
+          record: construct.record,
+          field: Edge { label: Named { name: missing.parameter_identity }, target: missing.declared }
+        )
+      Absent => application_parameter_order_diagnostic(application: node, reason: application_parameter_order_malformed_reason())
+    }
+  } else {
+    match list_at_optional(xs: actuals, index: at) {
+      Present { value: actual } =>
+        infer_record_construct_refusal(reason: reason, at: actual.target, record: construct.record, field: actual)
+      Absent => application_parameter_order_diagnostic(application: node, reason: application_parameter_order_malformed_reason())
+    }
+  }
+}
+
+// EACH DECLARED FIELD WITH THE VALUE THAT FILLS IT, OR THE REFUSAL. A construct's fields are named,
+// so a field edge with no name is refused before the plan could bind it by position. A payload whose
+// fields are not all named is not a field set this reads: RecordPayloadUnread, the counted frontier.
+type InferRecordFieldBinding
+  = RecordFieldsBound { pairs: List<InhabitanceFormalArg> }
+  | RecordFieldsRefused { diagnostic: Diagnostic }
+  | RecordPayloadUnread
+
+fn infer_record_field_binding(node: Node, construct: InferRecordConstruct) -> InferRecordFieldBinding {
+  match infer_formals_from_domain(domain: infer_record_formals_payload(formals: construct.formals)) {
+    Absent => RecordPayloadUnread
+    Present { value: formals } =>
+      let actuals = construct_field_edges(n: node)
+      match infer_record_first_positional_actual(actuals: actuals) {
+        Present { value: unnamed } =>
+          RecordFieldsRefused {
+            diagnostic: infer_record_construct_refusal(
+              reason: ^record_construct_field_not_named,
+              at: unnamed.target,
+              record: construct.record,
+              field: unnamed
+            )
+          }
+        Absent =>
+          match application_binding_plan_over(labels: list_map(xs: formals, f: infer_formal_identity_key), actuals: actuals) {
+            ApplicationBindingRefused { reason: reason, at: at } =>
+              RecordFieldsRefused {
+                diagnostic: infer_record_construct_binding_refusal(
+                  node: node,
+                  construct: construct,
+                  formals: formals,
+                  actuals: actuals,
+                  plan_reason: reason,
+                  at: at
+                )
+              }
+            ApplicationBound { slots: slots } =>
+              RecordFieldsBound { pairs: infer_formal_args_by_plan(formals: formals, slots: slots, actuals: actuals) }
+          }
+      }
+  }
+}
+
+// RECORD INTRODUCTION IS NOMINAL. A construct whose every field value inhabits its declared field is
+// a value of the DECLARED record, so its type is the record's declaration reference -- instantiated
+// at the type each declared binder took from the field values, in binder order, when the record is
+// generic (the carrier infer_freemonoid_type_of builds for a list) -- and never the product of its
+// field types, which would make two records with the same fields one type. It derives only when
+// every field obligation was decided and every binder was instantiated: a construct with a counted
+// field obligation, or a binder no field value fixed, stays on the frontier, exactly as an
+// application does (infer_transform_derived_optional arguments_decided).
+fn infer_record_construct_type(
+  construct: InferRecordConstruct,
+  instances: List<TypeVariableInstance>,
+  decided: Bool
+) -> Optional<Node> {
+  if !decided {
+    optional_absent()
+  } else {
+    let reference = declaration_reference_node(qn: construct.path, occurrence_id: OccurrenceSynthetic)
+    if length(xs: construct.type_params) == 0 {
+      optional_present(value: reference)
+    } else {
+      match fold(
+        construct.type_params,
+        init: optional_present(value: [Edge { label: Positional, target: reference }]),
+        f: fn(acc, binder) {
+          match acc {
+            Absent => acc
+            Present { value: edges } =>
+              match type_variable_instance_lookup(instances: instances, binder: binder) {
+                Absent => optional_absent()
+                Present { value: instance } =>
+                  optional_present(
+                    value: list_snoc_item(
+                      xs: edges,
+                      item: Edge { label: Positional, target: canonicalize_node_strip_provenance(n: instance) }
+                    )
+                  )
+              }
+          }
+        }
+      ) {
+        Absent => optional_absent()
+        Present { value: edges } =>
+          optional_present(
+            value: Node {
+              kind: TypeNode { connective: Instantiation },
+              children: edges,
+              occurrence_id: OccurrenceSynthetic
+            }
+          )
+      }
+    }
+  }
+}
+
+fn infer_record_construct_facts(
+  node: Node,
+  construct: InferRecordConstruct,
+  entries: List<InferredFactsEntry>,
+  partials: List<Node>,
+) -> Outcome<InferredFacts> {
+  match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: cd } =>
+      match infer_descent_witness_for_node(n: node) {
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: descent_proof } =>
+          match infer_record_field_binding(node: node, construct: construct) {
+            RecordFieldsRefused { diagnostic: d } => outcome_rejected(d)
+            RecordPayloadUnread =>
+              bind_outcome_accepted(od: cd, inner: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof }))
+            RecordFieldsBound { pairs: pairs } =>
+              match construct.formals {
+                RecordFormalsAuthored { payload: _ } =>
+                  bind_outcome_accepted(
+                    od: diagnostics_merge(outer: cd, inner: infer_record_fields_unresolved_diagnostics(pairs: pairs)),
+                    inner: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
+                  )
+                RecordFormalsResolved { payload: _ } =>
+                  match infer_judge_formal_args(
+                    position: position_record_field(record: construct.record),
+                    site: JudgedAtEachActual,
+                    entries: entries,
+                    pairs: pairs,
+                    type_params: construct.type_params
+                  ) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: instances, diagnostics: jd } =>
+                      bind_outcome_accepted(
+                        od: diagnostics_merge(outer: cd, inner: jd),
+                        inner: match infer_record_construct_type(
+                          construct: construct,
+                          instances: instances,
+                          decided: infer_diagnostics_none(d: jd)
+                        ) {
+                          Present { value: record_type } =>
+                            inferred_facts_from_derived_type(
+                              node: node,
+                              derived_type: record_type,
+                              descent: Holds { value: descent_proof }
+                            )
+                          Absent =>
+                            inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
+                        }
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+// One counted obligation per field value of a record whose declaration this stage holds only as
+// authored, located at the value it would have judged.
+fn infer_record_fields_unresolved_diagnostics(pairs: List<InhabitanceFormalArg>) -> Diagnostics {
+  fold(pairs, init: None, f: fn(acc, pair) {
+    diagnostics_merge(
+      outer: acc,
+      inner: Some {
+        diagnostics: diagnostics_singleton(
+          d: inhabitance_undecidable_diagnostic(application: pair.arg, reason: undecidable_formal_unresolved())
+        )
+      }
+    )
+  })
+}
+
+fn infer_gather_record_construct_row_on_entries(
+  node: Node,
+  construct: InferRecordConstruct,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+) -> InferGatherFoldAcc {
+  infer_gather_formed_facts_row(
+    node: node,
+    formed: infer_record_construct_facts(node: node, construct: construct, entries: entries, partials: partials),
+    entries: entries,
+    pending: pending
+  )
+}
+
 // THE LAST CHILD OF A NODE NO BEHAVIOR ROW AWAITED. An annotated Bind (v2.std.type_binder
 // type_annotation_optional) checks its bound value against the annotation; a product or Arrow still
 // missing its own entry takes the product row; anything else stays as folded.
@@ -3787,7 +4217,8 @@ fn infer_gather_settled_row(
             acc: acc,
             merged_entries: merged_entries,
             merged_pending: diagnostics_merge(outer: merged_pending, inner: rd),
-            partials: partials
+            partials: partials,
+            resolved: resolved
           )
       }
   }
@@ -3839,14 +4270,26 @@ fn infer_gather_settled_unannotated_row(
   merged_entries: List<InferredFactsEntry>,
   merged_pending: Diagnostics,
   partials: List<Node>,
+  resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
       if infer_gather_acc_awaits_product_row(node: acc.node, entries: merged_entries) {
-        infer_gather_product_row_on_entries(
-          node: acc.node,
-          entries: merged_entries,
-          pending: merged_pending,
-          partials: partials
-        )
+        match infer_record_construct_read(node: acc.node, resolved: resolved) {
+          ConstructIsRecord { construct: construct } =>
+            infer_gather_record_construct_row_on_entries(
+              node: acc.node,
+              construct: construct,
+              entries: merged_entries,
+              pending: merged_pending,
+              partials: partials
+            )
+          ConstructNotARecord =>
+            infer_gather_product_row_on_entries(
+              node: acc.node,
+              entries: merged_entries,
+              pending: merged_pending,
+              partials: partials
+            )
+        }
       } else {
         infer_gather_fold_acc_ok(
           node: acc.node,
