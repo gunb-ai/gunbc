@@ -1,5 +1,6 @@
 module v2.std.compilers.semantic_decl_emission
 
+import v2.std.qualified_name { declaration_reference_path_optional }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -484,9 +485,19 @@ fn semantic_decl_binding_spelling_rows_from_catalog(catalog: Node) -> Outcome<Li
 fn semantic_decl_binding_spellings_from_rows(
   rows: List<SemanticDeclBindingSpellingRow>
 ) -> Map<Symbol, String> {
+  semantic_decl_binding_spellings_from_rows_over(rows: rows, base: empty_map())
+}
+
+// The profile's rows laid over a base map: the host target's own binding_spellings, so a field type the
+// resolver bound to a target spelling (`i32`, `bool`) is spelled by the one map that owns it, and the
+// profile adds only its derive bindings.
+fn semantic_decl_binding_spellings_from_rows_over(
+  rows: List<SemanticDeclBindingSpellingRow>,
+  base: Map<Symbol, String>
+) -> Map<Symbol, String> {
   fold_list(
     xs: rows,
-    empty: empty_map(),
+    empty: base,
     cons: fn(acc, row) {
       map_insert(m: acc, key: row.binding, value: row.spelling)
     }
@@ -550,12 +561,23 @@ fn semantic_decl_profile_lex_rules(
 fn semantic_decl_profile_binding_spellings(
   profile: TargetSemanticDeclSerializeProfile
 ) -> Outcome<Map<Symbol, String>> {
+  semantic_decl_profile_binding_spellings_over(profile: profile, base: empty_map())
+}
+
+// The spellings a declaration is SERIALIZED with: the profile's rows over the host target's own map. The
+// serializer (semantic_decl_serialize_target) and the type resolver that admits a field type
+// (v2.compiler.emit_semantic_decl emit_semantic_type_decl) both read this one map, so a type is admitted
+// exactly when the serialization that follows can spell it.
+fn semantic_decl_profile_binding_spellings_over(
+  profile: TargetSemanticDeclSerializeProfile,
+  base: Map<Symbol, String>
+) -> Outcome<Map<Symbol, String>> {
   bind_outcome(
     o: semantic_decl_binding_spelling_rows_from_row_nodes(
       rows: profile.binding_spelling_rows
     ),
     f: fn(rows) {
-      outcome_accepted(value: semantic_decl_binding_spellings_from_rows(rows: rows))
+      outcome_accepted(value: semantic_decl_binding_spellings_from_rows_over(rows: rows, base: base))
     }
   )
 }
@@ -629,13 +651,14 @@ fn semantic_decl_tokens_to_source_text(
 
 fn semantic_decl_serialize_target(
   profile: TargetSemanticDeclSerializeProfile,
-  rules: Node
+  rules: Node,
+  host_binding_spellings: Map<Symbol, String>
 ) -> Outcome<TargetModel> {
   bind_outcome(
     o: semantic_decl_profile_lex_rules(profile: profile),
     f: fn(lex) {
       bind_outcome(
-        o: semantic_decl_profile_binding_spellings(profile: profile),
+        o: semantic_decl_profile_binding_spellings_over(profile: profile, base: host_binding_spellings),
         f: fn(binding_spellings) {
           outcome_accepted(
             value: TargetModel {
@@ -1423,9 +1446,35 @@ fn target_semantic_decl_surface_field(
   }
 }
 
+// A FIELD'S TYPE IS SPELLED BY THE CALLER'S type_binding -- the same resolver a function signature's types
+// go through (v2.compiler.emit_produced produced_type_binding): a declared type's reference by the target's
+// declaration-reference form, a kernel carrier by its atom realization, else an explicit target spelling,
+// else refused. It was bound as the raw atom, so `a: Int` emitted `a: dag_binding_type_int`.
+fn target_semantic_decl_field_surface_resolved(
+  name: Symbol,
+  type_node: Node,
+  projection: TargetSemanticDeclSurfaceProjection,
+  type_binding: fn(Node) -> Outcome<Symbol>
+) -> Outcome<Node> {
+  bind_outcome(
+    o: type_binding(type_node),
+    f: fn(t) {
+      outcome_accepted(
+        value: target_semantic_decl_surface_field(
+          name: name,
+          t: t,
+          type_before_name: projection.field_type_before_name,
+          type_expr_field_scope: projection.type_expr_field_scope
+        )
+      )
+    }
+  )
+}
+
 fn target_semantic_decl_field_surface_from_edge(
   edge: Edge,
-  projection: TargetSemanticDeclSurfaceProjection
+  projection: TargetSemanticDeclSurfaceProjection,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match edge.label {
     Authored { name: fname } =>
@@ -1438,21 +1487,19 @@ fn target_semantic_decl_field_surface_from_edge(
                   correction: Unavailable { reason: ExternalContractUnknown }
                 })
           } else {
-            outcome_accepted(
-              value: target_semantic_decl_surface_field(
-                name: fname,
-                t: tid,
-                type_before_name: projection.field_type_before_name,
-                type_expr_field_scope: projection.type_expr_field_scope
-              )
-            )
+            target_semantic_decl_field_surface_resolved(name: fname, type_node: edge.target, projection: projection, type_binding: type_binding)
           }
         _ =>
-          outcome_rejected(d: Diagnostic {
+          match declaration_reference_path_optional(node: edge.target) {
+            Present { value: _ } =>
+              target_semantic_decl_field_surface_resolved(name: fname, type_node: edge.target, projection: projection, type_binding: type_binding)
+            Absent =>
+              outcome_rejected(d: Diagnostic {
                 reason: ^target_semantic_decl_field_type_not_atom,
                 at: node_locus(node: edge.target),
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
+          }
       }
     StructuralLabel { label: _ } =>
       outcome_rejected(d: Diagnostic {
@@ -1902,7 +1949,8 @@ fn target_semantic_decl_coproduct_decoration_lines(
 }
 fn target_semantic_decl_field_surfaces(
   edges: List<Edge>,
-  projection: TargetSemanticDeclSurfaceProjection
+  projection: TargetSemanticDeclSurfaceProjection,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<Node>> {
   fold_list(
     xs: edges,
@@ -1914,7 +1962,8 @@ fn target_semantic_decl_field_surfaces(
           bind_outcome(
             o: target_semantic_decl_field_surface_from_edge(
               edge: edge,
-              projection: projection
+              projection: projection,
+              type_binding: type_binding
             ),
             f: fn(fnode) {
               outcome_accepted(value: list_snoc_item(xs: acc, item: fnode))
@@ -1928,7 +1977,8 @@ fn target_semantic_decl_field_surfaces(
 
 fn target_semantic_decl_tagged_union_variant_surface_from_edge(
   edge: Edge,
-  projection: TargetSemanticDeclSurfaceProjection
+  projection: TargetSemanticDeclSurfaceProjection,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match edge.label {
     Authored { name: vname } =>
@@ -1936,7 +1986,8 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
         bind_outcome(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
-            projection: projection
+            projection: projection,
+            type_binding: type_binding
           ),
           f: fn(fields) {
             outcome_accepted(
@@ -1967,7 +2018,8 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
 
 fn target_semantic_decl_tagged_union_variant_surfaces(
   edges: List<Edge>,
-  projection: TargetSemanticDeclSurfaceProjection
+  projection: TargetSemanticDeclSurfaceProjection,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<Node>> {
   fold_list(
     xs: edges,
@@ -1979,7 +2031,8 @@ fn target_semantic_decl_tagged_union_variant_surfaces(
           bind_outcome(
             o: target_semantic_decl_tagged_union_variant_surface_from_edge(
               edge: edge,
-              projection: projection
+              projection: projection,
+              type_binding: type_binding
             ),
             f: fn(vnode) {
               outcome_accepted(value: list_snoc_item(xs: acc, item: vnode))
@@ -1993,7 +2046,8 @@ fn target_semantic_decl_tagged_union_variant_surfaces(
 
 fn target_semantic_decl_variant_surface_from_edge(
   edge: Edge,
-  projection: TargetSemanticDeclSurfaceProjection
+  projection: TargetSemanticDeclSurfaceProjection,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match edge.label {
     Authored { name: vname } =>
@@ -2001,7 +2055,8 @@ fn target_semantic_decl_variant_surface_from_edge(
         bind_outcome(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
-            projection: projection
+            projection: projection,
+            type_binding: type_binding
           ),
           f: fn(fields) {
             outcome_accepted(
@@ -2029,7 +2084,8 @@ fn target_semantic_decl_variant_surface_from_edge(
 
 fn target_semantic_decl_variant_surfaces(
   edges: List<Edge>,
-  projection: TargetSemanticDeclSurfaceProjection
+  projection: TargetSemanticDeclSurfaceProjection,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<Node>> {
   fold_list(
     xs: edges,
@@ -2041,7 +2097,8 @@ fn target_semantic_decl_variant_surfaces(
           bind_outcome(
             o: target_semantic_decl_variant_surface_from_edge(
               edge: edge,
-              projection: projection
+              projection: projection,
+              type_binding: type_binding
             ),
             f: fn(vnode) {
               outcome_accepted(value: list_snoc_item(xs: acc, item: vnode))
@@ -2064,19 +2121,22 @@ fn target_semantic_decl_coproduct_uses_tagged_union_layout(
 
 fn target_semantic_decl_variant_surfaces_for_coproduct(
   projection: TargetSemanticDeclSurfaceProjection,
-  coproduct: Node
+  coproduct: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<Node>> {
   if target_semantic_decl_coproduct_uses_tagged_union_layout(layout: projection.coproduct_layout)
     && !coproduct_all_variants_nullary(edges: coproduct.children)
   {
     target_semantic_decl_tagged_union_variant_surfaces(
       edges: coproduct.children,
-      projection: projection
+      projection: projection,
+      type_binding: type_binding
     )
   } else {
     target_semantic_decl_variant_surfaces(
       edges: coproduct.children,
-      projection: projection
+      projection: projection,
+      type_binding: type_binding
     )
   }
 }
@@ -2110,7 +2170,8 @@ fn target_semantic_enum_surface_from_coproduct(
   projection: TargetSemanticDeclSurfaceProjection,
   name: Symbol,
   params: List<Symbol>,
-  coproduct: Node
+  coproduct: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match type_decl_view(target: coproduct) {
     GenericTypeDecl { binders: _, member: _ } =>
@@ -2120,7 +2181,7 @@ fn target_semantic_enum_surface_from_coproduct(
     OpaqueTypeDecl { binders: _ } =>
       outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: coproduct))
     PlainTypeDecl { member: m } =>
-      target_semantic_enum_surface_from_coproduct_admitted(projection: projection, name: name, params: params, coproduct: m)
+      target_semantic_enum_surface_from_coproduct_admitted(projection: projection, name: name, params: params, coproduct: m, type_binding: type_binding)
   }
 }
 
@@ -2128,7 +2189,8 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
   projection: TargetSemanticDeclSurfaceProjection,
   name: Symbol,
   params: List<Symbol>,
-  coproduct: Node
+  coproduct: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match coproduct.kind {
     TypeNode { connective: Disj } =>
@@ -2141,7 +2203,8 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
           bind_outcome(
             o: target_semantic_decl_variant_surfaces_for_coproduct(
               projection: projection,
-              coproduct: coproduct
+              coproduct: coproduct,
+              type_binding: type_binding
             ),
             f: fn(variants) {
               if target_semantic_decl_coproduct_uses_tagged_union_layout(
@@ -2202,7 +2265,8 @@ fn target_semantic_struct_surface_from_record(
   projection: TargetSemanticDeclSurfaceProjection,
   name: Symbol,
   params: List<Symbol>,
-  record: Node
+  record: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match type_decl_view(target: record) {
     GenericTypeDecl { binders: _, member: _ } =>
@@ -2212,7 +2276,7 @@ fn target_semantic_struct_surface_from_record(
     OpaqueTypeDecl { binders: _ } =>
       outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: record))
     PlainTypeDecl { member: m } =>
-      target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m)
+      target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m, type_binding: type_binding)
   }
 }
 
@@ -2220,14 +2284,16 @@ fn target_semantic_struct_surface_from_record_admitted(
   projection: TargetSemanticDeclSurfaceProjection,
   name: Symbol,
   params: List<Symbol>,
-  record: Node
+  record: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match record.kind {
     TypeNode { connective: Conj } =>
       bind_outcome(
         o: target_semantic_decl_field_surfaces(
           edges: record.children,
-          projection: projection
+          projection: projection,
+          type_binding: type_binding
         ),
         f: fn(fields) {
           if is_empty(xs: params) {
