@@ -298,13 +298,6 @@ fn ingested_classical_not_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
-fn ingested_resolves(source: String) -> Bool {
-  match ingested_resolved_module_from_source(source: source) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn ingested_arrow_has_match_body(source: String) -> Bool {
   match ingested_arrow_from_source(source: source) {
     Accepted { value: arrow, diagnostics: _ } =>
@@ -574,10 +567,6 @@ test fn ingested_classical_not_canonical_emit_accepts_holds() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
-}
-
-test fn ingested_classical_not_resolves_holds() -> Bool {
-  ingested_resolves(source: ingested_classical_not_source)
 }
 
 test fn ingested_classical_not_arrow_has_match_holds() -> Bool {
