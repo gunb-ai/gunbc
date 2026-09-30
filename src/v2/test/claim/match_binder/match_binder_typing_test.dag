@@ -169,13 +169,28 @@ test fn mbt_match_is_typed_parse_tree_holds() -> Bool {
   mbp_fact_of(src: mbt_positive_src, pick: fn(root) { mbp_find_match(n: root) }) == ^ParseTree
 }
 
-// A BINDER SHADOWS A PARAMETER OF THE SAME NAME. The scope walk before this change typed a binder
-// spelled like an enclosing parameter as that parameter; here `artifact` is also an Int parameter.
-test fn mbt_binder_shadows_a_same_named_parameter_holds() -> Bool {
-  mbp_fact_of(
+// REVERSED BY RULING: A BINDER MAY NOT HIDE A VISIBLE VALUE BINDING, SO THIS REFUSES. This row asserted
+// the opposite -- that an arm binder spelled like an enclosing parameter SHADOWS it and the match still
+// types -- which was the right claim when the defect it guarded was a scope walk that typed such a binder
+// as the parameter. The operator ruling of 2026-09-30 forbids value-name shadowing outright, so the
+// program this row was written over is no longer a legal one, and the row is reversed rather than deleted
+// (DESIGN section 4b(4): an expecting-red probe that flips becomes the regression control, it does not
+// retire). Here `artifact` is an Int parameter of `g` and also the Accepted arm's binder.
+//
+// WHAT IT NOW ESTABLISHES, AND WHY IT STAYS ON THE SOURCE ROUTE. v2.compiler.resolve admits every value
+// binder through one gate (admit_value_binders), and the cheap control for the rule itself lives at that
+// gate's own interface (v2.test.claim.binder_admission.callable_binder_slice
+// cbs_a_binder_hiding_an_enclosing_binder_refuses, 77 eval steps). This row is the one that says the rule
+// is reached by AUTHORED SOURCE through the real front end -- the route, not the shape -- which is the
+// pairing obligation the supplied row cannot discharge for itself.
+//
+// The refusal is asserted BY REASON, not merely as "did not type": a row satisfied by any refusal would
+// stay green if the shadowing gate were deleted and the module broke for an unrelated cause.
+test fn mbt_a_binder_hiding_a_same_named_parameter_refuses_holds() -> Bool {
+  mbp_reports(
     src: mbt_decls + "fn g(artifact: Int, h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> ParseTree {\n  match h {\n" + mbt_arms + "  }\n}\n",
-    pick: fn(root) { mbp_find_match(n: root) }
-  ) == ^ParseTree
+    reason: ^resolve_reason_binder_hides_visible_value
+  )
 }
 
 // (2) REFUSALS, EACH DISCRIMINATING: the same match with one pattern edit, so the positive control
