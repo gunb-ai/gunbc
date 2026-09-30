@@ -4,7 +4,7 @@ import v2.std.algebra { Ordering, Less, Equal, Greater }
 import v2.std.diagnostic { Diagnostic, Outcome, invariant_port_locus, Unavailable, UserInputBoundary, Accepted, None, diagnostics_singleton }
 import v2.std.logic { Bool }
 import v2.std.machine { Bit, Word32, Word64 }
-import std.nat { Nat, nat_compare, is_zero }
+import std.nat { Nat, nat_compare, is_zero, Succ, Zero }
 import v2.std.node { Symbol }
 type Float32Interchange = Word32
 type Float64Interchange = Word64
@@ -33,8 +33,8 @@ type Binary64 {
 type Float = Binary64
 fn sign_rank_lex(s: Bit) -> std.nat.Nat {
   match s {
-    true => std.nat.Zero
-    false => std.nat.Succ { prev: std.nat.Zero }
+    true => Zero
+    false => Succ { prev: Zero }
   }
 }
 fn ordering_invert(o: Ordering) -> Ordering {
@@ -60,10 +60,10 @@ fn float_finite_unsigned_field_order(
 
 fn float_special_rank(t: FloatSpecial) -> std.nat.Nat {
   match t {
-    NegInfinity => std.nat.Zero
-    PosInfinity => std.nat.Succ { prev: std.nat.Zero }
-    QuietNan => std.nat.Succ { prev: std.nat.Succ { prev: std.nat.Zero } }
-    SignalingNan => std.nat.Succ { prev: std.nat.Succ { prev: std.nat.Succ { prev: std.nat.Zero } } }
+    NegInfinity => Zero
+    PosInfinity => Succ { prev: Zero }
+    QuietNan => Succ { prev: Succ { prev: Zero } }
+    SignalingNan => Succ { prev: Succ { prev: Succ { prev: Zero } } }
   }
 }
 

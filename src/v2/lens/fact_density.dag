@@ -1,5 +1,7 @@
 module v2.lens.fact_density
 
+import std.nat { Succ, Zero }
+import v2.lens.common.construction_justification { ConstructionJustification }
 import v2.std.witness { Holds }
 import v2.std.diagnostic { outcome_accepted, outcome_rejected, node_locus }
 
@@ -19,9 +21,9 @@ type SourceSpecReadFact
   | NotATypeCarrier
 
 fn named_fact_count(children: List<Edge>) -> std.nat.Nat {
-  fold(children, init: std.nat.Zero, f: fn(acc, e) {
+  fold(children, init: Zero, f: fn(acc, e) {
     match e.label {
-      Named { name: _ } => std.nat.Succ { prev: acc }
+      Named { name: _ } => Succ { prev: acc }
       Positional => acc
     }
   })
@@ -29,8 +31,8 @@ fn named_fact_count(children: List<Edge>) -> std.nat.Nat {
 
 fn density_fact(named_facts: std.nat.Nat) -> SourceSpecReadFact {
   match named_facts {
-    std.nat.Zero => NoFact
-    std.nat.Succ { prev: p } => NamedFieldFacts { density: NonZeroNat { prev: p } }
+    Zero => NoFact
+    Succ { prev: p } => NamedFieldFacts { density: NonZeroNat { prev: p } }
   }
 }
 
