@@ -60,6 +60,14 @@ import v2.std.node {
 //                      implementation would never have revealed this.
 //   node             = fold over CANONICAL children from the kind digest, each step
 //                      combine(combine(acc, label), child)
+//   label            = Authored { name }: combine(atom("canonical_tag_named_edge"), atom(name))
+//                      core marker:        combine(atom("canonical_tag_core_marker_edge"), atom(marker's
+//                                          canonical symbol, e.g. "arrow_body_edge"))
+//                      Positional:         atom("canonical_tag_positional_edge")
+//                      The arrow-body and loop-bound vectors were re-derived by the same reference
+//                      implementation when those edges became core markers (the EdgeLabel cut); it
+//                      first reproduced their previous values, 838a07cf36bb337b and e1ea7ccc630cdeeb,
+//                      under the old authored-label rule, so only the label rule moved.
 //
 // WHAT THIS CORPUS DOES NOT CLAIM, stated here so no reader and no review upgrades it:
 //   - it does not prove injectivity;
@@ -190,7 +198,7 @@ test fn arrow_body_discipline_matches_its_vector() -> Bool {
     named(name: ^g, target: atom_node(identity: ^beta)),
     positional(target: atom_node(identity: ^sig)),
     named(name: ^f, target: atom_node(identity: ^alpha)),
-  ])) == "838a07cf36bb337b"
+  ])) == "4b696908eff8d6e5"
 }
 
 test fn loop_bound_discipline_matches_its_vector() -> Bool {
@@ -199,7 +207,7 @@ test fn loop_bound_discipline_matches_its_vector() -> Bool {
     named(name: ^g, target: atom_node(identity: ^beta)),
     positional(target: atom_node(identity: ^body)),
     named(name: ^f, target: atom_node(identity: ^alpha)),
-  ])) == "e1ea7ccc630cdeeb"
+  ])) == "e5456d4b1de1cf38"
 }
 
 // Parent assembly from child identities, two levels deep.
