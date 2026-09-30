@@ -2,6 +2,7 @@ module gunbc.design_argument
 
 import std.types { String, List }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.syllogism { Argument, Axiom, NonLogicalAxiom, Proposition }
 
 // A NONEMPTY COLLECTION OF DECLARATION REFERENCES. The DAG language has no generic NonEmptyList
 // carrier, so this is the established corpus shape: one required first element plus the remaining
