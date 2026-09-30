@@ -3574,17 +3574,6 @@ fn infer_arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
   }
 }
 
-// A MATCH ARM'S PATTERN IS A BINDING FORM, NOT A VALUE. A fielded pattern is the construct shape
-// (v2.std.node_query construct_node) with binders where a construction has values, and it may name
-// any subset of the fields its constructor declares. It is read by the match row from the arm, as
-// the literal family already reads its patterns (infer_bool_literal_pattern_classify), so its
-// subtree is carried like a declaration's binders: no facts are derived for it, and a pattern is
-// never judged as the construction it is shaped like (v2.std.node match_arm_pattern_edge; the same
-// edge is outside v2.std.type_binder node_inferred_subtree_nodes).
-fn infer_match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
-  match_arm_pattern_edge(parent: parent, edge: edge)
-}
-
 fn infer_gather_fold_step(
   acc: InferGatherFoldAcc,
   edge: Edge,
@@ -3597,7 +3586,12 @@ fn infer_gather_fold_step(
     acc
   } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge)
     || infer_declaration_binder_edge(parent: acc.node, edge: edge)
-    || infer_match_arm_pattern_edge(parent: acc.node, edge: edge) {
+    // A MATCH ARM'S PATTERN IS A BINDING FORM, NOT A VALUE: a fielded pattern is the construct shape
+    // with binders where a construction has values, and may name any subset of its constructor's
+    // fields. The match row reads it from the arm, so its subtree is carried like a declaration's
+    // binders and never judged as the construction it is shaped like (the same edge is outside
+    // v2.std.type_binder node_inferred_subtree_nodes).
+    || match_arm_pattern_edge(parent: acc.node, edge: edge) {
     infer_gather_fold_step_merged(
       acc: acc,
       merged_entries: acc.entries,
