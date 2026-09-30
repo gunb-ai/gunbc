@@ -87,17 +87,20 @@ declaration's declared type, a fn's declared return, a record field's declared t
 type of an annotated list. Resolve never infers, unifies or propagates a type it computed. Where no
 annotation reaches an elided construct, it refuses located (`resolve_anonymous_record_no_expected_type`)
 and never guesses. A record field's declared type is an annotation authored on the record
-declaration, so nesting stays within this rule. The type-parameter substitution in the record-field
-rule substitutes AUTHORED type arguments from the annotation (`BoundedLattice<DescentEvidence>`), and
-never inferred ones. A binder the annotation leaves unsubstituted gives Absent. The four positions:
+declaration, so nesting stays within this rule. **Syntactic peel only** (review condition 1, neat-boar-16, binding both arms). `expected` is peeled
+syntactically from the authored annotation. Where reaching a closed record head would need
+inference, type-variable instantiation, alias unfolding beyond resolve's existing lookup, or any
+head that is not a closed record (or `Map`, for the map arm), the construct REFUSES located. There
+is no unification and no substitution in resolve. A record field whose declared type is one of the
+record's own binders (`top: T` of `BoundedLattice<T>`) therefore gives no record head, and a headless
+literal there refuses. The four positions:
 
 - **data initializer**: `data x: T = e` lowers to `Arrow(<empty domain>, T, T, body: e)`, so the
   body edge of an Arrow is walked with `expected = ` its declared return;
 - **declared return**: the same Arrow rule covers `fn f(..) -> T { e }`, reaching `e`'s tail
   expression through blocks and `let .. in` bodies (the value position, not the statements);
 - **record field**: under a construct resolved to record `R` (authored OR elaborated), field `f`'s
-  init is walked with `expected = ` the declared type of `R.f`, with `R`'s type parameters
-  substituted by the expected type's arguments. This is how nesting works: `compile_stage_memo`'s
+  init is walked with `expected = ` the declared type of `R.f`, as authored (no substitution). This is how nesting works: `compile_stage_memo`'s
   `key_derivation: { .. }`, and `host_transport`'s `RuntimePrimitive { value: { .. } }`;
 - **list element**: under a list literal whose expected head is `List` (through its alias
   authority), each element is walked with `expected = ` the element type argument.
@@ -106,10 +109,12 @@ never inferred ones. A binder the annotation leaves unsubstituted gives Absent. 
 At a tag-elided construct, the elided arm of the writer:
 
 1. Takes `expected`. If it is Absent, refuse `resolve_anonymous_record_no_expected_type`.
-2. Takes its HEAD's resolved declaration, chasing a transparent alias through the existing alias
-   authority. Type arguments (`BoundedLattice<DescentEvidence>`) never choose the constructor; they
-   are substituted into field expected types (step 5). If the head does not resolve, the head's own
-   resolve refusal stands. No second cause is minted for it.
+2. Takes its HEAD's resolved declaration, through resolve's existing lookup only. Type arguments
+   (`BoundedLattice<DescentEvidence>`) never choose the constructor, and they are not substituted
+   anywhere. If the head does not resolve, the head's own resolve refusal stands, and no second
+   cause is minted for it. A head that is a type binder, or that reaches a record only through
+   alias unfolding the lookup does not already do, refuses
+   `resolve_anonymous_record_expected_type_not_record`.
 3. Requires the declaration to be a single record (`type_decl_view` `PlainTypeDecl` whose member is a
    product), or `Map` (the MAP arm, which this lane refuses located; see Scope). Anything else,
    whether a multi-variant coproduct, a primitive, or `List`, refuses
@@ -118,9 +123,13 @@ At a tag-elided construct, the elided arm of the writer:
    the same carrier the authored arm writes.
 5. Walks the fields under the record-field rule above.
 
-The choice reads `expected` only. The field set is never an input to steps 1-3. Field names are
-CHECKED after the choice, by infer's existing construct typing: a surplus or missing field refuses
-there, at the field.
+The choice reads `expected` only. The field set is never an input to steps 1-3.
+
+**Resolve's choice is not proof** (review condition 2). Infer CHECKS the elaborated construct
+against the declared type exactly as it checks an authored tag: field names and field value types
+through its existing construct typing, and the declared return through
+`infer_arrow_body_inhabits_declared_return`. A wrong field or a wrong value type refuses in infer, at
+the field.
 
 **Refusal causes** (typed, located at the literal's `{`, each with an ownership row in
 `v2.workflow.compile_door_cause_ownership`, per
@@ -218,7 +227,14 @@ files a `gunbc.recurring_failure_mode` receipt for it.
    field-name chooser picks the first or refuses as ambiguous, so it goes red either way.
 6. Nesting: `host_transport`'s form, and a two-level `compile_stage_memo` form, each equal to their
    hand-headed form.
-7. An elided construct cannot pass the post-infer well_formed gate or the target_model gate
+7. **Infer still checks** (review condition 2): elaboration succeeds, and infer then refuses a field
+   value of the wrong type, located at the field.
+8. **`expected` does not leak** (review condition 3): an anonymous literal passed as a call argument
+   under an annotated data declaration refuses `resolve_anonymous_record_no_expected_type`. A second
+   case puts it in a match-arm body under an annotated fn return.
+9. **Syntactic peel** (review condition 1): a headless literal at a record field declared as the
+   record's own binder (`top: T`) refuses `resolve_anonymous_record_expected_type_not_record`.
+10. An elided construct cannot pass the post-resolve well_formed gate or the target_model gate
    (a discriminating pair with the headed form).
-8. Evidence: the #12550 base-vs-head native census shows each Form B file of the table admitted,
+11. Evidence: the #12550 base-vs-head native census shows each Form B file of the table admitted,
    with every other outcome change explained. Seed claims show no true->false.
