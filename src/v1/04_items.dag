@@ -248,11 +248,18 @@ type TypedGraph {
   diagnostics: List<ErrorNode>
 }
 
+// NO EmitGraphInfo RIDES ON THE RESOLVED GRAPH. Its one consumer that needs all of it is
+// emission, and emission builds its own (v1.compiler.emit_rust build_emit_rust_context and
+// emit_module call build_emit_graph_info); a copy built here was folded over every module at the
+// end of every resolve -- on the required floor, about 4 GB at its peak -- for callers that never
+// emit. The one projection the resolve's own readers need at census scale -- which module owns a
+// declaration leaf -- is a projection of the REGISTRY the resolve already holds, built by the same
+// leaf_owner_modules_from_registry emission uses, and rides here under its own name.
 type ResolvedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
+  item_leaf_owner_modules: Map<String, LeafOwner>
   diagnostics: List<ErrorNode>
-  emit_graph_info: EmitGraphInfo
 }
 
 fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> List<Node> {
