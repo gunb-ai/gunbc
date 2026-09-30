@@ -73,6 +73,11 @@ at a named position. A position is where a declared type meets a produced expres
   `RuntimePrimitive { value: { .. } }` elaborates the inner literal from `RuntimePrimitive.value`'s
   declared type, and `compile_stage_memo`'s `key_derivation: { .. }` elaborates from the outer
   record's field. New arm.
+- `PositionListElement`: the expected type of a list literal's element is the element type of the
+  list's own expected type (`List<T>` gives `T`). `dag/std/algebra` needs this: its 88
+  `AlgebraFieldTemplate` rows are headless literals inside list literals. New arm, v1 vocabulary.
+  A list literal with no expected type passes none down, so its headless elements refuse
+  `infer_anonymous_record_no_expected_type`.
 
 At each such site, before the body is synthesised, a tag-elided construct at the root of `e` is
 elaborated. Elaboration recurses through field inits under `PositionRecordField`. It is:
@@ -123,8 +128,8 @@ the elided case adds.
 | v2.std.node | `arrow_body_record_construct_conforms`, `classify_arrow_body_form` | well_formed gate | Admits the elided marker ONLY pre-infer. The post-infer well_formed gate refuses it. |
 | v2.compiler.body_lowering_fold | `body_lower_try_record_literal` | producer | A headless `{ field_init_list }` whose every key is a name lowers to `construct_node(Elided, ..)`. The field inits go through the existing `body_lower_field_init_edge`. |
 | v2.compiler.resolve | `resolve_node_walk`, `resolve_pattern_node_walk` Conj arm | rewriter | The elided tag edge is passed through untouched (there is nothing to resolve). Field values walk as today. |
-| v2.std.inhabitance | `DeclaredTypePosition` | vocabulary | Add `PositionDataInitializer` and `PositionRecordField`. `PositionDeclaredReturn` gains its constructor. |
-| v2.compiler.infer | new `infer_elaborate_expected_construct` | elaborator | Steps 1-4 above, called from the data-initializer, declared-return and record-field check sites. It is the only writer that replaces the elision marker. |
+| v2.std.inhabitance | `DeclaredTypePosition` | vocabulary | Add `PositionDataInitializer`, `PositionRecordField` and `PositionListElement`. `PositionDeclaredReturn` gains its constructor. |
+| v2.compiler.infer | new `infer_elaborate_expected_construct` | elaborator | Steps 1-4 above, called from the data-initializer, declared-return, record-field and list-element check sites. It is the only writer that replaces the elision marker. |
 | v2.compiler.infer | Conj gather arms | reader | A tag-elided construct reached here refuses `infer_anonymous_record_no_expected_type` (it is never typed as a bare product). |
 | v2.workflow.compile_door_cause_ownership | three rows, plus `map_literal_construction_not_modeled` | ownership | One row per refusal cause. |
 | v2.test.claim.namespace_xl0.reference_conservation_accepted_drops | `a_map_literal_value_refuses_at_the_literal_holds` | control | Today it asserts `unsupported_form` for `Map<String, Bool> = { "k": .. }`. It moves to `map_literal_construction_not_modeled` at the check site. It must read the INFER outcome, because the literal now clears lowering and the `.normalized` read would go green-then-false. It stays enrolled as the map arm's refusal control. |
@@ -132,18 +137,20 @@ the elided case adds.
 
 ## Scope: which of the seven Form B admits
 
-Read from source. PR2's base census will locate each refusal, and this table will be corrected
-against it.
+MEASURED, on main 7f144278c57. Each file's source ran through the same parse and normalize route as
+`v2.test.claim.namespace_xl0.reference_conservation` `conservation_subject`. The fatal diagnostic was
+rendered through the parse's `SpanIndex`. Only the FIRST fatal refusal is reported per file, so a
+file can have later blockers beyond its first.
 
-| File | Form | Form B admits it? |
-|---|---|---|
-| dag/std/primitives | `data c: PrimitiveContract = { .. }` | yes: data initializer |
-| dag/std/termination | `data d: BoundedLattice<DescentEvidence> = { .. }` (newline-separated) | yes, via generic instantiation. Separator handling to confirm. |
-| dag/extdeps/realization/compile_stage_memo | `data f: CacheInterfaceCatalogFacts = { key_derivation: { .. }, .. }` | yes: data initializer plus record field |
-| dag/extdeps/realization/parse_table_memo | same shape | yes |
-| src/v2/std/host_transport | `RuntimePrimitive { value: { .. } }` | yes: record field under an authored head |
-| dag/std/types | `data s: Map<String, Bool> = { "String": true, .. }` | **no: MAP arm.** Reaches the check site and refuses located `map_literal_construction_not_modeled`, as a declared population (below). |
-| dag/std/algebra | not located by reading | to be located by the base census |
+| File | First fatal refusal (line) | Form | Form B admits it? |
+|---|---|---|---|
+| dag/std/algebra | 359, `{ name: "filter", .. }` | the body of `fn collection_filter_shape() -> AlgebraFieldTemplate`; 88 more rows of the same record inside list literals | yes: declared return, and list element |
+| dag/std/primitives | 17, `data char_at_contract: PrimitiveContract = {` | data initializer | yes |
+| dag/std/termination | 45, `data .. : BoundedLattice<DescentEvidence> = {` | data initializer, generic, newline-separated fields | yes, via generic instantiation. The newline separator is to be confirmed in PR2. |
+| dag/extdeps/realization/compile_stage_memo | 39, `key_derivation: {` | record field under a headless data initializer (lowering refuses the inner brace first) | yes: data initializer plus record field |
+| dag/extdeps/realization/parse_table_memo | 50, `key_derivation: {` | same | yes |
+| dag/std/types | 5, `data kernel_type_set: Map<String, Bool> = {` | MAP literal | **no: MAP arm.** Reaches the check site and refuses located `map_literal_construction_not_modeled`, as a declared population (below). |
+| src/v2/std/host_transport | about 119, `reason: ^emit_host_runtime_row_..` | **caret symbol literal** (`body_lowering_reason_caret_symbol_not_lowered`), not Form B | **not by Form B alone.** Its first blocker is the caret form. Its Form B site (`RuntimePrimitive { value: { .. } }`, record field) is admitted by this lane, but the file stays refused until caret symbols lower. |
 
 **The map arm (ruling, gentle-koi-724).** This lane builds the ONE declared-type check site and its
 RECORD arm. At that same site, a headless brace whose expected head is `Map` takes the MAP arm, which
