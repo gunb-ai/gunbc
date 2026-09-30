@@ -1,0 +1,251 @@
+module v2.test.claim.match_binder.match_binder_typing
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer, inferred_facts_resolved_type }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment }
+import v2.std.witness { Holds, Violates }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
+import v2.std.algebra { contains, list_map }
+import v2.std.node { Atom, ComputationNode, Match, Node, Symbol, TypeNode }
+import v2.std.integer { Int }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data mbp_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^match_binder_probe_artifact,
+  file_path: "src/v2/pilot/match_binder_probe_pilot.dag"
+}
+
+fn mbp_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: mbp_artifact,
+        compilation_unit: ^match_binder_probe_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn mbp_reasons(r: NonEmptyDiagnostics) -> List<Symbol> {
+  Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(d) { d.reason }) }
+}
+
+fn mbp_last(xs: List<Symbol>) -> Symbol {
+  fold(xs, init: ^mbp_no_reason, f: fn(acc, x) { x })
+}
+
+fn mbp_find_match(n: Node) -> Optional<Node> {
+  match n.kind {
+    ComputationNode { behavior: Match } => Present { value: n }
+    _ => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => mbp_find_match(n: e.target)
+      }
+    })
+  }
+}
+
+fn mbp_find_atom(n: Node, id: Symbol) -> Optional<Node> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: s } } => if s == id { optional_present(value: n) } else { optional_absent() }
+    _ => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => mbp_find_atom(n: e.target, id: id)
+      }
+    })
+  }
+}
+
+fn mbp_type_name(t: Node) -> Symbol {
+  match declaration_reference_path_optional(node: t) {
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Present { value: s } => s
+        Absent => ^mbp_empty_path
+      }
+    Absent =>
+      match t.kind {
+        TypeNode { connective: Atom { identity: s } } => s
+        _ => ^mbp_type_not_named
+      }
+  }
+}
+
+fn mbp_fact_of(src: String, pick: fn(Node) -> Optional<Node>) -> Symbol {
+  match mbp_assemble(src: src) {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => mbp_last(xs: mbp_reasons(r: r))
+        Accepted { value: inferred, diagnostics: _ } =>
+          match pick(resolved.root) {
+            Absent => ^mbp_subject_absent
+            Present { value: subject } =>
+              match inferred.facts.lookup(subject) {
+                Absent => ^mbp_no_facts
+                Present { value: facts } =>
+                  match inferred_facts_resolved_type(facts: facts) {
+                    Violates { diagnostic: _ } => ^mbp_underived
+                    Holds { value: t } => mbp_type_name(t: t)
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn mbp_all_reasons(src: String) -> List<Symbol> {
+  match mbp_assemble(src: src) {
+    Rejected { diagnostics: r } => mbp_reasons(r: r)
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => mbp_reasons(r: r)
+        Accepted { value: _, diagnostics: d } =>
+          match d {
+            None => [^infers]
+            Some { diagnostics: r } => Cons { head: ^infers, tail: mbp_reasons(r: r) }
+          }
+      }
+  }
+}
+
+fn mbp_reports(src: String, reason: Symbol) -> Bool {
+  contains(xs: mbp_all_reasons(src: src), item: reason, eq: fn(a, b) { a == b })
+}
+
+fn mbp_infers(src: String) -> Bool {
+  match mbp_all_reasons(src: src) {
+    Cons { head: h, tail: _ } => h == ^infers
+    Empty => false
+  }
+}
+
+// THE SEVEN'S PAYLOAD, DECLARED AS THE CORPUS DECLARES IT. The fixture assembles one module, so it
+// cannot import v2.std.diagnostic; it restates Outcome<T> with the same variants, fields and binder,
+// and a ParseArtifact record whose fields carry v2.compiler.parse ParseArtifact's names. What the
+// claims below exercise is exactly the operator's subject: a variant field of a GENERIC coproduct
+// instantiated at a concrete RECORD type, bound by an arm pattern and projected in the arm body.
+data mbt_decls: String = "module p\n\ntype ParseTree {\n  root: Int\n}\n\ntype ParseArtifact {\n  tree: ParseTree\n  span_index: Int\n  alloc: Int\n}\n\ntype NonEmptyDiagnostics {\n  head: Int\n}\n\ntype Diagnostics\n  = None\n  | Some { diagnostics: NonEmptyDiagnostics }\n\ntype Outcome<T>\n  = Accepted { value: T, diagnostics: Diagnostics }\n  | Rejected { diagnostics: NonEmptyDiagnostics }\n\n"
+
+fn mbt_with_match(scrutinee_type: String, arms: String) -> String {
+  mbt_decls + "fn g(h: " + scrutinee_type + ", fallback: ParseArtifact) -> ParseTree {\n  match h {\n" + arms + "  }\n}\n"
+}
+
+data mbt_arms: String = "    Rejected { diagnostics: r } => fallback.tree\n    Accepted { value: artifact, diagnostics: d } => artifact.tree\n"
+
+data mbt_positive_src: String = mbt_with_match(scrutinee_type: "Outcome<ParseArtifact>", arms: mbt_arms)
+
+// (1) THE BINDER IS TYPED ParseArtifact FROM Outcome<ParseArtifact>'s Accepted.value -- the argument
+// the scrutinee's type supplies at the declaration's binder T, not T itself and not the field's
+// authored spelling.
+test fn mbt_binder_is_typed_parse_artifact_from_accepted_value_holds() -> Bool {
+  mbp_fact_of(src: mbt_positive_src, pick: fn(root) { mbp_find_atom(n: root, id: ^artifact) }) == ^ParseArtifact
+}
+
+// AND THE MATCH IS TYPED BY ITS ARMS: each arm projects `tree` off a ParseArtifact -- one bound by
+// the pattern, one a parameter -- and the two agree. Both arms are projections on purpose: a
+// projection is typed by the field's declared type node as the index holds it
+// (v2.compiler.infer infer_field_projection_facts), which is not the resolved reference a parameter
+// annotated `ParseTree` carries, so a projection arm beside a parameter arm compares two spellings of
+// one type. That is the projection's typing boundary, reported to its owning lane, not this match's.
+test fn mbt_match_is_typed_parse_tree_holds() -> Bool {
+  mbp_fact_of(src: mbt_positive_src, pick: fn(root) { mbp_find_match(n: root) }) == ^ParseTree
+}
+
+// A BINDER SHADOWS A PARAMETER OF THE SAME NAME. The scope walk before this change typed a binder
+// spelled like an enclosing parameter as that parameter; here `artifact` is also an Int parameter.
+test fn mbt_binder_shadows_a_same_named_parameter_holds() -> Bool {
+  mbp_fact_of(
+    src: mbt_decls + "fn g(artifact: Int, h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> ParseTree {\n  match h {\n" + mbt_arms + "  }\n}\n",
+    pick: fn(root) { mbp_find_match(n: root) }
+  ) == ^ParseTree
+}
+
+// (2) REFUSALS, EACH DISCRIMINATING: the same match with one pattern edit, so the positive control
+// above is the other half of every pair.
+test fn mbt_a_variant_the_coproduct_does_not_declare_refuses_holds() -> Bool {
+  mbp_reports(
+    src: mbt_with_match(scrutinee_type: "Outcome<ParseArtifact>", arms: "    Rejected { diagnostics: r } => fallback.tree\n    Accepted { value: artifact, diagnostics: d } => artifact.tree\n    None => fallback.tree\n"),
+    reason: ^infer_match_pattern_variant_not_declared
+  )
+}
+
+test fn mbt_a_field_the_variant_does_not_declare_refuses_holds() -> Bool {
+  mbp_reports(
+    src: mbt_with_match(scrutinee_type: "Outcome<ParseArtifact>", arms: "    Rejected { diagnostics: r } => fallback.tree\n    Accepted { tree: artifact, diagnostics: d } => artifact.tree\n"),
+    reason: ^infer_match_pattern_field_not_declared
+  )
+}
+
+test fn mbt_too_many_type_arguments_refuses_holds() -> Bool {
+  mbp_reports(
+    src: mbt_with_match(scrutinee_type: "Outcome<ParseArtifact, ParseTree>", arms: mbt_arms),
+    reason: ^infer_match_type_argument_arity_mismatch
+  )
+}
+
+test fn mbt_no_type_arguments_to_a_generic_refuses_holds() -> Bool {
+  mbp_reports(
+    src: mbt_with_match(scrutinee_type: "Outcome", arms: mbt_arms),
+    reason: ^infer_match_type_argument_arity_mismatch
+  )
+}
+
+test fn mbt_a_missing_variant_refuses_as_non_exhaustive_holds() -> Bool {
+  mbp_reports(
+    src: mbt_with_match(scrutinee_type: "Outcome<ParseArtifact>", arms: "    Accepted { value: artifact, diagnostics: d } => artifact.tree\n"),
+    reason: ^infer_match_non_exhaustive
+  )
+}
+
+test fn mbt_a_record_scrutinee_refuses_holds() -> Bool {
+  mbp_reports(
+    src: mbt_with_match(scrutinee_type: "ParseArtifact", arms: mbt_arms),
+    reason: ^infer_match_scrutinee_not_coproduct
+  )
+}
+
+// (3) THE SEVEN'S SHAPE: the scrutinee is a CALL returning Outcome<ParseArtifact>, and the arm body
+// rebuilds an Outcome from the projection. What infer establishes about it is reported as it is.
+data mbt_seven_src: String = mbt_decls + "fn parse_module_prepared(tokens: Int) -> Outcome<ParseArtifact> {\n  Rejected { diagnostics: NonEmptyDiagnostics { head: tokens } }\n}\n\nfn g_tokenize_parse(text: Int) -> Outcome<ParseTree> {\n  match parse_module_prepared(tokens: text) {\n    Rejected { diagnostics: r } => Rejected { diagnostics: r }\n    Accepted { value: artifact, diagnostics: d } =>\n      Accepted { value: artifact.tree, diagnostics: d }\n  }\n}\n"
+
+// THE SEVEN'S SHAPE IS ACCEPTED AT THE FRONTIER, AND COUNTED THERE. On this stack the call's declared
+// return is not derived (an application's result is derived only for kernel and Bool returns), so the
+// scrutinee is untyped and the match cannot be checked against Outcome's variants. It is accepted --
+// refusing would convict the program for a route this stage does not reach -- and the acceptance
+// carries infer_match_scrutinee_type_underived at the scrutinee, so the untyped match is a counted
+// site and not a silent green. When the call's return derives, this claim goes red and the positive
+// controls above become the seven's own.
+test fn mbt_the_sevens_call_scrutinee_is_a_counted_frontier_holds() -> Bool {
+  mbp_infers(src: mbt_seven_src)
+    && mbp_reports(src: mbt_seven_src, reason: ^infer_match_scrutinee_type_underived)
+}
+
+// AN ARM BODY WHOSE TYPE IS NOT DERIVED IS COUNTED, NOT GUESSED. The scrutinee here IS typed, so the
+// patterns are checked and the binder is typed; the bodies rebuild an Outcome from a constructor,
+// which this stage does not type, so the match is accepted at the frontier with one located
+// infer_match_arm_body_type_underived per such body -- and the binder beneath it is still typed.
+data mbt_constructor_body_src: String = mbt_with_match(scrutinee_type: "Outcome<ParseArtifact>", arms: "    Rejected { diagnostics: r } => Rejected { diagnostics: r }\n    Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }\n")
+
+test fn mbt_an_underived_arm_body_is_a_counted_frontier_holds() -> Bool {
+  mbp_infers(src: mbt_constructor_body_src)
+    && mbp_reports(src: mbt_constructor_body_src, reason: ^infer_match_arm_body_type_underived)
+    && (mbp_fact_of(src: mbt_constructor_body_src, pick: fn(root) { mbp_find_atom(n: root, id: ^artifact) }) == ^ParseArtifact)
+}
