@@ -43936,6 +43936,16 @@ pub enum RequiredFloorDisposition {
     /// ONE range; a green floor over these rows means the mismatch is HANDLED, never that the two
     /// denominators have been reconciled.
     DeclinedChangedWitnessOutsideDiscovery { module_path: String },
+    /// Selected by the changed-witness sublane, and its file is a `BinWitnessWet`
+    /// `WitnessExclusionRow` (`gunbc.ci_layer_roots` `witness_exclusion_frontier`): its claims
+    /// drive compiled seed witness binaries on host effects the floor's hermetic route refuses,
+    /// and NO CI LANE EXECUTES THAT CLASS -- its per-PR batch died with the floor cut, and
+    /// falsifier.yml with gunbc#8283. The name says exactly that and names no owner, because no
+    /// lane owns it; claiming one would be the §3 meaning fork. The loss is declared as
+    /// `gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci`, and a PR that edits such
+    /// a witness carries a real bin_wet receipt instead. Reachable ONLY from that classification,
+    /// counted, and printed per row with the pattern that matched.
+    DeclinedNoCiWetLane { pattern: String },
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -45262,6 +45272,7 @@ fn write_required_floor_disposition_tsv(
     let mut declined_gate_closure = 0usize;
     let mut declined_discovery_excluded = 0usize;
     let mut declined_changed_witness_outside_discovery = 0usize;
+    let mut declined_no_ci_wet_lane = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
@@ -45277,6 +45288,7 @@ fn write_required_floor_disposition_tsv(
             RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
                 declined_changed_witness_outside_discovery += 1
             }
+            RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => declined_no_ci_wet_lane += 1,
         }
     }
     writeln!(
@@ -45284,7 +45296,7 @@ fn write_required_floor_disposition_tsv(
         "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
          \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\
-         \tdeclined_changed_witness_outside_discovery={}",
+         \tdeclined_changed_witness_outside_discovery={}\tdeclined_no_ci_wet_lane={}",
         rows.len(),
         planned,
         planned_as_changed_witness,
@@ -45294,7 +45306,8 @@ fn write_required_floor_disposition_tsv(
         declined_gate_closure,
         declined_discovery_excluded,
         declined_cost_debt,
-        declined_changed_witness_outside_discovery
+        declined_changed_witness_outside_discovery,
+        declined_no_ci_wet_lane
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")
