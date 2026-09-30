@@ -865,12 +865,20 @@ fn body_lower_field_items_optional(items: List<Node>) -> Optional<List<BodyLower
 // carrier yet (gunbc.recurring_failure_mode service_interface_member_has_no_carrier), so a record
 // field that writes one refuses at its tail rather than lowering its type and dropping the tail.
 fn body_lower_first_field_tail_optional(fields: List<BodyLowerIoItem>) -> Optional<Node> {
-  fold(fields, init: Absent, f: fn(acc, io) {
+  fold(fields, init: optional_absent(), f: fn(acc, io) {
     match acc {
       Present { value: _ } => acc
-      Absent => if body_lower_io_field_tail_present(tail: io.tail) { Present { value: io.tail } } else { Absent }
+      Absent => body_lower_field_tail_if_present(io: io)
     }
   })
+}
+
+fn body_lower_field_tail_if_present(io: BodyLowerIoItem) -> Optional<Node> {
+  if body_lower_io_field_tail_present(tail: io.tail) {
+    optional_present(value: io.tail)
+  } else {
+    optional_absent()
+  }
 }
 
 // `{ f: T, g: U }`: the block's captured is seq(`{`, seq(list, `}`)); its field items.
