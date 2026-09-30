@@ -349,6 +349,18 @@ fn closure_resolve_member(
   )
 }
 
+// A MEMBER NORMALIZED FROM THE INGEST'S FINAL ALLOCATOR (see ClosureIngest `alloc`), its projected
+// occurrences scoped by the member tree's own structural digest.
+fn closure_member_normalized(file: ClosureIngestFile, ingested: ClosureIngest) -> Outcome<NormalizedTree> {
+  match normalize_scoped(
+    parse_tree: file.parse_tree,
+    allocator: scoped_occurrence_allocator(alloc: ingested.alloc, scope: content_hash(n: file.parse_tree))
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
+  }
+}
+
 fn closure_member_for_fold(
   lm: LanguageModel,
   ingested: ClosureIngest,
@@ -364,13 +376,7 @@ fn closure_member_for_fold(
     ),
     f: fn(file) {
       bind_outcome(
-        o: bind_outcome(
-          o: normalize_scoped(
-            parse_tree: file.parse_tree,
-            allocator: scoped_occurrence_allocator(alloc: ingested.alloc, scope: content_hash(n: file.parse_tree))
-          ),
-          f: fn(scoped) { outcome_accepted(value: scoped.tree) }
-        ),
+        o: closure_member_normalized(file: file, ingested: ingested),
         f: fn(tree) {
           bind_outcome(
             o: closure_resolve_member(
