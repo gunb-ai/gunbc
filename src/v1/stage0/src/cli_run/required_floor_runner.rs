@@ -8280,13 +8280,15 @@ pub fn run_required_floor(
             });
             // A CHANGED `BinWitnessWet` ROW IS DECLINED, NOT PLANNED: the hermetic route refuses
             // its host effects by construction, and planning it only mints a route gap. The
-            // classification is the gate, read from the typed exclusion rows, never a name match.
+            // classification is the gate, read from the typed exclusion rows, never a name match, and the
+            // row must be named in the declared drop's bounded population (review 73267).
             let bin_wet_pattern = if selected_as_changed_witness {
                 crate::cli_run::witness_gates::witness_exclusion_frontier_rows()
                     .iter()
                     .find(|row| {
                         row.classification == "BinWitnessWet"
                             && file.path.contains(row.pattern.as_str())
+                            && declared_no_ci_wet_lane_population().contains(&row.pattern)
                     })
                     .map(|row| row.pattern.clone())
             } else {
@@ -16192,4 +16194,30 @@ mod floor_stall_metric_tests {
         );
         assert!(!line.contains("stall 0"), "{line}");
     }
+}
+
+/// THE DECLARED POPULATION of `gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci`, read
+/// from that row's `..._population` list -- the ONE list that both declares the drop and gates the
+/// `DeclinedNoCiWetLane` decline. A BinWitnessWet row it does not name is not declined.
+fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<String> {
+    static POPULATION: std::sync::OnceLock<std::collections::HashSet<String>> =
+        std::sync::OnceLock::new();
+    POPULATION.get_or_init(|| {
+        const REL: &str = "dag/gunbc/rung_drop/edited_bin_witness_wet_rows_not_executed_by_ci.dag";
+        let path = crate::cli_run::process_workspace_root().join(REL);
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "rung drop population: failed to read {}: {e}",
+                path.display()
+            )
+        });
+        crate::cli_run::string_list_data_from_module_source(
+            REL,
+            &content,
+            "edited_bin_witness_wet_rows_not_executed_by_ci_population",
+            false,
+        )
+        .into_iter()
+        .collect()
+    })
 }
