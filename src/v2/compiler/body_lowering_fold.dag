@@ -27,6 +27,7 @@ import v2.compiler.body_producer_forward {
 }
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
+  dag_lexeme_is_string_literal,
   ParseSubtreeFind,
   ParseSubtreeFound,
   dag_binding_branded_atom_identity,
@@ -7702,6 +7703,23 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
 // shape v2.std.node admits and the shape a fielded pattern lowers to, so `Rec { n: 1 }` and
 // `Rec { n: x } =>` are one shape read in two directions. A dotted head (`m.R { .. }`) is a postfix
 // chain and reaches the same builder, body_lower_record_construct, through its PostfixRecord step.
+// A FIELD INIT'S KEY IS A NAME, read as the grammar's binding-name alternative and nothing else.
+// dag_grammar_field_init_expr also admits a STRING-LITERAL key (`{ "k": v }`, a map entry), and the
+// general binding reader takes that lexeme's atom for a field name -- erasing the key kind, so
+// that `{ "n": true }` under a record type would elaborate as field `n`. A string key therefore
+// refuses at the item here; the map arm gives it its own edge (gunbc#12734).
+fn body_lower_field_init_name_optional(key: Node) -> Optional<Symbol> {
+  match body_lower_param_binding_optional(node: key) {
+    Present { value: name } =>
+      if dag_lexeme_is_string_literal(sym: name) {
+        optional_absent()
+      } else {
+        optional_present(value: name)
+      }
+    Absent => optional_absent()
+  }
+}
+
 fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   let stripped = body_lower_deep_unwrap_optional(node: item)
   let captured = match parse_production_captured_child_optional(node: stripped) {
@@ -7714,7 +7732,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   match sugar_sequence_pair_optional(node: captured) {
     Absent => refuse
     Present { value: pair } =>
-      match body_lower_param_binding_optional(node: pair.left) {
+      match body_lower_field_init_name_optional(key: pair.left) {
         Absent => refuse
         Present { value: field_name } =>
           match sugar_sequence_pair_optional(node: pair.right) {

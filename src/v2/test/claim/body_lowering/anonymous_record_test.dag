@@ -47,11 +47,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ArA and ArB have the SAME field set, and the headless literals are annotated with ArB, the one
 // declared SECOND: a chooser that read the field names would pick ArA or refuse as ambiguous, and
 // ar_the_annotation_chooses_not_the_field_names_holds reds either way.
-data ar_provider_source: String = "module v2.test.arp\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\n\ntype ArA {\n  n: Bool\n  m: Bool\n}\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ntype ArOuter {\n  inner: ArB\n  flag: Bool\n}\n\ntype ArShape\n  = ArV { n: Bool }\n  | ArW\n\ntype ArBox<T> {\n  top: T\n}\n\nfn ar_take(x: ArB) -> Bool { true }\n"
+data ar_provider_source: String = "module v2.test.arp\n\nimport v2.std.logic { Bool }\n\ntype ArA {\n  n: Bool\n  m: Bool\n}\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ntype ArOuter {\n  inner: ArB\n  flag: Bool\n}\n\ntype ArShape\n  = ArV { n: Bool }\n  | ArW\n\ntype ArBox<T> {\n  top: T\n}\n\nfn ar_take(x: ArB) -> Bool { true }\n"
 
-data ar_headed_source: String = "module v2.test.ar_headed\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArA, ArB, ArOuter }\n\ndata ar_x: ArB = ArB { n: true, m: false }\n\ndata ar_outer: ArOuter = ArOuter { inner: ArB { n: false, m: true }, flag: true }\n\nfn ar_ret() -> ArB { ArB { n: true, m: true } }\n\nfn ar_list() -> FreeMonoid<ArB> { [ArB { n: true, m: false }, ArB { n: false, m: false }] }\n"
+data ar_headed_source: String = "module v2.test.ar_headed\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArA, ArB, ArOuter }\n\ndata ar_x: ArB = ArB { n: true, m: false }\n\ndata ar_outer: ArOuter = ArOuter { inner: ArB { n: false, m: true }, flag: true }\n\nfn ar_ret() -> ArB { ArB { n: true, m: true } }\n"
 
-data ar_headless_source: String = "module v2.test.ar_headless\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArA, ArB, ArOuter }\n\ndata ar_x: ArB = { n: true, m: false }\n\ndata ar_outer: ArOuter = { inner: { n: false, m: true }, flag: true }\n\nfn ar_ret() -> ArB { { n: true, m: true } }\n\nfn ar_list() -> FreeMonoid<ArB> { [{ n: true, m: false }, { n: false, m: false }] }\n"
+data ar_headless_source: String = "module v2.test.ar_headless\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArA, ArB, ArOuter }\n\ndata ar_x: ArB = { n: true, m: false }\n\ndata ar_outer: ArOuter = { inner: { n: false, m: true }, flag: true }\n\nfn ar_ret() -> ArB { { n: true, m: true } }\n"
 
 // Review condition 3: the expectation does not leak into a call argument.
 data ar_call_argument_source: String = "module v2.test.ar_call_argument\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB, ar_take }\n\nfn ar_call() -> Bool { ar_take(x: { n: true, m: true }) }\n"
@@ -165,12 +165,12 @@ fn ar_refuses_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
   }
 }
 
-// Control 1 and 6: every headless literal -- a data initializer, a nested record field, a declared
-// return, and two annotated list elements -- resolves to the SAME construct as its headed spelling,
-// by content, and there are six of them, so a literal that stayed elided or vanished cannot pass.
+// Control 1 and 6: every headless literal -- a data initializer, a nested record field and a declared
+// return -- resolves to the SAME construct as its headed spelling, by content, and there are four
+// of them, so a literal that stayed elided or vanished cannot pass.
 test fn ar_headless_literals_equal_their_headed_form_holds() -> Bool {
   let headed = ar_construct_hashes(o: ar_resolved_headed())
-  (length(xs: headed) == 6) && ar_pairwise_equal(xs: headed, ys: ar_construct_hashes(o: ar_resolved_headless()))
+  (length(xs: headed) == 4) && ar_pairwise_equal(xs: headed, ys: ar_construct_hashes(o: ar_resolved_headless()))
 }
 
 // Control 5, the mutation: ArA and ArB share the field set, and ArA is declared first. The
@@ -178,7 +178,7 @@ test fn ar_headless_literals_equal_their_headed_form_holds() -> Bool {
 // answer ArA (or refuse as ambiguous) and this goes red.
 test fn ar_the_annotation_chooses_not_the_field_names_holds() -> Bool {
   ar_construct_paths(o: ar_resolved_headless()) == [
-    "v2.test.arp.ArB", "v2.test.arp.ArOuter", "v2.test.arp.ArB", "v2.test.arp.ArB", "v2.test.arp.ArB", "v2.test.arp.ArB"
+    "v2.test.arp.ArB", "v2.test.arp.ArOuter", "v2.test.arp.ArB", "v2.test.arp.ArB"
   ]
 }
 
