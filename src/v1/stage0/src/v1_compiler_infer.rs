@@ -5101,11 +5101,27 @@ pub fn application_type_names_compatible(
 }
 
 pub fn type_name_transparently_aliases_to(
+    alias_name: String,
+    target_name: String,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    type_name_transparently_aliases_to_bounded(
+        alias_name.clone(),
+        target_name.clone(),
+        type_env.clone(),
+        source_indices.clone(),
+        16,
+    )
+}
+
+pub fn type_name_transparently_aliases_to_bounded(
     mut __tco_loop_alias_name: String,
     mut __tco_loop_target_name: String,
     mut __tco_loop_type_env: Rc<TypeEnv>,
-    mut __tco_loop_module_name: String,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_fuel: i64,
 ) -> bool {
     loop {
         #[allow(unused_mut)]
@@ -5115,46 +5131,74 @@ pub fn type_name_transparently_aliases_to(
         #[allow(unused_mut)]
         let mut type_env = __tco_loop_type_env;
         #[allow(unused_mut)]
-        let mut module_name = __tco_loop_module_name;
-        #[allow(unused_mut)]
         let mut source_indices = __tco_loop_source_indices;
-        match crate::v1_compiler_infer_env::lookup_type_by_name(
-            type_env.clone(),
-            alias_name.clone(),
-        ) {
-            Some(decl) => {
-                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                    decl.clone(),
-                    type_env.clone(),
-                    module_name.clone(),
-                );
-                let peeled_name =
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), peeled.clone());
-                if (peeled_name.clone() == alias_name.clone()) {
-                    break false;
-                } else {
-                    if (peeled_name.clone() == target_name.clone()) {
-                        break true;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        if (fuel.clone() <= 0) {
+            break false;
+        } else {
+            match crate::v1_compiler_infer_env::lookup_type_by_name(
+                type_env.clone(),
+                alias_name.clone(),
+            ) {
+                Some(decl) => {
+                    let declared_target =
+                        alias_declared_target_head_name(decl.clone(), source_indices.clone());
+                    if ((declared_target.clone() == "".to_string())
+                        || (declared_target.clone() == alias_name.clone()))
+                    {
+                        break false;
                     } else {
-                        {
-                            let __tco_0 = peeled_name.clone();
-                            let __tco_1 = target_name;
-                            let __tco_2 = type_env;
-                            let __tco_3 = module_name;
-                            let __tco_4 = source_indices;
-                            __tco_loop_alias_name = __tco_0;
-                            __tco_loop_target_name = __tco_1;
-                            __tco_loop_type_env = __tco_2;
-                            __tco_loop_module_name = __tco_3;
-                            __tco_loop_source_indices = __tco_4;
-                            continue;
+                        if (declared_target.clone() == target_name.clone()) {
+                            break true;
+                        } else {
+                            {
+                                let __tco_0 = declared_target.clone();
+                                let __tco_1 = target_name;
+                                let __tco_2 = type_env;
+                                let __tco_3 = source_indices;
+                                let __tco_4 = v1_rt::int_sub(fuel, 1);
+                                __tco_loop_alias_name = __tco_0;
+                                __tco_loop_target_name = __tco_1;
+                                __tco_loop_type_env = __tco_2;
+                                __tco_loop_source_indices = __tco_3;
+                                __tco_loop_fuel = __tco_4;
+                                continue;
+                            }
                         }
                     }
                 }
+                std::option::Option::None => {
+                    break false;
+                }
             }
-            std::option::Option::None => {
-                break false;
+        }
+    }
+}
+
+pub fn alias_declared_target_head_name(
+    decl: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((((decl.connective.clone() != Connective::NoConnective)
+        || ((decl.params.clone().len() as i64) > 0))
+        || (decl.type_annotation.clone() != std::option::Option::None))
+        || ((decl.properties.clone().len() as i64) > 0))
+    {
+        "".to_string()
+    } else {
+        match decl.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => {
+                if (((target.connective.clone() == Connective::NoConnective)
+                    && (target.return_cardinality.clone() == Cardinality::Required))
+                    && (target.type_annotation.clone() == std::option::Option::None))
+                {
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), target.clone())
+                } else {
+                    "".to_string()
+                }
             }
+            _ => "".to_string(),
         }
     }
 }

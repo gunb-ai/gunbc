@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.transparent_alias_relation_read_the_brand_keeping_peel
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data transparent_alias_relation_read_the_brand_keeping_peel: RecurringFailureMode = RecurringFailureMode {
+  identity: "transparent_alias_relation_read_the_brand_keeping_peel" as NonEmptyStr,
+
+  receipts: [
+    "**A record literal handed to a formal declared through a transparent alias of a record was refused as a mismatch between the alias and its own body.** `gunbc.econ.llm_attempt_receipt` declares `type TokenThroughput = FieldOfFractions<Nat>`, and `test.claim.llm_attempt_receipt_witness` `zero_denominator_floor_projection_returns_none` passes `FieldOfFractions { num: 1000, denom: 0 }` to `throughput_per_second_floor(t: TokenThroughput)`. The v1 compile of that witness refused with `type mismatch: expected 'Node(TokenThroughput<Primitive(Nat)>)', got 'Product(FieldOfFractions)'`. This was latent on main and blocked the floor of gunbc#12381. A fabricated refusal of correct code is the DESIGN section 5 mirror of a fabricated success.",
+
+    "IT IS NOT SPECIFIC TO INSTANTIATION, although it was first classified as alias-through-instantiation peeling. A plain `type A = SomeRecord` receiving a `SomeRecord { .. }` literal refused the same way on main (measured with a same-module scratch probe). The generic case only makes the rendering look different, `Node(A<args>)` rather than `Primitive(A)`.",
+
+    "THE CHAIN, per DESIGN section 6b. `v1.compiler.infer` `direct_call_structured_record_literal_resolved_type_mismatch` admits a record literal whose constructor name is `application_type_names_compatible` with the formal's name. For an alias formal, that relation's only alias arm is `type_name_transparently_aliases_to`. That arm asked `peel_nominal_alias_identity` for the alias's target name. But that peel exists to KEEP the brand: it returns the structural body stamped with the alias's own authored identity (`with_authored_identity`), so the name it yields is the alias again, and the arm answered false for every alias whose body is not a kernel primitive. The earliest unjustified boundary is that arm, not the literal site and not the peel. The arm read a projection whose contract is to hide the fact it needed.",
+
+    "REPAIR: `type_name_transparently_aliases_to` reads the declared right-hand side's head through the declaration's `inferred: Resolved { node: target }` edge, the same edge the peel itself resolves. The chase is bounded. It is a HEAD relation, like every name comparison `application_type_names_compatible` makes. The arguments of an applied right-hand side are judged where the nodes are (the literal's fields are inferred against the substituted body), exactly as for two applications of one constructor. A where-refinement (Conj), an optional cardinality and a parameterized alias are not read. Node.declaration (identity) is untouched: it stays the alias's own declaration.",
+
+    "RED AND CONTROLS (executed with a v1 compile of a scratch module before and after the regenerated seed; the census of changed verdicts over the whole corpus is on the PR). RED, green after: the TokenThroughput witness line; a same-module `type Tp = FieldOfFractions<Nat>` receiving a FieldOfFractions literal; a non-generic `type A = R` receiving an `R { .. }` literal. CONTROLS, refusing both before and after: a DIFFERENT record literal (`OtherRecord { .. }`) into the non-generic alias, and one into the generic alias. A literal whose field types disagree with the alias's instance (`FieldOfFractions { num: \"a\", denom: \"b\" }` into Tp) refuses per field after the fix, exactly as it already did into `FieldOfFractions<Nat>` spelled directly.",
+
+    "DECLARED FRONTIER, NOT THIS CLASS (recorded here at the manager's direction because it was first attributed to this root). `std.algebra` `ordered_ring_templates` and its siblings carry 86 advisories `declared-type inhabitance is undecidable at the list element (produced identity erased)`. The elements are ANONYMOUS record literals (`{ name: \"add\", .. }`), so the produced name is empty and the verdict is `UndecidableProducedIdentityErased`. No alias peel is involved, and this repair does not move them. TRIGGER: v1 contextual typing of an anonymous record literal from its expected element type. The design reference is the v2 work in gunbc#12740. No owner yet; it is advisory.",
+
+    "RUNG FOUND AT: below the floor, as a fabricated refusal at a record-literal call argument. RUNG AFTER REPAIR: the head relation is decided from the declared right-hand side for every transparent alias of a nominal type, generic or not. CEILING: structurally guaranteed.",
+  ],
+
+  evidence: [],
+}
