@@ -578,10 +578,16 @@ type LoopEdgeRole
 fn loop_edge_role(e: Edge) -> LoopEdgeRole {
   match e.label {
     Positional => LoopIteratedBody
-    StructuralLabel { label: CoreMarker { marker: LoopDomainEdge } } => LoopDomainValue
-    StructuralLabel { label: CoreMarker { marker: LoopBoundEdge } } => LoopBoundMeasure
-    StructuralLabel { label: CoreMarker { marker: LoopCarrierEdge } } => LoopCarrierBinder
-    StructuralLabel { label: _ } => LoopEdgeUnrecognized
+    StructuralLabel { label: _ } =>
+      if edge_is_core(e: e, marker: LoopDomainEdge) {
+        LoopDomainValue
+      } else if edge_is_core(e: e, marker: LoopBoundEdge) {
+        LoopBoundMeasure
+      } else if edge_is_core(e: e, marker: LoopCarrierEdge) {
+        LoopCarrierBinder
+      } else {
+        LoopEdgeUnrecognized
+      }
     Authored { name: _ } => LoopEdgeUnrecognized
   }
 }
@@ -623,9 +629,8 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   let binder_edges = fold(children, init: 0, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      StructuralLabel { label: CoreMarker { marker: ArrowBodyEdge } } => acc
-      StructuralLabel { label: CoreMarker { marker: ArrowSignatureOrderEdge } } => acc
-      StructuralLabel { label: _ } => acc + 1
+      StructuralLabel { label: _ } =>
+        if edge_is_core(e: e, marker: ArrowBodyEdge) || edge_is_core(e: e, marker: ArrowSignatureOrderEdge) { acc } else { acc + 1 }
       Authored { name: _ } => acc + 1
     }
   })
@@ -634,9 +639,12 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   && fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      StructuralLabel { label: CoreMarker { marker: ArrowBodyEdge } } => acc
-      StructuralLabel { label: CoreMarker { marker: ArrowSignatureOrderEdge } } => acc
-      StructuralLabel { label: _ } => acc && type_binder_conj_conforms(t: e.target)
+      StructuralLabel { label: _ } =>
+        if edge_is_core(e: e, marker: ArrowBodyEdge) || edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
+          acc
+        } else {
+          acc && type_binder_conj_conforms(t: e.target)
+        }
       Authored { name: _ } => acc && type_binder_conj_conforms(t: e.target)
     }
   })
@@ -1074,8 +1082,7 @@ fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
       }
     TypeNode { connective: Arrow } =>
       match e.label {
-        StructuralLabel { label: CoreMarker { marker: ArrowBodyEdge } } => CostEdgeComposed
-        StructuralLabel { label: _ } => CostEdgeNotPriced
+        StructuralLabel { label: _ } => if edge_is_core(e: e, marker: ArrowBodyEdge) { CostEdgeComposed } else { CostEdgeNotPriced }
         Authored { name: _ } => CostEdgeNotPriced
         Positional => CostEdgeNotPriced
       }
