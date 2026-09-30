@@ -7114,6 +7114,9 @@ pub fn run_required_floor(
     )
     .chain(interface_consumer_seeds.iter().cloned())
     .collect();
+    // The strict resolve's graph is attributed by bytes where the floor frees it (entry_resolve
+    // `typed_graph_byte_attribution`); armed here so no other resolve caller pays or prints it.
+    crate::cli_run::arm_floor_byte_attribution();
     floor_seam("prepare-closure-resolve");
     let (mut prepared, prepared_sources) = crate::cli_run::prepare_repository_from_corpus(
         &floor_corpus,
@@ -11508,6 +11511,9 @@ pub fn run_required_floor(
     }
     outcome.changed_witness_blocking = changed_blocking;
     outcome.enrolment_margin_blocking = enrolment_blocking;
+    // The prepared subject's last reader has returned; it is freed here either way, so its bytes
+    // are attributed by class as it goes (`typed_graph_byte_attribution`).
+    crate::cli_run::typed_graph_byte_attribution("prepared-teardown", prepared.graph);
     Ok(outcome)
 }
 

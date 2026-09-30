@@ -2067,6 +2067,15 @@ pub(crate) fn resolved_graph_from_sources(
                 diagnostic_to_message(d.diagnostic.clone())
             ));
         }
+        if typecheck_gate == ResolveTypecheckGate::Strict {
+            // The refused graph is discarded here either way; attributing it takes the only
+            // owner, so an `Rc` another holder keeps reports itself as unattributable.
+            if let Ok(owned) = Rc::try_unwrap(result) {
+                if let Some(graph) = owned.graph {
+                    typed_graph_byte_attribution("strict-refused", graph);
+                }
+            }
+        }
         return Err(msgs.join("\n"));
     }
 
@@ -3657,5 +3666,179 @@ mod tree_census_from_raw_differential {
             compared += 1;
         }
         assert!(compared >= 2, "both live roots compared ({compared})");
+    }
+}
+
+thread_local! {
+    /// Set by the required floor only, so the byte attribution below reads the floor's own graphs
+    /// and no other caller of `resolved_graph_from_sources` pays for it or prints it.
+    static FLOOR_BYTE_ATTRIBUTION_ARMED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub(crate) fn arm_floor_byte_attribution() {
+    FLOOR_BYTE_ATTRIBUTION_ARMED.with(|a| a.set(true));
+}
+
+fn floor_heap_in_use() -> Option<u64> {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        // SAFETY: mallinfo2 reads allocator bookkeeping and changes nothing.
+        let mi = unsafe { libc::mallinfo2() };
+        Some((mi.uordblks + mi.hblkhd) as u64)
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    {
+        None
+    }
+}
+
+/// THE TYPED GRAPH'S BYTES BY COMPONENT CLASS, read by FREEING it one class at a time at the point
+/// the floor frees it anyway: the strict resolve's refusal path, where the graph is discarded, and
+/// the prepared repository's teardown. `floor_retention_census` counts entries, which persistent
+/// maps share, so it cannot say what a structure COSTS; the allocator can, as the live bytes a
+/// drop returns. Nothing is read after a class is dropped, so no answer the floor gives changes.
+///
+/// ORDER-DEPENDENT BY CONSTRUCTION, and reported as such. Sequential drops telescope -- the parts
+/// sum to the total freed -- but a node two classes share is freed by whichever drops LAST, so a
+/// class dropped early reports only its EXCLUSIVE bytes. The type environment is split into its
+/// maps and dropped first, so each map's figure is a lower bound on what it alone costs; `shells`
+/// is the environments themselves once their maps are held elsewhere.
+///
+/// A graph, module list or module another owner still holds is not attributable -- dropping it
+/// would free nothing -- and is reported as that, never as a zero.
+pub(crate) fn typed_graph_byte_attribution(
+    label: &str,
+    graph: Rc<v1_compiler_compile::ResolvedGraph>,
+) {
+    if !FLOOR_BYTE_ATTRIBUTION_ARMED.with(|a| a.get()) {
+        return;
+    }
+    let Some(start) = floor_heap_in_use() else {
+        eprintln!(
+            "[floor-heap] bytes label={label} unattributable: no allocator reading on this target"
+        );
+        return;
+    };
+    let graph = match Rc::try_unwrap(graph) {
+        Ok(g) => g,
+        Err(g) => {
+            eprintln!(
+                "[floor-heap] bytes label={label} unattributable: the graph has {} other owner(s)",
+                Rc::strong_count(&g) - 1
+            );
+            return;
+        }
+    };
+    let v1_compiler_compile::ResolvedGraph {
+        modules,
+        item_registry,
+        diagnostics,
+        emit_graph_info,
+    } = graph;
+    let modules: im::Vector<Rc<crate::v1_compiler_infer_items::TypedModule>> = match Rc::try_unwrap(
+        modules,
+    ) {
+        Ok(m) => m,
+        Err(m) => {
+            eprintln!(
+                    "[floor-heap] bytes label={label} unattributable: the module list has {} other owner(s)",
+                    Rc::strong_count(&m) - 1
+                );
+            return;
+        }
+    };
+    let module_count = modules.len();
+    let mut shared_modules = Vec::new();
+    let (
+        mut te_str,
+        mut te_anc,
+        mut te_bind,
+        mut te_vis,
+        mut te_ind,
+        mut te_sym,
+        mut te_intern,
+        mut te_unit,
+    ) = (
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    let (mut shells, mut tec, mut fe, mut iface, mut reg, mut items, mut nodes, mut occ) = (
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    for m in modules {
+        match Rc::try_unwrap(m) {
+            Ok(m) => {
+                te_str.push(m.type_env.str_bindings.clone());
+                te_anc.push(m.type_env.ancestry_str_bindings.clone());
+                te_bind.push(m.type_env.bindings.clone());
+                te_vis.push(m.type_env.source_visible_names.clone());
+                te_ind.push(m.type_env.inductive_fields.clone());
+                te_sym.push(m.type_env.symbol_index.clone());
+                te_intern.push(m.type_env.intern_table.clone());
+                te_unit.push(m.type_env.unit_variant_index.clone());
+                shells.push(m.type_env);
+                tec.push(m.type_env_cache);
+                fe.push(m.func_env);
+                iface.push(m.interface);
+                reg.push(m.item_registry);
+                items.push(m.items);
+                nodes.push(m.module);
+                occ.push(m.occurrence_transport);
+            }
+            Err(shared) => shared_modules.push(shared),
+        }
+    }
+    let mut last = floor_heap_in_use().unwrap_or(start);
+    let mut parts: Vec<(&str, u64)> = Vec::new();
+    macro_rules! drop_class {
+        ($name:expr, $class:expr) => {{
+            drop($class);
+            let now = floor_heap_in_use().unwrap_or(last);
+            parts.push(($name, last.saturating_sub(now)));
+            last = now;
+        }};
+    }
+    drop_class!("type_env_shells", shells);
+    drop_class!("te.ancestry_str_bindings", te_anc);
+    drop_class!("te.str_bindings", te_str);
+    drop_class!("te.bindings", te_bind);
+    drop_class!("te.source_visible_names", te_vis);
+    drop_class!("te.inductive_fields", te_ind);
+    drop_class!("te.unit_variant_index", te_unit);
+    drop_class!("te.symbol_index", te_sym);
+    drop_class!("te.intern_table", te_intern);
+    drop_class!("type_env_cache", tec);
+    drop_class!("func_env", fe);
+    drop_class!("interface", iface);
+    drop_class!("module_item_registry", reg);
+    drop_class!("items", items);
+    drop_class!("module_nodes", nodes);
+    drop_class!("occurrence_transport", occ);
+    drop_class!("shared_modules", shared_modules.clone());
+    drop_class!("graph_item_registry", item_registry);
+    drop_class!("emit_graph_info", emit_graph_info);
+    drop_class!("diagnostics", diagnostics);
+    let sum: u64 = parts.iter().map(|(_, b)| *b).sum();
+    eprintln!(
+        "[floor-heap] bytes label={label} modules={module_count} shared_modules={} start_in_use={start} \
+         end_in_use={last} total_freed={} sum_of_parts={sum} (sequential: early classes are exclusive bytes)",
+        shared_modules.len(),
+        start.saturating_sub(last),
+    );
+    for (name, bytes) in parts {
+        eprintln!("[floor-heap] bytes label={label} class={name} freed={bytes}");
     }
 }
