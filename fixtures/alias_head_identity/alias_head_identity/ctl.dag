@@ -1,0 +1,92 @@
+module alias_head_identity.ctl
+
+import std.algebra { FieldOfFractions }
+import std.nat { Nat }
+import std.integer { Int }
+import std.types { String }
+
+type Tp = FieldOfFractions<Nat>
+
+type WrScratchRec { x: Int }
+
+type WrScratchRecAlias = WrScratchRec
+
+fn floor_of(t: Tp) -> Nat {
+  t.num
+}
+
+fn direct_of(t: FieldOfFractions<Nat>) -> Nat {
+  t.num
+}
+
+fn px(p: WrScratchRecAlias) -> Int {
+  p.x
+}
+
+fn non_generic_alias_peels() -> Int {
+  px(p: WrScratchRec { x: 1 })
+}
+
+fn int_instance() -> FieldOfFractions<Int> {
+  FieldOfFractions { num: 0 - 1, denom: 2 }
+}
+
+fn nat_instance() -> FieldOfFractions<Nat> {
+  FieldOfFractions { num: 1, denom: 2 }
+}
+
+fn int_instance_into_alias() -> Nat {
+  floor_of(t: int_instance())
+}
+
+fn int_instance_into_direct() -> Nat {
+  direct_of(t: int_instance())
+}
+
+fn nat_instance_into_alias() -> Nat {
+  floor_of(t: nat_instance())
+}
+
+fn mk_rec() -> WrScratchRec {
+  WrScratchRec { x: 1 }
+}
+
+fn non_generic_alias_value() -> Int {
+  px(p: mk_rec())
+}
+
+fn str_instance() -> FieldOfFractions<String> {
+  FieldOfFractions { num: "a", denom: "b" }
+}
+
+fn str_instance_into_alias() -> Nat {
+  floor_of(t: str_instance())
+}
+
+fn str_instance_into_direct() -> Nat {
+  direct_of(t: str_instance())
+}
+
+fn str_literal_into_alias() -> Nat {
+  floor_of(t: FieldOfFractions { num: "a", denom: "b" })
+}
+
+fn str_literal_into_direct() -> Nat {
+  direct_of(t: FieldOfFractions { num: "a", denom: "b" })
+}
+
+type WrScratchOtherRec { x: Int }
+
+fn different_record_into_alias() -> Int {
+  px(p: WrScratchOtherRec { x: 1 })
+}
+
+type WrScratchOtherFrac { num: Nat, denom: Nat }
+
+fn different_record_into_generic_alias() -> Nat {
+  floor_of(t: WrScratchOtherFrac { num: 1, denom: 2 })
+}
+
+fn wrong_field_into_record_alias() -> Int {
+  px(p: WrScratchRec { x: "a" })
+}

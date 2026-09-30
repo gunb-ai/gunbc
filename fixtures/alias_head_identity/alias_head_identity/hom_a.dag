@@ -1,0 +1,5 @@
+module alias_head_identity.hom_a
+
+import std.integer { Int }
+
+type WrHomRec { x: Int }

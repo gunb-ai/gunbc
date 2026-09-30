@@ -1,0 +1,10 @@
+module alias_head_identity.hom_alias
+
+import alias_head_identity.hom_a { WrHomRec }
+import std.integer { Int }
+
+type WrHomAlias = WrHomRec
+
+fn hx(p: WrHomAlias) -> Int {
+  p.x
+}
