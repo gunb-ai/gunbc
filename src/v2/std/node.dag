@@ -1,6 +1,7 @@
 module v2.std.node
 
 import std.algebra { Cons, Empty }
+import v2.std.optional { Present }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -794,22 +795,22 @@ fn arrow_body_record_construct_conforms(node: Node) -> Bool {
   }
 }
 
+// The construct reading is a fact about the FIRST edge alone, so it is read from the head, not folded
+// over every edge.
 fn arrow_body_construct_tag_leads(node: Node) -> Bool {
-  fold(node.children, init: 0, f: fn(seen, edge) {
-    if seen != 0 {
-      seen
-    } else {
+  match first(node.children) {
+    Present { value: edge } =>
       match edge.label {
         Named { name: label } =>
-          if symbol_eq(a: label, b: construct_tag_marker())
+          symbol_eq(a: label, b: construct_tag_marker())
             && (match edge.target.kind {
               TypeNode { connective: Conj } => true
               _ => false
-            }) { 1 } else { 2 }
-        Positional => 2
+            })
+        Positional => false
       }
-    }
-  }) == 1
+    _ => false
+  }
 }
 
 fn arrow_body_some_edge_targets_an_atom(node: Node) -> Bool {
