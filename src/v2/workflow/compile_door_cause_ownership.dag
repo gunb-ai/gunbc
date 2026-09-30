@@ -328,7 +328,7 @@ data known_frontier_causes: List<CauseOwnership> = [
     cause: ^resolve_anonymous_record_alias_cycle,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a headless record literal whose authored expected type reaches a cycle of pure-renaming aliases (`type A = B`, `type B = A`) while v2.compiler.resolve follows renamings to the record or list head (ruling, neat-boar-16, gunbc#12740). The cycle is refused at the literal rather than followed. Not a frontier: each occurrence is an alias cycle in source, and flips when the source breaks it"
+    flip_trigger: "a headless record literal whose authored expected type reaches a cycle of pure-renaming aliases (`type A = B`, `type B = A`) while v2.compiler.resolve follows renamings to the record or list head (docs/plans/anonymous-record-literal-design.md, Pure-renaming aliases). The cycle is refused at the literal rather than followed. Not a frontier: each occurrence is an alias cycle in source, and flips when the source breaks it"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_function_value_body_unread,

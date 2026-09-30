@@ -707,6 +707,7 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_admit_callers_clause)
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
+    || (emitted == ^dag_surface_field_init_string_key)
     || (emitted == ^dag_surface_where_refinement_clause)
     || (emitted == ^dag_surface_where_predicate)
     || (emitted == ^dag_surface_arrow_lambda)
