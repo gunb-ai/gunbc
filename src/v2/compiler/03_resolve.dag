@@ -1783,7 +1783,7 @@ fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName
       match member {
         Absent => optional_absent()
         Present { value: m } =>
-          fold(m.children, init: optional_absent(), f: fn(acc, fe) {
+          fold_list(xs: m.children, empty: optional_absent(), cons: fn(acc, fe) {
             match acc {
               Present { value: _ } => acc
               Absent =>
