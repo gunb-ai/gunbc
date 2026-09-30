@@ -748,9 +748,85 @@ test fn bla_imported_structural_string_binds_its_declaration() -> Bool {
     && !bla_annotation_is(o: bla_structural_string_literal(), id: ^string_node_symbol)
 }
 
+// THE ONE UNROUTED POSITION. The let annotation still asks v2.std.coercion coercion_cast_crossing,
+// not the one judge, so the literal crossing (5g) never reaches it and it refuses. It flips to an
+// unfold control when the annotated-let check is routed to infer_judge_declared_position -- the
+// trigger gunbc.recurring_failure_mode string_literal_lowers_to_one_class_stamped_atom names.
 test fn bla_host_text_literal_at_structural_string_refuses() -> Bool {
   tpb_accepts(o: bla_structural_string_literal())
     && bla_refuses_with_annotation_reason(o: bla_structural_string_literal_inferred())
+}
+
+// (5g) A STRING LITERAL MEETS A STRUCTURAL String AT THE ONE JUDGE, ONCE. v2.compiler.infer
+// infer_judge_declared_position hands v2.std.inhabitance declared_type_inhabitance_at the literal
+// crossing (infer_literal_crossing): the canonical reader says the produced occurrence is a string
+// literal, and the declared reference's resolved alias body presents std.algebra FreeMonoid at
+// std.types Char, which selects gunbc.structural_realization_bindings literal_homomorphism_rows
+// UnicodeScalarSequenceUnfold. Every position the judge serves consumes it: a call argument and a
+// declared return here. RED BEFORE: both refused (host text is not structurally FreeMonoid<Char>).
+// THE ROUTE: the non-Char control has the SAME shape and differs only in the element, so the only
+// thing separating admit from refuse is the row key -- a structural admit would treat them alike.
+fn bla_structural_string_argument() -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { String }\n\nfn g(s: String) -> Int {\n  1\n}\n\nfn f(x: Int) -> Int {\n  g(s: \"abc\")\n}\n",
+    peers: bla_structural_string_peers()
+  )
+}
+
+fn bla_structural_string_return() -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { String }\n\nfn h(x: Int) -> String {\n  \"abc\"\n}\n",
+    peers: bla_structural_string_peers()
+  )
+}
+
+fn bla_codes_peers() -> List<DagSourceReadWitness> {
+  [
+    bla_source(src: "module q\n\nimport std.algebra { FreeMonoid }\nimport std.types { Code }\n\ntype Codes = FreeMonoid<Code>\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
+    bla_source(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu),
+    bla_source(src: "module std.types\n\ntype Code\n", artifact: bla_s_artifact, cu: ^body_let_annotation_s_cu)
+  ]
+}
+
+fn bla_codes_argument() -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { Codes }\n\nfn g(s: Codes) -> Int {\n  1\n}\n\nfn f(x: Int) -> Int {\n  g(s: \"abc\")\n}\n",
+    peers: bla_codes_peers()
+  )
+}
+
+fn bla_codes_return() -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { Codes }\n\nfn h(x: Int) -> Codes {\n  \"abc\"\n}\n",
+    peers: bla_codes_peers()
+  )
+}
+
+fn bla_admitted(o: Outcome<Bool>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bla_string_literal_argument_at_structural_string_unfolds() -> Bool {
+  tpb_accepts(o: bla_structural_string_argument())
+    && bla_admitted(o: bla_infers(o: bla_structural_string_argument()))
+}
+
+test fn bla_string_literal_return_at_structural_string_unfolds() -> Bool {
+  tpb_accepts(o: bla_structural_string_return())
+    && bla_admitted(o: bla_infers(o: bla_structural_string_return()))
+}
+
+test fn bla_string_literal_argument_at_non_char_free_monoid_refuses() -> Bool {
+  tpb_accepts(o: bla_codes_argument())
+    && !bla_admitted(o: bla_infers(o: bla_codes_argument()))
+}
+
+test fn bla_string_literal_return_at_non_char_free_monoid_refuses() -> Bool {
+  tpb_accepts(o: bla_codes_return())
+    && !bla_admitted(o: bla_infers(o: bla_codes_return()))
 }
 
 // A NON-LITERAL host-text value at the structural String is never passed as matched. It cannot yet

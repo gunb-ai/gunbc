@@ -62,8 +62,10 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
-import v2.std.node { Ambiguous, Found, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of }
+import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.literal_elaboration { KernelStringLiteral }
+import v2.std.node { Ambiguous, Found, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of, symbol_lexeme }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -98,7 +100,8 @@ import v2.std.inhabitance {
   application_parameter_order_absent_reason,
   application_parameter_order_diagnostic,
   application_parameter_order_malformed_reason,
-  declared_type_inhabitance,
+  declared_type_inhabitance_at,
+  LiteralCrossing,
   inhabitance_node_undecidable_reason,
   inhabitance_undecidable_diagnostic,
   position_declared_return,
@@ -2045,7 +2048,8 @@ fn infer_judge_application_argument(
   entries: List<InferredFactsEntry>,
   formal: InhabitanceFormal,
   arg: Node,
-  type_params: List<Symbol>
+  type_params: List<Symbol>,
+  resolved: ResolvedTree
 ) -> Outcome<Bool> {
   infer_judge_declared_position(
     position: position_direct_call_argument(),
@@ -2053,7 +2057,8 @@ fn infer_judge_application_argument(
     entries: entries,
     formal: formal,
     produced_at: arg,
-    type_params: type_params
+    type_params: type_params,
+    resolved: resolved
   )
 }
 
@@ -2120,7 +2125,8 @@ fn infer_judge_declared_position(
   entries: List<InferredFactsEntry>,
   formal: InhabitanceFormal,
   produced_at: Node,
-  type_params: List<Symbol>
+  type_params: List<Symbol>,
+  resolved: ResolvedTree
 ) -> Outcome<Bool> {
   match infer_declared_position_undecidable_reason(declared: formal.declared, type_params: type_params) {
     Present { value: reason } =>
@@ -2151,7 +2157,10 @@ fn infer_judge_declared_position(
             application: application,
             type_variables: type_params
           }
-          match declared_type_inhabitance(obligation: obligation) {
+          match declared_type_inhabitance_at(
+            obligation: obligation,
+            crossing: infer_literal_crossing(produced_at: produced_at, declared: formal.declared, resolved: resolved)
+          ) {
             Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
             InhabitanceUndecidable { reason: reason } =>
               infer_inhabitance_undecidable_accepted(
@@ -2168,6 +2177,92 @@ fn infer_judge_declared_position(
           }
       }
   }
+  }
+}
+
+// THE LITERAL CROSSING THE ONE JUDGE HANDS THE RELATION (DESIGN section 4, the text ruling). Both
+// facts live in the caller's tree, not in the two type nodes the relation compares: whether the
+// produced occurrence is a kernel literal (the canonical literal reader), and what destination key
+// the declared type presents. The key is read by peeling the declared reference to its resolved
+// declaration's body -- one head instantiated at one element -- because the literal rows key on
+// the STRUCTURE (std.literal_elaboration's destination-key note: `type String = FreeMonoid<Char>`
+// presents std.algebra FreeMonoid at std.types Char). Absent for every produced value that is not a
+// string literal, and for every declared type that is not such an alias, so the relation's ordinary
+// structural judgment decides those unchanged. Only the string arm is keyed here: Int and Bool
+// literals keep their kernel types and reach no row through this judge.
+fn infer_literal_crossing(produced_at: Node, declared: Node, resolved: ResolvedTree) -> Optional<LiteralCrossing> {
+  match dag_canonical_literal_from_node(node: produced_at) {
+    Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } =>
+      match infer_declared_structural_key(declared: declared, index: resolved.resolved_declarations) {
+        Absent => Absent
+        Present { value: key } =>
+          Present {
+            value: LiteralCrossing {
+              source_kind: KernelStringLiteral,
+              destination: key.destination,
+              element: Present { value: key.element }
+            }
+          }
+      }
+    _ => Absent
+  }
+}
+
+type InferStructuralKey {
+  destination: DeclarationRef
+  element: DeclarationRef
+}
+
+fn infer_declaration_ref_of_reference(node: Node) -> Optional<DeclarationRef> {
+  match declaration_reference_path_optional(node: node) {
+    Absent => Absent
+    Present { value: qn } =>
+      match qualified_name_last_segment(qn: qn) {
+        Absent => Absent
+        Present { value: last } =>
+          let module_path = qualified_name_to_dotted_string(qn: qualified_name_init(qn: qn))
+          if module_path == "" {
+            Absent
+          } else {
+            Present { value: decl_ref(module_path: module_path, decl_name: symbol_lexeme(sym: last)) }
+          }
+      }
+  }
+}
+
+fn infer_instantiation_structural_key(body: Node) -> Optional<InferStructuralKey> {
+  match body.kind {
+    TypeNode { connective: Instantiation } =>
+      match node_positional_child_targets(node: body) {
+        Cons { head: head, tail: Cons { head: element, tail: Empty } } =>
+          match infer_declaration_ref_of_reference(node: head) {
+            Absent => Absent
+            Present { value: h } =>
+              match infer_declaration_ref_of_reference(node: element) {
+                Absent => Absent
+                Present { value: e } => Present { value: InferStructuralKey { destination: h, element: e } }
+              }
+          }
+        _ => Absent
+      }
+    _ => Absent
+  }
+}
+
+fn infer_declared_structural_key(declared: Node, index: SymbolIndex) -> Optional<InferStructuralKey> {
+  match declaration_reference_path_optional(node: declared) {
+    Absent => Absent
+    Present { value: qn } =>
+      match symbol_index_lookup(index: index, qualified_path: qn) {
+        Absent => Absent
+        Present { value: decl } =>
+          match type_decl_view(target: decl) {
+            PlainTypeDecl { member: body } => infer_instantiation_structural_key(body: body)
+            TypeAlias { binders: _, aliased: body } => infer_instantiation_structural_key(body: body)
+            GenericTypeDecl { binders: _, member: _ } => Absent
+            OpaqueTypeDecl { binders: _ } => Absent
+          }
+      }
   }
 }
 
@@ -2188,11 +2283,12 @@ fn infer_judge_application_argument_instantiating(
   formal: InhabitanceFormal,
   arg: Node,
   type_params: List<Symbol>,
-  instances: List<TypeVariableInstance>
+  instances: List<TypeVariableInstance>,
+  resolved: ResolvedTree
 ) -> Outcome<List<TypeVariableInstance>> {
   match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
     DeclaredType { declared: _ } =>
-      match infer_judge_application_argument(application: application, entries: entries, formal: formal, arg: arg, type_params: type_params) {
+      match infer_judge_application_argument(application: application, entries: entries, formal: formal, arg: arg, type_params: type_params, resolved: resolved) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
       }
@@ -2204,7 +2300,8 @@ fn infer_judge_application_argument_instantiating(
             entries: entries,
             formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: instance },
             arg: arg,
-            type_params: type_params
+            type_params: type_params,
+            resolved: resolved
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
@@ -2236,7 +2333,8 @@ fn infer_judge_application_argument_instantiating(
 
 fn infer_application_argument_inhabitance(
   node: Node,
-  entries: List<InferredFactsEntry>
+  entries: List<InferredFactsEntry>,
+  resolved: ResolvedTree
 ) -> Outcome<Bool> {
   match infer_application_formals(node: node) {
     FormalsUnresolved =>
@@ -2264,7 +2362,8 @@ fn infer_application_argument_inhabitance(
                     formal: pair.formal,
                     arg: pair.arg,
                     type_params: type_params,
-                    instances: instances
+                    instances: instances,
+                    resolved: resolved
                   ) {
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                     Accepted { value: next, diagnostics: jd } =>
@@ -2854,7 +2953,7 @@ fn infer_gather_application_row_on_entries(
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
-  match infer_application_argument_inhabitance(node: node, entries: entries) {
+  match infer_application_argument_inhabitance(node: node, entries: entries, resolved: resolved) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -3771,7 +3870,7 @@ fn infer_gather_settled_row(
         resolved: resolved
       )
     Absent =>
-      match infer_arrow_declared_return_check(node: acc.node, entries: merged_entries) {
+      match infer_arrow_declared_return_check(node: acc.node, entries: merged_entries, resolved: resolved) {
         Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
             node: acc.node,
@@ -3802,7 +3901,7 @@ fn infer_gather_settled_row(
 // UndecidableGenericFormal, counted. An Arrow with no body is a signature (a fn type, a census-grade
 // declaration) and owes nothing here; one with two bodies, or a body but no declared return, is a
 // malformed Arrow and refuses.
-fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntry>) -> Outcome<Bool> {
+fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntry>, resolved: ResolvedTree) -> Outcome<Bool> {
   match node.kind {
     TypeNode { connective: Arrow } =>
       match arrow_body_target_lookup(children: node.children) {
@@ -3817,7 +3916,8 @@ fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntr
                 entries: entries,
                 formal: InhabitanceFormal { parameter_identity: ^declared_return, declared: declared },
                 produced_at: body,
-                type_params: type_param_names(n: node)
+                type_params: type_param_names(n: node),
+                resolved: resolved
               )
           }
         _ => outcome_accepted(true)

@@ -32,6 +32,9 @@ import v2.std.node {
 }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
+import std.decl_ref { DeclarationRef }
+import std.literal_elaboration { DirectLiteral, LiteralElaborationRefused, LiteralSourceKind, ViaHomomorphism, elaborate_literal_at }
+import gunbc.structural_realization_bindings { literal_homomorphism_rows }
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
 // callee Arrow's type parameters (v2.std.type_binder type_param_names) is a DECLARED TYPE VARIABLE:
@@ -209,6 +212,47 @@ fn inhabitance_pair_undecidable_reason(
 // Calling it with algebra: produced would never hold, so it would not admit a widening-legal argument.
 // Rung, ceiling, and next-rung triggers live in
 // gunbc.recurring_failure_mode.argument_type_obligation_absent_while_the_route_advances.
+// A KERNEL LITERAL MEETS ITS DECLARED TYPE HERE, ONCE (DESIGN section 4, the text ruling). When the
+// produced occurrence is a kernel literal and the declared type presents a structural destination
+// key, the relation first asks std.literal_elaboration elaborate_literal_at over the ONE row set,
+// gunbc.structural_realization_bindings literal_homomorphism_rows. A selected homomorphism IS the
+// inhabitance: the literal crosses by that declared unfold, and the witness names the row's rule.
+// No row (DirectLiteral) is not an admission: the ordinary structural relation decides, so an
+// untranslated crossing still refuses. A duplicated row refuses. The caller supplies the crossing --
+// the literal's source kind from the canonical literal reader and the declared type's destination
+// key -- because both are facts of the caller's tree, not of the two type nodes this relation
+// compares; a produced value that is not a literal supplies Absent and never reaches the rows.
+type LiteralCrossing {
+  source_kind: LiteralSourceKind
+  destination: DeclarationRef
+  element: Optional<DeclarationRef>
+}
+
+fn declared_type_inhabitance_at(obligation: DeclaredTypeObligation, crossing: Optional<LiteralCrossing>) -> InhabitanceVerdict {
+  match crossing {
+    Absent => declared_type_inhabitance(obligation: obligation)
+    Present { value: c } =>
+      match elaborate_literal_at(
+        rows: literal_homomorphism_rows,
+        source_kind: c.source_kind,
+        destination: c.destination,
+        element: c.element,
+        destination_realizes_natively: false
+      ) {
+        ViaHomomorphism { homomorphism: _ } =>
+          Inhabits {
+            homomorphism: HomomorphismWitness {
+              rule: ^homomorphism_rule_declared_literal_unfold,
+              evidence: obligation.declared
+            }
+          }
+        LiteralElaborationRefused { cause: _ } =>
+          InhabitanceRefused { find_witness_reason: ^literal_elaboration_homomorphism_duplicated }
+        DirectLiteral => declared_type_inhabitance(obligation: obligation)
+      }
+  }
+}
+
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   match inhabitance_pair_undecidable_reason(
     declared: obligation.declared,
