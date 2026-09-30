@@ -113,6 +113,7 @@ import gunbc.rung_drop.compiler_change_refusals_land_outside_every_compiled_clos
 import gunbc.rung_drop.retention_census_counts_one_retention_per_refused_module { retention_census_counts_one_retention_per_refused_module }
 import gunbc.rung_drop.typed_statement_let_refuses_until_the_bind_annotation_carrier { typed_statement_let_refuses_until_the_bind_annotation_carrier }
 import gunbc.rung_drop.python_to_typescript_compile_inhabitance_off_the_required_gate { python_to_typescript_compile_inhabitance_off_the_required_gate }
+import gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci { edited_bin_witness_wet_rows_not_executed_by_ci }
 import gunbc.rung_drop.shared_index_residency_asserted_after_the_run { shared_index_residency_asserted_after_the_run }
 
 data rung_drop_roster: List<RungDrop> = [
@@ -210,6 +211,7 @@ data rung_drop_roster: List<RungDrop> = [
   typed_statement_let_refuses_until_the_bind_annotation_carrier,
   mtcollins1_boot_accepts_socket1_absent,
   python_to_typescript_compile_inhabitance_off_the_required_gate,
+  edited_bin_witness_wet_rows_not_executed_by_ci,
   shared_index_residency_asserted_after_the_run,
 ]
 
