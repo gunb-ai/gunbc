@@ -109,11 +109,13 @@ test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool {
 
 // The numbers are separate and together account for the whole population: a check that found
 // nothing to conserve, or that summed one disposition into another, cannot pass this. The clean
-// control has an atom in every one: conserved references, locus-erased binders the role producer
-// does not read yet (its parameters), role-excluded declarations and labels, and the header.
+// control has conserved references, role-excluded declarations, labels and parameters, and the
+// header -- and, now that the parameter lists are read (v2.compiler.occurrence_role
+// ReadParamListBinders), no locus-erased atom: before that reader its parameters were the
+// locus-erased number, so a zero here is the reader's receipt, not an empty disposition.
 test fn the_clean_control_accounts_for_its_population_in_three_separate_numbers_holds() -> Bool {
   let r = clean_control_report()
-  r.conserved > 0 && r.locus_erased > 0 && r.role_excluded > 0 && r.header_channel > 0
+  r.conserved > 0 && r.locus_erased == 0 && r.role_excluded > 0 && r.header_channel > 0
     && r.conserved + r.locus_erased + r.role_excluded + r.header_channel == r.authored
 }
 
@@ -374,13 +376,14 @@ test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
 }
 
 // BINDERS AND LABELS ARE COUNTED OUTSIDE THE XL-2 POPULATION, NOT AS LOST REFERENCES. Of the
-// fixture's erased atoms, five have a recorded role that is a declaration or a non-module-scope
-// reference (the RcRow type, the two fn names, the `v:` record-literal label and the `v:` pattern
-// label); three are the header; the three left in locus_erased are the parameter and field-
-// declaration binders whose producer rows are not read yet, which role_not_yet_read counts.
+// fixture's erased atoms, eight have a recorded role that is a declaration or a non-module-scope
+// reference (the RcRow type, the two fn names, the `v:` record-literal label, the `v:` pattern
+// label, the two parameters n and r, and the `v` field declaration); three are the header; none is
+// left in locus_erased, and no production is left unread. Before the parameter and field-block
+// readers landed those three binders were locus_erased and role_not_yet_read counted them.
 test fn binders_and_labels_are_role_excluded_not_locus_erased_holds() -> Bool {
   let r = conservation_report_of(subject: construct_tags_subject())
-  r.role_excluded == 5 && r.header_channel == 3 && r.locus_erased == 3 && r.role_not_yet_read == 3 && r.role_reader_refused == 0
+  r.role_excluded == 8 && r.header_channel == 3 && r.locus_erased == 0 && r.role_not_yet_read == 0 && r.role_reader_refused == 0
 }
 
 // ---- dotted-spine segments keep their own occurrence (XL-2 LoweringOccurrenceProjection, rank 4) --
@@ -423,11 +426,12 @@ test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -
 
 // ---- roles are observed whatever normalization does (review 5330814496) -----------------------
 
-// A module that parses and whose normalization refuses (an else-less `if` statement). Its one fn
-// has a parameter list, a binder production the role producer does not read yet, so an observed
-// role pass counts exactly one not-yet-read node. Before the repair the refusal arm never ran the
-// role producer and reported zero, a gap nobody had observed.
-data normalization_refused_source: String = "module v2.test.reference_conservation_refused\n\nfn rc_guard(c: Bool, n: Int) -> Int {\n  if c { return n }\n  n\n}\n"
+// A module that parses and whose normalization refuses (an else-less `if` statement). It also
+// holds one transport member, the one production the role producer does not read (its name selects
+// a transport kind, and no role describes that yet), so an observed role pass counts exactly one
+// not-yet-read node. Before the repair the refusal arm never ran the role producer and reported
+// zero, a gap nobody had observed.
+data normalization_refused_source: String = "module v2.test.reference_conservation_refused\n\nservice rc.Svc {\n  operation RcOp {\n    transport shell { argv: [] }\n  }\n}\n\nfn rc_guard(c: Bool, n: Int) -> Int {\n  if c { return n }\n  n\n}\n"
 
 fn normalization_refused_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "normalization_refused", source: normalization_refused_source)

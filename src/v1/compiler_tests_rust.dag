@@ -1637,20 +1637,57 @@ fn ct_declaration_field_reference_identity_test() -> String {
     "    fn declaration_field_reference_names_its_declaration() {\n",
     "        use crate::v1_compiler_compile::SourceFile;\n",
     "        let sources = vec![\n",
-    "            std::rc::Rc::new(SourceFile { path: \"fixtures/field_identity/a.dag\".to_string(), content: \"module fid.a\\n\\ntype Leaf {\\n  count: Int\\n}\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/field_identity/a.dag\".to_string(), content: \"module fid.a\\n\\ntype Leaf {\\n  count: Int\\n}\\n\\ntype Tree {\\n  kids: List<Tree>\\n}\\n\\nfn tree_size(t: Tree) -> Int {\\n  1\\n}\\n\\ntype Box<T> {\\n  held: T\\n}\\n\\nfn rebox<T>(b: Box<T>) -> Box<T> {\\n  b\\n}\\n\".to_string() }),\n",
     "            std::rc::Rc::new(SourceFile { path: \"fixtures/field_identity/b.dag\".to_string(), content: \"module fid.b\\n\\nimport fid.a { Leaf }\\n\\ntype Holder {\\n  leaf: Leaf\\n}\\n\".to_string() }),\n",
     "        ];\n",
     "        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(std::rc::Rc::new(sources.into()));\n",
     "        assert!(!receipt.starts_with(\"REFUSED\"), \"the census must compile the fixture: \{receipt}\");\n",
-    "        let decl_identity = |enclosing: &str, authored: &str| -> Vec<String> {\n",
+    "        let identity_at = |enclosing: &str, position: &str, authored: &str| -> Vec<String> {\n",
     "            receipt.lines().skip(1).map(|l| l.split('\\t').collect::<Vec<_>>())\n",
-    "                .filter(|c| c[1] == enclosing && c[2] == \"declaration_field\" && c[3] == authored)\n",
+    "                .filter(|c| c[1] == enclosing && c[2] == position && c[3] == authored)\n",
     "                .map(|c| format!(\"\{}|\{}\", c[8], c[12])).collect()\n",
     "        };\n",
+    "        let decl_identity = |enclosing: &str, authored: &str| identity_at(enclosing, \"declaration_field\", authored);\n",
     "        // (1) THE RED: a field naming another module's record.\n",
     "        assert_eq!(decl_identity(\"Holder\", \"Leaf\"), vec![\"Unidentified:SpanDeclaresNothing/resolved:none|Declaration:fid.a::Leaf\".to_string()], \"\{receipt}\");\n",
     "        // (2) The control: a kernel spelling is identified by the kernel, not bound to a mint.\n",
     "        assert_eq!(decl_identity(\"Leaf\", \"Int\"), vec![\"Kernel:Int|none\".to_string()], \"\{receipt}\");\n",
+    "        // (3) CAUSE 1a, THE RED: a signature reference to a RECURSIVE type. Resolve leaves it in place\n",
+    "        // rather than expanding it (is_recursive_type_for), and now records its identity there. Only the\n",
+    "        // shadow column is asserted: the production reading of this position is not this row's subject.\n",
+    "        let tree = identity_at(\"tree_size\", \"fn_signature_param\", \"Tree\");\n",
+    "        assert!(tree.len() == 1 && tree[0].ends_with(\"|Declaration:fid.a::Tree\"), \"\{receipt}\");\n",
+    "        // (4) CAUSE 3, THE RED: a reference to a type parameter names its BINDER, (owner, TypeParameter).\n",
+    "        // The two binders are spelled T, and the owner is the nearest header binding the name, so Box's\n",
+    "        // field T and rebox's T inside Box<T> are DIFFERENT identities. Keying by spelling would make them one.\n",
+    "        let box_t = identity_at(\"Box\", \"declaration_field\", \"T\");\n",
+    "        let rebox_t = identity_at(\"rebox\", \"fn_signature_param/type_arg\", \"T\");\n",
+    "        assert!(box_t.len() == 1 && box_t[0].ends_with(\"|Declaration:fid.a::Box::<T>\"), \"\{receipt}\");\n",
+    "        assert!(rebox_t.len() == 1 && rebox_t[0].ends_with(\"|Declaration:fid.a::rebox::<T>\"), \"\{receipt}\");\n",
+    "    }\n\n"
+  )
+}
+
+// Cause 3's refusal: one header may bind a type-parameter name once, because a binder's identity is
+// (owner, name). The Rust it renders says what the row discriminates.
+fn ct_duplicate_type_parameter_refuses_test() -> String {
+  concat(
+    "    // A REPEATED TYPE PARAMETER IN ONE HEADER REFUSES, LOCATED, AND SAYS WHICH NAME. The refusal\n",
+    "    // predates this row. Its message once blamed a value parameter and called a type a fn, so the\n",
+    "    // row asserts the NAME and the OWNER, not merely that some diagnostic fired. The control header\n",
+    "    // binds two distinct names and must not produce that diagnostic.\n",
+    "    #[test]\n",
+    "    fn duplicate_type_parameter_in_one_header_refuses() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let messages = |content: &str| -> Vec<String> {\n",
+    "            let sources = vec![std::rc::Rc::new(SourceFile { path: \"fixtures/dup_binder/a.dag\".to_string(), content: content.to_string() })];\n",
+    "            let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources.into()));\n",
+    "            result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect()\n",
+    "        };\n",
+    "        let red = messages(\"module dup.a\\n\\ntype Pair<T, T> {\\n  left: T\\n}\\n\");\n",
+    "        assert!(red.iter().any(|m| m.contains(\"the name 'T' is bound twice in the header of 'Pair'\")), \"\{red:?}\");\n",
+    "        let control = messages(\"module dup.b\\n\\ntype Pair<T, U> {\\n  left: T\\n  right: U\\n}\\n\");\n",
+    "        assert!(!control.iter().any(|m| m.contains(\"is bound twice in the header\")), \"\{control:?}\");\n",
     "    }\n\n"
   )
 }
@@ -1780,6 +1817,7 @@ fn ct_coercion_tests() -> String {
     ct_kernel_identity_single_authority_test(),
     ct_type_reference_identity_split_test(),
     ct_declaration_field_reference_identity_test(),
+    ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())
 }
 
