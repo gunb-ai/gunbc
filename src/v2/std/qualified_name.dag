@@ -351,25 +351,12 @@ fn resolved_reference_node_of_kind(kind: ResolvedReferenceKind, qn: QualifiedNam
 fn resolved_reference_spine_optional(node: Node, kind: ResolvedReferenceKind) -> Optional<Node> {
   match resolved_reference_body_kind(target: node) {
     MarkedReference { kind: found } =>
-      if resolved_reference_kind_same(a: found, b: kind) {
+      if found == kind {
         fold(node.children, init: optional_absent(), f: fn(acc, edge) { optional_present(value: edge.target) })
       } else {
         optional_absent()
       }
     NotMarkedReference => optional_absent()
-  }
-}
-
-fn resolved_reference_kind_same(a: ResolvedReferenceKind, b: ResolvedReferenceKind) -> Bool {
-  match a {
-    DeclarationReferenceKind => match b {
-      DeclarationReferenceKind => true
-      ParameterReferenceKind => false
-    }
-    ParameterReferenceKind => match b {
-      DeclarationReferenceKind => false
-      ParameterReferenceKind => true
-    }
   }
 }
 

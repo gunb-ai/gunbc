@@ -211,20 +211,12 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
 // edge's marker is this module's fact (v2.std.node cannot intern it). Before the binder edge was
 // excluded, a module declaring an alias, a bodyless declaration or a generic declaration refused at the
 // partition closure as partition_facts_miss on its binder nodes.
-// A PARAMETER REFERENCE'S SPINE: the qualified-name cells under a <parameter-reference> marker
-// (v2.std.qualified_name parameter_reference_node) name where the parameter is declared; the
-// reference is one term, grounded whole, so its cells are not subterms. v2.compiler.infer asks THIS
-// predicate too, so the nodes it enters facts for and the nodes a consumer demands facts for agree.
-fn parameter_reference_spine_parent(parent: Node) -> Bool {
-  match resolved_reference_body_kind(target: parent) {
-    MarkedReference { kind: ParameterReferenceKind } => true
-    _ => false
-  }
-}
-
+// A PARAMETER REFERENCE IS ONE TERM: the qualified-name cells under its <parameter-reference> marker
+// (v2.std.qualified_name parameter_reference_node) name where the parameter is declared, so they are
+// not subterms. v2.compiler.infer's gather skips the same cells by the same accessor.
 fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
   fold(root.children, init: [root], f: fn(acc, e) {
-    if (e.label == arrow_signature_order_label) || declaration_binder_edge(parent: root, edge: e) || parameter_reference_spine_parent(parent: root) {
+    if (e.label == arrow_signature_order_label) || declaration_binder_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) == MarkedReference { kind: ParameterReferenceKind }) {
       acc
     } else {
       concat(acc, node_inferred_subtree_nodes(root: e.target))
