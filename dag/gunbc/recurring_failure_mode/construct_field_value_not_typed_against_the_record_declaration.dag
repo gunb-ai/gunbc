@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.construct_field_value_not_typed_against_the_record_declaration
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data construct_field_value_not_typed_against_the_record_declaration: RecurringFailureMode = RecurringFailureMode {
+  identity: "construct_field_value_not_typed_against_the_record_declaration" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a record construct whose field value does not inhabit that field's declared type is ACCEPTED by v2.compiler.infer. `type ArB { n: Bool, m: Bool }` with `data ar_bad: ArB = ArB { n: true, m: 3 }` gets no refusal: `m` holds an Int where the record declares a Bool.",
+    "SPECIMEN, measured by execution (2026-09-30, sleek-fox-423, gunbc#12740 head): the fixture v2.test.claim.body_lowering.anonymous_record ar_value_mismatch_headed_source, resolved through v2.compiler.name_resolve resolve_with_admission_context_policy and handed to v2.compiler.infer infer. Resolve accepts, and the construct's tag is the declaration reference v2.test.arp.ArB. Infer then answers Accepted. The headless spelling `data ar_bad: ArB = { n: true, m: 3 }` gets the same verdict after resolve elaborates its tag, so the gap is in infer's construct typing, and not in how the tag was written.",
+    "WHY INFER DOES NOT SEE IT: infer is a bottom-up fold. Its declared-type judgments compare an already-derived type with a declaration at two sites only: call arguments (position_direct_call_argument), and an Arrow body against a declared return that the language join denotes (infer_arrow_body_inhabits_declared_return reads dag_binding_denotation, so a user record return type is not judged). No site takes a construct's resolved record declaration and judges each field value against that field's declared type.",
+    "HARM: below the ordinary compiler floor. DESIGN section 4b names 'values inhabit declared types' among the floor properties whose failure is a below-baseline regression, and a Bool field holding an Int is exactly that failure. It is silent: no diagnostic is produced, and a downstream emitter or evaluator receives a construct its declaration says cannot exist.",
+    "RUNG FOUND AT: below the ladder (silent wrongness) on the v2 native route. CEILING: structurally guaranteed. The field's declared type and the resolved construct tag are both modeled facts, so infer can derive the refusal from structure. NEXT-RUNG TRIGGER: infer types construct field values against the record declaration. The discriminating RED is the specimen above; the positive control is the same record with `m: false`.",
+    "RELATED, NOT THE SAME CLASS: zero_field_construction_escapes_the_field_set_check (a missing field, measured on the v1 path) and optional_admitted_where_a_required_value_is_declared (optionality at a Required position). This row is a PRESENT field whose value is of the wrong type, on the v2 route.",
+    "ENROLLED EVIDENCE: v2.test.claim.body_lowering.anonymous_record ar_infer_verdict_is_the_headed_forms_holds asserts that an elaborated construct gets exactly the headed form's infer verdict, including on this mismatch. It holds today with both Accepted. It keeps holding when the trigger lands and both refuse, so it neither pins the gap nor goes vacuous when the gap closes."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_arrow_body_inhabits_declared_return", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_arrow_declared_return_type", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering.anonymous_record", decl_name: "ar_infer_verdict_is_the_headed_forms_holds", field: WholeDeclaration },
+  ],
+}
