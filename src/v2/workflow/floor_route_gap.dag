@@ -1413,6 +1413,8 @@ fn floor_route_gap_expectation_chunk_17() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_storage_file_store_wet_witness.a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_by_the_real_file_store", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_storage_file_store_wet_witness.a_put_or_advance_into_store_areas_that_refuse_every_principal_is_a_typed_fault_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_partition_read_wet_witness.an_empty_partition_reports_an_absent_head_and_no_events_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_partition_read_wet_witness.a_two_event_partition_reports_both_events_oldest_first_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1425,6 +1427,7 @@ fn floor_route_gap_expectation_chunk_17() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_event_log_wet_witness.an_admitted_event_is_stored_as_exactly_its_wire_text_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+  }
   }
   }
   }
