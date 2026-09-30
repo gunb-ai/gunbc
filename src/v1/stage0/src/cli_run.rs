@@ -1411,7 +1411,6 @@ mod roadmap_acceptance_history_projection_tests {
         },
         RoadmapAcceptanceHistoryProjection,
     };
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter;
     use crate::v1_interpreter::{ExecutionMode, InterpContext};
@@ -1422,8 +1421,8 @@ mod roadmap_acceptance_history_projection_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im::Vector::new()),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im::Vector::new()),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -5891,7 +5890,7 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
 /// IT DOES NOT SCAN. The first repair collected the distinct owning modules by walking
 /// `item_registry.values()`, which answered correctly and re-derived, per call, an index this
 /// compiler already builds: `leaf_owner_modules_from_registry` (v1.compiler.infer_items), carried
-/// on `ResolvedGraph.emit_graph_info.item_leaf_owner_modules`. That is DESIGN section 2
+/// on `ResolvedGraph.item_leaf_owner_modules`. That is DESIGN section 2
 /// re-invention -- net concepts must not grow by re-invention -- and a section 6 cost-shape defect
 /// besides, since `classify_unlisted_import_binding_source` and its callers put roughly four full
 /// registry passes behind every census row and the census is thousands of rows. Both are fixed by
@@ -5920,7 +5919,7 @@ fn definer_lookup_for_name(graph: &ResolvedGraph, name: &str) -> DefinerLookup {
     // the unresolved bucket instead of refusing, and a census that reports a resolvable symbol as
     // unresolved is the conflation this function's own name exists to keep apart.
     let leaf = name.rsplit('.').next().unwrap_or(name);
-    match graph.emit_graph_info.item_leaf_owner_modules.get(leaf) {
+    match graph.item_leaf_owner_modules.get(leaf) {
         None => DefinerLookup::Unresolved,
         Some(owner) => match &**owner {
             LeafOwner::LeafAmbiguous => DefinerLookup::AmbiguousLeaf,
@@ -16860,16 +16859,17 @@ fn finish_resolved_graph_assembly(
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
-    let emit_info_started = std::time::Instant::now();
-    let emit_graph_info =
-        v1_compiler_infer::build_emit_graph_info(modules.clone(), expanded_registry.clone());
-    resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
+    // NO EmitGraphInfo IS BUILT HERE (v1.compiler.infer_items ResolvedGraph): emission builds its
+    // own, and the resolve carries only the registry's leaf-owner projection. `assembly_emit_info`
+    // therefore reads zero from this change on -- the before/after of the cut, not a lost slot.
     let graph_started = std::time::Instant::now();
     let graph = Rc::new(ResolvedGraph {
         modules,
+        item_leaf_owner_modules: crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(
+            expanded_registry.clone(),
+        ),
         item_registry: expanded_registry,
         diagnostics,
-        emit_graph_info,
     });
     resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
     Ok(graph)
@@ -19213,7 +19213,13 @@ pub fn whole_corpus_semantic_oracle_snapshot(
         .collect();
     diag_lines.sort();
     let diagnostic_fingerprint = v1_rt::bytes_identity_hash(diag_lines.join("\n").as_bytes());
-    let emit_graph_fingerprint = canonical_json_identity_hash(graph.emit_graph_info.as_ref())?;
+    // The oracle fingerprints the whole emit representation, so it builds it here -- through the
+    // one builder emission uses -- rather than reading a copy every resolve used to carry.
+    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(
+        graph.modules.clone(),
+        graph.item_registry.clone(),
+    );
+    let emit_graph_fingerprint = canonical_json_identity_hash(emit_graph_info.as_ref())?;
 
     let mut modules: Vec<Rc<TypedModule>> = graph.modules.iter().cloned().collect();
     modules.sort_by(|left, right| {
@@ -19236,7 +19242,7 @@ pub fn whole_corpus_semantic_oracle_snapshot(
             v1_rt::bytes_identity_hash(module_diag_lines.join("\n").as_bytes());
         let module_emit_fingerprint = module_emit_repr_fingerprint(
             module.as_ref(),
-            graph.emit_graph_info.as_ref(),
+            emit_graph_info.as_ref(),
             source_indices.clone(),
         )?;
         per_module_lines.push(format!(
@@ -22371,7 +22377,6 @@ mod cli_wire_classify_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{str_value, ExecutionMode, InterpContext, Value};
 
@@ -22381,8 +22386,8 @@ mod cli_wire_classify_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -23000,6 +23005,7 @@ fn extract_bool_witness_transport(
 fn defining_module_for_resolved_type(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    variant_to_enum: &im::HashMap<String, String>,
     type_name: &str,
 ) -> Option<String> {
     let si = Rc::new(source_indices.clone());
@@ -23009,11 +23015,7 @@ fn defining_module_for_resolved_type(
             return Some(mod_name);
         }
     }
-    let parent_enum = graph
-        .emit_graph_info
-        .variant_to_enum
-        .get(type_name)
-        .cloned()?;
+    let parent_enum = variant_to_enum.get(type_name).cloned()?;
     for tm in graph.modules.iter() {
         let mod_name = authored_name_at(si.clone(), tm.module.clone());
         if lookup_type_by_name(tm.type_env.clone(), parent_enum.clone()).is_some() {
@@ -23048,9 +23050,10 @@ fn declared_type_name_from_annotation(
 fn resolved_decl_ref_from_type_name(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    variant_to_enum: &im::HashMap<String, String>,
     name: &str,
 ) -> Result<ResolvedDeclRef, String> {
-    let module = defining_module_for_resolved_type(graph, source_indices, name)
+    let module = defining_module_for_resolved_type(graph, source_indices, variant_to_enum, name)
         .ok_or_else(|| format!("no defining module for resolved type '{}'", name))?;
     Ok(ResolvedDeclRef {
         module,
@@ -23061,6 +23064,7 @@ fn resolved_decl_ref_from_type_name(
 fn resolved_initializer_decl_ref(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    variant_to_enum: &im::HashMap<String, String>,
     body: &Rc<Node>,
     type_annotation: Option<&Rc<Node>>,
 ) -> Result<ResolvedDeclRef, String> {
@@ -23093,13 +23097,18 @@ fn resolved_initializer_decl_ref(
                     variant_name, parent_name
                 ));
             }
-            let module = defining_module_for_resolved_type(graph, source_indices, parent_name)
-                .ok_or_else(|| {
-                    format!(
-                        "no defining module for resolved coproduct '{}'",
-                        parent_name
-                    )
-                })?;
+            let module = defining_module_for_resolved_type(
+                graph,
+                source_indices,
+                variant_to_enum,
+                parent_name,
+            )
+            .ok_or_else(|| {
+                format!(
+                    "no defining module for resolved coproduct '{}'",
+                    parent_name
+                )
+            })?;
             return Ok(ResolvedDeclRef {
                 module,
                 name: variant_name,
@@ -23128,11 +23137,11 @@ fn resolved_initializer_decl_ref(
         None => None,
     };
     if let Some(name) = inferred_name {
-        return resolved_decl_ref_from_type_name(graph, source_indices, &name);
+        return resolved_decl_ref_from_type_name(graph, source_indices, variant_to_enum, &name);
     }
     if let Some(ann) = type_annotation {
         if let Some(name) = declared_type_name_from_annotation(source_indices, ann) {
-            return resolved_decl_ref_from_type_name(graph, source_indices, &name);
+            return resolved_decl_ref_from_type_name(graph, source_indices, variant_to_enum, &name);
         }
     }
     Err(
@@ -23350,8 +23359,18 @@ pub fn discover_owned_data_decls(
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
+        // THE ONE READER OF variant_to_enum BUILDS IT, once per group graph, through the builder
+        // emission uses: the resolve no longer carries EmitGraphInfo (v1.compiler.infer_items
+        // ResolvedGraph), and owned-data discovery is the consumer that demands this projection.
+        let variant_to_enum = v1_compiler_infer::build_emit_graph_info(
+            graph.modules.clone(),
+            graph.item_registry.clone(),
+        )
+        .variant_to_enum
+        .clone();
         for (entry, entry_module, marker_count) in group.entries {
-            let records = owned_data_decls_for_entry(&graph, &si, &entry, &entry_module)?;
+            let records =
+                owned_data_decls_for_entry(&graph, &si, &variant_to_enum, &entry, &entry_module)?;
             if records.len() != marker_count {
                 return Err(format!(
                     "{}: merged-resolve discovery found {} owned unified_claim record(s) but the entry declares {} top-level `data unified_claim_` marker(s)",
@@ -42579,7 +42598,7 @@ fn prepared_graph_without_typecheck_caches(
         modules: Rc::new(modules.into()),
         item_registry: graph.item_registry.clone(),
         diagnostics: graph.diagnostics.clone(),
-        emit_graph_info: graph.emit_graph_info.clone(),
+        item_leaf_owner_modules: graph.item_leaf_owner_modules.clone(),
     })
 }
 
@@ -43499,11 +43518,14 @@ fn claim_scope_for_with_memos(
         |acc, module| v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(module.clone())),
     );
     let module_count = modules.len();
+    let item_registry = Rc::new(item_registry);
     let scoped_graph = v1_compiler_compile::ResolvedGraph {
         modules: Rc::new(modules.into_iter().collect()),
-        item_registry: Rc::new(item_registry),
+        item_leaf_owner_modules: crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(
+            item_registry.clone(),
+        ),
+        item_registry,
         diagnostics: prepared.graph.diagnostics.clone(),
-        emit_graph_info: prepared.graph.emit_graph_info.clone(),
     };
     let registry_nanos = registry_started.elapsed().as_nanos();
     let indexes_started = std::time::Instant::now();
