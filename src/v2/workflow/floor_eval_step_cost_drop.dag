@@ -237,10 +237,10 @@ data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalS
 ]
 
 // THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12533; `gunbc.rung_drop`
-// `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Eighteen identities, each running the real boot
+// `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Nineteen identities, each running the real boot
 // entry end to end over the dry operation realization, which is the subject #12423 requires. The
-// matrix cases whose own subject stops before the boot's long loops -- the unit hold, the SOL acquire, the
-// interrupted attempt -- measure under the budget and are not
+// matrix cases whose own subject stops before the boot's long loops -- the unit hold and the SOL acquire
+// -- measure under the budget and are not
 // members.
 data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
@@ -284,36 +284,40 @@ data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasuremen
     measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions the_right_filename_on_the_wrong_share_refuses_before_any_power_action, over gunbc#12533 merged with main after gunbc#12636 (tree d6c5146bce6 plus the file-transport path resolution), 2026-09-30: PASS, eval_steps=73872 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.pinned_an_interrupted_attempt_locks_out_the_next_one" as NonEmptyStr,
+    measured_by: "PR required floor run 36661418914 of gunbc#12533 at c308d7f3dd5, the COMPLETED-OVER-COST-REQUIREMENT line for this identity: verdict pass, eval_steps=75263 against the 72,300 new-witness budget (a local claim_batch over the same tree read 70,000; the floor's own figure decides membership); the billed work is the real boot entry executed twice in the seed interpreter over the dry realization" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted" as NonEmptyStr,
-    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605 (tree 0e75b0598a7), 2026-09-30: PASS, eval_steps=180722 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605, 2026-09-30: PASS, eval_steps=180722 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_appearing_with_readiness_refuses_before_the_handoff" as NonEmptyStr,
-    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions cd_error_appearing_with_readiness_refuses_before_the_handoff, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605 (tree 0e75b0598a7), 2026-09-30: PASS, eval_steps=109210 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions cd_error_appearing_with_readiness_refuses_before_the_handoff, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605, 2026-09-30: PASS, eval_steps=109210 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_stale_lane_image_with_a_code_the_stop_does_not_clear_refuses_after_the_replace" as NonEmptyStr,
-    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions a_stale_lane_image_with_a_code_the_stop_does_not_clear_refuses_after_the_replace, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605 (tree 0e75b0598a7), 2026-09-30: PASS, eval_steps=100418 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions a_stale_lane_image_with_a_code_the_stop_does_not_clear_refuses_after_the_replace, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605, 2026-09-30: PASS, eval_steps=100418 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_16_with_nothing_presented_refuses_before_the_handoff" as NonEmptyStr,
-    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions cd_error_16_with_nothing_presented_refuses_before_the_handoff, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605 (tree 0e75b0598a7), 2026-09-30: PASS, eval_steps=94200 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions cd_error_16_with_nothing_presented_refuses_before_the_handoff, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605, 2026-09-30: PASS, eval_steps=94200 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded" as NonEmptyStr,
-    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605 (tree 0e75b0598a7), 2026-09-30: PASS, eval_steps=93588 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605, 2026-09-30: PASS, eval_steps=93588 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_wall_clock_jumping_forward_during_readiness_closes_the_window" as NonEmptyStr,
-    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions a_wall_clock_jumping_forward_during_readiness_closes_the_window, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605 (tree 0e75b0598a7), 2026-09-30: PASS, eval_steps=93089 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions a_wall_clock_jumping_forward_during_readiness_closes_the_window, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605, 2026-09-30: PASS, eval_steps=93089 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_16_with_the_host_on_writes_nothing" as NonEmptyStr,
-    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions cd_error_16_with_the_host_on_writes_nothing, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605 (tree 0e75b0598a7), 2026-09-30: PASS, eval_steps=77159 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions cd_error_16_with_the_host_on_writes_nothing, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605, 2026-09-30: PASS, eval_steps=77159 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_foreign_presented_image_is_not_stopped" as NonEmptyStr,
-    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions a_foreign_presented_image_is_not_stopped, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605 (tree 0e75b0598a7), 2026-09-30: PASS, eval_steps=75353 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions a_foreign_presented_image_is_not_stopped, over gunbc#12556 merged with gunbc#12533 at 82ec7d4d605, 2026-09-30: PASS, eval_steps=75353 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
 ]
 
