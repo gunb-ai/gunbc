@@ -56,6 +56,7 @@ import gunbc.machine_intake_ampere_socket_console_observation {
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_slots, mtcollins1_census_sol_artifact_path }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_kvm_still { KvmObserverRecord, kvm_observer_record_text }
 import gunbc.machine_intake_mount_establishment { RemoteMediaMountStanding }
 import gunbc.machine_intake_megarac_media_attach {
   AttachReadiness,
@@ -875,6 +876,10 @@ fn run_record_text(r: MtCollins1BootRunRecord) -> String {
   ], "\n")
 }
 
+// `screen` is the attempt's KVM screen: the held observer's establishment, its journal of boundary
+// and lifecycle events, every still with its instant and sha256 (or why it is not hash-bound), the
+// gaps between stills, and the separately timestamped teardown. Evidence only: no finding and no
+// verdict reads it (gunbc.machine_intake_mtcollins1_kvm_still).
 type MtCollins1BootDiagnosticBundle {
   attempt: AttemptIdentityReading
   outcome: String
@@ -886,6 +891,7 @@ type MtCollins1BootDiagnosticBundle {
   inventory: InventoryReading
   console: ConsoleReading
   run: MtCollins1BootRunRecord
+  screen: KvmObserverRecord
 }
 
 fn inventory_not_taken(reason: NonEmptyStr) -> InventoryReading {
@@ -1390,6 +1396,8 @@ fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String
     memory_members_text(m: bundle.inventory.memory),
     "== pre-os console ==",
     console_text(c: bundle.console),
+    "== bmc kvm screen (held observer; stills retained, not interpreted) ==",
+    kvm_observer_record_text(rec: bundle.screen),
     "",
   ], "\n")
 }
