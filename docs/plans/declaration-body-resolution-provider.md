@@ -99,7 +99,12 @@ bodies; four infer readers move to the snapshot in the same commit: `infer_proje
 `infer_arrow_declared_return_type`), and `infer_match_coproduct_of_type` with
 `infer_binding_type_in_scope` (#12641, calm-pike-507: variant payload and field types for match
 binders; type parameters are still substituted from use-site arguments, over the resolved body).
-All four took declaration types off the authored `symbol_index` node; after PR2 none of them can
+A fifth consumer joins at the same cut (quiet-gull-780, 2026-09-30): smart-newt-725's
+record-construct field typing, whose per-run same-module declaration index DISSOLVES into P2 here
+rather than standing beside it; smart-newt-725 names this PR as its trigger. The indexes that
+dissolve in this commit are #12629's `ResolvedTree.resolved_declarations` (with
+`resolved_declarations_of`) and smart-newt-725's same-module index.
+All of these took declaration types off an authored or subject-local node; after PR2 none of them can
 reach it. Branch: `session/royal-stag-371-pr2-declaration-bodies`. calm-pike-507 stacks the return-type derivation on this branch. `ResolvedTree.resolved_declarations` and `resolved_declarations_of` (#12629) are deleted
 in the same commit. The RFM row is retired, and its red stays enrolled.
 
