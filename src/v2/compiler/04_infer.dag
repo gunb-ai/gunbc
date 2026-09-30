@@ -1198,6 +1198,40 @@ fn infer_declaration_callable_evidence(declared: Node) -> Optional<Node> {
   }
 }
 
+// A DECLARATION WHOSE CALLABLE EVIDENCE THIS STAGE CANNOT ADMIT IS THE FRONTIER, NOT A REFUSAL, and
+// that is the SAME arm this function already takes when the declaration carries no callable evidence at
+// all -- not a new leniency. canonical_grounding_from_derived_type holds every grounding the compiler
+// mints to a self-consistency wall (canonical_grounding_admits_infer_facts: the node and its evidence
+// well_formed, the two constraint properties, closedness evidence identical to the node). A declaration
+// read from the RESOLVED root carries whatever resolve bound into its signature, and a return that is a
+// generic instantiation -- `Outcome<ParseArtifact>` -- is not a shape that wall admits.
+//
+// WHY ROUTING IT TO THE FRONTIER IS THE CORRECT ARM AND NOT A WIDENING. The reference is a USE; the
+// question this function answers is "what callable contract does this use denote". When the answer is
+// unavailable the honest result is that the use is underived, which infer already carries as the counted
+// advisory infer_grounding_not_derived and every DEMANDING consumer -- eval, translate, coercion -- still
+// refuses at its own gate. Letting the construction's refusal escape instead made a single-module named
+// call whose callee returns a generic instance REJECT the whole module, with the incoherence reported
+// against the declaration rather than against anything the program did wrong: a stage refusing a program
+// for a route it does not reach. That is the conviction DESIGN section 5 forbids in the other direction,
+// and it is a regression from the accepted-at-frontier behaviour, not a wall.
+//
+// THE RESIDUE IS STATED RATHER THAN COVERED: a generic-returning callee's application stays on the
+// frontier, so its result type is not derived and a match on it is not checked against the coproduct's
+// variants. The trigger is a canonical grounding for an instantiated generic type, which is the typing
+// model's fact and not this reader's.
+fn infer_reference_facts_or_frontier(
+  o: Outcome<InferredFacts>,
+  n: Node,
+  descent_proof: TerminationProof,
+) -> Outcome<InferredFacts> {
+  match o {
+    Accepted { value: facts, diagnostics: d } => Accepted { value: facts, diagnostics: d }
+    Rejected { diagnostics: _ } =>
+      inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+  }
+}
+
 fn infer_declaration_reference_facts(
   n: Node,
   resolved: ResolvedTree,
@@ -1215,13 +1249,17 @@ fn infer_declaration_reference_facts(
             Absent =>
               inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
             Present { value: callable } =>
-              infer_facts_denoting(
-                o: inferred_facts_from_derived_type(
-                  node: n,
-                  derived_type: callable,
-                  descent: Holds { value: descent_proof }
+              infer_reference_facts_or_frontier(
+                o: infer_facts_denoting(
+                  o: inferred_facts_from_derived_type(
+                    node: n,
+                    derived_type: callable,
+                    descent: Holds { value: descent_proof }
+                  ),
+                  declaration: declared
                 ),
-                declaration: declared
+                n: n,
+                descent_proof: descent_proof
               )
           }
       }

@@ -382,10 +382,11 @@ test fn fps_eval_refuses_a_non_aggregate_receiver_holds() -> Bool {
 // kind from the parameter receiver above, so whether this repair reaches it is its own fact.
 //
 // MEASURED, AND THE ISOLATING CONTROL IS THE ONE THAT MATTERS. The match form RESOLVES -- so resolve's
-// projection arm handles a match binder's head -- and then fails to infer. But the SAME match form with
-// the projection REPLACED BY A LITERAL fails to infer identically, so the blocker is the match construct
-// and not the field access. That is the pre-existing match-arm boundary this lane already recorded as the
-// seven's first refusal (body_lowering_reason_match_arm_navigation_refused), owned elsewhere.
+// projection arm handles a match binder's head -- and it now INFERS as well, with a projection body and
+// with a literal body alike: the match-arm boundary this section first recorded as the seven's refusal
+// (body_lowering_reason_match_arm_navigation_refused) is gone. What remains at this receiver is that the
+// projection does not GROUND, which the rewritten row below asserts in that direction rather than as a
+// refusal that no longer happens.
 //
 // AN EARLIER VERSION OF THIS SECTION CLAIMED MORE THAN IT MEASURED. It asserted that an absent field off
 // a match binder is not admitted, and that claim PASSED -- vacuously, because the valid projection off a
@@ -410,12 +411,54 @@ test fn fps_a_match_binder_receiver_resolves_holds() -> Bool {
   fps_resolves(o: fps_match_binder_source(field: "tree"))
 }
 
-// AND THE BLOCKER IS THE MATCH FORM, NOT THE PROJECTION. Both conjuncts are needed: the projection form
-// refusing alone would be consistent with a projection defect, and it is the SECOND conjunct -- the same
-// match with a literal body refusing too -- that assigns the refusal to the match construct. If a later
-// change makes match arms infer, this claim goes red and the projection claim beside it becomes the live
-// question, which is the transition worth being told about.
-test fn fps_the_match_binder_blocker_is_the_match_form_holds() -> Bool {
-  !fps_infers(o: fps_match_binder_source(field: "tree"))
-    && !fps_infers(o: fps_match_no_projection_source())
+// THE MATCH-FORM BLOCKER IS RETIRED, AND THE ROW IS REWRITTEN TO THE BOUNDARY THAT IS ACTUALLY LIVE.
+// The row above predicted its own transition -- "if a later change makes match arms infer, this claim goes
+// red and the projection claim beside it becomes the live question" -- and that change landed (gunbc#12641
+// types a match over a declared generic coproduct and its arm binders). The match form now infers with a
+// projection body AND with a literal body, so the refusal this row counted no longer exists and the row
+// does not retire: it becomes the control that the retirement stays real (DESIGN section 4b(4)).
+//
+// WHAT IS LIVE INSTEAD IS NARROWER AND IS STATED, NOT CLAIMED AS A WALL. The projection NODE is in the
+// resolved tree, the module infers, and the projection's grounding is NOT derived -- for the valid field
+// and for an absent one alike. So the receiver's type is underived at this seam and the projection sits on
+// the counted frontier rather than being typed.
+//
+// THE CONSEQUENCE IS NAMED HERE SO IT IS NOT MISREAD AS A WALL: because the projection is on the frontier,
+// an ABSENT field off a match binder is NOT refused either. That is the frontier's ordinary behaviour, not
+// a fail-open, and this row asserts it in the direction that is true rather than asserting a refusal that
+// does not happen. It is exactly the vacuity the earlier version of this section confessed to, now written
+// so that it cannot recur: the two grounding conjuncts below would both have to change for this row to go
+// green under a broken implementation.
+//
+// WHY THIS IS INFORMATIVE AND NOT "EVERYTHING IS UNDERIVED": the PARAMETER receiver in this same file
+// grounds (fps_a_valid_field_projection_grounds_holds) and its absent field IS refused
+// (fps_an_absent_field_does_not_infer_holds). Those two are the discriminating positive controls, so the
+// frontier asserted here is specific to the match-arm binder as a receiver.
+//
+// THE TRIGGER is a derived type for a match-arm binder AT THE PROJECTION'S RECEIVER SEAM -- the binder is
+// typed by gunbc#12641 within the match, and what this row measures is that the projection's own receiver
+// read does not reach that fact. When it does, the two grounding conjuncts flip and the absent-field
+// conjunct becomes a refusal claim.
+test fn fps_the_match_form_infers_and_the_projection_stays_on_the_frontier_holds() -> Bool {
+  fps_infers(o: fps_match_binder_source(field: "tree"))
+    && fps_infers(o: fps_match_no_projection_source())
+    && fps_match_binder_projection_grounds(field: "tree") == false
+    && fps_match_binder_projection_grounds(field: "span_index") == false
+}
+
+// THE PROJECTION NODE IS THERE, so the two grounding conjuncts above are about a node that exists rather
+// than vacuously true of an absent one -- the same guard fps_the_resolved_tree_carries_a_field_projection
+// provides for the parameter receiver.
+test fn fps_a_match_binder_projection_is_in_the_tree_holds() -> Bool {
+  match fps_projection_facts(o: fps_match_binder_source(field: "tree")) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn fps_match_binder_projection_grounds(field: String) -> Bool {
+  match fps_projection_facts(o: fps_match_binder_source(field: field)) {
+    Absent => false
+    Present { value: facts } => inferred_facts_grounding_derived(facts: facts)
+  }
 }
