@@ -7424,6 +7424,9 @@ pub fn run_required_floor(
     let builds = super::multi_entry_index_builds();
     let name_sets = super::multi_entry_index_sharing_control(&builds)
         .map_err(|e| format!("REQUIRED-FLOOR REFUSAL cause={e}"))?;
+    let resident = super::entry_resolve::shared_index_residency_control()
+        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL cause={e}"))?;
+    eprintln!("[floor-phase] phase=shared-index-residency resident_pools={resident}");
     eprintln!(
         "[floor-phase] phase=multi-entry-index-builds builds={} name_sets={name_sets} sites={:?}",
         builds.len(),

@@ -1204,7 +1204,10 @@ fn emitted_tree_packages(
                  {roots:?}, so the emitted tree's package graph cannot be read"
             )
         })?;
-    let index = super::process_shared_index(&roots);
+    // ITS OWN INDEX, RELEASED WITH THIS READ. The regen roots are read here for this one entry
+    // and by nothing after it, so the pool is not put in the thread's shared memo, where it
+    // would sit beside the round's source-roots index for the life of the thread.
+    let index = super::build_multi_entry_index(&roots);
     let (graph, indices) =
         super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy())
             .map_err(|e| {
