@@ -236,7 +236,7 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
       } else if execution_revision == "" {
         refuse(reason: "the execution revision must be named; it is frozen with the filing and a rerun must execute it")
       } else {
-      match d0_store_write_wall_standing() {
+      match d0_store_write_wall_standing(group: g, escalation_id: authorization as NonEmptyStr) {
         Present { value: wall } => refuse(reason: wall)
         Absent =>
       match observe_executor_reach() {
