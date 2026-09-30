@@ -160,24 +160,26 @@ fn approval_broker_status_url(port: Port, escalation_id: NonEmptyStr) -> NonEmpt
 // appends the stripped remainder to the backend URL's own path, so a backend of
 // http://127.0.0.1:8085/approve presents /approve/<rest>: the public path and the broker's route
 // table agree without the broker learning a second spelling of its own routes.
-fn approval_broker_backend(port: Port, mount_path: NonEmptyStr) -> NonEmptyStr {
-  join([approval_broker_loopback_base_url(port: port) as String, mount_path as String], "") as NonEmptyStr
-}
-
-fn approval_broker_confirm_front_door(https_port: Port, backend_port: Port) -> TailscaleServeEndpoint {
+//
+// ONE VALUE, TWO PROJECTIONS (review 73232): the mount and the backend path must be equal or every
+// route class misses, so both are derived here from the one mount path a front door names, never
+// typed twice.
+fn approval_broker_front_door(https_port: Port, backend_port: Port, mount_path: NonEmptyStr) -> TailscaleServeEndpoint {
   TailscaleServeEndpoint {
     https_port: https_port,
-    mount: ServeSetPath { path: "/approve" as NonEmptyStr },
-    backend: approval_broker_backend(port: backend_port, mount_path: "/approve" as NonEmptyStr),
+    mount: ServeSetPath { path: mount_path },
+    backend: join([approval_broker_loopback_base_url(port: backend_port) as String, mount_path as String], "") as NonEmptyStr,
   }
+}
+
+data approval_broker_confirm_mount_path: NonEmptyStr = "/approve" as NonEmptyStr
+
+fn approval_broker_confirm_front_door(https_port: Port, backend_port: Port) -> TailscaleServeEndpoint {
+  approval_broker_front_door(https_port: https_port, backend_port: backend_port, mount_path: approval_broker_confirm_mount_path)
 }
 
 fn approval_broker_status_front_door(https_port: Port, backend_port: Port) -> TailscaleServeEndpoint {
-  TailscaleServeEndpoint {
-    https_port: https_port,
-    mount: ServeSetPath { path: approval_broker_submit_path },
-    backend: approval_broker_backend(port: backend_port, mount_path: approval_broker_submit_path),
-  }
+  approval_broker_front_door(https_port: https_port, backend_port: backend_port, mount_path: approval_broker_submit_path)
 }
 
 // ── WHAT THIS MODULE DOES NOT KNOW, SAID SO IT CAN BE SETTLED RATHER THAN ASSUMED ────────────
@@ -209,12 +211,12 @@ fn approval_broker_status_front_door(https_port: Port, backend_port: Port) -> Ta
 // The plan refuses at that stage with the cause named; the repair is then a modeled one (a broker
 // route table mounted at the stripped prefix, or a root mount on a second https listener), never an
 // edit made under an outage.
-// SETTLED BY THE PROBE, NOT BY A READ: the strip was observed (see approval_broker_backend), so the
+// SETTLED BY THE PROBE, NOT BY A READ: the strip was observed (see approval_broker_front_door), so the
 // bet this row carried is closed by construction there -- the backend now names the mount path -- and
 // the row keeps its read obligation only for the upstream documentation, which still does not state
 // the rewrite. The stage-5 probe remains the executing evidence.
 data approval_broker_front_door_path_preservation: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "OBSERVED on srv1 2026-09-30: `tailscale serve --set-path=/approve --https=443 <backend>` presents `/<rest>` (prefix STRIPPED) to the backend -- the stage-5 ProbeRouteClasses probe got approval-broker/broker/no-route-matched on every route class. approval_broker_backend now carries the mount path in the backend URL. Remaining obligation: cite tailscale.com/kb/1242 (or the serve CLI reference) for the strip-and-append behaviour, which the documentation read so far does not state." as NonEmptyStr,
+  read_obligation: "OBSERVED on srv1 2026-09-30: `tailscale serve --set-path=/approve --https=443 <backend>` presents `/<rest>` (prefix STRIPPED) to the backend -- the stage-5 ProbeRouteClasses probe got approval-broker/broker/no-route-matched on every route class. approval_broker_front_door now derives the backend URL's path from the mount path. Remaining obligation: cite tailscale.com/kb/1242 (or the serve CLI reference) for the strip-and-append behaviour, which the documentation read so far does not state." as NonEmptyStr,
 }
 
 // ── The link base ────────────────────────────────────────────────────────────────────────────
