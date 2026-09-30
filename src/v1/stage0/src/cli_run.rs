@@ -9703,6 +9703,34 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
     verdict
 }
 
+/// THE WHOLE-POOL NAME CENSUS'S ENTRY FOR ONE NAME, computed over the modules that declare it.
+///
+/// `build_symbol_index_census_raw_nodes` keys every bare, alias and service entry by a declared
+/// name, and every count that gates an entry (variant and item multiplicity) counts declarations
+/// of that same name. So the pool census's entry for `name` depends only on the modules that
+/// declare `name`, and building the census over exactly those modules yields the same entry --
+/// the question the bare loader asks, without the whole pool. The modules are located by the
+/// heads name index (`ReferencePoolNames::decl_index`, items plus the variants of `Disj` types,
+/// the same declarations the census folds). The claim is checked for every name of the live pool
+/// by `entry_resolve::pool_census_for_name_differential`.
+fn pool_census_for_name(index: &MultiEntryIndex, name: &str) -> Result<Rc<SymbolIndex>, String> {
+    let pool = pool_parse(index)?;
+    let names = entry_resolve::reference_pool_names_for_index(index)?;
+    let Some(modules) = names.decl_index.get(name) else {
+        return Ok(crate::v1_compiler_infer_env::empty_symbol_index());
+    };
+    let nodes: im::Vector<Rc<Node>> = modules
+        .iter()
+        .filter_map(|m| index.source_files.get(m))
+        .filter_map(|sf| pool.position_by_file.get(&sf.path))
+        .map(|&i| pool.nodes_by_file[i].1.clone())
+        .collect();
+    Ok(v1_compiler_infer::build_symbol_index_census_raw_nodes(
+        Rc::new(nodes),
+        pool.combined_si.clone(),
+    ))
+}
+
 /// One resolver, two consumers: admission discards selected providers, and a demanded
 /// edge row expands them. Candidate classification remains `closure_bare_disposition`,
 /// which consumes `v1.compiler.infer_env::global_bare_chain_candidates`.
@@ -9920,11 +9948,41 @@ fn visit_bare_reference_providers(
         // Carrying the provenance costs nothing (the arms already know it) and makes the
         // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
         // "what did it resolve to".
+        // NO WHOLE-POOL CENSUS. A name the file's own tree census does not answer used to be asked
+        // of the WHOLE-POOL census, built in full by the first such demand -- DESIGN §5's
+        // absorbing fallback (not knowing the answer gets answered with the superset). What that
+        // question actually depends on is the pool census's entry for THIS NAME, and that entry is
+        // a function of the modules that declare the name alone (`pool_census_for_name`). So the
+        // same answer is computed over exactly those modules. Where it names a provider, the old
+        // route silently pulled a module from another source tree; that is now a typed, located
+        // refusal telling the author to write the reference qualified. Where it names none, nothing changes.
+        // Measured before the change by the live fallback census: 13 such pulls in 5 files on the
+        // real pool, one of them a builtin `get` bound to an unrelated `fn get`
+        // (`gunbc.recurring_failure_mode.a_pool_fallback_provider_shadows_a_builtin`).
         let (target_module, resolution_arm, census_state) = match resolve_in(&census)? {
             (Some(m), state) => (Some(m), "scoped", state),
-            (None, _) => {
-                let (m, state) = resolve_in(&census_for(None)?)?;
-                (m, "pool-fallback", state)
+            // A BUILTIN the tree does not declare is the builtin: no other tree's function of the
+            // same name is a provider for it (`builtin_signature` is the builtin authority).
+            (None, state)
+                if !service_head
+                    && crate::v1_compiler_infer_method::builtin_signature(name.clone())
+                        .is_some() =>
+            {
+                (None, "builtin", state)
+            }
+            (None, state) => {
+                let (provider, _) = resolve_in(&pool_census_for_name(index, &name)?)?;
+                if let Some(provider) = provider {
+                    return Err(format!(
+                        "bare_reference_closure: CrossTreeBareReference -- bare reference \
+                         '{name}' in '{file_rel}' is not provided by this file's source tree \
+                         ({root}); only '{provider}', outside it, provides it. A reference \
+                         across source trees is written qualified, as `{provider}.{name}` \
+                         (an `import` would also stop every other bare reference in this \
+                         file from being followed)."
+                    ));
+                }
+                (None, "scoped", state)
             }
         };
         let Some(module_path) = target_module else {
@@ -13546,6 +13604,9 @@ fn next_index_generation() -> u64 {
 struct PoolParse {
     /// Workspace-relative file path → census-head module node.
     nodes_by_file: Vec<(String, Rc<Node>)>,
+    /// Position of each file in `nodes_by_file`, so a reader that wants a few named files
+    /// (`pool_census_for_name`) finds them without walking the pool.
+    position_by_file: std::collections::HashMap<String, usize>,
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
@@ -17166,8 +17227,14 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         combined_si.insert(file.clone(), nl_index);
         nodes_by_file.push((file, module));
     }
+    let position_by_file = nodes_by_file
+        .iter()
+        .enumerate()
+        .map(|(i, (file, _))| (file.clone(), i))
+        .collect();
     let parsed = Rc::new(PoolParse {
         nodes_by_file,
+        position_by_file,
         combined_si: Rc::new(combined_si),
     });
     pre_entry_phase::record(
