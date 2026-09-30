@@ -22,6 +22,7 @@ import gunbc.bmc_megarac_web_transport {
 import gunbc.owned_process {
   OwnedRelease, OwnedReleased, OwnedAlreadyGone, OwnedReleaseNotOwned, OwnedForeign, OwnedRunning, OwnedGone,
   owned_process_release, owned_process_standing, owned_process_launch_script,
+  owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line, owned_process_unpublished_unobservable_line,
 }
 import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord,
@@ -202,8 +203,8 @@ test fn a_stale_listening_line_from_another_pid_is_not_readiness() -> Bool {
   let running = OwnedRunning { pid: "4242", start_time: "100" }
   let not_yet = match megarac_web_transport_readiness(standing: running, out: "", events: stale) { Absent => true  Present { value: _ } => false }
   let mine = match megarac_web_transport_readiness(standing: running, out: "", events: concat(stale, "2 pid=4242 listening start=100 port=5151\n")) { Present { value: s } => match s { TransportServing { port: p, pid: q } => p == "5151" && q == "4242"  _ => false }  Absent => false }
-  let unpublished = match megarac_web_transport_readiness(standing: OwnedGone { pid: "" }, out: "gunbc-owned: pid not published; child stopped (observed gone)\n", events: "") { Present { value: s } => match s { TransportNotServing { cause: c } => match c { TransportPidUnpublished => true  _ => false }  _ => false }  Absent => false }
-  let exited = match megarac_web_transport_readiness(standing: OwnedGone { pid: "4242" }, out: "gunbc-owned: exited status=1 at=2026-09-28T00:00:00Z\n", events: "") { Present { value: s } => match s { TransportNotServing { cause: c } => match c { TransportExitedBeforeReady { exit_line: _ } => true  _ => false }  _ => false }  Absent => false }
+  let unpublished = match megarac_web_transport_readiness(standing: OwnedGone { pid: "" }, out: concat(owned_process_unpublished_line, "\n"), events: "") { Present { value: s } => match s { TransportNotServing { cause: c } => match c { TransportPidUnpublished => true  _ => false }  _ => false }  Absent => false }
+  let exited = match megarac_web_transport_readiness(standing: OwnedGone { pid: "4242" }, out: concat(owned_process_exit_prefix, "1 at=2026-09-28T00:00:00Z\n"), events: "") { Present { value: s } => match s { TransportNotServing { cause: c } => match c { TransportExitedBeforeReady { exit_line: _ } => true  _ => false }  _ => false }  Absent => false }
   not_yet && mine && unpublished && exited
 }
 
@@ -245,7 +246,7 @@ test fn a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped() -
   let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 6))
   let log = read_or_empty(path: concat(dir, "/child.log"))
   let _gone = shell.Remove.RecursiveForce(path: dir)
-  string_contains(s: log, pattern: "child stopped (observed gone)") && string_contains(s: log, pattern: "exited status=137")
+  string_contains(s: log, pattern: "child stopped (observed gone)") && string_contains(s: log, pattern: concat(owned_process_exit_prefix, "137"))
 }
 
 // THE SAME LAUNCH WITH ITS PROCESS STATE UNOBSERVABLE, EXECUTED: the production launch script's exact
@@ -265,13 +266,13 @@ test fn an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child
   let pid_path = concat(dir, "/child.pid")
   let _blocker = shell.Mkdir.Parents(path: pid_path as FilePath)
   let marker = "37.0417"
-  let _l = shell.Exec.RunArgv(program: "env", arguments: [concat("PATH=", concat(bin, ":/usr/bin:/bin")), "bash", "-c", owned_process_launch_script, "owned-launch", pid_path, concat(dir, "/child.log"), "sh", "-c", concat("trap '' TERM; exec sleep ", marker)])
+  let _l = shell.Exec.RunArgv(program: "env", arguments: [concat("PATH=", concat(bin, ":/usr/bin:/bin")), "bash", "-c", owned_process_launch_script, "owned-launch", pid_path, concat(dir, "/child.log"), owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line, owned_process_unpublished_unobservable_line, "sh", "-c", concat("trap '' TERM; exec sleep ", marker)])
   let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 6))
   let log = read_or_empty(path: concat(dir, "/child.log"))
   let survivor = shell.Exec.RunArgv(program: "pgrep", arguments: ["-f", concat("^sleep ", concat(marker, "$"))]).exit_code == 0
   let _clean = shell.Exec.RunArgv(program: "pkill", arguments: ["-KILL", "-f", concat("^sleep ", concat(marker, "$"))])
   let _gone = shell.Remove.RecursiveForce(path: dir)
-  string_contains(s: log, pattern: "exited status=137") && !survivor
+  string_contains(s: log, pattern: concat(owned_process_exit_prefix, "137")) && !survivor
 }
 
 // THE PRODUCTION DIRECTORY SHAPE, EXECUTED: a RELATIVE observer directory (as the boot passes
