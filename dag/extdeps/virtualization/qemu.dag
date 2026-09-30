@@ -1,6 +1,6 @@
 module extdeps.virtualization.qemu
 
-import std.types { String, NonEmptyStr, FilePath }
+import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -46,6 +46,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [qemu_noble_packages_authority],
 }
 
+// THE INSTALLED IDENTITY IS A DIGEST, NOT A BANNER. A banner establishes what a binary REPORTS; the
+// sha256 of the file the package installs establishes WHICH bytes are there. Both were read
+// 2026-09-30 from the archive below after it matched the Packages index SHA256: dpkg-deb -x, then
+// sha256sum of usr/bin/qemu-system-aarch64, and the exact banner string the binary carries.
 type QemuDistributionBuild {
   upstream_version: NonEmptyStr
   package: NonEmptyStr
@@ -53,6 +57,9 @@ type QemuDistributionBuild {
   archive_arch: NonEmptyStr
   archive_filename: NonEmptyStr
   archive_sha256: NonEmptyStr
+  installed_binary: FilePath
+  installed_binary_sha256: NonEmptyStr
+  version_banner: NonEmptyStr
 }
 
 data qemu_8_2_2_ubuntu_noble_arm64: QemuDistributionBuild = QemuDistributionBuild {
@@ -62,27 +69,24 @@ data qemu_8_2_2_ubuntu_noble_arm64: QemuDistributionBuild = QemuDistributionBuil
   archive_arch: "arm64",
   archive_filename: "pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb",
   archive_sha256: "3f7024459848a11bd171045da5d3c8f2e0a93e67e5651ab6b164f45bad954200",
+  installed_binary: "/usr/bin/qemu-system-aarch64",
+  installed_binary_sha256: "e19e11bd054ccf0f3cfcea8e0acdcc4288de6abd2ed6c30f743092c362eb2673",
+  version_banner: "QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)",
 }
 
-// The system emulator for an AArch64 guest. PATH-resolved: no fleet host's filesystem has been
-// observed to carry it, and the observe that reads it (gunbc.machine_intake_mtcollins1_census_qemu_host_observe)
-// is the observation that would ground an absolute path (extdeps.exec.command
-// program_spelling_is_an_observation_claim).
-data qemu_system_aarch64_invocation: NonEmptyStr = "qemu-system-aarch64"
+// The system emulator for an AArch64 guest, invoked at the path whose digest is being judged, so
+// the banner read and the bytes hashed are the same file rather than whatever PATH resolves.
+fn qemu_system_aarch64_program(binary: FilePath) -> ProgramIdentity = uncataloged_program(invocation: binary as NonEmptyStr)
 
-fn qemu_system_aarch64_program() -> ProgramIdentity = uncataloged_program(invocation: qemu_system_aarch64_invocation)
-
-fn qemu_version_command() -> ArgvCommand {
-  argv_command(program: qemu_system_aarch64_program(), arguments: ["--version"])
+fn qemu_version_command(binary: FilePath) -> ArgvCommand {
+  argv_command(program: qemu_system_aarch64_program(binary: binary), arguments: ["--version"])
 }
 
-// The first line `--version` prints: "QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)"
-// on the Ubuntu build. The upstream prefix is QEMU's; the parenthesised build is the packager's, so
-// a banner is judged on the upstream prefix and the package version separately.
-fn qemu_version_line_prefix(build: QemuDistributionBuild) -> NonEmptyStr {
-  concat("QEMU emulator version ", build.upstream_version as String) as NonEmptyStr
+// The first line `--version` prints is judged EXACTLY against version_banner: a banner that merely
+// starts with the upstream version, or merely contains the package version, is a different string.
+fn qemu_banner_is_pinned(build: QemuDistributionBuild, banner: String) -> Bool {
+  banner == (build.version_banner as String)
 }
-
 // accel=kvm opens the host's KVM device (QEMU docs, system/introduction "Virtualisation
 // Accelerators": KVM on Linux hosts). The device is the kernel's; this row is QEMU's requirement
 // of it, stated where QEMU is modeled so the observe reads QEMU's requirement and not Firecracker's.

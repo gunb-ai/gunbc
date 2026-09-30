@@ -9,8 +9,8 @@ import extdeps.posix.test_utility { test_exists_command, test_writable_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.virtualization.qemu {
-  QemuDistributionBuild, qemu_8_2_2_ubuntu_noble_arm64, qemu_version_command, qemu_version_line_prefix,
-  qemu_kvm_accelerator_device, qemu_system_aarch64_invocation,
+  QemuDistributionBuild, qemu_8_2_2_ubuntu_noble_arm64, qemu_version_command, qemu_banner_is_pinned,
+  qemu_kvm_accelerator_device,
 }
 import extdeps.firmware.tianocore_edk2.aavmf { AavmfDistributionBuild, AavmfFirmwareFile, aavmf_2024_02_ubuntu_noble }
 import gunbc.command_runner {
@@ -33,8 +33,9 @@ import gunbc.host_effect { LocalShell }
 //
 // THREE FACTS, EACH AGAINST ITS PIN:
 //   kvm       QEMU's accelerator device, openable by THIS process (the boot will run as this user)
-//   qemu      the system emulator's version banner against extdeps.virtualization.qemu's pinned
-//             build: its upstream prefix, and the package version the Ubuntu build prints beside it
+//   qemu      the system emulator at the path the pinned package installs: its sha256 against the
+//             digest read from the verified package, and its banner EXACTLY -- a reported version
+//             is not the pinned build, so the banner alone never discharges readiness
 //   aavmf     the CODE image and the VARS template at their packaged paths, each hashed against
 //             extdeps.firmware.tianocore_edk2.aavmf -- a present file with a different digest is a
 //             different firmware and is reported as such, never as present
@@ -44,9 +45,9 @@ import gunbc.host_effect { LocalShell }
 // installed, and a missing piece is an answer, not a fault: the receipt is written in every arm.
 
 type QemuBinaryStanding
-  = QemuAbsent { invocation: NonEmptyStr, detail: String }
-  | QemuPinnedBuild { banner: String }
-  | QemuOtherBuild { banner: String, expected_prefix: NonEmptyStr, expected_package_version: NonEmptyStr }
+  = QemuAbsent { binary: String, detail: String }
+  | QemuPinnedBuild { binary: String, banner: String }
+  | QemuOtherBuild { binary: String, observed_sha256: String, banner: String, banner_is_pinned: Bool }
 
 type FirmwareFileStanding
   = FirmwareFileMatches { path: String }
@@ -65,13 +66,18 @@ fn qemu_banner_first_line(output: String) -> String {
   match first(split(trim(s: output), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
 }
 
-// The banner is judged on BOTH halves: the upstream prefix QEMU prints, and the packager's build
-// in the parenthesised suffix. An 8.2.2 from another packager is not the pinned bytes.
-fn qemu_binary_standing_of(build: QemuDistributionBuild, banner: String) -> QemuBinaryStanding {
-  if starts_with(s: banner, prefix: qemu_version_line_prefix(build: build) as String) && string_contains(s: banner, pattern: build.package_version as String) {
-    QemuPinnedBuild { banner: banner }
-  } else {
-    QemuOtherBuild { banner: banner, expected_prefix: qemu_version_line_prefix(build: build), expected_package_version: build.package_version }
+// THE PINNED ARM NEEDS BOTH FACTS: the file's digest is the installed identity, and the exact banner
+// is the reading that the file executed as that build. Either one alone is a different standing.
+fn qemu_binary_standing_of(build: QemuDistributionBuild, digest: Sha256FileDigest, banner: String) -> QemuBinaryStanding {
+  let binary = build.installed_binary as String
+  match digest {
+    Sha256FileDigestUnavailable { path: _, reason: r } => QemuAbsent { binary: binary, detail: r }
+    Sha256FileDigest { digest: d } =>
+      if (d.hex as String) == (build.installed_binary_sha256 as String) && qemu_banner_is_pinned(build: build, banner: banner) {
+        QemuPinnedBuild { binary: binary, banner: banner }
+      } else {
+        QemuOtherBuild { binary: binary, observed_sha256: d.hex as String, banner: banner, banner_is_pinned: qemu_banner_is_pinned(build: build, banner: banner) }
+      }
   }
 }
 
@@ -106,10 +112,10 @@ fn census_qemu_host_ready(s: CensusQemuHostStanding) -> Bool {
 
 fn qemu_standing_text(s: QemuBinaryStanding) -> String {
   match s {
-    QemuAbsent { invocation: i, detail: d } => join(["qemu=absent (", i as String, " did not answer --version: ", d, ")"], "")
-    QemuPinnedBuild { banner: b } => join(["qemu=pinned (", b, ")"], "")
-    QemuOtherBuild { banner: b, expected_prefix: p, expected_package_version: v } =>
-      join(["qemu=other-build (banner \"", b, "\"; pinned \"", p as String, "\" built as ", v as String, ")"], "")
+    QemuAbsent { binary: b, detail: d } => join(["qemu=absent (", b, ": ", d, ")"], "")
+    QemuPinnedBuild { binary: b, banner: x } => join(["qemu=pinned (", b, ", ", x, ")"], "")
+    QemuOtherBuild { binary: b, observed_sha256: h, banner: x, banner_is_pinned: p } =>
+      join(["qemu=other-build (", b, " sha256 ", h, ", banner \"", x, "\"", if p { " -- the banner matches but the bytes do not" } else { "" }, ")"], "")
   }
 }
 
@@ -144,11 +150,15 @@ fn observe_census_qemu_host_standing_wet() -> CensusQemuHostStanding {
       HostnameShortCaptureRefused { reason: r } => join(["unread (", r, ")"], "")
     },
     kvm: kvm_standing_of(exists: exists, writable: writable),
-    qemu: match run_shell_command_capture(command: qemu_version_command(), transport: LocalExec) {
-      ProcessOutputPresent { text: t } => qemu_binary_standing_of(build: build, banner: qemu_banner_first_line(output: t))
-      ProcessOutputAbsent => QemuAbsent { invocation: qemu_system_aarch64_invocation, detail: "exited 0 and printed nothing" }
-      ProcessRefused { exit_code: x, stderr: e } => QemuAbsent { invocation: qemu_system_aarch64_invocation, detail: join(["exit ", to_string(x), ": ", trim(s: e)], "") }
-    },
+    qemu: qemu_binary_standing_of(
+      build: build,
+      digest: sha256sum_file_digest_via_shell(path: build.installed_binary as NonEmptyStr),
+      banner: match run_shell_command_capture(command: qemu_version_command(binary: build.installed_binary), transport: LocalExec) {
+        ProcessOutputPresent { text: t } => qemu_banner_first_line(output: t)
+        ProcessOutputAbsent => ""
+        ProcessRefused { exit_code: x, stderr: e } => join(["(--version exit ", to_string(x), ": ", trim(s: e), ")"], "")
+      },
+    ),
     aavmf_code: firmware_file_standing_of(file: firmware.code, reading: sha256sum_file_digest_via_shell(path: firmware.code.path as NonEmptyStr)),
     aavmf_vars_template: firmware_file_standing_of(file: firmware.vars_template, reading: sha256sum_file_digest_via_shell(path: firmware.vars_template.path as NonEmptyStr)),
   }

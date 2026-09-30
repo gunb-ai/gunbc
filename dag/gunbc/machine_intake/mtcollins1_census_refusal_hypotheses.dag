@@ -94,6 +94,13 @@ fn boot_refused(r: CensusBootReading) -> Bool {
   }
 }
 
+// A CLEAN BOOT IS AN OBSERVED ONE: no refusal record AND the xHCI controller's registration line.
+// A capture with neither -- silent, truncated, ended before coldplug -- is UNCLEAR, never clean,
+// because the absence of a refusal line there is the absence of the observation.
+fn boot_clean(r: CensusBootReading) -> Bool {
+  !boot_refused(r: r) && r.xhci_bound
+}
+
 // THE CANDIDATE MODULE NAMES A REFUSING BOOT CARRIES, deduplicated. An identity the capture could
 // not read is its own arm, because an unread identity is not an empty candidate set: a pre-instrument
 // boot names nothing, and treating that as "named nothing in common" would fabricate disagreement.
@@ -124,17 +131,18 @@ fn refusing_boot_identity(r: CensusBootReading) -> List<RefusingBootIdentity> {
 
 type RefusalRecurrence
   = NoBootRead
-  | NoRefusalAcrossBoots { boots: Int }
+  | NoRefusalAcrossBoots { clean: Int, unclear: Int }
   | RefusalOnEveryBoot { boots: Int }
-  | RefusalOnSomeBoots { refusing: Int, clean: Int }
+  | RefusalOnSomeBoots { refusing: Int, clean: Int, unclear: Int }
 
 fn refusal_recurrence(readings: List<CensusBootReading>) -> RefusalRecurrence {
   let refusing = count(filter(readings, r => boot_refused(r: r)))
+  let clean = count(filter(readings, r => boot_clean(r: r)))
   let total = count(readings)
   if total == 0 { NoBootRead }
-  else if refusing == 0 { NoRefusalAcrossBoots { boots: total } }
+  else if refusing == 0 { NoRefusalAcrossBoots { clean: clean, unclear: total - clean } }
   else if refusing == total { RefusalOnEveryBoot { boots: total } }
-  else { RefusalOnSomeBoots { refusing: refusing, clean: total - refusing } }
+  else { RefusalOnSomeBoots { refusing: refusing, clean: clean, unclear: total - refusing - clean } }
 }
 
 type CandidateAgreement
@@ -175,8 +183,10 @@ fn xhci_pair_names() -> List<String> {
   [linux_xhci_pci_module_name as String, linux_xhci_pci_renesas_module_name as String]
 }
 
-fn within_xhci_pair(modules: List<String>) -> Bool {
-  count(modules) > 0 && count(filter(modules, m => count(filter(xhci_pair_names(), p => p == m)) == 0)) == 0
+// THE WHOLE PAIR, not a subset: the xHCI candidate predicts that requesting xhci-pci loads its
+// dependency too, so boots agreeing on one member only are not that candidate's signature.
+fn is_xhci_pair(modules: List<String>) -> Bool {
+  name_set_equal(a: modules, b: xhci_pair_names())
 }
 
 // WHICH WAY THE CAPTURES LEAN. A bearing is not a verdict: FavoursXhciPair says the named refusals
@@ -195,10 +205,10 @@ fn hypothesis_bearing(readings: List<CensusBootReading>) -> HypothesisBearing {
     OneRefusingBootNamed { modules: _, unread: _ } =>
       BearingUndetermined { missing: "one refusing boot names candidates; agreement across boots needs a second instrumented refusing boot" }
     SameCandidatesOnEveryNamedBoot { modules: m, named: n, unread: _ } =>
-      if within_xhci_pair(modules: m) {
+      if is_xhci_pair(modules: m) {
         FavoursXhciPair { modules: m, boots: n }
       } else {
-        BearingUndetermined { missing: concat("refusing boots agree on candidates outside the xHCI pair (", join(m, ", "), "); neither candidate predicts a fixed non-xHCI victim, so the pair of candidates is incomplete") }
+        BearingUndetermined { missing: concat("refusing boots agree on candidates that are not exactly the xHCI pair (", join(m, ", "), "); neither candidate predicts that set") }
       }
     CandidatesDifferAcrossBoots { named: ns, unread: _ } => FavoursMemoryPlacement { named: ns }
   }
@@ -211,6 +221,7 @@ type PlacementTally {
   placement: MemoryPlacement
   refusing: Int
   clean: Int
+  unclear: Int
 }
 
 fn same_placement(a: MemoryPlacement, b: MemoryPlacement) -> Bool {
@@ -225,7 +236,8 @@ fn placement_tallies(readings: List<CensusBootReading>) -> List<PlacementTally> 
     if count(filter(readings.take(n: p.first), r => same_placement(a: r.placement, b: p.second.placement))) > 0 { [] } else {
       let group: List<CensusBootReading> = filter(readings, r => same_placement(a: r.placement, b: p.second.placement))
       let refusing = count(filter(group, r => boot_refused(r: r)))
-      [PlacementTally { placement: p.second.placement, refusing: refusing, clean: count(group) - refusing }]
+      let clean = count(filter(group, r => boot_clean(r: r)))
+      [PlacementTally { placement: p.second.placement, refusing: refusing, clean: clean, unclear: count(group) - refusing - clean }]
     })
 }
 
@@ -236,9 +248,10 @@ fn placement_text(p: MemoryPlacement) -> String {
 fn refusal_recurrence_text(r: RefusalRecurrence) -> String {
   match r {
     NoBootRead => "no boot capture read"
-    NoRefusalAcrossBoots { boots: n } => concat("no refusal across ", to_string(n), " boot(s)")
+    NoRefusalAcrossBoots { clean: c, unclear: u } => concat("no refusal recorded; ", to_string(c), " observed-clean boot(s), ", to_string(u), " unclear (no xHCI registration)")
     RefusalOnEveryBoot { boots: n } => concat("refused on every one of ", to_string(n), " boot(s)")
-    RefusalOnSomeBoots { refusing: a, clean: b } => concat("refused on ", to_string(a), " boot(s) and not on ", to_string(b), " -- nondeterministic across these captures")
+    RefusalOnSomeBoots { refusing: a, clean: b, unclear: u } =>
+      concat("refused on ", to_string(a), " boot(s), observed clean on ", to_string(b), ", unclear on ", to_string(u), if b > 0 { " -- nondeterministic across these captures" } else { "" })
   }
 }
 
@@ -256,10 +269,50 @@ fn census_refusal_hypotheses_text(captures: List<CensusBootCapture>) -> String {
   join([
     concat("recurrence: ", refusal_recurrence_text(r: refusal_recurrence(readings: readings))),
     concat("xhci bound on: ", join(map(bound, r => r.source as String), ", ")),
-    concat("placements: ", join(map(placement_tallies(readings: readings), t => concat(placement_text(p: t.placement), " refusing ", to_string(t.refusing), " clean ", to_string(t.clean))), "; ")),
+    concat("placements: ", join(map(placement_tallies(readings: readings), t => concat(placement_text(p: t.placement), " refusing ", to_string(t.refusing), " clean ", to_string(t.clean), " unclear ", to_string(t.unclear))), "; ")),
     hypothesis_bearing_text(b: hypothesis_bearing(readings: readings)),
   ], "\n")
 }
+
+// THE OFF-MACHINE QEMU PROBE'S VERDICT OVER ONE ARM'S SERIAL CAPTURE, three-valued. REPRODUCED needs
+// a PARSED refusal record; NOT-REPRODUCED needs the route to have run -- no refusal record AND the
+// xHCI controller's registration line, which is the load the refusal is about; everything else is
+// COULD-NOT-TELL, with the reason. A silent capture, a truncated or unparsable refusal record, and a
+// capture that ended before the xHCI bound all land there: "no refusal line" from a boot that never
+// reached coldplug is the absence of the observation, not a negative result.
+type CensusQemuProbeVerdict
+  = QemuReproduced { reading: CensusBootReading, candidates: List<String> }
+  | QemuNotReproduced { source: NonEmptyStr }
+  | QemuCouldNotTell { source: NonEmptyStr, cause: String }
+
+fn census_qemu_probe_verdict(capture: CensusBootCapture) -> CensusQemuProbeVerdict {
+  let r = census_boot_reading(capture: capture)
+  match r.decompression {
+    RefusalRecorded { refusals: rs, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: _ } =>
+      if count(rs) > 0 {
+        QemuReproduced { reading: r, candidates: flat_map(refusing_boot_identity(r: r), i => named_modules(i: i)) }
+      } else {
+        QemuCouldNotTell { source: capture.source, cause: "a refusal record was recognised but none could be parsed" }
+      }
+    NoRefusalRecorded { insert_failures: _, unparsed_insert_records: _ } =>
+      if count(capture.lines) == 0 {
+        QemuCouldNotTell { source: capture.source, cause: "the serial capture is empty" }
+      } else if r.xhci_bound {
+        QemuNotReproduced { source: capture.source }
+      } else {
+        QemuCouldNotTell { source: capture.source, cause: "no refusal record, and no xHCI controller registered, so the load the refusal is about was not observed" }
+      }
+  }
+}
+
+// DECLARED FRONTIER (DESIGN 3c): the verdict's production consumer is the PR3 boot mode.
+data census_qemu_probe_verdict_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_census_refusal_hypotheses", decl_name: "census_qemu_probe_verdict"),
+    reason: "census_qemu_probe_verdict|consumer:mtcollins1_census_qemu_probe-boot-mode",
+    dissolution: unbound_dissolution(description: "the mtcollins1_census_qemu_probe fleet-converge mode (PR3 of work item adhoc-a576cc2a-bfe) boots the digest-verified census ISO under QEMU and reads each arm's retained serial log through this verdict"),
+  ),
+]
 
 // DECLARED FRONTIER (DESIGN 3c). The production consumer of this reading is the mtcollins1 boot
 // route's retained SOL captures, read ACROSS attempts; that route retains one capture per run and
