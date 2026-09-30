@@ -13190,6 +13190,7 @@ pub use shared_typecheck_store::{
     SharedTypecheckStoreCounters,
 };
 
+#[track_caller]
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     #[cfg(test)]
     yield_live_pool_before_building_another();
@@ -13202,6 +13203,7 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
 /// the SAME both-closure fixpoint as the witness loader (`extend_with_bare_reference_closure`
 /// requires the `MultiEntryIndex` for its per-tree bare census), dissolving the §3
 /// closure-authority fork the two loaders' doc-comments each falsely claimed to be single.
+#[track_caller]
 fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiEntryIndex {
     #[cfg(test)]
     yield_live_pool_before_building_another();
@@ -13212,6 +13214,7 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
     )
 }
 
+#[track_caller]
 pub fn build_multi_entry_index_with_shared_caches(
     source_roots: &[String],
     cross_worker_store: Arc<RwLock<SharedTypecheckCaches>>,
@@ -13529,6 +13532,23 @@ fn next_index_generation() -> u64 {
 /// generation (`new_multi_entry_index_shell`).
 pub(crate) fn multi_entry_indexes_built() -> u64 {
     NEXT_INDEX_GENERATION.load(Ordering::Relaxed) - 1
+}
+
+static MULTI_ENTRY_INDEX_SITES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Where each construction was demanded: the first caller outside the `#[track_caller]` chain of
+/// index builders, so a second index over one name set names the site that asked for it.
+pub(crate) fn record_multi_entry_index_site(site: &std::panic::Location<'_>) {
+    if let Ok(mut sites) = MULTI_ENTRY_INDEX_SITES.lock() {
+        sites.push(format!("{}:{}", site.file(), site.line()));
+    }
+}
+
+pub(crate) fn multi_entry_index_sites() -> Vec<String> {
+    MULTI_ENTRY_INDEX_SITES
+        .lock()
+        .map(|sites| sites.clone())
+        .unwrap_or_default()
 }
 
 /// Parse-grade pool snapshot: every indexed module's declaration heads plus the
@@ -15394,6 +15414,7 @@ fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
 
 /// Primary-precedence pool for affected-set attribution of `src/v1/*.dag` edits:
 /// witness_layer_roots (dag + src/v2) cannot resolve v1.compiler.* modules alone.
+#[track_caller]
 fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
     let roots = vec![
         "dag".to_string(),

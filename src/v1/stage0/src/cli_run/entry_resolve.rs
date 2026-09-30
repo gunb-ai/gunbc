@@ -710,6 +710,7 @@ pub(crate) fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<Strin
 /// that joins absolute-path reads to this relative-path index can still fork source
 /// identity. The divergence census walls that site with parent-owned `Rc` identity;
 /// the class-wide next rung is canonical `SourceFile` identity at construction.
+#[track_caller]
 pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     try_process_shared_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
 }
@@ -893,6 +894,7 @@ pub(crate) fn memoized_process_shared_index(
 /// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
 /// discovery must not install a partial index that every later caller in the process would
 /// then read as complete.
+#[track_caller]
 pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntryIndex>, String> {
     try_process_shared_index_for_pool(source_roots, false)
 }
@@ -921,6 +923,7 @@ pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntry
 ///
 /// PRECEDENCE IS PART OF THE SLOT IDENTITY, never a parameter applied to a shared slot: see the
 /// two-slot note on `PROCESS_RESOLVE_INDEX`.
+#[track_caller]
 pub fn try_process_shared_index_for_pool(
     source_roots: &[String],
     primary_precedence: bool,
@@ -1053,11 +1056,13 @@ pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String>
     index.resolved_graph_memo.borrow().keys().cloned().collect()
 }
 
+#[track_caller]
 pub(crate) fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
     cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
 ) -> MultiEntryIndex {
+    record_multi_entry_index_site(std::panic::Location::caller());
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,

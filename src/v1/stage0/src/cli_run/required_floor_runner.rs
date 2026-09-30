@@ -7424,8 +7424,9 @@ pub fn run_required_floor(
     if built != EXPECTED_MULTI_ENTRY_INDEXES {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=MultiEntryIndexBuiltMoreThanOnce count={built} \
-             expected={EXPECTED_MULTI_ENTRY_INDEXES} -- one module-name set was indexed more than \
-             once in this run, so its files' reference readings were parsed again per index"
+             expected={EXPECTED_MULTI_ENTRY_INDEXES} sites={:?} -- one module-name set was indexed \
+             more than once in this run, so its files' reference readings were parsed again per index",
+            super::multi_entry_index_sites()
         ));
     }
     // The two earlier phases already printed their own lines at the point they ran; only the
