@@ -307,7 +307,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -953,7 +953,7 @@ fn rust_inhabitant_i32_node() -> Node {
 }
 
 fn rust_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn rust_declared_inhabitants_root() -> Node {
@@ -4956,7 +4956,7 @@ fn rust_sg2_emitted_without_named_edge(base: Node, field: Symbol) -> Node {
     kind: base.kind,
     children: fold(base.children, init: Empty, f: fn(acc, e) {
       match e.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if n == field {
             acc
           } else {

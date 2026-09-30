@@ -11,7 +11,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -52,28 +52,28 @@ fn type_alias_marker() -> Symbol {
 
 fn edge_is_type_alias(e: Edge) -> Bool {
   match e.label {
-    Named { name: sym } => sym == type_alias_marker()
+    Authored { name: sym } => sym == type_alias_marker()
     Positional => false
   }
 }
 
 fn edge_is_type_params(e: Edge) -> Bool {
   match e.label {
-    Named { name: sym } => sym == type_params_marker()
+    Authored { name: sym } => sym == type_params_marker()
     Positional => false
   }
 }
 
 fn edge_is_type_body(e: Edge) -> Bool {
   match e.label {
-    Named { name: sym } => sym == type_body_marker()
+    Authored { name: sym } => sym == type_body_marker()
     Positional => false
   }
 }
 
 // THE ONE PRODUCER of the edge on an Arrow (consumed by v2.compiler.body_lowering_fold).
 fn type_params_edge(conj: Node) -> Edge {
-  Edge { label: Named { name: type_params_marker() }, target: conj }
+  Edge { label: Authored { name: type_params_marker() }, target: conj }
 }
 
 // A GENERIC TYPE DECLARATION'S TARGET IS A WRAPPER BESIDE ITS MEMBER, NEVER A MEMBER WITH ITS
@@ -87,8 +87,8 @@ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: type_params_marker() }, target: binders },
-      Edge { label: Named { name: type_body_marker() }, target: member }
+      Edge { label: Authored { name: type_params_marker() }, target: binders },
+      Edge { label: Authored { name: type_body_marker() }, target: member }
     ]
   )
 }
@@ -121,8 +121,8 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: type_params_marker() }, target: binders },
-      Edge { label: Named { name: type_alias_marker() }, target: aliased }
+      Edge { label: Authored { name: type_params_marker() }, target: binders },
+      Edge { label: Authored { name: type_alias_marker() }, target: aliased }
     ]
   )
 }
@@ -134,7 +134,7 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
 fn type_opaque_wrapper(binders: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: type_params_marker() }, target: binders }]
+    children: [Edge { label: Authored { name: type_params_marker() }, target: binders }]
   )
 }
 
@@ -241,7 +241,7 @@ fn type_param_names(n: Node) -> List<Symbol> {
 fn binder_conj_names(conj: Node) -> List<Symbol> {
   fold(conj.children, init: Empty, f: fn(acc, e) {
     match e.label {
-      Named { name: sym } => list_snoc_item(xs: acc, item: sym)
+      Authored { name: sym } => list_snoc_item(xs: acc, item: sym)
       Positional => acc
     }
   })
@@ -258,12 +258,12 @@ fn cast_target_marker() -> Symbol {
 
 // THE ONE PRODUCER of the edge.
 fn cast_target_edge(target_type: Node) -> Edge {
-  Edge { label: Named { name: cast_target_marker() }, target: target_type }
+  Edge { label: Authored { name: cast_target_marker() }, target: target_type }
 }
 
 fn edge_is_cast_target(e: Edge) -> Bool {
   match e.label {
-    Named { name: sym } => sym == cast_target_marker()
+    Authored { name: sym } => sym == cast_target_marker()
     Positional => false
   }
 }
@@ -292,7 +292,7 @@ fn type_annotation_marker() -> Symbol {
 
 // THE ONE PRODUCER of the edge.
 fn type_annotation_edge(annotation: Node) -> Edge {
-  Edge { label: Named { name: type_annotation_marker() }, target: annotation }
+  Edge { label: Authored { name: type_annotation_marker() }, target: annotation }
 }
 
 // 🟡 dissolve-on: edge labels on behavior nodes becoming a closed coproduct owned by v2.std.node, the
@@ -303,7 +303,7 @@ fn type_annotation_edge(annotation: Node) -> Edge {
 // with typed labels it dissolves into a match on the label arm.
 fn edge_is_type_annotation(e: Edge) -> Bool {
   match e.label {
-    Named { name: sym } => sym == type_annotation_marker()
+    Authored { name: sym } => sym == type_annotation_marker()
     Positional => false
   }
 }
@@ -328,7 +328,7 @@ fn bind_named_labels_conform(n: Node) -> Bool {
   fold(n.children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && (sym == type_annotation_marker())
+      Authored { name: sym } => acc && (sym == type_annotation_marker())
     }
   })
 }
@@ -354,7 +354,7 @@ fn transform_named_labels_conform(n: Node) -> Bool {
   let walk = fold(n.children, init: TransformLabelWalk { markers: 0, actuals: 0 }, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } =>
+      Authored { name: sym } =>
         if sym == cast_target_marker() {
           TransformLabelWalk { markers: acc.markers + 1, actuals: acc.actuals }
         } else {
@@ -404,7 +404,7 @@ fn arrow_named_labels_conform(n: Node) -> Bool {
   fold(n.children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && ((sym == ^arrow_body_edge) || (sym == ^arrow_signature_order_edge) || (sym == type_params_marker()))
+      Authored { name: sym } => acc && ((sym == ^arrow_body_edge) || (sym == ^arrow_signature_order_edge) || (sym == type_params_marker()))
     }
   })
 }

@@ -66,7 +66,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -1428,7 +1428,7 @@ fn target_semantic_decl_field_surface_from_edge(
   projection: TargetSemanticDeclSurfaceProjection
 ) -> Outcome<Node> {
   match edge.label {
-    Named { name: fname } =>
+    Authored { name: fname } =>
       match edge.target.kind {
         TypeNode { connective: Atom { identity: tid } } =>
           if projection.field_type_permit_only_int && tid != ^Int {
@@ -1925,7 +1925,7 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
   projection: TargetSemanticDeclSurfaceProjection
 ) -> Outcome<Node> {
   match edge.label {
-    Named { name: vname } =>
+    Authored { name: vname } =>
       if coproduct_variant_edge_has_payload(edge: edge) {
         bind_outcome(
           o: target_semantic_decl_field_surfaces(
@@ -1984,7 +1984,7 @@ fn target_semantic_decl_variant_surface_from_edge(
   projection: TargetSemanticDeclSurfaceProjection
 ) -> Outcome<Node> {
   match edge.label {
-    Named { name: vname } =>
+    Authored { name: vname } =>
       if coproduct_variant_edge_has_payload(edge: edge) {
         bind_outcome(
           o: target_semantic_decl_field_surfaces(

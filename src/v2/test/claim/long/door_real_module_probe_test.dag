@@ -46,7 +46,7 @@ fn quad_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Nod
         target: quad_qn_node(seg: seg)
       ),
       Edge {
-        label: Named { name: export_sym },
+        label: Authored { name: export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
@@ -71,7 +71,7 @@ fn quad_subject_with_import_use() -> Node {
         target: quad_qn_node(seg: ^quadmod)
       ),
       Edge {
-        label: Named { name: ^list_append },
+        label: Authored { name: ^list_append },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^dag_token_ident } },
           children: [],

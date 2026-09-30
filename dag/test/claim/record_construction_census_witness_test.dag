@@ -1,7 +1,7 @@
 module test.claim.record_construction_census_witness_test
 
 import v2.std.decl_index { DeclFact, decl_facts }
-import v2.std.node { Atom, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
+import v2.std.node { Atom, Edge, Authored, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -41,7 +41,7 @@ type CensusConstructionCount {
 
 fn census_edge_is_construction(e: Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^record_construction_spelling
+    Authored { name: nm } => nm == ^record_construction_spelling
     Positional => false
   }
 }

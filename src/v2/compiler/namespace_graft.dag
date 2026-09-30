@@ -22,7 +22,7 @@ import v2.std.node {
   Cardinality,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -114,7 +114,7 @@ fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
             false
           } else {
             match e.label {
-              Named { name: sym } => parse_tree_projection_edge(name: sym)
+              Authored { name: sym } => parse_tree_projection_edge(name: sym)
               Positional => true
             }
           }
@@ -133,7 +133,7 @@ fn namespace_graft_collect_body_edge(
     acc
   } else {
   match edge.label {
-    Named { name: sym } =>
+    Authored { name: sym } =>
       if namespace_graft_is_metadata_edge(name: sym) {
         acc
       } else if parse_tree_projection_edge(name: sym) {
@@ -270,7 +270,7 @@ fn namespace_graft_reconstruct_unit_edge(node: Node) -> Edge {
 fn namespace_graft_reconstruct_declaration_forest(units: List<Node>) -> List<Edge> {
   [
     Edge {
-      label: Named { name: ^dag_surface_top_level_item },
+      label: Authored { name: ^dag_surface_top_level_item },
       target: Node {
         kind: TypeNode { connective: Cardinality },
         children: fold(units, init: [], f: fn(acc, unit) {
@@ -313,7 +313,7 @@ fn namespace_graft_kw_ident_named_edge(unit: Node) -> Edge? {
             Present { value: rest } =>
               optional_present(
                 value: Edge {
-                  label: Named { name: name },
+                  label: Authored { name: name },
                   target: rest
                 }
               )
@@ -440,7 +440,7 @@ fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDecl
 // two Named atoms.
 fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
   match edge.label {
-    Named { name: sym } =>
+    Authored { name: sym } =>
       if parse_tree_projection_edge(name: sym) {
         false
       } else if namespace_graft_is_metadata_edge(name: sym) {
@@ -470,7 +470,7 @@ fn namespace_graft_named_list_has_name(edges: List<Edge>, name: Symbol) -> Bool 
       true
     } else {
       match edge.label {
-        Named { name: n } => n == name
+        Authored { name: n } => n == name
         Positional => false
       }
     }
@@ -480,7 +480,7 @@ fn namespace_graft_named_list_has_name(edges: List<Edge>, name: Symbol) -> Bool 
 fn namespace_graft_flatten_minus_decl_names(from_decls: List<Edge>, flattened: List<Edge>) -> List<Edge> {
   fold(flattened, init: [], f: fn(acc, edge) {
     match edge.label {
-      Named { name: n } =>
+      Authored { name: n } =>
         if namespace_graft_named_list_has_name(edges: from_decls, name: n) {
           acc
         } else {
@@ -605,7 +605,7 @@ fn namespace_graft_wrap_segment(segment: Symbol, inner: Node, source: Node) -> N
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: segment },
+        label: Authored { name: segment },
         target: inner
       }
     ],
@@ -658,7 +658,7 @@ fn namespace_graft_has_explicit_braced_container(root: Node, first_segment: Symb
         true
       } else {
         match edge.label {
-          Named { name: sym } =>
+          Authored { name: sym } =>
             if namespace_graft_is_metadata_edge(name: sym) {
               false
             } else if sym == first_segment {

@@ -93,7 +93,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -363,7 +363,7 @@ fn swift_atom(id: Symbol) -> Node {
 }
 
 fn swift_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn swift_signedness_node(signedness: SwiftIntSignedness) -> Node {

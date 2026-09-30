@@ -39,7 +39,7 @@ fn wl_output_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^wiring_liveness_output_field }, target: wl_mid_node() }
+      Edge { label: Authored { name: ^wiring_liveness_output_field }, target: wl_mid_node() }
     ],
     occurrence_id: OccurrenceSynthetic
   }

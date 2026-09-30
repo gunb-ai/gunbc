@@ -32,7 +32,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   TypeNode,
@@ -192,7 +192,7 @@ fn ddl_edge_target_is_int_literal(e: Edge) -> Bool {
 
 fn ddl_edge_is_body(e: Edge) -> Bool {
   match e.label {
-    Named { name: n } => n == ^arrow_body_edge
+    Authored { name: n } => n == ^arrow_body_edge
     Positional => false
   }
 }
@@ -218,7 +218,7 @@ fn ddl_is_nullary_literal_arrow(n: Node) -> Bool {
 
 fn ddl_edge_names_value_member(e: Edge) -> Bool {
   match e.label {
-    Named { name: n } => (n == ^ddl_value) && ddl_is_nullary_literal_arrow(n: e.target)
+    Authored { name: n } => (n == ^ddl_value) && ddl_is_nullary_literal_arrow(n: e.target)
     Positional => false
   }
 }
@@ -305,7 +305,7 @@ test fn malformed_literal_payload_stays_on_the_frontier_holds() -> Bool {
   let bogus = ddl_unauthorized_atom()
   let literal = Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
-    children: [Edge { label: Named { name: ^integer_literal_magnitude_field }, target: bogus }],
+    children: [Edge { label: Authored { name: ^integer_literal_magnitude_field }, target: bogus }],
     occurrence_id: OccurrenceSynthetic
   }
   ddl_hand_grounding(tree: literal, n: bogus) == 1

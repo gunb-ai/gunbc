@@ -29,7 +29,7 @@ import v2.std.node {
   Disj,
   Edge,
   Instantiation,
-  Named,
+  Authored,
   Node,
   Path,
   Symbol,
@@ -46,7 +46,7 @@ data projection_test_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^projection_section_step },
+      label: Authored { name: ^projection_section_step },
       target: projection_test_section
     }
   ],

@@ -22,7 +22,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -98,7 +98,7 @@ fn rd_module_root(qn_spine: Node, body: List<Edge>) -> Node {
 
 fn rd_declaration(decl_sym: Symbol) -> Edge {
   Edge {
-    label: Named { name: decl_sym },
+    label: Authored { name: decl_sym },
     target: Node {
       kind: TypeNode { connective: Atom { identity: decl_sym } },
       children: [],
@@ -116,7 +116,7 @@ fn rd_qualified_mention() -> Edge {
 
 fn rd_import_syntax_mention() -> Edge {
   Edge {
-    label: Named { name: ^dag_surface_import_decl },
+    label: Authored { name: ^dag_surface_import_decl },
     target: Node {
       kind: TypeNode { connective: Conj },
       children: [

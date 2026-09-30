@@ -46,7 +46,7 @@ fn wave1_gate1_b1_arrow_named_body_optional(arrow: Node) -> Optional<Node> {
       Present { value: _ } => acc
       Absent =>
         match body_edge.label {
-          Named { name: _ } => Present { value: body_edge.target }
+          Authored { name: _ } => Present { value: body_edge.target }
           Positional => Absent
         }
     }
@@ -61,7 +61,7 @@ fn wave1_gate1_b1_find_named_fn_arrow_body(root: Node, fn_lexeme: String) -> Opt
           Present { value: _ } => acc
           Absent =>
             match edge.label {
-              Named { name: sym } =>
+              Authored { name: sym } =>
                 if symbol_lexeme(sym: sym) == fn_lexeme {
                   match edge.target.kind {
                     TypeNode { connective: Arrow } =>

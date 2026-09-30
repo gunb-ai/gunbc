@@ -12,7 +12,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -48,7 +48,7 @@ data arrow_body_cost_body: Node = Node {
 
 fn arrow_body_cost_arrow() -> Node {
   let signature = declared_signature(
-    params: [Edge { label: Named { name: pattern_wildcard_name() }, target: arrow_body_cost_domain_param }],
+    params: [Edge { label: Authored { name: pattern_wildcard_name() }, target: arrow_body_cost_domain_param }],
     source: arrow_body_cost_domain_param
   )
   Node {
@@ -64,7 +64,7 @@ fn arrow_body_cost_arrow() -> Node {
       }
     },
     signature.order,
-    Edge { label: Named { name: ^arrow_body_edge }, target: arrow_body_cost_body }
+    Edge { label: Authored { name: ^arrow_body_edge }, target: arrow_body_cost_body }
   ],
   occurrence_id: OccurrenceSynthetic
   }

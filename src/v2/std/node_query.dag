@@ -29,7 +29,7 @@ import v2.std.node {
   Disj,
   Edge,
   Found,
-  Named,
+  Authored,
   Node,
   Nullary,
   Positional,
@@ -244,7 +244,7 @@ fn declared_field_cardinality_of_target(target: Node) -> Cardinality {
 
 fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
   match e.label {
-    Named { name: field_name } =>
+    Authored { name: field_name } =>
       Present {
         value: DeclaredField {
           name: field_name,
@@ -300,7 +300,7 @@ fn declared_field_named(payload: Node, name: Symbol) -> Optional<DeclaredField> 
 // (docs/plans/lowering-occurrence-projection-design.md, rank 3).
 fn construct_tag_edge(tag: Symbol, tag_source: Node) -> Edge {
   Edge {
-    label: Named { name: tag },
+    label: Authored { name: tag },
     target: node_lowered_from(
       kind: TypeNode { connective: Atom { identity: tag } },
       children: [],
@@ -328,7 +328,7 @@ fn construct_tag_optional(n: Node) -> Optional<Symbol> {
       match first(n.children) {
         Present { value: e } =>
           match e.label {
-            Named { name: label } =>
+            Authored { name: label } =>
               match e.target.kind {
                 TypeNode { connective: Atom { identity: id } } =>
                   match id == label {
@@ -400,8 +400,8 @@ fn field_projection_node(base: Node, field: Node, source: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: field_projection_base_name() }, target: base },
-      Edge { label: Named { name: field_projection_field_name() }, target: field }
+      Edge { label: Authored { name: field_projection_base_name() }, target: base },
+      Edge { label: Authored { name: field_projection_field_name() }, target: field }
     ],
     occurrence_id: source.occurrence_id
   )
@@ -414,7 +414,7 @@ type FieldProjection {
 
 fn field_projection_edge_base_optional(e: Edge) -> Optional<Node> {
   match e.label {
-    Named { name: n } =>
+    Authored { name: n } =>
       if n == field_projection_base_name() {
         optional_present(value: e.target)
       } else {
@@ -426,7 +426,7 @@ fn field_projection_edge_base_optional(e: Edge) -> Optional<Node> {
 
 fn field_projection_edge_field_optional(e: Edge) -> Optional<Symbol> {
   match e.label {
-    Named { name: n } =>
+    Authored { name: n } =>
       if n == field_projection_field_name() {
         match e.target.kind {
           TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
@@ -478,7 +478,7 @@ fn field_projection_optional(n: Node) -> Optional<FieldProjection> {
 fn variant_declaration_node(label: Symbol, payload: Node, source: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: label }, target: payload }],
+    children: [Edge { label: Authored { name: label }, target: payload }],
     occurrence_id: source.occurrence_id
   )
 }
@@ -492,7 +492,7 @@ fn variant_declaration_edge_optional(n: Node) -> Optional<Edge> {
           match first(n.children) {
             Present { value: e } =>
               match e.label {
-                Named { name: _ } =>
+                Authored { name: _ } =>
                   match e.target.kind {
                     TypeNode { connective: Conj } => optional_present(value: e)
                     _ => optional_absent()
@@ -598,7 +598,7 @@ fn node_positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
       Positional => list_snoc_item(xs: acc, item: e.target)
-      Named { name: _ } => acc
+      Authored { name: _ } => acc
     }
   })
 }
@@ -606,7 +606,7 @@ fn node_positional_child_targets(node: Node) -> List<Node> {
 fn node_labeled_child_edges(node: Node) -> List<Edge> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
-      Named { name: _ } => list_snoc_item(xs: acc, item: e)
+      Authored { name: _ } => list_snoc_item(xs: acc, item: e)
       Positional => acc
     }
   })
@@ -623,7 +623,7 @@ fn node_envelope_without_named_coordinate_go(
     Empty => outcome_accepted(value: acc)
     Cons { head: h, tail: t } =>
       match h.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if (n == coordinate) && saw_coordinate {
             outcome_rejected(d: Diagnostic {
               reason: ^named_child_ambiguous,
@@ -672,7 +672,7 @@ fn named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
       fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
         match e.label {
           Positional => acc
-          Named { name: edge_name } =>
+          Authored { name: edge_name } =>
             if edge_name == name {
               match acc {
                 NamedChildMissing => NamedChildFound { target: e.target }
@@ -748,7 +748,7 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
         match acc {
           Accepted { value: bindings, diagnostics: d } =>
             match edge.label {
-              Named { name: sym } =>
+              Authored { name: sym } =>
                 outcome_with_diagnostics(
                   value: list_snoc_item(xs: bindings, item: sym),
                   diagnostics: d
@@ -816,7 +816,7 @@ fn repeated_name_edges(children: List<Edge>) -> List<Edge> {
   let scanned = fold(children, init: RepeatedNameScan { seen: empty_map(), repeated: [] }, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: n } =>
+      Authored { name: n } =>
         match map_lookup(m: acc.seen, key: n) {
           Present { value: _ } => RepeatedNameScan { seen: acc.seen, repeated: list_snoc_item(xs: acc.repeated, item: e) }
           Absent => RepeatedNameScan { seen: map_insert(m: acc.seen, key: n, value: true), repeated: acc.repeated }

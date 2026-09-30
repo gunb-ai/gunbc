@@ -38,7 +38,7 @@ import v2.std.node {
   Edge,
   Instantiation,
   Loop,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Symbol,

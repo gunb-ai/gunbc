@@ -28,7 +28,7 @@ import v2.std.node {
   ComputationNode,
   Edge,
   Match,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -164,7 +164,7 @@ fn classical_not_int_match_arrow_fixture() -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Named { name: ^dag_binding_param_x },
+          label: Authored { name: ^dag_binding_param_x },
           target: dag_type_atom_node(identity: ^dag_binding_type_int)
         }
       ],
@@ -209,7 +209,7 @@ fn classical_not_int_match_non_octet_arm_fixture() -> Node {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Named { name: ^dag_binding_param_x },
+          label: Authored { name: ^dag_binding_param_x },
           target: dag_type_atom_node(identity: ^dag_binding_type_int)
         }
       ],

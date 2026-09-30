@@ -11,7 +11,7 @@ import v2.compiler.namespace_graft {
   module_header_containment_graft,
   namespace_graft_strip_provenance_marker
 }
-import v2.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.symbol_index {
   empty_symbol_index,
   symbol_index_lexical_lookup,
@@ -84,16 +84,16 @@ data ms_pre_graft_root: Node = ms_pre_graft_module_root(
   qn: ms_module_qn,
   body_edges: [
     Edge {
-      label: Named { name: ^MsPilotType },
+      label: Authored { name: ^MsPilotType },
       target: Node {
         kind: TypeNode { connective: Disj },
         children: [
           Edge {
-            label: Named { name: ^MsYes },
+            label: Authored { name: ^MsYes },
             target: ms_sym_node(sym: ^MsYes)
           },
           Edge {
-            label: Named { name: ^MsNo },
+            label: Authored { name: ^MsNo },
             target: ms_sym_node(sym: ^MsNo)
           }
         ],

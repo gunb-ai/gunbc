@@ -52,7 +52,7 @@ fn xl0_atom(sym: Symbol) -> Node {
 // The declared name X is an EDGE LABEL and the mentioned name Y is the NODE, which is the whole
 // structural reason the collector needs no filter to tell a declaration from a reference.
 fn xl0_declaration_of(decl_sym: Symbol, body: Node) -> Edge {
-  Edge { label: Named { name: decl_sym }, target: body }
+  Edge { label: Authored { name: decl_sym }, target: body }
 }
 
 data xl0_producer_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(

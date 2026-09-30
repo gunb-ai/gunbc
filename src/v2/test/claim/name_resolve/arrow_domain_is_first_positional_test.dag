@@ -7,7 +7,7 @@ import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.collection { empty_map, map_lookup }
 import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode }
 import std.occurrence_identity { OccurrenceSynthetic }
 
 // AN ARROW'S DOMAIN IS ITS FIRST POSITIONAL CHILD, NOT ITS FIRST CHILD (v2.std.node
@@ -31,12 +31,12 @@ fn adf_named_first_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Named { name: ^adf_leading_named_edge }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
+      Edge { label: Authored { name: ^adf_leading_named_edge }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
       Edge {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Conj },
-          children: [Edge { label: Named { name: ^x }, target: adf_leaf(sym: ^Int) }],
+          children: [Edge { label: Authored { name: ^x }, target: adf_leaf(sym: ^Int) }],
           occurrence_id: OccurrenceSynthetic
         }
       },

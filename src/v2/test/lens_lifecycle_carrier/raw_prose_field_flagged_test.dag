@@ -8,7 +8,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -40,7 +40,7 @@ data raw_dissolve_on_field_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^dissolve_on },
+      label: Authored { name: ^dissolve_on },
       target: string_leaf_target
     }
   ],
@@ -52,7 +52,7 @@ data raw_dissolution_trigger_nonempty_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^dissolution_trigger },
+      label: Authored { name: ^dissolution_trigger },
       target: nonempty_str_leaf_target
     }
   ],
@@ -64,7 +64,7 @@ data typed_dissolution_field_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^dissolution },
+      label: Authored { name: ^dissolution },
       target: dissolution_condition_leaf_target
     }
   ],
@@ -78,7 +78,7 @@ data ordinary_string_field_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^reason },
+      label: Authored { name: ^reason },
       target: string_leaf_target
     }
   ],

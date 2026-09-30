@@ -25,7 +25,7 @@ import v2.std.node {
   Edge,
   FirstPositionalAbsent,
   FirstPositionalFound,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -104,7 +104,7 @@ fn symbol_index_fill_containment_edge(
   edge: Edge
 ) -> SymbolIndex {
   match edge.label {
-    Named { name: sym } =>
+    Authored { name: sym } =>
       if dag_surface_module_header_metadata_edge(name: sym) {
         symbol_index_fill_containment_node(
           index: index,
@@ -178,7 +178,7 @@ fn symbol_index_fill_containment_node(
     TypeNode { connective: Disj } =>
       fold(node.children, init: index, f: fn(acc, edge) {
         match edge.label {
-          Named { name: sym } =>
+          Authored { name: sym } =>
             let variant_path = qualified_name_snoc(qn: path, segment: sym)
             let with_variant = symbol_index_mark_declared_payload(
               index: symbol_index_insert(
@@ -240,7 +240,7 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
         TypeNode { connective: Disj } =>
           fold(n.children, init: counts, f: fn(c, e) {
             match e.label {
-              Named { name: sym } =>
+              Authored { name: sym } =>
                 map_insert(
                   m: c,
                   key: sym,
@@ -389,7 +389,7 @@ fn symbol_index_fill_unique_variant_aliases(
         TypeNode { connective: Disj } =>
           fold(n.children, init: acc, f: fn(a2, e) {
             match e.label {
-              Named { name: sym } =>
+              Authored { name: sym } =>
                 if disj_variant_count_of(counts: counts, sym: sym) == 1 {
                   symbol_index_mark_declared_payload(
                     index: symbol_index_insert(

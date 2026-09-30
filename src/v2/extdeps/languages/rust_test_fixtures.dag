@@ -1090,7 +1090,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
       init: Empty,
       f: fn(acc, edge) {
         match edge.label {
-          Named { name: n } =>
+          Authored { name: n } =>
             if n == ^target_model_edge_translation_rules {
               list_snoc_item(
                 xs: acc,
@@ -3474,7 +3474,7 @@ fn rust_arrow_with_body_node(
         label: Positional,
         target: rust_type_atom_node(identity: return_type_binding)
       },
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      Edge { label: Authored { name: ^arrow_body_edge }, target: body }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -3608,7 +3608,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
       init: Empty,
       f: fn(acc, edge) {
         match edge.label {
-          Named { name: n } =>
+          Authored { name: n } =>
             if n == ^target_model_edge_translation_rules {
               list_snoc_item(
                 xs: acc,

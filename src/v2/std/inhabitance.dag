@@ -26,7 +26,7 @@ import v2.std.node {
   Disj,
   Edge,
   Instantiation,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -319,19 +319,19 @@ fn application_argument_does_not_inhabit_diagnostic(
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: inhabitance_position_symbol(position: obligation.position) },
+            label: Authored { name: inhabitance_position_symbol(position: obligation.position) },
             target: obligation.application
           },
           Edge {
-            label: Named { name: obligation.parameter_identity },
+            label: Authored { name: obligation.parameter_identity },
             target: obligation.declared
           },
           Edge {
-            label: Named { name: ^inhabitance_produced_type },
+            label: Authored { name: ^inhabitance_produced_type },
             target: obligation.produced
           },
           Edge {
-            label: Named { name: find_witness_reason },
+            label: Authored { name: find_witness_reason },
             target: obligation.produced
           }
         ],

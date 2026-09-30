@@ -21,7 +21,7 @@ type SourceSpecReadFact
 fn named_fact_count(children: List<Edge>) -> v2.std.nat.Nat {
   fold(children, init: v2.std.nat.Zero, f: fn(acc, e) {
     match e.label {
-      Named { name: _ } => v2.std.nat.Succ { prev: acc }
+      Authored { name: _ } => v2.std.nat.Succ { prev: acc }
       Positional => acc
     }
   })

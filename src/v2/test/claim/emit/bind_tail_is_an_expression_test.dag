@@ -12,7 +12,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -47,7 +47,7 @@ fn probe_atom(id: Symbol) -> Node {
 }
 
 fn probe_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn probe_positional(target: Node) -> Edge {

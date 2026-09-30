@@ -9,7 +9,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
@@ -109,7 +109,7 @@ fn mals_named_child(n: Node, name: Symbol) -> Optional<Node> {
       Present { value: _ } => acc
       Absent =>
         match e.label {
-          Named { name: l } => if l == name { optional_present(value: e.target) } else { acc }
+          Authored { name: l } => if l == name { optional_present(value: e.target) } else { acc }
           _ => acc
         }
     }

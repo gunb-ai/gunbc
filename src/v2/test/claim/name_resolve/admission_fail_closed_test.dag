@@ -42,7 +42,7 @@ import v2.std.diagnostic {
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, symbol_lexeme }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme }
 import v2.std.resolution_policy { ImportScoped }
 
 test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
@@ -85,7 +85,7 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
         target: fc_qn_node(seg: seg)
       ),
       Edge {
-        label: Named { name: export_sym },
+        label: Authored { name: export_sym },
         target: Node {
           kind: TypeNode {
             connective: Atom { identity: ^dag_token_ident }
@@ -294,7 +294,7 @@ fn fc_dual_import_subject_root(seg: Symbol, use_sym: Symbol, imported_decl: Symb
         target: fc_qn_node(seg: seg)
       ),
       Edge {
-        label: Named { name: use_sym },
+        label: Authored { name: use_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: imported_decl } },
           children: [],

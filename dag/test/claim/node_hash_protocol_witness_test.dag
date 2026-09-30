@@ -7,7 +7,7 @@ import v2.std.node {
   Node,
   Edge,
   EdgeLabel,
-  Named,
+  Authored,
   Positional,
   Symbol,
   Connective,
@@ -84,7 +84,7 @@ fn comp(b: Behavior, children: List<Edge>) -> Node {
 }
 
 fn named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn positional(target: Node) -> Edge {

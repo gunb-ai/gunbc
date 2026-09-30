@@ -11,7 +11,7 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.std.type_binder { type_annotation_optional }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_node_optional, dag_node_is_int_literal_atom }
-import v2.std.node { Bind, ComputationNode, Named, Node, Positional, node_subtree_nodes }
+import v2.std.node { Bind, ComputationNode, Authored, Node, Positional, node_subtree_nodes }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -133,7 +133,7 @@ fn positional_target_at(n: Node, index: Int) -> Optional<Node> {
         } else {
           LetInPositionalScan { at: acc.at + 1, found: acc.found }
         }
-      Named { name: _ } => acc
+      Authored { name: _ } => acc
     }
   }).found
 }

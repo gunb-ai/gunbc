@@ -76,7 +76,7 @@ fn symbol_list_length(xs: List<Symbol>) -> Int {
 
 fn edge_is_identity_projection(e: Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^grammar_production_identity_node_projection
+    Authored { name: nm } => nm == ^grammar_production_identity_node_projection
     Positional => false
   }
 }

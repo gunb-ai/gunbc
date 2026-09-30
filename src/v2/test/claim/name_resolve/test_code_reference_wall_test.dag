@@ -41,7 +41,7 @@ fn wall_conj(children: List<Edge>) -> Node {
 fn wall_member(name: Symbol, body: Node) -> Edge {
   let signature = declared_signature(params: [], source: body)
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: Node {
       kind: TypeNode { connective: Arrow },
       children: [
@@ -49,7 +49,7 @@ fn wall_member(name: Symbol, body: Node) -> Edge {
         Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
         Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
         signature.order,
-        Edge { label: Named { name: ^arrow_body_edge }, target: body }
+        Edge { label: Authored { name: ^arrow_body_edge }, target: body }
       ],
       occurrence_id: OccurrenceSynthetic
     }
@@ -59,11 +59,11 @@ fn wall_member(name: Symbol, body: Node) -> Edge {
 // `name: (param: Bool) -> Bool = param` -- a parameter that shares a module-level name.
 fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
   let signature = declared_signature(
-    params: [Edge { label: Named { name: param }, target: wall_atom(identity: ^bool_node_symbol) }],
+    params: [Edge { label: Authored { name: param }, target: wall_atom(identity: ^bool_node_symbol) }],
     source: wall_atom(identity: param)
   )
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: Node {
       kind: TypeNode { connective: Arrow },
       children: [
@@ -71,7 +71,7 @@ fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
         Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
         Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
         signature.order,
-        Edge { label: Named { name: ^arrow_body_edge }, target: wall_atom(identity: param) }
+        Edge { label: Authored { name: ^arrow_body_edge }, target: wall_atom(identity: param) }
       ],
       occurrence_id: OccurrenceSynthetic
     }
@@ -84,20 +84,20 @@ fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
 // gunbc#11694), then the members.
 fn wall_module_body(members: List<Edge>) -> Node {
   wall_conj(children: concat(
-    [Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node() }],
+    [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node() }],
     members
   ))
 }
 
 fn wall_module_root(leaf_segment: Symbol, members: List<Edge>) -> Node {
   wall_conj(children: [
-    Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: wall_atom(identity: ^dag_surface_module) },
+    Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: wall_atom(identity: ^dag_surface_module) },
     Edge {
-      label: Named { name: ^grammar_production_captured_node_projection },
+      label: Authored { name: ^grammar_production_captured_node_projection },
       target: wall_conj(children: [
         Edge {
-          label: Named { name: ^wall },
-          target: wall_conj(children: [Edge { label: Named { name: leaf_segment }, target: wall_module_body(members: members) }])
+          label: Authored { name: ^wall },
+          target: wall_conj(children: [Edge { label: Authored { name: leaf_segment }, target: wall_module_body(members: members) }])
         }
       ])
     }

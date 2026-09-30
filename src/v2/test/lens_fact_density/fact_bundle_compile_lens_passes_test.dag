@@ -9,7 +9,7 @@ import v2.compiler.compile {
 import v2.compiler.infer { InferredTree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.test.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
@@ -26,7 +26,7 @@ data fact_bundle_cl_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^fact_bundle_cl_field_name },
+      label: Authored { name: ^fact_bundle_cl_field_name },
       target: fact_bundle_cl_child
     }
   ],

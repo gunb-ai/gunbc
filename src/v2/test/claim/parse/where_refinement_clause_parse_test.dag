@@ -13,7 +13,7 @@ import v2.extdeps.languages.dag {
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Edge, Named, Node, Positional, symbol_lexeme }
+import v2.std.node { Edge, Authored, Node, Positional, symbol_lexeme }
 import v2.std.optional { Absent, Optional, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 
@@ -71,7 +71,7 @@ fn where_refinement_tree_carries_clause(root: Node) -> Bool {
 
 fn where_refinement_edge_names_clause(e: Edge) -> Bool {
   match e.label {
-    Named { name: n } => n == ^dag_surface_where_refinement_clause
+    Authored { name: n } => n == ^dag_surface_where_refinement_clause
     _ => false
   }
 }
@@ -93,7 +93,7 @@ fn where_refinement_find_host_conj(root: Node) -> Optional<Node> {
 
 fn where_refinement_edge_label_text(e: Edge) -> String {
   match e.label {
-    Named { name: n } => symbol_lexeme(sym: n)
+    Authored { name: n } => symbol_lexeme(sym: n)
     Positional => "positional"
   }
 }

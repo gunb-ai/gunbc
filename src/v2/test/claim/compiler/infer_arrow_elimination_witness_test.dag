@@ -18,14 +18,14 @@ import v2.std.logic { Bool, bool_node }
 import v2.std.optional { Absent, Present }
 import v2.std.runtime { RuntimeValue }
 import v2.std.witness { Holds, Violates }
-import v2.std.node { ComputationNode, Conj, Edge, Named, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
+import v2.std.node { ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
 
 fn ae_domain() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^ae_param_x },
+        label: Authored { name: ^ae_param_x },
         target: dag_type_atom_node(identity: ^dag_binding_type_int)
       }
     ]

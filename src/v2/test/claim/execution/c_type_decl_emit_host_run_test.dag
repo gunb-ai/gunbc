@@ -24,7 +24,7 @@ import v2.std.host_transport {
   HostRuntimeRowPresent
 }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, TypeNode }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, TypeNode }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -51,11 +51,11 @@ fn ctd_atom_type(name: Symbol) -> Node {
 }
 
 fn ctd_field_edge(name: Symbol, type_name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: ctd_atom_type(name: type_name) }
+  Edge { label: Authored { name: name }, target: ctd_atom_type(name: type_name) }
 }
 
 fn ctd_variant_edge(name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: ctd_empty_conj() }
+  Edge { label: Authored { name: name }, target: ctd_empty_conj() }
 }
 
 fn ctd_point_record() -> Node {

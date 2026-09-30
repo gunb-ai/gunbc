@@ -26,7 +26,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -67,7 +67,7 @@ data qmpr_provider_root: Node = Node {
       target: qmpr_qn_spine(segments: qmpr_provider_qn)
     ),
     Edge {
-      label: Named { name: ^ProviderType },
+      label: Authored { name: ^ProviderType },
       target: Node {
         kind: TypeNode { connective: Atom { identity: ^ProviderType } },
         children: [],

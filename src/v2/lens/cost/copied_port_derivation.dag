@@ -24,7 +24,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -74,13 +74,13 @@ fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
               TypeNode { connective: Conj } =>
                 fold(e.target.children, init: acc, f: fn(a, de) {
                   match de.label {
-                    Named { name: _ } => Cons { head: de.target, tail: a }
+                    Authored { name: _ } => Cons { head: de.target, tail: a }
                     Positional => a
                   }
                 })
               _ => acc
             }
-          Named { name: _ } => acc
+          Authored { name: _ } => acc
         }
       })
     _ => Empty

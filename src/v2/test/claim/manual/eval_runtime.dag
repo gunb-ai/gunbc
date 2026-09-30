@@ -84,7 +84,7 @@ import v2.std.node {
   ComputationNode,
   Edge,
   Hash,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,

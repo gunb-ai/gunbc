@@ -81,7 +81,7 @@ import v2.std.node {
   Conj,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -390,8 +390,8 @@ fn add_arrow_eval_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Named { name: ^add_arrow_eval_actual }, target: call },
-      Edge { label: Named { name: ^add_arrow_eval_expected }, target: expected }
+      Edge { label: Authored { name: ^add_arrow_eval_actual }, target: call },
+      Edge { label: Authored { name: ^add_arrow_eval_expected }, target: expected }
     ]
   }
 }
@@ -525,8 +525,8 @@ fn add_arrow_swapped_operand_body() -> Node {
 // defect -- the body or the extra parameter -- and not for a signature shape no producer emits.
 fn add_arrow_xy_params() -> List<Edge> {
   [
-    Edge { label: Named { name: ^dag_binding_param_x }, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-    Edge { label: Named { name: ^dag_binding_param_y }, target: add_arrow_eval_atom(s: ^dag_binding_type_int) }
+    Edge { label: Authored { name: ^dag_binding_param_x }, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+    Edge { label: Authored { name: ^dag_binding_param_y }, target: add_arrow_eval_atom(s: ^dag_binding_type_int) }
   ]
 }
 
@@ -539,13 +539,13 @@ fn add_arrow_swapped_add_arrow() -> Node {
       signature.domain,
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
       signature.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: add_arrow_swapped_operand_body() }
+      Edge { label: Authored { name: ^arrow_body_edge }, target: add_arrow_swapped_operand_body() }
     ]
   }
 }
 
 fn add_arrow_excess_signature_arrow() -> Node {
-  let signature = declared_signature(params: concat(add_arrow_xy_params(), [Edge { label: Named { name: pattern_wildcard_name() }, target: add_arrow_eval_atom(s: ^dag_binding_type_int) }]), source: add_arrow_eval_atom(s: ^dag_binding_type_int))
+  let signature = declared_signature(params: concat(add_arrow_xy_params(), [Edge { label: Authored { name: pattern_wildcard_name() }, target: add_arrow_eval_atom(s: ^dag_binding_type_int) }]), source: add_arrow_eval_atom(s: ^dag_binding_type_int))
   Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: OccurrenceSynthetic,
@@ -553,7 +553,7 @@ fn add_arrow_excess_signature_arrow() -> Node {
       signature.domain,
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
       signature.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: add_arrow_eval_canonical_body() }
+      Edge { label: Authored { name: ^arrow_body_edge }, target: add_arrow_eval_canonical_body() }
     ]
   }
 }
@@ -579,7 +579,7 @@ fn add_arrow_excess_body_arrow() -> Node {
       signature.domain,
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
       signature.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: add_arrow_excess_body() }
+      Edge { label: Authored { name: ^arrow_body_edge }, target: add_arrow_excess_body() }
     ]
   }
 }
@@ -839,7 +839,7 @@ fn add_arrow_eval_lazy_arm_loop_node() -> Node {
     children: [
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal) },
       Edge {
-        label: Named { name: ^loop_bound_edge },
+        label: Authored { name: ^loop_bound_edge },
         target: add_arrow_eval_atom(s: ^add_arrow_eval_loop_measure_literal)
       }
     ]

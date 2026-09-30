@@ -5,7 +5,7 @@ import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.cpp { cpp_target_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import std.algebra { Empty }
@@ -20,7 +20,7 @@ fn sdtr_empty_conj() -> Node {
 }
 
 fn sdtr_variant_edge(name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: sdtr_empty_conj() }
+  Edge { label: Authored { name: name }, target: sdtr_empty_conj() }
 }
 
 fn sdtr_bool_coproduct() -> Node {

@@ -90,7 +90,7 @@ fn type_is_flat_scalar(target: Node) -> Bool {
 
 fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
-    Named { name: nm } =>
+    Authored { name: nm } =>
       if type_is_flat_scalar(target: edge.target) {
         if name_is_exempt(name: nm) {
           optional_absent()

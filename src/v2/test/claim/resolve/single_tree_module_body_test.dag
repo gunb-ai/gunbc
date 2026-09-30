@@ -10,7 +10,7 @@ import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_spine_node }
 
@@ -34,7 +34,7 @@ fn stmb_atom(id: Symbol) -> Node {
 }
 
 fn stmb_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn stmb_record_t() -> Node {

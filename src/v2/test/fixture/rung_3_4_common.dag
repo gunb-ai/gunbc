@@ -10,7 +10,7 @@ fn rung34_algebra_evidence_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^rung34_algebra_evidence_axis },
+        label: Authored { name: ^rung34_algebra_evidence_axis },
         target: claim_atom_node(s: ^rung34_inferred_algebra_symbol)
       }
     ],
@@ -49,7 +49,7 @@ fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^rung34_roundtrip_module_axis },
+        label: Authored { name: ^rung34_roundtrip_module_axis },
         target: fixture_subject
       }
     ],

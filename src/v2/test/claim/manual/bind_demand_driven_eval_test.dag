@@ -60,7 +60,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -324,7 +324,7 @@ fn bind_eval_arrow_with_body(body: Node) -> Node {
       Edge { label: Positional, target: bind_eval_i64() },
       Edge { label: Positional, target: bind_eval_i64() },
       signature.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      Edge { label: Authored { name: ^arrow_body_edge }, target: body }
     ]
   }
 }
@@ -334,8 +334,8 @@ fn bind_eval_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Named { name: ^bind_eval_actual }, target: call },
-      Edge { label: Named { name: ^bind_eval_expected }, target: expected }
+      Edge { label: Authored { name: ^bind_eval_actual }, target: call },
+      Edge { label: Authored { name: ^bind_eval_expected }, target: expected }
     ]
   }
 }

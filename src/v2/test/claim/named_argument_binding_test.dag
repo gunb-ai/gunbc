@@ -30,7 +30,7 @@ import v2.std.node {
   Atom,
   ComputationNode,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -135,7 +135,7 @@ fn nab_callee_arrows(o: Outcome<ResolvedTree>) -> List<Node> {
 fn nab_actual_labels(app: Node) -> List<Symbol> {
   fold(application_actual_edges(site: app), init: [], f: fn(acc, e) {
     match e.label {
-      Named { name: sym } => concat(acc, [sym])
+      Authored { name: sym } => concat(acc, [sym])
       Positional => concat(acc, [^positional])
     }
   })
@@ -216,7 +216,7 @@ fn nab_runtime_argument_labels(app: Node) -> List<Symbol> {
       index: acc.index + 1,
       labels: if eval_edge_is_runtime_argument(parent: app, progress: AwaitingChildren { processed: acc.index }, edge: e) {
         match e.label {
-          Named { name: sym } => concat(acc.labels, [sym])
+          Authored { name: sym } => concat(acc.labels, [sym])
           Positional => concat(acc.labels, [^positional])
         }
       } else {
@@ -252,7 +252,7 @@ fn nab_plan_edges(arrow: Node, actuals: List<Edge>) -> List<Symbol> {
 }
 
 fn nab_named(label: Symbol) -> Edge {
-  Edge { label: Named { name: label }, target: nab_unit() }
+  Edge { label: Authored { name: label }, target: nab_unit() }
 }
 
 fn nab_positional() -> Edge {

@@ -42,7 +42,7 @@ import v2.std.node {
   Conj,
   Edge,
   Instantiation,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -85,7 +85,7 @@ fn positional_to(target: Node) -> Edge {
 }
 
 fn named_to(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 // `Map<K, V>` as the tree spells it: an instantiation whose children are the constructor and its

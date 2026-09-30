@@ -19,7 +19,7 @@ import v2.std.node {
   Edge,
   Instantiation,
   Match,
-  Named,
+  Authored,
   Node,
   Positional,
   Transform,
@@ -115,7 +115,7 @@ fn vf_named_member_optional(root: Node, lexeme: String) -> Optional<Node> {
             Present { value: _ } => inner
             Absent =>
               match e.label {
-                Named { name: sym } =>
+                Authored { name: sym } =>
                   match symbol_lexeme(sym: sym) == lexeme {
                     true => Present { value: e.target }
                     false => Absent
@@ -342,7 +342,7 @@ test fn vf_record_construction_is_the_construct_shape() -> Bool {
         && (count(construct_field_edges(n: body)) == 1)
         && (match list_at_optional(xs: construct_field_edges(n: body), index: 0) {
           Present { value: e } =>
-            (match e.label { Named { name: nm } => symbol_lexeme(sym: nm) == "v"  Positional => false })
+            (match e.label { Authored { name: nm } => symbol_lexeme(sym: nm) == "v"  Positional => false })
               && vf_type_atom_is(n: e.target, lexeme: "x")
           Absent => false
         })
@@ -380,7 +380,7 @@ fn vf_pattern_binds(pat: Node, tag: String, field: String, binder: String) -> Bo
     && (count(construct_field_edges(n: pat)) == 1)
     && (match list_at_optional(xs: construct_field_edges(n: pat), index: 0) {
       Present { value: e } =>
-        (match e.label { Named { name: nm } => symbol_lexeme(sym: nm) == field  Positional => false })
+        (match e.label { Authored { name: nm } => symbol_lexeme(sym: nm) == field  Positional => false })
           && vf_type_atom_is(n: e.target, lexeme: binder)
       Absent => false
     })
@@ -423,7 +423,7 @@ test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
         && (count(construct_field_edges(n: pat)) == 1)
         && (match list_at_optional(xs: construct_field_edges(n: pat), index: 0) {
           Present { value: e } =>
-            (match e.label { Named { name: nm } => symbol_lexeme(sym: nm) == "0"  Positional => false })
+            (match e.label { Authored { name: nm } => symbol_lexeme(sym: nm) == "0"  Positional => false })
               && is_wildcard_pattern(pattern: e.target)
           Absent => false
         })

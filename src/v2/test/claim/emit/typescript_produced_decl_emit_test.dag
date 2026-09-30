@@ -40,7 +40,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -71,11 +71,11 @@ fn ts_produced_decl_domain() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ts_produced_decl_left },
+        label: Authored { name: ts_produced_decl_left },
         target: dag_type_atom_node(identity: dag_int_type_binding())
       },
       Edge {
-        label: Named { name: ts_produced_decl_right },
+        label: Authored { name: ts_produced_decl_right },
         target: dag_type_atom_node(identity: dag_int_type_binding())
       }
     ],
@@ -100,7 +100,7 @@ fn ts_produced_decl_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ts_produced_decl_name },
+        label: Authored { name: ts_produced_decl_name },
         target: ts_produced_decl_arrow()
       }
     ]

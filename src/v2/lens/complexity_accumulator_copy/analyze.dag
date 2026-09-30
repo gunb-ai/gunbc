@@ -79,7 +79,7 @@ fn postfix_expr_capture(node: Node) -> Optional<Node> {
 
 fn edge_skips_identifier_count(e: Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^grammar_production_identity_node_projection
+    Authored { name: nm } => nm == ^grammar_production_identity_node_projection
     Positional => false
   }
 }

@@ -10,7 +10,7 @@ import v2.std.node {
   Arrow,
   Atom,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -44,8 +44,8 @@ fn ipo_atom(id: Symbol) -> Node {
 fn ipo_item() -> Node {
   let sig = declared_signature(
     params: [
-      Edge { label: Named { name: ^ipo_z }, target: ipo_atom(id: ^ipo_int) },
-      Edge { label: Named { name: ^ipo_a }, target: ipo_atom(id: ^ipo_bool) }
+      Edge { label: Authored { name: ^ipo_z }, target: ipo_atom(id: ^ipo_int) },
+      Edge { label: Authored { name: ^ipo_a }, target: ipo_atom(id: ^ipo_bool) }
     ],
     source: ipo_atom(id: ^ipo_source)
   )
@@ -55,7 +55,7 @@ fn ipo_item() -> Node {
       sig.domain,
       Edge { label: Positional, target: ipo_atom(id: ^ipo_int) },
       sig.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: ipo_atom(id: ^ipo_z) }
+      Edge { label: Authored { name: ^arrow_body_edge }, target: ipo_atom(id: ^ipo_z) }
     ]
   )
 }
@@ -74,7 +74,7 @@ fn ipo_canonical_domain(arrow: Node) -> Node {
         } else {
           IpoDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
         }
-      Named { name: _ } => IpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
+      Authored { name: _ } => IpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
     }
   })
   Node { kind: arrow.kind, children: seen.edges, occurrence_id: arrow.occurrence_id }
@@ -85,7 +85,7 @@ fn ipo_without_order(arrow: Node) -> Node {
     kind: arrow.kind,
     children: fold(arrow.children, init: [], f: fn(acc, e) {
       match e.label {
-        Named { name: sym } => if sym == ^arrow_signature_order_edge { acc } else { concat(acc, [e]) }
+        Authored { name: sym } => if sym == ^arrow_signature_order_edge { acc } else { concat(acc, [e]) }
         Positional => concat(acc, [e])
       }
     }),
@@ -98,7 +98,7 @@ fn ipo_without_order(arrow: Node) -> Node {
 fn ipo_param_symbols(params: List<Edge>) -> List<Symbol> {
   fold(params, init: [], f: fn(acc, e) {
     let name = match e.label {
-      Named { name: n } => n
+      Authored { name: n } => n
       Positional => ^ipo_positional
     }
     let ty = match e.target.kind {

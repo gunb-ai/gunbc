@@ -5,7 +5,7 @@ import v2.compiler.symbol_index_fill { symbol_index_declared }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
@@ -41,7 +41,7 @@ fn ptd_declared_target(o: Outcome<ResolvedTree>, name: Symbol) -> Optional<Node>
                 Present { value: _ } => a
                 Absent =>
                   match e.label {
-                    Named { name: l } => if l == name { optional_present(value: e.target) } else { a }
+                    Authored { name: l } => if l == name { optional_present(value: e.target) } else { a }
                     Positional => a
                   }
               }
@@ -54,7 +54,7 @@ fn ptd_declared_target(o: Outcome<ResolvedTree>, name: Symbol) -> Optional<Node>
 fn ptd_named_labels(n: Node) -> List<Symbol> {
   fold(n.children, init: [], f: fn(acc, e) {
     match e.label {
-      Named { name: l } => concat(acc, [l])
+      Authored { name: l } => concat(acc, [l])
       Positional => acc
     }
   })

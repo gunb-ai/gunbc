@@ -39,15 +39,15 @@ fn ts_import_carrier_node(segments: List<Symbol>, names: List<Symbol>) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^dag_surface_import_decl },
+        label: Authored { name: ^dag_surface_import_decl },
         target: ts_import_symbol_atom(sym: ^dag_surface_import_decl)
       },
       Edge {
-        label: Named { name: ^dag_surface_import_decl_qualified_name },
+        label: Authored { name: ^dag_surface_import_decl_qualified_name },
         target: ts_import_qn_node(segments: segments)
       },
       Edge {
-        label: Named { name: ^dag_surface_import_decl_block },
+        label: Authored { name: ^dag_surface_import_decl_block },
         target: ts_import_block_node(names: names)
       }
     ],
@@ -60,11 +60,11 @@ fn ts_import_missing_qn_carrier_node(names: List<Symbol>) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^dag_surface_import_decl },
+        label: Authored { name: ^dag_surface_import_decl },
         target: ts_import_symbol_atom(sym: ^dag_surface_import_decl)
       },
       Edge {
-        label: Named { name: ^dag_surface_import_decl_block },
+        label: Authored { name: ^dag_surface_import_decl_block },
         target: ts_import_block_node(names: names)
       }
     ],

@@ -11,7 +11,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, TypeNode }
 
 // The module root as normalize hands it on: a Conj of labelled declarations. This fixture used
 // to wrap it in a hand-built Atom{^dag_c3_surface_sugar_service} that a sugar rule rewrote to this
@@ -21,7 +21,7 @@ fn spine_resolve_service_parse_tree() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^spine_resolve_service_decl },
+        label: Authored { name: ^spine_resolve_service_decl },
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [],
@@ -48,7 +48,7 @@ data spine_resolve_reject_module_subject: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^spine_resolve_reject_decl },
+      label: Authored { name: ^spine_resolve_reject_decl },
       target: Node {
         kind: TypeNode {
           connective: Atom { identity: ^spine_resolve_reject_bogus_ref }

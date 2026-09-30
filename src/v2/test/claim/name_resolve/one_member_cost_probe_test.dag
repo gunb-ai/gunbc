@@ -24,7 +24,7 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
@@ -54,7 +54,7 @@ fn probe_one_member_root_export(export_sym: Symbol) -> Node {
         target: probe_qn_node(seg: ^probe_one_member_seg)
       ),
       Edge {
-        label: Named { name: ^probe_export_sym },
+        label: Authored { name: ^probe_export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_sym } },
           children: [],

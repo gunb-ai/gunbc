@@ -12,7 +12,7 @@ fn fold_fixture_positional(target: Node) -> Edge {
 }
 
 fn fold_fixture_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn fold_fixture_param_domain_params() -> List<Edge> {

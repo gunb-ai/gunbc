@@ -14,7 +14,7 @@ import v2.std.node {
   Arrow,
   ComputationNode,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -40,7 +40,7 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
           children: list_snoc_item(
             xs: arrow.children,
             item: Edge {
-              label: Named { name: ^arrow_body_edge },
+              label: Authored { name: ^arrow_body_edge },
               target: body
             }
           )

@@ -210,7 +210,7 @@ import extdeps.languages.json.parse {
 }
 import v2.std.node {
   EdgeLabel,
-  Named,
+  Authored,
   Positional,
   NodeKind,
   TypeNode,
@@ -535,7 +535,7 @@ fn encode_kind(k: NodeKind) -> JsonValue {
 
 fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
   match l {
-    Named { name: n } =>
+    Authored { name: n } =>
       [
         json_kv(key: "label", value: json_string(s: "named")),
         json_kv(key: "name", value: json_string(s: symbol_lexeme(sym: n))),
@@ -970,7 +970,7 @@ fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
       match read_string_member(v: edge_value, key: "name") {
         MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
         MemberString { value: lexeme } =>
-          LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
+          LabelDecoded { label: Authored { name: symbol_intern_lexeme(lexeme: lexeme) } }
         _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
       }
   }

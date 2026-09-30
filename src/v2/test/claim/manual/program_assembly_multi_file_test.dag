@@ -35,7 +35,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -77,7 +77,7 @@ fn pa_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node 
         target: pa_qn_node(seg: seg)
       ),
       Edge {
-        label: Named { name: export_sym },
+        label: Authored { name: export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
@@ -102,7 +102,7 @@ fn pa_subject_with_import_use() -> Node {
         target: pa_qn_node(seg: ^pa_subject_seg)
       ),
       Edge {
-        label: Named { name: ^pa_import_use_sym },
+        label: Authored { name: ^pa_import_use_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pa_imported_decl } },
           children: [],

@@ -8,7 +8,7 @@ import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.arrow_signature { anonymous_signature_arrow }
-import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -28,7 +28,7 @@ fn sdr_empty_conj() -> Node {
 }
 
 fn sdr_variant_edge(name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: sdr_empty_conj() }
+  Edge { label: Authored { name: name }, target: sdr_empty_conj() }
 }
 
 fn semantic_bool_coproduct() -> Node {
@@ -63,7 +63,7 @@ fn sdr_atom_type(name: Symbol) -> Node {
 }
 
 fn sdr_field_edge(name: Symbol, type_name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: sdr_atom_type(name: type_name) }
+  Edge { label: Authored { name: name }, target: sdr_atom_type(name: type_name) }
 }
 
 fn semantic_record_type() -> Node {

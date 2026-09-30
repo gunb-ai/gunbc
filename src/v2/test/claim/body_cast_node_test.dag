@@ -41,7 +41,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   content_hash,
-  Named,
+  Authored,
   node_subtree_nodes,
   node_synthetic,
   well_formed
@@ -532,7 +532,7 @@ test fn bcn_a_foreign_label_on_a_transform_refuses() -> Bool {
       Edge { label: Positional, target: bcn_coerce_wire() },
       Edge { label: Positional, target: bcn_int(lexeme: "7") },
       cast_target_edge(target_type: dag_type_atom_node(identity: ^dag_binding_type_int)),
-      Edge { label: Named { name: ^bcn_not_a_marker }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }
+      Edge { label: Authored { name: ^bcn_not_a_marker }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }
     ]
   ))
 }
@@ -542,7 +542,7 @@ test fn bcn_a_foreign_label_on_a_transform_refuses() -> Bool {
 // application either. The callee declares `x`; the actual is labelled `bcn_not_a_marker`.
 test fn bcn_an_unknown_named_label_refuses_at_binding() -> Bool {
   let signature = declared_signature(
-    params: [Edge { label: Named { name: ^x }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }],
+    params: [Edge { label: Authored { name: ^x }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }],
     source: dag_type_atom_node(identity: ^dag_binding_type_int)
   )
   let callee = node_synthetic(
@@ -556,7 +556,7 @@ test fn bcn_an_unknown_named_label_refuses_at_binding() -> Bool {
   )
   match application_binding_plan(
     arrow: callee,
-    actuals: [Edge { label: Named { name: ^bcn_not_a_marker }, target: bcn_int(lexeme: "7") }]
+    actuals: [Edge { label: Authored { name: ^bcn_not_a_marker }, target: bcn_int(lexeme: "7") }]
   ) {
     ApplicationBindingRefused { reason: r, at: _ } => r == ^application_argument_label_unknown
     ApplicationBound { slots: _ } => false

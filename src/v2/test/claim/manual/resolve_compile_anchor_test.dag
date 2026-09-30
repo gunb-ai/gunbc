@@ -33,7 +33,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   TypeNode,
@@ -83,7 +83,7 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTre
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Named { name: ^anchor_decl_first },
+          label: Authored { name: ^anchor_decl_first },
           target: Node {
             kind: TypeNode {
               connective: Atom { identity: ^dag_token_ident }
@@ -93,7 +93,7 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTre
           }
         },
         Edge {
-          label: Named { name: ^anchor_decl_second },
+          label: Authored { name: ^anchor_decl_second },
           target: Node {
             kind: TypeNode {
               connective: Atom { identity: ^dag_token_colon }
@@ -119,7 +119,7 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Named { name: ^anchor_decl_first },
+          label: Authored { name: ^anchor_decl_first },
           target: Node {
             kind: ComputationNode { behavior: Bind },
             children: [
@@ -193,7 +193,7 @@ fn resolve_imported_module_root() -> Node {
         target: resolve_imported_qn_node()
       ),
       Edge {
-        label: Named { name: ^anchor_imported_decl },
+        label: Authored { name: ^anchor_imported_decl },
         target: Node {
           kind: TypeNode {
             connective: Atom { identity: ^dag_token_ident }
@@ -250,7 +250,7 @@ fn resolve_subject_module_root_with_import_use() -> Node {
         target: resolve_subject_qn_node()
       ),
       Edge {
-        label: Named { name: ^anchor_subject_import_use },
+        label: Authored { name: ^anchor_subject_import_use },
         target: resolve_imported_use_tree()
       }
     ],

@@ -26,7 +26,7 @@ import v2.std.node {
   Diff,
   Edge,
   Edit,
-  Named,
+  Authored,
   Node,
   NodeKind,
   Path,
@@ -219,7 +219,7 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
         init: Empty,
         f: fn(current_acc, edge) {
           match edge.label {
-            Named { name: edge_name } =>
+            Authored { name: edge_name } =>
               let next_edge = match edge_name == name {
                 true => replace_edge_target(e: edge, replacement: child)
                 false => edge

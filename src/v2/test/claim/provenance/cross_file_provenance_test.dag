@@ -45,7 +45,7 @@ fn cfp_module_root(qn_spine: Node, exports: List<Edge>) -> Node {
 
 fn cfp_declaration(decl_sym: Symbol) -> Edge {
   Edge {
-    label: Named { name: decl_sym },
+    label: Authored { name: decl_sym },
     target: Node {
       kind: TypeNode { connective: Atom { identity: decl_sym } },
       children: [],

@@ -37,7 +37,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -93,7 +93,7 @@ fn ct_module_root(qn_spine: Node, export_sym: Symbol, export_atom: Symbol) -> No
         target: qn_spine
       ),
       Edge {
-        label: Named { name: export_sym },
+        label: Authored { name: export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
@@ -122,7 +122,7 @@ fn ct_subject_with_import_use(
         target: qn_spine
       ),
       Edge {
-        label: Named { name: import_use_sym },
+        label: Authored { name: import_use_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: imported_decl } },
           children: [],

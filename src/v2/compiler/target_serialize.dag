@@ -54,7 +54,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -232,7 +232,7 @@ fn target_bundle_child_lookup_step(
     BundleChildDuplicate => acc
     BundleChildMissing =>
       match e.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if n == edge_name {
             BundleChildFound { value: e.target }
           } else {
@@ -242,7 +242,7 @@ fn target_bundle_child_lookup_step(
       }
     BundleChildFound { value: _ } =>
       match e.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if n == edge_name {
             BundleChildDuplicate
           } else {
@@ -368,7 +368,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
           match acc {
             Accepted { value: _, diagnostics: _ } =>
               match e.label {
-                Named { name: _ } =>
+                Authored { name: _ } =>
                   match find_named_child(
                     root: e.target,
                     name: ^grammar_relation_field_bodied_scaffold
@@ -383,7 +383,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
               }
             Rejected { diagnostics: _ } =>
               match e.label {
-                Named { name: _ } =>
+                Authored { name: _ } =>
                   match find_named_child(
                     root: e.target,
                     name: ^grammar_relation_field_bodied_scaffold
@@ -444,7 +444,7 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
             BundleChildDuplicate => acc
             BundleChildMissing =>
               match e.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   if n == edge_name {
                     BundleChildFound { value: e.target }
                   } else {
@@ -454,7 +454,7 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
               }
             BundleChildFound { value: _ } =>
               match e.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   if n == edge_name {
                     BundleChildDuplicate
                   } else {
@@ -1194,7 +1194,7 @@ fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<Targe
 
 fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<TargetText> {
   match edge.label {
-    Named { name: label } =>
+    Authored { name: label } =>
       bind_outcome(
         o: target_binding_spelling_lookup(target: target, binding: label),
         f: fn(spelling) {

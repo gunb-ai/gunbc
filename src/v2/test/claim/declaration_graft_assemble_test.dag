@@ -21,7 +21,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode, node_subtree_nodes, symbol_lexeme }
+import v2.std.node { Atom, Authored, Node, Positional, Symbol, TypeNode, node_subtree_nodes, symbol_lexeme }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -74,7 +74,7 @@ fn declaration_graft_label_present(root: Node, lexeme: String) -> Bool {
             true
           } else {
             match e.label {
-              Named { name: sym } => symbol_lexeme(sym: sym) == lexeme
+              Authored { name: sym } => symbol_lexeme(sym: sym) == lexeme
               Positional => false
             }
           }

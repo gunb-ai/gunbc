@@ -43,7 +43,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -75,7 +75,7 @@ fn witness_point_struct_conj_body() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^x },
+        label: Authored { name: ^x },
         target: witness_type_atom(sym: witness_type_int),
       }
     ]

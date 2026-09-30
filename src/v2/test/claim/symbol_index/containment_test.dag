@@ -40,7 +40,7 @@ fn si_module_root(
 
 fn si_type_with_variants(type_sym: Symbol, variants: List<Symbol>) -> Edge {
   Edge {
-    label: Named { name: type_sym },
+    label: Authored { name: type_sym },
     target: Node {
       kind: TypeNode {
         connective: Disj
@@ -48,7 +48,7 @@ fn si_type_with_variants(type_sym: Symbol, variants: List<Symbol>) -> Edge {
       children: fold(variants, init: [], f: fn(acc, variant_sym) {
         concat(acc, [
           Edge {
-            label: Named { name: variant_sym },
+            label: Authored { name: variant_sym },
             target: Node {
               kind: TypeNode { connective: Atom { identity: variant_sym } },
               children: [],
@@ -334,7 +334,7 @@ data si_orphan_module_root_node: Node = si_module_root(
   qn_spine: si_qn_spine(segments: si_orphan_module_qn),
   exports: [
     Edge {
-      label: Named { name: ^OrphanPilotOnly },
+      label: Authored { name: ^OrphanPilotOnly },
       target: Node {
         kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
         children: [],
@@ -487,11 +487,11 @@ data si_alias_module_root_node: Node = si_module_root(
   qn_spine: si_qn_spine(segments: si_alias_module_qn),
   exports: [
     Edge {
-      label: Named { name: ^AliasTargetType },
+      label: Authored { name: ^AliasTargetType },
       target: si_alias_target_node
     },
     Edge {
-      label: Named { name: ^dag_surface_top_level_item },
+      label: Authored { name: ^dag_surface_top_level_item },
       target: si_alias_decl_wrapped(
         binding: ^AliasBinding,
         target_qn: si_alias_target_qn
@@ -526,7 +526,7 @@ test fn symbol_index_alias_unresolved_target_red_control_holds() -> Bool {
     qn_spine: si_qn_spine(segments: si_alias_module_qn),
     exports: [
       Edge {
-        label: Named { name: ^dag_surface_top_level_item },
+        label: Authored { name: ^dag_surface_top_level_item },
         target: si_alias_decl_wrapped(
           binding: ^OrphanAlias,
           target_qn: orphan_target_qn

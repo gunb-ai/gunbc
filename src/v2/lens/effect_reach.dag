@@ -197,7 +197,7 @@ fn positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: empty_node_list, f: fn(acc, e) {
     match e.label {
       Positional => list_snoc_item(xs: acc, item: e.target)
-      Named { name: _ } => acc
+      Authored { name: _ } => acc
     }
   })
 }

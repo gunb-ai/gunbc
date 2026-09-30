@@ -8,7 +8,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -27,7 +27,7 @@ data label_field_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^version },
+      label: Authored { name: ^version },
       target: int_leaf_target_label
     }
   ],

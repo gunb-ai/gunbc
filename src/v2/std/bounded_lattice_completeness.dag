@@ -33,7 +33,7 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node {
   Edge,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Positional,
@@ -130,7 +130,7 @@ fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
 fn infer_edge_consumes_bounded_lattice_partial(edge: Edge, partials: List<Node>) -> Bool {
   if any(xs: partials, predicate: fn(p) { edge.target == p }) {
     match edge.label {
-      Named { name: sym } =>
+      Authored { name: sym } =>
         sym == ^algebra_edge
           || sym == ^inhabitant_edge
           || sym == ^lattice_field_meet

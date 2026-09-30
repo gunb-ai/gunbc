@@ -35,7 +35,7 @@ import v2.std.node {
   Conj,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -641,8 +641,8 @@ fn fold_call_seam_loop(body: Node, carrier: Symbol) -> Node {
     kind: ComputationNode { behavior: Loop },
     children: [
       Edge { label: Positional, target: body },
-      Edge { label: Named { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() },
-      Edge { label: Named { name: ^loop_carrier_edge }, target: fold_carrier_binder_atom(binder: carrier) }
+      Edge { label: Authored { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() },
+      Edge { label: Authored { name: ^loop_carrier_edge }, target: fold_carrier_binder_atom(binder: carrier) }
     ]
   )
 }

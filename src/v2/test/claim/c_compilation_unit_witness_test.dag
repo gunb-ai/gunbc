@@ -39,7 +39,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -88,7 +88,7 @@ fn witness_struct_field_by_value(sym: Symbol) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^member },
+        label: Authored { name: ^member },
         target: witness_type_atom(sym: sym),
       }
     ]
@@ -100,7 +100,7 @@ fn witness_struct_field_by_pointer(sym: Symbol) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^next },
+        label: Authored { name: ^next },
         target: anonymous_signature_arrow(
           domain_types: [witness_type_atom(sym: sym)],
           codomain: witness_type_atom(sym: witness_type_int),
@@ -116,7 +116,7 @@ fn witness_point_struct_conj_body() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^x },
+        label: Authored { name: ^x },
         target: witness_type_atom(sym: witness_type_int),
       }
     ]

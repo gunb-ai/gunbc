@@ -10,7 +10,7 @@ import v2.std.grammar { node_atom_identity_optional }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Named, Node, Symbol }
+import v2.std.node { Authored, Node, Symbol }
 import v2.std.node_query { construct_tag_optional, is_wildcard_pattern, pattern_wildcard_name }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -60,7 +60,7 @@ fn wpf_named_child(n: Node, name: Symbol) -> Optional<Node> {
       Present { value: _ } => acc
       Absent =>
         match e.label {
-          Named { name: l } => if l == name { optional_present(value: e.target) } else { acc }
+          Authored { name: l } => if l == name { optional_present(value: e.target) } else { acc }
           _ => acc
         }
     }

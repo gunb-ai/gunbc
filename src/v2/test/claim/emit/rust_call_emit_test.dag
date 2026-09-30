@@ -34,7 +34,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -61,7 +61,7 @@ fn rust_call_type_atom(id: Symbol) -> Node {
 }
 
 fn rust_call_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn rust_call_positional(target: Node) -> Edge {

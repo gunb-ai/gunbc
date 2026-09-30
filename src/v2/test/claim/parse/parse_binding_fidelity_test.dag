@@ -51,7 +51,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -99,7 +99,7 @@ fn pbf_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node
         target: pbf_qn_node(seg: seg)
       ),
       Edge {
-        label: Named { name: export_sym },
+        label: Authored { name: export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
@@ -124,7 +124,7 @@ fn pbf_subject_with_import_use() -> Node {
         target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
       Edge {
-        label: Named { name: ^pbf_import_use_sym },
+        label: Authored { name: ^pbf_import_use_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_imported_decl } },
           children: [],
@@ -228,7 +228,7 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
         target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
       Edge {
-        label: Named { name: ^pbf_ambiguous_export_sym },
+        label: Authored { name: ^pbf_ambiguous_export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_ambiguous_export_sym } },
           children: [],

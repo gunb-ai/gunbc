@@ -11,7 +11,7 @@ import v2.std.node {
   Arrow,
   Atom,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -41,8 +41,8 @@ fn rcp_atom(id: Symbol) -> Node {
 fn rcp_closure() -> Node {
   let sig = declared_signature(
     params: [
-      Edge { label: Named { name: ^rcp_z }, target: rcp_atom(id: ^rcp_int) },
-      Edge { label: Named { name: ^rcp_a }, target: rcp_atom(id: ^rcp_int) }
+      Edge { label: Authored { name: ^rcp_z }, target: rcp_atom(id: ^rcp_int) },
+      Edge { label: Authored { name: ^rcp_a }, target: rcp_atom(id: ^rcp_int) }
     ],
     source: rcp_atom(id: ^rcp_source)
   )
@@ -53,7 +53,7 @@ fn rcp_closure() -> Node {
       Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
       Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
       sig.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: rcp_atom(id: ^rcp_z) }
+      Edge { label: Authored { name: ^arrow_body_edge }, target: rcp_atom(id: ^rcp_z) }
     ]
   )
 }
@@ -72,7 +72,7 @@ fn rcp_canonical_domain(arrow: Node) -> Node {
         } else {
           RcpDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
         }
-      Named { name: _ } => RcpDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
+      Authored { name: _ } => RcpDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
     }
   })
   Node { kind: arrow.kind, children: seen.edges, occurrence_id: arrow.occurrence_id }
@@ -83,7 +83,7 @@ fn rcp_without_order(arrow: Node) -> Node {
     kind: arrow.kind,
     children: fold(arrow.children, init: [], f: fn(acc, e) {
       match e.label {
-        Named { name: sym } => if sym == ^arrow_signature_order_edge { acc } else { concat(acc, [e]) }
+        Authored { name: sym } => if sym == ^arrow_signature_order_edge { acc } else { concat(acc, [e]) }
         Positional => concat(acc, [e])
       }
     }),

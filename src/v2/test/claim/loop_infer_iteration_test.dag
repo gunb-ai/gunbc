@@ -27,7 +27,7 @@ fn loop_infer_two_stage_loop_node(first: Node, second: Node, measure: Node) -> N
     children: [
       Edge { label: Positional, target: first },
       Edge { label: Positional, target: second },
-      Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+      Edge { label: Authored { name: ^loop_bound_edge }, target: measure }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -38,7 +38,7 @@ fn loop_infer_one_stage_loop_node(stage: Node, measure: Node) -> Node {
     kind: ComputationNode { behavior: Loop },
     children: [
       Edge { label: Positional, target: stage },
-      Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+      Edge { label: Authored { name: ^loop_bound_edge }, target: measure }
     ],
     occurrence_id: OccurrenceSynthetic
   }

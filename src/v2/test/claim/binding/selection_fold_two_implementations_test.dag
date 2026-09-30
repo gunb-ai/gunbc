@@ -228,13 +228,13 @@ fn binding_inhabitance_qn_spine(segments: List<Symbol>) -> Node {
 
 fn binding_inhabitance_variant_edge(type_sym: Symbol, variants: List<Symbol>) -> Edge {
   Edge {
-    label: Named { name: type_sym },
+    label: Authored { name: type_sym },
     target: Node {
       kind: TypeNode { connective: Disj },
       children: fold(variants, init: [], f: fn(acc, variant_sym) {
         concat(acc, [
           Edge {
-            label: Named { name: variant_sym },
+            label: Authored { name: variant_sym },
             target: binding_fixture_node(name: variant_sym)
           }
         ])

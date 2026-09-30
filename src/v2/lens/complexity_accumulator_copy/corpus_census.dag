@@ -50,7 +50,7 @@ import v2.std.node {
   Disj,
   Instantiation,
   Loop,
-  Named,
+  Authored,
   Transform,
   TypeNode,
   Value
@@ -403,7 +403,7 @@ fn ingested_root_child_labels(path: String) -> String {
     SourceTreeEstablished { root: r } =>
       fold(r.children, init: "", f: fn(acc, e) {
         match e.label {
-          Named { name: n } => join([acc, "|N:", symbol_lexeme(n)], "")
+          Authored { name: n } => join([acc, "|N:", symbol_lexeme(n)], "")
           _ => join([acc, "|P"], "")
         }
       })

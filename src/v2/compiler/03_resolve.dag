@@ -107,7 +107,7 @@ import v2.std.node {
   Disj,
   Edge,
   Match,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Positional,
@@ -237,7 +237,7 @@ fn empty_canonical_symbol_set() -> PointwisePower<Symbol> {
 
 fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
   match e.label {
-    Named { name: sym } => optional_present(value: DeclaredBinding { name: sym })
+    Authored { name: sym } => optional_present(value: DeclaredBinding { name: sym })
     Positional => optional_absent()
   }
 }
@@ -1460,7 +1460,7 @@ fn resolve_transform_children(
           } else {
             resolve_node_walk(ctx: ctx, n: e.target)
           }
-        Named { name: _ } =>
+        Authored { name: _ } =>
           if edge_is_cast_target(e: e) {
             resolve_type_role_target(ctx: ctx, target: e.target)
           } else {
@@ -1649,7 +1649,7 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
           w: acc,
           e: e,
           r: match e.label {
-            Named { name: label } =>
+            Authored { name: label } =>
               if label == match_arm_pattern {
                 resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
               } else {
@@ -1734,7 +1734,7 @@ fn resolve_child_edge(
   e: Edge
 ) -> ResolveNodeWalk {
   match e.label {
-    Named { name: sym } =>
+    Authored { name: sym } =>
       if ctx.under_module_root
         && resolve_preserve_module_root_named_edge(name: sym, target: e.target) {
         ResolveWalkAccepted { value: e.target, diagnostics: None }
@@ -1920,7 +1920,7 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
   let scope_body = ScopeFrame { locals: value_params, outer: ctx.scope }
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     match e.label {
-      Named { name: _ } =>
+      Authored { name: _ } =>
         if edge_is_type_params(e: e) {
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
         } else if (edge_label_of(e: e) == arrow_signature_order_label) {

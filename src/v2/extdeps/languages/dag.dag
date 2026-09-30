@@ -105,7 +105,7 @@ import v2.std.node {
   Edge,
   Loop,
   Match,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -663,7 +663,7 @@ fn dag_grammar_atom(id: Symbol) -> Node {
 
 fn dag_named_edge(name: Symbol, target: Node) -> Edge {
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: target
   }
 }
@@ -3229,7 +3229,7 @@ fn dag_node_is_module_root_conj(n: Node) -> Bool {
                 true
               } else {
                 match e.label {
-                  Named { name: sym } => sym == ^dag_surface_module_header
+                  Authored { name: sym } => sym == ^dag_surface_module_header
                   Positional => false
                 }
               }
@@ -3708,7 +3708,7 @@ fn dag_loop_body_from_literal(lit: Node) -> Node {
         target: lit
       },
       Edge {
-        label: Named { name: ^loop_bound_edge },
+        label: Authored { name: ^loop_bound_edge },
         target: dag_loop_measure_node()
       }
     ],
@@ -3774,14 +3774,14 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
 fn dag_symbol_literal_node(name: Node, occurrence_id: NodeOccurrenceIdentity) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_caret } },
-    children: [Edge { label: Named { name: ^symbol_literal_name_field }, target: name }],
+    children: [Edge { label: Authored { name: ^symbol_literal_name_field }, target: name }],
     occurrence_id: occurrence_id
   }
 }
 
 fn dag_symbol_literal_name_edge_target_optional(edge: Edge) -> Optional<Node> {
   match edge.label {
-    Named { name: field } =>
+    Authored { name: field } =>
       if field == ^symbol_literal_name_field {
         optional_present(value: edge.target)
       } else {
@@ -3868,7 +3868,7 @@ fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_i
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
     children: [
       Edge {
-        label: Named { name: ^integer_literal_magnitude_field },
+        label: Authored { name: ^integer_literal_magnitude_field },
         target: integer_decimal_magnitude_node(magnitude: magnitude)
       }
     ],
@@ -3906,7 +3906,7 @@ fn dag_float_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurre
     kind: TypeNode { connective: Atom { identity: ^dag_token_float_literal } },
     children: [
       Edge {
-        label: Named { name: ^float_literal_lexeme_field },
+        label: Authored { name: ^float_literal_lexeme_field },
         target: Node {
           kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
           children: [],
@@ -4103,7 +4103,7 @@ fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity)
     kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
     children: [
       Edge {
-        label: Named { name: ^string_literal_value_field },
+        label: Authored { name: ^string_literal_value_field },
         target: Node {
           kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: value) } },
           children: [],
@@ -4119,7 +4119,7 @@ fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity)
 // every other node, including a payload-less string-literal atom.
 fn dag_string_literal_value_edge_target_optional(edge: Edge) -> Optional<Node> {
   match edge.label {
-    Named { name: field } =>
+    Authored { name: field } =>
       if field == ^string_literal_value_field {
         optional_present(value: edge.target)
       } else {
@@ -4170,7 +4170,7 @@ data dag_float_literal_magnitude_home_dissolve_on: DissolutionCondition = retire
 
 fn dag_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
   match edge {
-    Edge { label: Named { name: field }, target: magnitude } =>
+    Edge { label: Authored { name: field }, target: magnitude } =>
       if field == ^integer_literal_magnitude_field {
         optional_present(value: magnitude)
       } else {
@@ -4289,7 +4289,7 @@ fn dag_arrow_with_body_node(
         target: dag_type_atom_node(identity: return_type_binding)
       },
       signature.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      Edge { label: Authored { name: ^arrow_body_edge }, target: body }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -4307,7 +4307,7 @@ fn dag_arrow_domain_conj_node() -> Node {
       list_snoc_item(
         xs: acc,
         item: Edge {
-          label: Named { name: binding_id },
+          label: Authored { name: binding_id },
           target: dag_type_atom_node(identity: dag_int_type_binding())
         }
       )
@@ -4717,7 +4717,7 @@ fn dag_complement_arrow_domain_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^dag_binding_param_a },
+        label: Authored { name: ^dag_binding_param_a },
         target: dag_type_atom_node(identity: ^dag_binding_type_bool)
       }
     ],
@@ -4775,11 +4775,11 @@ fn dag_bool_binop_arrow_domain_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^dag_binding_param_a },
+        label: Authored { name: ^dag_binding_param_a },
         target: dag_type_atom_node(identity: ^dag_binding_type_bool)
       },
       Edge {
-        label: Named { name: ^dag_binding_param_b },
+        label: Authored { name: ^dag_binding_param_b },
         target: dag_type_atom_node(identity: ^dag_binding_type_bool)
       }
     ],
@@ -4876,7 +4876,7 @@ fn dag_field_access_arrow_domain_conj_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^dag_binding_param_r },
+        label: Authored { name: ^dag_binding_param_r },
         target: dag_type_atom_node(identity: ^dag_binding_type_rec)
       }
     ],
@@ -5502,7 +5502,7 @@ fn dag_round_trip_atom(s: Symbol) -> Node {
 }
 
 fn dag_round_trip_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn dag_round_trip_bool_node(pass: Bool) -> Node {
@@ -6463,7 +6463,7 @@ fn namespace_graft_spine_shaped_edge_optional(node: Node) -> Optional<Edge> {
           Absent => optional_absent()
           Present { value: edge } =>
             match edge.label {
-              Named { name: _ } =>
+              Authored { name: _ } =>
                 if namespace_graft_node_is_conj(node: edge.target) {
                   optional_present(value: edge)
                 } else {
@@ -6512,7 +6512,7 @@ fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: QualifiedName
   match namespace_graft_spine_shaped_edge_optional(node: node) {
     Present { value: edge } =>
       match edge.label {
-        Named { name: seg } =>
+        Authored { name: seg } =>
           namespace_graft_qualified_name_from_spine_node(
             node: edge.target,
             acc: qualified_name_snoc(qn: acc, segment: seg)

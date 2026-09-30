@@ -256,7 +256,7 @@ fn edge_target_is_mystery(e: Edge) -> Bool {
 
 fn edge_is_seq_left(e: Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^grammar_sequence_left_node_projection
+    Authored { name: nm } => nm == ^grammar_sequence_left_node_projection
     Positional => false
   }
 }
