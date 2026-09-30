@@ -21,6 +21,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   symbol_lexeme,
+  StructuralLabel,
 }
 import v2.std.node_query { edge_field_type_name }
 import v2.std.collection { List }
@@ -120,6 +121,7 @@ fn field_lifecycle_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> 
       } else {
         optional_absent()
       }
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }

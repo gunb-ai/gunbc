@@ -1,5 +1,7 @@
 module v2.test.boundary.english_ingest_fail_closed
 
+import v2.std.node { Authored }
+
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: OccurrenceSynthetic

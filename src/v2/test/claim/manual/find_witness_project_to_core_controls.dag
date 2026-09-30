@@ -1,5 +1,7 @@
 module v2.test.manual.find_witness_project_to_core_controls
 
+import v2.std.node { Authored }
+
 
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly

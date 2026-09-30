@@ -260,6 +260,7 @@ fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
           cardinality: declared_field_cardinality_of_target(target: e.target)
         }
       }
+    StructuralLabel { label: _ } => Absent
     Positional => Absent
   }
 }
@@ -345,6 +346,7 @@ fn construct_tag_optional(n: Node) -> Optional<Symbol> {
                   }
                 _ => Absent
               }
+            StructuralLabel { label: _ } => Absent
             Positional => Absent
           }
         Absent => Absent
@@ -485,6 +487,7 @@ fn variant_declaration_edge_optional(n: Node) -> Optional<Edge> {
                     TypeNode { connective: Conj } => optional_present(value: e)
                     _ => optional_absent()
                   }
+                StructuralLabel { label: _ } => optional_absent()
                 Positional => optional_absent()
               }
             Absent => optional_absent()
@@ -585,6 +588,7 @@ fn nullary_inhabitant_by_discriminant<T>(
 fn node_positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => acc
       Positional => list_snoc_item(xs: acc, item: e.target)
       Authored { name: _ } => acc
     }
@@ -595,6 +599,7 @@ fn node_labeled_child_edges(node: Node) -> List<Edge> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
       Authored { name: _ } => list_snoc_item(xs: acc, item: e)
+      StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: e)
       Positional => acc
     }
   })
@@ -627,6 +632,14 @@ fn node_envelope_without_named_coordinate_go(
               saw_coordinate: saw_coordinate || (n == coordinate)
             )
           }
+        StructuralLabel { label: _ } =>
+          node_envelope_without_named_coordinate_go(
+            root: root,
+            xs: t,
+            coordinate: coordinate,
+            acc: list_snoc_item(xs: acc, item: h),
+            saw_coordinate: saw_coordinate
+          )
         Positional =>
           node_envelope_without_named_coordinate_go(
             root: root,
@@ -780,6 +793,10 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
                   value: list_snoc_item(xs: bindings, item: sym),
                   diagnostics: d
                 )
+              StructuralLabel { label: _ } =>
+                outcome_rejected(
+                  d: node_query_domain_malformed_diagnostic(domain: domain)
+                )
               Positional =>
                 outcome_rejected(
                   d: node_query_domain_malformed_diagnostic(domain: domain)
@@ -842,6 +859,7 @@ type RepeatedNameScan {
 fn repeated_name_edges(children: List<Edge>) -> List<Edge> {
   let scanned = fold(children, init: RepeatedNameScan { seen: empty_map(), repeated: [] }, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => acc
       Positional => acc
       Authored { name: n } =>
         match map_lookup(m: acc.seen, key: n) {

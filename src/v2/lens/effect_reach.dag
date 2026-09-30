@@ -61,6 +61,7 @@ import v2.std.node {
   Symbol,
   fold_node,
   symbol_lexeme,
+  Authored,
 }
 import v2.std.text { String, string_eq }
 

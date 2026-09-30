@@ -41,6 +41,7 @@ import v2.std.node {
   TypeNode,
   well_formed,
   symbol_lexeme,
+  Authored,
 }
 import v2.std.node_query { find_arrow_body_child }
 

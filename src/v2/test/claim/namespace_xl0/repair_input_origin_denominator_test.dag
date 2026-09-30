@@ -1,5 +1,7 @@
 module v2.test.claim.namespace_xl0.repair_input_origin_denominator
 
+import v2.std.node { Authored }
+
 import v2.compiler.resolution_provenance { reference_site_scope_path }
 
 import v2.extdeps.languages.dag { dag_surface_edge }

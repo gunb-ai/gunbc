@@ -1,5 +1,7 @@
 module v2.test.std.named_child_lookup
 
+import v2.std.node { Authored }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // named_child_lookup is the total primitive and find_named_child its projection. These witnesses pin

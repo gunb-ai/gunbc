@@ -1,5 +1,7 @@
 module v2.lens.unit_modeling
 
+import v2.std.node { Authored, StructuralLabel }
+
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
@@ -100,6 +102,7 @@ fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
       } else {
         optional_absent()
       }
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }

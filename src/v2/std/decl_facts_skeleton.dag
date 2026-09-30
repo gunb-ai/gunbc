@@ -14,7 +14,7 @@ import v2.std.algebra {
 }
 import v2.std.collection { Absent, Present }
 import v2.std.decl_index { DeclFact }
-import v2.std.node { Edge, Authored, Node, NodeFold, Positional, TypeNode, Atom, Symbol, fold_node, labeled_named_is, edge_label_of, symbol_lexeme }
+import v2.std.node { Edge, Authored, Node, NodeFold, Positional, TypeNode, Atom, Symbol, fold_node, labeled_named_is, edge_label_of, symbol_lexeme, EdgeLabel }
 
 type OuterRecordConstructorLexeme = String
 

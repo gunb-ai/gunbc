@@ -1,6 +1,6 @@
 module v2.extdeps.languages.rust_test
 
-import v2.std.node { ArrowBodyEdge, core_edge_label }
+import v2.std.node { ArrowBodyEdge, core_edge_label, Authored }
 
 import std.algebra { Cons, Empty }
 

@@ -1,5 +1,7 @@
 module v2.test.emit.std_logic_selfhost_witness
 
+import v2.std.node { Authored }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

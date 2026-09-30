@@ -38,7 +38,8 @@ import v2.std.node {
   NodeFold,
   Positional,
   Symbol,
-  fold_node
+  fold_node,
+  StructuralLabel,
 }
 import v2.std.node_query {
   NamedChildAmbiguous,
@@ -136,6 +137,7 @@ fn infer_edge_consumes_bounded_lattice_partial(edge: Edge, partials: List<Node>)
           || sym == ^lattice_field_meet
           || sym == ^lattice_field_join
           || sym == ^boolean_algebra_field_bounded_lattice
+      StructuralLabel { label: _ } => false
       Positional => false
     }
   } else {

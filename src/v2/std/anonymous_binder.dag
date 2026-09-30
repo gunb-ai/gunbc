@@ -5,7 +5,7 @@ import v2.std.algebra { list_reverse }
 import v2.std.collection { List }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.logic { Bool }
-import v2.std.node { Edge, Authored, Positional, Symbol, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Edge, Authored, Positional, Symbol, symbol_intern_lexeme, symbol_lexeme, StructuralLabel }
 import v2.std.node_query { pattern_wildcard_name }
 
 // AN ANONYMOUS PARAMETER SLOT IS A MINTED BINDER, NOT A FIELD NAMED `_`. A function's domain is a
@@ -114,6 +114,8 @@ fn anonymous_binder_mint_parameter_list(edges: List<Edge>) -> DeclaredParameterL
           edges: Cons { head: Edge { label: Authored { name: label }, target: e.target }, tail: acc.edges },
           order: Cons { head: label, tail: acc.order }
         }
+      StructuralLabel { label: _ } =>
+        AnonymousBinderMint { slot: slot, edges: Cons { head: e, tail: acc.edges }, order: acc.order }
       Positional =>
         AnonymousBinderMint { slot: slot, edges: Cons { head: e, tail: acc.edges }, order: acc.order }
     }

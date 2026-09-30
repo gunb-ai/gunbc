@@ -1,5 +1,7 @@
 module v2.test.manual.target_carriers_ambiguous_quotient
 
+import v2.std.node { Authored }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fidelity_quotient_bundle(edges: List<Edge>) -> Node {

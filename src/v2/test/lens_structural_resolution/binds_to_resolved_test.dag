@@ -1,5 +1,7 @@
 module v2.test.lens_structural_resolution.binds_to_resolved
 
+import v2.std.node { Authored }
+
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

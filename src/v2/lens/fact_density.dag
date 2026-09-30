@@ -1,5 +1,7 @@
 module v2.lens.fact_density
 
+import v2.std.node { Authored, StructuralLabel }
+
 import v2.std.witness { Holds }
 import v2.std.diagnostic { outcome_accepted, outcome_rejected, node_locus }
 
@@ -22,6 +24,7 @@ fn named_fact_count(children: List<Edge>) -> v2.std.nat.Nat {
   fold(children, init: v2.std.nat.Zero, f: fn(acc, e) {
     match e.label {
       Authored { name: _ } => v2.std.nat.Succ { prev: acc }
+      StructuralLabel { label: _ } => acc
       Positional => acc
     }
   })

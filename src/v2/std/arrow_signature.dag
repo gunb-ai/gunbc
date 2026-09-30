@@ -26,6 +26,7 @@ import v2.std.node {
   node_with_occurrence_id,
   ArrowSignatureOrderEdge,
   core_edge_label,
+  StructuralLabel,
 }
 import v2.std.node_query { node_positional_child_targets, pattern_wildcard_name }
 
@@ -220,6 +221,7 @@ fn application_binding_plan_over(labels: List<Symbol>, actuals: List<Edge>) -> A
       acc
     } else {
       match e.label {
+        StructuralLabel { label: _ } => application_walk_refuse(acc: acc, reason: ^application_argument_label_unknown)
         Positional =>
           match map_lookup(m: declared.label_at, key: acc.positional_next) {
             Absent => application_walk_refuse(acc: acc, reason: ^application_positional_surplus)

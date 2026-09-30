@@ -32,6 +32,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   node_subtree_nodes,
+  Authored,
 }
 
 

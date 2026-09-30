@@ -1,5 +1,7 @@
 module v2.test.spine.spine_receipt_witness
 
+import v2.std.node { Authored }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
