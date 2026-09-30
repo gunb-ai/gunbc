@@ -3676,7 +3676,7 @@ fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree.root)
   let kinds = infer_language_inhabitants_kind_index()
   infer_gather_acc_to_outcome(
-    acc: fold_node(n: tree.root, algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, tree: tree.root, index: tree.symbol_index))
+    acc: fold_node(n: tree.root, algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, tree: tree.root, index: tree.resolved_declarations))
   )
 }
 // INFER'S OUTPUT IS THE OBLIGATED FORM, never an InferredTree: v2.compiler.refinement_discharge
