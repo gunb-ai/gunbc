@@ -16,7 +16,6 @@ import v2.extdeps.languages.dag {
   dag_binding_denotation,
   dag_kernel_type_binding_optional,
   dag_kernel_type_declaration_binding_optional,
-  dag_kernel_value_type_binding,
   dag_kernel_value_type_roster,
   dag_language_model
 }
@@ -135,12 +134,25 @@ test fn kvr_a_spelling_and_its_declarations_bind_what_the_join_denotes_holds() -
     && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: "v2.std.integer.Int")) == kvr_atom_identity(n: integer_int_type_node()))
 }
 
-// A KERNEL ATOM WITHOUT A SPELLING ROW BINDS NO SPELLING: `Symbol` and `Char` are in the roster as
-// atoms, and the authored names keep resolving to their declarations.
-test fn kvr_symbol_and_char_bind_no_spelling_holds() -> Bool {
+// THE SYMBOL AND CHAR FORK, HELD AS IT IS. Each is a kernel atom in the roster and has a declaration
+// its authored spelling resolves to; the row names that declaration in `converges_on` and binds
+// nothing through it. So neither spelling binds the kernel atom, and neither named declaration
+// takes a kernel binding. This goes red when the de-fork gives either one authority, and is then
+// rewritten to the converged state.
+fn kvr_converges_on_binds_nothing(node: Node, dotted: String) -> Bool {
+  any(xs: dag_kernel_value_type_roster, predicate: fn(row) {
+    (row.value_type == node)
+      && (row.converges_on == Present { value: qualified_name_from_dotted_string(dotted: dotted) })
+      && (row.spelling == Absent)
+  })
+    && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: dotted)) == Absent)
+}
+
+test fn kvr_symbol_and_char_are_a_recorded_fork_that_binds_no_spelling_holds() -> Bool {
   (dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: "Symbol")) == Absent)
     && (dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: "Char")) == Absent)
-    && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol")) == Absent)
+    && kvr_converges_on_binds_nothing(node: symbol_kernel_type_node(), dotted: "v2.std.node.Symbol")
+    && kvr_converges_on_binds_nothing(node: char_kernel_type_node(), dotted: "std.types.Char")
 }
 
 // THE DISCRIMINATING RED: a declared Bool return holding an Int refuses, on the real route.

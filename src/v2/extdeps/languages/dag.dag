@@ -3586,11 +3586,16 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 // v2.compiler.resolve binds that authored name, where it resolves to one of those declarations or
 // to nothing, to the kernel type. Int and Bool carry them; two declarations of each stand until
 // their de-fork lanes consolidate them (docs/plans/dag-v2-defork-audit.md), and the rows follow
-// those lanes rather than choosing. Symbol and Char are kernel atoms with value-type nodes and
-// carry NO spelling row: the corpus does spell both in type positions, but `Symbol` resolves to the
-// declaration v2.std.node Symbol and `Char` to the refined alias std.types Char, and binding either
-// spelling to the kernel atom would change what every such reference resolves to. That is a
-// decision about those declarations, not a row this roster may add in passing.
+// those lanes rather than choosing.
+//
+// SYMBOL AND CHAR ARE A FORK THIS ROSTER RECORDS AND DOES NOT RESOLVE. Each has two authorities: a
+// kernel value-type node (v2.std.compilers.target_model) and a declaration the authored spelling
+// resolves to (v2.std.node Symbol, std.types Char). That is the fork Int and Bool had, where the
+// ruling is one authority, the declaration visible in scope. So their rows carry NO spelling row --
+// binding either spelling to the kernel atom here would change what every such reference resolves
+// to -- and name in `converges_on` the declaration each converges on once de-forked. Nothing binds
+// through `converges_on`; it is the de-fork lane's subject, read today only by the control that
+// holds the fork as it is (v2.test.claim.compiler.kernel_value_type_roster_witness_test).
 //
 // A kernel type with NO value-type node in a v2 std authority has no row: there is nothing for one
 // to point at. Float, Secret, Json, Unit and Bytes (std.types kernel_type_set) are in that state,
@@ -3601,6 +3606,7 @@ type KernelValueType {
   value_type: Node
   spelling: Optional<String>
   declarations: List<QualifiedName>
+  converges_on: Optional<QualifiedName>
 }
 
 data dag_kernel_value_type_roster: List<KernelValueType> = [
@@ -3610,7 +3616,8 @@ data dag_kernel_value_type_roster: List<KernelValueType> = [
     declarations: [
       qualified_name_from_dotted_string(dotted: "v2.std.integer.Int"),
       qualified_name_from_dotted_string(dotted: "std.integer.Int")
-    ]
+    ],
+    converges_on: optional_absent()
   },
   KernelValueType {
     value_type: bool_node(),
@@ -3618,10 +3625,21 @@ data dag_kernel_value_type_roster: List<KernelValueType> = [
     declarations: [
       qualified_name_from_dotted_string(dotted: "v2.std.logic.Bool"),
       qualified_name_from_dotted_string(dotted: "std.types.Bool")
-    ]
+    ],
+    converges_on: optional_absent()
   },
-  KernelValueType { value_type: symbol_kernel_type_node(), spelling: optional_absent(), declarations: [] },
-  KernelValueType { value_type: char_kernel_type_node(), spelling: optional_absent(), declarations: [] }
+  KernelValueType {
+    value_type: symbol_kernel_type_node(),
+    spelling: optional_absent(),
+    declarations: [],
+    converges_on: optional_present(value: qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol"))
+  },
+  KernelValueType {
+    value_type: char_kernel_type_node(),
+    spelling: optional_absent(),
+    declarations: [],
+    converges_on: optional_present(value: qualified_name_from_dotted_string(dotted: "std.types.Char"))
+  }
 ]
 
 fn dag_kernel_value_type_binding(row: KernelValueType) -> Optional<Symbol> {
