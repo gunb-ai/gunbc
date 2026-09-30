@@ -305,7 +305,7 @@ fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPat
                   standing: serving_standing(attempts: []),
                 }
               } else {
-                SparkPairHostApplyFailed { host: plan.host, cause: join([spark_reach_path_wire(p: path), " exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+                SparkPairHostApplyFailed { host: plan.host, cause: join([spark_reach_path_wire(p: path), " exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr), " stdout=", trim(s: r.stdout)], "") }
               }
           }
       }
