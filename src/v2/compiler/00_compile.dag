@@ -1251,10 +1251,10 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // test either, and running them here would conflate the modeling door with the execution route
 // and multiply their whole-tree cost by the test population.
 
+// The source-root index and the active roots live on `resolution` (ResolutionContext binds them once
+// per ingest as admission inputs); a second copy here would be two authorities for one fact.
 type NativeTestContext {
   resolution: Outcome<ResolutionContext>
-  index: SourceRootIndex
-  active_roots: FreeMonoid<SourceRootRef>
   file_refusals: FreeMonoid<NativeTestFileRefusal>
 }
 
@@ -1437,8 +1437,6 @@ fn native_test_context_finish(
       active_roots: source_root_set_from_ingest(ingest: ingest),
       policy: v2.std.resolution_policy.default_name_resolution_policy()
     ),
-    index: state.index,
-    active_roots: source_root_set_from_ingest(ingest: ingest),
     file_refusals: state.file_refusals
   }
 }
@@ -1479,8 +1477,6 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
 fn native_test_context_with_resolution(context: NativeTestContext, resolution: Outcome<ResolutionContext>) -> NativeTestContext {
   NativeTestContext {
     resolution: resolution,
-    index: context.index,
-    active_roots: context.active_roots,
     file_refusals: context.file_refusals
   }
 }

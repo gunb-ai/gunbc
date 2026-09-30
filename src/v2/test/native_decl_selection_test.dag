@@ -179,8 +179,6 @@ test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> B
     Accepted { value: roots, diagnostics: _ } =>
       let context = NativeTestContext {
         resolution: resolution_context(lm: dag_language_model_surface_empty_prelude(), roots: roots, index: source_root_index_empty(), active_roots: [], policy: v2.std.resolution_policy.default_name_resolution_policy()),
-        index: source_root_index_empty(),
-        active_roots: [],
         file_refusals: []
       }
       match native_lane_module_resolution(
