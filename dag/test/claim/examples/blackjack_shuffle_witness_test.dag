@@ -1,0 +1,42 @@
+module test.claim.examples.blackjack_shuffle_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import examples.blackjack.cards { Card, standard_deck }
+import examples.blackjack.shuffle { ShuffleSeed, shuffle, next_seed, seed_from_octets }
+import std.integer { UInt8 }
+import std.encoding { base64_decode, Standard }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn next_seed_zero_is_pinned() -> Bool {
+    next_seed(seed: ShuffleSeed { value: 0 }).value == 12345
+}
+
+test fn seed_from_empty_octets_is_zero() -> Bool {
+    seed_from_octets(octets: []).value == 0
+}
+
+test fn shuffle_is_reproducible() -> Bool {
+    let seed = ShuffleSeed { value: 7 }
+
+    shuffle(deck: standard_deck, seed: seed).cards
+        == shuffle(deck: standard_deck, seed: seed).cards
+}
+
+test fn shuffle_is_a_standard_deck_permutation() -> Bool {
+    let shuffled = shuffle(
+        deck: standard_deck,
+        seed: ShuffleSeed { value: 7 },
+    )
+
+    shuffled.cards.length() == standard_deck.length()
+        && all(standard_deck, card => shuffled.cards.contains(card))
+}
+
+test fn seed_from_octets_combines_bytes_big_endian() -> Bool {
+    match base64_decode(s: "AQI=", variant: Standard) {
+        Present { value: octets } =>
+            seed_from_octets(octets: octets).value == 258
+        Absent => false
+    }
+}
