@@ -1,0 +1,43 @@
+module test.claim.zz_probe.cost_probe_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
+import v2.std.operation_realization { OperationRealization, virtual_clock_origin }
+import v2.std.witness_evaluation { WitnessEvaluationFrame, WitnessReturned, evaluate_in_witness_frame }
+import gunbc.machine_intake_mtcollins1_boot_dry_realization { MtCollins1BootWorld, mtcollins1_boot_dry_realization }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_wet_on_srv1 }
+import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test { world_with_console, matrix_frame, matrix_frame_over, realization_identity }
+
+fn no_advance(r: OperationRealization<MtCollins1BootWorld>) -> OperationRealization<MtCollins1BootWorld> {
+  OperationRealization { identity: r.identity, initial: r.initial, epoch: r.epoch, bindings: r.bindings, advance: fn(w, now) { w } }
+}
+
+test fn cp_baseline() -> Bool {
+  match evaluate_in_witness_frame(frame: matrix_frame(world: world_with_console(lines: [])), subject: fn(_s) { mtcollins1_boot_wet_on_srv1() }) { WitnessReturned { value: _ } => true _ => false }
+}
+
+test fn cp_no_advance() -> Bool {
+  let r = no_advance(r: mtcollins1_boot_dry_realization(identity: realization_identity, initial: world_with_console(lines: []), epoch: virtual_clock_origin()))
+  match evaluate_in_witness_frame(frame: matrix_frame_over(realization: r), subject: fn(_s) { mtcollins1_boot_wet_on_srv1() }) { WitnessReturned { value: _ } => true _ => false }
+}
+
+test fn cp_world_only() -> Bool {
+  let w = world_with_console(lines: [])
+  count(w.environment) > 0
+}
+
+fn sleeps(n: Int) -> Bool {
+  if n == 0 { true } else {
+    let ok = extdeps.tools.sleep.sleep_delay_seconds_second_carrier_projection(duration: std.measure.second(count: 1))
+    ok && sleeps(n: n - 1)
+  }
+}
+
+test fn cp_100_sleeps_full_frame() -> Bool {
+  match evaluate_in_witness_frame(frame: matrix_frame(world: world_with_console(lines: [])), subject: fn(_s) { sleeps(n: 100) }) { WitnessReturned { value } => value _ => false }
+}
+
+test fn cp_0_sleeps_full_frame() -> Bool {
+  match evaluate_in_witness_frame(frame: matrix_frame(world: world_with_console(lines: [])), subject: fn(_s) { sleeps(n: 0) }) { WitnessReturned { value } => value _ => false }
+}

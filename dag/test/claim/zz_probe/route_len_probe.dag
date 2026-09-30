@@ -1,0 +1,12 @@
+module test.claim.zz_probe.route_len_probe
+
+import std.types { String }
+import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, WitnessInterrupted }
+import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test { run_attempt, world_with_console }
+
+fn probe() -> String {
+  match run_attempt(world: world_with_console(lines: [])) {
+    WitnessReturned { route } => join(map(filter(route, r => r.invocation.at.operation == "StartMedia" || r.invocation.at.operation == "GetRemoteConfigurations" || r.invocation.at.operation == "ChassisPowerControl"), r => concat(concat(r.invocation.at.operation, "@"), to_string(std.measure.second_count(s: r.dispatched_at) as Int))), " ")
+    _ => "x"
+  }
+}
