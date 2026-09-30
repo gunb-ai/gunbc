@@ -3685,11 +3685,14 @@ fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional
 // (v2.compiler.infer infer_node_facts). Specimen-scope interim in the same frame as
 // infer_node_declared_in_dag_inhabitants: deletes in favor of consuming resolution output when
 // the resolver hands infer declaration-resolved identities directly (the namespace migration's
-// completed state).
+// completed state). Resolve binds the kernel spelling `Bool` in type role to the value type's own
+// atom (dag_kernel_type_binding_optional: `Bool` -> bool_node_symbol), as it binds `Int` to
+// dag_binding_type_int, so that atom denotes bool_node; without the row a declared `Bool` at any
+// declared position read as an unresolved formal and was counted instead of judged.
 fn dag_binding_denotation(sym: Symbol) -> Optional<Node> {
   if sym == dag_int_type_binding() {
     optional_present(value: integer_int_type_node())
-  } else if sym == ^dag_binding_type_bool {
+  } else if (sym == ^dag_binding_type_bool) || (sym == ^bool_node_symbol) {
     optional_present(value: bool_node())
   } else {
     optional_absent()

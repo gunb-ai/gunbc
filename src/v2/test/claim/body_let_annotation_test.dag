@@ -281,58 +281,98 @@ test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool {
 
 // (5e) ONE RELATION FOR EVERY DECLARED POSITION (gunbc.recurring_failure_mode
 // annotated_let_judged_by_the_cast_relation_not_the_inhabitance_relation). Each row states the
-// same value at a let and at an argument, and the two verdicts must agree.
-// - An optional at a required Int refuses at BOTH with the one relation's own reason
+// same value at a let, at a declared return and at a record field -- the declared positions a source
+// program reaches the relation at today -- and the verdicts must agree. (A call to a NAMED fn does not
+// reach it from source: infer reads no formals off a callee reference, FormalsUnresolved,
+// gunbc.recurring_failure_mode argument_type_obligation_absent_while_the_route_advances; the argument
+// position's widening is claimed on the relation with a supplied obligation,
+// v2.test.claim.compiler.infer_application_argument_inhabitance_witness_test.)
+// - An optional at a required Int refuses at EACH with the one relation's own reason
 //   (v2.std.inhabitance inhabitance_optional_produced_at_required_declared). RED while the let was
 //   judged by the cast relation: its refusal carried coercion's mismatch, never this reason.
 // - A refinement value (`x: Pos`, `type Pos = Int where positive`) inhabits its declared carrier Int
-//   at a let AND at an argument. RED BEFORE: the argument refused (no widening in the relation).
-// - One step only: `x: Pos2` (`type Pos2 = Pos where ..`) inhabits Pos and not Int, at both.
-// - A sibling refinement (`x: Neg` at Pos, both refinements of Int) refuses at both.
+//   at each, admitted AND decided. RED BEFORE: the return and the field refused (no widening in the
+//   relation).
+// - One step only: `x: Pos2` (`type Pos2 = Pos where ..`) inhabits Pos and not Int, at each.
+// - A sibling refinement (`x: Neg` at Pos, both refinements of Int) refuses at each.
 fn bla_let_optional() -> Outcome<Bool> {
   bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Int?) -> Int {\n  let y: Int = x\n  0\n}\n"))
 }
 
-fn bla_arg_optional() -> Outcome<Bool> {
-  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn g(v: Int) -> Int { 0 }\n\nfn f(x: Int?) -> Int {\n  g(v: x)\n}\n"))
+fn bla_ret_optional() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Int?) -> Int {\n  x\n}\n"))
+}
+
+fn bla_fld_optional() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Int\n}\n\nfn f(x: Int?) -> R {\n  R { v: x }\n}\n"))
 }
 
 fn bla_let_pos_int() -> Outcome<Bool> {
   bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos) -> Int {\n  let y: Int = x\n  0\n}\n"))
 }
 
-fn bla_arg_pos_int() -> Outcome<Bool> {
-  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn g(v: Int) -> Int { 0 }\n\nfn f(x: Pos) -> Int {\n  g(v: x)\n}\n"))
+fn bla_ret_pos_int() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos) -> Int {\n  x\n}\n"))
+}
+
+fn bla_fld_pos_int() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Int\n}\n\nfn f(x: Pos) -> R {\n  R { v: x }\n}\n"))
 }
 
 fn bla_let_pos2_pos() -> Outcome<Bool> {
   bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos2) -> Int {\n  let y: Pos = x\n  0\n}\n"))
 }
 
-fn bla_arg_pos2_pos() -> Outcome<Bool> {
-  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn g(v: Pos) -> Int { 0 }\n\nfn f(x: Pos2) -> Int {\n  g(v: x)\n}\n"))
+fn bla_ret_pos2_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos2) -> Pos {\n  x\n}\n"))
+}
+
+fn bla_fld_pos2_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Pos\n}\n\nfn f(x: Pos2) -> R {\n  R { v: x }\n}\n"))
 }
 
 fn bla_let_pos2_int() -> Outcome<Bool> {
   bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos2) -> Int {\n  let y: Int = x\n  0\n}\n"))
 }
 
-fn bla_arg_pos2_int() -> Outcome<Bool> {
-  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn g(v: Int) -> Int { 0 }\n\nfn f(x: Pos2) -> Int {\n  g(v: x)\n}\n"))
+fn bla_ret_pos2_int() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos2) -> Int {\n  x\n}\n"))
+}
+
+fn bla_fld_pos2_int() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Int\n}\n\nfn f(x: Pos2) -> R {\n  R { v: x }\n}\n"))
 }
 
 fn bla_let_neg_pos() -> Outcome<Bool> {
   bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Neg) -> Int {\n  let y: Pos = x\n  0\n}\n"))
 }
 
-fn bla_arg_neg_pos() -> Outcome<Bool> {
-  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn g(v: Pos) -> Int { 0 }\n\nfn f(x: Neg) -> Int {\n  g(v: x)\n}\n"))
+fn bla_ret_neg_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Neg) -> Pos {\n  x\n}\n"))
+}
+
+fn bla_fld_neg_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Pos\n}\n\nfn f(x: Neg) -> R {\n  R { v: x }\n}\n"))
 }
 
 fn bla_admits(o: Outcome<Bool>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// ADMITTED AND DECIDED: an admission that carries an inhabitance-undecidable advisory was never
+// judged, so it is no evidence the relation admitted the pair.
+fn bla_admits_decided(o: Outcome<Bool>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: None } => true
+    Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
+      !bla_has_reason(d: d, reason: ^inhabitance_undecidable_argument_type_not_derived)
+        && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
+        && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_optional_carrier)
+        && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
   }
 }
 
@@ -343,26 +383,31 @@ fn bla_refuses_for(o: Outcome<Bool>, reason: Symbol) -> Bool {
   }
 }
 
-test fn bla_optional_at_a_required_let_refuses_as_the_argument_does() -> Bool {
+test fn bla_optional_at_a_required_let_refuses_as_a_return_and_a_field_do() -> Bool {
   bla_refuses_for(o: bla_let_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
-    && bla_refuses_for(o: bla_arg_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
+    && bla_refuses_for(o: bla_ret_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
+    && bla_refuses_for(o: bla_fld_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
 }
 
-test fn bla_refinement_inhabits_its_declared_carrier_at_a_let_and_an_argument() -> Bool {
-  bla_admits(o: bla_let_pos_int())
-    && bla_admits(o: bla_arg_pos_int())
+test fn bla_refinement_inhabits_its_declared_carrier_at_a_let_a_return_and_a_field() -> Bool {
+  bla_admits_decided(o: bla_let_pos_int())
+    && bla_admits_decided(o: bla_ret_pos_int())
+    && bla_admits_decided(o: bla_fld_pos_int())
 }
 
-test fn bla_refinement_of_a_refinement_widens_one_step_at_a_let_and_an_argument() -> Bool {
-  bla_admits(o: bla_let_pos2_pos())
-    && bla_admits(o: bla_arg_pos2_pos())
+test fn bla_refinement_of_a_refinement_widens_one_step_at_a_let_a_return_and_a_field() -> Bool {
+  bla_admits_decided(o: bla_let_pos2_pos())
+    && bla_admits_decided(o: bla_ret_pos2_pos())
+    && bla_admits_decided(o: bla_fld_pos2_pos())
     && bla_refuses_for(o: bla_let_pos2_int(), reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
-    && bla_refuses_for(o: bla_arg_pos2_int(), reason: ^application_argument_does_not_inhabit)
+    && bla_refuses_for(o: bla_ret_pos2_int(), reason: ^arrow_body_does_not_inhabit_declared_return)
+    && bla_refuses_for(o: bla_fld_pos2_int(), reason: ^record_field_value_does_not_inhabit)
 }
 
-test fn bla_sibling_refinement_refuses_at_a_let_and_an_argument() -> Bool {
+test fn bla_sibling_refinement_refuses_at_a_let_a_return_and_a_field() -> Bool {
   bla_refuses_for(o: bla_let_neg_pos(), reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
-    && bla_refuses_for(o: bla_arg_neg_pos(), reason: ^application_argument_does_not_inhabit)
+    && bla_refuses_for(o: bla_ret_neg_pos(), reason: ^arrow_body_does_not_inhabit_declared_return)
+    && bla_refuses_for(o: bla_fld_neg_pos(), reason: ^record_field_value_does_not_inhabit)
 }
 
 // (5c) A KERNEL SPELLING IS READ BY THE DECLARATION IT RESOLVES TO (gunbc.recurring_failure_mode
