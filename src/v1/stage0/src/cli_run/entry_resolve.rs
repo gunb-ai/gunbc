@@ -2192,6 +2192,12 @@ pub fn whole_tree_resolved_ctx(
 /// this is that probe moved onto the graphs the floor really holds instead of a second whole-tree
 /// resolve nobody called.
 ///
+/// ENTRIES, NOT BYTES. These maps are `im::HashMap` -- persistent HAMTs -- and a module's map is
+/// built by merging its parents', which shares internal nodes. `distinct` dedupes the map ROOT,
+/// not the nodes under it, so it counts shared structure once per root and overstates bytes:
+/// on the main subject (gunbc#12774) dropping ~36.6M `tec.variant_locals` entries freed ~0.18 GB
+/// of live heap. Read a field's entry count as reach, and the seam's `[floor-heap] in_use` as bytes.
+///
 /// It also answers the overlap question across graphs at identity grain: `module_paths` counts
 /// distinct module identities, `typed_modules` distinct `TypedModule` allocations. More
 /// allocations than identities means one module was typechecked into two resident copies, which
