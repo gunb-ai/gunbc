@@ -8198,7 +8198,8 @@ fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
 // SO IT IS CARRIED FROM HERE, not recovered downstream: body_lower_type_decl_record_name_optional
 // (below) is the one predicate that says which type_decl is a record; this dispatch and
 // v2.compiler.normalize record_declaration_capture both ask it, and the capture rides to the symbol
-// index on NormalizedTree record_declarations, where the pattern-binder classifier reads it (Pkg16).
+// index on NormalizedTree type_declaration_kinds (its record projection), where the pattern-binder
+// classifier reads it (Pkg16).
 // The record-versus-where-alias control is v2.test.claim.match_arm_binder_frame
 // mab_where_alias_is_not_a_record.
 fn body_lower_record_type_decl(shell: Node, type_name: Symbol, block_shell: Node, type_params: DeclTypeParams) -> Outcome<Node> {
@@ -8426,6 +8427,53 @@ fn body_lower_type_decl_record_name_optional(shell: Node) -> Optional<Symbol> {
         Present { value: _ } => dag_surface_kw_then_ident_from_captured(captured: captured)
       }
   }
+}
+
+// WHICH KIND OF PLAIN-CONJ DECLARATION A type_decl IS, ASKED ONCE, BY THE ARMS body_lower_type_decl_by_body
+// TAKES. After lowering, a record, a where-refinement and a payload-bearing single variant share the
+// Conj { Name: payload } shape, so the kind is read HERE, on the parse, and carried on
+// v2.compiler.normalized_tree NormalizedTree type_declaration_kinds. One value per declaration: a record
+// and a refinement are authored alternatives, so the carrier has no state naming one declaration as
+// both. A record is what body_lower_type_decl_record_name_optional says; otherwise a where clause --
+// here still its dag_surface_where_refinement_clause production shell, the parse-level form of the arm
+// the by-body dispatch finds as a Named edge -- makes a refinement; anything else carries no kind, and
+// a plain Conj member without one is undecided downstream, never inferred.
+type DeclaredTypeKind
+  = DeclaredRecord { name: Symbol }
+  | DeclaredRefinement { name: Symbol }
+
+fn body_lower_type_decl_declared_kind_optional(shell: Node) -> Optional<DeclaredTypeKind> {
+  match body_lower_type_decl_record_name_optional(shell: shell) {
+    Present { value: name } => Present { value: DeclaredRecord { name: name } }
+    Absent =>
+      match parse_production_captured_child_optional(node: shell) {
+        Absent => Absent
+        Present { value: captured } =>
+          match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_where_refinement_clause) {
+            Absent => Absent
+            Present { value: _ } =>
+              match dag_surface_kw_then_ident_from_captured(captured: captured) {
+                Absent => Absent
+                Present { value: name } => Present { value: DeclaredRefinement { name: name } }
+              }
+          }
+      }
+  }
+}
+
+// The record names among a module's declaration kinds: the projection every record-only consumer (the
+// symbol-index fill, the pattern-binder classifier, the census) reads, so records have one authority.
+fn declared_record_names(kinds: FreeMonoid<DeclaredTypeKind>) -> FreeMonoid<Symbol> {
+  fold_list(
+    xs: kinds,
+    empty: Empty,
+    cons: fn(acc, k) {
+      match k {
+        DeclaredRecord { name: n } => list_snoc_item(xs: acc, item: n)
+        DeclaredRefinement { name: _ } => acc
+      }
+    }
+  )
 }
 
 fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
