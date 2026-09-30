@@ -21118,7 +21118,94 @@ pub fn variant_pattern_shape_str(
     }
 }
 
+pub fn variant_pattern_parent_unresolved(
+    name: String,
+    parent_enum: Option<String>,
+    scrut_type: String,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    {
+        let bare_name = crate::v1_std_core::qualified_last_segment(name.clone());
+        let resolved_parent = pattern_parent_enum(
+            bare_name.clone(),
+            parent_enum.clone(),
+            scrut_type.clone(),
+            emit_info.type_summaries.clone(),
+        );
+        ((resolved_parent.clone() == std::option::Option::None)
+            && !is_optional_variant_name(bare_name.clone()))
+    }
+}
+
+pub fn rust_pattern_is_bare_identifier(rendered: String) -> bool {
+    ((!v1_rt::string_contains(&rendered, "{".to_string())
+        && !v1_rt::string_contains(&rendered, "(".to_string()))
+        && !v1_rt::string_contains(&rendered, "::".to_string()))
+}
+
+pub fn refuse_unresolved_bare_variant_pattern(
+    name: String,
+    parent_enum: Option<String>,
+    scrut_type: String,
+    emit_info: Rc<EmitGraphInfo>,
+    rendered: String,
+) -> String {
+    if (variant_pattern_parent_unresolved(
+        name.clone(),
+        parent_enum.clone(),
+        scrut_type.clone(),
+        emit_info.clone(),
+    ) && rust_pattern_is_bare_identifier(rendered.clone()))
+    {
+        unresolved_variant_pattern_refusal(name.clone(), scrut_type.clone())
+    } else {
+        rendered.clone()
+    }
+}
+
+pub fn unresolved_variant_pattern_refusal(name: String, scrut_type: String) -> String {
+    {
+        let scrut = if (scrut_type.clone() == "".to_string()) {
+            "an unstamped scrutinee".to_string()
+        } else {
+            v1_rt::concat(
+                v1_rt::concat("scrutinee type `".to_string(), scrut_type.clone()),
+                "`".to_string(),
+            )
+        };
+        emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("v1.compiler.emit_rust will not render the variant pattern `".to_string(), crate::v1_std_core::qualified_last_segment(name.clone())), "` against ".to_string()), scrut.clone()), ": its parent enum does not resolve, and a bare identifier pattern binds as a catch-all variable in Rust".to_string()))
+    }
+}
+
 pub fn emit_variant_pattern(
+    name: String,
+    parent_enum: Option<String>,
+    field_bindings: Rc<Vec<Rc<Node>>>,
+    path_prefix: Rc<Vec<String>>,
+    shared_types: Rc<BTreeSet<String>>,
+    scrut_type: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    refuse_unresolved_bare_variant_pattern(
+        name.clone(),
+        parent_enum.clone(),
+        scrut_type.clone(),
+        emit_info.clone(),
+        emit_resolved_variant_pattern(
+            name.clone(),
+            parent_enum.clone(),
+            field_bindings.clone(),
+            path_prefix.clone(),
+            shared_types.clone(),
+            scrut_type.clone(),
+            source_indices.clone(),
+            emit_info.clone(),
+        ),
+    )
+}
+
+pub fn emit_resolved_variant_pattern(
     name: String,
     parent_enum: Option<String>,
     field_bindings: Rc<Vec<Rc<Node>>>,
@@ -21766,6 +21853,36 @@ pub fn emit_variant_pattern_rc_aware(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
+    refuse_unresolved_bare_variant_pattern(
+        name.clone(),
+        parent_enum.clone(),
+        scrut_type.clone(),
+        emit_info.clone(),
+        emit_resolved_variant_pattern_rc_aware(
+            name.clone(),
+            parent_enum.clone(),
+            field_bindings.clone(),
+            path_prefix.clone(),
+            rc_analysis.clone(),
+            shared_types.clone(),
+            scrut_type.clone(),
+            source_indices.clone(),
+            emit_info.clone(),
+        ),
+    )
+}
+
+pub fn emit_resolved_variant_pattern_rc_aware(
+    name: String,
+    parent_enum: Option<String>,
+    field_bindings: Rc<Vec<Rc<Node>>>,
+    path_prefix: Rc<Vec<String>>,
+    rc_analysis: Rc<RcPatternAnalysis>,
+    shared_types: Rc<BTreeSet<String>>,
+    scrut_type: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
     {
         let bare_name = crate::v1_std_core::qualified_last_segment(name.clone());
         let resolved_parent = pattern_parent_enum(
@@ -22072,6 +22189,26 @@ v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit::emit_ident(fb_name.clone(),
 }
 
 pub fn variant_pattern_shape_for(
+    name: String,
+    parent_enum: Option<String>,
+    scrut_type: String,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    refuse_unresolved_bare_variant_pattern(
+        name.clone(),
+        parent_enum.clone(),
+        scrut_type.clone(),
+        emit_info.clone(),
+        resolved_variant_pattern_shape_for(
+            name.clone(),
+            parent_enum.clone(),
+            scrut_type.clone(),
+            emit_info.clone(),
+        ),
+    )
+}
+
+pub fn resolved_variant_pattern_shape_for(
     name: String,
     parent_enum: Option<String>,
     scrut_type: String,
