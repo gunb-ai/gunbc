@@ -78,16 +78,21 @@ case is a second arm of that same writer, with the reference derived from the ex
 than from an authored spine. Infer then sees only ordinary resolved constructs, and checks them
 with its existing construct typing and declared-return judgment.
 
-Resolve gains an expected-type context: `ResolveContext.expected`, an `Optional` resolved type
-expression. It is set at four positions and cleared everywhere else, so a construct reached through
-any other edge sees Absent.
+**The expectation is a parameter, not ambient context.** An expectation (`ResolveExpectation`: the
+authored type expression, and the position its names are read at) is handed, as an explicit
+argument, by exactly the four position rules below to the one child each rule owns
+(`resolve_expected_edge`). It is never a `ResolveContext` field. Every other walk goes through
+`resolve_node_walk`, which has no expectation to give, and a headless literal there refuses. That
+makes review condition 3 structural rather than a clearing discipline: a field on the context would
+have been inherited by every child walk that copies the context (a call's arguments, for one), and
+each would have had to remember to clear it.
 
-**`expected` is set ONLY from an AUTHORED type annotation** (ruling, gentle-koi-724): a data
+**The expectation is set ONLY from an AUTHORED type annotation** (ruling, gentle-koi-724): a data
 declaration's declared type, a fn's declared return, a record field's declared type, or the element
 type of an annotated list. Resolve never infers, unifies or propagates a type it computed. Where no
 annotation reaches an elided construct, it refuses located (`resolve_anonymous_record_no_expected_type`)
 and never guesses. A record field's declared type is an annotation authored on the record
-declaration, so nesting stays within this rule. **Syntactic peel only** (review condition 1, neat-boar-16, binding both arms). `expected` is peeled
+declaration, so nesting stays within this rule. **Syntactic peel only** (review condition 1, neat-boar-16, binding both arms). The expectation is peeled
 syntactically from the authored annotation. Where reaching a closed record head would need
 inference, type-variable instantiation, alias unfolding beyond resolve's existing lookup, or any
 head that is not a closed record (or `Map`, for the map arm), the construct REFUSES located. There
@@ -96,19 +101,19 @@ record's own binders (`top: T` of `BoundedLattice<T>`) therefore gives no record
 literal there refuses. The four positions:
 
 - **data initializer**: `data x: T = e` lowers to `Arrow(<empty domain>, T, T, body: e)`, so the
-  body edge of an Arrow is walked with `expected = ` its declared return;
+  body edge of an Arrow is walked with its declared return as the expectation;
 - **declared return**: the same Arrow rule covers `fn f(..) -> T { e }`, reaching `e`'s tail
   expression through blocks and `let .. in` bodies (the value position, not the statements);
 - **record field**: under a construct resolved to record `R` (authored OR elaborated), field `f`'s
-  init is walked with `expected = ` the declared type of `R.f`, as authored (no substitution). This is how nesting works: `compile_stage_memo`'s
+  init is walked with the declared type of `R.f` as the expectation, as authored (no substitution). This is how nesting works: `compile_stage_memo`'s
   `key_derivation: { .. }`, and `host_transport`'s `RuntimePrimitive { value: { .. } }`;
 - **list element**: under a list literal whose expected head is `List` (through its alias
-  authority), each element is walked with `expected = ` the element type argument.
+  authority), each element is walked with the element type argument as the expectation.
   `dag/std/algebra`'s 88 `AlgebraFieldTemplate` rows need this.
 
 At a tag-elided construct, the elided arm of the writer:
 
-1. Takes `expected`. If it is Absent, refuse `resolve_anonymous_record_no_expected_type`.
+1. Takes the expectation. If there is none, refuse `resolve_anonymous_record_no_expected_type`.
 2. Takes its HEAD's resolved declaration, through resolve's existing lookup only. Type arguments
    (`BoundedLattice<DescentEvidence>`) never choose the constructor, and they are not substituted
    anywhere. If the head does not resolve, the head's own resolve refusal stands, and no second
@@ -123,7 +128,7 @@ At a tag-elided construct, the elided arm of the writer:
    the same carrier the authored arm writes.
 5. Walks the fields under the record-field rule above.
 
-The choice reads `expected` only. The field set is never an input to steps 1-3.
+The choice reads the expectation only. The field set is never an input to steps 1-3.
 
 **Resolve's choice is not proof** (review condition 2). Infer CHECKS the elaborated construct
 against the declared type exactly as it checks an authored tag: field names and field value types
@@ -161,13 +166,12 @@ the elided case adds.
 | v2.std.node_query | `construct_tag_optional` | reader | Answers the reference only. For an elided tag it answers Absent. `construct_tag_is_elided` is the one reader of the elided case. |
 | v2.std.node | `arrow_body_record_construct_conforms`, `classify_arrow_body_form` | well_formed gate | Admits the elided marker ONLY before resolve. After resolve the well_formed gate refuses it. |
 | v2.compiler.body_lowering_fold | `body_lower_try_record_literal` | producer | A headless `{ field_init_list }` whose every key is a name lowers to `construct_node(Elided, ..)`. The field inits go through the existing `body_lower_field_init_edge`. |
-| v2.compiler.resolve | `ResolveContext` | context | Gains `expected: Optional<Node>`. It is set by the four position rules above and cleared by every other child walk (`resolve_ctx_with_scope` and siblings clear it by default, so a new edge kind cannot inherit it silently). |
-| v2.compiler.resolve | `resolve_construct_walk` | writer | Gains the elided arm (steps 1-5). The authored arm also sets field expectations, so a headless literal nested under an authored head elaborates. |
-| v2.compiler.resolve | `resolve_arrow_node_in`, the list-literal walk | position rules | Set `expected` for the body edge and for list elements. |
+| v2.compiler.resolve | `ResolveExpectation`, `resolve_expected_edge`, `resolve_arrow_body_or_named_edge`, `resolve_record_field_edge`, `resolve_list_literal_expected` | position rules | The expectation parameter and the four rules that hand it to one child each. `ResolveContext` is unchanged. |
+| v2.compiler.resolve | `resolve_construct_walk`, new `resolve_construct_walk_with_tag`, `resolve_elided_construct_walk` | writer | The tag is walked once before the fields, and its resolved path is handed to the field rule, so a headless literal nested under an authored head elaborates. The elided arm writes the tag from the expectation (steps 1-5). In `resolve_node_walk`, an elided construct refuses `resolve_anonymous_record_no_expected_type`. |
 | v2.compiler.resolve | `resolve_pattern_node_walk` | reader | A tag-elided PATTERN does not arise (the pattern grammar requires a head). No change. |
 | v2.compiler.infer | Conj gather arms | reader | No change. A tag-elided construct cannot reach infer, because resolve either writes its tag or refuses. |
 | v2.workflow.compile_door_cause_ownership | three rows | ownership | One row per refusal cause. |
-| v2.test.claim.namespace_xl0.reference_conservation_accepted_drops | `a_map_literal_value_refuses_at_the_literal_holds` | control | Today it asserts `unsupported_form` for `Map<String, Bool> = { "k": .. }`. It moves to `map_literal_construction_not_modeled` at the elided-tag writer in resolve. It must read the RESOLVE outcome, because the literal now clears lowering, so the `.normalized` read would turn green and the claim false. It stays enrolled as the map arm's refusal control. |
+| v2.test.claim.namespace_xl0.reference_conservation_accepted_drops | `a_map_literal_value_refuses_at_the_literal_holds` | control | Today it asserts `unsupported_form` for `Map<String, Bool> = { "k": .. }`. UNCHANGED by this lane: a string-keyed item still refuses at lowering here. It moves with the map arm (gunbc#12734, jolly-boar-246), which gives string keys an edge form and must then read the RESOLVE outcome. |
 | v2.compiler.eval, v2.std.compilers.target_model, emit | construct gates | reader | No change. They already refuse a non-reference tag after #12701. PR2 adds a control proving an elided construct cannot reach them. |
 
 ## Scope: which of the seven Form B admits
@@ -229,7 +233,7 @@ files a `gunbc.recurring_failure_mode` receipt for it.
    hand-headed form.
 7. **Infer still checks** (review condition 2): elaboration succeeds, and infer then refuses a field
    value of the wrong type, located at the field.
-8. **`expected` does not leak** (review condition 3): an anonymous literal passed as a call argument
+8. **The expectation does not leak** (review condition 3): an anonymous literal passed as a call argument
    under an annotated data declaration refuses `resolve_anonymous_record_no_expected_type`. A second
    case puts it in a match-arm body under an annotated fn return.
 9. **Syntactic peel** (review condition 1): a headless literal at a record field declared as the
