@@ -6989,19 +6989,21 @@ pub fn run_required_floor(
     // check can only judge a row whose subject module is PREPARED, so the subjects of rows the diff
     // added or deleted become seeds here (read at the floor's own diff base; an unreadable base
     // roster refuses, never narrows the scope).
-    let nfr_row_subject_modules: BTreeSet<String> = match &compile_subject {
+    let nfr_row_subjects: Vec<crate::cli_run::NonFoldResidueRowSubject> = match &compile_subject {
         Some(subject)
             if subject
                 .touched_modules
                 .iter()
                 .any(|m| m == "gunbc.non_fold_residue") =>
         {
-            crate::cli_run::non_fold_residue_changed_row_subject_modules().map_err(|e| {
+            crate::cli_run::non_fold_residue_changed_row_subjects().map_err(|e| {
                 format!("REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterBaseUnreadable {e}")
             })?
         }
-        _ => BTreeSet::new(),
+        _ => Vec::new(),
     };
+    let nfr_row_subject_modules =
+        crate::cli_run::non_fold_residue_row_subject_seeds(&nfr_row_subjects);
     let closure_module_seeds: Vec<String> = required_floor_nominal_closure_module_seeds(
         &required_gate_authored_modules,
         &local_repo_wet_schedule_rows,
@@ -7366,7 +7368,7 @@ pub fn run_required_floor(
                 &prepared.graph,
                 &prepared.source_indices,
                 &scoped,
-                &nfr_row_subject_modules,
+                &nfr_row_subjects,
             );
             eprintln!(
                 "[floor-phase] phase=non-fold-residue-diff state=completed scoped_modules={} \
@@ -7412,7 +7414,7 @@ pub fn run_required_floor(
                         .map(|s| format!("  stale roster entry: {s}")),
                 );
                 lines.extend(verdict.row_subjects_untyped.iter().map(|m| {
-                    format!("  changed roster row's subject module not typed by this run: {m}")
+                    format!("  changed roster row's subject not judged at its exact path: {m}")
                 }));
                 lines.extend(
                     verdict

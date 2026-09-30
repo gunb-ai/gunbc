@@ -532,10 +532,59 @@ pub(crate) fn non_fold_residue_changed_row_paths(
         .collect()
 }
 
-/// Module paths of the subjects named by roster rows the diff added or deleted, read at the floor's
-/// resolved diff base. A deleted subject file contributes no module (its row is judged stale by the
-/// existence arm instead). Refuses when the base roster cannot be read.
-pub(crate) fn non_fold_residue_changed_row_subject_modules() -> Result<BTreeSet<String>, String> {
+/// A changed roster row's subject, by its EXACT path, with a typed disposition. Nothing is
+/// dropped: a path that exists but cannot be read or declares no module refuses, and a readable
+/// module is seeded AND must then appear by that same path among the walk's covered paths.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum NonFoldResidueRowSubject {
+    /// Absent at head: the row is judged by the existence arm of the roster diff (stale).
+    Missing {
+        path: String,
+    },
+    Unreadable {
+        path: String,
+        detail: String,
+    },
+    NoModuleDeclaration {
+        path: String,
+    },
+    Module {
+        path: String,
+        module: String,
+    },
+}
+
+pub(crate) fn non_fold_residue_classify_row_subject(
+    path: &str,
+    exists: bool,
+    read: Result<String, String>,
+) -> NonFoldResidueRowSubject {
+    if !exists {
+        return NonFoldResidueRowSubject::Missing {
+            path: path.to_string(),
+        };
+    }
+    match read {
+        Err(detail) => NonFoldResidueRowSubject::Unreadable {
+            path: path.to_string(),
+            detail,
+        },
+        Ok(content) => match extract_module_path(&content) {
+            Some(module) => NonFoldResidueRowSubject::Module {
+                path: path.to_string(),
+                module,
+            },
+            None => NonFoldResidueRowSubject::NoModuleDeclaration {
+                path: path.to_string(),
+            },
+        },
+    }
+}
+
+/// The subjects of every roster row the diff added or deleted, read at the floor's resolved diff
+/// base and classified by exact path. Refuses when the base roster cannot be read.
+pub(crate) fn non_fold_residue_changed_row_subjects(
+) -> Result<Vec<NonFoldResidueRowSubject>, String> {
     let base_rows = match floor_base_file_read(NON_FOLD_RESIDUE_AUTHORITY_REL)? {
         None => Vec::new(),
         Some(content) => {
@@ -543,15 +592,63 @@ pub(crate) fn non_fold_residue_changed_row_subject_modules() -> Result<BTreeSet<
         }
     };
     let root = process_workspace_root();
-    let mut modules = BTreeSet::new();
-    for path in non_fold_residue_changed_row_paths(&base_rows, non_fold_residue_roster_entries()) {
-        if let Ok(content) = std::fs::read_to_string(root.join(&path)) {
-            if let Some(module) = extract_module_path(&content) {
-                modules.insert(module);
+    Ok(
+        non_fold_residue_changed_row_paths(&base_rows, non_fold_residue_roster_entries())
+            .into_iter()
+            .map(|path| {
+                let full = root.join(&path);
+                let read = std::fs::read_to_string(&full).map_err(|e| e.to_string());
+                non_fold_residue_classify_row_subject(&path, full.exists(), read)
+            })
+            .collect(),
+    )
+}
+
+/// The seeds a subject set contributes: the module of every readable, module-declaring subject.
+pub(crate) fn non_fold_residue_row_subject_seeds(
+    subjects: &[NonFoldResidueRowSubject],
+) -> BTreeSet<String> {
+    subjects
+        .iter()
+        .filter_map(|s| match s {
+            NonFoldResidueRowSubject::Module { module, .. } => Some(module.clone()),
+            NonFoldResidueRowSubject::Missing { .. }
+            | NonFoldResidueRowSubject::Unreadable { .. }
+            | NonFoldResidueRowSubject::NoModuleDeclaration { .. } => None,
+        })
+        .collect()
+}
+
+/// Every changed-row subject this run could not judge by its exact path: unreadable, module-less,
+/// or a module path the walk did not cover (not typed, excluded as a test file, or a same-named
+/// module at another path). Missing subjects are absent here -- the roster diff judges them stale.
+pub(crate) fn non_fold_residue_row_subjects_unjudged(
+    subjects: &[NonFoldResidueRowSubject],
+    walk: &TypedFallbackArmWalk,
+) -> Vec<String> {
+    subjects
+        .iter()
+        .filter_map(|s| match s {
+            NonFoldResidueRowSubject::Missing { .. } => None,
+            NonFoldResidueRowSubject::Unreadable { path, detail } => {
+                Some(format!("{path} (unreadable: {detail})"))
             }
-        }
-    }
-    Ok(modules)
+            NonFoldResidueRowSubject::NoModuleDeclaration { path } => {
+                Some(format!("{path} (declares no module)"))
+            }
+            NonFoldResidueRowSubject::Module { path, module } => {
+                if walk.covered_paths.contains(path)
+                    && walk.module_of_path.get(path) == Some(module)
+                {
+                    None
+                } else {
+                    Some(format!(
+                        "{path} (module {module} not covered by the typed walk at this path)"
+                    ))
+                }
+            }
+        })
+        .collect()
 }
 
 /// The required floor's DIFF-SCOPED non-fold-residue verdict over the graph its strict preparation
@@ -569,7 +666,7 @@ pub(crate) struct NonFoldResidueDiffVerdict {
     /// Scoped sites whose wildcard scrutinee carries no resolved inferred type and no roster row
     /// of their own: closedness is undecided, so they refuse rather than pass as open.
     pub undetermined_unrostered: Vec<String>,
-    /// Subject modules of changed roster rows that the prepared graph did not type: a row edit
+    /// Changed roster rows whose subject this run could not judge at its exact path: a row edit
     /// that cannot be judged REFUSES rather than passing unexamined.
     pub row_subjects_untyped: Vec<String>,
 }
@@ -578,7 +675,7 @@ pub(crate) fn non_fold_residue_diff_verdict(
     graph: &ResolvedGraph,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     scoped_modules: &BTreeSet<String>,
-    row_subject_modules: &BTreeSet<String>,
+    row_subjects: &[NonFoldResidueRowSubject],
 ) -> NonFoldResidueDiffVerdict {
     let walk = typed_fallback_arm_walk(graph, si, Some(scoped_modules));
     let typed: BTreeSet<String> = graph
@@ -591,11 +688,7 @@ pub(crate) fn non_fold_residue_diff_verdict(
         .filter(|m| !typed.contains(*m))
         .cloned()
         .collect();
-    let row_subjects_untyped = row_subject_modules
-        .iter()
-        .filter(|m| !typed.contains(*m))
-        .cloned()
-        .collect();
+
     let (unrostered, stale) = non_fold_residue_roster_diff(&walk);
     let undetermined_unrostered = walk
         .undetermined_sites
@@ -603,6 +696,7 @@ pub(crate) fn non_fold_residue_diff_verdict(
         .filter(|s| !non_fold_residue_site_is_rostered(s))
         .cloned()
         .collect();
+    let row_subjects_untyped = non_fold_residue_row_subjects_unjudged(row_subjects, &walk);
     NonFoldResidueDiffVerdict {
         scoped_modules: scoped_modules.len(),
         walk,
@@ -780,27 +874,76 @@ mod nfr_typed_tests {
         );
     }
 
-    // RED CONTROL 4 -- a changed row's subject module that the graph did not type refuses.
+    // RED CONTROLS 4-6 -- a changed row's subject that cannot be judged at its EXACT path refuses.
+    // They drive the real route: classify the path by reading it, then judge against the walk.
     #[test]
-    fn red_control_untyped_row_subject_refuses() {
-        let sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-            [("b.dag", "module b\nfn g(n: Int) -> Int { n }\n")]
-                .iter()
-                .map(|(p, c)| {
-                    Rc::new(v1_compiler_compile::SourceFile {
-                        path: p.to_string(),
-                        content: c.to_string(),
-                    })
-                })
-                .collect();
-        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-        let graph = resolved.graph.clone().expect("graph");
-        let subjects: BTreeSet<String> = ["absent.module".to_string()].into_iter().collect();
-        let verdict =
-            non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &subjects, &subjects);
+    fn red_control_row_subject_existing_non_module_path_refuses() {
+        let subject = non_fold_residue_classify_row_subject(
+            "Cargo.toml",
+            true,
+            Ok("[workspace]\nmembers = []\n".to_string()),
+        );
         assert_eq!(
-            verdict.row_subjects_untyped,
-            vec!["absent.module".to_string()]
+            subject,
+            NonFoldResidueRowSubject::NoModuleDeclaration {
+                path: "Cargo.toml".to_string()
+            }
+        );
+        let unjudged =
+            non_fold_residue_row_subjects_unjudged(&[subject], &TypedFallbackArmWalk::default());
+        assert_eq!(
+            unjudged.len(),
+            1,
+            "a module-less existing path must refuse, not drop"
+        );
+    }
+
+    #[test]
+    fn red_control_row_subject_unreadable_path_refuses() {
+        let subject = non_fold_residue_classify_row_subject(
+            "x.dag",
+            true,
+            Err("permission denied".to_string()),
+        );
+        let unjudged =
+            non_fold_residue_row_subjects_unjudged(&[subject], &TypedFallbackArmWalk::default());
+        assert_eq!(unjudged.len(), 1);
+    }
+
+    #[test]
+    fn red_control_row_subject_excluded_test_path_refuses() {
+        // The walk types the module but excludes `_test.dag` paths, so the row's exact path is
+        // never covered: the row must refuse rather than pass unjudged.
+        let src = "module t\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n";
+        let subject =
+            non_fold_residue_classify_row_subject("dag/test/x_test.dag", true, Ok(src.to_string()));
+        assert_eq!(
+            subject,
+            NonFoldResidueRowSubject::Module {
+                path: "dag/test/x_test.dag".to_string(),
+                module: "t".to_string()
+            }
+        );
+        let walk = typed_fallback_arm_walk_for_fixture(&[("dag/test/x_test.dag", src)])
+            .unwrap_or_else(|c| panic!("{c}"));
+        assert!(!walk.covered_paths.contains("dag/test/x_test.dag"));
+        assert_eq!(
+            non_fold_residue_row_subjects_unjudged(&[subject], &walk).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn green_control_row_subject_covered_at_its_path_is_judged() {
+        let subject =
+            non_fold_residue_classify_row_subject("a.dag", true, Ok(WILDCARD_MODULE.to_string()));
+        let walk = typed_fallback_arm_walk_for_fixture(&[("a.dag", WILDCARD_MODULE)])
+            .unwrap_or_else(|c| panic!("{c}"));
+        assert!(non_fold_residue_row_subjects_unjudged(&[subject], &walk).is_empty());
+        let missing = non_fold_residue_classify_row_subject("gone.dag", false, Err(String::new()));
+        assert!(
+            non_fold_residue_row_subjects_unjudged(&[missing], &walk).is_empty(),
+            "a missing subject is judged stale by the roster diff, not refused here"
         );
     }
 
@@ -824,12 +967,7 @@ mod nfr_typed_tests {
         let scope: BTreeSet<String> = ["b".to_string(), "absent.module".to_string()]
             .into_iter()
             .collect();
-        let verdict = non_fold_residue_diff_verdict(
-            &graph,
-            &resolved.source_indices,
-            &scope,
-            &BTreeSet::new(),
-        );
+        let verdict = non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &scope, &[]);
         assert!(
             verdict.unrostered.is_empty(),
             "module a is out of scope; got {:?}",
@@ -840,12 +978,8 @@ mod nfr_typed_tests {
             vec!["absent.module".to_string()]
         );
         let scope_a: BTreeSet<String> = ["a".to_string()].into_iter().collect();
-        let verdict_a = non_fold_residue_diff_verdict(
-            &graph,
-            &resolved.source_indices,
-            &scope_a,
-            &BTreeSet::new(),
-        );
+        let verdict_a =
+            non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &scope_a, &[]);
         assert_eq!(
             verdict_a.unrostered,
             vec!["a.dag::f".to_string()],
