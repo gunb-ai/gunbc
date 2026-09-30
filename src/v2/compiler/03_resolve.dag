@@ -1650,7 +1650,7 @@ fn resolve_construct_walk_with_tag(
 // AN ANONYMOUS RECORD LITERAL IS ELABORATED FROM AN AUTHORED ANNOTATION, OR REFUSED
 // (docs/plans/anonymous-record-literal-design.md). `{ f: v }` lowers to a construct whose tag is
 // ELIDED (v2.std.node_query construct_tag_is_elided). Its constructor is the record the EXPECTED
-// type names, and the expectation is an explicit parameter handed by exactly four position rules --
+// type names, and the expectation is an explicit parameter handed by three position rules --
 // an Arrow's body under its declared return (which covers a `data` initializer), a record field
 // under its authored field type, and a list element under its annotated list's element type -- and
 // never ambient context. So a headless literal reached by ANY other edge (a call argument, a let
