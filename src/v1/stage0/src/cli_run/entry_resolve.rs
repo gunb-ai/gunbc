@@ -676,7 +676,7 @@ thread_local! {
     /// Every roots key each slot has built on this thread. A run's roots are fixed (above), so a
     /// key built a second time is an evicted index being rebuilt: the same pool indexed twice.
     #[allow(clippy::type_complexity)]
-    static PROCESS_RESOLVE_INDEX_BUILT: RefCell<[BTreeSet<String>; 2]> =
+    pub(crate) static PROCESS_RESOLVE_INDEX_BUILT: RefCell<[BTreeSet<String>; 2]> =
         const { RefCell::new([BTreeSet::new(), BTreeSet::new()]) };
 
     // While loading the materialization-provider authority, cross-process disk hits
