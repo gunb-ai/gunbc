@@ -51,6 +51,10 @@ data ml_types_source: String = "module std.types\n\nimport std.algebra { Finitel
 
 data ml_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\ntype FinitelySupportedFunction<K, V> {\n  size: Int\n}\n\ntype MapIntroductionEntry<K, V> {\n  key: K\n  value: V\n}\n\nfn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> FinitelySupportedFunction<K, V> {\n  FinitelySupportedFunction { size: 0 }\n}\n"
 
+// The kernel String is bound as a canonical symbol only where some module declares it, as
+// std.string_type does in the real corpus; without it a fixture's `String` is unbound.
+data ml_string_type_source: String = "module std.string_type\n\ntype String = Int\n"
+
 data ml_headed_source: String = "module v2.test.ml_headed\n\nimport std.types { Map }\nimport std.algebra { MapIntroductionEntry, map_from_entries }\n\ndata ml_x: Map<String, Bool> = map_from_entries(entries: [MapIntroductionEntry { key: \"a\", value: true }, MapIntroductionEntry { key: \"b\", value: false }])\n"
 
 data ml_headless_source: String = "module v2.test.ml_headless\n\nimport std.types { Map }\n\ndata ml_x: Map<String, Bool> = { \"a\": true, \"b\": false }\n"
@@ -87,6 +91,7 @@ fn ml_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceR
 data ml_ingest: SourceRootIngest = [
   ml_read(source: ml_types_source, id: ^ml_types_read, unit: ^ml_types_cu, path: "src/v2/test/fixture/map_literal/types.dag"),
   ml_read(source: ml_algebra_source, id: ^ml_algebra_read, unit: ^ml_algebra_cu, path: "src/v2/test/fixture/map_literal/algebra.dag"),
+  ml_read(source: ml_string_type_source, id: ^ml_string_type_read, unit: ^ml_string_type_cu, path: "src/v2/test/fixture/map_literal/string_type.dag"),
   ml_read(source: ml_headed_source, id: ^ml_headed_read, unit: ^ml_headed_cu, path: "src/v2/test/fixture/map_literal/headed.dag"),
   ml_read(source: ml_headless_source, id: ^ml_headless_read, unit: ^ml_headless_cu, path: "src/v2/test/fixture/map_literal/headless.dag"),
   ml_read(source: ml_distinct_source, id: ^ml_distinct_read, unit: ^ml_distinct_cu, path: "src/v2/test/fixture/map_literal/distinct.dag"),
@@ -420,6 +425,7 @@ test fn ml_probe_v_str_type_holds() -> Bool {
   match module_roots_from_source_root_ingest(ingest: [
     ml_read(source: ml_types_source, id: ^mlp_types_read_str_type, unit: ^mlp_types_cu_str_type, path: "src/v2/test/fixture/map_literal/p_types_str_type.dag"),
     ml_read(source: ml_algebra_source, id: ^mlp_algebra_read_str_type, unit: ^mlp_algebra_cu_str_type, path: "src/v2/test/fixture/map_literal/p_algebra_str_type.dag"),
+    ml_read(source: ml_string_type_source, id: ^mlp_st_read, unit: ^mlp_st_cu, path: "src/v2/test/fixture/map_literal/p_st.dag"),
     ml_read(source: mlp_str_type_source, id: ^mlp_str_type_read, unit: ^mlp_str_type_cu, path: "src/v2/test/fixture/map_literal/p_str_type.dag")
   ], lm: dag_language_model()) {
     Rejected { diagnostics: _ } => false
