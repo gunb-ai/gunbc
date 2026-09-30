@@ -12,7 +12,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
-import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_magnitude_node_optional, dag_node_is_string_literal_atom, dag_symbol_literal_name_optional, dag_type_atom_node }
+import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_magnitude_node_optional, dag_canonical_literal_from_node, DagCanonicalStringLiteral, dag_symbol_literal_name_optional, dag_type_atom_node }
 import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }
 import v2.std.integer { integer_decimal_digit_type_node }
 import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
@@ -694,10 +694,10 @@ fn bla_string_literal_typed_host_text_verdict() -> Bool {
     Absent => false
     Present { value: t } =>
       fold(node_subtree_nodes(root: t.root), init: BlaPayloadCheck { seen: false, all: true }, f: fn(acc, n) {
-        if dag_node_is_string_literal_atom(node: n) {
-          BlaPayloadCheck { seen: true, all: acc.all && bla_resolved_type_is(t: t, n: n, ty: host_text_type_node()) }
-        } else {
-          acc
+        match dag_canonical_literal_from_node(node: n) {
+          Accepted { value: DagCanonicalStringLiteral, diagnostics: _ } =>
+            BlaPayloadCheck { seen: true, all: acc.all && bla_resolved_type_is(t: t, n: n, ty: host_text_type_node()) }
+          _ => acc
         }
       }).all
   }

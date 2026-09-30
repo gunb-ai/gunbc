@@ -18,7 +18,7 @@ data string_literal_lowers_to_one_class_stamped_atom: RecurringFailureMode = Rec
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_node_is_string_literal_atom", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_canonical_literal_from_node", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.body_let_annotation", decl_name: "bla_host_text_literal_at_structural_string_refuses", field: WholeDeclaration },
   ],
 }

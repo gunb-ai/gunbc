@@ -3983,13 +3983,6 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
 // string_literal_lowers_to_one_class_stamped_atom). Its type does not depend on the value.
 // Every other shape is a typed refusal.
 
-fn dag_node_is_string_literal_atom(node: Node) -> Bool {
-  match node_atom_identity_optional(node: node) {
-    Present { value: id } => id == ^dag_token_string_literal
-    Absent => false
-  }
-}
-
 fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
   match dag_symbol_literal_name_optional(node: node) {
     Present { value: name } =>
@@ -3998,7 +3991,7 @@ fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
         Absent => outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
       }
     Absent =>
-      if dag_node_is_string_literal_atom(node: node) && (length(xs: node.children) == 0) {
+      if (node_atom_identity_optional(node: node) == optional_present(value: ^dag_token_string_literal)) && (length(xs: node.children) == 0) {
         outcome_accepted(value: DagCanonicalStringLiteral)
       } else if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
         outcome_accepted(value: DagCanonicalBoolLiteral { value: true })
