@@ -236,18 +236,18 @@ mod heads_reading_item_boundary_tests {
 /// `heads_projection_tests` (fixture) and `entry_resolve::heads_projection_live_differential`
 /// (live pool).
 pub(crate) fn project_heads_reading(
-    local: &crate::v1_compiler_parse::ParseWithTableResult,
+    local: &pool_acquire::HeadsReading,
     incoming: &Rc<InternTable>,
 ) -> Result<(crate::v1_compiler_parse::ParseResult, Rc<InternTable>), String> {
     let base = incoming.authored_token_ordinals.allocator.next_id;
     let mut table = incoming.clone();
-    let mut relabel: Vec<i64> = Vec::with_capacity(local.intern_table.strings.len());
-    for s in local.intern_table.strings.iter() {
+    let mut relabel: Vec<i64> = Vec::with_capacity(local.local_strings.len());
+    for s in local.local_strings.iter() {
         let r = crate::v1_std_core::intern(table.clone(), s.clone());
         relabel.push(r.id);
         table = r.table.clone();
     }
-    let local_next = local.intern_table.authored_token_ordinals.allocator.next_id;
+    let local_next = local.local_next;
     let table = crate::v1_std_core::intern_table_with_authored_token_ordinals(
         table,
         crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
@@ -256,14 +256,14 @@ pub(crate) fn project_heads_reading(
             },
         ),
     );
-    let module = match &local.result.module {
+    let module = match &local.module {
         Some(m) => Some(project_node(m, base, &relabel)?),
         None => None,
     };
     Ok((
         crate::v1_compiler_parse::ParseResult {
             module,
-            error: local.result.error.clone(),
+            error: local.error.clone(),
         },
         table,
     ))
@@ -524,7 +524,7 @@ mod heads_projection_tests {
             first.intern_table.clone(),
         );
         let local = pool_acquire::heads_reading_for(&b.0, &b.1);
-        assert_ne!(threaded.result.module, local.result.module);
+        assert_ne!(threaded.result.module, local.module);
         let (projected, _) = project_heads_reading(&local, &first.intern_table).unwrap();
         assert_eq!(threaded.result.module, projected.module);
     }

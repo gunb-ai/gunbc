@@ -20,7 +20,7 @@ import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
 import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot, gunbc_runner_slot_desired_for, gunbc_microvm_shakedown_slot_memory_max, memory_admitted_width_of_envelope, fabric_execution_slot_identities, gunbc_microvm_shakedown_slot_charge }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max_bytes }
-import gunbc.fabric_witness_run { gunbc_internal_fleet_trust_domain }
+import gunbc.floor_demand { gunbc_internal_fleet_trust_domain }
 import gunbc.runner_microvm { gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,

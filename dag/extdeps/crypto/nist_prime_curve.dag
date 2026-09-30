@@ -9,6 +9,7 @@ import std.bignat {
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.algebra { Cons, Empty }
 
 // The NIST prime-field curves as ONE family (SP 800-186 §3.2.1): short Weierstrass
 // y² = x³ − 3x + b over GF(p), a = −3 for every member, with ECDSA verification over them
