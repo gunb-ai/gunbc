@@ -23982,8 +23982,6 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
     }
 }
 
-/// The `hmac_sha256_hex` builtin's computation: the lowercase hex HMAC-SHA256 tag of `message`
-/// under the hex-encoded key, or `None` when the key is not hex -- no key, no tag.
 // SHA-256 of the text's UTF-8 bytes, lowercase hex: the host realization of extdeps.crypto.hash
 // sha256_hex_of_text, the same RustCrypto sha2 the HMAC seam below uses. The pure fold
 // (extdeps.crypto.sha2 sha256_hex) is its differential oracle.
@@ -23992,6 +23990,8 @@ fn sha256_hex_of_text_digest(text: &str) -> String {
     hex::encode(Sha256::digest(text.as_bytes()))
 }
 
+/// The `hmac_sha256_hex` builtin's computation: the lowercase hex HMAC-SHA256 tag of `message`
+/// under the hex-encoded key, or `None` when the key is not hex -- no key, no tag.
 fn hmac_sha256_hex_tag(key_hex: &str, message: &str) -> Option<String> {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;

@@ -42,9 +42,6 @@ data hmac_sha256_verify_hex_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-// Issuance: work linear in the message, output the 64 lowercase hex digits of a 32-octet tag. A
-// SECOND contract rather than a widened verify, because only the key holder mints; a verifier keeps
-// its one-bit answer (hmac_sha256_verify_hex_contract above) and never sees a tag to compare.
 // SHA-256 OF A TEXT'S UTF-8 BYTES, lowercase hex (FIPS 180-4). A host seam beside the HMAC ones for
 // one reason, measured: the pure fold (extdeps.crypto.sha2 sha256_hex) costs ~500-600k interpreted
 // eval steps over a ~150-byte text, and the fabric store door digests an approved intent on every
@@ -58,6 +55,9 @@ data sha256_hex_of_text_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
+// Issuance: work linear in the message, output the 64 lowercase hex digits of a 32-octet tag. A
+// SECOND contract rather than a widened verify, because only the key holder mints; a verifier keeps
+// its one-bit answer (hmac_sha256_verify_hex_contract above) and never sees a tag to compare.
 data hmac_sha256_hex_contract: PrimitiveContract = {
   name: "hmac_sha256_hex",
   work: "n",
