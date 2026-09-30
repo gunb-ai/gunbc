@@ -14,7 +14,11 @@ import std.checked_arithmetic {
 }
 import extdeps.storage.types { Ephemeral }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
-import product.fabric.envelope { MemoryRequirement, StorageRequirement }
+import product.fabric.envelope { MemoryRequirement, StorageRequirement, ResourceEnvelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.work {
+  ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity, TrustDomainRef,
+}
 
 data floor_demand_disposition: ConstructionMechanism = SingleAuthority
 
@@ -1563,3 +1567,36 @@ data gunbc_floor_job_wall_receipt_2026_09_19: FloorJobWallReceipt = FloorJobWall
   build_step_wall: second(count: 198),
   sccache_reachable: true,
 }
+
+// THE FLOOR'S EXECUTION DEMAND IS A FACT ABOUT FLOOR DEMAND. It is the requirement the floor's
+// Work is submitted under: its memory is this module's floor_memory_requirement, and the thread
+// count, capability, trust domain and isolation profile complete what the floor asks of a host.
+// It lived in gunbc.fabric_witness_run, whose subject is building the witness run's Work and CI
+// job, so every consumer of the requirement -- the floor dispatch, the runners, and this module's
+// own witness -- paid for that module's closure to read it.
+
+fn floor_isolation_requirement() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+data gunbc_internal_fleet_trust_domain: TrustDomainRef = "gunbc.trust.internal-fleet" as TrustDomainRef
+
+fn floor_execution_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+      envelope: ResourceEnvelope {
+        cpu: none,
+        gpu: none,
+        memory: floor_memory_requirement(),
+        storage: none,
+        network: none,
+      },
+    },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: gunbc_internal_fleet_trust_domain,
+    isolation: floor_isolation_requirement(),
+  }
+}
+
