@@ -10451,29 +10451,27 @@ mod closure_edge_demand_tests {
         );
     }
 
-    /// DISTINCT ROOTS ARE KEPT SIDE BY SIDE, NOT EVICTED. Roots A, then roots B, then A again on
-    /// one thread (the regen round's shape): the third demand returns the FIRST index -- the same
-    /// `Rc`, its parse and typed caches intact -- rather than rebuilding A (a one-entry slot) or
-    /// refusing it (the #12765 refusal that broke the regen round).
+    /// AN EVICTED SHARED INDEX IS NOT REBUILT. Roots A, then roots B (which evicts A from the
+    /// thread's slot), then A again: the third demand refuses where it happens, naming both root
+    /// sets, instead of indexing A a second time. The positive control: asking for A twice with
+    /// nothing in between returns the same index.
     #[test]
-    fn alternating_roots_on_one_thread_reuse_each_index() {
-        let a = Fixture::new(&[("m.dag", "module alt_a\nfn f() -> Int { 1 }\n")]);
-        let b = Fixture::new(&[("m.dag", "module alt_b\nfn f() -> Int { 1 }\n")]);
+    fn a_shared_index_evicted_by_other_roots_refuses_to_rebuild() {
+        let a = Fixture::new(&[("m.dag", "module evict_a\nfn f() -> Int { 1 }\n")]);
+        let b = Fixture::new(&[("m.dag", "module evict_b\nfn f() -> Int { 1 }\n")]);
         let roots_a = vec![a.0.to_string_lossy().into_owned()];
         let roots_b = vec![b.0.to_string_lossy().into_owned()];
-        let first_a = try_process_shared_index(&roots_a).unwrap();
-        let first_b = try_process_shared_index(&roots_b).unwrap();
-        let again_a = try_process_shared_index(&roots_a).unwrap();
-        let again_b = try_process_shared_index(&roots_b).unwrap();
+        let first = try_process_shared_index(&roots_a).unwrap();
+        let again = try_process_shared_index(&roots_a).unwrap();
         assert!(
-            Rc::ptr_eq(&first_a, &again_a),
-            "A is reused after B, not rebuilt"
+            Rc::ptr_eq(&first, &again),
+            "same roots, nothing between: one index"
         );
-        assert!(Rc::ptr_eq(&first_b, &again_b), "B is reused after A");
-        assert!(
-            !Rc::ptr_eq(&first_a, &first_b),
-            "distinct roots are distinct indexes"
-        );
+        try_process_shared_index(&roots_b).unwrap();
+        let Err(err) = try_process_shared_index(&roots_a) else {
+            panic!("rebuilding evicted roots must refuse");
+        };
+        assert!(err.contains("SharedIndexRebuiltAfterEviction"), "{err}");
     }
 
     /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
@@ -12341,7 +12339,7 @@ where
 #[cfg(test)]
 pub(crate) fn reset_process_shared_index_for_test() {
     PROCESS_RESOLVE_INDEX.with(|s| {
-        *s.borrow_mut() = Default::default();
+        *s.borrow_mut() = [None, None];
     });
     PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
 }
