@@ -2,7 +2,7 @@ module gunbc.structural_realization_bindings
 
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelBoolLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelBoolLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold, KernelGrounding }
 import std.operator_realization { StructuralOrderingBinding, StructuralConnectiveBinding }
 
 // THE CORPUS'S HALF OF LITERAL ELABORATION AND OPERATOR REALIZATION (std.literal_elaboration,
@@ -92,4 +92,18 @@ fn structural_connective_binding(carrier_module: String, carrier: String) -> Str
 
 data structural_connective_rows: List<StructuralConnectiveBinding> = [
   structural_connective_binding(carrier_module: "v2.std.logic", carrier: "Bool")
+]
+
+// WHICH INDUCTIVE CARRIERS REALIZE AS THE KERNEL VALUE THEIR CONSTRUCTORS DENOTE
+// (std.literal_elaboration KernelGrounding). std.nat Nat is the naturals, and its host
+// representation is the machine integer on every seed route -- a REALIZATION fact bound to the
+// carrier (DESIGN section 3), which is why the carrier may be the accepted inductive definition and
+// still never run unary. The seed folds the carrier's constructors and constructor patterns into
+// kernel integers once, at the end of typechecking (v1.compiler.infer ground_kernel_views), so the
+// emitter and the interpreter read ONE tree and cannot disagree about it.
+//
+// A ROW MAY ONLY STATE A REALIZATION THAT IS ALREADY TRUE OF THE CARRIER ON EVERY ROUTE, under the
+// same discipline as the rows above: it is never added to make a failing site compile.
+data kernel_grounding_rows: List<KernelGrounding> = [
+  KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat") }
 ]

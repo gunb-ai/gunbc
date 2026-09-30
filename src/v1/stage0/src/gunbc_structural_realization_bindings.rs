@@ -10,7 +10,7 @@ use crate::std_literal_elaboration::LiteralUnfolding::{
     BooleanUnfold, PeanoUnfold, UnicodeScalarSequenceUnfold,
 };
 pub use crate::std_literal_elaboration::{
-    LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
+    KernelGrounding, LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
 };
 pub use crate::std_operator_realization::{StructuralConnectiveBinding, StructuralOrderingBinding};
 use crate::std_types::Bool::*;
@@ -115,4 +115,16 @@ pub fn structural_connective_rows() -> Rc<Vec<Rc<StructuralConnectiveBinding>>> 
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<StructuralConnectiveBinding>>>| c.clone())
+}
+
+pub fn kernel_grounding_rows() -> Rc<Vec<Rc<KernelGrounding>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<KernelGrounding>>> = {
+                Rc::new(vec![Rc::new(KernelGrounding {
+        source_kind: LiteralSourceKind::KernelIntLiteral,
+        carrier: crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<KernelGrounding>>>| c.clone())
 }
