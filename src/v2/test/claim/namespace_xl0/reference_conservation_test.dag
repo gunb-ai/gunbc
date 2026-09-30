@@ -484,3 +484,25 @@ test fn an_unadmitted_role_table_surfaces_beside_a_normalization_refusal_holds()
       }
     })
 }
+
+// ---- a string literal is conserved by its VALUE -------------------------------------------------
+
+// A string literal carries its decoded value (v2.extdeps.languages.dag
+// dag_string_literal_node_from_lexeme) and is a population member by its own predicate, compared by
+// that value on both sides (v2.compiler.reference_conservation conserved_identity_of). Before this,
+// every string literal was one childless class atom: its value was in neither tree, so no drop of it
+// could be counted. The fixture's two literals differ, and each must be conserved with nothing
+// dropped. MUTATION RECEIPT (run, see the PR): a lowering that keeps the literal's occurrence but
+// rebuilds it without its payload reds this with each value RespelledInNormalizedTree.
+data string_literal_value_source: String = "module v2.test.reference_conservation_string\n\nimport v2.std.logic { Bool }\n\ndata rc_greeting: String = \"hello\"\n\nfn rc_quoted() -> String { \"a\\\"b\" }\n"
+
+fn string_literal_value_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "string_literal_value", source: string_literal_value_source)
+}
+
+test fn a_string_literal_is_conserved_by_its_value_holds() -> Bool {
+  let r = conservation_report_of(subject: string_literal_value_subject())
+  reference_conservation_admitted(report: r)
+    && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "hello")) == 0
+    && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "a\"b")) == 0
+}
