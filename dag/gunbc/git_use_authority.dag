@@ -258,10 +258,10 @@ fn git_import_findings(index: Map<String, Map<String, Bool>>, module_name: Strin
 fn git_import_authority_verdict(rows: List<GitUseRow>, population: ParsedGitImportPopulation) -> GitImportAuthorityVerdict {
   let index = git_import_authorization_index(rows: rows)
   let rust_rows = fold(rows, init: [], f: fn(acc, row) {
-    match row.surface { RustGitDependency { operation: _ } => Cons { head: row, tail: acc } _ => acc }
+    match row.surface { RustGitDependency { operation: _ } => Cons { head: row, tail: acc }  ParsedDagGitDependency { imported_module: _ } => acc  DagGitProcessDependency { operation: _ } => acc }
   })
   let process_rows = fold(rows, init: [], f: fn(acc, row) {
-    match row.surface { DagGitProcessDependency { operation: _ } => Cons { head: row, tail: acc } _ => acc }
+    match row.surface { DagGitProcessDependency { operation: _ } => Cons { head: row, tail: acc }  ParsedDagGitDependency { imported_module: _ } => acc  RustGitDependency { operation: _ } => acc }
   })
   let row_findings = fold(rows, init: [], f: fn(acc, row) { git_findings_prepend(items: git_use_row_findings(row: row), onto: acc) })
   match population {
