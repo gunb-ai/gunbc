@@ -12984,6 +12984,31 @@ fn dispatch_service_wet(
         return dispatch_env_get_native(op_node, param_env, ctx);
     }
 
+    // Local shell.Test.*: a boolean question about a path THE FILESYSTEM ALREADY HOLDS for this
+    // process — `test -x`/`test -f` spawn a child to ask the kernel what `std::fs::metadata`
+    // answers in-process. Same census §0b root as Env.Get ("modeled operations whose only
+    // realization is a shell escape"), one leaf down: the modeled PATH-search composition
+    // (operator decision 2026-09-30, arm B) probes one entry per PATH segment, and through the
+    // shell transport that is one spawned `test` per segment — a behavior regression the operator
+    // refused. This arm makes each probe in-process so the composition costs ZERO children per
+    // entry. The declared shell `test` argv remains the remote-target realization.
+    //
+    // SEMANTIC FIDELITY, three places where POSIX `test` and naive metadata disagree:
+    // - `test -x` follows the EFFECTIVE ids; mode bit checks would lie when euid != ruid.
+    //   `access(2) with effective ids` does not exist portably, but on Linux AT_EACCESS does;
+    //   elsewhere we fall back to metadata-mode matching, which is right whenever euid == ruid
+    //   (the only configuration this fleet runs).
+    // - `test -s` on a directory is implementation-defined; we answer from file_type+len,
+    //   matching GNU coreutils (directory with entries still reports its own st_size > 0,
+    //   so a directory IS "non-empty" under -s when its st_size is nonzero — same answer).
+    // - A failed metadata (missing path, unsearchable parent) is FALSE, matching test's exit 1 —
+    //   one exit code there carries missing/wrong-kind/could-not-look (the conflation
+    //   filesystem_absence_establishment_adoption_standing already names at the model grain;
+    //   this handler does not widen it, it reproduces it exactly).
+    if let Some(test_op) = intent.strip_prefix("shell.Test.") {
+        return dispatch_shell_test_native(test_op, op_node, param_env, ctx);
+    }
+
     if is_shell_transport(transport.clone()) {
         // An operation declaring an `extdeps.transports.shell` `ShellOutcome` field receives the
         // spawn failure as a value, with every other declared field absent; one declaring none
@@ -13073,6 +13098,220 @@ fn dispatch_env_get_native(
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
         fields: Rc::new(vec![(ctx.sym("value"), value)]),
     })
+}
+
+/// Native realization of the `shell.Test.*` family for OnTarget locality — same exit-status
+/// semantics as POSIX `test` (probe holds → exit 0 → field true; anything else, including a
+/// path that cannot be stat'ed at all, → exit 1 → field false), with no child process.
+/// The returned record carries the operation's one declared boolean field, so every declared
+/// output projection (`from "exit_success"`) lands exactly as the shell transport's does.
+fn dispatch_shell_test_native(
+    test_op: &str,
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let path = match param_env.lookup(ctx.sym("path")) {
+        Some(Value::Str(s)) => s.to_string(),
+        Some(other) => {
+            return Err(InterpError::TypeError {
+                msg: format!("shell.Test.{test_op} path must be String, got {other}"),
+            });
+        }
+        None => {
+            return Err(InterpError::TypeError {
+                msg: format!("shell.Test.{test_op} missing path parameter"),
+            });
+        }
+    };
+    let p = std::path::Path::new(&path);
+    let md = std::fs::metadata(p);
+    let holds = match test_op {
+        "IsExecutable" => native_test_is_executable(p, md.as_ref().ok()),
+        "IsNonEmpty" => md.as_ref().map(|m| m.len() > 0).unwrap_or(false),
+        "IsFile" => md
+            .as_ref()
+            .map(|m| m.file_type().is_file())
+            .unwrap_or(false),
+        "IsDirectory" => md.as_ref().map(|m| m.file_type().is_dir()).unwrap_or(false),
+        "IsSticky" => {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                md.as_ref()
+                    .map(|m| m.permissions().mode() & 0o1000 != 0)
+                    .unwrap_or(false)
+            }
+            #[cfg(not(unix))]
+            {
+                false
+            }
+        }
+        "IsWritable" => native_test_is_writable(p, md.as_ref().ok()),
+        other => {
+            return Err(InterpError::TypeError {
+                msg: format!("shell.Test.{other} has no native realization"),
+            });
+        }
+    };
+    // The field name is the operation's one declared output; reading it from the declaration
+    // keeps this handler from restating six spellings the service already owns.
+    let return_type = match op_node.inferred.as_deref() {
+        Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
+        _ => {
+            return Err(InterpError::TypeError {
+                msg: format!("shell.Test.{test_op} return type unresolved"),
+            });
+        }
+    };
+    let field_name = return_type
+        .children
+        .first()
+        .map(|c| authored_name_at(ctx.si(), c.clone()))
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!("shell.Test.{test_op} declares no output field"),
+        })?;
+    Ok(Value::Record {
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        fields: Rc::new(vec![(ctx.sym(&field_name), Value::Bool(holds))]),
+    })
+}
+
+/// `test -x`: executable BY THE EFFECTIVE PRINCIPAL. `access(2)` with AT_EACCESS asks the kernel
+/// with the effective ids directly (Linux); the metadata-mode fallback is exact when euid == ruid,
+/// the only configuration this fleet runs, and conservative (may answer false where a setuid-edge
+/// truth is true) everywhere else — a probe that can only under-claim, never over-claim.
+fn native_test_is_executable(path: &std::path::Path, md: Option<&std::fs::Metadata>) -> bool {
+    // `test -x` on a directory answers searchability, which IS the exec bit on a directory;
+    // access(2) answers the same bit for files and directories alike, so no kind split is needed.
+    #[cfg(all(unix, target_os = "linux"))]
+    {
+        let _ = md;
+        use std::os::unix::ffi::OsStrExt;
+        let c_path = match std::ffi::CString::new(path.as_os_str().as_bytes()) {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        // AT_EACCESS: check with effective ids, not real ids.
+        (unsafe {
+            libc::faccessat(
+                libc::AT_FDCWD,
+                c_path.as_ptr(),
+                libc::X_OK,
+                libc::AT_EACCESS,
+            )
+        }) == 0
+    }
+    #[cfg(not(all(unix, target_os = "linux")))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        md.map(|m| m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+}
+
+/// `test -w`: writable BY THE EFFECTIVE PRINCIPAL. Same access(2)/AT_EACCESS reasoning as
+/// native_test_is_executable.
+fn native_test_is_writable(path: &std::path::Path, _md: Option<&std::fs::Metadata>) -> bool {
+    #[cfg(all(unix, target_os = "linux"))]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let c_path = match std::ffi::CString::new(path.as_os_str().as_bytes()) {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        (unsafe {
+            libc::faccessat(
+                libc::AT_FDCWD,
+                c_path.as_ptr(),
+                libc::W_OK,
+                libc::AT_EACCESS,
+            )
+        }) == 0
+    }
+    #[cfg(not(all(unix, target_os = "linux")))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        _md.map(|m| !m.permissions().readonly()).unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod shell_test_native_tests {
+    use super::*;
+
+    /// The native handler must answer EXACTLY what the spawned `test` answers for the same path,
+    /// on this host — the pair is the measurement, mirroring the SocketInodeHolders probe note in
+    /// extdeps.shell (a probe whose only observed state is one arm proves nothing). Each case
+    /// asserts the native answer AND shells out to `test` for the same path.
+    fn spawned_test(flag: &str, path: &str) -> bool {
+        std::process::Command::new("test")
+            .arg(flag)
+            .arg(path)
+            .status()
+            .expect("spawn test")
+            .success()
+    }
+
+    #[test]
+    fn native_is_executable_matches_spawned_test() {
+        for path in [
+            "/bin/sh",
+            "/bin/true",
+            "/etc/passwd",
+            "/nonexistent/no/such/binary",
+            "/tmp",
+        ] {
+            let md = std::fs::metadata(path).ok();
+            assert_eq!(
+                native_test_is_executable(std::path::Path::new(path), md.as_ref()),
+                spawned_test("-x", path),
+                "IsExecutable diverges from test -x for {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_is_writable_matches_spawned_test() {
+        for path in [
+            "/tmp",
+            "/bin/sh",
+            "/etc/passwd",
+            "/nonexistent/no/such/binary",
+        ] {
+            let md = std::fs::metadata(path).ok();
+            assert_eq!(
+                native_test_is_writable(std::path::Path::new(path), md.as_ref()),
+                spawned_test("-w", path),
+                "IsWritable diverges from test -w for {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_kind_and_size_predicates_match_spawned_test() {
+        // /dev/null is the zero-byte red control; /bin/sh the non-empty positive.
+        assert!(spawned_test("-s", "/bin/sh"));
+        assert!(!spawned_test("-s", "/dev/null"));
+        assert!(std::fs::metadata("/bin/sh")
+            .map(|m| m.len() > 0)
+            .unwrap_or(false));
+        assert!(!std::fs::metadata("/dev/null")
+            .map(|m| m.len() > 0)
+            .unwrap_or(false));
+        assert!(std::fs::metadata("/bin/sh")
+            .map(|m| m.file_type().is_file())
+            .unwrap_or(false));
+        assert!(!std::fs::metadata("/tmp")
+            .map(|m| m.file_type().is_file())
+            .unwrap_or(false));
+        assert!(std::fs::metadata("/tmp")
+            .map(|m| m.file_type().is_dir())
+            .unwrap_or(false));
+        assert!(!std::fs::metadata("/nonexistent/no/such/dir")
+            .map(|m| m.file_type().is_dir())
+            .unwrap_or(false));
+    }
 }
 
 fn build_service_param_env(
