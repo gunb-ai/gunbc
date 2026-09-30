@@ -628,6 +628,40 @@ fn body_lower_census_diagnostics(site: Symbol, node: Node) -> NonEmptyDiagnostic
   diagnostics_singleton(d: body_lower_diagnostic(reason: site, n: node))
 }
 
+// MQ-5 CENSUS (scratch): the node body_lower_find_core_substrate_optional steps PAST -- an
+// unrecognised lowered node on the search's own first-match path -- when it then answers a descendant.
+fn body_lower_census_find_passes_unrecognised(root: Node) -> Optional<Node> {
+  if body_lower_is_core_substrate(node: root) {
+    optional_absent()
+  } else {
+    match body_lower_find_core_substrate_optional(root: root) {
+      Absent => optional_absent()
+      Present { value: _ } =>
+        if body_lower_census_unrecognised_lowered(node: root) {
+          optional_present(value: root)
+        } else {
+          match body_lower_census_first_hit_child(root: root) {
+            Absent => optional_absent()
+            Present { value: child } => body_lower_census_find_passes_unrecognised(root: child)
+          }
+        }
+    }
+  }
+}
+
+fn body_lower_census_first_hit_child(root: Node) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match body_lower_find_core_substrate_optional(root: e.target) {
+          Present { value: _ } => optional_present(value: e.target)
+          Absent => optional_absent()
+        }
+    }
+  })
+}
+
 fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
   if body_lower_census_unrecognised_lowered(node: node) {
     OperandRefRefused { diagnostics: body_lower_census_diagnostics(site: ^mq5_census_operand_ref_read, node: node) }
@@ -3000,6 +3034,10 @@ fn body_lower_body_subtree_lower_from_primary(captured: Node) -> Outcome<Optiona
         ParseSubtreeFound { captured: stmt } =>
           body_lower_body_subtree_lower(captured: stmt)
         ParseSubtreeAbsent =>
+          match body_lower_census_find_passes_unrecognised(root: captured) {
+            Present { value: passed } =>
+              Rejected { diagnostics: body_lower_census_diagnostics(site: ^mq5_census_find_core_substrate, node: passed) }
+            Absent =>
           match body_lower_find_core_substrate_optional(root: captured) {
             Present { value: lowered } =>
               outcome_accepted(value: optional_present(value: lowered))
@@ -3007,6 +3045,7 @@ fn body_lower_body_subtree_lower_from_primary(captured: Node) -> Outcome<Optiona
               body_lower_try_body_lowered(
                 node: body_lower_unwrap_surface_shell(node: captured)
               )
+          }
           }
       }
   }
@@ -9676,6 +9715,10 @@ fn mq5_census_control() -> List<String> {
   [
     mq5_census_control_verdict(o: body_lower_fold(node: unknown)),
     mq5_census_control_verdict(o: body_lower_fold(node: projection)),
-    mq5_census_control_verdict(o: body_lower_fold(node: raw))
+    mq5_census_control_verdict(o: body_lower_fold(node: raw)),
+    match body_lower_census_find_passes_unrecognised(root: node_synthetic(kind: TypeNode { connective: Conj }, children: [
+      Edge { label: Named { name: ^mq5_probe_edge }, target: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [Edge { label: Positional, target: leaf }]) }
+    ])) { Present { value: _ } => "find_passes_hit"  Absent => "find_passes_absent" },
+    match body_lower_census_find_passes_unrecognised(root: projection) { Present { value: _ } => "find_projection_hit"  Absent => "find_projection_absent" }
   ]
 }
