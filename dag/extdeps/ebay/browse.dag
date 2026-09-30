@@ -517,7 +517,8 @@ fn browse_render_filter(f: BrowseSearchFilter) -> BrowseFilterRender {
 fn browse_wrap_condition_ids(r: BrowseFilterRender) -> BrowseFilterRender {
   match r {
     BrowseFilterRendered { param: ids } => BrowseFilterRendered { param: join(["conditionIds:{", ids, "}"], "") }
-    _ => r
+    BrowseFilterEmptyValueSet { field: _ } => r
+    BrowseFilterConditionHasNoId { condition: _ } => r
   }
 }
 

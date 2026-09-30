@@ -4127,6 +4127,7 @@ mod compiler_tests {
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
         })
     }
@@ -4191,6 +4192,93 @@ mod compiler_tests {
                 source_indices.clone(),
                 empty_emit.clone()
             )
+        );
+    }
+
+    #[test]
+    fn unresolved_variant_pattern_refuses_instead_of_binding_bare() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
+        let no_fields = std::rc::Rc::new(im::Vector::new());
+        let no_path = std::rc::Rc::new(im::Vector::new());
+        let no_shared = std::rc::Rc::new(im::OrdSet::new());
+        let unresolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Add".to_string(),
+            None,
+            no_fields.clone(),
+            no_path.clone(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved.starts_with("compile_error!(") && unresolved.contains("`Add`"),
+            "unresolved parent must refuse, got {}",
+            unresolved
+        );
+        let unresolved_rc = crate::v1_compiler_emit_rust::emit_variant_pattern_rc_aware(
+            "Add".to_string(),
+            None,
+            no_fields.clone(),
+            no_path.clone(),
+            crate::v1_compiler_emit_rust::empty_rc_pattern_analysis(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved_rc.starts_with("compile_error!("),
+            "rc-aware producer must refuse, got {}",
+            unresolved_rc
+        );
+        let unresolved_shape = crate::v1_compiler_emit_rust::variant_pattern_shape_for(
+            "Add".to_string(),
+            None,
+            String::new(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved_shape.starts_with("compile_error!("),
+            "shape producer must refuse, got {}",
+            unresolved_shape
+        );
+        let resolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Add".to_string(),
+            Some("BinOp".to_string()),
+            no_fields.clone(),
+            no_path.clone(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert_eq!(resolved, "BinOp::Add");
+        let optional = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Absent".to_string(),
+            None,
+            no_fields,
+            no_path,
+            no_shared,
+            String::new(),
+            source_indices,
+            empty_emit,
+        );
+        assert_eq!(optional, "std::option::Option::None");
+        let fielded_emit = std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+            fielded_variants: std::rc::Rc::new(im::OrdSet::unit("Named".to_string())),
+            ..(*crate::v1_compiler_infer_emit_info::empty_emit_graph_info()).clone()
+        });
+        assert_eq!(
+            crate::v1_compiler_emit_rust::variant_pattern_shape_for(
+                "Named".to_string(),
+                None,
+                String::new(),
+                fielded_emit
+            ),
+            "Named { .. }",
+            "a braced render is a struct pattern, never a binding, and is not refused"
         );
     }
 
@@ -4455,6 +4543,7 @@ mod compiler_tests {
                 match_pattern: None,
                 module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
                 declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+                declaration: None,
                 expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
             })
         }
@@ -4918,6 +5007,114 @@ mod compiler_tests {
         );
     }
 
+    // CAUSE 1b: A DECLARATION FIELD'S TYPE REFERENCE CARRIES THE DECLARATION RESOLVE BOUND IT TO.
+    // v1.compiler.infer_resolve resolve_item_types resolved each field's authored reference and kept
+    // only its properties, so the typed tree's field reference named no declaration.
+    // field_inferred_with_declaration records resolve's binding on Node.declaration. The rows run
+    // the REAL route, parse through resolve through infer, via the census entry. Each row reads two
+    // columns: decl_identity (the production reading, which must stay UNCHANGED while
+    // Node.declaration is in shadow) and recorded_declaration (the shadow slot resolve wrote).
+    // THE RED is the first row: without the writer recorded_declaration reads none. The control keeps
+    // a kernel spelling identified by the kernel, so a repair that bound kernel fields to a mint
+    // (measured once, through the inferred slot: every String/Int field turned Unidentified) fails it.
+    #[test]
+    fn declaration_field_reference_names_its_declaration() {
+        use crate::v1_compiler_compile::SourceFile;
+        let sources = vec![
+            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/a.dag".to_string(), content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n\ntype Tree {\n  kids: List<Tree>\n}\n\nfn tree_size(t: Tree) -> Int {\n  1\n}\n\ntype Box<T> {\n  held: T\n}\n\nfn rebox<T>(b: Box<T>) -> Box<T> {\n  b\n}\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/b.dag".to_string(), content: "module fid.b\n\nimport fid.a { Leaf }\n\ntype Holder {\n  leaf: Leaf\n}\n".to_string() }),
+        ];
+        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
+            std::rc::Rc::new(sources.into()),
+        );
+        assert!(
+            !receipt.starts_with("REFUSED"),
+            "the census must compile the fixture: {receipt}"
+        );
+        let identity_at = |enclosing: &str, position: &str, authored: &str| -> Vec<String> {
+            receipt
+                .lines()
+                .skip(1)
+                .map(|l| l.split('\t').collect::<Vec<_>>())
+                .filter(|c| c[1] == enclosing && c[2] == position && c[3] == authored)
+                .map(|c| format!("{}|{}", c[8], c[12]))
+                .collect()
+        };
+        let decl_identity =
+            |enclosing: &str, authored: &str| identity_at(enclosing, "declaration_field", authored);
+        // (1) THE RED: a field naming another module's record.
+        assert_eq!(
+            decl_identity("Holder", "Leaf"),
+            vec![
+                "Unidentified:SpanDeclaresNothing/resolved:none|Declaration:fid.a::Leaf"
+                    .to_string()
+            ],
+            "{receipt}"
+        );
+        // (2) The control: a kernel spelling is identified by the kernel, not bound to a mint.
+        assert_eq!(
+            decl_identity("Leaf", "Int"),
+            vec!["Kernel:Int|none".to_string()],
+            "{receipt}"
+        );
+        // (3) CAUSE 1a, THE RED: a signature reference to a RECURSIVE type. Resolve leaves it in place
+        // rather than expanding it (is_recursive_type_for), and now records its identity there. Only the
+        // shadow column is asserted: the production reading of this position is not this row's subject.
+        let tree = identity_at("tree_size", "fn_signature_param", "Tree");
+        assert!(
+            tree.len() == 1 && tree[0].ends_with("|Declaration:fid.a::Tree"),
+            "{receipt}"
+        );
+        // (4) CAUSE 3, THE RED: a reference to a type parameter names its BINDER, (owner, TypeParameter).
+        // The two binders are spelled T, and the owner is the nearest header binding the name, so Box's
+        // field T and rebox's T inside Box<T> are DIFFERENT identities. Keying by spelling would make them one.
+        let box_t = identity_at("Box", "declaration_field", "T");
+        let rebox_t = identity_at("rebox", "fn_signature_param/type_arg", "T");
+        assert!(
+            box_t.len() == 1 && box_t[0].ends_with("|Declaration:fid.a::Box::<T>"),
+            "{receipt}"
+        );
+        assert!(
+            rebox_t.len() == 1 && rebox_t[0].ends_with("|Declaration:fid.a::rebox::<T>"),
+            "{receipt}"
+        );
+    }
+
+    // A REPEATED TYPE PARAMETER IN ONE HEADER REFUSES, LOCATED, AND SAYS WHICH NAME. The refusal
+    // predates this row. Its message once blamed a value parameter and called a type a fn, so the
+    // row asserts the NAME and the OWNER, not merely that some diagnostic fired. The control header
+    // binds two distinct names and must not produce that diagnostic.
+    #[test]
+    fn duplicate_type_parameter_in_one_header_refuses() {
+        use crate::v1_compiler_compile::SourceFile;
+        let messages = |content: &str| -> Vec<String> {
+            let sources = vec![std::rc::Rc::new(SourceFile {
+                path: "fixtures/dup_binder/a.dag".to_string(),
+                content: content.to_string(),
+            })];
+            let result =
+                crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources.into()));
+            result
+                .diagnostics
+                .iter()
+                .map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone()))
+                .collect()
+        };
+        let red = messages("module dup.a\n\ntype Pair<T, T> {\n  left: T\n}\n");
+        assert!(
+            red.iter()
+                .any(|m| m.contains("the name 'T' is bound twice in the header of 'Pair'")),
+            "{red:?}"
+        );
+        let control = messages("module dup.b\n\ntype Pair<T, U> {\n  left: T\n  right: U\n}\n");
+        assert!(
+            !control
+                .iter()
+                .any(|m| m.contains("is bound twice in the header")),
+            "{control:?}"
+        );
+    }
+
     fn item_of_kind(
         name: &str,
         kind: crate::v1_std_core::ParsedModuleItemKind,
@@ -4931,6 +5128,7 @@ mod compiler_tests {
             properties: std::rc::Rc::new(props),
             module_item_kind: kind,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             ..(*shaped_type_node(name, Vec::new())).clone()
         })
     }
