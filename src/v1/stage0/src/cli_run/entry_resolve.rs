@@ -558,11 +558,12 @@ pub(crate) fn load_sources_for_entry_with_pool(
     if let Some(cached) = index.entry_closure_sources.borrow().get(&cache_key) {
         return Ok(cached.clone());
     }
-    let sources = load_sources_for_entry_with_index(
-        &index.source_files,
-        &index.module_graph_facts,
-        entry_path,
-    )?;
+    // The import closure only: the module-path reference half is the fixpoint's own
+    // (`extend_with_reference_closure_for_pool`), read from the index's one parse per file.
+    // Running `extend_with_reference_closure` first answered the same question from a second,
+    // per-entry full parse of every closure file.
+    let sources =
+        load_import_closure_for_entry(&index.source_files, &index.module_graph_facts, entry_path)?;
     let sources = extend_sources_to_both_closure_fixpoint(sources, index)?;
     index
         .entry_closure_sources
@@ -572,6 +573,19 @@ pub(crate) fn load_sources_for_entry_with_pool(
 }
 
 pub(crate) fn load_sources_for_entry_with_index(
+    index: &ModuleSourceIndex,
+    facts: &ModuleGraphFactsLive,
+    entry_path: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let sources = load_import_closure_for_entry(index, facts, entry_path)?;
+    let mut sources = extend_with_reference_closure(sources, index, facts)?;
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.dedup_by(|a, b| a.path == b.path);
+    Ok(sources)
+}
+
+/// An entry and its import closure, with no reference edges followed.
+fn load_import_closure_for_entry(
     index: &ModuleSourceIndex,
     facts: &ModuleGraphFactsLive,
     entry_path: &str,
@@ -591,9 +605,6 @@ pub(crate) fn load_sources_for_entry_with_index(
     {
         sources.push(entry_source);
     }
-    let mut sources = extend_with_reference_closure(sources, index, facts)?;
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
-    sources.dedup_by(|a, b| a.path == b.path);
     Ok(sources)
 }
 
@@ -3522,5 +3533,77 @@ mod closure_parse_acquisition_differential {
             divergent.is_empty(),
             "pooled artifacts diverge: {divergent:?}"
         );
+    }
+}
+
+/// THE LIVE IDENTITY DIFFERENTIAL for the census projecting rather than re-parsing: every file
+/// of the `[dag, src/v2]` shared index, in `pool_parse`'s order, through both readings, compared
+/// by `heads_projection_divergences`.
+#[cfg(test)]
+mod heads_projection_live_differential {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn projected_heads_equal_the_threaded_parse_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let mut keys: Vec<String> = index.source_files.keys().cloned().collect();
+        keys.sort();
+        let files: Vec<(String, String)> = keys
+            .iter()
+            .map(|k| {
+                let sf = &index.source_files[k];
+                (sf.path.clone(), sf.content.clone())
+            })
+            .collect();
+        let (n, divergent) = super::super::census_heads::heads_projection_divergences(&files);
+        eprintln!("DIFF compared={n} divergent={}", divergent.len());
+        assert!(n > 1000, "the live pool was read ({n} files)");
+        assert!(
+            divergent.is_empty(),
+            "divergent: {:?}",
+            &divergent[..divergent.len().min(20)]
+        );
+    }
+}
+
+/// THE IDENTITY DIFFERENTIAL for the tree census upgrading the memoized raw census instead of
+/// rebuilding it: for every source root of the live `[dag, src/v2]` index, the census
+/// `tree_bare_census_for_root` now serves equals the direct
+/// `build_symbol_index_census_nodes(tree_census_nodes(root))` it replaced -- the whole
+/// `SymbolIndex` (entries, bare lookup states and candidates, services, alias reps, exposures).
+#[cfg(test)]
+mod tree_census_from_raw_differential {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn tree_census_from_memoized_raw_equals_the_direct_build_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let pool = super::super::pool_parse(&index).expect("pool parse");
+        let mut compared = 0usize;
+        for r in index.source_roots.iter() {
+            let served = super::super::tree_bare_census_for_root(&index, r).expect("served");
+            let nodes = super::super::tree_census_nodes(&index, r).expect("tree nodes");
+            let direct =
+                v1_compiler_infer::build_symbol_index_census_nodes(nodes, pool.combined_si.clone());
+            eprintln!(
+                "DIFF root={r} entries={} bare={} equal={}",
+                direct.entries.len(),
+                direct.global_bare.len(),
+                *served == *direct
+            );
+            assert!(*served == *direct, "tree census for {r} diverges");
+            compared += 1;
+        }
+        assert!(compared >= 2, "both live roots compared ({compared})");
     }
 }
