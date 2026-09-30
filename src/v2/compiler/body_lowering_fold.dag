@@ -6179,6 +6179,37 @@ fn body_lower_if_then_fn_body_optional(captured: Node) -> Optional<Node> {
   }
 }
 
+// WHAT FOLLOWS `else` IS AN `else if` ONLY WHEN ITS FIRST PRODUCTION IS AN if_expr. The grammar
+// makes the else part either an if_expr or a fn_body, so the first production shell under it -- found
+// without descending into any production -- decides which. A deep search for any if_expr answered
+// `else { match k { A => .. B => if c {..} else {..} } }` with the if NESTED in the match arm, and the
+// arm lowered to that if alone: the scrutinee, the other arms and the patterns were dropped and the
+// module accepted (gunbc.recurring_failure_mode else_arm_lowered_as_an_if_nested_inside_it).
+fn body_lower_else_part_if_expr_optional(else_part: Node) -> Optional<Node> {
+  match body_lower_first_production_shell_optional(root: else_part) {
+    Present { value: shell } =>
+      match parse_production_emitted_identity_optional(node: shell) {
+        Present { value: id } => if id == ^dag_surface_if_expr { optional_present(value: shell) } else { optional_absent() }
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+// The first production shell under `root` in pre-order, never descending into a production.
+fn body_lower_first_production_shell_optional(root: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: _ } => optional_present(value: root)
+    Absent =>
+      fold(root.children, init: optional_absent(), f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => body_lower_first_production_shell_optional(root: e.target)
+        }
+      })
+  }
+}
+
 // AN `else if` ARM IS ANSWERED AS ITS if_expr SHELL, so body_lower_if_arm_lowered can see it is an
 // if and lower it whole. Answering the shell's captured content instead hid the if_expr identity, and
 // the arm's statement-sequence search found the nested then-arm: `if a { b } else if c { d } else { u }`
@@ -6196,7 +6227,7 @@ fn body_lower_if_else_capture_optional(captured: Node) -> Optional<Node> {
               Present { value: id } =>
                 match id == ^dag_token_kw_else {
                   true =>
-                    match body_lower_find_production_shell_optional(root: right, emitted: ^dag_surface_if_expr) {
+                    match body_lower_else_part_if_expr_optional(else_part: right) {
                       Present { value: nested } => Present { value: nested }
                       Absent =>
                         match body_lower_if_fn_body_capture_optional(spine: right) {
