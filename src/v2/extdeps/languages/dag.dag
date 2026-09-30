@@ -4027,23 +4027,33 @@ fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity)
 
 // The decoded value a string-literal node carries: its payload atom's interned identity. Absent for
 // every other node, including a payload-less string-literal atom.
-fn dag_string_literal_value_symbol_optional(node: Node) -> Optional<Symbol> {
-  match node_atom_identity_optional(node: node) {
-    Absent => optional_absent()
-    Present { value: id } =>
-      if (id == ^dag_token_string_literal) && (length(xs: node.children) == 1) {
-        match list_at_optional(xs: node.children, index: 0) {
-          Present { value: Edge { label: Named { name: field }, target: payload } } =>
-            if field == ^string_literal_value_field {
-              node_atom_identity_optional(node: payload)
-            } else {
-              optional_absent()
-            }
-          _ => optional_absent()
-        }
+fn dag_string_literal_value_edge_target_optional(edge: Edge) -> Optional<Node> {
+  match edge.label {
+    Named { name: field } =>
+      if field == ^string_literal_value_field {
+        optional_present(value: edge.target)
       } else {
         optional_absent()
       }
+    Positional => optional_absent()
+  }
+}
+
+fn dag_string_literal_value_payload_optional(node: Node) -> Optional<Node> {
+  if dag_node_is_string_literal_atom(node: node) && (length(xs: node.children) == 1) {
+    match list_at_optional(xs: node.children, index: 0) {
+      Present { value: edge } => dag_string_literal_value_edge_target_optional(edge: edge)
+      Absent => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+fn dag_string_literal_value_symbol_optional(node: Node) -> Optional<Symbol> {
+  match dag_string_literal_value_payload_optional(node: node) {
+    Present { value: payload } => node_atom_identity_optional(node: payload)
+    Absent => optional_absent()
   }
 }
 
