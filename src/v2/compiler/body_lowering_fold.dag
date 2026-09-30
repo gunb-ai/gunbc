@@ -1003,6 +1003,15 @@ fn body_lower_fielded_type_variant(shell: Node, head: Node, payload_shell: Node)
   }
 }
 
+// A WHERE-REFINED HEAD IS A TYPE, LOWERED BY THE ONE TYPE-EXPRESSION LOWERING that signatures and
+// cast targets use (body_lower_type_expr_lowered_optional), so resolve binds the carrier in type role
+// like any other type. Carried as the raw parse sequence, the head reached resolve as a
+// dag_surface_qualified_name shell, which v2.compiler.resolve preserves UNCHANGED as module metadata
+// (v2.extdeps.languages.dag dag_resolve_preserve_module_metadata_subtree): the declaration named its
+// carrier in a vocabulary no stage resolved. A head the lowering cannot read refuses at the head, as an
+// unreadable annotation does. The other declaration-body type positions (alias right-hand side, field
+// and payload types) are the same defect and a declared frontier
+// (gunbc.recurring_failure_mode declaration_body_type_shell_preserved_unresolved).
 // A variant shell is seq(type_expr, seq(optional(where), optional(payload))). A bare head is left
 // as parsed: whether `type T = U` names an alias or a one-variant sum is decided where the
 // alternatives are counted (v2.std.compilers.sugar sugar_fold_coproduct_pipe_chain, the seed's
@@ -1038,17 +1047,24 @@ fn body_lower_type_variant(shell: Node) -> Outcome<Node> {
                     Absent => outcome_accepted(value: shell)
                     Present { value: suffix_id } =>
                       if suffix_id == ^dag_surface_where_refinement_clause {
-                        outcome_accepted(
-                          value: node_with_occurrence_id(
-                            kind: TypeNode { connective: Conj },
-                            children: body_lower_type_variant_children_with_where(
-                              base: pair.left,
-                              where_clause: suffixes.left,
-                              fields: suffixes.right
-                            ),
-                            occurrence_id: shell.occurrence_id
-                          )
-                        )
+                        match body_lower_type_expr_lowered_optional(node: pair.left) {
+                          Absent =>
+                            outcome_rejected(
+                              d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: pair.left)
+                            )
+                          Present { value: carrier } =>
+                            outcome_accepted(
+                              value: node_with_occurrence_id(
+                                kind: TypeNode { connective: Conj },
+                                children: body_lower_type_variant_children_with_where(
+                                  base: carrier,
+                                  where_clause: suffixes.left,
+                                  fields: suffixes.right
+                                ),
+                                occurrence_id: shell.occurrence_id
+                              )
+                            )
+                        }
                       } else {
                         outcome_accepted(value: shell)
                       }
@@ -3248,23 +3264,26 @@ fn body_lower_body_after_eq_token(captured: Node) -> Optional<Node> {
   }
 }
 
-// Reify runs over branch targets the fold has ALREADY lowered, where the operand reader answers a
-// lowered node whole and cannot refuse (a refusal comes only from reading an operator tail). Its
-// Absent fall-through to a second reader is the other named remaining gap of
-// lowering_accessor_collapses_a_sequence_operand.
-fn body_lower_reify_operand_node(node: Node) -> Optional<Node> {
+// Reify runs over branch targets the fold has ALREADY lowered. A target is read as an operand
+// whole, or, when the operand reader has no reading for it, as a production shell. Either reader's
+// REFUSAL is the target's refusal and propagates with its own cause and locus: it used to become
+// Absent, so a refused operand fell through to the shell reader and, failing that, surfaced as
+// unsupported_form at the target -- the refusal-forgetting projection of
+// gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand, on the reify route.
+// Only a target neither reader reads is unsupported_form, located at it.
+fn body_lower_reify_operand_read(node: Node) -> Outcome<Node> {
   match body_lower_operand_ref_read(node: node) {
-    OperandRefLowered { lowered: op } => Present { value: op }
-    OperandRefRefused { diagnostics: _ } => body_lower_reify_operand_from_shell(node: node)
-    OperandRefAbsent => body_lower_reify_operand_from_shell(node: node)
-  }
-}
-
-fn body_lower_reify_operand_from_shell(node: Node) -> Optional<Node> {
-  match body_lower_operand_from_shell_read(shell: node) {
-    OperandRefLowered { lowered: op } => Present { value: op }
-    OperandRefRefused { diagnostics: _ } => Absent
-    OperandRefAbsent => Absent
+    OperandRefLowered { lowered: op } => outcome_accepted(value: op)
+    OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
+    OperandRefAbsent =>
+      match body_lower_operand_from_shell_read(shell: node) {
+        OperandRefLowered { lowered: op } => outcome_accepted(value: op)
+        OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
+        OperandRefAbsent =>
+          outcome_rejected(
+            d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: node)
+          )
+      }
   }
 }
 
@@ -3282,22 +3301,14 @@ fn body_lower_reify_transform_edge(
       )
     )
   } else {
-    match body_lower_reify_operand_node(node: e.target) {
-      Present { value: reified } =>
-        outcome_accepted(
-          value: list_snoc_item(
-            xs: done,
-            item: Edge { label: e.label, target: reified }
-          )
+    bind_outcome(o: body_lower_reify_operand_read(node: e.target), f: fn(reified) {
+      outcome_accepted(
+        value: list_snoc_item(
+          xs: done,
+          item: Edge { label: e.label, target: reified }
         )
-      Absent =>
-        outcome_rejected(
-          d: body_lower_diagnostic(
-            reason: ^body_lowering_reason_unsupported_form,
-            n: e.target
-          )
-        )
-    }
+      )
+    })
   }
 }
 
@@ -6166,16 +6177,26 @@ fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
 
 
 
-fn body_lower_reify_branch_target(node: Node) -> Node {
+// A branch target the fold already lowered: a literal reifies to its canonical atom, an operand to
+// its whole reading, and a target neither reader reads is kept AS LOWERED (identity, never a part).
+// An operand reader's refusal is the target's refusal and propagates; it used to keep the target as
+// if it had read nothing (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand).
+fn body_lower_reify_branch_target(node: Node) -> Outcome<Node> {
   match body_lower_materialize_int_literal_operand_optional(node: node) {
-    Present { value: reified } => reified
+    Present { value: reified } => outcome_accepted(value: reified)
     Absent =>
       match body_lower_literal_bool_atom_optional(node: node) {
-        Present { value: reified } => reified
+        Present { value: reified } => outcome_accepted(value: reified)
         Absent =>
-          match body_lower_reify_operand_node(node: node) {
-            Present { value: reified } => reified
-            Absent => node
+          match body_lower_operand_ref_read(node: node) {
+            OperandRefLowered { lowered: op } => outcome_accepted(value: op)
+            OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
+            OperandRefAbsent =>
+              match body_lower_operand_from_shell_read(shell: node) {
+                OperandRefLowered { lowered: op } => outcome_accepted(value: op)
+                OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
+                OperandRefAbsent => outcome_accepted(value: node)
+              }
           }
       }
   }
@@ -6188,16 +6209,17 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
         match acc {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: done, diagnostics: d } =>
-            outcome_with_diagnostics(
-              value: list_snoc_item(
-                xs: done,
-                item: Edge {
-                  label: e.label,
-                  target: body_lower_reify_branch_target(node: e.target)
-                }
-              ),
-              diagnostics: d
-            )
+            match body_lower_reify_branch_target(node: e.target) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: target, diagnostics: _ } =>
+                outcome_with_diagnostics(
+                  value: list_snoc_item(
+                    xs: done,
+                    item: Edge { label: e.label, target: target }
+                  ),
+                  diagnostics: d
+                )
+            }
         }
       }) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
