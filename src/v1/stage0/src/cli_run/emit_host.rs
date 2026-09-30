@@ -2448,7 +2448,7 @@ pub(crate) fn compile_xl1_primary_root_tap(
             ),
         };
     }
-    let index = match try_process_shared_index(source_roots) {
+    let index = match super::entry_resolve::try_index_for_run_or_owned_pool(source_roots) {
         Ok(idx) => idx,
         Err(cause) => {
             return Xl1PrimaryRootTap::Refused {

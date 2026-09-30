@@ -8558,6 +8558,20 @@ pub fn compile_entry_emission(
 /// the returned files, renders diagnostics and picks an exit code -- those are boundary
 /// concerns, not a second pipeline.
 pub fn compile_emission(request: &CompileRequest) -> CompileRun {
+    compile_emission_over(request, IndexResidency::SharedProcessPool)
+}
+
+/// WHO HOLDS THE INDEX A COMPILE RESOLVES OVER. The run's own pool lives in the thread's shared
+/// memo, one per precedence slot (`try_process_shared_index_for_pool`, which refuses a second).
+/// A compile over a different pool whose index nothing after it reads -- a fixture root compiled
+/// once by a control -- owns its index for the length of the compile instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexResidency {
+    SharedProcessPool,
+    OwnedByThisCompile,
+}
+
+pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
     let source_roots: &[String] = &request.source_roots;
     let primary_precedence = request.primary_precedence;
     let subject_label = request.subject.label();
@@ -8746,7 +8760,23 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // compiling N entries reconciled the shared prefix N times over closures that overlap almost
     // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
     // rather than a budget fact, and for what is NOT changed by the routing.
-    let index: Rc<MultiEntryIndex> = if primary_precedence {
+    let index: Rc<MultiEntryIndex> = if residency == IndexResidency::OwnedByThisCompile {
+        let built = if primary_precedence {
+            try_build_module_index_primary_precedence(source_roots)
+        } else {
+            try_build_module_index(source_roots)
+        };
+        match built {
+            Ok(module_index) => Rc::new(new_multi_entry_index_shell(
+                module_index,
+                source_roots,
+                None,
+            )),
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "source-discovery", cause)
+            }
+        }
+    } else if primary_precedence {
         match try_process_shared_index_for_pool(source_roots, true) {
             Ok(idx) => idx,
             Err(cause) => {

@@ -916,6 +916,32 @@ pub(crate) fn memoized_process_shared_index(
     PROCESS_RESOLVE_INDEX.with(|s| s.borrow()[0].get(&roots_key).cloned())
 }
 
+/// THE STRICT INDEX FOR A READER WHOSE ROOTS ARE A BUILTIN'S ARGUMENT. Over the layer roots
+/// (`witness_layer_roots`) it is the run's pool and is read from the shared memo; over any other
+/// roots -- a fixture a witness names -- it is a one-shot read of a pool nothing else reads, so
+/// the reader owns the index and drops it with the read. The same split
+/// `emit_host::resolve_roots_for_call_edge_pool` makes; it keeps a fixture out of the shared
+/// memo, where `try_process_shared_index_for_pool` refuses a second pool.
+#[track_caller]
+pub(crate) fn try_index_for_run_or_owned_pool(
+    source_roots: &[String],
+) -> Result<Rc<MultiEntryIndex>, String> {
+    let layers = super::witness_layer_roots();
+    if !source_roots.is_empty()
+        && source_roots
+            .iter()
+            .all(|root| layers.iter().any(|layer| layer == root))
+    {
+        return try_process_shared_index(source_roots);
+    }
+    let roots = canonical_shared_index_roots(source_roots);
+    Ok(Rc::new(new_multi_entry_index_shell(
+        try_build_module_index(&roots)?,
+        &roots,
+        None,
+    )))
+}
+
 /// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
 /// discovery must not install a partial index that every later caller in the process would
 /// then read as complete.
