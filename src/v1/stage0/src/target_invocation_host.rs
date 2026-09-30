@@ -1028,13 +1028,21 @@ fn exact_head_standing_outcome(
 /// broken compiler.
 fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_self_host(source_roots) {
-        Ok(held) => InvocationOutcome {
-            termination: if held.exit_status == 0 && held.warning_count == 0 {
+        Ok(held) => {
+            // THE TERMINATION IS DERIVED FROM THE CAUSE, so a did-not-hold cannot exit 1 without
+            // printing why: the cause IS the discriminator (DESIGN §5).
+            let not_clean = cli_run::emitted_build_not_clean_cause(
+                "SELF-HOST",
+                held.exit_status,
+                held.warning_count,
+                &held.warning_headers,
+            );
+            let termination = if not_clean.is_none() {
                 Termination::ObservationHeld
             } else {
                 Termination::ObservationDidNotHold
-            },
-            message: format!(
+            };
+            let counters = format!(
                 "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={} \
                  door_refusal_reason=\"{}\"",
                 held.closure_identity,
@@ -1043,8 +1051,15 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
                 held.exit_status,
                 held.warning_count,
                 held.door_refusal_reason,
-            ),
-        },
+            );
+            InvocationOutcome {
+                termination,
+                message: match not_clean {
+                    Some(cause) => format!("{cause}\n{counters}"),
+                    None => counters,
+                },
+            }
+        }
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
@@ -1124,13 +1139,21 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
 /// never opened.
 fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_cli(source_roots) {
-        Ok(held) => InvocationOutcome {
-            termination: if held.exit_status == 0 && held.warning_count == 0 {
+        Ok(held) => {
+            // THE TERMINATION IS DERIVED FROM THE CAUSE, so a did-not-hold cannot exit 1 without
+            // printing why: the cause IS the discriminator (DESIGN §5).
+            let not_clean = cli_run::emitted_build_not_clean_cause(
+                "V2-NATIVE-CLI",
+                held.exit_status,
+                held.warning_count,
+                &held.warning_headers,
+            );
+            let termination = if not_clean.is_none() {
                 Termination::ObservationHeld
             } else {
                 Termination::ObservationDidNotHold
-            },
-            message: format!(
+            };
+            let counters = format!(
                 "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={} \
                  door_exit_status={} door_emitted_bytes={} door_refusal_exit_status={} \
                  generation_one_executable={}",
@@ -1143,8 +1166,15 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
                 held.door_emitted_bytes,
                 held.door_refusal_exit_status,
                 held.generation_one_executable,
-            ),
-        },
+            );
+            InvocationOutcome {
+                termination,
+                message: match not_clean {
+                    Some(cause) => format!("{cause}\n{counters}"),
+                    None => counters,
+                },
+            }
+        }
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,

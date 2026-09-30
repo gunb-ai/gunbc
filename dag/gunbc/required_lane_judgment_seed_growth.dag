@@ -19,7 +19,7 @@ data required_lane_judgment_seed_growth_justification: SeedGrowthJustification =
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "record_required_lane_cross_process_content_judged_sources", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "required_lane_judged_module_identities", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "required_lane_cross_process_content_judged_module_identities", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "modules_unresolved_by_lane", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "modules_outside_lane_subject", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "module_identity_difference", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.declaration_index.lane_resolution_join_tests", decl_name: "identical_populations_have_empty_difference", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.declaration_index.lane_resolution_join_tests", decl_name: "difference_enumerates_the_missing_identity", field: WholeDeclaration }
