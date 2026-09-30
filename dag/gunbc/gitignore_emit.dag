@@ -12,7 +12,6 @@ import gunbc.workspace_repository_materialisation {
 }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_is_committed, artifact_path }
 import gunbc.generated_artifact_registry { generated_artifact_registry }
-import gunbc.rust_item_scan { ends_with }
 import std.languages { gitignore_format }
 import std.layout {
   Doc, DocEmpty, DocConcat,
