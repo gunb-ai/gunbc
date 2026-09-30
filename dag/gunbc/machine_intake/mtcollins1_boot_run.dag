@@ -30,7 +30,7 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   mtcollins1_boot_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal, mtcollins1_unit_hold_key,
 }
-import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_attach_diskless_image, mtcollins1_media_gate, mtcollins1_observe_presentation }
+import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_attach_diskless_image, mtcollins1_stale_power_off_allowance, mtcollins1_media_gate, mtcollins1_observe_presentation }
 import gunbc.machine_intake_megarac_media_attach { PresentationStillReady, presentation_still_served }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff, MtCollins1HandoffResult, handoff_not_issued }
@@ -152,6 +152,7 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
     + second_count(s: mtcollins1_boot_prelude_allowance)
     + second_count(s: mtcollins1_boot_issue_allowance)
     + second_count(s: megarac_convergence_allowance())
+    + second_count(s: mtcollins1_stale_power_off_allowance())
     + 3 * second_count(s: megarac_presentation_look_allowance())
     + second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)
     + second_count(s: oob_power_readback_allowance())
@@ -950,16 +951,26 @@ fn workload_pending_footprint_judge(workload: HostCaptureWorkloadShape, out: Lis
   let mem = workload_byte_reading(out: out, token: host_capture_workload_mem_available_token)
   match observed {
     WorkloadBytesUnreported => none
-    _ =>
-      if !workload_reading_is(declared: declared, r: observed) {
-        Present { value: WorkloadFootprintMismatch { declared: declared, observed: observed } }
-      } else if host_capture_output_has_line(output: out, line: host_capture_workload_preflight_refused)
-          || workload_capacity_already_refuses(declared: declared, r: shm)
-          || workload_capacity_already_refuses(declared: declared, r: mem) {
-        Present { value: WorkloadPreflightRefused { declared: declared, shm_avail: shm, mem_available: mem } }
-      } else {
-        none
-      }
+    WorkloadBytesReported { bytes: _ } => workload_reported_footprint_judge(out: out, declared: declared, observed: observed, shm: shm, mem: mem)
+    WorkloadBytesUnparsed { spelling: _ } => workload_reported_footprint_judge(out: out, declared: declared, observed: observed, shm: shm, mem: mem)
+  }
+}
+
+fn workload_reported_footprint_judge(
+  out: List<String>,
+  declared: ByteSize,
+  observed: WorkloadByteReading,
+  shm: WorkloadByteReading,
+  mem: WorkloadByteReading,
+) -> MtCollins1BootTerminalCause? {
+  if !workload_reading_is(declared: declared, r: observed) {
+    Present { value: WorkloadFootprintMismatch { declared: declared, observed: observed } }
+  } else if host_capture_output_has_line(output: out, line: host_capture_workload_preflight_refused)
+      || workload_capacity_already_refuses(declared: declared, r: shm)
+      || workload_capacity_already_refuses(declared: declared, r: mem) {
+    Present { value: WorkloadPreflightRefused { declared: declared, shm_avail: shm, mem_available: mem } }
+  } else {
+    none
   }
 }
 
@@ -1092,9 +1103,12 @@ fn open_unresolved_causes(envelope: BoundHostCaptureEnvelope, qualifications: Li
       QualificationPending =>
         match host_capture_section_reading(envelope: envelope, name: q.name) {
           SectionAbsent => append(acc, items: [TerminalSectionUnobservedAtRefusal { name: q.name }])
-          _ => append(acc, items: [TerminalSectionUnterminatedAtRefusal { name: q.name }])
+          SectionPending { output: _ } => append(acc, items: [TerminalSectionUnterminatedAtRefusal { name: q.name }])
+          SectionComplete { exit_code: _, output: _ } => append(acc, items: [TerminalSectionUnterminatedAtRefusal { name: q.name }])
+          SectionMalformed { reason: _ } => append(acc, items: [TerminalSectionUnterminatedAtRefusal { name: q.name }])
         }
-      _ => acc
+      QualificationRefused { cause: _ } => acc
+      QualificationHeld => acc
     })
 }
 
@@ -1281,7 +1295,10 @@ fn sol_channel_reading(collector: SolCollectorObservation, client_diagnostics: S
 fn sol_collector_exit_established(collector: SolCollectorObservation) -> Bool {
   match collector {
     SolCollectorExited { evidence: _ } => true
-    _ => false
+    SolCollectorHeld => false
+    SolCollectorUnrecorded => false
+    SolCollectorUnobservable { cause: _ } => false
+    SolCollectorPathUnset => false
   }
 }
 
@@ -1937,7 +1954,10 @@ fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, r
           } else {
             observed
           }
-        _ => observed
+        PoweredOffAfterCensusEnd => observed
+        PoweredOffWithoutCensusEnd => observed
+        PowerAfterUnobserved { observation: _ } => observed
+        PowerAfterNotTaken { reason: _ } => observed
       }
     }
   }
@@ -1985,7 +2005,10 @@ fn sol_release_is_clean(outcome: SolReleaseOutcome) -> Bool {
   match outcome {
     SolReleased { evidence: _ } => true
     SolReleaseNoRecord => true
-    _ => false
+    SolReleaseForeignRecord { record: _, receipt: _ } => false
+    SolReleaseStillHeld => false
+    SolReleaseUnobservable { cause: _ } => false
+    SolReleaseRetireFailed { detail: _ } => false
   }
 }
 
@@ -2128,14 +2151,20 @@ fn mtcollins1_boot_handoff_when_media_ready(
             live_at: supervised_at,
           }
         }
-        _ =>
-          MediaGatedHandoff {
-            result: handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: media was ready at the gate but the pre-handoff recheck did not admit it; no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: before))))),
-            media: HandoffMediaWithheldAtRecheck { before: before },
-            live_at: last_live_at,
-          }
+        PresentationReadyButSessionHeld { held: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
+        PresentationNoLongerReady { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
+        PresentationStateUnestablished { cd_error: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
+        PresentationUnobserved { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
       }
     }
+  }
+}
+
+fn handoff_withheld_at_recheck(before: MegaRacAttachResult, live_at: String) -> MediaGatedHandoff {
+  MediaGatedHandoff {
+    result: handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: media was ready at the gate but the pre-handoff recheck did not admit it; no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: before))))),
+    media: HandoffMediaWithheldAtRecheck { before: before },
+    live_at: live_at,
   }
 }
 
@@ -2226,7 +2255,8 @@ fn mtcollins1_boot_actuate(
       let handoff = match gated.media {
         HandoffMediaAttempted { before: _, handoff: _, after: _ } =>
           HandoffRun { result: gated.result, step: PhaseStepRan { result: exit_phase_result(outcome: gated.result.outcome), end: proc_uptime_read() }, live_at: handoff_live_at }
-        _ => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the SOL supervision, the media gate or its pre-handoff recheck withheld the handoff" }, live_at: handoff_live_at }
+        HandoffMediaNotReached { reason: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the SOL supervision, the media gate or its pre-handoff recheck withheld the handoff" }, live_at: handoff_live_at }
+        HandoffMediaWithheldAtRecheck { before: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the SOL supervision, the media gate or its pre-handoff recheck withheld the handoff" }, live_at: handoff_live_at }
       }
       let observed = match handoff.result.outcome {
         ExitSuccess => {
@@ -2274,7 +2304,7 @@ fn mtcollins1_boot_actuate(
       let p5_after_read = proc_uptime_read()
       let power_after = mtcollins1_boot_power_after_poll(
         password_file: password_file,
-        census_ended: match observed.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => true _ => false },
+        census_ended: match observed.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => true ActuationNotPoweredOn { reason: _ } => false ActuationPoweredOn { selection: _, smpro_power_on: _, smpro_census: _ } => false },
         remaining: mtcollins1_boot_power_after_samples,
       )
       let power_after_read = proc_uptime_read()
@@ -2426,7 +2456,10 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         sensors: mtcollins1_boot_sensors(username: user, password_file: pf, sdr: sdr),
         smpro: match power_after {
           PoweredOffAfterCensusEnd => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
-          _ => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+          PoweredOffWithoutCensusEnd => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+          PoweredOnAfterAttempt => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+          PowerAfterUnobserved { observation: _ } => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+          PowerAfterNotTaken { reason: _ } => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
         },
         inventory: mtcollins1_boot_inventory(username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
@@ -2508,7 +2541,7 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
   let write = mtcollins1_boot_write_bundle(bundle: bundle)
   let concluded = mtcollins1_boot_outcome_after_bundle(outcome: attempt.outcome, bundle: bundle, write: write)
   let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
-  let exit_word = match concluded { ExitSuccess => "ok"  _ => "refused" }
+  let exit_word = match concluded { ExitSuccess => "ok"  ExitFailure { code: _, reason: _ } => "refused" }
   let receipt_body = join([
     "authorization=workload identity of the fleet-converge run on main (operator ruling 2026-09-25); no per-run or standing approval; the unit hold is the interlock",
     concat("attempt=", attempt_identity_text(a: run)),
