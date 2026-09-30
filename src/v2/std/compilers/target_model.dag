@@ -98,6 +98,7 @@ import v2.std.node {
   LoopDomainValue,
   LoopEdgeUnrecognized,
   LoopIteratedBody,
+  LoopRealizedDeclaration,
   loop_edge_role,
   Arrow,
   ComputationBody,
@@ -15064,6 +15065,7 @@ fn target_value_expr_loop_gate(node: Node) -> Bool {
           LoopBoundMeasure => acc
           LoopDomainValue => false
           LoopCarrierBinder => false
+          LoopRealizedDeclaration => false
           LoopEdgeUnrecognized => false
         }
       })
