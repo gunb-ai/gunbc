@@ -117,7 +117,6 @@ fn left_operand_controls() -> List<String> {
   [
     match_mul_left_source,
     match_add_left_source,
-    match_sub_left_source,
     match_cmp_left_source,
     match_eq_left_source,
     match_and_left_source,
@@ -138,6 +137,17 @@ fn none_accept(sources: List<String>, grammar: ParseGrammar) -> Bool {
 
 test fn witness_live_grammar_accepts_every_left_operand_control() -> Bool {
   all_accept(sources: left_operand_controls(), grammar: dag_grammar())
+}
+
+// `match w {..} - n` is the one control the mutant does NOT refuse: `-` is also a prefix operator,
+// so under the pre-fix grammar the match ends the expression and `- n` parses as a SECOND
+// statement, a unary negation. It is excluded from the refusal set above and pinned here as what it
+// is: the mutant ACCEPTS it, silently, as different code. Under the live grammar it is one binary
+// expression, as the seed reads it. (The newline form of the same ambiguity is the
+// v2_lexer_carries_no_layout_so_a_newline_before_a_dual_role_operator_merges_silently row.)
+test fn witness_pre_fix_grammar_reads_a_block_minus_as_two_statements() -> Bool {
+  parse_accepts_with(source: match_sub_left_source, grammar: pre_fix_grammar())
+    && parse_accepts_with(source: match_sub_left_source, grammar: dag_grammar())
 }
 
 test fn witness_pre_fix_grammar_refuses_every_left_operand_control_RED() -> Bool {
