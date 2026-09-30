@@ -269,7 +269,7 @@ fn nft_installed_path() -> FilePath {
 }
 
 data nft_cli_tool: CliTool = CliTool {
-  name: nft_program().invocation,
+  program: nft_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_nftables, bin_dir: nft_bin_dir }],
 }

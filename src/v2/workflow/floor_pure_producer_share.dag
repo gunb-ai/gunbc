@@ -546,6 +546,10 @@ import v2.std.collection { List }
 // admitted at 0-2ms against the 302ms margin, zero over-cost. An earlier revision of this note
 // said eight for the combined producer -- a count from before the two collided-alias sources
 // were given their own rows -- and the ledger is what corrected it.
+// THE explicit_fn_import_binds ROW IS THE native_decl_selection GROUND AGAIN: four claims read four
+// verdicts of one eight-read synthetic ingest through the native prepare route (supplied fixtures for
+// import binding and for naming an import target's file refusal), so the context and verdicts are
+// one nullary producer, WARM for the same reason. A cold fill would exceed one claim's budget.
 // THE WHOLE-TREE CENSUS PROBE ROW IS THE native_decl_selection GROUND A THIRD TIME, ON THE SAME
 // PRODUCER. v2.test.claim.native_census.whole_tree_census_resolve drives
 // v2.compiler.compile native_test_context_from_ingest over one three-specimen supplied ingest, and
@@ -613,6 +617,10 @@ import v2.std.collection { List }
 // v2.test.claim.fold_lowering flp_outcomes ingests the positional, positional-named-step,
 // non-fold and well-formed snippets once and stores four Bool verdicts; MQ-1's first floor run refused each claim
 // that paid its own ingest against the new-witness budget. Portable for the same reason.
+// THE FOLD-OPERAND ROW IS THE SAME GROUND AT TWO SPECIMENS: v2.test.claim.body_lowering
+// .fold_operand_structure fos_outcomes parses the `&&` and call-argument snippets once each and stores
+// six Bool verdicts; the first floor run of its PR judged each claim that paid its own parse and lowering
+// against the new-witness budget. Portable for the same reason.
 // THE XL-2 LET-IN CAST ROW: v2.test.claim.body_cast_node bcn_let_in_value_cast_verdict assembles one
 // inline module through the production route and stores one Bool (the lowered body carries exactly
 // one cast node with its target), portable because it holds no Node and no closure.
@@ -631,6 +639,9 @@ import v2.std.collection { List }
 // module and calls body_lower_match_arms_optional on its match capture; the stored value is the
 // lowered arm patterns (Nodes, no resolution context and no closure). Its first floor run refused all
 // five claims over the enrolment margin at ~590ms each, every one of them paying the same ingest.
+// THE XL-2 REIFY-OPERAND ROW: v2.test.claim.body_lowering.reify_operand_refusal ror_verdicts tokenizes
+// and parses two inline modules and reifies two supplied bodies over each; the stored value is four
+// verdicts (no Node, no closure), portable for the same reason cav_outcomes is.
 // THE XL-2 MATCH-POSITION ROW: v2.test.claim.body_lowering.match_position_structure mps_normalized
 // runs the production route (module_roots_from_source_root_ingest) over three inline modules; the
 // stored value is the normalized trees (Nodes, no resolution context and no closure), portable for
@@ -723,9 +734,9 @@ import v2.std.collection { List }
 // none of those consumers, and it stays here only on a measured serve below recompute on its OWN
 // consumer rows (required_floor_claim_cost.tsv, present against absent, normalised on rows outside its
 // consumer modules); a regression there moves it to floor_cross_claim_refused_candidates. The emit rows
-// also re-ingest their source through ingested_emit_shape_frontier_tree_from_source instead of reading
-// the arrow this roster already serves -- that is the witness-shape lane's item, not this row's, and
-// until it lands those rows stay over the new-witness budget whatever this row saves.
+// read the arrow this roster already serves (ingested_emit_shape_frontier_tree_from_arrow) rather than
+// re-ingesting, so with this row served they fit the new-witness budget; gunbc#12639's floor runs
+// measure present against absent.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_loaded_roots",
@@ -761,10 +772,12 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_cast_node.bcn_let_in_value_cast_verdict",
   "v2.test.claim.namespace_xl0.value_read_refusal.vrr_outcomes",
   "v2.test.claim.fold_lowering.flp_outcomes",
+  "v2.test.claim.body_lowering.fold_operand_structure.fos_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_lowered",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_third_arm_malformed",
+  "v2.test.claim.body_lowering.reify_operand_refusal.ror_verdicts",
   "v2.test.claim.namespace_xl0.return_tail_position.rtp_outcomes",
   "v2.test.claim.body_lowering.wildcard_pattern_form.wpf_patterns",
   "v2.test.claim.body_lowering.match_position_structure.mps_normalized",
@@ -796,6 +809,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
   "v2.test.native_decl_selection.collision_resolved",
+  "v2.test.name_resolve.explicit_fn_import_binds.efib_verdicts",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
   "v2.compiler.program_assembly.dag_prepared_grammar",
@@ -1000,6 +1014,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_let_annotation.bla_single_tree_declared_int",
   "v2.test.claim.body_let_annotation.bla_single_tree_declared_bool",
   "v2.test.claim.body_let_annotation.bla_single_tree_undeclared_int",
+  "v2.test.claim.body_let_annotation.bla_symbol_literal_as_int",
+  "v2.test.claim.body_let_annotation.bla_symbol_literal_as_int_inferred",
   "v2.test.claim.body_let_annotation.bla_annotated_bind_emitted",
   "v2.test.claim.body_let_annotation.bla_reordered_self_reference",
   "v2.test.claim.body_let_annotation.bla_reordered_outer_reference",
@@ -1047,6 +1063,9 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation_census.under_floor_fixture_files",
   "v2.test.claim.namespace_xl0.reference_conservation_census.half_share_fixture_files",
   "v2.test.claim.occurrence_role.occurrence_role.roles_fixture_outcome",
+  "v2.test.claim.occurrence_role.occurrence_role.binders_fixture_outcome",
+  "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_parsed",
+  "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_planted",
   "v2.test.claim.namespace_xl0.reference_conservation.statement_let_binder_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.binary_operand_beside_match_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.binary_operand_beside_if_subject",

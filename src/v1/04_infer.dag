@@ -1490,6 +1490,15 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
       module_name: scope.module_name
     )]
   }
+  else if nominal_coproduct_applied_argument_conflict(
+      declared: declared, produced: produced, scope: scope) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
   else if coproduct_payload_where_parent_required(
       formal: declared, actual: produced, scope: scope) {
     [type_mismatch_error(
@@ -3000,6 +3009,13 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
     formal_name_override: "", depth: 0)
 }
 
+// The produced side is peeled to its where-refinement base exactly as the declared side is, so a
+// refinement of a kernel (`"x" as NonEmptyStr`) is judged as the kernel it is represented by, not
+// admitted because its NAME is not kernel (gunbc#12695: host text reached v2.std.text string_split
+// at a FreeSemigroup<Char> needle). The peel is withheld where the formal carries OPTIONALITY:
+// there the produced node is the payload of a `Present` introduction standing for the Optional
+// carrier -- the two-representation gap declared_type_kernel_inhabitance_mismatch excludes on the
+// same ground -- and peeling it refused correct rows (gunbc.contributor_onboarding_path, measured).
 fn kernel_value_declared_type_mismatch_bounded(
   formal: Node,
   actual: Node,
@@ -3008,11 +3024,14 @@ fn kernel_value_declared_type_mismatch_bounded(
   formal_name_override: String,
   depth: Int
 ) -> Bool {
-  if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
+  let formal_carries_optional = formal.return_cardinality == CardOptional
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: formal)) == "Optional"
+  let actual_base = if formal_carries_optional { actual } else { peel_where_refinement_base(ty: actual, type_env: type_env) }
+  if formal.connective == Arrow || actual.connective == Arrow || (actual_base.children |> count) > 0 {
     false
   } else {
     let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
-    let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+    let actual_name = authored_name_at(source_indices: source_indices, node: actual_base)
     if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
       false
     } else {
@@ -3021,7 +3040,7 @@ fn kernel_value_declared_type_mismatch_bounded(
       } else { formal_name_override }
       if formal_name == "" || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
         false
-      } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
+      } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual_base, source_indices: source_indices) {
         false
       } else {
         if is_kernel_type(name: formal_name) {
@@ -4357,6 +4376,102 @@ fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope
         n: decl, env: scope.type_env, module_name: scope.module_name)
       if peeled.connective == Conj && (peeled.children |> count) > 0 { name } else { "" }
     Absent => ""
+  }
+}
+
+// THE GENERIC-COPRODUCT HALF OF THE INHABITANCE DEFECT, filed beside
+// nominal_product_inhabitance_refusal and closed here by consuming the same authorities. A fn
+// declared `-> Outcome<Node>` whose body produced `Outcome<ResolvedTree>` fell through every arm
+// above -- the product arm abstains on a coproduct head, the payload arm on a generic one -- and
+// reached the ground-only fallback, which admits every non-ground pair; so the argument was never
+// compared (gunbc#12432: ~35 helpers). The constructor test is the product arm's own
+// (nominal_product_head_names_agree), and the argument test is applied_type_arguments_conflict,
+// the same fail-open per-argument relation: a type variable, an optional, a callable or a nested
+// application argument is never read as a disagreement. Only two applications of one declared
+// coproduct constructor whose resolved arguments are both established and differ refuse.
+fn nominal_coproduct_applied_argument_conflict(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> Bool {
+  let declared_head = nominal_coproduct_application_head_name(n: declared, scope: scope)
+  let produced_head = nominal_coproduct_application_head_name(n: produced, scope: scope)
+  if declared_head == "" || produced_head == "" {
+    false
+  } else if nominal_product_head_names_agree(
+      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+    false
+  } else if (declared.children |> count) == 0 || (declared.children |> count) != (produced.children |> count) {
+    false
+  } else {
+    coproduct_applied_type_arguments_conflict_scan(
+      declared_args: declared.children, produced_args: produced.children, scope: scope)
+  }
+}
+
+// A PRODUCED `Unit` ARGUMENT IS NOT AN ESTABLISHED IDENTITY at this arm, and the whole-corpus
+// differential is what showed it. Five correct sites refused on the first cut, every one with Unit
+// or an empty name standing in the produced argument vector where the call site had no evidence
+// for that parameter: `outcome_accepted(Lossless)` read as Outcome<Unit> under a declared
+// Outcome<DecodeFidelity>, and `assess_by_deviations(.., deviations: [])` read its unconstrained
+// parameters as Unit under a declared GoalAssessment<.., RegistrationDeviation, .., Never>. The seed's
+// call-site generic solve answers Unit for a parameter it did not solve, so Unit there is the
+// absence of evidence, not a type -- the same reading kernel_value_declared_type_mismatch already
+// takes when it exits on an actual named Unit. It is judged per argument, so the other arguments
+// of the same application are still compared. The narrowing is stated: a genuinely Unit-typed
+// argument against a different declared one is admitted here until call-site generic solving
+// stops answering Unit for an unsolved parameter
+// (gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return).
+fn coproduct_applied_type_arguments_conflict_scan(
+  declared_args: List<Node>,
+  produced_args: List<Node>,
+  scope: InferScope
+) -> Bool {
+  match declared_args |> first {
+    Present { value: d } =>
+      match produced_args |> first {
+        Present { value: p } =>
+          let produced_name = authored_name_at(
+            source_indices: scope.type_env.source_indices, node: child_type_node(ch: p))
+          if produced_name != "Unit"
+            && applied_type_argument_conflicts(declared_arg: d, produced_arg: p, scope: scope) {
+            true
+          } else {
+            coproduct_applied_type_arguments_conflict_scan(
+              declared_args: declared_args |> skip(1),
+              produced_args: produced_args |> skip(1),
+              scope: scope)
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn nominal_coproduct_application_head_name(n: Node, scope: InferScope) -> String {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" || n.return_cardinality == CardOptional || type_node_is_callable(n: n)
+    || is_kernel_type(name: name)
+    || qualified_last_segment(name: name) == "Optional"
+    || (n.children |> count) == 0
+    || node_is_element_collection(n: n, source_indices: source_indices)
+    || node_is_keyed_collection(n: n, source_indices: source_indices) {
+    ""
+  } else {
+    match expected_type_head_exposure(formal: n, scope: scope) {
+      ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } =>
+        let representative = transparent_alias_representative(
+          index: scope.type_env.symbol_index, name: name)
+        match lookup_type_by_name(env: scope.type_env, name: representative) {
+          Present { value: decl } =>
+            let peeled = peel_nominal_alias_identity(
+              n: decl, env: scope.type_env, module_name: scope.module_name)
+            if peeled.connective == Disj { name } else { "" }
+          Absent => ""
+        }
+      _ => ""
+    }
   }
 }
 

@@ -70,7 +70,11 @@ fn yaml_entry_count(v: YamlValue) -> Int {
   match v {
     YamlSequence { elements: es } => fold(es, init: 0, f: fn(acc, e) { acc + 1 + yaml_entry_count(v: e) })
     YamlMapping { entries: kvs } => fold(kvs, init: 0, f: fn(acc, kv) { acc + 1 + yaml_entry_count(v: kv.value) })
-    _ => 0
+    YamlNull => 0
+    YamlBool { value: _ } => 0
+    YamlInt { lexeme: _ } => 0
+    YamlFloat { lexeme: _ } => 0
+    YamlString { value: _ } => 0
   }
 }
 
