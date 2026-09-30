@@ -19,6 +19,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
+import gunbc.machine_intake_mtcollins1_kvm_still { KvmObserverNotStarted }
 import gunbc.machine_intake_mtcollins1_boot_run { SolCollectorUnrecorded }
 import gunbc.machine_intake_mtcollins1_sol_notice {
   SolNoticePaths, SolNoticeDelivery, SolNoticeDelivered, SolNoticeDeliveryFailed, SolNoticeLiveLog,
@@ -130,6 +131,8 @@ fn watch(run: ProbeLaunch) -> TerminalWatch {
     password_file: "",
     smpro_census: SmproNotTaken { reason: "wet control" },
     last_live_at: "",
+    screen: KvmObserverNotStarted { reason: "wet control: no KVM observer" },
+    screen_reported: [],
   )
 }
 
@@ -213,6 +216,24 @@ test fn a_collector_gone_with_the_envelope_open_is_channel_lost_and_frozen() -> 
     && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost while the boot was being watched")
     && string_contains(s: incident, pattern: "ObservationChannelLost")
     && string_contains(s: incident, pattern: "the collector exited with status 0")
+}
+
+// THE LOSS ASKS THE SCREEN, AND THE ASK NEVER DECIDES (operator ruling 2026-09-27). Through the same
+// real watch and gone collector: the loss arm asks the held observer for a still right after the
+// freeze, and with no observer established the ask is recorded as not answerable -- carried, never
+// raised: the outcome is still the loss verdict and the incident is still frozen. Deleting the ask
+// from the loss arm turns this red.
+test fn a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: incomplete_exit_probe(), pid_path: concat(dir, "/collector.pid"))
+  let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
+  let w = watch(run: run)
+  let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched
+    && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost while the boot was being watched")
+    && string_contains(s: outcome_reason(w: w), pattern: "screen: the KVM observer is not established, so no still could be asked")
+    && string_contains(s: incident, pattern: "ObservationChannelLost")
 }
 
 // AN AUTHENTIC CLIENT EXIT: the client's own stderr diagnostic and exit status reach the incident,
@@ -609,12 +630,14 @@ test fn the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives(
     remaining: 3, capture_path: run.capture_path, pid_path: run.pid_path,
     subject: mtcollins1_boot_subject(execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
     password_file: "", smpro_census: SmproNotTaken { reason: "wet control" }, last_live_at: "",
+    screen: KvmObserverNotStarted { reason: "wet control: no KVM observer" }, screen_reported: [],
   )
   let live_ok = observer_alive(run: run)
   let pending = mtcollins1_boot_await_capture_terminal(
     remaining: 0, capture_path: run.capture_path, pid_path: run.pid_path,
     subject: mtcollins1_boot_subject(execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
     password_file: "", smpro_census: SmproNotTaken { reason: "wet control" }, last_live_at: "",
+    screen: KvmObserverNotStarted { reason: "wet control: no KVM observer" }, screen_reported: [],
   )
   let _stop = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: run.pid_path as NonEmptyStr).success
   let _removed = shell.Remove.RecursiveForce(path: dir)
