@@ -2,6 +2,7 @@ module gunbc.json_member_conservation_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.json.emit { JsonKeyValue, JsonNumber, JsonString, JsonValue, json_object }
 import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
 import extdeps.languages.json.member_conservation {
