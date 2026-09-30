@@ -519,6 +519,8 @@ import v2.std.collection { List }
 // THE declaration_graft_assemble PRODUCERS EARN THEIR ROWS ON THE FILL-THAT-CANNOT-LAND (ten on the
 // receipt below; an eleventh, declaration_graft_where_alias_undeclared_carrier_assembled, is the RED of
 // the resolved where-head -- one assembly, on the same ground)
+// v2.test.claim.body_cast_node bcn_refinement_of_refinement_as_its_carrier is the same ground for the
+// Widened cast's one-step row (gunbc#12407): one assembly of a two-refinement module.
 // GROUND, AND SIX OF THEM ON THE SHARING GROUND AS WELL. Receipt, re-derivable: required-floor
 // run 35467726264 (gunbc#11574 head 1797ea43bd) reported fourteen of that file's claims
 // COMPLETED-OVER-COST-REQUIREMENT at 73,857-148,646 eval steps against the 72,300 new-witness
@@ -1142,7 +1144,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.declaration_graft_assemble.declaration_graft_record_construct_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_record_type_only_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_flag_and_rec_assembled",
-  "v2.test.claim.declaration_graft_assemble.declaration_graft_where_alias_undeclared_carrier_assembled"
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_where_alias_undeclared_carrier_assembled",
+  "v2.test.claim.body_cast_node.bcn_refinement_of_refinement_as_its_carrier"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
