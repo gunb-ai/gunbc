@@ -892,6 +892,9 @@ fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
 // byte 255 and every non-Latin-1 codepoint collide in the seed interpreter's cross-parse memo key
 // (v1_interpreter parse_table_memo_scope_and_key reads this field). Offsets and positions now go
 // through the Int content authority and the lexeme through its interned symbol.
+// Over the same tokens the token digest folds: each line-break-preceded token contributes its start
+// and the line it begins (the layout's one representation, read by lookup). Only a sourceless stream
+// keys by the token digest alone.
 fn parse_token_stream_layout_digest(all_tokens: List<Token>, layout: Optional<StreamLayout>) -> Hash {
   match layout {
     Absent => parse_token_stream_digest(all_tokens: all_tokens)
@@ -899,9 +902,15 @@ fn parse_token_stream_layout_digest(all_tokens: List<Token>, layout: Optional<St
       combine_hash(
         a: parse_token_stream_digest(all_tokens: all_tokens),
         b: fold_list(
-          xs: l.line_break_starts,
+          xs: all_tokens,
           empty: symbol_identity_digest(sym: ^parse_token_stream_layout_digest_nil),
-          cons: fn(acc, start) { combine_hash(a: acc, b: integer_int_content_digest(value: start)) }
+          cons: fn(acc, tok) {
+            match map_lookup(m: l.line_break_before, key: tok.start) {
+              Absent => acc
+              Present { value: line } =>
+                combine_hash(a: acc, b: combine_hash(a: integer_int_content_digest(value: tok.start), b: integer_int_content_digest(value: line)))
+            }
+          }
         )
       )
   }
