@@ -27,7 +27,6 @@ import v2.compiler.body_producer_forward {
 }
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
-  dag_lexeme_is_string_literal,
   ParseSubtreeFind,
   ParseSubtreeFound,
   dag_binding_branded_atom_identity,
@@ -135,7 +134,10 @@ import v2.std.node_query {
   node_positional_child_targets,
   construct_node,
   construct_tag_elided_reference,
-  construct_tag_is_elided,
+  construct_tag_reading,
+  ConstructTagAuthored,
+  ConstructTagElided,
+  NotAConstruct,
   construct_tag_optional,
   field_projection_node,
   field_projection_optional,
@@ -562,8 +564,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
     _ =>
       (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
         || qualified_name_spine_shape_present(root: node)
-        || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
-        || construct_tag_is_elided(n: node)
+        || (match construct_tag_reading(n: node) { ConstructTagAuthored { reference: _ } => true  ConstructTagElided => true  NotAConstruct => false })
         || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
 }
@@ -7705,20 +7706,16 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
 // shape v2.std.node admits and the shape a fielded pattern lowers to, so `Rec { n: 1 }` and
 // `Rec { n: x } =>` are one shape read in two directions. A dotted head (`m.R { .. }`) is a postfix
 // chain and reaches the same builder, body_lower_record_construct, through its PostfixRecord step.
-// A FIELD INIT'S KEY IS A NAME, read as the grammar's binding-name alternative and nothing else.
-// dag_grammar_field_init_expr also admits a STRING-LITERAL key (`{ "k": v }`, a map entry), and the
-// general binding reader takes that lexeme's atom for a field name -- erasing the key kind, so
-// that `{ "n": true }` under a record type would elaborate as field `n`. A string key therefore
-// refuses at the item here; the map arm gives it its own edge (gunbc#12734).
-fn body_lower_field_init_name_optional(key: Node) -> Optional<Symbol> {
-  match body_lower_param_binding_optional(node: key) {
-    Present { value: name } =>
-      if dag_lexeme_is_string_literal(sym: name) {
-        optional_absent()
-      } else {
-        optional_present(value: name)
-      }
-    Absent => optional_absent()
+// A STRING-KEYED INIT IS NOT A RECORD FIELD, AND THE PARSE SAYS SO. The key's kind is the grammar's
+// choice, carried as the production identity ^dag_surface_field_init_string_key
+// (v2.extdeps.languages.dag dag_grammar_field_init_expr), so a record literal refuses it at the item
+// rather than reading `{ "n": true }` as field `n`. Admitting a quoted key whose decoded text names a
+// declared field is a declared frontier (gunbc#12740); a map literal's entry is the map arm's
+// (gunbc#12758), which dispatches on this same identity.
+fn body_lower_field_init_is_string_keyed(item: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+    Present { value: id } => id == ^dag_surface_field_init_string_key
+    Absent => false
   }
 }
 
@@ -7731,10 +7728,13 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   let refuse = outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item)
   )
+  if body_lower_field_init_is_string_keyed(item: captured) {
+    refuse
+  } else {
   match sugar_sequence_pair_optional(node: captured) {
     Absent => refuse
     Present { value: pair } =>
-      match body_lower_field_init_name_optional(key: pair.left) {
+      match body_lower_param_binding_optional(node: pair.left) {
         Absent => refuse
         Present { value: field_name } =>
           match sugar_sequence_pair_optional(node: pair.right) {
@@ -7750,6 +7750,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
               }
           }
       }
+  }
   }
 }
 

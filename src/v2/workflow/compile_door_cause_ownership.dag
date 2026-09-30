@@ -277,6 +277,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "a headless record literal whose authored expected type does not resolve, by syntactic peel and the existing lexical lookup, to a single record (v2.std.symbol_index RecordTypePayload): a coproduct with several constructors, a primitive, a type binder, an optional, or a head reached only through alias unfolding resolve does not do. Refused rather than guessed (docs/plans/anonymous-record-literal-design.md, review condition 1). Flips per site when the source writes the constructor head; a Map head is the map arm (gunbc#12734), which takes that population when it lands"
   },
   CauseOwnership {
+    cause: ^resolve_anonymous_record_alias_cycle,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a headless record literal whose authored expected type reaches a cycle of pure-renaming aliases (`type A = B`, `type B = A`) while v2.compiler.resolve follows renamings to the record or list head (ruling, neat-boar-16, gunbc#12740). The cycle is refused at the literal rather than followed. Not a frontier: each occurrence is an alias cycle in source, and flips when the source breaks it"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_function_value_body_unread,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,

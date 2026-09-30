@@ -21,13 +21,16 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.node { Hash, Node, Symbol, content_hash, node_subtree_nodes, symbol_lexeme }
-import v2.std.node_query { construct_tag_is_elided, construct_tag_optional, construct_tag_path_optional }
+import v2.std.node_query { ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_reading, construct_tag_path_optional }
 import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import v2.std.algebra { length }
+import v2.std.integer { Int }
 import v2.std.text { String }
 import v2.std.collection { List }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
+import v2.test.claim.namespace_xl0.reference_conservation { conservation_subject }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -67,6 +70,35 @@ data ar_value_mismatch_source: String = "module v2.test.ar_value_mismatch\n\nimp
 
 data ar_value_mismatch_headed_source: String = "module v2.test.ar_value_mismatch_headed\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB }\n\ndata ar_bad: ArB = ArB { n: true, m: 3 }\n"
 
+// THE LIST-ELEMENT RULE AND WHERE CONDITION 1 DRAWS ITS LINE. A list literal's element type is
+// passed to its elements only when the annotation's head resolves to the one declaration infer types
+// list literals with (v2.std.list_introduction list_introduction_head_path, std.algebra.FreeMonoid).
+// The fixture declares that module so the path exists in this ingest. A head reaches it directly,
+// or through PURE-RENAMING aliases only (ruling, neat-boar-16; see the renaming claims below).
+data ar_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
+
+data ar_seq_source: String = "module v2.test.arseq\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\n\ntype ArSeq<T> = FreeMonoid<T>\n\ntype List<element> = FreeMonoid<element>\n\ntype ArPair<x, y> {\n  first: x\n  second: y\n}\n\ntype ArPairS<b, a> = ArPair<b, a>\n\ntype ArPairR<a, b> = ArPair<b, a>\n\ntype ArPairC<a> = ArPair<Bool, Bool>\n\ntype ArPairP<a> = ArPair<a, Bool>\n\ntype ArCycA = ArCycB\n\ntype ArCycB = ArCycA\n"
+
+// PURE RENAMINGS ELABORATE; ANY OTHER ALIAS REFUSES (ruling, neat-boar-16). ArSeq and List rename
+// FreeMonoid; ArPairS renames ArPair with its binders written b, a -- a renaming because its
+// arguments are its binders IN ITS OWN ORDER, which also reds if binder order were ever sorted away.
+// ArPairR reorders, ArPairC is constant, ArPairP is partially applied, and ArCycA/ArCycB are a cycle.
+data ar_rename_headed_source: String = "module v2.test.ar_rename_headed\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB }\nimport v2.test.arseq { ArSeq, List, ArPair, ArPairS }\n\nfn ar_seq() -> ArSeq<ArB> { [ArB { n: true, m: false }] }\n\nfn ar_list() -> List<ArB> { [ArB { n: false, m: true }] }\n\ndata ar_pair: ArPairS<Bool, Bool> = ArPair { first: true, second: false }\n"
+
+data ar_rename_headless_source: String = "module v2.test.ar_rename_headless\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB }\nimport v2.test.arseq { ArSeq, List, ArPair, ArPairS }\n\nfn ar_seq() -> ArSeq<ArB> { [{ n: true, m: false }] }\n\nfn ar_list() -> List<ArB> { [{ n: false, m: true }] }\n\ndata ar_pair: ArPairS<Bool, Bool> = { first: true, second: false }\n"
+
+data ar_reorder_source: String = "module v2.test.ar_reorder\n\nimport v2.std.logic { Bool }\nimport v2.test.arseq { ArPairR }\n\ndata ar_r: ArPairR<Bool, Bool> = { first: true, second: false }\n"
+
+data ar_constant_source: String = "module v2.test.ar_constant\n\nimport v2.std.logic { Bool }\nimport v2.test.arseq { ArPairC }\n\ndata ar_c: ArPairC<Bool> = { first: true, second: false }\n"
+
+data ar_partial_source: String = "module v2.test.ar_partial\n\nimport v2.std.logic { Bool }\nimport v2.test.arseq { ArPairP }\n\ndata ar_p: ArPairP<Bool> = { first: true, second: false }\n"
+
+data ar_cycle_source: String = "module v2.test.ar_cycle\n\nimport v2.std.logic { Bool }\nimport v2.test.arseq { ArCycA }\n\ndata ar_y: ArCycA = { first: true }\n"
+
+data ar_list_headed_source: String = "module v2.test.ar_list_headed\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\nfn ar_list() -> FreeMonoid<ArB> { [ArB { n: true, m: false }, ArB { n: false, m: false }] }\n"
+
+data ar_list_headless_source: String = "module v2.test.ar_list_headless\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\nfn ar_list() -> FreeMonoid<ArB> { [{ n: true, m: false }, { n: false, m: false }] }\n"
+
 fn ar_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
@@ -84,7 +116,17 @@ data ar_ingest: SourceRootIngest = [
   ar_read(source: ar_coproduct_source, id: ^ar_coproduct_read, unit: ^ar_coproduct_cu, path: "src/v2/test/fixture/anonymous_record/coproduct.dag"),
   ar_read(source: ar_binder_source, id: ^ar_binder_read, unit: ^ar_binder_cu, path: "src/v2/test/fixture/anonymous_record/binder.dag"),
   ar_read(source: ar_value_mismatch_source, id: ^ar_value_mismatch_read, unit: ^ar_value_mismatch_cu, path: "src/v2/test/fixture/anonymous_record/value_mismatch.dag"),
-  ar_read(source: ar_value_mismatch_headed_source, id: ^ar_value_mismatch_headed_read, unit: ^ar_value_mismatch_headed_cu, path: "src/v2/test/fixture/anonymous_record/value_mismatch_headed.dag")
+  ar_read(source: ar_value_mismatch_headed_source, id: ^ar_value_mismatch_headed_read, unit: ^ar_value_mismatch_headed_cu, path: "src/v2/test/fixture/anonymous_record/value_mismatch_headed.dag"),
+  ar_read(source: ar_algebra_source, id: ^ar_algebra_read, unit: ^ar_algebra_cu, path: "src/v2/test/fixture/anonymous_record/algebra.dag"),
+  ar_read(source: ar_seq_source, id: ^ar_seq_read, unit: ^ar_seq_cu, path: "src/v2/test/fixture/anonymous_record/seq.dag"),
+  ar_read(source: ar_list_headed_source, id: ^ar_list_headed_read, unit: ^ar_list_headed_cu, path: "src/v2/test/fixture/anonymous_record/list_headed.dag"),
+  ar_read(source: ar_list_headless_source, id: ^ar_list_headless_read, unit: ^ar_list_headless_cu, path: "src/v2/test/fixture/anonymous_record/list_headless.dag"),
+  ar_read(source: ar_rename_headed_source, id: ^ar_rename_headed_read, unit: ^ar_rename_headed_cu, path: "src/v2/test/fixture/anonymous_record/rename_headed.dag"),
+  ar_read(source: ar_rename_headless_source, id: ^ar_rename_headless_read, unit: ^ar_rename_headless_cu, path: "src/v2/test/fixture/anonymous_record/rename_headless.dag"),
+  ar_read(source: ar_reorder_source, id: ^ar_reorder_read, unit: ^ar_reorder_cu, path: "src/v2/test/fixture/anonymous_record/reorder.dag"),
+  ar_read(source: ar_constant_source, id: ^ar_constant_read, unit: ^ar_constant_cu, path: "src/v2/test/fixture/anonymous_record/constant.dag"),
+  ar_read(source: ar_partial_source, id: ^ar_partial_read, unit: ^ar_partial_cu, path: "src/v2/test/fixture/anonymous_record/partial.dag"),
+  ar_read(source: ar_cycle_source, id: ^ar_cycle_read, unit: ^ar_cycle_cu, path: "src/v2/test/fixture/anonymous_record/cycle.dag")
 ]
 
 fn ar_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
@@ -115,17 +157,22 @@ fn ar_resolved_coproduct() -> Outcome<ResolvedTree> { ar_resolve_subject(subject
 fn ar_resolved_binder() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_binder") }
 fn ar_resolved_value_mismatch() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_value_mismatch") }
 fn ar_resolved_value_mismatch_headed() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_value_mismatch_headed") }
+fn ar_resolved_list_headed() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_list_headed") }
+fn ar_resolved_list_headless() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_list_headless") }
+fn ar_resolved_rename_headed() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_rename_headed") }
+fn ar_resolved_rename_headless() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_rename_headless") }
+fn ar_resolved_reorder() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_reorder") }
+fn ar_resolved_constant() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_constant") }
+fn ar_resolved_partial() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_partial") }
+fn ar_resolved_cycle() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_cycle") }
 
 // Every construct under the root, authored or elided, in tree order.
 fn ar_constructs(root: Node) -> List<Node> {
   fold(node_subtree_nodes(root: root), init: Empty, f: fn(acc, n) {
-    if construct_tag_is_elided(n: n) {
-      list_snoc_item(xs: acc, item: n)
-    } else {
-      match construct_tag_optional(n: n) {
-        Present { value: _ } => list_snoc_item(xs: acc, item: n)
-        Absent => acc
-      }
+    match construct_tag_reading(n: n) {
+      ConstructTagAuthored { reference: _ } => list_snoc_item(xs: acc, item: n)
+      ConstructTagElided => list_snoc_item(xs: acc, item: n)
+      NotAConstruct => acc
     }
   })
 }
@@ -228,4 +275,69 @@ test fn ar_infer_verdict_is_the_headed_forms_holds() -> Bool {
   (ar_construct_paths(o: headless) == ["v2.test.arp.ArB"])
     && (ar_construct_paths(o: headed) == ["v2.test.arp.ArB"])
     && (ar_infer_verdict(o: headless) == ar_infer_verdict(o: headed))
+}
+
+// POSITIVE (the direct control, gentle-koi-724): headless elements under an annotated FreeMonoid<ArB>
+// elaborate to EXACTLY their headed twins, by content, and both are tagged ArB. An absence of
+// refusals could not tell elaborated from passed-through; this compares the constructs themselves.
+test fn ar_list_elements_elaborate_under_the_list_head_holds() -> Bool {
+  let headed = ar_construct_hashes(o: ar_resolved_list_headed())
+  (length(xs: headed) == 2)
+    && ar_pairwise_equal(xs: headed, ys: ar_construct_hashes(o: ar_resolved_list_headless()))
+    && (ar_construct_paths(o: ar_resolved_list_headless()) == ["v2.test.arp.ArB", "v2.test.arp.ArB"])
+}
+
+// PURE RENAMINGS ARE FOLLOWED (ruling, neat-boar-16): under ArSeq<ArB>, List<ArB> and ArPairS<Bool,
+// Bool>, each headless literal elaborates to EXACTLY its headed twin, by content.
+test fn ar_pure_renaming_aliases_elaborate_holds() -> Bool {
+  let headed = ar_construct_hashes(o: ar_resolved_rename_headed())
+  (length(xs: headed) == 3)
+    && ar_pairwise_equal(xs: headed, ys: ar_construct_hashes(o: ar_resolved_rename_headless()))
+    && (ar_construct_paths(o: ar_resolved_rename_headless()) == ["v2.test.arp.ArB", "v2.test.arp.ArB", "v2.test.arseq.ArPair"])
+}
+
+// A reordering, a constant and a partially applied alias are not renamings, and refuse.
+test fn ar_a_non_renaming_alias_refuses_holds() -> Bool {
+  ar_refuses_with(o: ar_resolved_reorder(), reason: ^resolve_anonymous_record_expected_type_not_record)
+    && ar_refuses_with(o: ar_resolved_constant(), reason: ^resolve_anonymous_record_expected_type_not_record)
+    && ar_refuses_with(o: ar_resolved_partial(), reason: ^resolve_anonymous_record_expected_type_not_record)
+}
+
+// A cycle of renamings refuses located, and is not followed.
+test fn ar_an_alias_cycle_refuses_holds() -> Bool {
+  ar_refuses_with(o: ar_resolved_cycle(), reason: ^resolve_anonymous_record_alias_cycle)
+}
+
+// THE KEY'S KIND IS A PRODUCTION, NOT A SPELLING (review 73139, ruled by gentle-koi-724). A quoted key
+// and a bare key with the same spelling parse through DIFFERENT productions: only the quoted one
+// carries ^dag_surface_field_init_string_key. A grammar that merged the two alternatives back into
+// one production -- or classified the key by its text -- makes both counts equal and reds this.
+data ar_key_bare_source: String = "module v2.test.ar_key_bare\n\ndata ar_k: Bool = { n: true }\n"
+
+data ar_key_quoted_source: String = "module v2.test.ar_key_quoted\n\ndata ar_k: Bool = { \"n\": true }\n"
+
+fn ar_string_key_production_count(source: String, tail: String) -> Int {
+  match conservation_subject(id_tail: tail, source: source).parsed {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: a, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: a.tree), init: 0, f: fn(acc, n) {
+        match parse_production_emitted_identity_optional(node: n) {
+          Present { value: id } => if id == ^dag_surface_field_init_string_key { acc + 1 } else { acc }
+          Absent => acc
+        }
+      })
+  }
+}
+
+test fn ar_a_quoted_key_takes_the_string_key_production_holds() -> Bool {
+  (ar_string_key_production_count(source: ar_key_bare_source, tail: "ar_key_bare") == 0)
+    && (ar_string_key_production_count(source: ar_key_quoted_source, tail: "ar_key_quoted") == 1)
+}
+
+// And the record arm refuses the quoted key at the item, never reading it as field `n`.
+test fn ar_a_quoted_key_is_not_a_record_field_holds() -> Bool {
+  match conservation_subject(id_tail: "ar_key_quoted_n", source: ar_key_quoted_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_field_init_unlowered
+  }
 }
