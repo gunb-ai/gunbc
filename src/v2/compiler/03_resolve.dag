@@ -76,6 +76,7 @@ import v2.std.resolution_policy {
   NamespaceOnlyY,
   default_name_resolution_policy
 }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations }
 import v2.std.symbol_index {
   LexicalAmbiguous,
   LexicalBindingCandidate,
@@ -142,13 +143,35 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
 // the Namespace.symbol_index the walk ran under, minted beside the root on the Accepted arm only, so
 // a refusal carries no index and no stage can read one for a tree that did not resolve.
 // CONSUMERS: .root is read by every stage after resolve (infer's gather reads it at its entry).
-// .symbol_index is a DECLARED FRONTIER in this change: its consumer is gunbc#12407, which stacks on
-// it -- v2.compiler.infer refinement_declaration asks symbol_index_lookup for a refinement
-// declaration a cast operand's type references (the declared-carrier widening), replacing an
-// infer-private walk over the tree.
+// .symbol_index is the table resolve resolves against; no later stage reads it. A later stage that needs
+// a declaration reads .resolved_declarations below: v2.compiler.infer refinement_declaration (gunbc#12407,
+// stacked on this change) asks symbol_index_lookup there for the refinement declaration a cast
+// operand's type references, replacing an infer-private walk over the tree.
+// TWO INDEXES OVER THE SAME DECLARATIONS AT DIFFERENT PHASES, NEVER ONE QUESTION TWICE.
+// symbol_index is THE INDEX RESOLUTION CONSULTED: declarations as authored, before resolve, the table
+// resolve looks references up in. resolved_declarations is DECLARATIONS WITH RESOLVED BODIES: the same
+// module fold (v2.compiler.symbol_index_fill symbol_index_fill_module_declarations) run over the
+// RESOLVED root, so a declaration's body carries the identities resolve bound in it -- a where-refined
+// carrier `Int` is the kernel binding, a carrier naming a corpus type is its declaration reference. A
+// reader that needs a body's resolved type reads resolved_declarations; nothing reads symbol_index for
+// a body type (neat-boar-16 ruling), so the two never answer the same question.
 type ResolvedTree {
   root: Node
   symbol_index: SymbolIndex
+  resolved_declarations: SymbolIndex
+}
+
+// The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
+// qualified name is read from the root's own header, so a declaration is keyed at its full path (p.Pos).
+// A root whose module name cannot be read yields the empty index -- every lookup through it refuses.
+fn resolved_declarations_of(root: Node) -> SymbolIndex {
+  symbol_index_fill_module_declarations(index: empty_symbol_index(), root: root, record_declarations: Empty)
+}
+
+// THE ONE CONSTRUCTOR of an accepted resolution's carrier: the root, the index it was resolved
+// against, and its declarations as resolved.
+fn resolved_tree_of(root: Node, symbol_index: SymbolIndex) -> ResolvedTree {
+  ResolvedTree { root: root, symbol_index: symbol_index, resolved_declarations: resolved_declarations_of(root: root) }
 }
 
 // `test_code`, `declared_in` and `imported_origins` exist for one decision: whether a reference binds
@@ -1254,7 +1277,7 @@ fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
 fn resolved_tree_outcome(w: ResolveNodeWalk, symbol_index: SymbolIndex) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d } =>
-      Accepted { value: ResolvedTree { root: v, symbol_index: symbol_index }, diagnostics: d }
+      Accepted { value: resolved_tree_of(root: v, symbol_index: symbol_index), diagnostics: d }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
   }
 }

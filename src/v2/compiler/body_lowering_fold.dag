@@ -996,6 +996,15 @@ fn body_lower_fielded_type_variant(shell: Node, head: Node, payload_shell: Node)
   }
 }
 
+// A WHERE-REFINED HEAD IS A TYPE, LOWERED BY THE ONE TYPE-EXPRESSION LOWERING that signatures and
+// cast targets use (body_lower_type_expr_lowered_optional), so resolve binds the carrier in type role
+// like any other type. Carried as the raw parse sequence, the head reached resolve as a
+// dag_surface_qualified_name shell, which v2.compiler.resolve preserves UNCHANGED as module metadata
+// (v2.extdeps.languages.dag dag_resolve_preserve_module_metadata_subtree): the declaration named its
+// carrier in a vocabulary no stage resolved. A head the lowering cannot read refuses at the head, as an
+// unreadable annotation does. The other declaration-body type positions (alias right-hand side, field
+// and payload types) are the same defect and a declared frontier
+// (gunbc.recurring_failure_mode declaration_body_type_shell_preserved_unresolved).
 // A variant shell is seq(type_expr, seq(optional(where), optional(payload))). A bare head is left
 // as parsed: whether `type T = U` names an alias or a one-variant sum is decided where the
 // alternatives are counted (v2.std.compilers.sugar sugar_fold_coproduct_pipe_chain, the seed's
@@ -1031,17 +1040,24 @@ fn body_lower_type_variant(shell: Node) -> Outcome<Node> {
                     Absent => outcome_accepted(value: shell)
                     Present { value: suffix_id } =>
                       if suffix_id == ^dag_surface_where_refinement_clause {
-                        outcome_accepted(
-                          value: node_with_occurrence_id(
-                            kind: TypeNode { connective: Conj },
-                            children: body_lower_type_variant_children_with_where(
-                              base: pair.left,
-                              where_clause: suffixes.left,
-                              fields: suffixes.right
-                            ),
-                            occurrence_id: shell.occurrence_id
-                          )
-                        )
+                        match body_lower_type_expr_lowered_optional(node: pair.left) {
+                          Absent =>
+                            outcome_rejected(
+                              d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: pair.left)
+                            )
+                          Present { value: carrier } =>
+                            outcome_accepted(
+                              value: node_with_occurrence_id(
+                                kind: TypeNode { connective: Conj },
+                                children: body_lower_type_variant_children_with_where(
+                                  base: carrier,
+                                  where_clause: suffixes.left,
+                                  fields: suffixes.right
+                                ),
+                                occurrence_id: shell.occurrence_id
+                              )
+                            )
+                        }
                       } else {
                         outcome_accepted(value: shell)
                       }
