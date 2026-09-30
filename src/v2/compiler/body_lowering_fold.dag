@@ -9655,3 +9655,27 @@ fn body_lower_finish_for_normalize(
   )
 }
 
+
+// MQ-5 CENSUS POSITIVE CONTROL (scratch branch only): the instrument must fire on an unrecognised
+// lowered shape, stay silent on a recognised one, and stay silent on a raw parse sequence.
+fn mq5_census_control_verdict(o: Outcome<Node>) -> String {
+  match o {
+    Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+    Accepted { value: _, diagnostics: _ } => "accepted"
+  }
+}
+
+fn mq5_census_control() -> List<String> {
+  let leaf = node_synthetic(kind: TypeNode { connective: Atom { identity: ^mq5_probe_leaf } }, children: [])
+  let unknown = node_synthetic(kind: TypeNode { connective: Conj }, children: [Edge { label: Named { name: ^mq5_probe_edge }, target: leaf }])
+  let raw = node_synthetic(kind: TypeNode { connective: Conj }, children: [
+    Edge { label: Named { name: ^grammar_sequence_left_node_projection }, target: leaf },
+    Edge { label: Named { name: ^grammar_sequence_right_node_projection }, target: leaf }
+  ])
+  let projection = field_projection_node(base: leaf, field: leaf, source: leaf)
+  [
+    mq5_census_control_verdict(o: body_lower_fold(node: unknown)),
+    mq5_census_control_verdict(o: body_lower_fold(node: projection)),
+    mq5_census_control_verdict(o: body_lower_fold(node: raw))
+  ]
+}
