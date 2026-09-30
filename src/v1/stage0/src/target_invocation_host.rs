@@ -1715,7 +1715,21 @@ fn floor_phase_attribution_rendered(
         Ok(beats) => beats,
         Err(refusal) => return format!("floor-phase-attribution: refused: {refusal}"),
     };
-    let int = |v: u64| Value::Int(i64::try_from(v).unwrap_or(i64::MAX));
+    // A COUNTER PAST i64 REFUSES rather than clamping: a clamp would hand the fold a value nobody
+    // read. None of these can reach it on a real host, which is why a refusal costs nothing.
+    if let Some(b) = beats.iter().find(|b| {
+        std::iter::once(b.charge)
+            .chain(b.stall_per_min)
+            .chain(b.swap_bytes)
+            .chain(b.stat.iter().copied())
+            .any(|v| i64::try_from(v).is_err())
+    }) {
+        return format!(
+            "floor-phase-attribution: refused: beat {} carries a counter past the i64 the fold reads",
+            b.beat
+        );
+    }
+    let int = |v: u64| Value::Int(v as i64);
     let readings: Vec<Value> = beats
         .iter()
         .map(|b| {
