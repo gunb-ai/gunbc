@@ -1834,6 +1834,10 @@ fn floor_route_gap_expectation_chunk_27() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_lookup_valid_empty_answer_is_absence", operation: "Run", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_tag_dispatch_entry_is_present", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_RED_other_tag_entry_is_absence", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_RED_lookup_count_without_rows_refuses", operation: "Run", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_RED_lookup_truncated_answer_refuses", operation: "Run", ground: NoMockResponse {} },
@@ -1861,7 +1865,7 @@ fn floor_route_gap_expectation_chunk_27() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_RED_lookup_value_stream_refuses", operation: "Run", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_RED_lookup_two_documents_refuses", operation: "Run", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } }
+    tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 // THE RUNNER BROWSER TOOLCHAIN'S REAL-EXECUTION CONTROLS (gunbc#12500) run on the local-repo wet lane
