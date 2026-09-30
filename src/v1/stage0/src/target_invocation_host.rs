@@ -1730,6 +1730,21 @@ fn floor_phase_attribution_rendered(
         );
     }
     let int = |v: u64| Value::Int(v as i64);
+    // AN UNREAD COUNTER CROSSES AS `Absent`, the fold's own optional, never as a zero beside a flag.
+    let optional = |v: Option<u64>| -> Value {
+        match v {
+            Some(n) => Value::Variant {
+                type_name: ctx.sym("Optional"),
+                variant_name: ctx.sym("Present"),
+                fields: std::rc::Rc::new(vec![(ctx.sym("value"), int(n))]),
+            },
+            None => Value::Variant {
+                type_name: ctx.sym("Optional"),
+                variant_name: ctx.sym("Absent"),
+                fields: std::rc::Rc::new(vec![]),
+            },
+        }
+    };
     let readings: Vec<Value> = beats
         .iter()
         .map(|b| {
@@ -1744,13 +1759,8 @@ fn floor_phase_attribution_rendered(
                     ctx.sym("seam_after"),
                     crate::v1_interpreter::str_value(&b.seam_after),
                 ),
-                (
-                    ctx.sym("stall_read"),
-                    Value::Bool(b.stall_per_min.is_some()),
-                ),
-                (ctx.sym("stall_per_min"), int(b.stall_per_min.unwrap_or(0))),
-                (ctx.sym("swap_read"), Value::Bool(b.swap_bytes.is_some())),
-                (ctx.sym("swap_bytes"), int(b.swap_bytes.unwrap_or(0))),
+                (ctx.sym("stall_per_min"), optional(b.stall_per_min)),
+                (ctx.sym("swap_bytes"), optional(b.swap_bytes)),
                 (ctx.sym("charge"), int(b.charge)),
             ];
             for (key, value) in sup::FLOOR_BEAT_STAT_KEYS.iter().zip(b.stat.iter()) {

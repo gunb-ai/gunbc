@@ -12,7 +12,7 @@ import gunbc.floor_demand {
 fn reading(beat: Int, opens: Bool, seam: String, anon: Int) -> FloorBeatReading {
   FloorBeatReading {
     beat: beat, opens_phase: opens, seam_before: seam, seam_after: seam,
-    stall_read: false, stall_per_min: 0, swap_read: false, swap_bytes: 0,
+    stall_per_min: none, swap_bytes: none,
     charge: anon, anon: anon, file: 7, shmem: 0, unevictable: 0, slab_unreclaimable: 0,
     slab_reclaimable: 5, kernel_stack: 0, pagetables: 0, percpu: 0, sock: 0, file_dirty: 0,
   }

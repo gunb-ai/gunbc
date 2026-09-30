@@ -1600,10 +1600,8 @@ type FloorBeatReading {
   opens_phase: Bool
   seam_before: String
   seam_after: String
-  stall_read: Bool
-  stall_per_min: Int
-  swap_read: Bool
-  swap_bytes: Int
+  stall_per_min: Int?
+  swap_bytes: Int?
   charge: Int
   anon: Int
   file: Int
@@ -1657,10 +1655,19 @@ fn floor_seam_of_reading(r: FloorBeatReading) -> FloorSeam? {
   }
 }
 
+// AN UNREAD STALL OR SWAP IS ABSENT, NOT A VALUE BESIDE A FLAG: the heartbeat prints `na` where it
+// could not read, and a Bool-plus-Int pair would let a reading carry a number that means nothing.
+fn optional_count_is_negative(v: Int?) -> Bool {
+  match v {
+    Present { value: n } => n < 0
+    Absent => false
+  }
+}
+
 // A NEGATIVE COUNT IS A MALFORMED READ, NOT A SMALL ONE: the kernel documents every counter here as
 // non-negative, so a reading below zero refuses rather than reaching nat_magnitude.
 fn floor_reading_has_negative_counter(r: FloorBeatReading) -> Bool {
-  r.stall_per_min < 0 || r.swap_bytes < 0 || r.charge < 0 || r.anon < 0 || r.file < 0 || r.shmem < 0
+  optional_count_is_negative(v: r.stall_per_min) || optional_count_is_negative(v: r.swap_bytes) || r.charge < 0 || r.anon < 0 || r.file < 0 || r.shmem < 0
     || r.unevictable < 0 || r.slab_unreclaimable < 0 || r.slab_reclaimable < 0 || r.kernel_stack < 0
     || r.pagetables < 0 || r.percpu < 0 || r.sock < 0 || r.file_dirty < 0
 }
@@ -1681,8 +1688,14 @@ fn floor_beat_of_reading(r: FloorBeatReading, seam: FloorSeam) -> FloorMemorySta
     percpu: byte_size(count: nat_magnitude(a: r.percpu)),
     sock: byte_size(count: nat_magnitude(a: r.sock)),
     file_dirty: byte_size(count: nat_magnitude(a: r.file_dirty)),
-    stall: if r.stall_read { StallRead { rate: events_per_minute(count: nat_magnitude(a: r.stall_per_min)) } } else { StallUnread },
-    swap: if r.swap_read { SwapRead { bytes: byte_size(count: nat_magnitude(a: r.swap_bytes)) } } else { SwapUnread },
+    stall: match r.stall_per_min {
+      Present { value: n } => StallRead { rate: events_per_minute(count: nat_magnitude(a: n)) }
+      Absent => StallUnread
+    },
+    swap: match r.swap_bytes {
+      Present { value: n } => SwapRead { bytes: byte_size(count: nat_magnitude(a: n)) }
+      Absent => SwapUnread
+    },
   }
 }
 
