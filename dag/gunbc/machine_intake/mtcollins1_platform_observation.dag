@@ -196,7 +196,10 @@ fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
     && mtcollins1_dedicated_bmc_lan.binding.function == BmcDedicated
     && match mtcollins1_second_bmc_lan.binding.function {
       FunctionUnobserved { discriminator: _ } => true
-      _ => false
+      BmcDedicated => false
+      BmcNcsi => false
+      HostData => false
+      PrebootNetwork => false
     }
 }
 
