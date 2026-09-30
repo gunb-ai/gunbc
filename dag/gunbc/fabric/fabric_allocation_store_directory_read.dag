@@ -1,0 +1,39 @@
+module gunbc.fabric_allocation_store_directory_read
+
+import std.types { String, List }
+import std.decl_ref { decl_ref }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.stat { stat_file_type_command, stat_owner_user_argv, stat_owner_group_argv, stat_mode_argv }
+import extdeps.sudo.elevation { sudo_elevate }
+import extdeps.tools.ls { directory_listing_argv }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.fabric_allocation_store_readback { AllocationStoreDirectoryRead, AllocationStoreMetadataRead, allocation_store_directory_read_from_observations }
+
+// Root-only directory names and metadata are read through the existing administrator edge.
+// No content read or mutation is part of this observer.
+fn allocation_store_metadata_read(target: SshTarget, context: FleetSshExecutionContext,
+  argv: List<String>) -> AllocationStoreMetadataRead
+  admit_callers: [decl_ref(module_path: "gunbc.fabric_allocation_store_directory_read", decl_name: "allocation_store_directory_read")]
+{
+  let invocation = sudo_elevate(command: argv)
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context,
+    argv: concat([invocation.bin_path], invocation.args)) {
+    TypedArgvExecRefused { reason } => AllocationStoreMetadataRead { success: false, output: "", error: reason }
+    TypedArgvExecConverged { result } => AllocationStoreMetadataRead {
+      success: result.success, output: result.stdout, error: result.stderr,
+    }
+  }
+}
+
+fn allocation_store_directory_read(target: SshTarget, context: FleetSshExecutionContext,
+  path: String) -> AllocationStoreDirectoryRead {
+  let kind = allocation_store_metadata_read(target: target, context: context, argv: argv_words(command: stat_file_type_command(path: path)))
+  let listing = allocation_store_metadata_read(target: target, context: context, argv: directory_listing_argv(parent: path))
+  let user = allocation_store_metadata_read(target: target, context: context, argv: stat_owner_user_argv(path: path))
+  let group = allocation_store_metadata_read(target: target, context: context, argv: stat_owner_group_argv(path: path))
+  let mode = allocation_store_metadata_read(target: target, context: context, argv: stat_mode_argv(path: path))
+  allocation_store_directory_read_from_observations(path: path, kind: kind, listing: listing, user: user, group: group, mode: mode)
+}
+
+

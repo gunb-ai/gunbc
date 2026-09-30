@@ -1,0 +1,43 @@
+module gunbc.fabric_allocation_store_readback
+
+import std.types { String, Bool }
+import std.algebra { trim }
+import extdeps.posix.identity { PosixOwnerSpec, posix_user_id_from_text, posix_group_id_from_text }
+import extdeps.posix.path_ownership { PathOwnershipObservation, PathOwnerObserved, PathOwnerUnobserved }
+
+type AllocationStoreDirectoryRead {
+  success: Bool
+  entries: String
+  error: String
+  owner: PathOwnershipObservation
+  mode: String
+}
+
+type AllocationStoreMetadataRead {
+  success: Bool
+  output: String
+  error: String
+}
+
+fn allocation_store_directory_read_from_observations(path: String, kind: AllocationStoreMetadataRead,
+  listing: AllocationStoreMetadataRead, user: AllocationStoreMetadataRead, group: AllocationStoreMetadataRead,
+  mode: AllocationStoreMetadataRead) -> AllocationStoreDirectoryRead {
+  AllocationStoreDirectoryRead {
+    success: kind.success && trim(s: kind.output) == "directory" && listing.success && user.success && group.success && mode.success && trim(s: mode.output) != "",
+    entries: listing.output,
+    error: join(["administrator directory read: ", kind.error, listing.error, user.error, group.error, mode.error,
+      "; observed file type=", trim(s: kind.output)], ""),
+    owner: allocation_store_owner_from_ids(uid_text: trim(s: user.output), gid_text: trim(s: group.output), path: path),
+    mode: trim(s: mode.output),
+  }
+}
+
+fn allocation_store_owner_from_ids(uid_text: String, gid_text: String, path: String) -> PathOwnershipObservation {
+  match posix_user_id_from_text(text: uid_text) {
+    Absent => PathOwnerUnobserved { reason: concat("invalid observed user id at ", path) }
+    Present { value: user } => match posix_group_id_from_text(text: gid_text) {
+      Absent => PathOwnerUnobserved { reason: concat("invalid observed group id at ", path) }
+      Present { value: group } => PathOwnerObserved { owner: PosixOwnerSpec { user: user, group: group } }
+    }
+  }
+}

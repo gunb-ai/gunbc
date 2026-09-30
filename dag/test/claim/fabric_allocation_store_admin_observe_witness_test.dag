@@ -1,0 +1,46 @@
+module test.claim.fabric_allocation_store_admin_observe_witness_test
+
+import std.types { String, Bool }
+import gunbc.fabric_allocation_store_directory_read { allocation_store_directory_read }
+import gunbc.fabric_allocation_store_readback { AllocationStoreMetadataRead, allocation_store_directory_read_from_observations }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv, stat_mode_argv }
+import extdeps.posix.path_ownership { PathOwnerObserved }
+
+fn metadata_ok(text: String) -> AllocationStoreMetadataRead {
+  AllocationStoreMetadataRead { success: true, output: text, error: "" }
+}
+
+test fn root_only_directory_is_observed_without_changing_permissions() -> Bool {
+  let reading = allocation_store_directory_read_from_observations(path: "/var/lib/gunbc/fabric",
+    kind: metadata_ok(text: "directory\n"), listing: metadata_ok(text: "allocation\n"),
+    user: metadata_ok(text: "0\n"), group: metadata_ok(text: "0\n"), mode: metadata_ok(text: "700\n"))
+  reading.success && reading.entries == "allocation\n" && reading.mode == "700"
+    && match reading.owner { PathOwnerObserved { owner: _ } => true _ => false }
+}
+
+test fn denied_administrator_listing_is_not_an_empty_directory() -> Bool {
+  let reading = allocation_store_directory_read_from_observations(path: "/var/lib/gunbc/fabric",
+    kind: metadata_ok(text: "directory"),
+    listing: AllocationStoreMetadataRead { success: false, output: "", error: "Permission denied" },
+    user: metadata_ok(text: "0"), group: metadata_ok(text: "0"), mode: metadata_ok(text: "700"))
+  !reading.success && reading.error.contains("Permission denied")
+}
+
+test fn a_symlink_cannot_stand_for_the_protected_directory() -> Bool {
+  let reading = allocation_store_directory_read_from_observations(path: "/var/lib/gunbc/fabric",
+    kind: metadata_ok(text: "symbolic link"), listing: metadata_ok(text: "allocation"),
+    user: metadata_ok(text: "0"), group: metadata_ok(text: "0"), mode: metadata_ok(text: "700"))
+  !reading.success
+}
+
+test fn stat_formats_cross_the_existing_ssh_word_boundary() -> Bool {
+  let words = stat_owner_user_argv(path: "/var/lib/gunbc/fabric")
+    + stat_owner_group_argv(path: "/var/lib/gunbc/fabric") + stat_mode_argv(path: "/var/lib/gunbc/fabric")
+  match portable_remote_words(raws: words) { Present { value: _ } => true Absent => false }
+}
+
+test fn admitting_stat_formats_does_not_admit_shell_expansion() -> Bool {
+  fold(["$(id)", "a;b", "a b", "a>b", "a|b"], init: true, f: (ok, word) => ok &&
+    match portable_remote_words(raws: [word]) { Absent => true Present { value: _ } => false })
+}

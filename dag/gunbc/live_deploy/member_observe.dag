@@ -1,5 +1,7 @@
 module gunbc.live_deploy.member_observe
 
+import extdeps.tools.ls { directory_listing_argv }
+
 import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha, FilePath }
 import std.algebra { trim }
 import std.content_hash { content_hash_atom }
@@ -135,7 +137,7 @@ fn path_basename(path: String) -> String {
 // principal runs them, and two copies of a membership predicate can drift into two answers about
 // one question (DESIGN §2: net concepts must not grow by re-invention).
 fn parent_listing_argv(parent: String) -> List<String> {
-  ["ls", "-1", "-A", "--", parent]
+  directory_listing_argv(parent: parent)
 }
 
 fn listing_contains_entry(stdout: String, name: String) -> Bool {
