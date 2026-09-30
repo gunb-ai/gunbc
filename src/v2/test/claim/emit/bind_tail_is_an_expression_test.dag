@@ -5,6 +5,7 @@ import v2.extdeps.languages.dag { dag_value_expression_projection }
 import v2.extdeps.languages.typescript { ts_binding_spellings, ts_source_text_authority, ts_fn_add_lex_rules }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal, node_locus }
 import v2.std.logic { Bool }
+import v2.std.arrow_signature { declared_signature }
 import v2.std.node {
   Arrow,
   Bind,
@@ -66,16 +67,16 @@ fn probe_bind(key: Symbol, value: Node, tail: Node) -> Node {
 }
 
 fn probe_fn(param: Symbol, body: Node) -> Node {
+  let signature = declared_signature(
+    params: [probe_named(name: param, target: probe_atom(id: ^fold_call_type_int))],
+    source: probe_atom(id: ^fold_call_type_int)
+  )
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      probe_positional(
-        target: node_synthetic(
-          kind: TypeNode { connective: Conj },
-          children: [probe_named(name: param, target: probe_atom(id: ^fold_call_type_int))]
-        )
-      ),
+      signature.domain,
       probe_positional(target: probe_atom(id: ^fold_call_type_int)),
+      signature.order,
       probe_named(name: ^arrow_body_edge, target: body)
     ]
   )

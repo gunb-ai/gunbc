@@ -3640,7 +3640,26 @@ fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry
 // discharge_refinement_obligations is the one route onward. No obligation is recorded yet -- the
 // producer is the literal-into-refinement cast arm, which lands once where-predicates bind to their
 // declarations (node adhoc-46630399-82b); until then every tree discharges with nothing to evaluate.
+// INFER ADMITS ONLY A WELL-FORMED TREE. Resolve refuses an ill-formed root, but infer is also entered
+// directly with a ResolvedTree, so the Node-admission wall (v2.std.node well_formed -- including A4's
+// Named-binder domain without an order edge) is held here too, and the rung is the same on every path.
 fn infer(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
+  if !well_formed(n: tree.root) {
+    outcome_rejected(infer_malformed_tree_diagnostic(n: tree.root))
+  } else {
+    infer_well_formed(tree: tree)
+  }
+}
+
+fn infer_malformed_tree_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_reason_malformed_tree,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
   match infer_entries_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: entries, diagnostics: d } =>
