@@ -4156,7 +4156,9 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
 //
 // EVERY NON-LOCAL TRANSPORT RIDES THE ONE TYPED DISPATCH: SshShell and FleetSsh execute the words
 // as argv; EmitArtifactThenThinRun is refused by the dispatch, and a refused leg decodes (in the
-// census module's one adapter) as a refused census -- unobserved, never an empty population.
+// census module's one adapter) as a refused census -- unobserved, never an empty population. The
+// census's refusal names the transport itself, not the fleet edge: SshShell and FleetSsh share this
+// arm, and the refused reason that follows the noun names the concrete endpoint.
 //
 // Until the commit before this one, the census probe's serialization lived here as a named
 // declaration (observe_slot_population_census_script_body) with a std.dissolution
@@ -4202,6 +4204,7 @@ fn observe_slot_population_over_host_effect_transport(
           argv: systemctl_list_all_service_units_argv(),
           transport: transport,
         ),
+        edge_noun: "the transport",
       )
   }
 }
