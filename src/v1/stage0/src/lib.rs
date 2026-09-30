@@ -872,17 +872,3 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     clippy::all
 )]
 mod compiler_tests;
-
-// DELIBERATE-RED DEMO for gunbc#12753: shows a unit-test red turning the required `witnesses`
-// context red. Reverted in the next commit; never lands.
-#[cfg(test)]
-mod deliberate_red_demo_12753 {
-    #[test]
-    fn deliberate_red_demo_fails() {
-        assert_eq!(
-            1 + 1,
-            3,
-            "deliberate red: gunbc#12753 required-lane demonstration"
-        );
-    }
-}
