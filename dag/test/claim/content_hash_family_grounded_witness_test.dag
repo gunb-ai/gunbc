@@ -1,5 +1,7 @@
 module test.claim.content_hash_family_grounded_witness
 
+import extdeps.cargo_build { cargo_program }
+
 import std.types { NonEmptyStr, Bool, String }
 import std.content_hash {
   ContentHash,
@@ -67,7 +69,7 @@ fn witness_oci_sha256_row() -> OciContentDigest {
 }
 data tool_pin_fixture: Pin<CliTool> = Pin {
   subject: CliTool {
-    name: "cargo",
+    program: cargo_program(),
     min_version: Absent,
     installable_via: [SourceApt { package: "cargo", bin_dir: apt_bin_dir }],
   },
