@@ -516,7 +516,9 @@ import v2.std.collection { List }
 // CLAIM-FORCED, by the same ceiling arithmetic as dag_prepared_grammar: an in-fold first
 // touch of this fill dies on the lane's margin and restarts per claim. The module is under
 // src/v2/extdeps, so it resolves in every required-floor subject.
-// THE TEN declaration_graft_assemble PRODUCERS EARN THEIR ROWS ON THE FILL-THAT-CANNOT-LAND
+// THE declaration_graft_assemble PRODUCERS EARN THEIR ROWS ON THE FILL-THAT-CANNOT-LAND (ten on the
+// receipt below; an eleventh, declaration_graft_where_alias_undeclared_carrier_assembled, is the RED of
+// the resolved where-head -- one assembly, on the same ground)
 // GROUND, AND SIX OF THEM ON THE SHARING GROUND AS WELL. Receipt, re-derivable: required-floor
 // run 35467726264 (gunbc#11574 head 1797ea43bd) reported fourteen of that file's claims
 // COMPLETED-OVER-COST-REQUIREMENT at 73,857-148,646 eval steps against the 72,300 new-witness
@@ -1134,7 +1136,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.declaration_graft_assemble.declaration_graft_where_alias_only_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_record_construct_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_record_type_only_assembled",
-  "v2.test.claim.declaration_graft_assemble.declaration_graft_flag_and_rec_assembled"
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_flag_and_rec_assembled",
+  "v2.test.claim.declaration_graft_assemble.declaration_graft_where_alias_undeclared_carrier_assembled"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
