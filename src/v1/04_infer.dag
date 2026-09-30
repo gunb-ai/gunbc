@@ -3459,6 +3459,22 @@ fn application_type_names_compatible(
   }
 }
 
+// WHAT THIS RELATION READS IS THE DECLARED RIGHT-HAND SIDE, NOT THE PEEL. It used to ask
+// peel_nominal_alias_identity for the alias's target name, but that peel exists to KEEP the brand:
+// it returns the structural body stamped with the alias's own authored identity, so the name it
+// yields is the alias again and the relation answered false for every alias whose body is not a
+// kernel primitive. A record literal handed to a formal declared through such an alias -- `type
+// TokenThroughput = FieldOfFractions<Nat>` receiving `FieldOfFractions { .. }`, and equally `type
+// A = SomeRecord` receiving `SomeRecord { .. }` -- was then refused at the head as a mismatch
+// between an alias and its own body. The target is read from the declaration's resolved right-hand
+// side, the same `inferred: Resolved { node: target }` edge peel_nominal_alias_identity itself
+// resolves, so the two agree on WHAT the alias denotes and differ only in whether the brand is kept.
+// This is a HEAD relation, like every name comparison application_type_names_compatible makes: an
+// applied right-hand side contributes its constructor name, and its arguments are judged where the
+// nodes are, exactly as two applications of one constructor are (a literal's fields are inferred
+// against the substituted body). A where-refinement (Conj), an optional cardinality and a
+// parameterized alias are not transparent and are not read. The chase is bounded, so an alias cycle
+// stops rather than recursing.
 fn type_name_transparently_aliases_to(
   alias_name: String,
   target_name: String,
@@ -3466,19 +3482,50 @@ fn type_name_transparently_aliases_to(
   module_name: String,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
-  match lookup_type_by_name(env: type_env, name: alias_name) {
-    Present { value: decl } =>
-      let peeled = peel_nominal_alias_identity(n: decl, env: type_env, module_name: module_name)
-      let peeled_name = authored_name_at(source_indices: source_indices, node: peeled)
-      if peeled_name == alias_name {
-        false
-      } else if peeled_name == target_name {
-        true
-      } else {
-        type_name_transparently_aliases_to(
-          alias_name: peeled_name, target_name: target_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
-      }
-    Absent => false
+  type_name_transparently_aliases_to_bounded(
+    alias_name: alias_name, target_name: target_name, type_env: type_env, source_indices: source_indices, fuel: 16)
+}
+
+fn type_name_transparently_aliases_to_bounded(
+  alias_name: String,
+  target_name: String,
+  type_env: TypeEnv,
+  source_indices: Map<String, NewlineIndex>,
+  fuel: Int
+) -> Bool {
+  if fuel <= 0 {
+    false
+  } else {
+    match lookup_type_by_name(env: type_env, name: alias_name) {
+      Present { value: decl } =>
+        let declared_target = alias_declared_target_head_name(decl: decl, source_indices: source_indices)
+        if declared_target == "" || declared_target == alias_name {
+          false
+        } else if declared_target == target_name {
+          true
+        } else {
+          type_name_transparently_aliases_to_bounded(
+            alias_name: declared_target, target_name: target_name, type_env: type_env, source_indices: source_indices, fuel: fuel - 1)
+        }
+      Absent => false
+    }
+  }
+}
+
+fn alias_declared_target_head_name(decl: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  if decl.connective != NoConnective || (decl.params |> count) > 0 || decl.type_annotation != none
+    || (decl.properties |> count) > 0 {
+    ""
+  } else {
+    match decl.inferred {
+      Present { value: Resolved { node: target } } =>
+        if target.connective == NoConnective && target.return_cardinality == Required && target.type_annotation == none {
+          authored_name_at(source_indices: source_indices, node: target)
+        } else {
+          ""
+        }
+      _ => ""
+    }
   }
 }
 
