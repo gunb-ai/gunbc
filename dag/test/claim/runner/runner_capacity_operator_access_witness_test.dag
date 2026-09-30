@@ -104,7 +104,10 @@ test fn witness_recover_host_execution_target_is_hosted_ssh() -> Bool {
   ) {
     RunnerCapacityExecuteHostedRemote { host: h, transport: t, reason: r } =>
       (h as String) == (operator_host_srv3 as String)
-        && t == SshShell
+        && match t {
+          SshShell { ssh_host: _ } => true
+          _ => false
+        }
         && string_contains(s: r, pattern: "GitHub-hosted")
     RunnerCapacityExecuteInBand { host_label: _, transport: _ } => false
   }

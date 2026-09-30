@@ -62,10 +62,10 @@ fn cursor_sdk_authentication_standing_from_probe(
                 raw,
               ) as NonEmptyStr,
             }
-          _ =>
-            AuthenticationStandingUnobserved {
-              reason: "unrecognised terminal error code" as NonEmptyStr,
-            }
+          CursorSdkAuthenticationError => AuthenticationStandingUnobserved { reason: "unrecognised terminal error code" as NonEmptyStr }
+          CursorSdkRateLimitError => AuthenticationStandingUnobserved { reason: "unrecognised terminal error code" as NonEmptyStr }
+          CursorSdkAgentNotFoundError => AuthenticationStandingUnobserved { reason: "unrecognised terminal error code" as NonEmptyStr }
+          CursorSdkAgentBusyError => AuthenticationStandingUnobserved { reason: "unrecognised terminal error code" as NonEmptyStr }
         }
       }
     CursorSdkAuthProbeUnclassified { reason } =>
@@ -111,7 +111,14 @@ fn cursor_sdk_local_provider_standing_has_usage_capability_gap(
         match row {
           LimitCapabilityGapUnobservable { reason: reason } =>
             reason == cursor_sdk_local_limit_standing_reason
-          _ => false
+          LimitObservationUnobserved { reason: _ } => false
+          LimitSubjectUnobserved { subject: _, native_token: _, reason: _ } => false
+          LimitObservedAvailable { subject: _ } => false
+          LimitWarning { subject: _, native_token: _, utilization_basis_points: _ } => false
+          LimitRejected { subject: _, native_token: _, reason: _ } => false
+          LimitUnavailableUntilReset { subject: _, cause: _, reset: _, reason: _ } => false
+          LimitExhausted { subject: _, native_token: _ } => false
+          LimitRateLimited { subject: _, native_token: _ } => false
         }
       }
     },
