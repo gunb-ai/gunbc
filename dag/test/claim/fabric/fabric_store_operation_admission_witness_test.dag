@@ -4,17 +4,16 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, Secret, List }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.content_hash { serialize_content_hash }
 import std.effect_grant { Grant, Write, NamespacePosition, CodeNameTree }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, intent_frame_head }
 import extdeps.crypto.mac { MacKey, HmacSha256 }
 import gunbc.auth.approval_decision_store { StoredApprovalRequest, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_id }
 import gunbc.auth.approval_store_receipt { approval_store_receipt_mac_key_id, approval_store_receipt_mac_key_path, store_receipt_claims }
-import gunbc.auth.approval_capability { issue_capability, CapabilityIssued, CapabilityIssuanceRefused }
+import gunbc.auth.approval_capability { ApprovalCapability }
 import gunbc.spark.pair_serving_d0 { d0_required_scope }
 import gunbc.fabric_store_operation_admission {
   protected_head_of, ConsentClaimSlotHead, ConsentFilingSlotHead, AuthorityPartitionHead,
-  admit_store_operation, intent_digest, StoreOperationAdmitted, StoreOperationRefused, StoreOperationCredential, StoreOperationAdmission,
+  admit_store_operation, StoreOperationAdmitted, StoreOperationRefused, StoreOperationCredential, StoreOperationAdmission,
   NoOperationCredential, PresentedApproval,
   ApprovalAbsent, IntentNotTheApprovedRevision, IntentScopeNotAdmissible, OperationUnclassifiable, ReceiptKeyUnavailable,
 }
@@ -44,26 +43,32 @@ fn fw_intent(scope: AuthorizationScope) -> String {
   }
 }
 
-// A receipt over exactly this intent's digest, signed as the broker's mint signs one: the mint's own
-// claim constructor (gunbc.auth.approval_store_receipt store_receipt_claims) and the envelope's own
-// issuance under the receipt key. The mint's slot-and-filing path has its own claims beside it; here
-// the subject is the store's decision, so the receipt is supplied (§3: one interface per claim).
-fn fw_receipt_over(intent: String) -> StoreOperationCredentialOrNone {
-  match intent_digest(text: intent) {
-    Absent => NoReceipt
-    Present { value: d } => {
-      let revision = serialize_content_hash(hash: d)
-      let filed = StoredApprovalRequest {
-        escalation_id: "esc-d0-1", request_revision: revision, attempt: ("tx-d0" as NonEmptyStr) as AttemptIdentity,
-        requester: "witness", purpose: "witness d0", destructive: true,
-        issued_at: "2026-09-28T00:00:00Z", expires_at: "2026-09-28T01:00:00Z", key_id: approval_mac_key_id,
-      }
-      match issue_capability(claims: store_receipt_claims(filed: filed, revision: revision, decided_at: "2026-09-28T00:10:00Z", execute_by: "2026-09-28T01:00:00Z"), key: fw_receipt_key()) {
-        CapabilityIssued { capability: r } => HaveReceipt { credential: PresentedApproval { receipt: r, intent_text: intent } }
-        CapabilityIssuanceRefused { cause: _ } => NoReceipt
-      }
-    }
+// RECEIPTS AS THE BROKER'S MINT SIGNS THEM, SUPPLIED (§3: the subject here is the store's decision,
+// so the receipt is an input, not a re-run of issuance, which has its own witnesses). Each is the mint's
+// own claim constructor (gunbc.auth.approval_store_receipt store_receipt_claims) over the SHA-256 of its
+// intent text as the approved revision, with the tag HMAC-SHA-256 under fw_receipt_key_hex over exactly
+// those claims' signing input -- both computed outside the substrate and pinned. They are not taken on
+// trust: the positive control admits only if the store's own digest of the intent equals the pinned
+// revision AND the pinned tag verifies under the receipt key, so a wrong constant refuses rather than
+// passes.
+fn fw_pinned_receipt(intent: String, revision: NonEmptyStr, tag: NonEmptyStr) -> StoreOperationCredentialOrNone {
+  let filed = StoredApprovalRequest {
+    escalation_id: "esc-d0-1", request_revision: revision, attempt: ("tx-d0" as NonEmptyStr) as AttemptIdentity,
+    requester: "witness", purpose: "witness d0", destructive: true,
+    issued_at: "2026-09-28T00:00:00Z", expires_at: "2026-09-28T01:00:00Z", key_id: approval_mac_key_id,
   }
+  HaveReceipt { credential: PresentedApproval {
+    receipt: ApprovalCapability { claims: store_receipt_claims(filed: filed, revision: revision, decided_at: "2026-09-28T00:10:00Z", execute_by: "2026-09-28T01:00:00Z"), tag_b64url: tag },
+    intent_text: intent,
+  } }
+}
+
+fn fw_receipt_d0() -> StoreOperationCredentialOrNone {
+  fw_pinned_receipt(intent: fw_intent(scope: d0_required_scope()), revision: "sha256:c9bd53d25b2756f52cbffe878e28dfb8e121ec0177e8da265adcb1e5221af1ca" as NonEmptyStr, tag: "KadxLVqCx5DF7rP9FT1ENLSKl7rLJhiMAyXDil5SOyQ=" as NonEmptyStr)
+}
+
+fn fw_receipt_other_scope() -> StoreOperationCredentialOrNone {
+  fw_pinned_receipt(intent: fw_intent(scope: fw_other_scope()), revision: "sha256:d729323109c0374ffffad30492948e41be5c53dddeb364059afabe49f0707f27" as NonEmptyStr, tag: "ar7XylYrvpB1gEF8gmyz7b132n_UBG1Q9k9tk0ub6uk=" as NonEmptyStr)
 }
 
 type StoreOperationCredentialOrNone
@@ -82,7 +87,7 @@ fn fw_admit(credential: StoreOperationCredential) -> StoreOperationAdmission {
 // THE POSITIVE CONTROL: a receipt the broker minted over an approved intent that states D0's scope
 // admits a D0 consent-slot write at the store.
 test fn a_receipt_over_an_intent_stating_the_d0_scope_admits_a_consent_write() -> Bool {
-  match fw_receipt_over(intent: fw_intent(scope: d0_required_scope())) {
+  match fw_receipt_d0() {
     NoReceipt => false
     HaveReceipt { credential: c } => match fw_admit(credential: c) { StoreOperationAdmitted { operation: _ } => true  _ => false }
   }
@@ -97,7 +102,7 @@ test fn a_consent_write_with_no_approval_is_refused_at_the_store() -> Bool {
 // A GENUINE RECEIPT DOES NOT CARRY ANOTHER OPERATION: an approved intent stating another scope is
 // refused.
 test fn a_receipt_whose_approved_intent_states_another_scope_is_refused() -> Bool {
-  match fw_receipt_over(intent: fw_intent(scope: fw_other_scope())) {
+  match fw_receipt_other_scope() {
     NoReceipt => false
     HaveReceipt { credential: c } => match fw_admit(credential: c) { StoreOperationRefused { operation: _, refusal: IntentScopeNotAdmissible { stated: _, admissible: _ } } => true  _ => false }
   }
@@ -105,7 +110,7 @@ test fn a_receipt_whose_approved_intent_states_another_scope_is_refused() -> Boo
 
 // AN INTENT EDITED AFTER APPROVAL is not the approved revision and is refused.
 test fn an_intent_edited_after_approval_is_refused() -> Bool {
-  match fw_receipt_over(intent: fw_intent(scope: d0_required_scope())) {
+  match fw_receipt_d0() {
     NoReceipt => false
     HaveReceipt { credential: c } => match c {
       PresentedApproval { receipt: r, intent_text: t } =>
@@ -128,7 +133,7 @@ test fn protected_heads_are_recognized_and_unclassifiable_objects_refuse() -> Bo
 
 // NO RECEIPT KEY AT THE STORE refuses rather than admitting.
 test fn a_store_without_the_receipt_key_refuses() -> Bool {
-  match fw_receipt_over(intent: fw_intent(scope: d0_required_scope())) {
+  match fw_receipt_d0() {
     NoReceipt => false
     HaveReceipt { credential: c } =>
       match admit_store_operation(head: ConsentClaimSlotHead, target_text: "", credential: c, principal_grants: [] as List<Grant>, receipt_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_store_receipt_mac_key_path } }, observed_at: "2026-09-28T00:20:00Z") {

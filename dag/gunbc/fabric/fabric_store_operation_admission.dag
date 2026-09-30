@@ -3,8 +3,6 @@ module gunbc.fabric_store_operation_admission
 import std.types { NonEmptyStr, String, Bool, Timestamp, List }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { is_empty }
-import std.bytes { utf8_encode_bytes, bytes_octets }
-import extdeps.crypto.sha2 { sha256_hex }
 import std.content_hash { ContentHash, sha256_hex_digest, as_content_hash_cryptographic, parse_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.effect_grant { Grant, Write, NamespacePosition, CodeNameTree, grant_covers }
 import std.scoped_authorization { AuthorizationScope, parse_intent_scopes, scope_covered_by_any, authorization_claim_key_scope }
@@ -180,9 +178,10 @@ type StoreOperationAdmission
   | StoreOperationRefused { operation: StoreOperation?, refusal: StoreOperationRefusal }
 
 // The digest the approved revision names, taken over the presented intent's exact UTF-8 bytes with
-// the pure SHA-256 (extdeps.crypto.sha2), so the store hashes what it was handed and nothing else.
+// the host SHA-256 (sha256_hex_of_text, whose known answers the pure extdeps.crypto.sha2 fold shares),
+// so the store hashes what it was handed and nothing else.
 fn intent_digest(text: String) -> ContentHash? {
-  match sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: text)))) {
+  match sha256_hex_digest(hex: sha256_hex_of_text(text: text)) {
     Present { value: d } => Present { value: as_content_hash_cryptographic(digest: d) }
     Absent => none
   }
