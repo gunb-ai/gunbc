@@ -1,0 +1,107 @@
+module v2.test.claim.compiler.infer_cardinality_type_owes_no_descent_test
+
+// A type node owes no evaluation descent: v2.std.cardinality connective_multiplicity answers
+// Bounded for every connective, Cardinality (T?) included, and repetition enters a program only
+// through the Loop behavior. These claims run source text through the production front end
+// (tokenize, parse, normalize, resolve) into v2.compiler.infer infer, and pair the admitted
+// optional programs with the controls that must not move: an Int-at-Int return admits, a Bool at
+// an Int return refuses at the return, and a Loop whose measure has no descent fact still refuses
+// with infer_descent_not_derived.
+
+import v2.test.compiler.pipeline.stage_bridge { pipeline_resolved_source }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.compiler.infer { infer }
+import v2.std.diagnostic {
+  Accepted,
+  Rejected,
+  Some,
+  bind_outcome,
+  diagnostics_has_reason
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  ComputationNode,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  OccurrenceSynthetic,
+  Positional,
+  Symbol,
+  TypeNode,
+  Atom
+}
+
+fn cod_infer_source_rejected_for(source: String, reason: Symbol) -> Bool {
+  match bind_outcome(
+    o: pipeline_resolved_source(source: source, file: ^cod_source_file),
+    f: fn(resolved) { infer(tree: resolved) }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
+      diagnostics_has_reason(d: Some { diagnostics: nds }, reason: reason)
+  }
+}
+
+fn cod_infer_source_accepted(source: String) -> Bool {
+  match bind_outcome(
+    o: pipeline_resolved_source(source: source, file: ^cod_source_file),
+    f: fn(resolved) { infer(tree: resolved) }
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn infer_optional_parameter_is_not_refused_for_descent_holds() -> Bool {
+  !cod_infer_source_rejected_for(
+    source: "module m\n\nfn cod_f(x: Int?) -> Int { x }\n",
+    reason: ^infer_descent_not_derived
+  )
+}
+
+test fn infer_optional_return_is_not_refused_for_descent_holds() -> Bool {
+  !cod_infer_source_rejected_for(
+    source: "module m\n\nfn cod_p(x: Int) -> Int? { x }\n",
+    reason: ^infer_descent_not_derived
+  )
+}
+
+test fn infer_optional_return_program_is_accepted_holds() -> Bool {
+  cod_infer_source_accepted(source: "module m\n\nfn cod_p(x: Int) -> Int? { x }\n")
+}
+
+test fn infer_int_at_int_control_is_accepted_holds() -> Bool {
+  cod_infer_source_accepted(source: "module m\n\nfn cod_f(x: Int) -> Int { x }\n")
+}
+
+test fn infer_bool_at_int_control_refuses_at_return_holds() -> Bool {
+  cod_infer_source_rejected_for(
+    source: "module m\n\nfn cod_f(x: Int) -> Int { true }\n",
+    reason: ^arrow_body_does_not_inhabit_declared_return
+  )
+}
+
+fn cod_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn infer_loop_without_descent_fact_still_refuses_holds() -> Bool {
+  let body = Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: cod_atom(s: ^cod_body) },
+      Edge { label: Named { name: ^loop_bound_edge }, target: cod_atom(s: ^cod_unregistered_measure) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match infer(tree: claim_resolved_tree_without_declarations(root: body)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
+      diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^infer_descent_not_derived)
+  }
+}
