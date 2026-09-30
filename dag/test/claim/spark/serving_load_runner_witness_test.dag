@@ -8,18 +8,22 @@ import gunbc.spark.model_snapshot_materialize { RemoteRan }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.harness.harness_backend { harness_launch_from_body }
 import extdeps.vllm.bench_serve { VllmBenchServeRequest }
+import extdeps.vllm.kv_layout { AdmissionCostUnestablished }
+import gunbc.spark.serving_load_runner { ServingLoadSubject }
 import gunbc.spark.serving_load_probe {
   SamePrincipal, DrainObservedIdle, window_from_drain, counter_continuity,
   occupancy_trace_from_endpoint_scrapes, serving_load_observation, serving_load_observation_text,
   bench_serve_from_remote, BenchServeExecution, bench_serve_itl, bench_serve_bucket_peak,
   client_itl_text, client_bucket_peak_text,
-  glm_native_live_subject_standing, glm_native_smoke_protocol,
 }
 import gunbc.spark.serving_load_runner { serving_load_step_text, step_subject_mismatch }
-import gunbc.spark.serving_load_probe_cli { glm_native_serving_load_subject }
+import gunbc.spark.glm_serving_load {
+  glm_native_serving_load_subject, glm_native_live_subject_standing, glm_native_smoke_protocol,
+  glm_native_workload_admission, glm_native_qualification_frontier,
+}
 
 // Readings are supplied; the one route that captures them for real is serving_load_step, run by
-// glm_native_serving_load_wet.
+// glm_native_serving_load_wet (gunbc.spark.glm_serving_load).
 
 fn metrics_body(running: String, gen: String) -> String {
   join([
@@ -63,6 +67,8 @@ fn pre_runner_glm_step_text() -> String {
     before_incarnation: fx_incarnation(),
     after_incarnation: fx_incarnation(),
     bench: bench,
+    admission: glm_native_workload_admission,
+    qualification_frontier: glm_native_qualification_frontier,
     provenance: SamePrincipal { principal: join(["group-B administrator ssh session on ", operator_host_srv9 as String, " (bench by docker exec, metrics by 127.0.0.1 scrape, same context)"], "") as NonEmptyStr },
   )
   join([
@@ -114,4 +120,28 @@ test fn a_step_for_another_alias_refuses() -> Bool {
     Absent => false
     Present { value: m } => contains(m, "served alias")
   }
+}
+
+// Admission is the subject's, never a model's row baked into the shared observation: a subject
+// carrying its own admission cause sees that cause in its receipt and not GLM's.
+test fn the_receipt_carries_the_subjects_admission_not_glms() -> Bool {
+  let g = glm_native_serving_load_subject()
+  let other = ServingLoadSubject {
+    host: g.host, host_address: g.host_address, group: g.group, container: g.container,
+    base_url: g.base_url, served_alias: g.served_alias, standing: g.standing,
+    admission: AdmissionCostUnestablished { cause: "fixture admission cause for another model" as NonEmptyStr },
+    qualification_frontier: g.qualification_frontier,
+    principal: g.principal, receipt_heading: g.receipt_heading, receipt_path: g.receipt_path,
+  }
+  let t = serving_load_step_text(
+    subject: other,
+    window: window_from_drain(drain: DrainObservedIdle),
+    before: fx_before,
+    after: fx_after,
+    before_incarnation: fx_incarnation(),
+    after_incarnation: fx_incarnation(),
+    bench: fx_bench(),
+  )
+  contains(t, "admission: unread fixture admission cause for another model")
+    && !contains(t, "the live cache-group roster is unobserved")
 }
