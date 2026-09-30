@@ -2,6 +2,16 @@
 
 This branch extends allocation integration `7e64f4bcd7a0b93d88e82577596c26c1bd8eadfa`. It is not a commissioned-host receipt. No reservation, VM launch or slot commissioning has occurred. The separate storage prerequisite has now applied successfully, as recorded below.
 
+## Current dispatch checkpoint
+
+The commissioning fleet scope and protected dispatcher are now connected in source. The earlier checkpoint sections below describe historical gaps; the current qualification receipt is [fleet dispatch qualification](receipts/workspace-executor-dispatch-2026-09-30/README.md). No production installation or commissioning is claimed. The combined dispatch checks pass, but the full fleet regression was OOM-killed at 12 GiB after 70/87 passes; qualification remains incomplete.
+
+Fleet apply preserves run/revision/host/artifact admission, captures the reviewed bytes, and publishes one immutable root-custodied CAS bundle. It starts or reattaches to the installed executor under the existing fleet lock, then releases that lock before waiting so the executor can own the transaction. The dispatcher requires the same executor invocation, a successful terminal, protected completed journal and durable fleet-generation readback before publishing `FullyApplied`. Cancellation leaves the host-owned executor recoverable; the generic fleet generation writer does not run on this path.
+
+The root entry points are exact-release, argument-free commands with stdin data and narrowly generated grants. An operator-local invocation adopts the existing fleet lock owner. The native wait loop does not load the interpreter on each poll. Identical reviewed input can retry; different input cannot replace an existing slot commissioning transaction. Replacing or aborting that protected input is not implemented by this slice.
+
+The next operational gate is an exact reviewed release installation and read-only commissioning plan, followed by bounded commissioning acceptance. Initial readiness, reservation, boot, SSH, release and same-slot reuse remain unexecuted.
+
 ## Implemented source connections
 
 - Initial admission remains the existing budget/purpose/history/sanitation authority.

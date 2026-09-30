@@ -84,3 +84,12 @@ fn workspace_executor_plan_bytes(plan_body: String, apply_shell: String,
     _ => WorkspaceExecutorPlanBytesRefused { reason: "commissioning credential is not canonical" }
   }
 }
+
+fn workspace_executor_plan_credential(plan_body: String) -> String? {
+  let rows: List<String> = filter(split(s: plan_body, delimiter: "\n"), line => starts_with(s: line, prefix: workspace_executor_credential_row_prefix))
+  let first: String? = rows.first()
+  if rows.count() != 1 { none } else { match first {
+    Present { value: row } => Present { value: substring(s: row, start: string_length(s: workspace_executor_credential_row_prefix), end: string_length(s: row)) }
+    _ => none
+  } }
+}

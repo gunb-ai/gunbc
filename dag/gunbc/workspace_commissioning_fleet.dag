@@ -1,5 +1,9 @@
 module gunbc.workspace_commissioning_fleet
 
+import std.decl_ref { decl_ref }
+import gunbc.workspace_commissioning_executor_plan { workspace_executor_plan_credential, workspace_executor_plan_prestate }
+import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady }
+
 import std.types { String, NonEmptyStr, Bool, CommitSha, List }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -191,5 +195,30 @@ fn workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProve
       } }
     }
     _ => WorkspaceCommissioningFleetRefused { reason: "commissioning apply is on another host" }
+  }
+}
+
+// Only the adapter that just captured the exact installed privileged observer may decode its
+// response into a basis. This is not a fixture/text constructor exposed to planner consumers.
+fn workspace_commissioning_basis_from_privileged(text: String, host: NonEmptyStr, revision: CommitSha) -> WorkspaceCommissioningFleetObservation
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_dispatch_transport", decl_name: "workspace_dispatch_observe")]
+{
+  match workspace_executor_plan_credential(plan_body: text) {
+    Present { value: credential } => match workspace_commissioning_directive_from_text(text: credential) {
+      WorkspaceCommissioningDirectiveReady { provenance } => match workspace_executor_plan_prestate(plan_body: text) {
+        Present { value: prestate } => {
+          let installed = approval_broker_release_dir(root: microvm_controller_root, revision: RevisionBoundAtEmission { revision: revision }) as NonEmptyStr
+          let basis = WorkspaceCommissioningFleetBasis { provenance: provenance, release_dir: installed, prestate: prestate as NonEmptyStr,
+            already_committed: ends_with(s: text, suffix: "commissioning-already-committed:true") }
+          if provenance.slot.host != host || (provenance.source_revision as String) != (revision as String)
+            || workspace_commissioning_basis_rows(basis: basis) != text {
+            WorkspaceCommissioningFleetRefused { reason: "privileged commissioning response changed subject or is noncanonical" }
+          } else { WorkspaceCommissioningFleetObserved { basis: basis } }
+        }
+        _ => WorkspaceCommissioningFleetRefused { reason: "privileged commissioning prestate missing" }
+      }
+      _ => WorkspaceCommissioningFleetRefused { reason: "privileged commissioning provenance unreadable" }
+    }
+    _ => WorkspaceCommissioningFleetRefused { reason: "privileged commissioning response lacks its unique credential" }
   }
 }
