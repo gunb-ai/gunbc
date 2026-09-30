@@ -10423,6 +10423,29 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// AN EVICTED SHARED INDEX IS NOT REBUILT. Roots A, then roots B (which evicts A from the
+    /// thread's slot), then A again: the third demand refuses where it happens, naming both root
+    /// sets, instead of indexing A a second time. The positive control: asking for A twice with
+    /// nothing in between returns the same index.
+    #[test]
+    fn a_shared_index_evicted_by_other_roots_refuses_to_rebuild() {
+        let a = Fixture::new(&[("m.dag", "module evict_a\nfn f() -> Int { 1 }\n")]);
+        let b = Fixture::new(&[("m.dag", "module evict_b\nfn f() -> Int { 1 }\n")]);
+        let roots_a = vec![a.0.to_string_lossy().into_owned()];
+        let roots_b = vec![b.0.to_string_lossy().into_owned()];
+        let first = try_process_shared_index(&roots_a).unwrap();
+        let again = try_process_shared_index(&roots_a).unwrap();
+        assert!(
+            Rc::ptr_eq(&first, &again),
+            "same roots, nothing between: one index"
+        );
+        try_process_shared_index(&roots_b).unwrap();
+        let Err(err) = try_process_shared_index(&roots_a) else {
+            panic!("rebuilding evicted roots must refuse");
+        };
+        assert!(err.contains("SharedIndexRebuiltAfterEviction"), "{err}");
+    }
+
     /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
     /// the whole pool, and the entry still reaches its bare provider.
     #[test]

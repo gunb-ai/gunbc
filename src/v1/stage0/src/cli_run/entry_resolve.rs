@@ -673,6 +673,12 @@ thread_local! {
     pub(crate) static PROCESS_RESOLVE_INDEX: RefCell<[Option<(String, Rc<MultiEntryIndex>)>; 2]> =
         const { RefCell::new([None, None]) };
 
+    /// Every roots key each slot has built on this thread. A run's roots are fixed (above), so a
+    /// key built a second time is an evicted index being rebuilt: the same pool indexed twice.
+    #[allow(clippy::type_complexity)]
+    static PROCESS_RESOLVE_INDEX_BUILT: RefCell<[BTreeSet<String>; 2]> =
+        const { RefCell::new([BTreeSet::new(), BTreeSet::new()]) };
+
     // While loading the materialization-provider authority, cross-process disk hits
     // must not re-enter provider routing (review 44268: bootstrap recursion).
     pub(crate) static CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED: Cell<usize> = const { Cell::new(0) };
@@ -943,6 +949,26 @@ pub fn try_process_shared_index_for_pool(
     if let Some(idx) = existing {
         return Ok(idx);
     }
+    // A REBUILD IS REFUSED WHERE IT HAPPENS, not counted at the end of a run it can prevent from
+    // ending: an evicted pool rebuilt re-parses every file and, while the evicted index is still
+    // held, doubles resident memory -- the shape that grew a floor past 40 GiB inside
+    // prepare-closure-resolve before any later control could look.
+    if PROCESS_RESOLVE_INDEX_BUILT.with(|b| b.borrow()[slot].contains(&roots_key)) {
+        let site = std::panic::Location::caller();
+        let resident = PROCESS_RESOLVE_INDEX.with(|s| {
+            s.borrow()[slot]
+                .as_ref()
+                .map(|(k, _)| k.split('\u{1f}').map(str::to_string).collect::<Vec<_>>())
+        });
+        return Err(format!(
+            "SharedIndexRebuiltAfterEviction: roots {roots:?} (slot {slot}) were already indexed \
+             on this thread and evicted by roots {resident:?}; rebuilding them would parse the same \
+             pool twice. Demanded at {}:{} -- carry an index from its owner instead of alternating \
+             roots through the shared slot",
+            site.file(),
+            site.line()
+        ));
+    }
     #[cfg(test)]
     yield_live_pool_before_building_another();
     let build_started = std::time::Instant::now();
@@ -981,7 +1007,10 @@ pub fn try_process_shared_index_for_pool(
                 site.line()
             );
         }
-        slots[slot] = Some((roots_key, idx.clone()));
+        slots[slot] = Some((roots_key.clone(), idx.clone()));
+    });
+    PROCESS_RESOLVE_INDEX_BUILT.with(|b| {
+        b.borrow_mut()[slot].insert(roots_key);
     });
     Ok(idx)
 }
