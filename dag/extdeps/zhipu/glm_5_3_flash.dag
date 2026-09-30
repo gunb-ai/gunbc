@@ -6,6 +6,7 @@ import std.measure { TokenCount, token_count, byte_size }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.huggingface.hub { HubCheckpointManifest, hub_checkpoint_manifest }
+import std.nat { Nat }
 
 // THE GLM-5.3-FLASH FAMILY, as its own extdeps authority for the reason extdeps.deepseek.deepseek_v4
 // is one: an independently versioned upstream model, governed by Z.ai, is not a property of whatever

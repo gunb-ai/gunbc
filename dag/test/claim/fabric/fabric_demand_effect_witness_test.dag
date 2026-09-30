@@ -30,6 +30,7 @@ import product.fabric.arbitration {
   WorkReleasedAttemptStops, WorkReleasedNothingRunning,
   decide_demand_command,
 }
+import std.algebra { Cons, Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
