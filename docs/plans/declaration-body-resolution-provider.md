@@ -67,6 +67,31 @@ per native ingest, built in `v2.compiler.compile`).
 - Refusal: a reference whose declaring module is outside the ingest refuses at P1, and so does a
   declaration P1's namespace does not hold.
 
+**P2 mechanism: how "one resolution" and "the module grafts" are realized.**
+- Subject grain: one top-level declaration, either a type declaration or a function SIGNATURE (the
+  Arrow's parameter and return types; never a function body, which is not a declaration type).
+  Identity: `DeclarationRef` (declaring module, declaration name).
+- Production: the declaration's subtree is taken from the declaring module's validated normalized
+  root (`ResolutionContext.roots.by_name`) and walked by the existing `resolve_node_walk` under
+  `resolve_ctx_init` over that module's P1 namespace. It is the same walker in the same
+  module-scope context the module's own walk would use at that position, so there is no second
+  resolver. That the two contexts agree (scope, position, `under_module_root`) is an obligation
+  C6 checks, not an assumption.
+- Graft: before walking, a module's own resolve demands every type declaration and signature it
+  declares from P2. The walk then carries a READ-ONLY map from occurrence id to provided node in
+  `ResolveContext`, and at such a node it returns the stored node instead of descending. The walk
+  itself stays pure; only the pre-walk demand threads the context.
+- Snapshot: after the walk, the module's resolve demands the transitive closure of declarations its
+  resolved tree references in type positions, and `ResolvedTree` carries that set as a projection of
+  the provider's values (C10).
+
+**Sequencing (quiet-gull-780 decision A, 2026-09-30).** #12629, #12407, #12506 and smart-newt-725's PR
+land first. PR2 then cuts over on main in one commit: every reader switch plus the deletion. P2 is
+built meanwhile on a branch off PR1, not opened for merge, and never merges without its production
+reader switch in the same change. Before cutting, the reader census is re-taken on main at identity
+grain, because each of the four adds readers of per-module `resolved_declarations`. If one stalls
+more than a day, quiet-gull-780 decides whether its reader is pulled into PR2.
+
 **Purity: how "at most once" is realized in a pure substrate.** A provider cannot mutate. The
 context is threaded as a value: every resolve returns `(ResolvedTree, ResolutionContext)`, and the
 driver loop carries the returned context into the next module. The native driver loop is the seed
