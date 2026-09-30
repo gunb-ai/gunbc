@@ -621,6 +621,12 @@ import v2.std.collection { List }
 // v2.test.claim.fold_lowering flp_outcomes ingests the positional, positional-named-step,
 // non-fold and well-formed snippets once and stores four Bool verdicts; MQ-1's first floor run refused each claim
 // that paid its own ingest against the new-witness budget. Portable for the same reason.
+// THE FOLD-ENCODING ROW IS THE SAME GROUND AT ELEVEN SPECIMENS: v2.test.claim.fold_encoding
+// fe_outcomes drives the front end over its inline modules (the exact-shape fixture, three planted
+// drops measured by reference conservation, the canary, a user-declared fold, fold_x, two piped
+// folds and the step-binder fixture) and stores
+// eleven Bool verdicts; MQ-5's floor run 36490720680 measured each claim that paid its own front end
+// over the new-witness budget. Portable for the same reason.
 // THE FOLD-OPERAND ROW IS THE SAME GROUND AT TWO SPECIMENS: v2.test.claim.body_lowering
 // .fold_operand_structure fos_outcomes parses the `&&` and call-argument snippets once each and stores
 // six Bool verdicts; the first floor run of its PR judged each claim that paid its own parse and lowering
@@ -781,6 +787,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_cast_node.bcn_let_in_value_cast_verdict",
   "v2.test.claim.namespace_xl0.value_read_refusal.vrr_outcomes",
   "v2.test.claim.fold_lowering.flp_outcomes",
+  "v2.test.claim.fold_encoding.fe_outcomes",
   "v2.test.claim.body_lowering.fold_operand_structure.fos_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
@@ -1132,6 +1139,26 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_lowering.qualified_construct.qc_resolved_type_tag",
   "v2.test.claim.body_lowering.qualified_construct.qc_resolved_unimported",
   "v2.test.claim.body_lowering.qualified_construct.qc_resolved_bodyless",
+  "v2.test.claim.body_lowering.anonymous_record.ar_fixture_normalized",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_headed",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_headless",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_call_argument",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_coproduct",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_binder",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_value_mismatch",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_value_mismatch_headed",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_list_headed",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_list_headless",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_rename_headed",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_rename_headless",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_reorder",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_constant",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_partial",
+  "v2.test.claim.body_lowering.anonymous_record.ar_resolved_cycle",
+  "v2.test.claim.body_lowering.anonymous_record.ar_infer_verdict_value_mismatch",
+  "v2.test.claim.body_lowering.anonymous_record.ar_infer_verdict_value_mismatch_headed",
+  "v2.test.claim.body_lowering.anonymous_record.ar_key_bare_subject",
+  "v2.test.claim.body_lowering.anonymous_record.ar_key_quoted_subject",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_fixture_normalized",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_bad",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_good",
@@ -1145,6 +1172,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_far_missing",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_bool_field",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_pattern",
+  "v2.test.claim.compiler.infer_optional_at_required_witness_test.oar_fixture_normalized",
+  "v2.test.claim.compiler.infer_optional_at_required_witness_test.oar_resolved_return_bad",
+  "v2.test.claim.compiler.infer_optional_at_required_witness_test.oar_resolved_lift",
+  "v2.test.claim.compiler.infer_optional_at_required_witness_test.oar_resolved_field_bad",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_local_consumer",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_declared_consumer",

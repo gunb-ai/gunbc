@@ -1,7 +1,7 @@
 module v2.test.claim.body_lowering.peeled_shell_fold_head
 
 import v2.compiler.body_lowering_fold { body_lower_is_pass_through_emitted }
-import v2.compiler.fold_lowering { fold_call_head_symbol, fold_family_head }
+import v2.compiler.fold_lowering { fold_call_head_symbol, fold_family_realization }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
@@ -59,7 +59,11 @@ fn psfh_is_pass_through_shell(node: Node) -> Bool {
 
 fn psfh_has_fold_head(node: Node) -> Bool {
   match fold_call_head_symbol(fold_call: node) {
-    Present { value: head } => fold_family_head(sym: head)
+    Present { value: head } =>
+      match fold_family_realization(head: head) {
+        Present { value: _ } => true
+        Absent => false
+      }
     Absent => false
   }
 }
