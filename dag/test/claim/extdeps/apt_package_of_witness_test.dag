@@ -51,14 +51,14 @@ test fn a_tool_with_no_apt_source_resolves_to_absent() -> Bool {
 // separately rather than folded into the first assertion.
 test fn the_resolved_package_is_not_the_binary_name() -> Bool {
   match apt_package_of(tool: mosquitto_pub_cli_tool) {
-    Present { value: p } => (p as String) != (mosquitto_pub_cli_tool.name as String)
+    Present { value: p } => (p as String) != (mosquitto_pub_cli_tool.program.invocation as String)
     Absent => false
   }
 }
 
 test fn apt_installed_bin_path_is_apt_bin_dir_plus_the_binary_name() -> Bool {
-  (apt_installed_bin_path(bin_dir: apt_bin_dir, binary: sshpass_cli_tool.name) as String)
-    == concat(apt_bin_dir as String, concat("/", sshpass_cli_tool.name as String))
+  (apt_installed_bin_path(bin_dir: apt_bin_dir, binary: sshpass_cli_tool.program.invocation) as String)
+    == concat(apt_bin_dir as String, concat("/", sshpass_cli_tool.program.invocation as String))
 }
 
 // THE DISCRIMINATING RED, WITH ITS CONTROL. The real row derives the path the helper read execs
@@ -75,7 +75,7 @@ test fn the_nfct_row_derives_the_path_the_helper_read_execs() -> Bool {
 }
 
 data nfct_declared_in_the_wrong_dir: CliTool = CliTool {
-  name: nfct_cli_tool.name,
+  program: nfct_cli_tool.program,
   min_version: none,
   installable_via: [SourceApt { package: package_nfct, bin_dir: apt_bin_dir }],
 }

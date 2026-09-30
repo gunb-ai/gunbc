@@ -169,19 +169,27 @@ fn der_class_matches(a: DerTagClass, b: DerTagClass) -> Bool {
   match a {
     DerUniversal => match b {
       DerUniversal => true
-      _ => false
+      DerApplication => false
+      DerContextSpecific => false
+      DerPrivate => false
     }
     DerApplication => match b {
+      DerUniversal => false
       DerApplication => true
-      _ => false
+      DerContextSpecific => false
+      DerPrivate => false
     }
     DerContextSpecific => match b {
+      DerUniversal => false
+      DerApplication => false
       DerContextSpecific => true
-      _ => false
+      DerPrivate => false
     }
     DerPrivate => match b {
+      DerUniversal => false
+      DerApplication => false
+      DerContextSpecific => false
       DerPrivate => true
-      _ => false
     }
   }
 }
