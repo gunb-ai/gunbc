@@ -218,6 +218,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_identity_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_properties_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_environment_command"),
+    decl_ref(module_path: "extdeps.systemd.journalctl", decl_name: "journalctl_unit_tail_command"),
     decl_ref(module_path: "extdeps.posix.getconf", decl_name: "getconf_clock_ticks_command"),
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_uid_of_command"),
     decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),

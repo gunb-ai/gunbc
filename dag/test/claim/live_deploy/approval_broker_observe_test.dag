@@ -1,0 +1,100 @@
+module test.claim.live_deploy.approval_broker_observe
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
+import extdeps.systemd { NRestarts, ActiveEnterTimestamp, SubState }
+import gunbc.serve_liveness { ServeLivenessUnreachable }
+import gunbc.live_deploy.approval_broker_observe {
+  ApprovalBrokerObservation,
+  ApprovalBrokerNamedReading,
+  approval_broker_unit_reading,
+  approval_broker_slice_control_group,
+  approval_broker_cgroup_readings,
+  approval_broker_cgroup_file_names,
+  approval_broker_observation_read_anything,
+  approval_broker_observation_text,
+}
+import gunbc.fleet_converge_workflow { ApprovalBrokerObserve, fleet_converge_workflow_mode_wire, fleet_converge_approval_broker_observe_step_if, fleet_converge_mode_job_id, fleet_converge_shared_job_id }
+
+// The observation's decisions, over SUPPLIED readings (DESIGN section 3: a witness discriminates at
+// one interface). The real reads run in the approval_broker_observe mode on srv1; these claims pin
+// what the fold makes of what those reads return.
+
+data witness_unit_show: Measured<String> = MeasuredValue {
+  value: "ActiveState=active\nSubState=running\nMainPID=4242\nNRestarts=3\nActiveEnterTimestamp=Wed 2026-09-30 10:00:00 UTC\nControlGroup=/gunbc.slice/gunbc-approval-broker.slice/gunbc-approval-broker.service\n"
+}
+
+test fn nrestarts_is_read_by_its_wire_key() -> Bool {
+  match approval_broker_unit_reading(shown: witness_unit_show, property: NRestarts).reading {
+    MeasuredValue { value: v } => v == "3"
+    MeasuredUnavailable { cause: _ } => false
+  }
+}
+
+test fn the_timestamp_keeps_its_spaces() -> Bool {
+  match approval_broker_unit_reading(shown: witness_unit_show, property: ActiveEnterTimestamp).reading {
+    MeasuredValue { value: v } => v == "Wed 2026-09-30 10:00:00 UTC"
+    MeasuredUnavailable { cause: _ } => false
+  }
+}
+
+// A property systemctl did not print is UNAVAILABLE, never an empty value.
+test fn a_missing_property_line_is_unavailable_not_empty() -> Bool {
+  match approval_broker_unit_reading(shown: MeasuredValue { value: "ActiveState=active\n" }, property: SubState).reading {
+    MeasuredValue { value: _ } => false
+    MeasuredUnavailable { cause: c } => string_contains(s: c as String, pattern: "SubState=")
+  }
+}
+
+// An unrealized slice has no cgroup directory to read; every file inherits that one cause rather
+// than reading /sys/fs/cgroup/memory.current -- the ROOT cgroup's file -- as the broker's.
+test fn an_empty_slice_control_group_refuses_every_cgroup_file() -> Bool {
+  let cg = approval_broker_slice_control_group(shown: MeasuredValue { value: "ControlGroup=\n" })
+  let files = approval_broker_cgroup_readings(control_group: cg)
+  length(files) == length(approval_broker_cgroup_file_names())
+    && all(files, r => match r.reading {
+      MeasuredValue { value: _ } => false
+      MeasuredUnavailable { cause: c } => string_contains(s: c as String, pattern: "not realized")
+    })
+}
+
+test fn the_cgroup_population_names_the_six_files() -> Bool {
+  approval_broker_cgroup_file_names() == ["memory.current", "memory.peak", "memory.high", "memory.max", "memory.events", "memory.pressure"]
+}
+
+fn witness_unavailable() -> Measured<String> {
+  MeasuredUnavailable { cause: "witness: refused" as NonEmptyStr }
+}
+
+fn witness_observation(events: Measured<String>) -> ApprovalBrokerObservation {
+  ApprovalBrokerObservation {
+    unit: [ApprovalBrokerNamedReading { name: "ActiveState", reading: witness_unavailable() }],
+    slice_control_group: MeasuredValue { value: "/gunbc-approval-broker.slice" },
+    cgroup: [ApprovalBrokerNamedReading { name: "memory.events", reading: events }],
+    livez: ServeLivenessUnreachable { detail: "witness: refused" as NonEmptyStr },
+    journal: witness_unavailable(),
+  }
+}
+
+// The 2026-09-30 route: journal refused, unit refused, broker not answering -- and the cgroup file
+// alone still makes this an observation. The paired red is the same shape with that file refused.
+test fn one_cgroup_reading_is_an_observation() -> Bool {
+  approval_broker_observation_read_anything(o: witness_observation(events: MeasuredValue { value: "low 0\nhigh 506770\nmax 0\noom 0\noom_kill 0\n" }))
+}
+
+test fn every_read_refused_is_no_observation() -> Bool {
+  !approval_broker_observation_read_anything(o: witness_observation(events: witness_unavailable()))
+}
+
+test fn the_receipt_carries_the_events_body_and_the_refusals() -> Bool {
+  let text = approval_broker_observation_text(o: witness_observation(events: MeasuredValue { value: "low 0\nhigh 506770\n" }), probed_at: "t0")
+  string_contains(s: text, pattern: "memory.events:\n  low 0\n  high 506770\n")
+    && string_contains(s: text, pattern: "ActiveState UNAVAILABLE (witness: refused)")
+    && string_contains(s: text, pattern: "livez UNAVAILABLE (")
+}
+
+test fn the_mode_is_a_step_on_the_shared_job() -> Bool {
+  fleet_converge_workflow_mode_wire(mode: ApprovalBrokerObserve) == "approval_broker_observe"
+    && fleet_converge_approval_broker_observe_step_if == "github.event.inputs.mode == 'approval_broker_observe'"
+    && fleet_converge_mode_job_id(mode: ApprovalBrokerObserve) == fleet_converge_shared_job_id
+}
