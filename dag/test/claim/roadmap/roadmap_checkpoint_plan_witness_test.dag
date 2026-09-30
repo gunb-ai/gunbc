@@ -261,3 +261,14 @@ test fn the_same_checkpoint_identity_over_a_moved_chain_refuses_never_derives() 
       ProbePlanDerived { checkpoint_digest: _, obligations: _ } => false
     }
 }
+
+// THE CLAIM CONTRACT'S GATE: the whole derivation population holds, by execution.
+test fn checkpoint_probe_obligation_derivation_holds() -> Bool {
+  a_checkpoint_over_a_three_level_chain_derives_three_obligations_root_to_leaf()
+    && re_deriving_under_the_same_checkpoint_identity_yields_identical_obligation_keys()
+    && a_checkpoint_whose_fingerprint_does_not_match_the_chain_refuses()
+    && outstanding_guidance_carries_the_recorded_verdict_payload_and_none_for_aligned()
+    && the_same_checkpoint_identity_over_a_moved_chain_refuses_never_derives()
+    && guidance_extracts_the_reason_and_conflict_arms_too()
+    && a_level_the_state_has_not_reached_carries_no_guidance()
+}

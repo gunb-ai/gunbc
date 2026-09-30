@@ -707,6 +707,22 @@ fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract 
 // now pins the node's own oracle: authored, resolving, and RED; the dispatched worker is
 // forbidden to edit it — an edit refuses verification as oracle-moved — and greens it by doing
 // M1-M3 of the node row.
+// THE HARNESS LINEAGE'S CLAIM CONTRACTS: one validation each -- the canonical witness gate for
+// the lane the node owns. Validation is the claim runner's entry, not a prose obligation.
+fn harness_checkpoint_subject_planner_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/roadmap/roadmap_checkpoint_plan_witness_test.dag" as FilePath,
+    function: "checkpoint_probe_obligation_derivation_holds" as NonEmptyStr,
+  )
+}
+
+fn harness_conversation_log_forking_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/harness_conversation_fork_test.dag" as FilePath,
+    function: "conversation_fork_admittance_holds" as NonEmptyStr,
+  )
+}
+
 fn shell_dag_cron_entry_line_builder_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness_test.dag" as FilePath,
@@ -3144,7 +3160,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The snapshot/segment/plan model, the render receipt, harness_guidance emitting segments, and the controls."
       )
     ),
-    active_small(
+    with_execution(
+      e: harness_checkpoint_subject_planner_execution_contract(),
+      rn: active_small(
       identity: "rn_HCHECKPOINT0PLANNER000A",
       id: "harness-checkpoint-subject-planner",
       owner: "harness",
@@ -3158,8 +3176,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "No probe execution, no roundup, no resume; those are the scheduler and adjudication folds. No PromptPlan rendering here either -- the probes' plans are assembled where they execute.",
         handback: "The derivation, the obligation carrier, the idempotency witness, and the join key the scheduler consumes."
       )
+    )
     ),
-    active_small(
+    with_execution(
+      e: harness_conversation_log_forking_execution_contract(),
+      rn: active_small(
       identity: "rn_HCONVO0LOG0FORK0POINTS0A",
       id: "harness-conversation-log-forking",
       owner: "harness",
@@ -3173,6 +3194,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "No engine-side KV pinning or replica affinity; the cache stays an opportunistic derivation. No change to what the alignment probes judge.",
         handback: "The durable log, the fork-point typing, resume-from-log, and receipts for crash recovery and invalidation."
       )
+    )
     ),
     active_small(
       identity: "rn_HALIGN0CHECKPOINT0RESUME0A",
