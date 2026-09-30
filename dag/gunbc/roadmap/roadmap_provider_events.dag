@@ -28,11 +28,13 @@ type CodexItemActivity
   | CodexUnclassifiedItem
 
 // THE GUNBC HARNESS INTERLEAVES EVENTS OF ITS OWN in the Codex-shaped stream: round.usage, the
-// per-round token and clock accounting the dashboard's round strip reads (gunbc.harness.harness_throughput),
-// and turn.alignment_checkpoint_due, the epoch-boundary announcement a chain-carrying turn ends on.
-// The phase fold leaves the provider state unchanged on it; before this arm the whole stream was
-// refused at that line as an unknown event type, so a live harness attempt rendered as
-// "Agent evidence refused" with no strip (first belt-dispatched attempt, 2026-09-04).
+// per-round token and clock accounting the dashboard's round strip reads (gunbc.harness.harness_throughput);
+// turn.alignment_checkpoint_due, the epoch-boundary announcement a chain-carrying turn ends on;
+// and turn.wire_log_unwritable, the non-terminal notice that a round's durable wire-log write
+// refused (gunbc.harness.harness_turn). The phase fold leaves the provider state unchanged on the
+// non-terminal pair; before these arms the whole stream was refused at such a line as an unknown
+// event type, so a live harness attempt rendered as "Agent evidence refused" with no strip
+// (first belt-dispatched attempt, 2026-09-04).
 type CodexProviderEventKind
   = CodexThreadStarted
   | CodexTurnStarted
@@ -44,6 +46,7 @@ type CodexProviderEventKind
   | HarnessRoundUsage
   | HarnessBudgetExhausted
   | HarnessAlignmentCheckpointDue
+  | HarnessWireLogUnwritable
 
 type CodexProviderEvent {
   line_number: Int
@@ -160,7 +163,8 @@ data codex_projection_filter_scaffold_note: String = "DECLARED SCAFFOLD (review 
 
 // Codex --json is the provider protocol authority: one JSON object per line with thread.started,
 // turn.started, item.*, turn.completed, turn.budget_exhausted, turn.failed, and error event types,
-// plus the harness's own round.usage and turn.alignment_checkpoint_due (gunbc.harness.harness_turn). The raw stream is
+// plus the harness's own round.usage, turn.alignment_checkpoint_due and turn.wire_log_unwritable
+// (gunbc.harness.harness_turn). The raw stream is
 // structurally reduced by codex_provider_event_projection_filter before this bounded total envelope
 // classifier runs. The shared RFC 8259 grammar proves each projected line parseable, then the
 // classifier requires the emitted top-level `type` member to be the first object member before
@@ -380,6 +384,12 @@ fn codex_event_from_complete_line(
       raw: raw,
       kind: HarnessAlignmentCheckpointDue,
     } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.wire_log_unwritable") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: HarnessWireLogUnwritable,
+    } }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "error") {
     Present { value: CodexProviderEvent {
       line_number: line_number,
@@ -550,6 +560,7 @@ fn provider_execution_fold_event(
         CodexThreadStarted => ProviderStarting { activity: "thread started" }
         CodexTurnStarted => ProviderRunning { activity: "agent started" }
         HarnessRoundUsage => state
+        HarnessWireLogUnwritable => state
         HarnessAlignmentCheckpointDue =>
           ProviderBudgetSpent {
             activity: "Alignment checkpoint due · adjudication decides resume",
