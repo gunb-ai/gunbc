@@ -36,7 +36,8 @@ fn sdtr_unwired_target_refuses() -> Bool {
     name: ^Bool,
     params: Empty,
     node: sdtr_bool_coproduct(),
-    target: cpp_target_model()
+    target: cpp_target_model(),
+    realization_host: cpp_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
