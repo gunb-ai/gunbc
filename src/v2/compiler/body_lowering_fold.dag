@@ -573,7 +573,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
     ComputationNode { behavior: _ } => true
     _ =>
       (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
-        || (match body_lower_string_literal_value_optional(node: node) { Present { value: _ } => true  Absent => false })
+        || (match body_lower_string_literal_value_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
         || qualified_name_spine_shape_present(root: node)
         || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
         || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })

@@ -124,6 +124,10 @@ type DroppedReference {
 type ReferenceConservationUnmeasured
   = TokenizeOrParseRefused { diagnostics: NonEmptyDiagnostics }
   | AtomExtentUnreadable { occurrence: OccurrenceId }
+  // A string literal whose value the parse did not carry cannot be conserved by value: the value is
+  // in neither tree, so comparing the bare class atom on both sides would count as conserved
+  // exactly the loss this check exists to see (population_walk_node).
+  | StringLiteralValueUncarried { occurrence: OccurrenceId }
   | OccurrenceRoleTableUnadmitted { unlisted: List<Symbol>, unknown: List<Symbol>, unkeyed: List<Symbol> }
 
 // SEPARATE NUMBERS, NEVER SUMMED: `conserved` (the atom's own occurrence survives with its
@@ -210,6 +214,17 @@ fn node_atom_identity_of(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
     _ => Absent
+  }
+}
+
+fn population_snoc_unreadable(acc: AuthoredAtomPopulation, item: ReferenceConservationUnmeasured) -> AuthoredAtomPopulation {
+  AuthoredAtomPopulation {
+    atoms: acc.atoms,
+    import_channel: acc.import_channel,
+    test_marker_channel: acc.test_marker_channel,
+    unreadable: list_snoc_item(xs: acc.unreadable, item: item),
+    items: acc.items,
+    item_names: acc.item_names
   }
 }
 
@@ -428,6 +443,21 @@ fn population_walk_node(
       match minted_occurrence_of(node: node) {
         Absent => acc
         Present { value: id } =>
+          match dag_string_literal_value_symbol_optional(node: node) {
+            Present { value: _ } =>
+              population_observe_atom(
+                acc: acc,
+                node: node,
+                id: id,
+                identity: identity,
+                span_index: span_index,
+                token_classes: token_classes,
+                frame: frame
+              )
+            Absent =>
+              if dag_node_is_string_literal_atom(node: node) {
+                population_snoc_unreadable(acc: acc, item: StringLiteralValueUncarried { occurrence: id })
+              } else {
           population_observe_atom(
             acc: acc,
             node: node,
@@ -437,6 +467,8 @@ fn population_walk_node(
             token_classes: token_classes,
             frame: frame
           )
+              }
+          }
       }
   }
   population_walk_children(acc: observed, node: node, span_index: span_index, token_classes: token_classes, frame: frame)
