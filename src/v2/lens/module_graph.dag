@@ -1,5 +1,7 @@
 module v2.lens.module_graph
 
+import gunbc.rust_item_scan { ends_with }
+
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
