@@ -69,19 +69,10 @@ data zero_param_source: String = "module zz_lambda_probe\n\nfn f() -> Int {\n  g
 
 fn pre_repair_expr_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_match_expr),
+    left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
     right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
-      right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_loop_expr),
-        right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
-          right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
-            right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
-          )
-        )
-      )
+      left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
+      right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
     )
   )
 }
