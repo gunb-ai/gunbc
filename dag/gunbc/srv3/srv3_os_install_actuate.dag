@@ -1,5 +1,12 @@
 module gunbc.srv3_os_install_actuate
 
+// Pins the authority for this module's bare `Filesystem` reads (the login-body write below):
+// filesystem_io's service Write -- input {path, content}, output success/error -- is the operation
+// they mean. std.resources also declares a Filesystem (a capability resource whose write returns
+// {written}), and it is transitively in reach, so a bare read would pick a declarer by scope
+// precedence, which nothing in this source authorizes. Naming the source here settles it.
+import extdeps.filesystem.filesystem_io { Filesystem }
+
 
 data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is a held session via host_effect_apply (systemd transient units)."
