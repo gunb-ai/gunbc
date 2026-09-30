@@ -176,12 +176,12 @@ fn signal_is_reference_name(signal: NonEmptyStr) -> Bool {
 }
 
 fn signal_has_positive_polarity_suffix(signal: NonEmptyStr) -> Bool {
-  ends_with(s: signal as String, suffix: "_P")
+  (signal as String).ends_with(suffix: "_P")
 }
 
 fn signal_has_negative_polarity_suffix(signal: NonEmptyStr) -> Bool {
-  ends_with(s: signal as String, suffix: "_N")
-    || ends_with(s: signal as String, suffix: "_M")
+  (signal as String).ends_with(suffix: "_N")
+    || (signal as String).ends_with(suffix: "_M")
 }
 
 fn differential_pair_base_name(signal: NonEmptyStr) -> NonEmptyStr? {
