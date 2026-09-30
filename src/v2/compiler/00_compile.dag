@@ -151,7 +151,8 @@ import v2.std.diagnostic {
   outcome_rejected,
   outcome_with_diagnostics
 }
-import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Arrow, Atom, ComputationNode, Edge, Named, Node, NodeFold, NodeKind, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme }
+import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, authored_occurrence_collisions }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_init, qualified_name_snoc }
@@ -3283,6 +3284,82 @@ fn native_lane_module_inference(
     Accepted { value: prepared, diagnostics: _ } =>
       NativeLaneModulePrepared { prepared: prepared }
   }
+}
+
+// THE OCCURRENCE-KEY PREMISE, OBSERVED ON THE TREES INFER IS HANDED. Keying infer's facts on a node's
+// authored occurrence is sound only if no resolved module holds two different nodes under one authored
+// occurrence (v2.compiler.inferred_tree authored_occurrence_collisions). The native route resolves every
+// admitted module, so the census rides that route: one row per RESOLVED module. Its reader is the
+// lowering repair that must drive colliding_modules to zero before any occurrence key lands; the rule
+// it measures against is v2.std.node's same-graph lowering keeping its source text's occurrence.
+// OBSERVATION ONLY -- nothing here changes a module's standing, row or refusal. A module that did not
+// resolve has no row, and the summary counts it as UNOBSERVED against the universe size, never as
+// zero collisions.
+type NativeLaneOccurrenceCollision {
+  occurrence: Int
+  first_kind: NodeKind
+  second_kind: NodeKind
+}
+
+type NativeLaneOccurrenceCensusRow {
+  module: String
+  collisions: List<NativeLaneOccurrenceCollision>
+}
+
+type NativeLaneOccurrenceCensus {
+  universe: Int
+  observed: Int
+  colliding: List<NativeLaneOccurrenceCensusRow>
+}
+
+fn native_lane_occurrence_collision(c: AuthoredOccurrenceCollision) -> NativeLaneOccurrenceCollision {
+  NativeLaneOccurrenceCollision { occurrence: c.occurrence.value, first_kind: c.first.kind, second_kind: c.second.kind }
+}
+
+fn native_lane_occurrence_census_row(entry: NativeLaneUniverseModule, resolved: ResolvedTree) -> NativeLaneOccurrenceCensusRow {
+  NativeLaneOccurrenceCensusRow {
+    module: entry.module,
+    collisions: fold_list(
+      xs: authored_occurrence_collisions(root: resolved),
+      empty: Empty,
+      cons: fn(acc, c) { list_snoc_item(xs: acc, item: native_lane_occurrence_collision(c: c)) }
+    )
+  }
+}
+
+// THE READER. The host hands every row it minted and the universe size; the census keeps the
+// colliding rows by identity and counts the rest, so observed + unobserved = universe by construction.
+fn native_lane_occurrence_census(universe: Int, rows: List<NativeLaneOccurrenceCensusRow>) -> NativeLaneOccurrenceCensus {
+  NativeLaneOccurrenceCensus {
+    universe: universe,
+    observed: length(xs: rows),
+    colliding: fold_list(xs: rows, empty: Empty, cons: fn(acc, r) {
+      if is_empty(xs: r.collisions) { acc } else { list_snoc_item(xs: acc, item: r) }
+    })
+  }
+}
+
+fn native_lane_occurrence_kind_text(k: NodeKind) -> String {
+  match k {
+    TypeNode { connective: Atom { identity: s } } => concat("atom:", symbol_lexeme(sym: s))
+    TypeNode { connective: _ } => "type"
+    ComputationNode { behavior: _ } => "computation"
+  }
+}
+
+fn native_lane_occurrence_census_lines(c: NativeLaneOccurrenceCensus) -> List<String> {
+  let head = concat("[native-occurrence-census] universe=", concat(to_string(c.universe),
+    concat(" observed=", concat(to_string(c.observed),
+    concat(" unobserved=", concat(to_string(c.universe - c.observed),
+    concat(" colliding_modules=", to_string(length(xs: c.colliding)))))))))
+  fold_list(xs: c.colliding, empty: Cons { head: head, tail: Empty }, cons: fn(acc, r) {
+    fold_list(xs: r.collisions, empty: acc, cons: fn(acc2, x) {
+      list_snoc_item(xs: acc2, item: concat("[native-occurrence-collision] module=", concat(r.module,
+        concat(" occurrence=", concat(to_string(x.occurrence),
+        concat(" first=", concat(native_lane_occurrence_kind_text(k: x.first_kind),
+        concat(" second=", native_lane_occurrence_kind_text(k: x.second_kind)))))))))
+    })
+  })
 }
 
 // ONE IDENTITY, EVALUATED. The per-declaration grain the profile lane prices: this call and nothing
