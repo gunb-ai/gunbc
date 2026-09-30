@@ -1,0 +1,74 @@
+module gunbc.fleet_operator_agent
+
+import std.types { String, NonEmptyStr, Secret, Bool }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.exec.command { LocalExec }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.ssh.openssh_client_commands { ssh_add_identity_command }
+import gunbc.command_runner { run_shell_command }
+import gunbc.auth.access_token_source { GcloudPrintToken }
+import gunbc.auth.secret_ref_credential {
+  fetch_secret_ref_credential, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
+}
+import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
+import gunbc.spark.credential_workflow { fleet_ssh_privkey_identity_file_name, secret_credential_fetch_refusal_reason }
+import gunbc.fleet_known_hosts_anchor { fleet_ssh_attempt_identity }
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+
+// THE OPERATOR WORKSTATION'S FLEET SESSION, established by the same route the runner job uses.
+//
+// Every fleet leg that identifies a serving route (gunbc.spark.serving_offer, through
+// gunbc.spark.serving_incarnation_observe) reaches the fleet through an ssh AGENT that already holds
+// the fleet automation key: gunbc.fleet_ssh_locus prepare_fleet_ssh_agent_context verifies the key
+// in the agent named by SSH_AUTH_SOCK and refuses otherwise. On a runner the job step loads it
+// (gunbc.ci_spec: fetch the secret, ssh-add the file). On an operator workstation nothing did, so a
+// seat bound from a laptop refused with "ssh-add -l refused for the named agent socket" while every
+// other precondition held (ac-dialogue, 2026-09-30). This is that missing step, composed from the
+// pieces that already exist: the credential is fetched from its SecretRef under the operator's
+// gcloud token, materialized as a bracketed key file whose bytes are verified against the declared
+// key before use, added to the agent, and the session is then verified by the same producer the
+// serving offer consults -- so a green here is the fabric's own reading, not this entry's word.
+//
+// The key lives in the agent for the agent's lifetime; the file does not outlive the bracket.
+
+fn say(text: String) -> ProcessExit {
+  let w = Filesystem.Write(path: "/dev/stdout", content: text)
+  if w.success { ExitSuccess } else { exit_failure(reason: w.error) }
+}
+
+fn ssh_add_identity(identity_file: NonEmptyStr) -> ProcessExit {
+  run_shell_command(command: ssh_add_identity_command(identity_file: identity_file), transport: LocalExec)
+}
+
+fn verified_session(attempt: String) -> ProcessExit {
+  match prepare_fleet_ssh_agent_context(attempt_raw: attempt) {
+    FleetSshContextRefused { cause: c } => exit_failure(reason: join(["the key was added, but the fleet session does not verify: ", c], ""))
+    FleetSshContextReady { context: _, receipt: r } => say(text: join(["fleet session ready in the agent named by SSH_AUTH_SOCK\n", r, "\n"], ""))
+  }
+}
+
+// Loads the fleet automation key into the operator's ssh agent and verifies the session. `attempt`
+// names this run's materialization paths (a safe path segment), as every fleet leg's does.
+fn load_fleet_key_into_agent(attempt: String) -> ProcessExit {
+  match fleet_ssh_attempt_identity(raw: attempt) {
+    Absent => exit_failure(reason: join(["attempt `", attempt, "` is not a safe path segment"], ""))
+    Present { value: identity } =>
+      match fetch_secret_ref_credential(secret_ref: fleet_automation_ssh_privkey_secret, token_source: GcloudPrintToken) {
+        SecretCredentialReady { credential: privkey, resolved_version: _ } =>
+          match with_materialized_ssh_key_file(identity_file_name: fleet_ssh_privkey_identity_file_name(attempt: identity), secret_bytes: privkey, use: fn(identity_file) { ssh_add_identity(identity_file: identity_file) }) {
+            MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: join(["the key file could not be materialized: ", c as String], ""))
+            MaterializedSshKeyFileBracketCompleted { value: added } =>
+              match added {
+                ExitFailure { code: _, reason: r } => exit_failure(reason: join(["ssh-add refused the fleet key: ", r], ""))
+                ExitSuccess => verified_session(attempt: attempt)
+              }
+          }
+        SecretCredentialAccessUpsertRequired { plan: _ } => exit_failure(reason: "the secret fetch needs an interactive Google Cloud authentication first (gcloud auth login)")
+        SecretCredentialResolvedVersionMismatch { requested: q, resolved: r } => exit_failure(reason: join(["the key fetch asked for version ", q, " and the service answered about ", r], ""))
+        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => exit_failure(reason: "the secret's wire form did not decode")
+        SecretCredentialFetchRefused { reason: r } => exit_failure(reason: join(["the key fetch was refused: ", r as String], ""))
+      }
+  }
+}
