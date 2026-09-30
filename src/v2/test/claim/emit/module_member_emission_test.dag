@@ -140,14 +140,12 @@ test fn a_coproduct_beside_a_function_emits_both_in_source_order_holds() -> Bool
 }
 
 // A WHERE-REFINEMENT IS CLASSIFIED FROM ITS DECLARATION AND NEVER RENDERED AS A RECORD, although it shares a
-// record's lowered shape. On main its carrier is still the unlowered dag_surface_type_expr parse shell
-// (the lowering gunbc#12407 adds), so the production route refuses AT THE CARRIER with its own reason;
-// when that lowering lands this row flips to asserting `type Pos = i32;` -- the realization the supplied
-// row below already exercises.
-test fn a_where_refinement_is_classified_and_refuses_on_its_unlowered_carrier_holds() -> Bool {
+// record's lowered shape: on the production route (parse, normalize, lowered carrier) it emits the target's
+// transparent alias, not a struct. This is the route's inhabitance claim for the supplied row below.
+test fn a_where_refinement_emits_its_transparent_alias_on_the_production_route_holds() -> Bool {
   match member_emission_refinement_verdict() {
-    MemberEmitted { text: _ } => false
-    MemberRefused { reason: r } => r == ^emit_module_member_refinement_carrier_unlowered
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "type Pos = i32;") && !string_contains(s: t, pattern: "struct")
+    MemberRefused { reason: _ } => false
     MemberClosureRefused { reason: _ } => false
   }
 }

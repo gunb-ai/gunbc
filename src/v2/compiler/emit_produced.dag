@@ -280,10 +280,10 @@ fn emit_refinement_declaration(
   )
 }
 
-// A REFINEMENT'S CARRIER MUST BE A LOWERED TYPE. On main the where-refined declaration's head is still its
-// dag_surface_type_expr parse shell: body lowering does not lower it yet (the capability gunbc#12407's
-// body_lower_type_variant change supplies). Rather than let the type resolver refuse it as an unrealized
-// type, the carrier's own state is named, so the refusal says what is missing.
+// A REFINEMENT'S CARRIER MUST BE A LOWERED TYPE. The production route lowers it (a module member's
+// where-refinement emits `type Pos = i32;` in v2.test.claim.emit.module_member_emission); a carrier that
+// is still a parse-production shell refuses under its own reason rather than as an unrealized type, so the
+// refusal says what is missing.
 fn refinement_carrier_is_unlowered(carrier: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: carrier) {
     Present { value: _ } => true
