@@ -433,6 +433,7 @@ type ModeledKvmObserver {
   pid: Int
   dir: String
   seq: Int
+  seen_files: Int
 }
 
 // printf '%s' '<modeled kvm still jpeg>' | sha256sum
@@ -519,7 +520,7 @@ fn owned_launch_handler(w: MtCollins1BootWorld, call: OperationCall) -> Operatio
               KvmModeledRefused { event_word: word, would_write: line } => OperationHarnessFault { reason: concat("kvm_journal_line refused the modeled ", concat(word, concat(" line: ", line))) as NonEmptyStr }
               KvmModeledRendered { text: t } => {
                 let fs = appended(fs: fs_write(fs: w.fs, path: pid_path, content: process_identity(p: p), create_new: false).fs, path: concat(dir, "/journal"), text: t)
-                let screen = ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: list_append(w.screen.observers, ModeledKvmObserver { pid: p.pid, dir: dir, seq: 0 }) }
+                let screen = ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: list_append(w.screen.observers, ModeledKvmObserver { pid: p.pid, dir: dir, seq: 0, seen_files: 0 }) }
                 exited_step(state: with_screen(w: started(w: w, p: p, fs: fs), screen: screen), stdout: "", exit_code: 0)
               }
             }
@@ -541,14 +542,38 @@ fn kvm_observers_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootW
   }
 }
 
+// A stop request and a trigger each arrive as a NEW file in the observer's directory, so a pass whose
+// filesystem holds the same number of files as the last pass looked at has nothing to answer: nearly
+// every dispatch of a boot is that pass, and it neither scans the files nor takes an instant. A pass
+// that does look records the count it left behind.
 fn kvm_observer_pass(w: MtCollins1BootWorld, o: ModeledKvmObserver, now: Second) -> MtCollins1BootWorld {
-  match kvm_instant(w: w, now: now) {
-    Absent => w
-    Present { value: at } =>
-      match fs_file(fs: w.fs, path: concat(o.dir, "/stop")) {
-        Present { value: _ } => kvm_observer_stopped(w: w, o: o, at: at)
-        Absent => kvm_observer_answer_triggers(w: w, o: o, at: at)
+  let n = count(w.fs.files)
+  if n == o.seen_files { w } else {
+    let answered = kvm_observer_look(w: w, o: o, now: now)
+    with_kvm_seen(w: answered, pid: o.pid, seen: count(answered.fs.files))
+  }
+}
+
+fn with_kvm_seen(w: MtCollins1BootWorld, pid: Int, seen: Int) -> MtCollins1BootWorld {
+  with_screen(w: w, screen: ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: map(w.screen.observers, o => if o.pid == pid { ModeledKvmObserver { pid: o.pid, dir: o.dir, seq: o.seq, seen_files: seen } } else { o }) })
+}
+
+// The instant is taken only when a line is written.
+fn kvm_observer_look(w: MtCollins1BootWorld, o: ModeledKvmObserver, now: Second) -> MtCollins1BootWorld {
+  match fs_file(fs: w.fs, path: concat(o.dir, "/stop")) {
+    Present { value: _ } => match kvm_instant(w: w, now: now) {
+      Present { value: at } => kvm_observer_stopped(w: w, o: o, at: at)
+      Absent => w
+    }
+    Absent => {
+      let triggers = kvm_trigger_files(w: w, o: o)
+      if count(triggers) == 0 { w } else {
+        match kvm_instant(w: w, now: now) {
+          Present { value: at } => kvm_observer_answer_triggers(w: w, o: o, at: at, triggers: triggers)
+          Absent => w
+        }
       }
+    }
   }
 }
 
@@ -573,8 +598,7 @@ fn kvm_trigger_files(w: MtCollins1BootWorld, o: ModeledKvmObserver) -> List<Stri
   map(filter(w.fs.files, f => starts_with(s: f.path, prefix: concat(o.dir, "/trigger-"))), f => f.path).sort_by(p => p)
 }
 
-fn kvm_observer_answer_triggers(w: MtCollins1BootWorld, o: ModeledKvmObserver, at: KvmInstant) -> MtCollins1BootWorld {
-  let triggers = kvm_trigger_files(w: w, o: o)
+fn kvm_observer_answer_triggers(w: MtCollins1BootWorld, o: ModeledKvmObserver, at: KvmInstant, triggers: List<String>) -> MtCollins1BootWorld {
   if count(triggers) == 0 { w } else {
     let answered = fold(triggers, init: w, f: fn(acc, path) {
       let seq = kvm_observer_seq(w: acc, pid: o.pid) + 1
@@ -592,7 +616,7 @@ fn kvm_observer_seq(w: MtCollins1BootWorld, pid: Int) -> Int {
 }
 
 fn with_kvm_seq(w: MtCollins1BootWorld, pid: Int, seq: Int) -> MtCollins1BootWorld {
-  with_screen(w: w, screen: ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: map(w.screen.observers, o => if o.pid == pid { ModeledKvmObserver { pid: o.pid, dir: o.dir, seq: seq } } else { o }) })
+  with_screen(w: w, screen: ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: map(w.screen.observers, o => if o.pid == pid { ModeledKvmObserver { pid: o.pid, dir: o.dir, seq: seq, seen_files: o.seen_files } } else { o }) })
 }
 
 data owned_process_launch_operation: OperationRef = OperationRef {
