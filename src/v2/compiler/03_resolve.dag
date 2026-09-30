@@ -64,11 +64,14 @@ import v2.std.diagnostic {
   bind_outcome,
   rejected_with_pending
 }
+import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, fold_family_realization }
 import v2.std.qualified_name {
   QualifiedName,
+  qualified_name_from_dotted_string,
   qualified_name_from_node,
   qualified_name_init,
   qualified_name_last_segment,
+  qualified_name_to_dotted_string,
   qualified_name_snoc,
   declaration_reference_node,
   declaration_reference_path_optional
@@ -119,7 +122,12 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  Loop,
   fold_node,
+  LoopRealizedDeclaration,
+  loop_edge_role,
+  symbol_intern_lexeme,
+  symbol_lexeme,
   arrow_first_positional_target,
   FirstPositionalAbsent,
   FirstPositionalFound,
@@ -2070,6 +2078,8 @@ fn resolve_node_walk(
       resolve_match_node_walk(ctx: ctx, n: n)
     ComputationNode { behavior: Transform } =>
       resolve_transform_children(ctx: ctx, n: n)
+    ComputationNode { behavior: Loop } =>
+      resolve_loop_node(ctx: ctx, n: n)
     TypeNode { connective: Conj } =>
       match construct_tag_reading(n: n) {
         ConstructTagElided =>
@@ -2088,6 +2098,122 @@ fn resolve_node_walk(
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
     ComputationNode { behavior: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
+  }
+}
+
+// A LOOP RESOLVES ITS EDGES AS ANY NODE DOES, EXCEPT THE ONE THAT CLAIMS A DECLARATION. Every other
+// edge walks through resolve_child_edge, so the carrier binder resolves against the enclosing Bind's
+// frame and the domain and body resolve as ordinary expressions. ^loop_realized_declaration_edge
+// (v2.std.node LoopRealizedDeclaration) is a CLAIM made by a desugaring about which declaration the
+// author's head names. Resolve checks that claim; it does not take it on trust.
+fn resolve_loop_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    match loop_edge_role(e: e) {
+      LoopRealizedDeclaration => child_walk_step(w: acc, e: e, r: resolve_walk_of_outcome(o: resolve_realized_declaration(ctx: ctx, head: e.target)))
+      _ => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
+    }
+  }))
+}
+
+fn realized_declaration_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn realized_declaration_refused(reason: Symbol, n: Node, pending: Diagnostics) -> Outcome<Node> {
+  Rejected {
+    diagnostics: rejected_with_pending(
+      pending: pending,
+      rejected: diagnostics_singleton(d: realized_declaration_diagnostic(reason: reason, n: n))
+    )
+  }
+}
+
+fn declaration_ref_path(r: DeclarationRef) -> QualifiedName {
+  qualified_name_snoc(
+    qn: qualified_name_from_dotted_string(dotted: r.module_path),
+    segment: symbol_intern_lexeme(lexeme: r.decl_name)
+  )
+}
+
+// What the author's head binds to, asked exactly as resolve_atom asks it for any reference (the
+// frame, the module root, then the imports on the symbol index). Absent means that nothing binds it.
+type RealizedHeadLookup
+  = RealizedHeadBound { path: QualifiedName }
+  | RealizedHeadBoundLocally
+  | RealizedHeadAmbiguous { class: AmbiguousLookupClass }
+  | RealizedHeadUnbound
+
+fn realized_head_lookup(ctx: ResolveContext, identity: Symbol) -> Outcome<RealizedHeadLookup> {
+  match lookup_chain(s: ctx.scope, name: identity) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: found, diagnostics: pending } =>
+      match found {
+        BoundInFrame { canonical: _ } => Accepted { value: RealizedHeadBoundLocally, diagnostics: pending }
+        BoundAtRoot { canonical: _ } =>
+          Accepted {
+            value: RealizedHeadBound {
+              path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity)
+            },
+            diagnostics: pending
+          }
+        ScopeUnbound =>
+          match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
+            SymbolIndexAtomHit { path: path } => Accepted { value: RealizedHeadBound { path: path }, diagnostics: pending }
+            SymbolIndexAtomAmbiguous { class: class } => Accepted { value: RealizedHeadAmbiguous { class: class }, diagnostics: pending }
+            SymbolIndexAtomUnbound => Accepted { value: RealizedHeadUnbound, diagnostics: pending }
+          }
+      }
+  }
+}
+
+// THE CHECK, and the order matters. A ROSTER OPERATION (collection `fold`) has no corpus
+// declaration, so if the head's chain binds its spelling at all -- a local, a module-level `fn fold`,
+// an import -- the author wrote a call to THAT declaration, and the desugar is refused at the head
+// (^resolve_reason_realized_declaration_shadowed). Only an unbound head binds, and it binds to the
+// row's declaring function. It never falls back to treating the head as the builtin. A CORPUS
+// DECLARATION (fold_list) must be bound by the chain to exactly that declaration; anything else,
+// unbound included, refuses (^resolve_reason_realized_declaration_mismatch). A head the family does
+// not know refuses the same way, because a Loop claiming a declaration nobody can check is the
+// fabricated claim this edge exists to stop.
+fn resolve_realized_declaration(ctx: ResolveContext, head: Node) -> Outcome<Node> {
+  match head.kind {
+    TypeNode { connective: Atom { identity: identity } } =>
+      match realized_head_lookup(ctx: ctx, identity: identity) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: found, diagnostics: pending } =>
+          match fold_family_realization(head: identity) {
+            Absent => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+            Present { value: FoldRealizesRosterOperation { template: t, row: row, slots: _ } } =>
+              match found {
+                RealizedHeadUnbound =>
+                  if symbol_lexeme(sym: identity) == t.name {
+                    resolve_atom_bound(ctx: ctx, n: head, path: declaration_ref_path(r: row), pending: pending)
+                  } else {
+                    realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+                  }
+                RealizedHeadBound { path: _ } => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_shadowed, n: head, pending: pending)
+                RealizedHeadBoundLocally => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_shadowed, n: head, pending: pending)
+                RealizedHeadAmbiguous { class: _ } => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_shadowed, n: head, pending: pending)
+              }
+            Present { value: FoldRealizesDeclaration { declaration: d, slots: _ } } =>
+              match found {
+                RealizedHeadBound { path: path } =>
+                  if qualified_name_to_dotted_string(qn: path) == qualified_name_to_dotted_string(qn: declaration_ref_path(r: d)) {
+                    resolve_atom_bound(ctx: ctx, n: head, path: path, pending: pending)
+                  } else {
+                    realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+                  }
+                RealizedHeadBoundLocally => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+                RealizedHeadAmbiguous { class: _ } => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+                RealizedHeadUnbound => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+              }
+          }
+      }
+    _ => Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: head)) }
   }
 }
 
