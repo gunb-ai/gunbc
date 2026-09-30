@@ -1,7 +1,7 @@
 module test.claim.approve_ios_project_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool, List, NonEmptyStr, Port }
+import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue, YamlString, YamlSequence, YamlMapping,
   YamlKeyLookup, YamlKeyPresent, YamlKeyAbsent, yaml_lookup, kv, yaml_string, yaml_mapping, yaml_sequence
@@ -13,6 +13,7 @@ import gunbc.approve_ios_app { approve_ios_build_standing, NotExecutedByAnyRequi
 import gunbc.approve_ios_project { expected_approve_ios_project_yml, approve_ios_project_yml_from, ApproveIosProjectGeneration, ApproveIosProjectGenerated, ApproveIosProjectRefused }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url }
 import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.auth.approval_ntfy_deployment { approval_ntfy_serve_port }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -266,8 +267,8 @@ test fn an_undeclared_tailnet_domain_projects_an_unroutable_host() -> Bool {
 // ServerConfig carries no port, so a broker published off the default TLS listener refuses the
 // projection rather than emitting a host the app would dial on 443.
 test fn red_a_non_default_public_port_refuses_the_projection() -> Bool {
-  match approve_ios_project_yml_from(domain: Present { value: "other-tailnet.example" as NonEmptyStr }, port: Present { value: 8443 as Port }) {
-    ApproveIosProjectRefused { reason: r } => string_contains(s: r, pattern: "8443")
+  match approve_ios_project_yml_from(domain: Present { value: "other-tailnet.example" as NonEmptyStr }, port: Present { value: approval_ntfy_serve_port }) {
+    ApproveIosProjectRefused { reason: r } => string_contains(s: r, pattern: to_string(approval_ntfy_serve_port))
     ApproveIosProjectGenerated { content: _ } => false
   }
 }
