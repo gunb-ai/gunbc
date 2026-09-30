@@ -103,6 +103,14 @@ All four took declaration types off the authored `symbol_index` node; after PR2 
 reach it. Branch: `session/royal-stag-371-pr2-declaration-bodies`. calm-pike-507 stacks the return-type derivation on this branch. `ResolvedTree.resolved_declarations` and `resolved_declarations_of` (#12629) are deleted
 in the same commit. The RFM row is retired, and its red stays enrolled.
 
+**PR3 (stacked on PR2): call-return derivation** (scope added by quiet-gull-780 when calm-pike-507's
+node closed with #12641 merged into #12506's branch). `infer_arrow_declared_return_type` derives a
+declared corpus return type beyond kernel and `Bool`, from the resolved callee Arrow PR2 hands
+`infer_declaration_reference_facts`. As a result the seven's `parse_module_prepared(...)` is typed as
+`Outcome<ParseArtifact>`. Proof: calm-pike-507's seven's-frontier claim in
+`v2.test.claim.match_binder.match_binder_typing`
+(`infer_match_scrutinee_type_underived` on that call shape) flips to a typed binder (C12).
+
 ## 4. Controls
 
 | # | Control | Kind |
@@ -117,6 +125,7 @@ in the same commit. The RFM row is retired, and its red stays enrolled.
 | C8 | #12629's where-head controls (`declaration_graft_where_alias_*`), re-pointed at the P2 read | regression |
 | C10 | SNAPSHOT IDENTITY: an entry in infer's per-module snapshot and the P2 provider entry it projects are the identical `DeclarationRef` and body; the snapshot is a derived projection, never re-resolved | positive |
 | C11 | a cross-module callee's Arrow read by `infer_declaration_reference_facts` carries resolved parameter and return types (calm-pike-507's measurement on the stacked branch) | red before PR2, green after |
+| C12 | the seven's `parse_module_prepared(...)` scrutinee types as `Outcome<ParseArtifact>`, so calm-pike-507's `infer_match_scrutinee_type_underived` frontier claim flips to a typed binder | red before PR3, green after |
 | C9 | the retired RFM row's discriminating red stays enrolled as a regression control (condition c) | regression |
 
 ## 5. Conditions this plan builds to (neat-boar-16, via quiet-gull-780)
