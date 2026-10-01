@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.product_instance_arguments_unjudged_at_call_argument
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data product_instance_arguments_unjudged_at_call_argument: RecurringFailureMode = RecurringFailureMode {
+  identity: "product_instance_arguments_unjudged_at_call_argument" as NonEmptyStr,
+
+  receipts: [
+    "**A value of one instantiation of a generic record is admitted at a call argument declared as another instantiation.** Measured on main with a v1 compile of a scratch module: `fn direct_of(t: FieldOfFractions<Nat>)` called as `direct_of(t: str_instance())`, where `str_instance() -> FieldOfFractions<String>`, compiles with no diagnostic. So does the same value passed through `type Tp = FieldOfFractions<Nat>`. DESIGN section 4b puts `values inhabit declared types` on the ordinary compiler floor, so this is silent wrongness, below the ladder, not a rung.",
+
+    "DISTINGUISHING FACTS. (1) The argument is a NON-LITERAL value (a call result or a binding). A record LITERAL at the same position is judged, field by field against the substituted formal: `FieldOfFractions { num: \"a\", denom: \"b\" }` into `FieldOfFractions<Nat>` refuses. (2) The head is a declared PRODUCT, and both sides carry established, different instance arguments. (3) The alias is irrelevant: the direct spelling and the alias spelling are admitted alike. It was found while repairing `transparent_alias_relation_read_the_brand_keeping_peel`, whose different-instance control could only be met for literals.",
+
+    "THE NEIGHBOUR THAT IS JUDGED: at the declared-return and data-initializer positions, `v1.compiler.infer` `nominal_product_inhabitance_refusal` compares applied type arguments through `applied_type_arguments_conflict` (and `generic_coproduct_argument_unjudged_at_declared_return` added the coproduct sibling). The call-argument position has no such arm for products, so the arguments are never compared.",
+
+    "RUNG FOUND AT: below the floor (silently admitted). CEILING: structurally guaranteed (a wrong argument is authorable in source, and the modeled facts decide it). NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: product instance arguments judged at call-argument positions, through the same `applied_type_arguments_conflict` relation the declared-return arm consumes. That must be sufficient for the `FieldOfFractions<String>`-into-`FieldOfFractions<Nat>` value case to refuse, both directly and through an alias, while an unsolved or type-variable argument stays admitted.",
+  ],
+
+  evidence: [],
+}
