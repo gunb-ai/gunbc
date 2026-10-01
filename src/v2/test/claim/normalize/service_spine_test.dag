@@ -1,0 +1,73 @@
+module v2.test.claim.normalize.service_spine
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, symbol_intern_lexeme }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SERVICE SPINE (v2.compiler.body_lowering_fold body_lower_service_node; v2.compiler.namespace_graft
+// namespace_graft_merge_namespace_bodies; ruling 2026-10-01). A dotted service name lowers one segment per
+// part, every prefix a marked namespace body, and the graft merges same-named marked bodies, so an
+// operation's declaration path is <module>.<service segments...>.<Op>. The controls the ruling names:
+// two services under one prefix reach distinct paths; only marked bodies merge (a marked body and an
+// unmarked declaration of one name refuse, and so does a service declared twice); and a merged body
+// grants no scope (a member of s.F does not see s.E's names unqualified).
+
+data two_under_one_prefix_source: String = "module m\n\nservice s.F {\n  operation Run {}\n}\n\nservice s.E {\n  operation Get {}\n}\n"
+data body_against_declaration_source: String = "module m\n\nservice s.F {\n  operation Run {}\n}\n\ndata s: Int = 1\n"
+data repeated_service_source: String = "module m\n\nservice s.F {\n  operation Run {}\n}\n\nservice s.F {\n  operation Get {}\n}\n"
+
+fn ss_index_holds(text: String, path: FreeMonoid<String>) -> Bool {
+  match conservation_subject_of_text(path: "probe_service_spine.dag", text: text).normalized {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match symbol_index_lookup(
+        index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: tree.root, tail: Empty }),
+        qualified_path: Cons { head: ^m, tail: path |> map(s => symbol_intern_lexeme(lexeme: s)) }
+      ) {
+        Absent => false
+        Present { value: _ } => true
+      }
+  }
+}
+
+fn ss_refused_as_repeated(text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_service_spine.dag", text: text).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^namespace_graft_declaration_name_repeated
+  }
+}
+
+test fn two_services_under_one_prefix_reach_distinct_operation_paths_holds() -> Bool {
+  ss_index_holds(text: two_under_one_prefix_source, path: ["s", "F", "Run"])
+    && ss_index_holds(text: two_under_one_prefix_source, path: ["s", "E", "Get"])
+    && !ss_index_holds(text: two_under_one_prefix_source, path: ["s", "F", "Get"])
+}
+
+test fn a_namespace_body_and_a_declaration_of_one_name_refuse_holds() -> Bool {
+  ss_refused_as_repeated(text: body_against_declaration_source)
+}
+
+test fn a_service_declared_twice_refuses_holds() -> Bool {
+  ss_refused_as_repeated(text: repeated_service_source)
+}
+
+// NO SCOPE: s.F's input names `Get`, an operation of the sibling service s.E. The merged body is a path
+// segment, never a lexical frame, so the unqualified name does not resolve and the program refuses;
+// the same program with a resolvable type is admitted, so the refusal is the name and not the shape.
+data sibling_name_leak_source: String = "module p\n\nservice s.F {\n  operation Run {\n    input { x: Get }\n  }\n}\n\nservice s.E {\n  operation Get {}\n}\n"
+data sibling_name_control_source: String = "module p\n\nservice s.F {\n  operation Run {\n    input { x: Int }\n  }\n}\n\nservice s.E {\n  operation Get {}\n}\n"
+
+test fn a_merged_namespace_body_grants_no_scope_holds() -> Bool {
+  tpb_accepts(o: tpb_assemble(src: sibling_name_control_source))
+    && !tpb_accepts(o: tpb_assemble(src: sibling_name_leak_source))
+}
