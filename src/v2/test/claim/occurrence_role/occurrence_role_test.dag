@@ -202,7 +202,7 @@ test fn an_unreadable_binder_is_counted_as_a_reader_refusal_holds() -> Bool {
 // parameters, parameters, a record field block, a statement let, an arrow lambda, a fn literal, and
 // a service operation with its input and output field blocks. Each binder is written once and named
 // by its spelling so a miscount says which reader moved.
-data binders_fixture_source: String = "module v2.test.occurrence_role_binder_fixture\n\ntype BfRow<T> {\n  bf_v: T\n}\n\nfn bf_id<U>(bf_x: U) -> U {\n  let bf_y = bf_x\n  bf_y\n}\n\nfn bf_apply(bf_f: Int) -> Int { bf_run(bf_g: bf_p => bf_p, bf_h: fn(bf_a, bf_b) { bf_a }) }\n\nservice bf.Svc {\n  operation BfOp {\n    input { bf_q: Int }\n    output { bf_r: Int }\n  }\n}\n"
+data binders_fixture_source: String = "module v2.test.occurrence_role_binder_fixture\n\ntype BfRow<T> {\n  bf_v: T\n}\n\nfn bf_id<U>(bf_x: U) -> U {\n  let bf_y = bf_x\n  bf_y\n}\n\nfn bf_apply(bf_f: Int) -> Int { bf_run(bf_g: bf_p => bf_p, bf_h: fn(bf_a, bf_b) { bf_a }) }\n\nservice bf.Svc {\n  operation BfOp {\n    input { bf_q: Int }\n    output { bf_r: Int }\n    transport shell { bf_argv: [] }\n  }\n}\n"
 
 fn binders_fixture_outcome() -> OccurrenceRoleOutcome {
   let subject = conservation_subject(id_tail: "occurrence_role_binders", source: binders_fixture_source)
@@ -214,7 +214,8 @@ fn binders_fixture_outcome() -> OccurrenceRoleOutcome {
 
 // Type binders: BfRow, T, U. Callables: bf_id, bf_apply, BfOp. Lexical binders: bf_x, bf_f
 // (parameters), bf_y (let), bf_p (lambda), bf_a, bf_b (fn literal). Fields: bf_v (record), bf_q
-// (input), bf_r (output). Labels: bf_g, bf_h.
+// (input), bf_r (output). Labels: bf_g, bf_h (arguments) and bf_argv (the transport's field init).
+// The transport kind `shell` is a literal terminal of the grammar, not a name, so it records nothing.
 test fn every_binder_production_records_its_binders_holds() -> Bool {
   let o = binders_fixture_outcome()
   roles_count(outcome: o, role: DeclarationRole, category: TypeOccurrence) == 3
@@ -222,6 +223,7 @@ test fn every_binder_production_records_its_binders_holds() -> Bool {
     && roles_count(outcome: o, role: DeclarationRole, category: LexicalValueOccurrence) == 6
     && roles_count(outcome: o, role: DeclarationRole, category: FieldOccurrence) == 3
     && roles_count(outcome: o, role: ReferenceRole, category: LexicalValueOccurrence) == 2
+    && roles_count(outcome: o, role: ReferenceRole, category: FieldOccurrence) == 1
 }
 
 // A per-production counter summed over every production the table lists.
@@ -235,13 +237,13 @@ fn count_total(m: Map<Symbol, Int>) -> Int {
 }
 
 // Nothing in the fixture is left unread or refused: the gap the NameRoleNotYetRead rows used to
-// count is gone for every production the fixture writes, and each new reader read, rather than
+// count is gone for every production the fixture writes, the transport member included, and each new reader read, rather than
 // declined, its production.
 test fn the_binder_productions_are_neither_unread_nor_refused_holds() -> Bool {
   match binders_fixture_outcome() {
     OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
     OccurrenceRolesRead { roles: r } =>
-      length(xs: r.roles) == 17 && r.unminted == 0
+      length(xs: r.roles) == 18 && r.unminted == 0
         && count_total(m: r.not_yet_read) == 0
         && count_total(m: r.reader_refused) == 0
   }

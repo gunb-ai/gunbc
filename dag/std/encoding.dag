@@ -281,6 +281,13 @@ fn base64_encode_step_optional(st: Base64EncodeState?, octet: Int, alphabet: Str
   }
 }
 
+// THE PADDING AFTER A FINAL GROUP OF N SEXTETS, the one statement of it: the encoder emits exactly
+// this, and base64_decode_canonical admits exactly this, so a consumer that needs one spelling per
+// value reads it from here rather than restating the encoder's table.
+fn base64_padding_after(values_in_final_group: Int) -> String {
+  if values_in_final_group == 2 { "==" } else if values_in_final_group == 3 { "=" } else { "" }
+}
+
 fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
   match st.buf {
     EncEmpty => Present { value: st.out }
@@ -296,7 +303,7 @@ fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
                 Present { value: c0 } =>
                   match base64_sextet_char_at(alphabet: alphabet, group: group, offset: 12) {
                     Absent => none
-                    Present { value: c1 } => Present { value: concat(st.out, c0, c1, "==") }
+                    Present { value: c1 } => Present { value: concat(st.out, c0, c1, base64_padding_after(values_in_final_group: 2)) }
                   }
               }
           }
@@ -316,7 +323,7 @@ fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
                     Present { value: c1 } =>
                       match base64_sextet_char_at(alphabet: alphabet, group: group, offset: 6) {
                         Absent => none
-                        Present { value: c2 } => Present { value: concat(st.out, c0, c1, c2, "=") }
+                        Present { value: c2 } => Present { value: concat(st.out, c0, c1, c2, base64_padding_after(values_in_final_group: 3)) }
                       }
                   }
               }
@@ -542,6 +549,21 @@ fn base64_decode_values(vals: List<Int>) -> List<Int>? {
     Absent => none
     Present { value: s } => base64_decode_flush(st: s)
   }
+}
+
+// CANONICAL DECODING WITH CANONICAL PADDING: the same decode, admitting only the padding
+// base64_padding_after says the encoder emits for this many values. base64_decode stays lenient about
+// padding for its existing consumers; a consumer that needs exactly one spelling per value (an
+// authenticated tag) reads this instead of re-encoding to find out.
+fn base64_decode_canonical(s: String, variant: Base64Variant) -> List<Int>? {
+  let total = string_length(s)
+  let pads = base64_trailing_pad_count(s: s, i: total, n: 0)
+  if pads != string_length(base64_padding_after(values_in_final_group: (total - pads) % 4)) { none }
+  else { base64_decode(s: s, variant: variant) }
+}
+
+fn base64_trailing_pad_count(s: String, i: Int, n: Int) -> Int {
+  if i <= 0 { n } else if char_at(s, i - 1) == "=" { base64_trailing_pad_count(s: s, i: i - 1, n: n + 1) } else { n }
 }
 
 fn base64_decode(s: String, variant: Base64Variant) -> List<Int>? {
