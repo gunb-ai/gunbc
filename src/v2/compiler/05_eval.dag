@@ -34,7 +34,7 @@ import v2.std.collection {
   list_at_optional,
   list_nth
 }
-import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.qualified_name { declaration_reference_path_optional, parameter_reference_path_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -115,6 +115,7 @@ import v2.std.node {
   ComputationBody,
   RecordConstructBody,
   DeclarationReferenceBody,
+  ParameterReferenceBody,
   UnsupportedArrowBody,
   arrow_body_admits_eval_entry,
   bag_hash_digest,
@@ -1302,6 +1303,14 @@ fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -
 // Atom miss was before the carrier: unbound in this environment, refused with the miss reason at
 // the reference's own locus. Binding module-level declarations by their path is the evaluator's
 // own next step and is not taken here.
+//
+// A PARAMETER REFERENCE REFUSES THE SAME WAY, UNDER ITS OWN REASON, AND NEVER BY LABEL. A named fn's
+// parameter is resolved as a path-keyed reference (v2.std.qualified_name parameter_reference_node),
+// while eval_bind_arrow_params binds by bare label; reading the leaf here would re-derive the binding
+// from the spine's shape. No route evaluates a declared fn body over resolver output yet, so no
+// accepted program reaches this arm. DECLARED FRONTIER, TRIGGER NAMING THE CAPABILITY: gunbc#12506's
+// named-call route evaluates a declared fn body over resolver output, SUFFICIENT FOR eval to key
+// parameters by QualifiedName with this refusal arm deleted.
 fn eval_type_node_atom(
   node: Node,
   interpretation: InterpretationAlgebra,
@@ -1311,6 +1320,12 @@ fn eval_type_node_atom(
     Present { value: _ } =>
       outcome_rejected(
         d: eval_diagnostic(reason: ^eval_rejected_runtime_binding_lookup_miss, node: node)
+      )
+    Absent =>
+  match parameter_reference_path_optional(node: node) {
+    Present { value: _ } =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node)
       )
     Absent =>
   match node.kind {
@@ -1334,6 +1349,7 @@ fn eval_type_node_atom(
       interpretation.value.allocate_literal(node, environment)
     ComputationNode { behavior: _ } =>
       outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+  }
   }
   }
 }
@@ -1662,6 +1678,7 @@ fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
     DirectAtomBody => ^eval_rejected_unsupported_callee
     RecordConstructBody => ^eval_rejected_unsupported_callee
     DeclarationReferenceBody => ^eval_rejected_unsupported_callee
+    ParameterReferenceBody => ^eval_rejected_parameter_reference_unbound
     ComputationBody { behavior: _ } => ^eval_rejected_unsupported_callee
     UnsupportedArrowBody => ^eval_rejected_unsupported_callee
   }

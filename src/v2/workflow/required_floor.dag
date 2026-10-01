@@ -642,6 +642,10 @@ fn fixture_home_prefixes() -> List<String> {
 // it scales with the closure, so the roster is cut to the compiler's own core semantics until the
 // fold reuses preparation across runs or scopes it to the diff -- at which point these rows come
 // back. `v2.test.` is the row that pulled the whole v2 corpus in and is the first to return.
+// THE WITHDRAWAL OF `v2.test.` IS INSIDE THE DECLARED DROP gunbc.rung_drop required_gate_bankruptcy,
+// whose amendment gunbc.rung_drop_amendment v2_test_family_reds_measured_outside_the_gate names the
+// measured population it left without a route, by identity and owner.
+// This annotation is its receipt, not its declaration: no `//` line can be read by anything.
 //
 // WITHDRAWN, AND NAMED SO THE WIDENING IS A DIFF RATHER THAN A MEMORY: "v2.test.",
 // "test.claim.self_host_", "test.claim.import_admission_closure_membership_witness_test",
@@ -794,6 +798,14 @@ fn required_gate_prefixes() -> List<String> {
 // ReadsLiveTree, which is no longer a decline (DeclinedLiveTree is deleted above). Its preparation
 // growth is the ingest, neutralization and emit closure over the python and typescript
 // authorities; the first required run after admission is the priced receipt.
+//
+// THE REFERENCE-CONSERVATION CONTROLS (adhoc-095d4a35-c40). Two claims whose fixture must refuse
+// normalization went red on main when #12713 lowered that fixture's shape (repaired by #12812), and
+// no lane saw it: `v2.test.claim.namespace_xl0` matches no family prefix (every family row is a
+// `test.claim.` v1 path). Admitted at exact module grain -- not a `v2.test.claim.namespace_`
+// family, which would sweep the sibling census and admission modules in unmeasured. Every subject
+// its claims read is WARM in `v2.workflow.floor_pure_producer_share`, none is cost debt, and the
+// module declares SubstrateInputsOnly.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -802,6 +814,7 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.stage0_emitted_edge_admission_witness",
     "test.claim.emitted_crate_workspace_witness",
     "v2.test.claim.body_lowering.statement_let_bind",
+    "v2.test.claim.namespace_xl0.reference_conservation",
     "test.claim.host_allocation_conservation",
     "v2.test.claim.coercion.identity_cast_emission_route",
     "v2.test.execution.self_host_candidate_generation_stage_verdicts",

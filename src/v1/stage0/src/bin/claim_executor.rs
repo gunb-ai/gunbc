@@ -580,7 +580,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                         "required-ci: parse OK {} file(s) parse-clean",
                         sweep.parse_clean
                     );
-                    head_index = Some(sweep.index.clone());
                     v1_compiler::cli_run::floor_seam("declarations");
                     // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
                     //
@@ -719,6 +718,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                             );
                         }
                     }
+                    // MOVED, NOT CLONED: the riders above read the sweep's own index, so it is
+                    // handed on once they are done rather than copied while they run.
+                    head_index = Some(sweep.index);
                 }
                 Err(errors) => {
                     for e in &errors {
@@ -1048,7 +1050,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 &source_roots,
                 &commit,
                 v1_compiler::cli_run::ShardStyle::single_shard(),
-                head_index.as_ref(),
+                head_index.take(),
             ) {
                 Ok(outcome) => {
                     report_required_floor_outcome(&outcome);

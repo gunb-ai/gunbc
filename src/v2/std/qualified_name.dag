@@ -25,7 +25,7 @@ import v2.std.optional {
 }
 import v2.std.logic { Bool }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, declaration_reference_marker, fold_node, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -320,11 +320,21 @@ fn qualified_name_spine_of_atoms(atoms: FreeMonoid<Node>, occurrence_id: NodeOcc
 // The occurrence stays on the marker node alone, which is the node that stands where the reference
 // stood; the spine under it is synthetic, so one source occurrence is carried by exactly one node.
 fn declaration_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  resolved_reference_node_of_kind(kind: DeclarationReferenceKind, qn: qn, occurrence_id: occurrence_id)
+}
+
+// THE ONE PRODUCER OF A PARAMETER REFERENCE (consumed by v2.compiler.resolve
+// resolve_frame_bound_reference, which verifies the path against the symbol index first).
+fn parameter_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  resolved_reference_node_of_kind(kind: ParameterReferenceKind, qn: qn, occurrence_id: occurrence_id)
+}
+
+fn resolved_reference_node_of_kind(kind: ResolvedReferenceKind, qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: declaration_reference_marker() },
+        label: Named { name: resolved_reference_kind_marker(kind: kind) },
         target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic)
       },
     ],
@@ -336,30 +346,30 @@ fn declaration_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceId
 // spine shape: a bare spine -- an authored dotted mention before resolution, an integer literal,
 // any other cons list -- answers Absent. Under the marker, a spine whose fold refuses is a malformed
 // node, not a reference, and also answers Absent so that the consumer's own arm decides it.
-fn declaration_reference_spine_optional(node: Node) -> Optional<Node> {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      if count(node.children) == 1 {
-        fold(node.children, init: optional_absent(), f: fn(acc, edge) {
-          match edge.label {
-            Named { name: label } =>
-              if symbol_eq(a: label, b: declaration_reference_marker()) {
-                optional_present(value: edge.target)
-              } else {
-                acc
-              }
-            _ => acc
-          }
-        })
+fn resolved_reference_spine_optional(node: Node, kind: ResolvedReferenceKind) -> Optional<Node> {
+  match resolved_reference_body_kind(target: node) {
+    MarkedReference { kind: found } =>
+      if found == kind {
+        fold(node.children, init: optional_absent(), f: fn(acc, edge) { optional_present(value: edge.target) })
       } else {
         optional_absent()
       }
-    _ => optional_absent()
+    NotMarkedReference => optional_absent()
   }
 }
 
 fn declaration_reference_path_optional(node: Node) -> Optional<QualifiedName> {
-  match declaration_reference_spine_optional(node: node) {
+  resolved_reference_path_optional(node: node, kind: DeclarationReferenceKind)
+}
+
+// A PARAMETER REFERENCE READS AS ITS DECLARING PATH <fn path>.<label> OR AS NOTHING, under the same
+// rules as a declaration reference; a declaration reference answers Absent here and vice versa.
+fn parameter_reference_path_optional(node: Node) -> Optional<QualifiedName> {
+  resolved_reference_path_optional(node: node, kind: ParameterReferenceKind)
+}
+
+fn resolved_reference_path_optional(node: Node, kind: ResolvedReferenceKind) -> Optional<QualifiedName> {
+  match resolved_reference_spine_optional(node: node, kind: kind) {
     Present { value: spine } =>
       if qualified_name_spine_shape_present(root: spine) {
         match qualified_name_from_node(root: spine) {

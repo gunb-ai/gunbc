@@ -16,7 +16,6 @@ import v2.std.compilers.target_model {
   target_model_canonical_operation_member_declared_type
 }
 import v2.compiler.resolve { ResolvedTree }
-import v2.std.symbol_index { SymbolIndex, symbol_index_lookup }
 import v2.compiler.inferred_tree {
   DerivedGrounding,
   GroundingNotDerived,
@@ -61,10 +60,10 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional }
 import v2.std.node_query { construct_field_edges, construct_tag_optional }
-import v2.std.symbol_index { RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
-import v2.std.node { Ambiguous, Found, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of, match_arm_pattern_edge }
+import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
+import v2.std.node { Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of, match_arm_pattern_edge, resolved_reference_body_kind }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -842,7 +841,39 @@ fn infer_product_facts_from_entries(
   }
 }
 
+// A PARAMETER OF A NAMED FN IS GROUNDED THROUGH THE INDEX, LIKE ANY PATH-KEYED REFERENCE.
+// v2.compiler.resolve mints it over <fn path>.<label> after confirming that path in the symbol index
+// (resolve_frame_bound_reference), and the resolved declarations bind that path to the parameter's
+// declared type -- so `x` in `fn f(x: Pos)` reads Pos from f's own domain entry, never from whichever
+// Arrow a walk meets first. A path the index cannot answer here is the index disagreeing with the
+// resolver that minted it: refused, located, never left underived.
 fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree) -> Outcome<InferredFacts> {
+  match parameter_reference_path_optional(node: n) {
+    Present { value: path } => infer_parameter_reference_facts(n: n, path: path, index: resolved.resolved_declarations)
+    Absent => infer_term_node_facts(n: n, partials: partials, kinds: kinds, resolved: resolved)
+  }
+}
+
+fn infer_parameter_reference_facts(n: Node, path: QualifiedName, index: SymbolIndex) -> Outcome<InferredFacts> {
+  match infer_descent_witness_for_node(n: n) {
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Holds { value: descent_proof } =>
+      match symbol_index_lookup(index: index, qualified_path: path) {
+        Present { value: declared } =>
+          inferred_facts_from_derived_type(node: n, derived_type: declared, descent: Holds { value: descent_proof })
+        Absent =>
+          Rejected {
+            diagnostics: diagnostics_singleton(d: Diagnostic {
+              reason: ^infer_reason_parameter_reference_not_indexed,
+              at: node_locus(node: n),
+              correction: Unavailable { reason: UserInputBoundary }
+            })
+          }
+      }
+  }
+}
+
+fn infer_term_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: n, partials: partials) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: _, diagnostics: cd } =>
@@ -1048,7 +1079,7 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
 // atom as a node structurally equal to itself (docs/plans/arrow-elimination-model.md).
 fn infer_literal_type_binding(literal: DagCanonicalLiteral) -> Symbol {
   match literal {
-    DagCanonicalBoolLiteral { value: _ } => ^dag_binding_type_bool
+    DagCanonicalBoolLiteral { value: _ } => ^bool_node_symbol
     DagCanonicalIntLiteral { magnitude: _ } => ^dag_binding_type_int
     DagCanonicalSymbolLiteral { symbol: _ } => ^symbol_node_symbol
   }
@@ -1133,13 +1164,14 @@ fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional
 // occurrence identity) and each Arrow on the way back up binds it if its domain names it.
 // Consumers: infer_node_facts' parameter arm (the grounding every cast, add, application, branch,
 // match and loop operand reads) and infer_branch_operand_resolved_type_in_tree.
-// FROZEN, A DECLARED FRONTIER (neat-boar-16 ruling): no new callers and no new arms. A declaration
-// reference is answered by v2.std.symbol_index symbol_index_lookup on the ResolvedTree infer receives
-// (refinement_declaration), but a frame-bound parameter reference reaches infer as a bare
-// canonical_atom with no path (v2.compiler.resolve, the BoundInFrame arm), so this walk still scopes
-// it. NEXT TRIGGER, NAMING THE CAPABILITY: resolve emits every frame-bound parameter reference as a
-// declaration reference keyed in SymbolIndex, and eval + translate bind through it -- then this search
-// and infer_parameter_type_in_scope are deleted.
+// FROZEN, LAMBDA PARAMETERS ONLY (neat-boar-16 ruling): no new callers and no new arms. A named fn's
+// parameter no longer reaches this: v2.compiler.resolve mints it as a path-keyed parameter reference
+// and infer_parameter_reference_facts grounds it through the resolved declarations. What still arrives
+// as a bare atom bound by an Arrow's domain is a lambda's parameter, whose anonymous Arrow has no index
+// path. DECLARED FRONTIER, carried on v2.compiler.resolve FrameKind; NEXT TRIGGER, NAMING THE
+// CAPABILITY: anonymous Arrows carry an index path (via std.occurrence_identity), so lambda parameters
+// resolve as declaration references too -- then this search and infer_parameter_type_in_scope are
+// deleted.
 type InferParameterScopeSearch
   = ParameterReferenceNotHere
   | ParameterReferenceUnbound
@@ -3253,6 +3285,9 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
       match declaration_reference_path_optional(node: n) {
         Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
         Absent =>
+      match parameter_reference_path_optional(node: n) {
+        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
+        Absent =>
       if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
         infer_gather_fold_acc_ok(
           node: n,
@@ -3266,6 +3301,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
         )
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
+      }
       }
       }
     TypeNode { connective: Disj } =>
@@ -3627,7 +3663,8 @@ fn infer_gather_fold_step(
     acc
   } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge)
     || infer_declaration_binder_edge(parent: acc.node, edge: edge)
-    || match_arm_pattern_edge(parent: acc.node, edge: edge) {
+    || match_arm_pattern_edge(parent: acc.node, edge: edge)
+    || (resolved_reference_body_kind(target: acc.node) != NotMarkedReference) {
     infer_gather_fold_step_merged(
       acc: acc,
       merged_entries: acc.entries,
