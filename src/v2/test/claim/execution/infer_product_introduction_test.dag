@@ -36,7 +36,7 @@ import v2.std.node {
   arrow_signature_order_edge,
   node_subtree_nodes
 }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Optional, Present, optional_present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -278,13 +278,15 @@ fn ipi_is_roster_member(n: Node) -> Bool {
   }
 }
 
+fn ipi_order_target_step(acc: Optional<Node>, e: Edge) -> Optional<Node> {
+  if arrow_signature_order_edge(parent: dag_fixture_emitted_add_fn, edge: e) { optional_present(value: e.target) } else { acc }
+}
+
 fn ipi_add_fn_order_target() -> Optional<Node> {
   fold_list(
     xs: dag_fixture_emitted_add_fn.children,
     empty: Absent,
-    cons: fn(acc, e) {
-      if arrow_signature_order_edge(parent: dag_fixture_emitted_add_fn, edge: e) { Present { value: e.target } } else { acc }
-    }
+    cons: fn(acc, e) { ipi_order_target_step(acc: acc, e: e) }
   )
 }
 
