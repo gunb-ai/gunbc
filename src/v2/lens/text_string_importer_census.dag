@@ -36,6 +36,7 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.types { NonEmptyStr }
 import std.primitives {
+  primitive_contract_roster,
   PrimitiveContract,
   char_at_contract,
   string_length_contract,
@@ -112,6 +113,7 @@ import std.primitives {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+
 
 // The host text primitives. Each is a `std.primitives` row; the row supplies the name.
 data host_text_primitive_contracts: List<PrimitiveContract> = [
@@ -329,6 +331,18 @@ type Walk {
   in_field_block: Bool
   field_owner: String
   field_types: FreeMonoid<FieldType>
+  decl_is_type: Bool
+  in_type_rhs: Bool
+  alias_spelling: String
+  alias_invalid: Bool
+  aliases: FreeMonoid<TypeAlias>
+}
+
+// A `type X = Head ...` declaration with no variants and no field block (a `where` refinement
+// keeps its base): X's meaning as text is Head's.
+type TypeAlias {
+  name: String
+  spelling: String
 }
 
 // What a pending type spelling belongs to: a parameter, a `let`/`data` annotation, the type after
@@ -338,6 +352,7 @@ type TypeSpellingKind
   | SpellingOfAnnotation
   | SpellingOfArrow
   | SpellingOfField { owner: String }
+  | SpellingOfAlias
 
 // A record or variant field's declared type as SPELLED, keyed by its owner (the type name for a
 // record declaration, the variant name for a variant payload).
@@ -369,6 +384,7 @@ type ReturnHead {
 // std.string_type): its import decides membership and its functions are the structural roster.
 type Rosters {
   population_module: String
+  kernel: FreeMonoid<String>
   host: FreeMonoid<String>
   structural: FreeMonoid<String>
   structural_text_result: FreeMonoid<String>
@@ -406,7 +422,12 @@ fn walk_start() -> Walk {
     braces: Empty,
     in_field_block: false,
     field_owner: "",
-    field_types: Empty
+    field_types: Empty,
+    decl_is_type: false,
+    in_type_rhs: false,
+    alias_spelling: "",
+    alias_invalid: false,
+    aliases: Empty
   }
 }
 
@@ -743,8 +764,12 @@ fn is_arrow_type_head(w: Walk, x: String) -> Bool {
   is_type_head(w: w, x: x) && (w.w3 == "dag_token_arrow")
 }
 
+fn is_alias_type_head(w: Walk, x: String) -> Bool {
+  w.decl_is_type && w.in_type_rhs && (w.alias_spelling == "") && (w.pending_param == "") && is_type_head(w: w, x: x)
+}
+
 fn starts_pending_spelling(w: Walk, x: String) -> Bool {
-  is_param_type_head(w: w, x: x) || is_annotation_type_head(w: w, x: x) || is_field_type_head(w: w, x: x) || is_arrow_type_head(w: w, x: x)
+  is_param_type_head(w: w, x: x) || is_annotation_type_head(w: w, x: x) || is_field_type_head(w: w, x: x) || is_arrow_type_head(w: w, x: x) || is_alias_type_head(w: w, x: x)
 }
 
 fn continues_pending_param(w: Walk, x: String) -> Bool {
@@ -753,7 +778,7 @@ fn continues_pending_param(w: Walk, x: String) -> Bool {
 
 // The pending spelling's NAME: the parameter, binder or field it types; an arrow types nothing named.
 fn next_pending_param(w: Walk, x: String) -> String {
-  if is_arrow_type_head(w: w, x: x) { "->" } else if starts_pending_spelling(w: w, x: x) { w.w4 } else if continues_pending_param(w: w, x: x) { w.pending_param } else { "" }
+  if is_arrow_type_head(w: w, x: x) { "->" } else if is_alias_type_head(w: w, x: x) { "=" } else if starts_pending_spelling(w: w, x: x) { w.w4 } else if continues_pending_param(w: w, x: x) { w.pending_param } else { "" }
 }
 
 fn next_pending_kind(w: Walk, x: String) -> TypeSpellingKind {
@@ -761,6 +786,7 @@ fn next_pending_kind(w: Walk, x: String) -> TypeSpellingKind {
   else if is_annotation_type_head(w: w, x: x) { SpellingOfAnnotation }
   else if is_field_type_head(w: w, x: x) { SpellingOfField { owner: w.field_owner } }
   else if is_arrow_type_head(w: w, x: x) { SpellingOfArrow }
+  else if is_alias_type_head(w: w, x: x) { SpellingOfAlias }
   else { w.pending_kind }
 }
 
@@ -816,6 +842,38 @@ fn next_arrow_spelling(w: Walk, x: String) -> String {
 // read as of THIS atom, because the arrow's spelling flushes on the very atom that opens the body.
 fn next_return_spelling(w: Walk, x: String) -> String {
   if x == "dag_surface_top_level_item" { "" } else if (x == "dag_surface_fn_body") && (w.return_spelling == "") { next_arrow_spelling(w: w, x: x) } else { w.return_spelling }
+}
+
+fn next_decl_is_type(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_top_level_item" { false } else if w.w1 == "dag_surface_type_decl" { true } else { w.decl_is_type }
+}
+
+fn next_in_type_rhs(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_top_level_item" { false } else if w.decl_is_type && (x == "dag_token_eq") { true } else { w.in_type_rhs }
+}
+
+fn next_alias_spelling(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" { "" } else {
+    match w.pending_kind {
+      SpellingOfAlias => if flushes_pending(w: w, x: x) { flushed_spelling(w: w) } else { w.alias_spelling }
+      _ => w.alias_spelling
+    }
+  }
+}
+
+fn next_alias_invalid(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_top_level_item" { false } else { w.alias_invalid || (w.in_type_rhs && ((x == "dag_token_pipe") || (x == "dag_surface_field_decl_block"))) }
+}
+
+fn closing_alias(w: Walk) -> FreeMonoid<TypeAlias> {
+  if w.decl_is_type && !(w.alias_spelling == "") && !w.alias_invalid { Cons { head: TypeAlias { name: w.decl, spelling: w.alias_spelling }, tail: w.aliases } } else { w.aliases }
+}
+
+// A declaration's alias is recorded when the NEXT top-level item opens (and once more at the end
+// of the stream, by finish_walk), because a pipe or field block later in the same declaration
+// unmakes it.
+fn next_aliases(w: Walk, x: String) -> FreeMonoid<TypeAlias> {
+  if x == "dag_surface_top_level_item" { closing_alias(w: w) } else { w.aliases }
 }
 
 fn next_field_types(w: Walk, x: String) -> FreeMonoid<FieldType> {
@@ -880,8 +938,19 @@ fn walk_step(w: Walk, r: Rosters, x: String, at: Optional<Int>) -> Walk {
     braces: next_braces(w: w, x: x),
     in_field_block: next_in_field_block(w: w, x: x),
     field_owner: next_field_owner(w: w, x: x),
-    field_types: next_field_types(w: w, x: x)
+    field_types: next_field_types(w: w, x: x),
+    decl_is_type: next_decl_is_type(w: w, x: x),
+    in_type_rhs: next_in_type_rhs(w: w, x: x),
+    alias_spelling: next_alias_spelling(w: w, x: x),
+    alias_invalid: next_alias_invalid(w: w, x: x),
+    aliases: next_aliases(w: w, x: x)
   }
+}
+
+// The end of the stream closes the last declaration: a pending spelling flushes and its alias, if
+// any, is recorded, as the next top-level item would have done.
+fn finish_walk(w: Walk, r: Rosters) -> Walk {
+  walk_step(w: walk_step(w: w, r: r, x: "dag_surface_end_of_stream", at: Absent), r: r, x: "dag_surface_top_level_item", at: Absent)
 }
 
 // An atom of the raw parse's pre-order stream, with the byte offset of its token when it has one
@@ -927,9 +996,9 @@ fn is_literal_token(x: String) -> Bool {
 // atom after a literal token is the literal's CONTENT, never an identifier, so it is skipped here
 // rather than read as a name.
 fn walk_positioned(atoms: FreeMonoid<PositionedAtom>, r: Rosters) -> Walk {
-  fold_list(xs: atoms, empty: walk_start(), cons: fn(w, a) {
+  finish_walk(w: fold_list(xs: atoms, empty: walk_start(), cons: fn(w, a) {
     if is_literal_token(x: w.w1) && !starts_with(s: a.lexeme, prefix: "dag_") { w } else { walk_step(w: w, r: r, x: a.lexeme, at: a.at) }
-  })
+  }), r: r)
 }
 
 fn walk_atoms(atoms: FreeMonoid<String>, r: Rosters) -> Walk {
@@ -984,8 +1053,14 @@ fn raw_tree_of_text(text: String) -> RawTreeStanding {
   }
 }
 
+// EVERY kernel primitive, read from std.primitives' own roster of its contract rows: a literal
+// passed to one lands in a kernel host position whatever its spelling.
+fn kernel_primitive_names() -> FreeMonoid<String> {
+  fold_list(xs: primitive_contract_roster(), empty: empty_strings, cons: fn(acc, c) { Cons { head: c.name, tail: acc } })
+}
+
 fn empty_rosters() -> Rosters {
-  Rosters { population_module: "", host: empty_strings, structural: empty_strings, structural_text_result: empty_strings }
+  Rosters { population_module: "", kernel: kernel_primitive_names(), host: empty_strings, structural: empty_strings, structural_text_result: empty_strings }
 }
 
 type RostersStanding
@@ -1027,7 +1102,7 @@ fn rosters_of_walk(w: Walk, population_module: String) -> RostersStanding {
   } else if length(xs: overlap) > 0 {
     RostersRefused { reason: concat(concat(concat("a name is both a host primitive and a function of ", population_module), ": "), fold_list(xs: overlap, empty: "", cons: fn(acc, h) { concat(concat(acc, h), " ") })) }
   } else {
-    RostersEstablished { rosters: Rosters { population_module: population_module, host: host, structural: structural, structural_text_result: text_result } }
+    RostersEstablished { rosters: Rosters { population_module: population_module, kernel: kernel_primitive_names(), host: host, structural: structural, structural_text_result: text_result } }
   }
 }
 
@@ -1778,14 +1853,63 @@ fn is_population_string(spelling: String, population_module: String, declarer_im
   (spelling == concat(population_module, ".String")) || ((spelling == "String") && declarer_imports) || (spelling == "FreeMonoid") || (spelling == "std.algebra.FreeMonoid")
 }
 
-fn position_of_spelling(spelling: String, population_module: String, declarer_imports: Bool) -> LiteralPosition {
-  if is_population_string(spelling: spelling, population_module: population_module, declarer_imports: declarer_imports) {
+// What a literal-site resolution can read: the population, the kernel callees, and every module
+// the batch loaded (callees, field owners, the declarers of spelled types, and std.types).
+type LiteralContext {
+  population_module: String
+  kernel: FreeMonoid<String>
+  modules: FreeMonoid<CalleeModule>
+}
+
+data kernel_types_module: String = "std.types"
+data alias_chase_fuel: Int = 6
+
+fn alias_target(walk: Walk, name: String) -> String {
+  fold_list(xs: walk.aliases, empty: "", cons: fn(acc, a) { if (acc == "") && (a.name == name) { a.spelling } else { acc } })
+}
+
+fn loaded_walk(cx: LiteralContext, module: String) -> FreeMonoid<Walk> {
+  match callee_standing(callees: cx.modules, module: module) {
+    Empty => Empty
+    Cons { head: standing, tail: _ } => match standing {
+      WalkNotEstablished { cause: _ } => Empty
+      WalkEstablished { walk: w } => Cons { head: w, tail: Empty }
+    }
+  }
+}
+
+// THE CHASE: a spelling's meaning as text is decided by the module that DECLARES it -- its own
+// alias, else the module it imports the name from, else std.types for a kernel name. A bare
+// `String` at the end is structural exactly when the declaring module imports the population's
+// String. The chase is bounded by alias_chase_fuel and by the modules the batch loaded; past
+// either it stays UNRESOLVED with the spelling named.
+fn spelling_position(cx: LiteralContext, spelling: String, declarer: Walk, fuel: Int) -> LiteralPosition {
+  if is_population_string(spelling: spelling, population_module: cx.population_module, declarer_imports: declarer.imports_text_string) {
     StructuralPosition { spelling: spelling }
   } else if spelling == "String" {
     HostPosition
-  } else {
+  } else if (fuel == 0) || string_contains(s: spelling, pattern: ".") {
     UnresolvedPosition { cause: SpelledOtherThanText { spelling: spelling } }
+  } else {
+    let local = alias_target(walk: declarer, name: spelling)
+    if !(local == "") {
+      spelling_position(cx: cx, spelling: local, declarer: declarer, fuel: fuel - 1)
+    } else {
+      let m = imported_module_of(imported: declarer.imported, name: spelling)
+      let source = if m == "" { kernel_types_module } else { m }
+      match loaded_walk(cx: cx, module: source) {
+        Empty => UnresolvedPosition { cause: SpelledOtherThanText { spelling: spelling } }
+        Cons { head: dw, tail: _ } => {
+          let target = alias_target(walk: dw, name: spelling)
+          if target == "" { UnresolvedPosition { cause: SpelledOtherThanText { spelling: spelling } } } else { spelling_position(cx: cx, spelling: target, declarer: dw, fuel: fuel - 1) }
+        }
+      }
+    }
   }
+}
+
+fn position_of_spelling_in(cx: LiteralContext, spelling: String, declarer: Walk) -> LiteralPosition {
+  spelling_position(cx: cx, spelling: spelling, declarer: declarer, fuel: alias_chase_fuel)
 }
 
 fn field_spelling(walk: Walk, owner: String, field: String) -> String {
@@ -1798,46 +1922,48 @@ fn declares_field_owner(walk: Walk, owner: String) -> Bool {
   fold_list(xs: walk.field_types, empty: false, cons: fn(acc, ft) { acc || (ft.owner == owner) })
 }
 
-fn callee_walk_of(callees: FreeMonoid<CalleeModule>, module: String) -> FreeMonoid<WalkStanding> {
-  callee_standing(callees: callees, module: module)
+fn one(p: LiteralPosition) -> FreeMonoid<LiteralPosition> {
+  Cons { head: p, tail: Empty }
 }
 
-fn literal_position(own: Walk, callees: FreeMonoid<CalleeModule>, kind: SiteKind, population_module: String) -> FreeMonoid<LiteralPosition> {
+fn literal_position(own: Walk, cx: LiteralContext, kind: SiteKind) -> FreeMonoid<LiteralPosition> {
   match kind {
-    LiteralAtAnnotation { spelling: s } => Cons { head: position_of_spelling(spelling: s, population_module: population_module, declarer_imports: own.imports_text_string), tail: Empty }
-    LiteralAtReturn { spelling: s } => Cons { head: position_of_spelling(spelling: s, population_module: population_module, declarer_imports: own.imports_text_string), tail: Empty }
-    StructuralLiteralArgument { callee: c } => Cons { head: StructuralPosition { spelling: concat(concat(population_module, "."), c) }, tail: Empty }
+    LiteralAtAnnotation { spelling: s } => one(p: position_of_spelling_in(cx: cx, spelling: s, declarer: own))
+    LiteralAtReturn { spelling: s } => one(p: position_of_spelling_in(cx: cx, spelling: s, declarer: own))
+    StructuralLiteralArgument { callee: c } => one(p: StructuralPosition { spelling: concat(concat(cx.population_module, "."), c) })
     LiteralAtField { owner: o, field: f } =>
       if declares_field_owner(walk: own, owner: o) {
         let s = field_spelling(walk: own, owner: o, field: f)
-        Cons { head: if s == "" { UnresolvedPosition { cause: FieldNotDeclared { owner: o, field: f } } } else { position_of_spelling(spelling: s, population_module: population_module, declarer_imports: own.imports_text_string) }, tail: Empty }
+        one(p: if s == "" { UnresolvedPosition { cause: FieldNotDeclared { owner: o, field: f } } } else { position_of_spelling_in(cx: cx, spelling: s, declarer: own) })
       } else {
         let m = imported_module_of(imported: own.imported, name: o)
-        match callee_walk_of(callees: callees, module: m) {
-          Empty => Cons { head: UnresolvedPosition { cause: FieldOwnerNotRead { owner: o } }, tail: Empty }
+        match callee_standing(callees: cx.modules, module: m) {
+          Empty => one(p: UnresolvedPosition { cause: FieldOwnerNotRead { owner: o } })
           Cons { head: standing, tail: _ } => match standing {
-            WalkNotEstablished { cause: c } => Cons { head: UnresolvedPosition { cause: LiteralCalleeModuleNotParsed { module: m, cause: c } }, tail: Empty }
+            WalkNotEstablished { cause: c } => one(p: UnresolvedPosition { cause: LiteralCalleeModuleNotParsed { module: m, cause: c } })
             WalkEstablished { walk: cw } => {
               let s = field_spelling(walk: cw, owner: o, field: f)
-              Cons { head: if s == "" { UnresolvedPosition { cause: FieldNotDeclared { owner: o, field: f } } } else { position_of_spelling(spelling: s, population_module: population_module, declarer_imports: cw.imports_text_string) }, tail: Empty }
+              one(p: if s == "" { UnresolvedPosition { cause: FieldNotDeclared { owner: o, field: f } } } else { position_of_spelling_in(cx: cx, spelling: s, declarer: cw) })
             }
           }
         }
       }
     LiteralArgument { callee: c, param: pa, module: m } =>
-      if pa == "" {
-        Cons { head: UnresolvedPosition { cause: PositionalLiteralArgument { callee: c } }, tail: Empty }
+      if (m == "") && member(xs: cx.kernel, x: c) {
+        one(p: HostPosition)
+      } else if pa == "" {
+        one(p: UnresolvedPosition { cause: PositionalLiteralArgument { callee: c } })
       } else if m == "" {
         let s = param_spelling(walk: own, callee: c, param: pa)
-        Cons { head: if s == "" { UnresolvedPosition { cause: LiteralCalleeNotImportedByName { callee: c } } } else { position_of_spelling(spelling: s, population_module: population_module, declarer_imports: own.imports_text_string) }, tail: Empty }
+        one(p: if s == "" { UnresolvedPosition { cause: LiteralCalleeNotImportedByName { callee: c } } } else { position_of_spelling_in(cx: cx, spelling: s, declarer: own) })
       } else {
-        match callee_walk_of(callees: callees, module: m) {
-          Empty => Cons { head: UnresolvedPosition { cause: LiteralCalleeModuleNotInPool { module: m } }, tail: Empty }
+        match callee_standing(callees: cx.modules, module: m) {
+          Empty => one(p: UnresolvedPosition { cause: LiteralCalleeModuleNotInPool { module: m } })
           Cons { head: standing, tail: _ } => match standing {
-            WalkNotEstablished { cause: k } => Cons { head: UnresolvedPosition { cause: LiteralCalleeModuleNotParsed { module: m, cause: k } }, tail: Empty }
+            WalkNotEstablished { cause: k } => one(p: UnresolvedPosition { cause: LiteralCalleeModuleNotParsed { module: m, cause: k } })
             WalkEstablished { walk: cw } => {
               let s = param_spelling(walk: cw, callee: c, param: pa)
-              Cons { head: if s == "" { UnresolvedPosition { cause: LiteralParameterNotDeclared { at: concat(concat(c, "."), pa) } } } else { position_of_spelling(spelling: s, population_module: population_module, declarer_imports: cw.imports_text_string) }, tail: Empty }
+              one(p: if s == "" { UnresolvedPosition { cause: LiteralParameterNotDeclared { at: concat(concat(c, "."), pa) } } } else { position_of_spelling_in(cx: cx, spelling: s, declarer: cw) })
             }
           }
         }
@@ -1853,12 +1979,28 @@ type LiteralSite {
   position: LiteralPosition
 }
 
-fn literal_sites_of(own: Walk, callees: FreeMonoid<CalleeModule>, population_module: String) -> FreeMonoid<LiteralSite> {
+fn literal_sites_of(own: Walk, cx: LiteralContext) -> FreeMonoid<LiteralSite> {
   list_reverse(xs: fold_list(xs: list_reverse(xs: own.sites), empty: Empty, cons: fn(acc, s) {
-    fold_list(xs: literal_position(own: own, callees: callees, kind: s.kind, population_module: population_module), empty: acc, cons: fn(inner, pos) {
+    fold_list(xs: literal_position(own: own, cx: cx, kind: s.kind), empty: acc, cons: fn(inner, pos) {
       Cons { head: LiteralSite { decl: s.decl, kind: s.kind, at: s.at, position: pos }, tail: inner }
     })
   }))
+}
+
+// The names a walk SPELLS as types (annotations, returns, parameters, fields, alias targets): the
+// modules declaring them are the second wave a batch loads.
+fn spelled_type_modules(w: Walk, acc: FreeMonoid<String>) -> FreeMonoid<String> {
+  let spellings = fold_list(xs: w.param_types, empty: fold_list(xs: w.field_types, empty: fold_list(xs: w.aliases, empty: fold_list(xs: w.sites, empty: empty_strings, cons: fn(a, s) {
+    match s.kind {
+      LiteralAtAnnotation { spelling: sp } => Cons { head: sp, tail: a }
+      LiteralAtReturn { spelling: sp } => Cons { head: sp, tail: a }
+      _ => a
+    }
+  }), cons: fn(a, al) { Cons { head: al.spelling, tail: a } }), cons: fn(a, ft) { Cons { head: ft.spelling, tail: a } }), cons: fn(a, pt) { Cons { head: pt.spelling, tail: a } })
+  fold_list(xs: spellings, empty: acc, cons: fn(inner, sp) {
+    let m = imported_module_of(imported: w.imported, name: sp)
+    if (m == "") || member(xs: inner, x: m) { inner } else { Cons { head: m, tail: inner } }
+  })
 }
 
 // The modules a batch's literal sites need read: callee modules of literal arguments and the
@@ -1996,11 +2138,12 @@ fn position_is_unresolved(p: LiteralPosition) -> Bool {
 // decided remainder, so the three partition the module's literal positions), then one `L` row per
 // STRUCTURAL or UNRESOLVED site: path, declaration, line:col, kind (and its operand), position.
 fn literal_lines(path: String, standing: RawTreeStanding, r: Rosters, callees: FreeMonoid<CalleeModule>) -> FreeMonoid<String> {
+  let cx = LiteralContext { population_module: r.population_module, kernel: r.kernel, modules: callees }
   match standing {
     RawTreeNotEstablished { cause: c } => Cons { head: concat(concat(concat("C\t", path), "\tNOT_ESTABLISHED:"), concat(cause_token(cause: c), "\n")), tail: Empty }
     RawTreeEstablished { root: root, spans: spans, text: text } => {
       let w = walk_tree(root: root, spans: spans, r: r)
-      let sites = literal_sites_of(own: w, callees: callees, population_module: r.population_module)
+      let sites = literal_sites_of(own: w, cx: cx)
       let header = concat(concat("C\t", path), concat(concat(concat(concat(concat(concat("\t", int_text(n: count_positions(sites: sites, pred: position_is_structural))), "\t"), int_text(n: count_positions(sites: sites, pred: position_is_unresolved))), "\t"), int_text(n: length(xs: sites) - count_positions(sites: sites, pred: is_listed_position))), "\n"))
       list_reverse(xs: fold_list(xs: placed_sites(sites: sites, text: text), empty: Cons { head: header, tail: Empty }, cons: fn(acc, ps) {
         if !is_listed_position(p: ps.site.position) { acc } else {
@@ -2034,7 +2177,21 @@ fn text_string_importer_literal_sites(paths_csv: String, out: String, roots_csv:
         Cons { head: PathTree { path: p, standing: standing, walk: walk }, tail: acc }
       }))
       let walks = fold_list(xs: list_reverse(xs: trees), empty: Empty, cons: fn(acc, pt) { Cons { head: PathWalk { path: pt.path, standing: pt.walk }, tail: acc } })
-      let callees = callee_modules(modules: literal_modules(walks: walks), r: r, roots: roots)
+      let wave1_names = Cons { head: kernel_types_module, tail: literal_modules(walks: walks) }
+      let wave1 = callee_modules(modules: wave1_names, r: r, roots: roots)
+      let wave2_names = fold_list(xs: wave1, empty: fold_list(xs: walks, empty: empty_strings, cons: fn(acc, pw) {
+        match pw.standing {
+          WalkNotEstablished { cause: _ } => acc
+          WalkEstablished { walk: w } => spelled_type_modules(w: w, acc: acc)
+        }
+      }), cons: fn(acc, cm) {
+        match cm.standing {
+          WalkNotEstablished { cause: _ } => acc
+          WalkEstablished { walk: w } => spelled_type_modules(w: w, acc: acc)
+        }
+      })
+      let missing = fold_list(xs: wave2_names, empty: empty_strings, cons: fn(acc, m) { if member(xs: wave1_names, x: m) { acc } else { Cons { head: m, tail: acc } } })
+      let callees = fold_list(xs: callee_modules(modules: missing, r: r, roots: roots), empty: wave1, cons: fn(acc, cm) { Cons { head: cm, tail: acc } })
       let lines = fold_list(xs: trees, empty: Empty, cons: fn(acc, pt) {
         fold_list(xs: literal_lines(path: pt.path, standing: pt.standing, r: r, callees: callees), empty: acc, cons: fn(inner, l) { Cons { head: l, tail: inner } })
       })

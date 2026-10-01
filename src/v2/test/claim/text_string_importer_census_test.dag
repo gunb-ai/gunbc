@@ -49,6 +49,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data rosters_supplied: Rosters = Rosters {
   population_module: "v2.std.text",
+  kernel: Cons { head: "concat", tail: Cons { head: "join", tail: Empty } },
   host: Cons { head: "string_length", tail: Cons { head: "split", tail: Cons { head: "char_at", tail: Empty } } },
   structural: Cons { head: "string_is_empty", tail: Cons { head: "string_head", tail: Cons { head: "string_join", tail: Empty } } },
   structural_text_result: Cons { head: "string_join", tail: Empty }
@@ -562,11 +563,39 @@ type TsilPopulationOutcome {
 }
 
 fn tsil_population_outcome() -> TsilPopulationOutcome {
-  let st = Rosters { population_module: "std.string_type", host: rosters_supplied.host, structural: Empty, structural_text_result: Empty }
+  let st = Rosters { population_module: "std.string_type", kernel: rosters_supplied.kernel, host: rosters_supplied.host, structural: Empty, structural_text_result: Empty }
   TsilPopulationOutcome {
     under_string_type: literal_rows_for(source: literal_string_type_source, path: "st.dag", r: st, callees: Empty),
     under_text: literal_rows_for(source: literal_string_type_source, path: "st.dag", r: rosters_supplied, callees: Empty)
   }
+}
+
+// ALIASES are chased to the module that declares them: an importer's own `type Name = String`
+// is structural, an alias declared in a module that does not import the population is host, and a
+// literal passed to a kernel primitive (here positional) is a host position, counted not listed.
+data literal_alias_subject: String = "test/fixture_roots/text_string_importer_census_literals/lit_alias.dag"
+data literal_refined_subject: String = "test/fixture_roots/text_string_importer_census_literals/lit_refined.dag"
+data literal_alias_source: String = "module fixture.tsil.lit_alias\nimport v2.std.text { String }\nimport fixture.tsil.lit_refined { take_refined }\ntype Name = String where non_empty\nfn take_name(n: Name) -> Int {\n  1\n}\nfn a() -> Int {\n  take_name(n: \"x\")\n}\nfn b() -> Int {\n  take_refined(r: \"y\")\n}\nfn c() -> Int {\n  let joined = concat(\"p\", \"q\")\n  1\n}\n"
+data literal_refined_source: String = "module fixture.tsil.lit_refined\ntype Refined = String where non_empty\nfn take_refined(r: Refined) -> Int {\n  1\n}\n"
+
+fn tsil_alias_rows_outcome() -> FreeMonoid<String> {
+  let refined = match raw_tree_of_text(text: literal_refined_source) {
+    RawTreeNotEstablished { cause: c } => WalkNotEstablished { cause: c }
+    RawTreeEstablished { root: root, spans: spans, text: _ } => WalkEstablished { walk: walk_tree(root: root, spans: spans, r: rosters_supplied) }
+  }
+  literal_rows_for(source: literal_alias_source, path: "lit_alias.dag", r: rosters_supplied, callees: Cons { head: CalleeModule { module: "fixture.tsil.lit_refined", standing: refined }, tail: Empty })
+}
+
+test fn tsil_alias_subjects_are_the_committed_files() -> Bool {
+  let a = Filesystem.Read(path: literal_alias_subject)
+  let r = Filesystem.Read(path: literal_refined_subject)
+  a.success && r.success && (a.content == literal_alias_source) && (r.content == literal_refined_source)
+}
+
+test fn tsil_aliases_are_chased_to_their_declaring_module() -> Bool {
+  let rows = tsil_alias_rows_outcome()
+  has_row(rows: rows, row: "L\tlit_alias.dag\ta\t9:16\targument\ttake_name.n\tSTRUCTURAL:String")
+    && has_row(rows: rows, row: "C\tlit_alias.dag\t1\t0\t3")
 }
 
 test fn tsil_population_module_decides_the_bare_string() -> Bool {
