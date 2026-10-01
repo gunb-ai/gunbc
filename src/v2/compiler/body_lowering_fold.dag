@@ -4533,7 +4533,7 @@ fn body_lower_function_value_type_var_atom(tv: Symbol) -> Node {
 fn body_lower_function_value_signature(binders: List<FunctionValueBinder>) -> FunctionValueSignature {
   let no_edges: List<Edge> = []
   let authored = fold(binders, init: no_edges, f: fn(acc, b) {
-    list_snoc_item(xs: acc, item: Edge { label: Named { name: b.name }, target: b.at })
+    list_snoc_item(xs: acc, item: binder_edge(name: b.name, type_node: b.at))
   })
   let minted: DeclaredParameterList = anonymous_binder_mint_parameter_list(edges: authored)
   fold(minted.edges, init: FunctionValueSignature { domain: no_edges, type_params: no_edges, order: minted.order }, f: fn(acc, e) {
