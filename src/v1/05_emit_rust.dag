@@ -13501,6 +13501,17 @@ fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: M
 // a source match that was not exhaustive underneath still refuses; the change moves where the
 // refusal is reported, it never fabricates coverage.
 //
+// AN ARM THAT DISCRIMINATES NOTHING BELOW THE OUTER VARIANT -- every field irrefutable, as in
+// `O { mid: _ }` after `O { mid: M { inner: A } }` and `O { mid: M { inner: B } }` -- is the inner
+// match's `_` arm, not a reason to refuse the group. It used to be one: with no Rc-bound field it
+// planned as ungroupable, so the whole variant fell back to the guard, whose `matches!` names only
+// the middle variant while the prelude destructures the innermost constant with
+// `let ... else { unreachable!() }` -- the emitted binary panicked on the second constant sibling
+// where the interpreter selected it (gunbc.recurring_failure_mode
+// nested_pattern_accepted_by_the_interpreter_and_broken_in_emitted_rust). It joins only as the LAST
+// member, so no inner arm follows it unreachably, and only when its plain bindings are a subset of
+// the representative's; a binding of the discriminated field itself is not, and stays ungrouped.
+//
 // RESIDUE, DECLARED: an arm carrying a string guard, an authored guard, more than one Rc-bound
 // field, or a deeper Rc level inside the nested pattern is NOT grouped and keeps the #8570 guard —
 // so it keeps the E0004 too. A match containing an irrefutable arm is left alone entirely: the
@@ -13585,13 +13596,22 @@ fn rc_group_representative(entries: List<RcGroupedArmEntry>, variant: String) ->
   let members = rc_group_members(entries: entries, variant: variant)
   match members |> first {
     Present { value: head } =>
-      let all_groupable = members |> all(e => e.plan.groupable && e.plan.ref_field == head.plan.ref_field)
+      let discriminating = members |> filter(e => e.plan.ref_field != "")
+      match discriminating |> first {
+        Present { value: lead } =>
+      let member_count = members |> count
+      let all_groupable = members |> enumerate |> all(pair =>
+        pair.second.plan.groupable
+          && (pair.second.plan.ref_field == lead.plan.ref_field
+              || (pair.second.plan.ref_field == "" && pair.first == member_count - 1)))
       if !all_groupable { none }
       else {
-        match members |> filter(cand => members |> all(e => rc_plan_bindings_within(member: e.plan, rep: cand.plan))) |> first {
+        match discriminating |> filter(cand => members |> all(e => rc_plan_bindings_within(member: e.plan, rep: cand.plan))) |> first {
           Present { value: rep } => Present { value: rep.plan }
           Absent => none
         }
+      }
+        Absent => none
       }
     Absent => none
   }
@@ -13653,7 +13673,20 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
           Absent => ungroupable_arm_plan(variant: variant, pat_str: pat_str)
         }
       }
-    Absent => ungroupable_arm_plan(variant: variant, pat_str: pat_str)
+    Absent =>
+      if has_authored_guard || string_guards != "" || rc_arm_has_refutable_plain_field(pattern: arm_pat, ref_field: "", source_indices: si) {
+        ungroupable_arm_plan(variant: variant, pat_str: pat_str)
+      } else {
+        RcGroupedArmPlan {
+          groupable: true,
+          variant: variant,
+          pat_str: pat_str,
+          ref_field: "",
+          inner_pat_str: "_",
+          plain_bindings: rc_arm_plain_bindings(pattern: arm_pat, ref_field: "", source_indices: si),
+          plain_refutable: false
+        }
+      }
   }
 }
 

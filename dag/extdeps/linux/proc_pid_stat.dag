@@ -111,3 +111,20 @@ fn proc_pid_stat_start_time(content: String) -> ProcPidStatStartTime {
 fn process_start_epoch_seconds(boot_epoch_seconds: EpochSecs, ticks_per_second: Hertz, start_ticks: Int) -> Int {
   boot_epoch_seconds + (start_ticks / hertz_count(h: ticks_per_second))
 }
+
+// FIELD 1, pid (proc_pid_stat(5)): "The process ID." It precedes comm, so it is the text before the
+// FIRST " (" -- comm is parenthesized and may contain anything, but nothing precedes it except the pid
+// and one space. Read through /proc/self/stat this is how a process learns its own pid from the same
+// file that carries its starttime, so the pair is one reading of one process, not two.
+type ProcPidStatPid
+  = PidObserved { pid: Int }
+  | PidUnparseable { field: String }
+
+fn proc_pid_stat_pid(content: String) -> ProcPidStatPid {
+  let line = trim(s: content)
+  let field = match split(s: line, delimiter: " ").first() { Present { value: w } => w  Absent => "" }
+  match parse_int(s: field) {
+    Present { value: pid } => if pid > 0 { PidObserved { pid: pid } } else { PidUnparseable { field: field } }
+    Absent => PidUnparseable { field: field }
+  }
+}

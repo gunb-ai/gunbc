@@ -6847,7 +6847,7 @@ fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject)
   }
 }
 
-fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: PatternSubject, scope: InferScope) -> MatchPattern {
+fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: PatternSubject, site: SourceSpan, scope: InferScope) -> MatchPattern {
   match pattern {
     VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
@@ -6871,12 +6871,12 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
         PatternLookupBlocked => none
       }
       let annotated_variant_name = variant_name
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, site: site, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let annotated_bindings = bindings |> map(binding =>
         let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), module_name: scope.module_name, source_indices: scope.type_env.source_indices)
         let field_subject = lookup_result_subject(result: field_lookup)
-        make_field_binding_node(occurrence_identity: binding.occurrence_identity, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), binding: annotate_pattern_parent_enums(pattern: field_binding_pattern(n: binding), scrutinee_subject: field_subject, scope: scope), span: binding.span, name_span: node_name_span(n: binding))
+        make_field_binding_node(occurrence_identity: binding.occurrence_identity, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), binding: annotate_pattern_parent_enums(pattern: field_binding_pattern(n: binding), scrutinee_subject: field_subject, site: binding.span, scope: scope), span: binding.span, name_span: node_name_span(n: binding))
       )
       match inferred_parent {
         Present { value: parent_name } =>
@@ -7048,14 +7048,14 @@ fn derive_field_provenance(scope: InferScope, scrutinee_provenance: SubValueRela
   }
 }
 
-fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_subject: PatternSubject, scrutinee_provenance: SubValueRelation) -> PatternScopeResult {
+fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_subject: PatternSubject, site: SourceSpan, scrutinee_provenance: SubValueRelation) -> PatternScopeResult {
   match pattern {
     Bind { declaration: declaration } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: declaration.name, resolved: pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
     Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, site: site, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
       fold(bindings, init: PatternScopeResult { scope: scope, diagnostics: variant_diags }, f: (acc, fb) =>
@@ -7071,7 +7071,7 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
             diagnostics: concat(acc.diagnostics, field_lookup.diagnostics)
           }
           _ =>
-            let nested = extend_scope_with_pattern_node(scope: acc.scope, pattern: fb_pattern, scrutinee_subject: field_subject, scrutinee_provenance: field_provenance)
+            let nested = extend_scope_with_pattern_node(scope: acc.scope, pattern: fb_pattern, scrutinee_subject: field_subject, site: fb.span, scrutinee_provenance: field_provenance)
             PatternScopeResult {
               scope: nested.scope,
               diagnostics: concat(acc.diagnostics, concat(field_lookup.diagnostics, nested.diagnostics))
@@ -8801,8 +8801,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             scrutinee_type: scrut_rt, arm_pattern: arm_pat, arm_index: arm_pair.first, absent_arm_index: absent_arm_index) {
           pattern_subject_from_node(n: with_required_cardinality(n: scrut_rt))
         } else { scrut_subject }
-        let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: arm_subject, scope: scope)
-        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: arm_subject, scrutinee_provenance: scrut_provenance)
+        let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: arm_subject, site: arm_node.span, scope: scope)
+        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: arm_subject, site: arm_node.span, scrutinee_provenance: scrut_provenance)
         let arm_scope = pattern_result.scope
         let pattern_diags = pattern_result.diagnostics
         let guard_result = if arm_g != none {
@@ -8859,8 +8859,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let arm_pat = arm_pattern(n: arm_node)
             let arm_g = arm_guard(n: arm_node)
             let arm_b = arm_body(n: arm_node)
-            let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: scrut_subject, scope: scope)
-            let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject, scrutinee_provenance: scrut_provenance)
+            let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: scrut_subject, site: arm_node.span, scope: scope)
+            let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject, site: arm_node.span, scrutinee_provenance: scrut_provenance)
             let arm_scope = pattern_result.scope
             let pattern_diags = pattern_result.diagnostics
             let guard_result = if arm_g != none {
@@ -13344,7 +13344,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
   match n.inferred {
     Present { value: TypeVariable { id: tv_id } } =>
       match map_get(subst, tv_id) {
-        Present { value: c } => if type_node_label(n: c, source_indices: source_indices) == tv_id { n } else { c }
+        Present { value: c } => if type_node_label(n: c, source_indices: source_indices) == tv_id { n } else { preserve_outer_optional_cardinality(outer: n, inner: c) }
         Absent => n
       }
     _ =>
@@ -13352,7 +13352,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
   let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
   if is_bare {
     match map_get(subst, nm) {
-      Present { value: c } => c
+      Present { value: c } => preserve_outer_optional_cardinality(outer: n, inner: c)
       Absent => n
     }
   } else {
@@ -16487,11 +16487,10 @@ fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_type_env_import_str_binding_identity(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
-  let emit_info = build_emit_graph_info(modules: modules, registry: typed.item_registry)
   ResolvedGraph {
     modules: modules,
     item_registry: typed.item_registry,
+    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: typed.item_registry),
     diagnostics: typed.diagnostics,
-    emit_graph_info: emit_info,
   }
 }
