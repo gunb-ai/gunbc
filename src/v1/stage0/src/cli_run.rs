@@ -92,6 +92,7 @@ pub mod declaration_index;
 pub mod derived_row_roster;
 mod emitted_crate_workspace_host;
 mod native_lane_runner;
+pub mod reach_base_standings;
 pub mod required_ci_measurement;
 mod required_floor_runner;
 mod required_lane_roster;
@@ -20287,6 +20288,7 @@ pub fn partition_cost_debt_roster<'a>(
                     ..
                 }) => CostDebtRosterStanding::OutsideThisRunsUniverse,
                 Some(RequiredFloorDisposition::Planned)
+                | Some(RequiredFloorDisposition::PlannedAsReachConsumer)
                 | Some(RequiredFloorDisposition::DeclinedLongModule { .. })
                 | Some(RequiredFloorDisposition::DeclinedFixtureMember { .. })
                 | Some(RequiredFloorDisposition::DeclinedOutsideRequiredGate) => {
@@ -20308,6 +20310,7 @@ fn disposition_is_a_cost_debt_withhold(disposition: &RequiredFloorDisposition) -
         RequiredFloorDisposition::DeclinedCostDebt => true,
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::PlannedAsReachConsumer
         | RequiredFloorDisposition::DeclinedLongModule { .. }
         | RequiredFloorDisposition::DeclinedFixtureMember { .. }
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
@@ -44333,6 +44336,12 @@ pub enum RequiredFloorDisposition {
     /// the static compiler-floor gate did not admit the identity; the exact changed-witness
     /// identity set did. It nevertheless executes in the same fold and terminal ledger.
     PlannedAsChangedWitness,
+    /// Outside the static gate, selected because its evaluation reaches a declaration the diff
+    /// changed (`namespace_baseline` `body_reach_from_changed_declarations`) and homed under the
+    /// v2 claim root. It executes in the same fold, and its verdict is DIFFERENTIAL: the head
+    /// standing is joined with the base standing (`v2.workflow.required_floor`
+    /// `claim_differential`), never read as an absolute pass/fail (operator ruling 2026-09-27).
+    PlannedAsReachConsumer,
     /// Declined because the module's AUTHORED name (read from its own source, never its path)
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
@@ -44762,6 +44771,12 @@ pub struct RequiredFloorOutcome {
     /// over this population, never an independently maintained tally.
     pub claim_cost: Vec<WitnessExecutionOccurrence>,
     pub failures: Vec<String>,
+    /// THE REACH DIFFERENTIAL'S BLOCKING VERDICTS, one (identity, differential) per claim the
+    /// model's `reach_claim_verdict` said blocks: a regression, a failing new claim, an unrostered
+    /// unmeasured base or a refused verdict. Its own field rather than free text in `failures`,
+    /// so the required context's adjudication names each identity and why it blocked
+    /// (neat-boar-16's srv1 control, 2026-10-01, found them unattributed).
+    pub reach_differential_blocking: Vec<(String, String)>,
     /// Per-identity `RequiredFloorDisposition`, one row per (module, function) site the
     /// site-projection loop considered. This is the sole admission authority for the site; see
     /// the type's doc comment.
@@ -45738,6 +45753,7 @@ fn write_required_floor_disposition_tsv(
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
     let mut planned_as_changed_witness = 0usize;
+    let mut planned_as_reach_consumer = 0usize;
     let mut declined_long = 0usize;
     let mut declined_fixture = 0usize;
     let mut declined_cost_debt = 0usize;
@@ -45750,6 +45766,7 @@ fn write_required_floor_disposition_tsv(
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::PlannedAsChangedWitness => planned_as_changed_witness += 1,
+            RequiredFloorDisposition::PlannedAsReachConsumer => planned_as_reach_consumer += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
             RequiredFloorDisposition::DeclinedOutsideRequiredGate => declined_outside_gate += 1,
@@ -45769,7 +45786,8 @@ fn write_required_floor_disposition_tsv(
         "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
          \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\
-         \tdeclined_changed_witness_outside_discovery={}\tdeclined_no_ci_wet_lane={}",
+         \tdeclined_changed_witness_outside_discovery={}\tdeclined_no_ci_wet_lane={}\
+         \tplanned_as_reach_consumer={}",
         rows.len(),
         planned,
         planned_as_changed_witness,
@@ -45780,7 +45798,8 @@ fn write_required_floor_disposition_tsv(
         declined_discovery_excluded,
         declined_cost_debt,
         declined_changed_witness_outside_discovery,
-        declined_no_ci_wet_lane
+        declined_no_ci_wet_lane,
+        planned_as_reach_consumer
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")

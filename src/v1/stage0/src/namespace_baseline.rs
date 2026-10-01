@@ -907,6 +907,9 @@ pub(crate) struct ReachedDeclaration {
     /// The reader module's `is_fixture_carrier` -- whether the reached declaration can be a
     /// claim at all, read from the index rather than guessed from a module-name spelling.
     pub witness_carrier: bool,
+    /// The reader module's workspace-relative path, so a consumer can scope the reached set by
+    /// source root (the per-PR v2 differential admits only claims homed under `src/v2`).
+    pub rel_path: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1112,6 +1115,7 @@ pub(crate) fn body_reach_from_changed_declarations(
                         through: (module_path.clone(), declaration.clone()),
                         binding: bound,
                         witness_carrier: record.is_fixture_carrier,
+                        rel_path: record.rel_path.clone(),
                     });
                     next.push(key);
                 }
