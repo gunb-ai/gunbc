@@ -533,7 +533,7 @@ pub(crate) fn witness_cost_clock_nanos(
     })?;
     let Value::Variant {
         variant_name,
-        fields,
+        ref fields,
         ..
     } = measured
     else {
@@ -551,7 +551,7 @@ pub(crate) fn witness_cost_clock_nanos(
             ctx.resolve(variant_name)
         ));
     }
-    let value = ctx.field(&fields, "value").cloned().ok_or_else(|| {
+    let value = ctx.field(fields, "value").cloned().ok_or_else(|| {
         "[witness-row-cost] REFUSED: MeasuredValue lacks its Nanosecond".to_string()
     })?;
     witness_cost_nanosecond_count(ctx, value, basis_constructor).map(Some)

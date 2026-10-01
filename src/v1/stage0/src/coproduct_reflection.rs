@@ -107,7 +107,7 @@ fn expect_pool_roots(
     let mut out = Vec::new();
     for item in items {
         match item {
-            Value::Str(s) => out.push(s.to_string()),
+            Value::Str(ref s) => out.push(s.to_string()),
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!("{what} expects `{param}: List<String>`, got element {other:?}"),
@@ -2668,7 +2668,7 @@ mod parse_only_uppercase_variant_regression_tests {
 
     fn first_child_target(ctx: &InterpContext, skel: &Value) -> Option<Value> {
         match field(ctx, skel, "children") {
-            Some(Value::List(items)) => items
+            Some(Value::List(ref items)) => items
                 .iter()
                 .next()
                 .and_then(|edge| field(ctx, edge, "target")),

@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.recursion_over_value_depth_uncounted_by_the_call_limit
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data recursion_over_value_depth_uncounted_by_the_call_limit: RecurringFailureMode = RecurringFailureMode {
+  identity: "recursion_over_value_depth_uncounted_by_the_call_limit" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: host-native recursion whose depth is the depth of a VALUE rather than the depth of an interpreted call chain. The seed interpreter bounds calls (`v1_interpreter` `CALL_DEPTH_LIMIT`, refused typed and located) and runs every call and closure frame under `stacker::maybe_grow`, but a value is as deep as the data it carries -- a right-nested parse of a large module is one Variant per token -- and the derived `Drop`, `PartialEq`, `Display` and `Debug` of `Value`, plus every hand-written walker over it, recursed once per level on the host stack with no checkpoint. No call limit counts those levels, so none could refuse them.",
+
+    "HARM: process death with no location (rc=134, `thread main has overflowed its stack`), below DESIGN section 5's floor: not a refusal, not a diagnostic, and fatal to every later claim in the same batch. The drop case is the sharpest: the claim had already printed PASS and the process died afterwards, while releasing the value.",
+
+    "THE PREMISE IT WAS REPORTED UNDER WAS FALSE, MEASURED RATHER THAN ARGUED (2026-10-01, seed at main b793732902, BuildBuddy): the report was that 100,000 typed frames overflow the native stack. Non-tail interpreted recursion at 99,990 PASSED and at 100,010 refused `call depth exceeded 100000 at fn 'down'`, typed and located -- the call limit was already true. In the same dispatch, dropping a 262,144-deep variant chain aborted rc=134 after its claim passed, and `==` on two such chains aborted rc=134. The trigger (a census lens over v2.std.compilers.target_model) builds exactly such a value.",
+
+    "CHAIN (DESIGN section 6b): the earliest unjustified link is each recursion over value structure, not the call path and not the thread's stack size. Value depth is bounded by the heap, so no derived thread stack suffices, and a drop cannot refuse. REPAIR: `Drop for Value` is iterative -- uniquely owned children are detached onto a heap worklist, shared ones left to their last owner. Every other walker runs under the single guard `v1_interpreter` `value_depth_guarded` (`stacker::maybe_grow`, the mechanism calls already use): PartialEq, Display, a hand-written Debug matching the derived output, value_hash, value_fast_eq, the portable conversions, account_value, cross_representation_numeric_straddle, json_to_value, match_pattern, push_shell_argv_tokens, the fixture codec and cli_run's dotted-string, node-value and wire walkers. The dead recursive encoder `value_to_json` (no production caller) is deleted.",
+
+    "THE JSON BOUNDARY IS A REFUSAL, NOT A GUARD, because the recursion there is upstream: serde_json::Value's own Drop and Serializer recurse per level beyond any guard of ours. Both encoders (`recorded_fixture` `value_to_fixture_json`, `cli_run` `value_to_wire_json`) claim each JSON container through `v1_interpreter` `claim_json_nesting` before building it and refuse, naming the value path, past `serde_json_read_depth_limit` -- PROBED once as the deepest nesting serde_json::from_str admits (127 on serde_json 1.0.149, not the 128 a transcribed literal would have said). For the fixture encoder the bound is a projection of its reader (serde_json::from_slice). For the wire encoder it is a stated POLICY bound: its in-process readers decode with serde_json::from_value into non-recursive typed structs (no depth limit of their own), and its REST request bodies go to external services whose nesting limit is undocumented (GitHub, Google Cloud APIs searched; none found). The justification is that the encoder itself dies above it.",
+
+    "EVIDENCE (v1-compiler lib, test module `v1_interpreter` `value_depth_walker_tests` and `cli_run` `collect_node_values_depth_tests`, 2 MiB test-thread stack): a 262,144-deep chain and list are driven through every walker above; the JSON encoders refuse it located while the process lives; a value at exactly the probed limit encodes and its bytes read back, and one level deeper refuses. `every_recursive_value_walker_is_guarded` is the census as a check: it reads the crate's sources and reds on any self-recursive function over a Value that does not run under the guard.",
+
+    "RUNG FOUND AT: outside the ladder (silent process death). RUNG NOW: 2, mechanically preventable -- with the honest caveats that the census check sees DIRECT self-recursion only (a mutually recursive pair or a trait-impl walk is not detected; PartialEq, Display and Debug are guarded by hand), and that these are Rust unit tests, which execute on no CI path while gunbc.rung_drop rust_unit_tests_off_the_merge_path stands. A floor-enrolled .dag claim cannot carry the evidence instead: building a 262,144-deep value costs one interpreted step per level, past the floor's eval-step budget, and a shallower value does not overflow and so discriminates nothing.",
+
+    "ATTAINABLE CEILING: 3 for the interpreter (a walker over Value that cannot be written without the guard needs a single traversal authority every walker is an instance of). NEXT-RUNG TRIGGER, named as the capability: one generic Value traversal (an iterative fold over children) through which every walker is expressed, so a recursive walker has no other way to be written; and the rust_unit_tests_off_the_merge_path drop's own trigger, which puts this evidence on the merge path."
+  ],
+
+  evidence: [],
+}

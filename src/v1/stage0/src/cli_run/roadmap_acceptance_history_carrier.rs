@@ -316,7 +316,7 @@ fn handback_to_json(value: &Value, ctx: &InterpContext) -> Result<JsonHandback, 
             let further = field_list(value, "further_artifacts", ctx)?
                 .into_iter()
                 .map(|item| match item {
-                    Value::Str(s) => Ok(s.to_string()),
+                    Value::Str(ref s) => Ok(s.to_string()),
                     other => Err(format!(
                         "further_artifacts element must be String, got {}",
                         other.type_label_public()
