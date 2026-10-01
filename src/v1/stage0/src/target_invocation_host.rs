@@ -1943,7 +1943,10 @@ fn run_typed_graph_exclusive_bytes_floor_subject() -> InvocationOutcome {
             &seeds.required_gate_authored_modules,
             &seeds.local_repo_wet_schedule_rows,
         );
-        let (prepared, _sources) = cli_run::prepare_repository_from_corpus(
+        // THE FLOOR'S OWN SUBJECT, COMPILED AS ITS STRICT PREPARE COMPILES IT -- before the prepared
+        // repository drops the typecheck caches -- because the floor's peak is inside that compile,
+        // where the caches the import union rides on are still alive.
+        let subject = cli_run::assemble_prepared_subject_from_corpus(
             &corpus,
             &cli_run::floor_prepared_subject_exclusions(),
             Some((
@@ -1952,7 +1955,16 @@ fn run_typed_graph_exclusive_bytes_floor_subject() -> InvocationOutcome {
                 &module_seeds,
             )),
         )?;
-        Ok(prepared.graph)
+        drop(gate_entry_index);
+        let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(
+            subject.sources.into(),
+        ));
+        std::rc::Rc::try_unwrap(result)
+            .ok()
+            .and_then(|r| r.graph)
+            .ok_or_else(|| {
+                "the strict resolve produced no graph, or its result has another owner".to_string()
+            })
     })
 }
 
@@ -1969,16 +1981,23 @@ fn typed_graph_exclusive_bytes_over(
             message: format!("{label}: refused: could not anchor at the workspace root: {e}"),
         };
     }
-    let classes = [
-        C::TypeEnv,
-        C::Interface,
-        C::Items,
-        C::ModuleNodes,
-        C::FuncEnv,
-        C::OccurrenceTransport,
+    // Every single class, then the union's carriers JOINTLY: the per-module import union is
+    // materialized both as TypeEnv.ancestry_str_bindings and as the TypeEnvCache the module's
+    // interface hands its importers, and those share spine, so neither alone reads what removing
+    // the union would save.
+    let sets: Vec<Vec<C>> = vec![
+        vec![C::TypeEnv],
+        vec![C::TypeEnvCache],
+        vec![C::Interface],
+        vec![C::Items],
+        vec![C::ModuleNodes],
+        vec![C::FuncEnv],
+        vec![C::OccurrenceTransport],
+        vec![C::TypeEnv, C::TypeEnvCache, C::Interface],
     ];
     let mut raw = Vec::new();
-    for class in classes {
+    for set in &sets {
+        let class_name = set.iter().map(|c| c.name()).collect::<Vec<_>>().join("+");
         let graph = match subject() {
             Ok(g) => g,
             Err(e) => {
@@ -1988,12 +2007,12 @@ fn typed_graph_exclusive_bytes_over(
                 }
             }
         };
-        match cli_run::typed_module_class_exclusive_bytes(graph, class) {
-            Ok(r) => raw.push((class, r)),
+        match cli_run::typed_module_class_exclusive_bytes(graph, set) {
+            Ok(r) => raw.push((class_name, r)),
             Err(cause) => {
                 return InvocationOutcome {
                     termination: Termination::Refused,
-                    message: format!("{label}: class {} unattributable: {cause}", class.name()),
+                    message: format!("{label}: class {class_name} unattributable: {cause}"),
                 }
             }
         }
@@ -2037,7 +2056,7 @@ fn typed_graph_exclusive_bytes_over(
                 termination: Termination::Refused,
                 message: format!(
                     "{label}: class {} carries a count past the i64 the fold reads",
-                    class.name()
+                    class
                 ),
             };
         };
@@ -2049,10 +2068,7 @@ fn typed_graph_exclusive_bytes_over(
             "ancestry_entries",
             "own_entries",
         ];
-        let mut fields = vec![(
-            ctx.sym("class"),
-            crate::v1_interpreter::str_value(class.name()),
-        )];
+        let mut fields = vec![(ctx.sym("class"), crate::v1_interpreter::str_value(class))];
         for (n, v) in names.iter().zip(vals) {
             fields.push((ctx.sym(n), v));
         }

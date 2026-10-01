@@ -4065,9 +4065,12 @@ pub(crate) struct ExclusiveBytesReading {
     pub own_entries: u64,
 }
 
+/// Drops every class in `classes` first, together, while every other class is held: one class gives
+/// that class's exclusive bytes; a set gives the bytes the set holds JOINTLY -- what removing all of it
+/// would save, including nodes its members share with each other and with nothing else.
 pub(crate) fn typed_module_class_exclusive_bytes(
     graph: Rc<v1_compiler_compile::ResolvedGraph>,
-    class: TypedModuleClass,
+    classes: &[TypedModuleClass],
 ) -> Result<ExclusiveBytesReading, String> {
     let graph = Rc::try_unwrap(graph)
         .map_err(|g| format!("the graph has {} other owner(s)", Rc::strong_count(&g) - 1))?;
@@ -4118,7 +4121,7 @@ pub(crate) fn typed_module_class_exclusive_bytes(
             ),
         ];
         for (k, v) in fields {
-            if k == class {
+            if classes.contains(&k) {
                 chosen.push(v);
             } else {
                 kept.push(v);
