@@ -9085,12 +9085,7 @@ fn match_pattern(
                             if items.is_empty() {
                                 None
                             } else {
-                                record_list_cons_tail_split(items.len());
                                 let head = items[0].clone();
-                                let tail = {
-                                    let mut rest = (**items).clone();
-                                    list_value(rest.split_off(1))
-                                };
                                 let mut bindings = HashMap::new();
                                 for fb in field_bindings.iter() {
                                     let field_name = field_binding_name_at(
@@ -9098,9 +9093,23 @@ fn match_pattern(
                                         ctx.source_indices.clone(),
                                     );
                                     let fb_pat = field_binding_pattern(fb.clone());
+                                    // THE TAIL IS BUILT ONLY FOR A PATTERN THAT CONSUMES IT. A
+                                    // wildcard binds nothing, so skipping it changes no binding;
+                                    // `list_head` and `is_empty`, which the lexer calls once per
+                                    // character, bind `tail: _` and paid for a list they dropped.
+                                    if matches!(*fb_pat, MatchPattern::Wildcard) {
+                                        match field_name.as_str() {
+                                            "head" | "tail" => continue,
+                                            _ => return None,
+                                        }
+                                    }
                                     let field_val = match field_name.as_str() {
                                         "head" => head.clone(),
-                                        "tail" => tail.clone(),
+                                        "tail" => {
+                                            record_list_cons_tail_split(items.len());
+                                            let mut rest = (**items).clone();
+                                            list_value(rest.split_off(1))
+                                        }
                                         _ => return None,
                                     };
                                     let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
@@ -9126,7 +9135,6 @@ fn match_pattern(
                                 None => None,
                                 Some(c) => {
                                     let head = char_value(c);
-                                    let tail = str_value(chars.as_str().to_string());
                                     let mut bindings = HashMap::new();
                                     for fb in field_bindings.iter() {
                                         let field_name = field_binding_name_at(
@@ -9134,9 +9142,18 @@ fn match_pattern(
                                             ctx.source_indices.clone(),
                                         );
                                         let fb_pat = field_binding_pattern(fb.clone());
+                                        // The same laziness as the native-list arm above: the
+                                        // rest of the string is copied only for a pattern that
+                                        // consumes it.
+                                        if matches!(*fb_pat, MatchPattern::Wildcard) {
+                                            match field_name.as_str() {
+                                                "head" | "tail" => continue,
+                                                _ => return None,
+                                            }
+                                        }
                                         let field_val = match field_name.as_str() {
                                             "head" => head.clone(),
-                                            "tail" => tail.clone(),
+                                            "tail" => str_value(chars.as_str().to_string()),
                                             _ => return None,
                                         };
                                         let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
