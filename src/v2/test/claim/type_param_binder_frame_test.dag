@@ -330,16 +330,35 @@ test fn tpb_distinct_type_variables_do_not_alias() -> Bool {
   }
 }
 
-// (12) The type variable is the callee's OWN: an Arrow declaring no `T` still judges `x: T` as the
-// ordinary declared type, and the Int argument refuses.
+// (12) The type variable is the callee's OWN: an Arrow declaring no `T` still judges `x: T` as an
+// ordinary declared type, never instantiating it. RE-STATED 2026-10-01 against gunbc#12566 (bisected:
+// green at its parent, red at it), which routes every declared position through
+// infer_declared_position_undecidable_reason: a declared atom that denotes no value type and is not
+// one of the callee's type variables is counted UndecidableFormalUnresolved on the Accepted path,
+// "never refused for the spelling and never admitted silently". So `T` no longer refuses the Int as
+// the structural atom `T`; the evidence that it was not taken as a type variable is that it was
+// judged at all -- an instantiated variable carries no undecidable advisory (the twin below).
 test fn tpb_undeclared_t_is_not_a_type_variable() -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^U], formals: [tpb_formal(name: ^x, declared: ^T)]),
     args: [dag_int_literal_fixture_one()]
   ))) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^application_argument_does_not_inhabit)
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
+  }
+}
+
+// THE TWIN THAT MAKES (12) DISCRIMINATE: the same application with `T` declared as the callee's type
+// parameter instantiates it from the Int argument and carries no undecidable-formal advisory.
+test fn tpb_declared_t_is_instantiated_not_judged_unresolved() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
+    arrow: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T)]),
+    args: [dag_int_literal_fixture_one()]
+  ))) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved) == false
   }
 }
 
