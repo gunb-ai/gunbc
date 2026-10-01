@@ -118,7 +118,7 @@ test fn witness_a_tcp_endpoint_has_no_stale_socket_state() -> Bool {
 // sketch alone would not: a control that only describes the bad behaviour never fails.
 
 test fn witness_the_unconditional_sketch_differs_where_it_is_destructive() -> Bool {
-  let states = [
+  let states: List<EndpointPathState> = [
     EndpointListening { owner: live_owner() },
     EndpointPathConflict { detail: "regular file" as NonEmptyStr },
   ]
