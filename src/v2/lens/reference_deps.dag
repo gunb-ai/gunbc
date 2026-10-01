@@ -5,6 +5,8 @@ import v2.std.algebra { fold_list, list_reverse }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_diagnostics }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 // THE PARSE-TREE REFERENCE WALKER IS RETIRED (replacement migration, DESIGN section 3).
 // reference_sites_from_parsed_module keyed on ^dag_surface_qualified_name and the import
