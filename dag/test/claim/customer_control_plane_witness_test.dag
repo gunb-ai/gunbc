@@ -51,16 +51,17 @@ data t0: Int = 1790000000
 fn q(s: String) -> String { concat(concat("\"", s), "\"") }
 
 fn checkout_body(event_id: String, event_type: String, session_id: String, account: String, payment_status: String, subtotal: Int, tax: Int, tax_status: String) -> String {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
-    "{\"id\":", q(s: event_id)),
-    ",\"type\":"), q(s: event_type)),
-    ",\"data\":{\"object\":{\"id\":"), q(s: session_id)),
-    ",\"client_reference_id\":"), q(s: account)),
-    ",\"payment_status\":"), q(s: payment_status)),
-    ",\"currency\":\"usd\",\"amount_subtotal\":"), to_string(subtotal)),
-    ",\"amount_total\":"), to_string(subtotal + tax)),
-    ",\"total_details\":{\"amount_tax\":"), to_string(tax)),
-    "},\"automatic_tax\":{\"enabled\":true,\"status\":"), concat(q(s: tax_status), "}}}}"))
+  fold([
+    "{\"id\":", q(s: event_id),
+    ",\"type\":", q(s: event_type),
+    ",\"data\":{\"object\":{\"id\":", q(s: session_id),
+    ",\"client_reference_id\":", q(s: account),
+    ",\"payment_status\":", q(s: payment_status),
+    ",\"currency\":\"usd\",\"amount_subtotal\":", to_string(subtotal),
+    ",\"amount_total\":", to_string(subtotal + tax),
+    ",\"total_details\":{\"amount_tax\":", to_string(tax),
+    "},\"automatic_tax\":{\"enabled\":true,\"status\":", q(s: tax_status), "}}}}",
+  ], init: "", f: fn(acc, x) { concat(acc, x) })
 }
 
 fn sign_header(body: String, at: Int) -> String {
