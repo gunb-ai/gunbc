@@ -750,20 +750,43 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
 // value binding of the same spelling (a let or parameter) still binds lexically: only a name the
 // scope does not bind as a value is elected here. An Optional-cardinality expected type does not
 // decide: its own level is Optional, whose arms are Absent and Present.
-fn expected_deciding_variant_owner(expected: Node?, name: String, scope: InferScope) -> Node? {
-  let lexical_value = match map_get(scope.locals, name) {
+fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expected: Node?, scope: InferScope) -> InferResult {
+  let decided_name = authored_name_at(source_indices: scope.type_env.source_indices, node: decided)
+  InferResult {
+    typed: make_named_expr_node(
+      occurrence_identity: texpr.occurrence_identity,
+      name: name,
+      expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: decided_name } } },
+      children: [],
+      inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided) } },
+      span: texpr.span,
+      name_span: texpr.span
+    ),
+    diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: texpr.span, owner: Present { value: decided })
+  }
+}
+
+fn kernel_spelling_ambiguous_and_unbound(name: String, scope: InferScope) -> Bool {
+  (map_get(scope.locals, name) == none) && ((kernel_variant_owner_candidates(env: scope.type_env, name: name) |> count) > 1)
+}
+
+fn name_binds_a_lexical_value(name: String, scope: InferScope) -> Bool {
+  match map_get(scope.locals, name) {
     Present { value: _ } => lookup_variant_parent_enum(scope: scope, name: name) == none
     Absent => false
   }
-  if lexical_value { none } else {
+}
+
+fn expected_deciding_variant_owner(expected: Node?, name: String, scope: InferScope) -> Node? {
+  if !name_binds_a_lexical_value(name: name, scope: scope) {
     match expected {
       Present { value: exp } =>
-        if exp.return_cardinality == Required {
+        if (exp.return_cardinality == Required) {
           expected_variant_owner_instantiation(expected: expected, name: name, scope: scope)
         } else { none }
       Absent => none
     }
-  }
+  } else { none }
 }
 
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
@@ -7620,22 +7643,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent =>
       match expected_deciding_variant_owner(expected: expected, name: name, scope: scope) {
         Present { value: decided } =>
-          let decided_name = authored_name_at(source_indices: scope.type_env.source_indices, node: decided)
-          InferResult {
-            typed: make_named_expr_node(
-              occurrence_identity: texpr.occurrence_identity,
-              name: name,
-              expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: decided_name } } },
-              children: [],
-              inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided) } },
-              span: span,
-              name_span: span
-            ),
-            diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: decided })
-          }
+          expected_decided_variant_value(texpr: texpr, name: name, decided: decided, expected: expected, scope: scope)
         Absent =>
-      if map_get(scope.locals, name) == none
-        && (kernel_variant_owner_candidates(env: scope.type_env, name: name) |> count) > 1 {
+      if kernel_spelling_ambiguous_and_unbound(name: name, scope: scope) {
         ambiguous_reference_refusal(name: name, candidates: kernel_variant_owner_candidates(env: scope.type_env, name: name), span: span, scope: scope)
       } else {
       match map_get(scope.locals, name) {
@@ -13251,12 +13261,12 @@ fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
         kernel.bindings |> map_values |> sort_by(b => b.name),
         init: empty_map(),
         f: (acc, binding) =>
-          if binding.resolved.connective == Disj {
+          if (binding.resolved.connective == Disj) {
             fold(binding.resolved.children, init: acc, f: (vacc, child) =>
               let child_name = authored_name_at(source_indices: env.source_indices, node: child)
               match map_get(vacc, child_name) {
                 Present { value: seen } =>
-                  if seen |> any(b => b.resolved == binding.resolved) { vacc } else { map_insert(vacc, child_name, concat(seen, [binding])) }
+                  if (seen |> any(b => b.resolved == binding.resolved)) { vacc } else { map_insert(vacc, child_name, concat(seen, [binding])) }
                 Absent => map_insert(vacc, child_name, [binding])
               }
             )
@@ -13283,10 +13293,10 @@ fn kernel_variant_owner_candidates(env: TypeEnv, name: String) -> List<String> {
   match env.parents |> last {
     Present { value: kernel } =>
       fold(kernel.bindings |> map_values |> sort_by(b => b.name), init: [], f: (acc, binding) =>
-        if binding.resolved.connective == Disj
+        if (binding.resolved.connective == Disj)
           && has_child_named(n: binding.resolved, name: name, source_indices: env.source_indices) {
           let owner = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
-          if acc |> any(o => o == owner) { acc } else { concat(acc, [owner]) }
+          if (acc |> any(o => o == owner)) { acc } else { concat(acc, [owner]) }
         } else { acc }
       )
     Absent => []
