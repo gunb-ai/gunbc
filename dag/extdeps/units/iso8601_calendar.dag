@@ -1,0 +1,80 @@
+module extdeps.units.iso8601_calendar
+
+import std.types { Int, String }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour, iso8601_hours_per_day }
+
+// THE ISO 8601 CALENDAR over extdeps.units.iso8601's time-unit constants: the proleptic Gregorian day
+// count in both directions, the month-length rule, and the UTC text form. It is a module of its own,
+// beside the constants rather than inside them, because std.measure imports the constants and so puts
+// that module in the compiler seed's closure; the calendar has no compiler consumer, and adding it
+// there would grow the seed for nothing.
+fn iso8601_seconds_per_hour() -> Int {
+  (iso8601_minutes_per_hour() as Int) * (iso8601_seconds_per_minute() as Int)
+}
+
+fn iso8601_seconds_per_day() -> Int {
+  (iso8601_hours_per_day() as Int) * iso8601_seconds_per_hour()
+}
+
+// THE PROLEPTIC GREGORIAN CALENDAR THE DATE FORMAT SPELLS, in both directions over one day count
+// (days since 1970-01-01): H. Hinnant, "chrono-Compatible Low-Level Date Algorithms",
+// days_from_civil and civil_from_days -- exact over the whole range, no table.
+type Iso8601CivilDate {
+  year: Int
+  month: Int
+  day: Int
+}
+
+fn iso8601_floor_div(a: Int, b: Int) -> Int {
+  if a >= 0 { a / b } else { 0 - ((0 - a + b - 1) / b) }
+}
+
+fn iso8601_days_from_civil(y: Int, m: Int, d: Int) -> Int {
+  let yy = if m <= 2 { y - 1 } else { y }
+  let era = iso8601_floor_div(a: yy, b: 400)
+  let yoe = yy - era * 400
+  let mp = if m > 2 { m - 3 } else { m + 9 }
+  let doy = (153 * mp + 2) / 5 + d - 1
+  let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+  era * 146097 + doe - 719468
+}
+
+fn iso8601_civil_from_days(days: Int) -> Iso8601CivilDate {
+  let z = days + 719468
+  let era = iso8601_floor_div(a: z, b: 146097)
+  let doe = z - era * 146097
+  let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+  let y = yoe + era * 400
+  let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+  let mp = (5 * doy + 2) / 153
+  let d = doy - (153 * mp + 2) / 5 + 1
+  let m = if mp < 10 { mp + 3 } else { mp - 9 }
+  Iso8601CivilDate { year: if m <= 2 { y + 1 } else { y }, month: m, day: d }
+}
+
+// The day-in-month bound with the leap rule, so a calendar-impossible day (Feb 30, Apr 31) is refused
+// by a reader rather than normalized through the day count.
+fn iso8601_gregorian_days_in_month(y: Int, m: Int) -> Int {
+  if m == 2 {
+    if y - (y / 4) * 4 == 0 && (y - (y / 100) * 100 != 0 || y - (y / 400) * 400 == 0) { 29 } else { 28 }
+  } else if m == 4 || m == 6 || m == 9 || m == 11 { 30 } else { 31 }
+}
+
+fn iso8601_two_digits(n: Int) -> String {
+  if n < 10 { concat("0", to_string(n)) } else { to_string(n) }
+}
+
+// Seconds since 1970-01-01T00:00:00Z to the UTC basic-extended form `YYYY-MM-DDThh:mm:ssZ`, the form
+// `date -u +%Y-%m-%dT%H:%M:%SZ` prints; the inverse of a reader of that form over the same day count.
+fn iso8601_utc_text(unix: Int) -> String {
+  let days = iso8601_floor_div(a: unix, b: iso8601_seconds_per_day())
+  let rem = unix - days * iso8601_seconds_per_day()
+  let hour = rem / iso8601_seconds_per_hour()
+  let within_hour = rem - hour * iso8601_seconds_per_hour()
+  let minute = within_hour / (iso8601_seconds_per_minute() as Int)
+  let date = iso8601_civil_from_days(days: days)
+  join([
+    to_string(date.year), "-", iso8601_two_digits(n: date.month), "-", iso8601_two_digits(n: date.day),
+    "T", iso8601_two_digits(n: hour), ":", iso8601_two_digits(n: minute), ":", iso8601_two_digits(n: within_hour - minute * (iso8601_seconds_per_minute() as Int)), "Z",
+  ], "")
+}

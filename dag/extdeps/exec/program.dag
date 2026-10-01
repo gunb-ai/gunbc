@@ -75,6 +75,7 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.wc", decl_name: "wc_program"),
     decl_ref(module_path: "extdeps.tools.nbdkit", decl_name: "nbdkit_program"),
     decl_ref(module_path: "extdeps.tools.sha512sum", decl_name: "sha512sum_program"),
+    decl_ref(module_path: "extdeps.tools.gzip", decl_name: "gzip_program"),
     decl_ref(module_path: "extdeps.tools.rustfmt", decl_name: "rustfmt_program"),
     decl_ref(module_path: "extdeps.tools.npm", decl_name: "npm_program"),
     decl_ref(module_path: "extdeps.tools.node", decl_name: "node_program"),
