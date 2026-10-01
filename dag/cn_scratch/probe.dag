@@ -1,0 +1,105 @@
+module cn_scratch.probe
+
+import std.algebra { FieldOfFractions }
+import std.nat { Nat }
+import std.types { String }
+
+type CnTp = FieldOfFractions<Nat>
+
+fn cn_floor_of(t: CnTp) -> Nat {
+  t.num
+}
+
+fn cn_direct_of(t: FieldOfFractions<Nat>) -> Nat {
+  t.num
+}
+
+fn cn_str_instance() -> FieldOfFractions<String> {
+  FieldOfFractions { num: "a", denom: "b" }
+}
+
+fn cn_nat_instance() -> FieldOfFractions<Nat> {
+  FieldOfFractions { num: 1, denom: 2 }
+}
+
+fn cn_alias_instance() -> CnTp {
+  FieldOfFractions { num: 1, denom: 2 }
+}
+
+fn cn_red_direct() -> Nat {
+  cn_direct_of(t: cn_str_instance())
+}
+
+fn cn_red_alias() -> Nat {
+  cn_floor_of(t: cn_str_instance())
+}
+
+fn cn_ctl_same() -> Nat {
+  cn_direct_of(t: cn_nat_instance())
+}
+
+fn cn_ctl_alias_into_direct() -> Nat {
+  cn_direct_of(t: cn_alias_instance())
+}
+
+fn cn_ctl_direct_into_alias() -> Nat {
+  cn_floor_of(t: cn_nat_instance())
+}
+
+fn cn_red_return() -> FieldOfFractions<Nat> {
+  cn_str_instance()
+}
+
+fn cn_red_let() -> Nat {
+  let v: FieldOfFractions<Nat> = cn_str_instance()
+  v.num
+}
+
+type CnHolder { f: FieldOfFractions<Nat> }
+
+fn cn_red_field() -> CnHolder {
+  CnHolder { f: cn_str_instance() }
+}
+
+type CnRecA { a: Nat }
+type CnRecB { b: String }
+
+fn cn_takes_a(t: FieldOfFractions<CnRecA>) -> Nat {
+  0
+}
+
+fn cn_b_instance() -> FieldOfFractions<CnRecB> {
+  FieldOfFractions { num: CnRecB { b: "x" }, denom: CnRecB { b: "y" } }
+}
+
+fn cn_red_records() -> Nat {
+  cn_takes_a(t: cn_b_instance())
+}
+
+fn cn_iso_nat_into_rec() -> Nat {
+  cn_takes_a(t: cn_nat_instance())
+}
+
+fn cn_iso_str_into_rec() -> Nat {
+  cn_takes_a(t: cn_str_instance())
+}
+
+fn cn_iso_rec_into_nat() -> Nat {
+  cn_direct_of(t: cn_b_instance())
+}
+
+type CnHolderB { f: CnRecB }
+
+fn cn_rec_a() -> CnRecA {
+  CnRecA { a: 1 }
+}
+
+fn cn_distinct_product_field() -> CnHolderB {
+  CnHolderB { f: cn_rec_a() }
+}
+
+type CnHolderRecA { f: FieldOfFractions<CnRecA> }
+
+fn cn_rec_instance_field() -> CnHolderRecA {
+  CnHolderRecA { f: cn_b_instance() }
+}

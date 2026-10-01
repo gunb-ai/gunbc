@@ -1,0 +1,47 @@
+module cn_scratch.foldconf
+
+import std.types { List, Int, String }
+import std.algebra { FreeMonoid, Empty }
+
+type CfItem { v: Int }
+type CfOther { w: String }
+
+fn cf_other() -> CfOther {
+  CfOther { w: "o" }
+}
+
+fn cf_snoc_direct(xs: List<CfItem>) -> List<CfItem> {
+  list_snoc_item(xs: xs, item: cf_other())
+}
+
+fn cf_snoc_declared_mine<T>(xs: List<T>, item: T) -> List<T> {
+  list_snoc_item(xs: xs, item: item)
+}
+
+fn cf_mine_direct(xs: List<CfItem>) -> List<CfItem> {
+  cf_snoc_declared_mine(xs: xs, item: cf_other())
+}
+
+fn cf_fold_step_returns_wrong(xs: List<CfItem>) -> List<CfItem> {
+  fold(xs, init: xs, f: fn(acc, e) { [cf_other()] })
+}
+
+fn cf_fold_ok(xs: List<CfItem>) -> List<CfItem> {
+  fold(xs, init: xs, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })
+}
+
+fn cf_snoc_declared_u<U>(xs: List<U>, item: U) -> List<U> {
+  list_snoc_item(xs: xs, item: item)
+}
+
+fn cf_u_direct(xs: List<CfItem>) -> List<CfItem> {
+  cf_snoc_declared_u(xs: xs, item: cf_other())
+}
+
+fn cf_pair_u<U>(a: U, b: U) -> U {
+  a
+}
+
+fn cf_pair_direct() -> CfItem {
+  cf_pair_u(a: CfItem { v: 1 }, b: cf_other())
+}

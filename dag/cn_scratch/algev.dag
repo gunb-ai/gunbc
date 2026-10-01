@@ -1,0 +1,49 @@
+module cn_scratch.algev
+
+import std.types { Bool, List, String, Int }
+import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
+
+type CnAeItem { v: Int }
+
+fn cn_ae_wire(c: CnAeItem) -> String {
+  "x"
+}
+
+fn cn_ae_cons_unannotated(c: FreeSemigroup<CnAeItem>) -> String {
+  let every = Cons { head: c.head, tail: c.tail }
+  every.map(x => cn_ae_wire(c: x)).join("; ")
+}
+
+fn cn_ae_cons_annotated(c: FreeSemigroup<CnAeItem>) -> String {
+  let every: FreeMonoid<CnAeItem> = Cons { head: c.head, tail: c.tail }
+  every.map(x => cn_ae_wire(c: x)).join("; ")
+}
+
+fn cn_ae_fold_unannotated(xs: List<CnAeItem>) -> Int {
+  let carried = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })
+  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })
+}
+
+fn cn_ae_fold_annotated(xs: List<CnAeItem>) -> Int {
+  let carried: List<CnAeItem> = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })
+  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })
+}
+
+type CnAeOther { w: String }
+
+fn cn_ae_to_other(e: CnAeItem) -> CnAeOther {
+  CnAeOther { w: "o" }
+}
+
+fn cn_ae_seed(xs: List<CnAeItem>) -> List<CnAeItem> {
+  xs
+}
+
+fn cn_ae_conflict_applied_init(xs: List<CnAeItem>) -> Int {
+  let carried = fold(xs, init: cn_ae_seed(xs: xs), f: fn(acc, e) { list_snoc_item(xs: acc, item: cn_ae_to_other(e: e)) })
+  0
+}
+
+fn cn_ae_conflict_declared_result(xs: List<CnAeItem>) -> List<CnAeOther> {
+  fold(xs, init: cn_ae_seed(xs: xs), f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })
+}
