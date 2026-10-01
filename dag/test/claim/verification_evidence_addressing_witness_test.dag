@@ -314,6 +314,8 @@ fn fixture_roadmap_node() -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 

@@ -4,14 +4,11 @@ import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, Sha1Digest, Sha1DigestHex, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge }
 import gunbc.roadmap_document { RoadmapDocument }
-import gunbc.roadmap_status { item_superseded_by, signoff_accepts, item_is_done }
-import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, node_is_dispatchable, node_unmet_parent_ids }
-import gunbc.roadmap_execution_contract {
-  ContractDeclaresNoValidation, ContractClosesNothing, ContractCloses, ContractNotAgentWork,
-  OperatorExclusiveMode, ExternalLeadMode, CalendarObservationMode,
-  NonAgentWorkMode,
-  contract_closure,
-  non_agent_work_mode_label,
+import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, node_unmet_parent_ids }
+import gunbc.roadmap.roadmap_lineage { lineage_walk }
+import gunbc.roadmap.roadmap_readiness {
+  ReadinessGap, GapCentering, NodeReadiness, ReadyToDispatch, NotReady,
+  node_readiness, readiness_text, readiness_reason_text,
 }
 import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
@@ -21,7 +18,6 @@ import gunbc.roadmap.roadmap_attempt_occurrence {
   DispatchAttemptOccurrence, AttemptOccurrenceObserved, AttemptOccurrenceUnclassified,
   AttemptOccurrenceForeign, AttemptOccurrenceMalformed, attempt_container_name,
 }
-import gunbc.roadmap.roadmap_centering { node_centering, CenteringPresent, CenteringAbsent }
 import gunbc.deploy_transition { ActuationAdmission, ActuationAdmitted, ActuationRefused }
 import gunbc.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_wire_hex, git_object_id_from_untagged_hex }
@@ -47,17 +43,13 @@ import extdeps.languages.json.parse {
 // (LaunchHostStanding) and the graph once (RoadmapAuthorityProjection) -- so every gate is
 // witnessable with synthetic inputs and the effectful surfaces are thin projections. Gate ORDER is
 // the plan's and is the safety property: instance actuatable, transition clear, desired==deployed,
-// node exists and is not superseded/accepted/review-only, size and contract complete, dependencies
-// closed, no live attempt, capacity, cause permitted by mode. The refusal vocabulary REUSES the
+// node exists, node READY (one gunbc.roadmap.roadmap_readiness value: open, rooted, centered, sized,
+// contract closing, dependencies closed), no live attempt, capacity, cause permitted by mode. The refusal vocabulary REUSES the
 // arms the actuator, environment and belt already modeled (the labels below are the existing wire
 // words wherever one existed) and adds only what the plan's sketch left implicit: a superseded
 // node, an unobservable session set, the three non-running liveness arms, and the cause/mode arm.
-// `Unplanned` is not minted: in gunbc.roadmap_spawner an unplanned node IS one with no dispatch
-// binding, so it is one fact (LaunchDispatchBindingMissing) with SchedulingUnplanned as its
-// presentation. The arm was named LaunchSizeMissing and its wire word was size_missing until sizing
-// was unbundled from the binding; it never checked a size -- it checked whether the row carries a
-// repository and an acceptance route -- and keeping that spelling once size left the row would
-// have been a section 3 meaning fork, the same name for a materially different fact.
+// The node's own facts refuse together as LaunchNotReady { missing }, the same value the page
+// renders, so there is no per-fact refusal arm to drift from the page's reading.
 
 type LaunchCause
   = Operator
@@ -221,14 +213,7 @@ type LaunchRefusal
   | LaunchRevisionUnobserved { cause: String }
   | LaunchAuthorityUnobserved { detail: String }
   | LaunchNodeUnknown
-  | LaunchNodeSuperseded { by: String }
-  | LaunchAlreadyAccepted
-  | LaunchReviewRequired
-  | LaunchDispatchBindingMissing
-  | LaunchExecutionContractMissing { reason: String }
-  | LaunchCenteringAbsent
-  | LaunchNotAgentWork { mode: NonAgentWorkMode }
-  | LaunchDependenciesBlocked { blockers: List<String> }
+  | LaunchNotReady { missing: List<ReadinessGap> }
   | LaunchSessionsUnobservable { reason: String }
   | LaunchAlreadyLive { session_name: String }
   | LaunchStaleSession { session_name: String, detail: String }
@@ -247,13 +232,6 @@ type LaunchAdmission
 // the operator's reading do not change under the migration; the arms the plan added carry new words
 // in the same shape.
 
-fn launch_non_agent_work_wire_label(mode: NonAgentWorkMode) -> String {
-  fold(
-    split(s: non_agent_work_mode_label(mode: mode), delimiter: "-"),
-    init: "",
-    f: (acc, part) => if acc == "" { part } else { concat(concat(acc, "_"), part) },
-  )
-}
 
 fn launch_refusal_label(r: LaunchRefusal) -> String {
   match r {
@@ -263,14 +241,7 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchRevisionUnobserved { cause: _ } => "deployed_revision_unobserved"
     LaunchAuthorityUnobserved { detail: _ } => "authority_refused"
     LaunchNodeUnknown => "node_not_found"
-    LaunchNodeSuperseded { by: _ } => "node_superseded"
-    LaunchAlreadyAccepted => "already_done_signed_off"
-    LaunchReviewRequired => "review_required"
-    LaunchDispatchBindingMissing => "dispatch_binding_missing"
-    LaunchExecutionContractMissing { reason: _ } => "execution_contract_missing"
-    LaunchCenteringAbsent => "centering_absent"
-    LaunchNotAgentWork { mode } => launch_non_agent_work_wire_label(mode: mode)
-    LaunchDependenciesBlocked { blockers: _ } => "dependencies_blocked"
+    LaunchNotReady { missing: _ } => "not_ready"
     LaunchSessionsUnobservable { reason: _ } => "observe_refused"
     LaunchAlreadyLive { session_name: _ } => "already_live"
     LaunchStaleSession { session_name: _, detail: _ } => "stale_session"
@@ -290,15 +261,7 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchRevisionUnobserved { cause } => join(["deployed revision could not be observed: ", cause], "")
     LaunchAuthorityUnobserved { detail } => join(["roadmap authority projection refused: ", detail], "")
     LaunchNodeUnknown => "node is not in the roadmap authority"
-    LaunchNodeSuperseded { by } => join(["node is superseded by ", by], "")
-    LaunchAlreadyAccepted => "node is signed off as accepted; relaunch refused"
-    LaunchReviewRequired => "node's implementation evidence is in review; acceptance, not a relaunch, is the next step"
-    LaunchDispatchBindingMissing => "node carries no dispatch binding; a launch needs the repository the work happens in and the acceptance evidence it must return"
-    LaunchExecutionContractMissing { reason } => reason
-    LaunchCenteringAbsent => "node declares no centering plan in gunbc.roadmap.roadmap_centering declared_node_centerings; centering is supplied at dispatch, never derived by the worker"
-    LaunchNotAgentWork { mode } =>
-      join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], "")
-    LaunchDependenciesBlocked { blockers } => join(["dependencies not closed: ", join(blockers, ", ")], "")
+    LaunchNotReady { missing } => join([readiness_text(r: NotReady { missing: missing }), " -- ", readiness_reason_text(r: NotReady { missing: missing })], "")
     LaunchSessionsUnobservable { reason } => join(["live session set could not be observed: ", reason], "")
     LaunchAlreadyLive { session_name } => join(["attempt already live in ", session_name], "")
     LaunchStaleSession { session_name, detail } => join([session_name, ": ", detail], "")
@@ -318,16 +281,7 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchRevisionUnobserved { cause: "c" },
     LaunchAuthorityUnobserved { detail: "d" },
     LaunchNodeUnknown,
-    LaunchNodeSuperseded { by: "s" },
-    LaunchAlreadyAccepted,
-    LaunchReviewRequired,
-    LaunchDispatchBindingMissing,
-    LaunchExecutionContractMissing { reason: "r" },
-    LaunchCenteringAbsent,
-    LaunchNotAgentWork { mode: OperatorExclusiveMode },
-    LaunchNotAgentWork { mode: ExternalLeadMode },
-    LaunchNotAgentWork { mode: CalendarObservationMode },
-    LaunchDependenciesBlocked { blockers: ["p"] },
+    LaunchNotReady { missing: [GapCentering] },
     LaunchSessionsUnobservable { reason: "r" },
     LaunchAlreadyLive { session_name: "s" },
     LaunchStaleSession { session_name: "s", detail: "d" },
@@ -387,7 +341,7 @@ type LaunchSessionsStanding
 
 // SESSION OBSERVATION IS THE LAST OBSERVATION, and it is lazy behind every model-only gate (review
 // 5059681676 finding 2). The staged observer produces a standing whose sessions are PENDING; the
-// decision is asked in two stages -- launch_admission_staged runs instance..dependencies and
+// decision is asked in two stages -- launch_admission_staged runs instance..readiness and
 // answers LaunchStageNeedsSessions only when a node has passed every pre-session gate -- and only
 // then does the driver list tmux once (POST: for that node; page: one shared observation when at
 // least one row reaches the live gate; timer: once, because its reap pass needs the set regardless)
@@ -536,7 +490,7 @@ type LaunchGateVerdict
 // conditional, for one reason: the mutation control. The plan's falsifier (c) says `removing the
 // dependency check admits the blocked child`; a nested conditional can only be mutated by editing
 // production, while a ledger can be mutated as DATA -- the witness takes the real ledger, replaces
-// the dependencies verdict with GatePassed, and asserts the fold admits. That proves the dependency
+// the readiness verdict with GatePassed, and asserts the fold admits. That proves the readiness
 // gate is the load-bearing one over otherwise-admissible facts, with no production escape hatch.
 // GateNotReached marks a gate that could not be evaluated because an earlier one refused (a later
 // gate reads the node the lookup did not find); the fold refuses fail-closed if it ever meets one
@@ -547,9 +501,7 @@ type LaunchGateLedger {
   transition: LaunchGateVerdict
   revision: LaunchGateVerdict
   node: LaunchGateVerdict
-  contract: LaunchGateVerdict
-  centering: LaunchGateVerdict
-  dependencies: LaunchGateVerdict
+  readiness: LaunchGateVerdict
   live: LaunchGateVerdict
   capacity: LaunchGateVerdict
   cause: LaunchGateVerdict
@@ -585,9 +537,7 @@ fn launch_gate_template() -> List<LaunchGateRow> {
     transition: GateNotReached,
     revision: GateNotReached,
     node: GateNotReached,
-    contract: GateNotReached,
-    centering: GateNotReached,
-    dependencies: GateNotReached,
+    readiness: GateNotReached,
     live: GateNotReached,
     capacity: GateNotReached,
     cause: GateNotReached,
@@ -641,9 +591,7 @@ fn launch_ledger_rows(l: LaunchGateLedger) -> List<LaunchGateRow> {
     LaunchGateRow { gate: "transition", stage: PreSessionGate, verdict: l.transition },
     LaunchGateRow { gate: "revision", stage: PreSessionGate, verdict: l.revision },
     LaunchGateRow { gate: "node", stage: PreSessionGate, verdict: l.node },
-    LaunchGateRow { gate: "contract", stage: PreSessionGate, verdict: l.contract },
-    LaunchGateRow { gate: "centering", stage: PreSessionGate, verdict: l.centering },
-    LaunchGateRow { gate: "dependencies", stage: PreSessionGate, verdict: l.dependencies },
+    LaunchGateRow { gate: "readiness", stage: PreSessionGate, verdict: l.readiness },
     LaunchGateRow { gate: "live", stage: SessionGate, verdict: l.live },
     LaunchGateRow { gate: "capacity", stage: SessionGate, verdict: l.capacity },
     LaunchGateRow { gate: "cause", stage: SessionGate, verdict: l.cause },
@@ -774,56 +722,25 @@ fn launch_lookup_node(graph: LaunchGraphStanding, node_id: String) -> LaunchNode
   }
 }
 
-fn launch_gate_node_state(node: RoadmapNode, merged: List<Int>) -> LaunchGateVerdict {
-  let by = item_superseded_by(item: node.line)
-  if by != "" {
-    GateRefused { refusal: LaunchNodeSuperseded { by: by } }
-  } else if signoff_accepts(s: node.signoff) {
-    GateRefused { refusal: LaunchAlreadyAccepted }
-  } else if item_is_done(item: node.line, merged: merged) {
-    GateRefused { refusal: LaunchReviewRequired }
-  } else {
-    GatePassed
-  }
+// READINESS IS ONE GATE, and it is the page's predicate (gunbc.roadmap.roadmap_readiness
+// node_readiness): state (superseded, accepted, in review), lineage (a parent that reaches the
+// admitted root), centering, size, contract and dependencies are read in one value and refused
+// together as LaunchNotReady { missing }, so the dispatcher names every missing fact the page names
+// and neither can admit a node the other calls not ready. The lineage is walked over the graph the
+// admission was handed; the dependencies are its unmet parents over the same graph.
+fn launch_node_readiness(node: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> NodeReadiness {
+  node_readiness(
+    node: node,
+    lineage: lineage_walk(node_id: node.node as String, nodes: nodes),
+    unmet_parents: node_unmet_parent_ids(nodes: nodes, edges: edges, id: node.node) |> map(p => p as String),
+    merged: merged,
+  )
 }
 
-fn launch_gate_contract(node: RoadmapNode) -> LaunchGateVerdict {
-  if !node_is_dispatchable(n: node) {
-    GateRefused { refusal: LaunchDispatchBindingMissing }
-  } else {
-    match contract_closure(contract: node.execution) {
-      ContractDeclaresNoValidation =>
-        GateRefused { refusal: LaunchExecutionContractMissing {
-          reason: "work item execution contract is unspecified; launch will not guess validation or dependencies",
-        } }
-      ContractClosesNothing =>
-        GateRefused { refusal: LaunchExecutionContractMissing {
-          reason: "work item execution contract declares no validation operations; a contract that closes nothing cannot admit a launch",
-        } }
-      ContractNotAgentWork { mode } =>
-        GateRefused { refusal: LaunchNotAgentWork { mode: mode } }
-      ContractCloses { validations: _ } => GatePassed
-    }
-  }
-}
-
-// CENTERING IS CHECKED AS A NODE FACT, beside size and contract and before dependencies: a node
-// whose plan is absent from gunbc.roadmap.roadmap_centering declared_node_centerings refuses with
-// the typed CenteringAbsent cause. The gate reads the one roster; it never inspects the plan's
-// content, which is the worker's centering, not the admission's.
-fn launch_gate_centering(node: RoadmapNode) -> LaunchGateVerdict {
-  match node_centering(node: node) {
-    CenteringPresent { plan: _ } => GatePassed
-    CenteringAbsent => GateRefused { refusal: LaunchCenteringAbsent }
-  }
-}
-
-fn launch_gate_dependencies(node: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> LaunchGateVerdict {
-  let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: node.node)
-  if count(unmet) == 0 {
-    GatePassed
-  } else {
-    GateRefused { refusal: LaunchDependenciesBlocked { blockers: map(unmet, p => p as String) } }
+fn launch_gate_readiness(node: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> LaunchGateVerdict {
+  match launch_node_readiness(node: node, nodes: nodes, edges: edges, merged: merged) {
+    ReadyToDispatch => GatePassed
+    NotReady { missing } => GateRefused { refusal: LaunchNotReady { missing: missing } }
   }
 }
 
@@ -925,7 +842,7 @@ fn launch_gate_capacity(sessions: LaunchSessionsStanding, capacity: BeltCapacity
 // node, the timer may not start new work; the timer's reconciliation, verification, publication and
 // cleanup are NOT launches and never pass through this gate. AutomaticReady admits both causes;
 // Paused admits neither. The gate is LAST in the order on purpose: a refusal names the most
-// specific fact first, so a timer looking at a blocked node reports DependenciesBlocked, and only a
+// specific fact first, so a timer looking at a blocked node reports NotReady, and only a
 // node the timer could otherwise start reports CauseNotPermitted.
 
 fn launch_gate_cause(cause: LaunchCause, mode: SpawnMode) -> LaunchGateVerdict {
@@ -946,9 +863,7 @@ fn launch_facts_unreached_after_instance(refusal: LaunchRefusal) -> LaunchDecisi
       transition: GateNotReached,
       revision: GateNotReached,
       node: GateNotReached,
-      contract: GateNotReached,
-      centering: GateNotReached,
-      dependencies: GateNotReached,
+      readiness: GateNotReached,
       live: GateNotReached,
       capacity: GateNotReached,
       cause: GateNotReached,
@@ -1017,9 +932,7 @@ fn launch_decision_facts(
               transition: GateRefused { refusal: refusal },
               revision: GateNotReached,
               node: GateNotReached,
-              contract: GateNotReached,
-              centering: GateNotReached,
-              dependencies: GateNotReached,
+              readiness: GateNotReached,
               live: GateNotReached,
               capacity: GateNotReached,
               cause: GateNotReached,
@@ -1033,9 +946,7 @@ fn launch_decision_facts(
               transition: GatePassed,
               revision: GateRefused { refusal: refusal },
               node: GateNotReached,
-              contract: GateNotReached,
-              centering: GateNotReached,
-              dependencies: GateNotReached,
+              readiness: GateNotReached,
               live: GateNotReached,
               capacity: GateNotReached,
               cause: GateNotReached,
@@ -1054,9 +965,7 @@ fn launch_decision_facts(
               transition: launch_gate_transition(transition: transition),
               revision: launch_gate_revision(revision: revision),
               node: GateRefused { refusal: refusal },
-              contract: GateNotReached,
-              centering: GateNotReached,
-              dependencies: GateNotReached,
+              readiness: GateNotReached,
               live: GateNotReached,
               capacity: GateNotReached,
               cause: GateNotReached,
@@ -1069,10 +978,8 @@ fn launch_decision_facts(
               instance: launch_gate_instance(instance_id: instance_id, actuation: actuation),
               transition: launch_gate_transition(transition: transition),
               revision: launch_gate_revision(revision: revision),
-              node: launch_gate_node_state(node: node, merged: merged),
-              contract: launch_gate_contract(node: node),
-              centering: launch_gate_centering(node: node),
-              dependencies: launch_gate_dependencies(node: node, nodes: nodes, edges: edges),
+              node: GatePassed,
+              readiness: launch_gate_readiness(node: node, nodes: nodes, edges: edges, merged: merged),
               live: launch_gate_live(sessions: sessions, node_id: node_id),
               capacity: launch_gate_capacity(sessions: sessions, capacity: capacity, reserved: reserved),
               cause: launch_gate_cause(cause: cause, mode: mode),

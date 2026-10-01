@@ -220,10 +220,10 @@ fn harness_submission_terminal_cause(reason: String) -> String {
 }
 
 
-// alignment_chain_fingerprint: THE CHAIN FINGERPRINT THE ATTEMPT SPAWNED WITH, composed at dispatch
-// from the node's resolved alignment chain (gunbc.roadmap.roadmap_alignment alignment_resolve).
-// Empty means this turn has no chain -- reviewers, probes and ad-hoc runs -- and the step budget
-// stays a hard terminal, the pre-chain behavior. Non-empty turns the budget boundary into a durable
+// alignment_chain_fingerprint IS THE CHAIN FINGERPRINT THE ATTEMPT SPAWNED WITH, composed at dispatch
+// from the node's resolved alignment chain (gunbc.roadmap.roadmap_alignment alignment_resolve). Empty
+// means this turn has no chain -- reviewers, probes and ad-hoc runs -- and the step budget stays a
+// hard terminal, the pre-chain behavior. Non-empty turns the budget boundary into a durable
 // checkpoint-due announcement: the harness does NOT adjudicate (no provider call, no worker
 // self-report); it records the due event bound to this fingerprint and returns control to the
 // workflow, whose adjudication lane decides resume, steer, re-plan, route or stop (review
@@ -1319,7 +1319,7 @@ fn harness_turn_provider_stopped(
   }
 }
 
-// Truncation ordering: TRUNCATION WITH AN OPEN TOOL CALL IS JUDGED FIRST: when both arms could fire
+// TRUNCATION WITH AN OPEN TOOL CALL IS JUDGED FIRST in the round below: when both arms could fire
 // on one max_tokens stop, the open call is the more specific cause and the one whose consequence (a
 // partial file write executed as a complete command) is the worse to bury in a format verdict.
 fn harness_turn_round(

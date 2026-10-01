@@ -3,6 +3,8 @@ module test.claim.roadmap_dispatch_actuator
 import gunbc.roadmap_sizing {
   NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
 }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
+
 import v2.std.optional { Present }
 import std.types { NonEmptyStr, GitRef, FilePath, path_segment_is_safe }
 import std.disposition { Scaffold, Terminal }
@@ -169,8 +171,8 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 }
 import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved,
-  AlignmentChained, AlignmentChainLink, AlignmentChainForked, AlignmentRowUndeclared,
-  AlignmentWalkUnrooted, AlignmentEdgeContributionRefused, AlignmentNestingCyclic,
+  AlignmentChained, AlignmentChainLink, AlignmentRowUndeclared,
+  AlignmentWalkUnrooted, AlignmentNestingCyclic,
   alignment_resolve, alignment_resolve_chain, alignment_base_cadence_state, alignment_refusal_reason,
 }
 import std.decl_ref { decl_ref }
@@ -190,6 +192,8 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -231,12 +235,6 @@ fn fixture_ready_resolution(node_id: String, project_ids: List<String>) -> Align
     turns_elapsed: 1,
     state: alignment_base_cadence_state(),
   )
-}
-
-fn fixture_forked_resolution(at: String, dependents: List<String>) -> AlignmentResolution {
-  AlignmentUnresolved {
-    cause: AlignmentChainForked { at: at, dependents: dependents, walked: [] },
-  }
 }
 
 test fn witness_tmux_session_name_prefix() -> Bool {
@@ -921,7 +919,7 @@ test fn witness_session_lease_shape_reused() -> Bool {
 }
 
 fn ticket_fixture_node() -> RoadmapNode {
-  gunbc.roadmap_authority.ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", done: false, t: TicketFields {
+  fx_ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", done: false, t: TicketFields {
     headline: "Fixture Headline",
     brief: "A short brief.",
     displaced_cost: "the real displaced cost",
@@ -1229,13 +1227,13 @@ fn authority_node_opt(id: String) -> RoadmapNode? {
 
 // THE ONE-AUTHORITY PREAMBLE (review finding 2026-09-26): the preamble IS the resolution's
 // rendered_prompt — gunbc.roadmap.roadmap_alignment owns the alignment answer and this lane only
-// concatenates. For the REAL node namespace-occurrence-transport the derived chain now refuses
-// UNROOTED — it holds no membership arc and is not the admitted root, so the honest preamble is
-// the refusal marker naming where the walk halted (review 5354823380), never a confident
-// projection rendered while execution proceeded.
+// concatenates. For the REAL node 2-scm-git-upstream-model -- an accepted history row that declares
+// no parent -- the derived chain refuses UNROOTED, so the honest preamble is the refusal marker
+// naming where the walk halted (review 5354823380), never a confident projection rendered while
+// execution proceeded.
 test fn the_preamble_names_the_derived_refusal_for_an_unrooted_node() -> Bool {
   let resolution = alignment_resolve(
-    node_id: "namespace-occurrence-transport",
+    node_id: "2-scm-git-upstream-model",
     turns_elapsed: 2,
     state: alignment_base_cadence_state(),
   )
@@ -1245,13 +1243,11 @@ test fn the_preamble_names_the_derived_refusal_for_an_unrooted_node() -> Bool {
       preamble.contains("Alignment UNRESOLVED")
         && (match cause {
           AlignmentWalkUnrooted { at, walked } =>
-            at == "namespace-occurrence-transport" && count(walked) == 0
-          AlignmentChainForked { at: _, dependents: _, walked: _ } => false
-          AlignmentEdgeContributionRefused { member: _, project: _, detail: _ } => false
+            at == "2-scm-git-upstream-model" && count(walked) == 0
           AlignmentRowUndeclared { node_id: _ } => false
           AlignmentNestingCyclic { node_id: _ } => false
         })
-        && string_contains(s: preamble, pattern: "namespace-occurrence-transport")
+        && string_contains(s: preamble, pattern: "2-scm-git-upstream-model")
     AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
   }
 }
@@ -1310,27 +1306,25 @@ test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() ->
     && cont.contains("\nAlignment (re-checked at every checkpoint adjudication):\n")
     && cont.contains(continuation_alignment_ask)
     && (match fresh_resolution {
-      AlignmentUnresolved { cause } => (match cause { AlignmentRowUndeclared { node_id } => node_id == "ts-alignment-fresh"  AlignmentChainForked { at: _, dependents: _, walked: _ } => false  AlignmentWalkUnrooted { at: _, walked: _ } => false
-        AlignmentEdgeContributionRefused { member: _, project: _, detail: _ } => false  AlignmentNestingCyclic { node_id: _ } => false })
+      AlignmentUnresolved { cause } => (match cause { AlignmentRowUndeclared { node_id } => node_id == "ts-alignment-fresh"  AlignmentWalkUnrooted { at: _, walked: _ } => false
+        AlignmentNestingCyclic { node_id: _ } => false })
       AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
     })
 }
 
 // NO SPAWN ON AN UNRESOLVED CHAIN — THE REAL PRODUCER, THE REAL AUTHORITY (the review finding's
-// discriminating control). The production node extended-admission-cardinality's chain refuses
-// UNROOTED on the live authority (its membership walk never reaches the admitted root project,
-// review 5354823380); the same resolution the belt derives at spawn time is handed to the real
+// discriminating control). The production node 2-scm-git-upstream-model's chain refuses UNROOTED
+// on the live authority (an accepted history row that declares no parent, review 5354823380); the
+// same resolution the belt derives at spawn time is handed to the real
 // spawn fold, and the fold's answer is DispatchSpawnRefused at the alignment gate — the Refused
 // arm carries no DispatchSpawnCommands, so zero spawn commands exist: no worktree add, no state
 // prepare, no session container. Execution cannot proceed on a chain the authority cannot read.
 //
-// Lane B (review 5358022153, 2026-09-30) rooted every dispatchable node and LEFT THIS NODE
-// UNROOTED ON PURPOSE: it is the named refusal subject keeping this control discriminating, and
-// it carries ExecutionContractUnspecified, so dispatch would refuse it at launch admission long
-// before alignment either way. Re-rooting it (or any future contract-bearing node) requires
-// choosing a new unrooted subject for this claim first.
+// The subject moved on 2026-09-30, when the former subject (extended-admission-cardinality) got its
+// parent: an accepted history row with no parent stays unrooted by construction of the lineage
+// rule, so it keeps this control discriminating without a row kept unrooted for the purpose.
 test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands() -> Bool {
-  match authority_node_opt(id: "extended-admission-cardinality") {
+  match authority_node_opt(id: "2-scm-git-upstream-model") {
     Absent => false
     Present { value: node } =>
       match dispatch_spawn_commands_for_resolved_instance(
@@ -1342,11 +1336,11 @@ test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands()
         effort: ReasoningMedium,
         model: dispatch_codex_default_model,
         origin: FreshFromBase,
-        resolution: alignment_resolve(node_id: "extended-admission-cardinality", turns_elapsed: 1, state: alignment_base_cadence_state()),
+        resolution: alignment_resolve(node_id: "2-scm-git-upstream-model", turns_elapsed: 1, state: alignment_base_cadence_state()),
       ) {
         DispatchSpawnRefused { step, detail } =>
           step as String == "alignment"
-            && string_contains(s: detail, pattern: "extended-admission-cardinality")
+            && string_contains(s: detail, pattern: "2-scm-git-upstream-model")
             && string_contains(s: detail, pattern: "admitted root")
         DispatchSpawnReady { commands: _ } => false
       }

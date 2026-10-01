@@ -6,9 +6,12 @@ import gunbc.roadmap_model {
   PrsMerged,
   WorkItemDispatch, NotDispatchable, Dispatchable,
   SectionElement, Group, SectionGroup,
+  AdmittedRoot,
 }
+import std.types { NonEmptyStr }
 import gunbc.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { spawn_frontier, next_spawnable }
 import gunbc.roadmap_page {
@@ -34,9 +37,11 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
-    execution: ExecutionContractUnspecified,
+    execution: roadmap_launch_canary_execution_contract(),
     owner: "",
     signoff: Unsigned,
+    parent: Present { value: AdmittedRoot },
+    centering: Present { value: "fixture centering plan" as NonEmptyStr },
   }
 }
 
@@ -50,6 +55,8 @@ fn accepted_node(base: RoadmapNode) -> RoadmapNode {
     execution: base.execution,
     owner: base.owner,
     signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
+    parent: none,
+    centering: none,
   }
 }
 
@@ -63,6 +70,8 @@ fn undispatchable_derivable(id: String, prs: List<Int>, title: String) -> Roadma
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -189,7 +198,8 @@ fn daily_workspace_header_html() -> String {
   }
 }
 
-// THE BAND VOCABULARY WITHOUT THE BAND SURFACE (owner ruling 2026-09-25, "just copy buganizer"):
+// THE BAND VOCABULARY WITHOUT THE BAND SURFACE (owner ruling 2026-09-25, "just copy buganizer";
+// the sized fixture is a complete node -- rooted, centered, bound -- so the page reads it ready):
 // the frontier's four buckets — ready / upcoming / done / superseded — no longer render as
 // frontier-bucket sections; they survive as the table's row vocabulary: the flat rows carry the
 // band in data-band (the band chips filter on it) in the same bucket order the view derived, and
@@ -205,7 +215,7 @@ test fn witness_page_renders_four_buckets() -> Bool {
     && !string_contains(s: h, pattern: "<h2>Ready</h2>")
     && string_contains(s: h, pattern: "data-band=\"ready\"")
     && string_contains(s: h, pattern: "data-band-chip=\"ready\"")
-    && string_contains(s: h, pattern: "data-band-chip=\"upcoming\"")
+    && string_contains(s: h, pattern: "data-band-chip=\"not-ready\"")
     && string_contains(s: h, pattern: "data-band-chip=\"done\"")
     && string_contains(s: h, pattern: "data-band-chip=\"superseded\"")
 }
@@ -220,6 +230,8 @@ fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -233,6 +245,8 @@ fn signed_sized_superseded_node_fixture(id: String, by: String) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
+    parent: none,
+    centering: none,
   }
 }
 

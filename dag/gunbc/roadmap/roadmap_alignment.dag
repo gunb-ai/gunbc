@@ -22,16 +22,18 @@ import extdeps.languages.json.parse {
   json_object_unique_member,
   JsonMemberFound,
 }
-import gunbc.roadmap_nesting { RoadmapMembership, declared_roadmap_memberships, declared_roadmap_roots }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
+import gunbc.roadmap_nesting { roadmap_roots }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, MemberOf, AdmittedRoot, Closes }
 import gunbc.roadmap_status { TicketLine }
-import gunbc.roadmap_authority { declared_roadmap_nodes }
-import gunbc.roadmap.roadmap_project {
-  ProjectMembership,
-  MembershipStandalone,
-  MembershipMember,
-  MembershipAmbiguous,
-  node_project_membership,
+import gunbc.roadmap_authority { declared_roadmap_nodes, closing_contract_task_for }
+import gunbc.roadmap.roadmap_lineage {
+  LineageWalk,
+  LineageRooted,
+  LineageNoParent,
+  LineageUndeclared,
+  LineageCyclic,
+  lineage_walk,
+  lineage_find,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
   continuation_alignment_l0_pointer,
@@ -39,9 +41,8 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 }
 import std.content_hash { content_hash_atom }
 
-// The recursive alignment ladder follows authored nesting, never reverse blocking.
-// Each level carries the node's declared ticket structure and the edge's contribution argument.
-// Ambiguous ownership refuses.
+// The recursive alignment ladder follows the parent each row declares, never reverse blocking. Each
+// level carries the node's declared ticket structure and the edge's contribution argument.
 //
 // THE CARRIER PRESERVES THE TICKET, it does not reduce it (review 5354823380): purpose and
 // boundary alone forced every level to answer from two fields, while TicketFields already
@@ -62,22 +63,23 @@ type AlignmentChainLink {
 // THE TERMINAL LEVEL IS A POINTER, not text: the root principles are gunbc.design_document, and
 // carrying the ref rather than an excerpt is what keeps the chain answerable to the live authority
 // instead of to a copy of it.
+//
+// ONE PARENT PER ROW (operator ruling, 2026-09-30) retires the refusals the keyed membership roster
+// needed: a node claimed by two projects, and an edge whose contribution was missing, empty or
+// disagreeing, have no constructor now that the parent and its contribution live on the row
+// (gunbc.roadmap_model NodeParent carries a NonEmptyStr contribution). The walk itself is
+// gunbc.roadmap.roadmap_lineage lineage_walk, shared with readiness and minting, so the chain and
+// the dispatcher cannot disagree about where a node sits.
 type AlignmentChain
   = AlignmentChained {
       task: AlignmentChainLink,
       projects: List<AlignmentChainLink>,
       root: DeclarationRef,
     }
-  | AlignmentChainAmbiguous {
-      walked: List<AlignmentChainLink>,
-      at: String,
-      dependents: List<String>,
-    }
   | AlignmentChainUnrooted {
       walked: List<AlignmentChainLink>,
       at: String,
     }
-  | AlignmentChainContributionRefused { member: String, project: String, detail: String }
   | AlignmentChainRowUndeclared { node_id: String }
   | AlignmentChainCyclic { node_id: String }
 
@@ -122,171 +124,39 @@ fn alignment_link_project(node_id: String, nodes: List<RoadmapNode>, contributio
   }
 }
 
-// THE EDGE'S ARGUMENT for one member under one project, read fail-closed (review 5358022153):
-// the empty string used to mean both "the admitted root has no parent" and "no contribution was
-// authored", so a missing edge could read as root membership. Rootness now comes only from
-// declared_roadmap_roots(); a non-root link requires exactly one edge with a non-empty
-// contribution, and a duplicated edge with disagreeing contributions refuses rather than picking
-// a first.
-type AlignmentContributionRead
-  = AlignmentContributionResolved { contribution: String }
-  | AlignmentContributionMissing { member: String, project: String }
-  | AlignmentContributionVacuous { member: String, project: String }
-  | AlignmentContributionConflicting { member: String, project: String }
-
-fn alignment_membership_contribution_read(memberships: List<RoadmapMembership>, member: String, project: String) -> AlignmentContributionRead {
-  let rows = memberships |> filter(m => m.member == member && m.project == project)
-  if count(rows) == 0 {
-    AlignmentContributionMissing { member: member, project: project }
-  } else if count(rows) > 1 {
-    match rows.first() {
-      Absent => AlignmentContributionMissing { member: member, project: project }
-      Present { value: first_row } =>
-        if all(rows, r => r.contribution == first_row.contribution) {
-          if first_row.contribution == "" {
-            AlignmentContributionVacuous { member: member, project: project }
-          } else {
-            AlignmentContributionResolved { contribution: first_row.contribution }
+// THE EDGE'S ARGUMENT a row states for its own parent. A derived closing-contract task stands in
+// its target's place, so it carries the target's argument.
+fn alignment_contribution_of(nodes: List<RoadmapNode>, id: String) -> String {
+  match lineage_find(nodes: nodes, id: id) {
+    Absent => ""
+    Present { value: n } =>
+      match n.parent {
+        Absent => ""
+        Present { value: p } =>
+          match p {
+            MemberOf { project: _, contribution } => contribution as String
+            AdmittedRoot => ""
+            Closes { target } => alignment_contribution_of(nodes: nodes, id: target)
           }
-        } else {
-          AlignmentContributionConflicting { member: member, project: project }
-        }
-    }
-  } else {
-    match rows.first() {
-      Absent => AlignmentContributionMissing { member: member, project: project }
-      Present { value: row } =>
-        if row.contribution == "" {
-          AlignmentContributionVacuous { member: member, project: project }
-        } else {
-          AlignmentContributionResolved { contribution: row.contribution }
-        }
-    }
+      }
   }
 }
 
-// THE WALK STATE. halted freezes the accumulator for the remaining fuel; ambiguous_dependents is
-// non-empty exactly when MembershipAmbiguous stopped the climb (the typed refusal carries WHICH
-// arcs forked); undeclared_halt names the node whose row could not be projected ("" = none). The
-// two never co-occur, and a clean halt leaves both empty. projects carries the walked ancestor IDS
-// nearest-first; links with their edge contributions are built once the whole id chain is known,
-// because an edge's contribution argument belongs to the level BELOW it and is only knowable when
-// the next step exists.
-type AlignmentWalk {
-  current: String
-  projects: List<String>
-  halted: Bool
-  ambiguous_dependents: List<String>
-  undeclared_halt: String
-}
-
-fn alignment_walk_halt(acc: AlignmentWalk, ambiguous_dependents: List<String>, undeclared_halt: String) -> AlignmentWalk {
-  AlignmentWalk {
-    current: acc.current,
-    projects: acc.projects,
-    halted: true,
-    ambiguous_dependents: ambiguous_dependents,
-    undeclared_halt: undeclared_halt,
-  }
-}
-
-fn alignment_walk_step(
-  nodes: List<RoadmapNode>,
-  memberships: List<RoadmapMembership>,
-  acc: AlignmentWalk,
-  fuel_edge: RoadmapMembership,
-) -> AlignmentWalk {
-  if acc.halted {
-    acc
-  } else {
-    match node_project_membership(node_id: acc.current, memberships: memberships) {
-      MembershipStandalone => alignment_walk_halt(acc: acc, ambiguous_dependents: [], undeclared_halt: "")
-      MembershipAmbiguous { arcs } => alignment_walk_halt(acc: acc, ambiguous_dependents: arcs, undeclared_halt: "")
-      MembershipMember { arc } =>
-        match alignment_link_project(node_id: arc, nodes: nodes, contribution_to_parent: "") {
-          LinkRowUndeclared { node_id: missing } =>
-            alignment_walk_halt(acc: acc, ambiguous_dependents: [], undeclared_halt: missing)
-          LinkProjected { link: _ } =>
-            AlignmentWalk {
-              current: arc,
-              projects: concat(acc.projects, [arc]),
-              halted: false,
-              ambiguous_dependents: [],
-              undeclared_halt: "",
-            }
-        }
-    }
-  }
-}
-
-// LINK CONSTRUCTION over one walked id chain: ids[0] is the task, ids[i+1] is ids[i]'s project,
-// and each link's contribution_to_parent is the argument of the edge that leaves it. The chain's
-// top -- the admitted root project -- has no parent edge and carries the empty contribution.
-// Row projection is fail-closed here exactly as in the walk; the rows were already validated
-// during the walk, so a refusal here means the authority moved mid-derivation.
-// LINK CONSTRUCTION'S ANSWER, typed: a refused edge contribution (missing, vacuous, or
-// conflicting on a non-root link) cannot become the empty string that used to read as rootness.
 type AlignmentLinksBuild
   = AlignmentLinksBuilt { links: List<AlignmentChainLink> }
-  | AlignmentLinksRowUndeclared
-  | AlignmentLinksContributionRefused { member: String, project: String, detail: String }
+  | AlignmentLinksRowUndeclared { node_id: String }
 
-fn alignment_links_for_ids(
-  ids: List<String>,
-  memberships: List<RoadmapMembership>,
-  nodes: List<RoadmapNode>,
-) -> AlignmentLinksBuild {
-  let built = fold(
-    ids,
-    init: { links: [] as List<AlignmentChainLink>, index: 0, undeclared: false, refused_member: "", refused_project: "", refused_detail: "" },
-    f: fn(acc, id) {
-      if acc.undeclared || acc.refused_member != "" {
-        acc
-      } else {
-        let contribution_read = if acc.index + 1 < count(ids) {
-          match alignment_list_string_at(items: ids, index: acc.index + 1) {
-            Present { value: parent } =>
-              alignment_membership_contribution_read(memberships: memberships, member: id, project: parent)
-            Absent => AlignmentContributionMissing { member: id, project: "" }
-          }
-        } else {
-          AlignmentContributionResolved { contribution: "" }
+fn alignment_links_for_ids(ids: List<String>, nodes: List<RoadmapNode>) -> AlignmentLinksBuild {
+  fold(ids, init: AlignmentLinksBuilt { links: [] }, f: fn(acc, id) {
+    match acc {
+      AlignmentLinksRowUndeclared { node_id } => AlignmentLinksRowUndeclared { node_id: node_id }
+      AlignmentLinksBuilt { links } =>
+        match alignment_link_project(node_id: id, nodes: nodes, contribution_to_parent: alignment_contribution_of(nodes: nodes, id: id)) {
+          LinkRowUndeclared { node_id } => AlignmentLinksRowUndeclared { node_id: node_id }
+          LinkProjected { link } => AlignmentLinksBuilt { links: concat(links, [link]) }
         }
-        match contribution_read {
-          AlignmentContributionResolved { contribution } =>
-            match alignment_link_project(node_id: id, nodes: nodes, contribution_to_parent: contribution) {
-              LinkRowUndeclared { node_id: _ } => {
-                let refused_state = { links: acc.links, index: acc.index + 1, undeclared: true, refused_member: acc.refused_member, refused_project: acc.refused_project, refused_detail: acc.refused_detail }
-                refused_state
-              }
-              LinkProjected { link } => {
-                let kept_state = { links: concat(acc.links, [link]), index: acc.index + 1, undeclared: false, refused_member: "", refused_project: "", refused_detail: "" }
-                kept_state
-              }
-            }
-          AlignmentContributionMissing { member, project } => {
-            let s1 = { links: acc.links, index: acc.index + 1, undeclared: acc.undeclared, refused_member: member, refused_project: project, refused_detail: "no membership edge carries this pair" }
-            s1
-          }
-          AlignmentContributionVacuous { member, project } => {
-            let s2 = { links: acc.links, index: acc.index + 1, undeclared: acc.undeclared, refused_member: member, refused_project: project, refused_detail: "the edge's contribution is empty; a non-root level must argue why its work advances the parent" }
-            s2
-          }
-          AlignmentContributionConflicting { member, project } => {
-            let s3 = { links: acc.links, index: acc.index + 1, undeclared: acc.undeclared, refused_member: member, refused_project: project, refused_detail: "duplicated membership rows carry disagreeing contributions for one edge" }
-            s3
-          }
-        }
-      }
-    },
-  )
-  if built.undeclared {
-    AlignmentLinksRowUndeclared
-  } else if built.refused_member != "" {
-    AlignmentLinksContributionRefused { member: built.refused_member, project: built.refused_project, detail: built.refused_detail }
-  } else {
-    AlignmentLinksBuilt { links: built.links }
-  }
+    }
+  })
 }
 
 fn alignment_link_list_tail(items: List<AlignmentChainLink>) -> List<AlignmentChainLink> {
@@ -326,87 +196,54 @@ fn alignment_list_string_at(items: List<String>, index: Int) -> String? {
 }
 
 // THE CHAIN. Task level first, then the motivating project chain nearest-first, then the root
-// principles pointer. The walk's fuel is the declared edges themselves: each fold step consumes one
-// edge's worth of budget, and a chain longer than the edge population is impossible by acyclicity --
-// the fuel is the honest bound, not a guessed constant. An ambiguous step refuses with the prefix
-// already walked: the fork does not erase the derivation that reached it.
-//
-// THE WALK MUST END AT AN ADMITTED ROOT (review 5354823380). A standalone halt anywhere else means
-// the decomposition never reached the top of its own project tree, and the chain refuses as
-// Unrooted rather than crowning an arbitrary node. DESIGN.md is not that root: the principles are
-// the terminal POINTER every chain carries, orthogonal to the project hierarchy.
-fn alignment_chain(node_id: String, memberships: List<RoadmapMembership>, nodes: List<RoadmapNode>) -> AlignmentChain {
-  match alignment_link_project(node_id: node_id, nodes: nodes, contribution_to_parent: "") {
-    LinkRowUndeclared { node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
-    LinkProjected { link: task_without_contribution } => {
-      let walked = fold(
-        memberships,
-        init: AlignmentWalk {
-          current: node_id,
-          projects: [],
-          halted: false,
-          ambiguous_dependents: [],
-          undeclared_halt: "",
-        },
-        f: (acc, fuel_edge) => alignment_walk_step(nodes: nodes, memberships: memberships, acc: acc, fuel_edge: fuel_edge),
-      )
-      if count(walked.ambiguous_dependents) > 0 {
-        match alignment_links_for_ids(ids: concat([node_id], walked.projects), memberships: memberships, nodes: nodes) {
-          AlignmentLinksRowUndeclared => AlignmentChainRowUndeclared { node_id: node_id }
-          AlignmentLinksContributionRefused { member, project, detail } =>
-            AlignmentChainContributionRefused { member: member, project: project, detail: detail }
-          AlignmentLinksBuilt { links } =>
-            AlignmentChainAmbiguous {
-              walked: alignment_link_list_tail(items: links),
-              at: walked.current,
-              dependents: walked.ambiguous_dependents,
-            }
-        }
-      } else if any(walked.projects, p => p == node_id || count(filter(walked.projects, q => q == p)) > 1) {
-        AlignmentChainCyclic { node_id: node_id }
-      } else if walked.undeclared_halt != "" {
-        AlignmentChainRowUndeclared { node_id: walked.undeclared_halt }
-      } else if !any(declared_roadmap_roots(), r => r == walked.current) {
-        match alignment_links_for_ids(ids: concat([node_id], walked.projects), memberships: memberships, nodes: nodes) {
-          AlignmentLinksRowUndeclared => AlignmentChainRowUndeclared { node_id: node_id }
-          AlignmentLinksContributionRefused { member, project, detail } =>
-            AlignmentChainContributionRefused { member: member, project: project, detail: detail }
-          AlignmentLinksBuilt { links } =>
-            AlignmentChainUnrooted {
-              walked: alignment_link_list_tail(items: links),
-              at: walked.current,
-            }
-        }
-      } else {
-        match alignment_links_for_ids(ids: concat([node_id], walked.projects), memberships: memberships, nodes: nodes) {
-          AlignmentLinksRowUndeclared => AlignmentChainRowUndeclared { node_id: node_id }
-          AlignmentLinksContributionRefused { member, project, detail } =>
-            AlignmentChainContributionRefused { member: member, project: project, detail: detail }
-          AlignmentLinksBuilt { links } =>
-            match links.first() {
-              Absent => AlignmentChainRowUndeclared { node_id: node_id }
-              Present { value: task } =>
-                AlignmentChained {
-                  task: task,
-                  projects: alignment_link_list_tail(items: links),
-                  root: alignment_root_pointer(),
-                }
-            }
-        }
+// principles pointer. The walk must end at an admitted root (review 5354823380): a walk that stops
+// at a node declaring no parent refuses as Unrooted with the prefix it walked, rather than crowning
+// an arbitrary node. A Closes task's chain is its target's chain with the task standing at the task
+// level (the walk already substitutes it), which is what lets a derived closing-contract task
+// resolve alignment instead of refusing as undeclared.
+fn alignment_chain(node_id: String, nodes: List<RoadmapNode>) -> AlignmentChain {
+  match lineage_walk(node_id: node_id, nodes: nodes) {
+    LineageCyclic { node_id: at } => AlignmentChainCyclic { node_id: at }
+    LineageUndeclared { walked: _, node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
+    LineageNoParent { walked, at } =>
+      match alignment_links_for_ids(ids: walked, nodes: nodes) {
+        AlignmentLinksRowUndeclared { node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
+        AlignmentLinksBuilt { links } =>
+          AlignmentChainUnrooted { walked: alignment_link_list_tail(items: links), at: at }
       }
-    }
+    LineageRooted { ids } =>
+      match alignment_links_for_ids(ids: ids, nodes: nodes) {
+        AlignmentLinksRowUndeclared { node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
+        AlignmentLinksBuilt { links } =>
+          match links.first() {
+            Absent => AlignmentChainRowUndeclared { node_id: node_id }
+            Present { value: task } =>
+              AlignmentChained {
+                task: task,
+                projects: alignment_link_list_tail(items: links),
+                root: alignment_root_pointer(),
+              }
+          }
+      }
   }
 }
 
-// THE AUTHORITY-BOUND DERIVATION. Every production consumer names the node; nesting and rows are
-// the declared authority's own, so the chain renders what the authority says NOW, not what a copy
-// said when it was written.
-fn alignment_chain_for(node_id: String) -> AlignmentChain {
-  alignment_chain(
-    node_id: node_id,
-    memberships: declared_roadmap_memberships(),
-    nodes: declared_roadmap_nodes(),
+// THE AUTHORITY-BOUND DERIVATION. Every production consumer names the node; the rows are the
+// declared authority's own, so the chain renders what the authority says NOW, not what a copy said
+// when it was written. A derived closing-contract task has no declared row, so its minted row joins
+// the universe here (the AlignmentRowUndeclared defect the derived tasks used to hit).
+fn alignment_nodes_for(node_id: String) -> List<RoadmapNode> {
+  let declared = declared_roadmap_nodes()
+  concat(
+    declared,
+    declared
+      |> filter(n => concat(n.node as String, "-closing-contract") == node_id)
+      |> map(n => closing_contract_task_for(n: n)),
   )
+}
+
+fn alignment_chain_for(node_id: String) -> AlignmentChain {
+  alignment_chain(node_id: node_id, nodes: alignment_nodes_for(node_id: node_id))
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -663,38 +500,24 @@ fn alignment_levels_due(chain: AlignmentResolvedChain, turns_elapsed: Int, state
 // this result whole, so the safe answer and the executed answer are the same value by construction.
 // ------------------------------------------------------------------------------------------------
 
-// WHY THE CHAIN COULD NOT BE READ, as data. AlignmentChainForked is "two declared owners for one
-// level" (docs/plans/one-namespace-hierarchy.md): the walk reached a node more than one arc depends
-// on, and choosing would invent which level's intent the work serves. AlignmentRowUndeclared names
-// the exact node whose row could not be projected. Both carry the derivation's facts — the fork
-// keeps the walked prefix, the halt names its subject — so the escalation route reads causes, never
-// prose.
+// WHY THE CHAIN COULD NOT BE READ, as data. AlignmentRowUndeclared names the exact node whose row
+// could not be projected; AlignmentWalkUnrooted keeps the walked prefix and names where the walk
+// stopped. Both carry the derivation's facts, so the escalation route reads causes, never prose.
+// The fork and edge-contribution refusals of the keyed membership roster are gone with the roster:
+// one parent per row has no second owner and no missing argument to refuse.
 type AlignmentRefusal
-  = AlignmentChainForked { at: String, dependents: List<String>, walked: List<AlignmentChainLink> }
-  | AlignmentWalkUnrooted { at: String, walked: List<AlignmentChainLink> }
-  | AlignmentEdgeContributionRefused { member: String, project: String, detail: String }
+  = AlignmentWalkUnrooted { at: String, walked: List<AlignmentChainLink> }
   | AlignmentRowUndeclared { node_id: String }
   | AlignmentNestingCyclic { node_id: String }
 
 fn alignment_refusal_reason(cause: AlignmentRefusal) -> String {
   match cause {
-    AlignmentChainForked { at, dependents, walked: _ } =>
-      join([
-        "the authority's dependency edges give node ", at,
-        " more than one dependent arc (", join(dependents, ", "),
-        "); the authority must say which arc owns the delivery before the alignment chain can be read",
-      ], "")
     AlignmentWalkUnrooted { at, walked: _ } =>
       join([
-        "the membership walk from the task ended at ", at,
-        ", which is not an admitted root project (gunbc.roadmap_nesting declared_roadmap_roots);",
+        "the parent walk from the task ended at ", at,
+        ", which declares no parent and is not an admitted root (gunbc.roadmap_nesting roadmap_roots);",
         " a chain that never reaches the top of its functional decomposition has no alignment answer,",
         " so the node must be attached to the hierarchy before it can dispatch",
-      ], "")
-    AlignmentEdgeContributionRefused { member, project, detail } =>
-      join([
-        "the membership edge ", member, " -> ", project,
-        " cannot supply the link's contribution argument: ", detail,
       ], "")
     AlignmentNestingCyclic { node_id } => concat("Cyclic project nesting at ", node_id)
     AlignmentRowUndeclared { node_id } =>
@@ -739,7 +562,7 @@ fn alignment_link_line(prefix: String, link: AlignmentChainLink) -> String {
     "\n  approach: ", link.current_approach,
     "\n  boundary: ", link.boundary,
     "\n  contribution to parent: ",
-    if any(declared_roadmap_roots(), r => r == link.node_id) {
+    if any(roadmap_roots(), r => r == link.node_id) {
       "none -- this level is the admitted root project"
     } else {
       link.contribution_to_parent
@@ -851,12 +674,8 @@ fn alignment_resolve_chain(chain: AlignmentChain, turns_elapsed: Int, state: Ali
         rendered_prompt: alignment_chain_render(chain: resolved),
       }
     }
-    AlignmentChainAmbiguous { walked, at, dependents } =>
-      AlignmentUnresolved { cause: AlignmentChainForked { at: at, dependents: dependents, walked: walked } }
     AlignmentChainUnrooted { walked, at } =>
       AlignmentUnresolved { cause: AlignmentWalkUnrooted { at: at, walked: walked } }
-    AlignmentChainContributionRefused { member, project, detail } =>
-      AlignmentUnresolved { cause: AlignmentEdgeContributionRefused { member: member, project: project, detail: detail } }
     AlignmentChainCyclic { node_id } => AlignmentUnresolved { cause: AlignmentNestingCyclic { node_id: node_id } }
     AlignmentChainRowUndeclared { node_id } =>
       AlignmentUnresolved { cause: AlignmentRowUndeclared { node_id: node_id } }

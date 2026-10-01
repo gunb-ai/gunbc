@@ -1,87 +1,41 @@
 module gunbc.roadmap_nesting
 
 import std.types { String, List }
+import gunbc.roadmap_model { RoadmapNode, MemberOf, AdmittedRoot, Closes }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_lineage { lineage_root_ids }
 
 // Nesting is independently authored. A blocking edge never assigns project ownership.
 // Both ends name the same recursive kind of work item; no Epic/Task type hierarchy exists.
 //
-// THE EDGE CARRIES THE ALIGNMENT ARGUMENT (review 5354823380). contribution says why the member's
-// work advances THIS project -- a membership list without it is a list of titles, which no
-// checkpoint can be read against. It belongs to the relationship, not to either node: the same
-// member under a different project would play a different role.
+// THE MEMBERSHIP LIST IS A PROJECTION OF THE ROWS, not a table (operator ruling, 2026-09-30). Each
+// row declares its own parent (gunbc.roadmap_model NodeParent) with the contribution argument on
+// the edge -- why the member's work advances THIS project -- so the former hand-kept roster
+// (declared_roadmap_memberships, keyed by member id) was deleted and every consumer reads this
+// projection instead. One row carries one parent, so a member claimed by two projects has no
+// constructor; derived closing-contract tasks carry Closes, which is lineage, not membership.
 type RoadmapMembership { member: String, project: String, contribution: String }
 
-// THE ADMITTED ROOTS. A membership walk may end parentless only at one of these -- every other
-// standalone end means the chain never reached the top of a functional decomposition, and the
-// alignment projection refuses rather than calling an arbitrary node the root
-// (gunbc.roadmap.roadmap_alignment AlignmentChainUnrooted). DESIGN.md is NOT here: it is the
-// principles authority orthogonal to the hierarchy, reached as the chain's terminal pointer, not
-// as a project level.
-fn declared_roadmap_roots() -> List<String> {
-  ["gunbc-project-root"]
+fn roadmap_memberships_of(nodes: List<RoadmapNode>) -> List<RoadmapMembership> {
+  flat_map(nodes, n => match n.parent {
+    Absent => []
+    Present { value: p } => match p {
+      MemberOf { project, contribution } =>
+        [RoadmapMembership { member: n.node as String, project: project, contribution: contribution as String }]
+      AdmittedRoot => []
+      Closes { target: _ } => []
+    }
+  })
 }
 
-// First authored migration: shell → DAG batch 1, selected by the operator on 2026-09-28.
-// The batch contract above declared_roadmap_nodes names these ten children of the typed
-// invocation work item. This is a nesting declaration, not an inverse-dependency projection.
-//
-// The harness lineage (review 5354823380): the checkpoint task serves recursive alignment,
-// recursive alignment serves the work lifecycle, and the lifecycle serves the root project.
-//
-// THE PROGRAM ATTACHMENTS (review 5358022153 lane B, 2026-09-30): every dispatchable node (one
-// carrying an ExecutionContract) must have a membership walk terminating at the admitted root.
-// Eighteen bound rows had no honest existing parent: thirteen ride seven new program-level nodes
-// authored in roadmap_authority (the native-SCM program, the namespace lane, the v1 deletion
-// program, the v2 emitter production lane, CI end-to-end execution, progress observation, and
-// roadmap acceptance integrity), and five completed belt-era rows ride the existing
-// harness-work-lifecycle. Each edge's contribution states what that row's work adds to its
-// program; each program's root edge states why the program serves the factory. The remaining
-// unbound population attaches as its execution contracts land; extended-admission-cardinality
-// stays unrooted on purpose -- it is the named refusal subject of
-// roadmap_alignment_witness_test's unrooted controls.
-fn declared_roadmap_memberships() -> List<RoadmapMembership> {
-  [
-    RoadmapMembership { member: "shell-dag-cron-entry-line-builder", project: "shell-typed-invocation", contribution: "Shows the pattern on the smallest surface: one rendered line derived from typed intent, proving callers can name operations instead of shell text." },
-    RoadmapMembership { member: "shell-dag-floor-peak-calibration-rows", project: "shell-typed-invocation", contribution: "Removes the echo-row calibration shell so the project's claim covers observation rows as well as invocations." },
-    RoadmapMembership { member: "shell-dag-ci-fmt-gate-line", project: "shell-typed-invocation", contribution: "Moves the CI format gate's line-building onto described operations, extending the pattern into the CI surfaces." },
-    RoadmapMembership { member: "shell-dag-ci-deploy-invoke-prelude", project: "shell-typed-invocation", contribution: "Moves the deploy invocation prelude onto described operations, so the riskiest CI call is checkable before it runs." },
-    RoadmapMembership { member: "shell-dag-ci-heal-regen-invoke", project: "shell-typed-invocation", contribution: "Moves the heal/regen invocation onto described operations, closing the CI invocation pair with the deploy prelude." },
-    RoadmapMembership { member: "shell-dag-compile-pool-slice-install", project: "shell-typed-invocation", contribution: "Describes the compile-pool slice installation instead of scripting it, so the factory's own build plumbing follows the pattern." },
-    RoadmapMembership { member: "shell-dag-slot-population-census-read", project: "shell-typed-invocation", contribution: "Describes the slot census read, replacing a shell probe whose output shape nothing could check." },
-    RoadmapMembership { member: "shell-dag-codex-app-server-trip-script", project: "shell-typed-invocation", contribution: "Describes the Codex app-server trip script, carrying the pattern into provider tooling." },
-    RoadmapMembership { member: "shell-dag-live-deploy-install-owned", project: "shell-typed-invocation", contribution: "Describes the owned live-deploy install, so deployment of our own service is as checkable as the CI calls." },
-    RoadmapMembership { member: "shell-dag-live-deploy-restart-tailscale", project: "shell-typed-invocation", contribution: "Describes the Tailscale restart step, completing the live-deploy pair." },
-    RoadmapMembership { member: "shell-typed-invocation", project: "gunbc-project-root", contribution: "Described commands are the factory's own dogfood: every invocation the harness issues becomes checkable before it runs." },
-    RoadmapMembership { member: "harness-alignment-checkpoint-resume", project: "harness-recursive-alignment", contribution: "The checkpoint turns an arbitrary terminal counter into the durable mechanism that enforces recursive alignment." },
-    RoadmapMembership { member: "harness-conversation-log-forking", project: "harness-recursive-alignment", contribution: "The lineage-owned conversation log is what makes resume and probe forks possible at all: without it every epoch is a cold start and every fork point is imaginary." },
-    RoadmapMembership { member: "harness-checkpoint-subject-planner", project: "harness-recursive-alignment", contribution: "The pure planner turns a checkpoint into durable, idempotent obligations, so the parallel probe fan-out is a schedule over derived facts rather than an in-loop improvisation." },
-    RoadmapMembership { member: "harness-prompt-context-model", project: "harness-work-lifecycle", contribution: "The lifecycle's mandatory steps are only workflow-owned if what the agent is TOLD is also derived and revisioned; modeled prompt inputs make prompt contradiction a dispatch-time refusal instead of a runtime prayer." },
-    RoadmapMembership { member: "harness-recursive-alignment", project: "harness-work-lifecycle", contribution: "Recursive alignment permits autonomous continuation without silently trading longer execution for project drift." },
-    RoadmapMembership { member: "harness-work-lifecycle", project: "gunbc-project-root", contribution: "The lifecycle makes the software factory autonomous without relying on an agent remembering mandatory obligations." },
-    RoadmapMembership { member: "harness-thinking-and-write-briefs", project: "harness-work-lifecycle", contribution: "Engine-direct runs on finishable write briefs are the execution shape the lifecycle's autonomy assumes; this signed row proved the shape on real runs, one mechanical brief green on the first try." },
-    RoadmapMembership { member: "roadmap-verify-to-publish-phase", project: "harness-work-lifecycle", contribution: "The belt committing the attempt worktree, verifying the detached head, and opening the pull request itself is the lifecycle's publish phase made mechanical: the loop closes between verdict and PR without an operator." },
-    RoadmapMembership { member: "roadmap-continuation-turn-label", project: "harness-work-lifecycle", contribution: "One function naming turn N of M is what lets the lifecycle's resume briefs and its dashboard rows agree without either joining the pieces itself -- the label authority the checkpoint's resumption reads." },
-    RoadmapMembership { member: "roadmap-round-strip-pulse-follows-the-worker", project: "harness-work-lifecycle", contribution: "The strip pulsing only while the worker process is actually running is the lifecycle's aliveness evidence on the page: a finished attempt stops claiming to be alive while its obligations remain open." },
-    RoadmapMembership { member: "roadmap-round-strip-percolator", project: "harness-work-lifecycle", contribution: "The time-proportional round replay makes an attempt's whole run readable at a glance however many rounds it took -- the lifecycle's history surfaced as a fixed-length strip rather than an unbounded one." },
-    RoadmapMembership { member: "2-scm-p1-proof-kernel", project: "dag-scm-program", contribution: "Proving one bounded reconciliation rule works for directly authored changes -- invariants and certificates contributed as data, every refusal typed and counted -- is the program's safety core: the landing spine and every later write realization compose transformations through this fold instead of through pairwise cases." },
-    RoadmapMembership { member: "dag-scm-program", project: "gunbc-project-root", contribution: "The factory's own development is its first customer: authoring, proposals, integration and history decided natively -- with Git demoted to a compatibility projection -- is the product the root's self-hosting claim is built on." },
-    RoadmapMembership { member: "namespace-structural-observations", project: "namespace-unique-on-chain", contribution: "Observing all four in-view cases on one ordinary compiled file -- rather than on hand-built examples -- is the evidence base the program's derived closure and canonical changeover stand on." },
-    RoadmapMembership { member: "namespace-reference-derived-closure", project: "namespace-unique-on-chain", contribution: "Deriving what each file depends on from the binding answers retires the hand-written dependency statements, which is the program's core claim: a file's dependencies are a consequence of what its names resolve to, not a second thing to maintain." },
-    RoadmapMembership { member: "namespace-unique-on-chain", project: "gunbc-project-root", contribution: "A proof-carrying factory cannot carry proofs about programs whose names mean more than one thing; one canonical binding decided from where each name is written is the correctness surface every other guarantee reads through." },
-    RoadmapMembership { member: "v1-interpreter-primitive-roster", project: "v1-deletion-program", contribution: "Making the interpreter's primitive surface enumerable and derived from its dispatch is the denominator deletion must show empty: nothing can be proven unneeded if it cannot be listed." },
-    RoadmapMembership { member: "v1-interpreter-primitive-dispatch-authority", project: "v1-deletion-program", contribution: "Moving the primitive denominator from Rust into the model stops the roster growing behind every consumer's back, so the deletion frontier is a derived population rather than a judgment call." },
-    RoadmapMembership { member: "v1-rust-source-observation", project: "v1-deletion-program", contribution: "Reading the hand-written population from the repository at a known revision -- and refusing a failed read -- is what makes the deletion frontier a count from observation instead of from inspection." },
-    RoadmapMembership { member: "v1-test-migration", project: "v1-deletion-program", contribution: "Matching every deleted old test to coverage that would actually catch its bug keeps deletion from silently dropping the protection the old tests existed for." },
-    RoadmapMembership { member: "v1-seed-honesty-decision", project: "v1-deletion-program", contribution: "Making the self-verify check able to fail and recording whether independent rebuild must precede removal is the trust ruling the deletion plan's remaining cuts are gated on." },
-    RoadmapMembership { member: "v1-deletion-program", project: "gunbc-project-root", contribution: "The factory's self-host claim is a claim that the old compiler it replaces no longer decides anything; this program is the derived frontier and recorded ruling that makes 'the old code is gone' evidence rather than assertion." },
-    RoadmapMembership { member: "v2-emitter-direct-rust-door", project: "v2-emitter-production", contribution: "Carrying the real inferred tree through translation and writing Rust with the old generator deciding nothing is the capability this lane exists to name: the new compiler writes the source the factory is built from." },
-    RoadmapMembership { member: "v2-emitter-producer-provenance", project: "v2-emitter-production", contribution: "Recording which generator made every result as a fact that cannot be claimed without its receipt is the lane's progress measure: the transition from old generator to new is countable, not asserted." },
-    RoadmapMembership { member: "v2-emitter-production", project: "gunbc-project-root", contribution: "Self-hosting is the root's identity; an emitter that writes the compiler's own Rust and proves which generator made every result is the measurable half of that claim." },
-    RoadmapMembership { member: "ci-executed-coverage-receipt", project: "ci-end-to-end-execution", contribution: "Making one required check carry the population it actually executed -- and refuse a verdict on an empty one -- is the program's core honesty property: a verdict names the work that produced it." },
-    RoadmapMembership { member: "ci-end-to-end-execution", project: "gunbc-project-root", contribution: "The factory's checks are its proof machinery; a CI verdict that names the population it executed is admissible as evidence everywhere else in the tree, and inadmissible without it." },
-    RoadmapMembership { member: "observation-raw-print-retirement", project: "progress-observation", contribution: "Driving the raw-print inventory to zero unclassified completes the move to a single typed observation channel, so progress claims stop competing with an untyped one nobody can check." },
-    RoadmapMembership { member: "progress-observation", project: "gunbc-project-root", contribution: "An autonomous factory is supervised through what it reports; one classified observation channel is how a distant operator trusts progress claims without reading every attempt." },
-    RoadmapMembership { member: "roadmap-receipt-continuity", project: "roadmap-acceptance-integrity", contribution: "Refusing any acceptance record that vanishes without a named revocation is the program's central law applied to one real change: what the roadmap accepted stays accepted until a withdrawal names it exactly." },
-    RoadmapMembership { member: "roadmap-acceptance-integrity", project: "gunbc-project-root", contribution: "The factory coordinates work through the roadmap; acceptance records that cannot quietly revert are what make 'done' a durable fact the whole hierarchy reads." },
-  ]
+fn roadmap_memberships() -> List<RoadmapMembership> {
+  roadmap_memberships_of(nodes: declared_roadmap_nodes())
+}
+
+// THE ADMITTED ROOTS are exactly the rows declaring AdmittedRoot. A parent walk may end only at one
+// of these -- every other end means the chain never reached the top of the decomposition. DESIGN.md
+// is NOT here: it is the principles authority orthogonal to the hierarchy, reached as the chain's
+// terminal pointer, not as a project level.
+fn roadmap_roots() -> List<String> {
+  lineage_root_ids(nodes: declared_roadmap_nodes())
 }

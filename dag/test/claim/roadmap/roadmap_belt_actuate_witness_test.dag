@@ -1,6 +1,6 @@
 module test.claim.roadmap_belt_actuate_witness
 
-import gunbc.roadmap_nesting { declared_roadmap_memberships }
+import gunbc.roadmap_nesting { roadmap_memberships }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -36,7 +36,7 @@ import std.content_hash { content_hash_atom }
 import std.decl_ref { decl_ref }
 import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved,
-  AlignmentChained, AlignmentChainLink, AlignmentChainForked,
+  AlignmentChained, AlignmentChainLink, AlignmentWalkUnrooted,
   alignment_resolve_chain, alignment_base_cadence_state, alignment_chain_fingerprint,
   AlignmentBinding, alignment_binding_text,
 }
@@ -231,8 +231,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
-  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchSessionsObserved,
@@ -240,9 +239,9 @@ import gunbc.roadmap_launch_admission {
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   launch_gate_live, launch_gate_revision,
   launch_identity_exemplar,
-  LaunchNodeUnknown, LaunchExecutionContractMissing, LaunchDependenciesBlocked,
   LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
 }
+import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapAccepted, GapDependencies, GapContract, readiness_gap_label }
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_pending, launch_fixture_standing_halt_transition,
 }
@@ -286,6 +285,8 @@ fn ready_node(id: String) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -628,6 +629,8 @@ fn owned_node(id: String, owner: String) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: owner,
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -756,10 +759,10 @@ test fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
 test fn witness_dispatch_result_refusals_not_ok() -> Bool {
   !belt_dispatch_result_ok(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNodeUnknown))
-    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchAlreadyAccepted))
+    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNotReady { missing: [GapAccepted] }))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" }))
     && !belt_dispatch_result_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() })
-    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchDependenciesBlocked { blockers: ["p"] }))
+    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNotReady { missing: [GapDependencies { blockers: ["p"] }] }))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNoCapacity { occupied: 3, max_concurrent: 3 }))
 }
 
@@ -774,7 +777,7 @@ test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
     && status_label_glued_to_ok(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchNodeUnknown))
-    && status_label_glued_to_ok(r: not_admitted(r: LaunchAlreadyAccepted))
+    && status_label_glued_to_ok(r: not_admitted(r: LaunchNotReady { missing: [GapAccepted] }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" }))
     && status_label_glued_to_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() })
     && all(belt_dispatch_result_exemplars(), r => status_label_glued_to_ok(r: r))
@@ -785,12 +788,11 @@ test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
     && belt_dispatch_status_label(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" })) == "already_live"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" })) == "disabled"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchNodeUnknown)) == "node_not_found"
-    && belt_dispatch_status_label(r: not_admitted(r: LaunchAlreadyAccepted)) == "already_done_signed_off"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchNotReady { missing: [GapAccepted] })) == "not_ready"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" })) == "observe_refused"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchAuthorityUnobserved { detail: "x" })) == "authority_refused"
     && belt_dispatch_status_label(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() }) == "spawn_failed"
-    && belt_dispatch_status_label(r: not_admitted(r: LaunchDependenciesBlocked { blockers: ["p"] })) == "dependencies_blocked"
-    && belt_dispatch_status_label(r: not_admitted(r: LaunchExecutionContractMissing { reason: "r" })) == "execution_contract_missing"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchNotReady { missing: [GapDependencies { blockers: ["p"] }] })) == "not_ready"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchCauseNotPermitted { cause: gunbc.roadmap_launch_admission.Timer, mode: ManualReady })) == "cause_not_permitted_by_mode"
 }
 
@@ -847,17 +849,9 @@ fn every_launch_refusal_arm_has_an_exemplar() -> Bool {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  every_launch_refusal_arm_has_an_exemplar()
-    && band_key_for_label(label: "operator_exclusive") == "fail"
-    && band_key_for_label(label: "external_lead") == "fail"
-    && band_key_for_label(label: "calendar_observation") == "fail"
+  belt_dispatch_label_band_rows().length() == 18
     && band_key_for_label(label: "supervisor_convened") == "ok"
     && band_key_for_label(label: "stale_session") == "loud"
-    && band_key_for_label(label: "dependencies_blocked") == "fail"
-    && band_key_for_label(label: "execution_contract_missing") == "fail"
-    && band_key_for_label(label: "dispatch_binding_missing") == "fail"
-    && band_key_for_label(label: "review_required") == "fail"
-    && band_key_for_label(label: "node_superseded") == "fail"
     && band_key_for_label(label: "no_capacity") == "fail"
     && band_key_for_label(label: "cause_not_permitted_by_mode") == "fail"
     && band_key_for_label(label: "gate_not_evaluated") == "loud"
@@ -869,12 +863,8 @@ test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
     && band_key_for_label(label: "already_live") == "ok"
     && band_key_for_label(label: "disabled") == "fail"
     && band_key_for_label(label: "node_not_found") == "fail"
-    && band_key_for_label(label: "already_done_signed_off") == "fail"
     && band_key_for_label(label: "no_instance") == "fail"
-    && band_key_for_label(label: "centering_absent") == "fail"
-    && band_key_for_label(label: "operator_exclusive") == "fail"
-    && band_key_for_label(label: "external_lead") == "fail"
-    && band_key_for_label(label: "calendar_observation") == "fail"
+    && band_key_for_label(label: "not_ready") == "fail"
     && band_key_for_label(label: "observe_refused") == "loud"
     && band_key_for_label(label: "authority_refused") == "loud"
     && band_key_for_label(label: "spawn_failed") == "loud"
@@ -917,16 +907,7 @@ fn d4_wire_contract_labels() -> List<String> {
     "deployed_revision_unobserved",
     "authority_refused",
     "node_not_found",
-    "node_superseded",
-    "already_done_signed_off",
-    "review_required",
-    "dispatch_binding_missing",
-    "execution_contract_missing",
-    "centering_absent",
-    "operator_exclusive",
-    "external_lead",
-    "calendar_observation",
-    "dependencies_blocked",
+    "not_ready",
     "observe_refused",
     "already_live",
     "stale_session",
@@ -982,7 +963,7 @@ fn d4_exemplars_missing_one() -> List<BeltSpawnOutcome> {
     not_admitted(r: LaunchAlreadyLive { session_name: "s" }),
     not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }),
     not_admitted(r: LaunchNodeUnknown),
-    not_admitted(r: LaunchAlreadyAccepted),
+    not_admitted(r: LaunchNotReady { missing: [GapAccepted] }),
     not_admitted(r: LaunchSessionsUnobservable { reason: "x" }),
   ]
 }
@@ -1629,15 +1610,15 @@ test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool {
   let preview = srv2_preview_dashboard_instance()
   let dispatched = belt_dispatch_node_for_instance(
     instance: preview,
-    node_id: "namespace-canonical-binding",
+    node_id: "declaration-identity-switchover",
   )
   let stopped = belt_stop_node_for_instance(
     instance: preview,
-    node_id: "namespace-canonical-binding",
+    node_id: "declaration-identity-switchover",
   )
   match dispatched {
     SpawnNotAdmitted { node_id, refusal } =>
-      node_id == "namespace-canonical-binding"
+      node_id == "declaration-identity-switchover"
         && (match refusal {
           LaunchInstanceActuationRefused { instance_id, reason: _ } => instance_id == (preview.instance_id as String)
           _ => false
@@ -1646,7 +1627,7 @@ test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool {
   }
     && match stopped {
       StopDisabled { node_id, instance_id, reason: _ } =>
-        node_id == "namespace-canonical-binding"
+        node_id == "declaration-identity-switchover"
           && instance_id == (preview.instance_id as String)
       _ => false
     }
@@ -2438,18 +2419,37 @@ test fn staged_post_refuses_unknown_node_without_listing_tmux() -> Bool {
   }
 }
 
-test fn staged_post_refuses_contractless_node_without_listing_tmux() -> Bool {
-  match staged_post_over_canary(graph: launch_fixture_canary_graph(), standing: launch_fixture_standing_pending(mode: ManualReady), node_id: roadmap_launch_canary_child_node_id() as String) {
-    SpawnNotAdmitted { node_id: _, refusal: LaunchExecutionContractMissing { reason: _ } } => true
+fn launch_fixture_canary_graph_child_unbound() -> LaunchGraphStanding {
+  launch_graph_of_document(doc: canary_doc(
+    nodes: [
+      canary_parent(signoff: Unsigned),
+      canary_node(
+        identity: roadmap_launch_canary_child_identity,
+        id: roadmap_launch_canary_child_node_id(),
+        execution: ExecutionContractUnspecified,
+        signoff: Unsigned,
+      ),
+    ],
+    edges: [],
+  ))
+}
+
+fn refused_not_ready_on(o: BeltSpawnOutcome, gap: String) -> Bool {
+  match o {
+    SpawnNotAdmitted { node_id: _, refusal } => match refusal {
+      LaunchNotReady { missing } => any(missing, g => readiness_gap_label(g: g) == gap)
+      _ => false
+    }
     _ => false
   }
 }
 
+test fn staged_post_refuses_contractless_node_without_listing_tmux() -> Bool {
+  refused_not_ready_on(o: staged_post_over_canary(graph: launch_fixture_canary_graph_child_unbound(), standing: launch_fixture_standing_pending(mode: ManualReady), node_id: roadmap_launch_canary_child_node_id() as String), gap: "contract")
+}
+
 test fn staged_post_refuses_blocked_child_without_listing_tmux() -> Bool {
-  match staged_post_over_canary(graph: launch_fixture_canary_graph_child_contracted(), standing: launch_fixture_standing_pending(mode: ManualReady), node_id: roadmap_launch_canary_child_node_id() as String) {
-    SpawnNotAdmitted { node_id: _, refusal: LaunchDependenciesBlocked { blockers: _ } } => true
-    _ => false
-  }
+  refused_not_ready_on(o: staged_post_over_canary(graph: launch_fixture_canary_graph_child_contracted(), standing: launch_fixture_standing_pending(mode: ManualReady), node_id: roadmap_launch_canary_child_node_id() as String), gap: "dependencies")
 }
 
 test fn staged_post_transition_halt_refuses_without_listing_tmux() -> Bool {
@@ -2834,7 +2834,7 @@ test fn an_unreadable_or_undecodable_binding_refuses() -> Bool {
 // the typed cause and zero commands — one refusal per question, each at its own seam.
 test fn an_unresolved_chain_passes_the_binding_gate_and_the_spawn_gate_names_it() -> Bool {
   let unresolved = AlignmentUnresolved {
-    cause: AlignmentChainForked { at: "a1", dependents: ["x", "y"], walked: [] },
+    cause: AlignmentWalkUnrooted { at: "a1", walked: [] },
   }
   match belt_alignment_binding_check(
     expected_identity: "worker:n1-deadbeef",
@@ -2867,7 +2867,7 @@ test fn a_fresh_start_passes_the_binding_gate() -> Bool {
 fn capped_production_prior(node_id: String) -> PriorAttemptFacts {
   PriorAttemptFacts {
     node_id: node_id,
-    memberships: declared_roadmap_memberships(),
+    memberships: roadmap_memberships(),
     attempt_key: "cd172fe81b806160",
     branch: "dispatch/x-acd172fe81b806160",
     worker_terminal: true,
@@ -2919,9 +2919,9 @@ test fn the_two_production_lineages_escalate_and_convene_naming_their_derived_su
                     && b2.contains("the supervisor of node shell-typed-invocation")
                     && b1.contains("cd172fe81b806160")
                     && b1.contains(supervisor_verdict_schema as String)
-                    && b1.contains("UNRESOLVED")
-                    && b1.contains("shell-gate-migration")
-                    && !b1.contains("this task serves project shell-residue-zero")
+                    && b1.contains("this task serves project shell-typed-invocation")
+                    && b1.contains("above the task serves project dp-m2-shell-residue-retired")
+                    && !b1.contains("UNRESOLVED")
                 }
               }
           }
@@ -3091,7 +3091,7 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
   let decision = continuation_decision(
     prior: Present { value: PriorAttemptFacts {
       node_id: "node-a",
-      memberships: declared_roadmap_memberships(),
+      memberships: roadmap_memberships(),
       attempt_key: "cd172fe81b806160",
       branch: "dispatch/node-a-acd172fe81b806160",
       worker_terminal: false,

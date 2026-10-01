@@ -1,6 +1,6 @@
 module gunbc.roadmap_belt_actuate
 
-import gunbc.roadmap_nesting { declared_roadmap_memberships }
+import gunbc.roadmap_nesting { roadmap_memberships }
 
 import std.algebra { trim }
 
@@ -49,8 +49,7 @@ import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, Timer,
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
-  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
@@ -2045,7 +2044,7 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
   continuation_decision(
     prior: Present { value: PriorAttemptFacts {
       node_id: node.node as String,
-      memberships: declared_roadmap_memberships(),
+      memberships: roadmap_memberships(),
       attempt_key: progress.attempt_key,
       branch: progress.branch,
       worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process),
@@ -6003,7 +6002,7 @@ fn belt_scm_capture_candidate_tree(
   attempt_key: String,
   message: String,
 ) -> BeltScmCapture {
-  match project_key_for_node(node_id: node_id as String, memberships: declared_roadmap_memberships()) {
+  match project_key_for_node(node_id: node_id as String, memberships: roadmap_memberships()) {
     Absent =>
       ScmCapturePoisoned {
         detail: "multiple authored parents name this node; project ownership is ambiguous: the authority must name one owning arc before a candidate can be captured",
@@ -8886,14 +8885,7 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
     LaunchNoActuatingInstance { reason: _ } => BandFail
     LaunchInstanceActuationRefused { instance_id: _, reason: _ } => BandFail
     LaunchNodeUnknown => BandFail
-    LaunchNodeSuperseded { by: _ } => BandFail
-    LaunchAlreadyAccepted => BandFail
-    LaunchReviewRequired => BandFail
-    LaunchDispatchBindingMissing => BandFail
-    LaunchExecutionContractMissing { reason: _ } => BandFail
-    LaunchCenteringAbsent => BandFail
-    LaunchNotAgentWork { mode: _ } => BandFail
-    LaunchDependenciesBlocked { blockers: _ } => BandFail
+    LaunchNotReady { missing: _ } => BandFail
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => BandFail
     LaunchCauseNotPermitted { cause: _, mode: _ } => BandFail
     LaunchTransitionInhibited { reason: _ } => BandLoud
@@ -10179,7 +10171,7 @@ fn belt_integrate_candidate_core_for_instance(
   node_id: String,
   attempt_key: String,
 ) -> BeltIntegrationCoreStep {
-  if project_key_for_node(node_id: node_id, memberships: declared_roadmap_memberships()) == none {
+  if project_key_for_node(node_id: node_id, memberships: roadmap_memberships()) == none {
     IntegrationCoreUnreadable { detail: "project nesting is ambiguous or cyclic" }
   } else {
 
@@ -10231,7 +10223,7 @@ fn belt_integrate_candidate_core_for_instance(
             VerificationUnreadable { reason } => IntegrationCoreUnreadable { detail: reason }
             VerificationPassedConfirmed => {
               let edges = declared_roadmap_edges()
-              match node_project_membership(node_id: node_id, memberships: declared_roadmap_memberships()) {
+              match node_project_membership(node_id: node_id, memberships: roadmap_memberships()) {
                 MembershipAmbiguous { arcs: _ } =>
                   IntegrationCoreUnreadable {
                     detail: "multiple authored parents name this node; project ownership is ambiguous",
@@ -10278,9 +10270,9 @@ fn belt_integrate_candidate_for_instance(
     IntegrationCoreBlocked { detail } => IntegrationStepBlocked { detail: detail }
     IntegrationCoreIntegrated { project_key } => {
       let edges = declared_roadmap_edges()
-      let members = match node_project_membership(node_id: node_id, memberships: declared_roadmap_memberships()) {
+      let members = match node_project_membership(node_id: node_id, memberships: roadmap_memberships()) {
         MembershipStandalone => [node_id]
-        MembershipMember { arc } => project_member_ids(arc: arc, memberships: declared_roadmap_memberships())
+        MembershipMember { arc } => project_member_ids(arc: arc, memberships: roadmap_memberships())
         MembershipAmbiguous { arcs: _ } => [node_id]
       }
       match belt_integration_census(instance: instance, member_ids: members) {
@@ -10397,7 +10389,7 @@ fn belt_publish_attempt_for_instance(
           ], ""),
         }
       } else {
-        match node_project_membership(node_id: node_id, memberships: declared_roadmap_memberships()) {
+        match node_project_membership(node_id: node_id, memberships: roadmap_memberships()) {
           MembershipMember { arc } =>
             belt_publish_project_for_instance(
               instance: instance,

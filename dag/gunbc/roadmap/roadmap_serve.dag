@@ -135,8 +135,7 @@ import extdeps.languages.json.emit {
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
-  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   launch_refusal_label, launch_refusal_reason,
@@ -151,7 +150,7 @@ import gunbc.roadmap_authority {
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   declared_roadmap_edges,
 }
-import gunbc.roadmap_nesting { declared_roadmap_memberships }
+import gunbc.roadmap_nesting { roadmap_memberships }
 import gunbc.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
@@ -505,14 +504,7 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchNoActuatingInstance { reason: _ } => 403
     LaunchInstanceActuationRefused { instance_id: _, reason: _ } => 403
     LaunchNodeUnknown => 404
-    LaunchAlreadyAccepted => 409
-    LaunchNodeSuperseded { by: _ } => 409
-    LaunchReviewRequired => 409
-    LaunchDispatchBindingMissing => 409
-    LaunchExecutionContractMissing { reason: _ } => 409
-    LaunchCenteringAbsent => 409
-    LaunchNotAgentWork { mode: _ } => 409
-    LaunchDependenciesBlocked { blockers: _ } => 409
+    LaunchNotReady { missing: _ } => 409
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => 409
     LaunchCauseNotPermitted { cause: _, mode: _ } => 409
     LaunchStaleSession { session_name: _, detail: _ } => 409
@@ -797,7 +789,7 @@ fn serve_project_suite_response_over(
               headline: headline,
               node_id: node_id,
               rows: project_suite_rows(
-                memberships: declared_roadmap_memberships(),
+                memberships: roadmap_memberships(),
                 edges: declared_roadmap_edges(),
                 nodes: doc_all_nodes(doc: doc),
                 project: node_id),
