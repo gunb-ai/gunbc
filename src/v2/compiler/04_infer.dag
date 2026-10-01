@@ -15,7 +15,6 @@ import v2.std.compilers.target_model {
   target_model_canonical_operation_member_declared_type
 }
 import v2.compiler.resolve { ResolvedTree }
-import v2.std.symbol_index { SymbolIndex, symbol_index_lookup }
 import v2.compiler.inferred_tree {
   DerivedGrounding,
   GroundingNotDerived,
@@ -61,10 +60,10 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional }
 import v2.std.node_query { construct_field_edges, construct_tag_optional, declared_field_from_edge }
-import v2.std.symbol_index { RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
-import v2.std.node { Ambiguous, Found, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of, match_arm_pattern_edge }
+import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
+import v2.std.node { Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of, match_arm_pattern_edge, resolved_reference_body_kind }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -105,6 +104,7 @@ import v2.std.inhabitance {
   inhabitance_undecidable_diagnostic,
   position_declared_return,
   position_record_field,
+  position_let_annotation,
   position_direct_call_argument,
   undecidable_argument_type_not_derived,
   undecidable_formal_unresolved
@@ -842,7 +842,39 @@ fn infer_product_facts_from_entries(
   }
 }
 
+// A PARAMETER OF A NAMED FN IS GROUNDED THROUGH THE INDEX, LIKE ANY PATH-KEYED REFERENCE.
+// v2.compiler.resolve mints it over <fn path>.<label> after confirming that path in the symbol index
+// (resolve_frame_bound_reference), and the resolved declarations bind that path to the parameter's
+// declared type -- so `x` in `fn f(x: Pos)` reads Pos from f's own domain entry, never from whichever
+// Arrow a walk meets first. A path the index cannot answer here is the index disagreeing with the
+// resolver that minted it: refused, located, never left underived.
 fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree) -> Outcome<InferredFacts> {
+  match parameter_reference_path_optional(node: n) {
+    Present { value: path } => infer_parameter_reference_facts(n: n, path: path, index: resolved.resolved_declarations)
+    Absent => infer_term_node_facts(n: n, partials: partials, kinds: kinds, resolved: resolved)
+  }
+}
+
+fn infer_parameter_reference_facts(n: Node, path: QualifiedName, index: SymbolIndex) -> Outcome<InferredFacts> {
+  match infer_descent_witness_for_node(n: n) {
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Holds { value: descent_proof } =>
+      match symbol_index_lookup(index: index, qualified_path: path) {
+        Present { value: declared } =>
+          inferred_facts_from_derived_type(node: n, derived_type: declared, descent: Holds { value: descent_proof })
+        Absent =>
+          Rejected {
+            diagnostics: diagnostics_singleton(d: Diagnostic {
+              reason: ^infer_reason_parameter_reference_not_indexed,
+              at: node_locus(node: n),
+              correction: Unavailable { reason: UserInputBoundary }
+            })
+          }
+      }
+  }
+}
+
+fn infer_term_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: n, partials: partials) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: _, diagnostics: cd } =>
@@ -1048,7 +1080,7 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
 // atom as a node structurally equal to itself (docs/plans/arrow-elimination-model.md).
 fn infer_literal_type_binding(literal: DagCanonicalLiteral) -> Symbol {
   match literal {
-    DagCanonicalBoolLiteral { value: _ } => ^dag_binding_type_bool
+    DagCanonicalBoolLiteral { value: _ } => ^bool_node_symbol
     DagCanonicalIntLiteral { magnitude: _ } => ^dag_binding_type_int
     DagCanonicalSymbolLiteral { symbol: _ } => ^symbol_node_symbol
   }
@@ -1133,13 +1165,14 @@ fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional
 // occurrence identity) and each Arrow on the way back up binds it if its domain names it.
 // Consumers: infer_node_facts' parameter arm (the grounding every cast, add, application, branch,
 // match and loop operand reads) and infer_branch_operand_resolved_type_in_tree.
-// FROZEN, A DECLARED FRONTIER (neat-boar-16 ruling): no new callers and no new arms. A declaration
-// reference is answered by v2.std.symbol_index symbol_index_lookup on the ResolvedTree infer receives
-// (refinement_declaration), but a frame-bound parameter reference reaches infer as a bare
-// canonical_atom with no path (v2.compiler.resolve, the BoundInFrame arm), so this walk still scopes
-// it. NEXT TRIGGER, NAMING THE CAPABILITY: resolve emits every frame-bound parameter reference as a
-// declaration reference keyed in SymbolIndex, and eval + translate bind through it -- then this search
-// and infer_parameter_type_in_scope are deleted.
+// FROZEN, LAMBDA PARAMETERS ONLY (neat-boar-16 ruling): no new callers and no new arms. A named fn's
+// parameter no longer reaches this: v2.compiler.resolve mints it as a path-keyed parameter reference
+// and infer_parameter_reference_facts grounds it through the resolved declarations. What still arrives
+// as a bare atom bound by an Arrow's domain is a lambda's parameter, whose anonymous Arrow has no index
+// path. DECLARED FRONTIER, carried on v2.compiler.resolve FrameKind; NEXT TRIGGER, NAMING THE
+// CAPABILITY: anonymous Arrows carry an index path (via std.occurrence_identity), so lambda parameters
+// resolve as declaration references too -- then this search and infer_parameter_type_in_scope are
+// deleted.
 type InferParameterScopeSearch
   = ParameterReferenceNotHere
   | ParameterReferenceUnbound
@@ -1186,8 +1219,10 @@ fn infer_parameter_type_in_scope(tree: Node, reference: Node, binding: Symbol) -
 // head lowered as a type). A MISS IS ABSENT, and Absent never admits: the declared-carrier widening
 // runs only after the exact crossing refused, so a lookup that finds nothing leaves that refusal
 // standing (v2.test.claim.body_cast_node bcn_a_refinement_lookup_miss_refuses).
-// CONSUMERS. .carrier is consumed in this change: refinement_declared_carrier hands it to
-// v2.std.coercion coercion_cast_crossing, the declared-carrier widening. .where_clause is a DECLARED
+// CONSUMERS. .carrier is consumed: refinement_declared_carrier hands it to v2.std.coercion
+// coercion_cast_crossing (an explicit cast's declared-carrier widening) and, through
+// infer_judge_declared_position, to v2.std.inhabitance declared_type_inhabitance (the same one-step
+// widening at every declared position: argument, return, field and let). .where_clause is a DECLARED
 // FRONTIER, not yet consumed: its consumer is the literal-into-refinement cast arm of work item
 // adhoc-032c89dc-138 (deep-bee-18), which projects it into resolve's where-predicate bindings. That arm
 // lands with the next-rung trigger of gunbc.recurring_failure_mode as_cast_has_no_lowered_form
@@ -2099,6 +2134,7 @@ fn infer_judge_declared_position(
   position: DeclaredTypePosition,
   application: Node,
   entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex,
   formal: InhabitanceFormal,
   produced_at: Node,
   type_params: List<Symbol>
@@ -2129,6 +2165,7 @@ fn infer_judge_declared_position(
             parameter_identity: formal.parameter_identity,
             declared: infer_declared_type_denotation(declared: formal.declared),
             produced: produced,
+            produced_declared_carrier: refinement_declared_carrier(index: declarations, source_type: produced),
             application: application,
             type_variables: type_params
           }
@@ -2167,6 +2204,7 @@ fn infer_judge_application_argument_instantiating(
   position: DeclaredTypePosition,
   application: Node,
   entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex,
   formal: InhabitanceFormal,
   arg: Node,
   type_params: List<Symbol>,
@@ -2174,7 +2212,7 @@ fn infer_judge_application_argument_instantiating(
 ) -> Outcome<List<TypeVariableInstance>> {
   match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
     DeclaredType { declared: _ } =>
-      match infer_judge_declared_position(position: position, application: application, entries: entries, formal: formal, produced_at: arg, type_params: type_params) {
+      match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, formal: formal, produced_at: arg, type_params: type_params) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
       }
@@ -2185,6 +2223,7 @@ fn infer_judge_application_argument_instantiating(
             position: position,
             application: application,
             entries: entries,
+            declarations: declarations,
             formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: instance },
             produced_at: arg,
             type_params: type_params
@@ -2219,7 +2258,8 @@ fn infer_judge_application_argument_instantiating(
 
 fn infer_application_argument_inhabitance(
   node: Node,
-  entries: List<InferredFactsEntry>
+  entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex
 ) -> Outcome<Bool> {
   match infer_application_formals(node: node) {
     FormalsUnresolved =>
@@ -2237,6 +2277,7 @@ fn infer_application_argument_inhabitance(
             position: position_direct_call_argument(),
             site: JudgedAtApplication { application: node },
             entries: entries,
+            declarations: declarations,
             pairs: pairs,
             type_params: infer_application_type_params(node: node)
           ) {
@@ -2269,6 +2310,7 @@ fn infer_judge_formal_args(
   position: DeclaredTypePosition,
   site: InferJudgedSite,
   entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex,
   pairs: List<InhabitanceFormalArg>,
   type_params: List<Symbol>
 ) -> Outcome<List<TypeVariableInstance>> {
@@ -2283,6 +2325,7 @@ fn infer_judge_formal_args(
             position: position,
             application: infer_judged_site_node(site: site, actual: pair.arg),
             entries: entries,
+            declarations: declarations,
             formal: pair.formal,
             arg: pair.arg,
             type_params: type_params,
@@ -2871,7 +2914,7 @@ fn infer_gather_application_row_on_entries(
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
-  match infer_application_argument_inhabitance(node: node, entries: entries) {
+  match infer_application_argument_inhabitance(node: node, entries: entries, declarations: resolved.resolved_declarations) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -2944,14 +2987,16 @@ fn infer_gather_application_row_on_entries(
   }
 }
 
-// AN ANNOTATED LET CHECKS ITS BOUND VALUE AGAINST THE ANNOTATION. `let x: T = e` is Bind[x, e, body]
-// + <type-annotation> T (v2.std.type_binder); it awaits its children, then asks v2.std.coercion --
-// the one inhabitance authority, the fold a cast's crossing also asks -- whether e's derived
-// grounding inhabits T, and refuses with coercion's typed mismatch when it does not. An ascription
-// converts nothing, so only the verdict is used, never a crossed value. A value whose grounding is
-// not derived leaves the check unjudged and the Bind on the counted frontier, as an unannotated Bind
-// is: the check is neither admitted nor skipped silently.
-
+// AN ANNOTATED LET IS A DECLARED-TYPE POSITION. `let x: T = e` is Bind[x, e, body] +
+// <type-annotation> T (v2.std.type_binder); it awaits its children, then e is judged at T through
+// infer_judge_declared_position -- the one relation (v2.std.inhabitance declared_type_inhabitance)
+// an argument meets at its formal, a body at its declared return and a field value at its field.
+// An ascription converts nothing, so it is not a cast: v2.std.coercion coercion_cast_crossing is the
+// relation for the explicit `e as T` form only. The refusal is located at the authored annotation
+// and names the bound value (PositionLetAnnotation). A value whose type is not derived stays the counted
+// UndecidableArgumentTypeNotDerived frontier, as at every other position. The enclosing fn's type
+// parameters are not in scope here, so the obligation carries none: a let annotated with one is
+// judged against the type variable's atom as it is spelled.
 fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, resolved: ResolvedTree) -> Outcome<Bool> {
   match type_annotation_optional(n: node) {
     Absent => outcome_accepted(true)
@@ -2959,42 +3004,16 @@ fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, re
       match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
         Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
         Present { value: bound } =>
-          match lookup_inferred_facts_in_entries(entries: entries, key: bound) {
-            Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: bound))
-            Present { value: bound_facts } =>
-              match bound_facts.grounding {
-                GroundingNotDerived { node: _ } => outcome_accepted(true)
-                DerivedGrounding { grounding: g } =>
-                  match coercion_cast_crossing(
-                    source: g,
-                    source_type: g.witness.structural.evidence,
-                    source_declared_carrier: refinement_declared_carrier(index: resolved.resolved_declarations, source_type: g.witness.structural.evidence),
-                    target: annotation
-                  ) {
-                    Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
-                    Rejected { diagnostics: r } =>
-                      Rejected { diagnostics: infer_bind_annotation_refusal(annotation: annotation, cause: r) }
-                  }
-              }
-          }
+          infer_judge_declared_position(
+            position: position_let_annotation(bound: bound),
+            application: annotation,
+            entries: entries,
+            declarations: resolved.resolved_declarations,
+            formal: InhabitanceFormal { parameter_identity: ^let_annotation, declared: annotation },
+            produced_at: bound,
+            type_params: []
+          )
       }
-  }
-}
-
-// THE REFUSAL IS THE ANNOTATION'S. Coercion's mismatch is located at the bound value it could not
-// carry across; it rides in front as the cause, and the fatal -- the last diagnostic, which every
-// consumer reads as the verdict -- is located at the authored annotation with its own reason.
-fn infer_bind_annotation_refusal(annotation: Node, cause: NonEmptyDiagnostics) -> NonEmptyDiagnostics {
-  NonEmptyDiagnostics {
-    head: cause.head,
-    tail: list_snoc_item(
-      xs: cause.tail,
-      item: Diagnostic {
-        reason: ^infer_reason_bound_value_does_not_inhabit_annotation,
-        at: node_locus(node: annotation),
-        correction: Unavailable { reason: UserInputBoundary }
-      }
-    )
   }
 }
 
@@ -3253,6 +3272,9 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
       match declaration_reference_path_optional(node: n) {
         Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
         Absent =>
+      match parameter_reference_path_optional(node: n) {
+        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
+        Absent =>
       if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
         infer_gather_fold_acc_ok(
           node: n,
@@ -3266,6 +3288,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
         )
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
+      }
       }
       }
     TypeNode { connective: Disj } =>
@@ -3627,7 +3650,8 @@ fn infer_gather_fold_step(
     acc
   } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge)
     || infer_declaration_binder_edge(parent: acc.node, edge: edge)
-    || match_arm_pattern_edge(parent: acc.node, edge: edge) {
+    || match_arm_pattern_edge(parent: acc.node, edge: edge)
+    || (resolved_reference_body_kind(target: acc.node) != NotMarkedReference) {
     infer_gather_fold_step_merged(
       acc: acc,
       merged_entries: acc.entries,
@@ -4075,6 +4099,7 @@ fn infer_record_construct_facts(
   node: Node,
   construct: InferRecordConstruct,
   entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex,
   partials: List<Node>,
 ) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -4100,6 +4125,7 @@ fn infer_record_construct_facts(
                     position: position_record_field(record: construct.record),
                     site: JudgedAtEachActual,
                     entries: entries,
+                    declarations: declarations,
                     pairs: pairs,
                     type_params: construct.type_params
                   ) {
@@ -4148,12 +4174,13 @@ fn infer_gather_record_construct_row_on_entries(
   node: Node,
   construct: InferRecordConstruct,
   entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex,
   pending: Diagnostics,
   partials: List<Node>,
 ) -> InferGatherFoldAcc {
   infer_gather_formed_facts_row(
     node: node,
-    formed: infer_record_construct_facts(node: node, construct: construct, entries: entries, partials: partials),
+    formed: infer_record_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, partials: partials),
     entries: entries,
     pending: pending
   )
@@ -4181,7 +4208,7 @@ fn infer_gather_settled_row(
         resolved: resolved
       )
     Absent =>
-      match infer_arrow_declared_return_check(node: acc.node, entries: merged_entries) {
+      match infer_arrow_declared_return_check(node: acc.node, entries: merged_entries, declarations: resolved.resolved_declarations) {
         Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
             node: acc.node,
@@ -4213,7 +4240,7 @@ fn infer_gather_settled_row(
 // UndecidableGenericFormal, counted. An Arrow with no body is a signature (a fn type, a census-grade
 // declaration) and owes nothing here; one with two bodies, or a body but no declared return, is a
 // malformed Arrow and refuses.
-fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntry>) -> Outcome<Bool> {
+fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Outcome<Bool> {
   match node.kind {
     TypeNode { connective: Arrow } =>
       match arrow_body_target_lookup(children: node.children) {
@@ -4226,6 +4253,7 @@ fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntr
                 position: position_declared_return(),
                 application: body,
                 entries: entries,
+                declarations: declarations,
                 formal: InhabitanceFormal { parameter_identity: ^declared_return, declared: declared },
                 produced_at: body,
                 type_params: type_param_names(n: node)
@@ -4259,6 +4287,7 @@ fn infer_gather_settled_unannotated_row(
               node: acc.node,
               construct: construct,
               entries: merged_entries,
+              declarations: resolved.resolved_declarations,
               pending: merged_pending,
               partials: partials
             )
