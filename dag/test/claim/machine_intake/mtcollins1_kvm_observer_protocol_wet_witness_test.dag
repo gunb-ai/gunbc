@@ -29,9 +29,12 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverEstablished, KvmObserverRefused, KvmSeatBusy, KvmObserverLost,
   KvmJournalConnectionLost, KvmJournalAcquisitionFailed, KvmNotConnected, KvmCanvasUnreadable,
   KvmStillHashed, KvmTeardownRecorded, KvmHandoffAdmitted, KvmHandoffRefused,
+  KvmJournalEvent, KvmJournalNavigated, KvmJournalPageError, kvm_journal_events_at,
   kvm_observer_launch_in, kvm_observer_trigger, kvm_handoff_admission, kvm_observer_standing_now, mtcollins1_kvm_observer_finish,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_screen_boundary_report }
+import extdeps.bmc.megarac { megarac_ui_features_json }
+import v2.std.algebra { any }
 
 // PROCESS-AND-PROTOCOL EVIDENCE, NOT HARDWARE EVIDENCE (eager-owl-205, 2026-09-28). Each control runs
 // the REAL held observer -- the same kvm_observer_launch_in, triggers, handoff admission and
@@ -94,6 +97,16 @@ fn read_or_empty(path: String) -> String {
 
 // Serve the model's table on loopback, write the credential, and launch the real observer at it.
 fn rig(w: BmcWorld) -> Rig {
+  rig_with(w: w, features_json: loopback_features_json())
+}
+
+// THE FEATURE LIST THE LOOPBACK VIEWER NEEDS: the vendor shape (extdeps.bmc.megarac
+// megarac_ui_features_json) over the one name the stand-in viewer reads.
+fn loopback_features_json() -> String {
+  megarac_ui_features_json(names: ["KVM_SESSION_RECONNECT" as NonEmptyStr])
+}
+
+fn rig_with(w: BmcWorld, features_json: String) -> Rig {
   let dir = scratch_dir()
   let pw_path = concat(dir, "/credential")
   let _pw = Filesystem.Write(path: pw_path, content: "pw")
@@ -106,7 +119,7 @@ fn rig(w: BmcWorld) -> Rig {
         TransportServing { port: port, pid: _ } => {
           let obs = concat(dir, "/observer")
           let _made = shell.Mkdir.Parents(path: obs as FilePath)
-          kvm_observer_launch_in(dir_given: obs, base_url: concat("http://127.0.0.1:", port), host: concat("127.0.0.1:", port), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet")
+          kvm_observer_launch_in(dir_given: obs, base_url: concat("http://127.0.0.1:", port), host: concat("127.0.0.1:", port), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet", features_json: features_json)
         }
         TransportNotServing { cause: _ } => KvmObserverNotStarted { reason: "the loopback transport is not serving" }
       }
@@ -133,6 +146,31 @@ fn released(rec: KvmObserverRecord) -> Bool {
 
 fn transport_log(r: Rig) -> String { read_or_empty(path: concat(r.dir, "/transport.log")) }
 
+// THE PAGE'S ROUTE, AS THE JOURNAL RECORDS IT: every main-frame navigation's seq, the observer's phase
+// and the committed URL, in journal order. Against the loopback controller the route is exactly the one
+// navigation the observer makes -- viewer.html, and never the root -- so the journal's record of where the
+// page went is held to what happened; on the real controller the same lines record any reload the SPA
+// makes to #login under the held viewer.
+fn navigation_route(start: KvmObserverStart) -> List<String> {
+  match start {
+    KvmObserverStarted { dir: d, subject: _, standing: _, checked_at: _ } =>
+      flat_map(kvm_journal_events_at(dir: d as String), e => match e {
+        KvmJournalNavigated { at: _, seq: n, phase: p, url: u } => [join([n, p, u], " ")]
+        _ => []
+      })
+    _ => []
+  }
+}
+
+// The loopback port the observer was pointed at, read back from its established host.
+fn port_of(start: KvmObserverStart) -> String {
+  match start {
+    KvmObserverStarted { dir: _, subject: s, standing: _, checked_at: _ } =>
+      match split(s: s.host, delimiter: ":").last() { Present { value: p } => p  Absent => "" }
+    _ => ""
+  }
+}
+
 // ESTABLISHED FOR THIS SUBJECT, ADMITTED FOR THE HANDOFF, AND THE TRIGGERED STILL IS HASH-BOUND. The
 // controller saw a real login, the owning logout, and closed the stream when the model said so.
 test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> Bool {
@@ -143,11 +181,45 @@ test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> B
   let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let log = transport_log(r: r)
   let loss_still = count(filter(rec.stills, s => match s { KvmStillHashed { at: a, seq: _, reason: why, path: _, digest: _ } => string_contains(s: why, pattern: "sol-channel-lost") && (millisecond_count(m: a.since_epoch) as Int) > 0  _ => false }))
+  let navigations = navigation_route(start: r.start)
   let closed = close_rig(r: r)
   admitted && asked && loss_still == 1 && released(rec: rec) && closed
+    && navigations == [concat("1 viewer \"http://127.0.0.1:", port_of(start: r.start), "/viewer.html\"")]
     && string_contains(s: log, pattern: "transition request=[\"login\",\"admin\",\"pw\"] status=200")
     && string_contains(s: log, pattern: "transition request=[\"logout\",\"csrf-7\"] status=200")
     && string_contains(s: log, pattern: "stream closed by the model")
+}
+
+// THE LOGIN DOES NOT RUN IN A DOCUMENT THAT CAN NAVIGATE AWAY (fleet-converge run 36721915217). The
+// transport's root page replaces itself on DOMContentLoaded. The observer that loaded "/" and logged in
+// by evaluating a fetch inside it journalled "failed ... Execution context was destroyed" against this
+// transport, the hardware journal line for line, and was never established. The ROUTE is asserted, not
+// only the answer: the controller saw the login and never served its root page.
+test fn a_root_page_that_navigates_cannot_destroy_the_login() -> Bool {
+  let r = rig(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: true))
+  let admitted = match kvm_handoff_admission(start: r.start) { KvmHandoffAdmitted { session: s } => s == "7"  _ => false }
+  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let log = transport_log(r: r)
+  let closed = close_rig(r: r)
+  admitted && released(rec: rec) && closed
+    && string_contains(s: log, pattern: "transition request=[\"login\",\"admin\",\"pw\"] status=200")
+    && !string_contains(s: log, pattern: "spa-root served")
+}
+
+// THE VIEWER NEEDS ITS FEATURE LIST (KVM probe run 36788605665): launched WITHOUT it, the viewer's
+// unguarded sessionStorage.features.indexOf throws, the page error is journalled, /kvm is never
+// requested, and the observer refuses for want of a frame -- never established. The route is asserted:
+// the controller saw the login and no kvm connect.
+test fn a_viewer_without_its_feature_list_never_opens_kvm() -> Bool {
+  let r = rig_with(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: true), features_json: "")
+  let refused = match kvm_observer_standing_now(start: r.start) { KvmObserverRefused { at: _, refusal: _ } => true  _ => false }
+  let page_error = match r.start { KvmObserverStarted { dir: d, subject: _, standing: _, checked_at: _ } => any(kvm_journal_events_at(dir: d as String), e => match e { KvmJournalPageError { at: _, phase: p, detail: x } => p == "viewer" && string_contains(s: x, pattern: "indexOf")  _ => false })  _ => false }
+  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let log = transport_log(r: r)
+  let closed = close_rig(r: r)
+  refused && page_error && released(rec: rec) && closed
+    && string_contains(s: log, pattern: "transition request=[\"login\",\"admin\",\"pw\"] status=200")
+    && !string_contains(s: log, pattern: "transition request=[\"connect\"")
 }
 
 // VIEWER SLOT BUSY: the model's other viewer makes viewer_count 1; the observer refuses with that count,
@@ -285,7 +357,7 @@ test fn a_relative_observer_directory_is_resolved_once() -> Bool {
   let dir = trim(s: made.path as String)
   match runner_browser_toolchain_here_wet() {
     BrowserToolchainReady { location: loc, standing: _ } => {
-      let start = kvm_observer_launch_in(dir_given: dir, base_url: "http://127.0.0.1:9", host: "127.0.0.1:9", username: "u", password_file: "/nonexistent/credential", toolchain: loc, attempt: "rel")
+      let start = kvm_observer_launch_in(dir_given: dir, base_url: "http://127.0.0.1:9", host: "127.0.0.1:9", username: "u", password_file: "/nonexistent/credential", toolchain: loc, attempt: "rel", features_json: "")
       let refused = match start {
         KvmObserverStarted { dir: d, subject: _, standing: st, checked_at: _ } => starts_with(s: d as String, prefix: "/") && match st { KvmObserverRefused { at: _, refusal: _ } => true  _ => false }
         _ => false

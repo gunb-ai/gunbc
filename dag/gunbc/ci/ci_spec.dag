@@ -996,6 +996,21 @@ data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "mtcollins1_fan_observe_wet",
 }
 
+data gunbc_ci_mtcollins1_ui_bundle_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_ui_bundle_observe.dag",
+  function: "mtcollins1_ui_bundle_observe_wet",
+}
+
+data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
+  function: "mtcollins1_kvm_observer_observe_wet",
+}
+
+data gunbc_ci_mtcollins1_kvm_observer_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
+  function: "mtcollins1_kvm_observer_release_wet",
+}
+
 data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
   function: "mtcollins1_census_image_publish_wet",
@@ -1282,6 +1297,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
+    gunbc_ci_mtcollins1_ui_bundle_observe_target,
+    gunbc_ci_mtcollins1_kvm_observer_observe_target,
+    gunbc_ci_mtcollins1_kvm_observer_release_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
     gunbc_ci_mtcollins1_census_member_readback_target,
     gunbc_ci_spark_grant_install_target,
@@ -1825,6 +1843,73 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
       receipt_rel: mtcollins1_fan_observation_receipt_path
     )
   )
+}
+
+// THE READ-ONLY MT. COLLINS PROBES' STEPS ARE bash_build NODES RENDERED BY v2.workflow.bash_emit
+// bash_emit_stmts (review 73415): the modeled route the fan lane's marker names as available, so these
+// steps carry no hand-spelled shell and no scaffold marker. Each probe materializes the one pinned BMC
+// credential the fan series and the boot read -- the shared auth-header format, ONE bounded Secret
+// Manager read (gunbc_ci_sm_connect_timeout / gunbc_ci_sm_max_time) and the shared payload decode --
+// into its own 0600 file under RUNNER_TEMP, with the EXIT trap armed before the credential touches
+// disk; the run line is v2.workflow.gunbc_invoke_step_emit gunbc_run_command, the modeled invocation.
+fn gunbc_ci_mtcollins1_probe_rendered(stmts: List<Node>, set_e: Bool) -> String {
+  match bash_emit_stmts(statements: stmts, set_e: set_e) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
+  }
+}
+
+fn gunbc_ci_mtcollins1_probe_root_statement() -> Node {
+  bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"]))))
+}
+
+fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String) -> List<Node> {
+  let trap_body = gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")])], set_e: false)
+  [
+    bcmdl(lits: ["set", "-euo", "pipefail"]),
+    bcmdl(lits: ["umask", "077"]),
+    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
+    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
+    bash_build_assign(name: "DEST_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-bmc-credential"))])),
+    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
+    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
+    bash_build_and_then(
+      left: bcmd(words: [
+        bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
+        bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
+        bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
+      ]),
+      right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")]), path: bv(name: "DEST_FILE")),
+    ),
+    bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "DEST_FILE")]),
+    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_fan_credential_path_env as String, "=")), bv(name: "DEST_FILE")])]),
+    gunbc_ci_mtcollins1_probe_root_statement(),
+  ]
+}
+
+fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) -> String {
+  join([
+    gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem), set_e: false), "\n",
+    gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
+  ], "")
+}
+
+fn gunbc_ci_mtcollins1_ui_bundle_observe_invoke() -> String {
+  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-ui-bundle", target: gunbc_ci_mtcollins1_ui_bundle_observe_target)
+}
+
+fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {
+  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-kvm-observer", target: gunbc_ci_mtcollins1_kvm_observer_observe_target)
+}
+
+// THE PROBE'S always() RELEASE needs no credential: it releases the observer process it started and the
+// unit hold only if this run holds it (gunbc.machine_intake_mtcollins1_kvm_observer_observe
+// mtcollins1_kvm_observer_release_wet).
+fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> String {
+  join([
+    gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmdl(lits: ["set", "-euo", "pipefail"]), gunbc_ci_mtcollins1_probe_root_statement()], set_e: false), "\n",
+    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_kvm_observer_release_target.entry, function: gunbc_ci_mtcollins1_kvm_observer_release_target.function, claim_run: false), "\n",
+  ], "")
 }
 
 // The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and must kill

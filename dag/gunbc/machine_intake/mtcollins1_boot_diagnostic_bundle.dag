@@ -55,7 +55,7 @@ import gunbc.machine_intake_ampere_socket_console_observation {
 }
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_slots, mtcollins1_census_sol_artifact_path }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.machine_intake_mtcollins1_kvm_still { KvmObserverRecord, kvm_observer_record_text }
 import gunbc.machine_intake_mount_establishment { RemoteMediaMountStanding }
 import gunbc.machine_intake_megarac_media_attach {
@@ -1443,10 +1443,6 @@ fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String
 // system, 1 Processors page and 2 processors, 1 Memory page and 32 slots: 39 reads) with room for
 // extra pages; a firmware that pages more finely spends the rest and says so.
 data mtcollins1_boot_redfish_read_deadline: Second = second(count: 15)
-
-data mtcollins1_boot_ipmi_read_deadline: Second = second(count: 20)
-
-data mtcollins1_boot_ipmi_kill_after: Second = second(count: 5)
 
 // The two SEL snapshots, the one SDR dump, the one sensor read and every SMpro probe the post-attempt
 // pass can send
