@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.portable_value_map_order_is_process_random
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data portable_value_map_order_is_process_random: RecurringFailureMode = RecurringFailureMode {
+  identity: "portable_value_map_order_is_process_random" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: the interpreter's portable value form -- the representation built to leave a frame, be content-keyed and cross a process boundary -- carries map entries in an order that differs between runs of the same program on the same input. v1.interpreter Value::Map holds an im::HashMap<CanonKey, Value>, whose default hasher is std RandomState (im 15.1 hash::map HashMap<K, V, S = RandomState>), so its iteration order is re-randomised per process; portable_value_from_ctx_at copies entries in that iteration order into PortableValue::Map, and portable_value_digest folds them in that order. A second, independent source of the same variance: value_hash hashes a Variant's type_name and variant_name through Symbol's Hash, which is the spelling's POINTER, so CanonKey hashes over variant-bearing keys are address-dependent even under a fixed hasher. HARM: two runs that computed equal values publish unequal portable forms and unequal digests, so any reader that compares, keys or stores portable values across runs sees a difference where there is none -- the type_env plan's content-addressed invariants (docs/plans/type-env-single-authority-design.md) and every cross-run differential over warmed values inherit it. In-process sharing is unaffected: equality there is structural (portable_value_eq) and the memo key is per process.",
+    "RUNG FOUND AT: outside the ladder -- silent, found while deriving a producer-grain differential for gunbc#12890, where 95 of 264 warmed producers carried different portable digests between two arms whose claim verdicts were equal at identity grain (396/396). The mechanism above is READ from the code, not yet measured as the cause of those 95: the confirming controls are (a) one arm run twice must already disagree on digests of map-bearing producers, and (b) the leaf-line dump of a differing producer from both arms must be equal after sorting and unequal before -- both requested on srv1. Until they report, the attribution of the 95 to this row is a bet, stated as one.",
+    "CEILING: structurally guaranteed. Entry order is decidable and canonicalisable at the one place the portable form is built, so it should be fixed in the ENCODING -- PortableValue::Map entries in a canonical content order (a run-invariant key over the portable key) -- and every reader, the digest included, then sees one order by construction. A digest that is merely blind to order (sleek-ibex-207's interim warm-row digest on #12890) is validation at one consumer, not the fix, and is not offered as one. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: portable_value_from_ctx_at emits map entries in canonical content order and value_hash stops hashing Symbol by address, with a control that two processes digest one map-bearing value equally and a real-pool differential of the cross-claim store's outcomes before and after. OWNER: undecided, raised to jolly-boar-500 (2026-10-01) as possibly outside #12890."
+  ],
+
+  evidence: [],
+}
