@@ -20440,6 +20440,25 @@ fn run_cached_process_spec(
     std::fs::create_dir_all(&realization_workspace).map_err(|e| InterpError::TypeError {
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
     })?;
+    // ONE WRITER PER CONTENT-KEYED WORKSPACE. Two runs that share a cache root (two same-user runs
+    // outside CI share ~/.cache) would otherwise materialize, build and mark one directory at once:
+    // a reader can see a file another writer has just truncated. Every step from materialization to
+    // the ready marker happens under an exclusive lock on the realization workspace, so a second run
+    // waits, then finds the first run's `.native_ready` and runs warm, or rebuilds a partial
+    // directory (no marker) in place. A lock rather than build-elsewhere-then-rename: cargo records
+    // absolute paths, and a renamed build recompiles the crate on its first warm run while reporting
+    // compile_skipped (measured), so the publish would not be what the receipt says it is.
+    let publish_lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(realization_workspace.join(".native_publish.lock"))
+        .map_err(|e| InterpError::TypeError {
+            msg: format!("emit_host_run_transport_cached: publish lock open failed: {e}"),
+        })?;
+    publish_lock.lock().map_err(|e| InterpError::TypeError {
+        msg: format!("emit_host_run_transport_cached: publish lock failed: {e}"),
+    })?;
     emit_host_materialize_workspace_files(&realization_workspace, &workspace_files)?;
     let build_environment = emit_host_constructed_build_environment(admitted_names);
     let resolved_build_context_identity = emit_host_resolved_build_context_identity(
