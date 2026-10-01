@@ -81,6 +81,7 @@ import v2.std.compilers.body_lowering {
   lower_unary_prefix
 }
 import v2.std.list_introduction { lower_list_introduction }
+import v2.std.map_introduction { map_literal_entries_label, map_literal_entry_label }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
@@ -111,6 +112,8 @@ import v2.std.symbol_index {
 }
 import v2.std.node {
   Arrow,
+  edge_label_of,
+  labeled_named_is,
   is_positional,
   Atom,
   Branch,
@@ -140,8 +143,10 @@ import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrap
 import v2.std.node_query {
   node_positional_child_targets,
   construct_node,
+  construct_node_elided,
   construct_tag_elided_reference,
   construct_tag_reading,
+  construct_tag_reading_of_target,
   ConstructTagAuthored,
   ConstructTagElided,
   NotAConstruct,
@@ -3518,6 +3523,50 @@ fn body_lower_fn_decl_exit_refusal_optional(captured: Node) -> Optional<Outcome<
 // (gunbc.recurring_failure_mode uses_clause_has_no_carrier), so lowering the fn would drop the
 // requirement. Both arms -- the full arrow and the census arrow -- ask this first, because the
 // requirement is part of the signature both of them read.
+// A `pattern` IS A FN WITH v1's NARROWER FORM (dag syntax dag_item_forms: has_type_params false,
+// body_kind BlockBody), sharing the one fn_decl production. The grammar cannot express the narrowing
+// without changing the spine depth the positional readers walk, so it is held here, on both arms: a
+// pattern-headed declaration that writes generic params, or an `= expr` body, refuses located at
+// what it wrote (body_lowering_reason_pattern_form_not_admitted) and never lowers as a fn. The head
+// is told apart by its token: `fn` is the keyword token, `pattern` a literal identifier.
+fn body_lower_pattern_form_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+    Absent => optional_absent()
+    Present { value: head_rest } =>
+      if body_lower_token_is(node: head_rest.left, token: ^dag_token_kw_fn) {
+        optional_absent()
+      } else {
+        match body_lower_pattern_generics_optional(captured: captured) {
+          Present { value: generics } =>
+            optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_form_not_admitted, n: generics)))
+          Absent =>
+            match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_fn_body) {
+              Present { value: _ } => optional_absent()
+              Absent =>
+                optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_form_not_admitted, n: captured)))
+            }
+        }
+      }
+  }
+}
+
+// The generic_params production in the declaration's own `<T>` slot, if the source wrote one.
+fn body_lower_pattern_generics_optional(captured: Node) -> Optional<Node> {
+  match body_lower_decl_generic_params_slot_optional(captured: captured) {
+    Absent => optional_absent()
+    Present { value: slot } => body_lower_find_production_shell_optional(root: slot, emitted: ^dag_surface_generic_params)
+  }
+}
+
+// The signature refusals both arms ask before reading anything: a pattern head written in a form v1
+// does not admit, then a `uses` clause v2 has no carrier for.
+fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
+  match body_lower_pattern_form_refusal_optional(captured: captured) {
+    Present { value: refused } => optional_present(value: refused)
+    Absent => body_lower_fn_uses_refusal_optional(captured: captured)
+  }
+}
+
 fn body_lower_fn_uses_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
   match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_uses_clause) {
     Absent => optional_absent()
@@ -3530,7 +3579,7 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_fn_uses_refusal_optional(captured: captured) {
+      match body_lower_first_signature_refusal_optional(captured: captured) {
         Present { value: refused } => body_lowering_lowered(o: refused)
         Absent =>
           match body_lower_fn_decl_exit_refusal_optional(captured: captured) {
@@ -3786,7 +3835,7 @@ fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_fn_uses_refusal_optional(captured: captured) {
+      match body_lower_first_signature_refusal_optional(captured: captured) {
         Present { value: refused } => body_lowering_lowered(o: refused)
         Absent =>
           match body_lower_fn_signature_optional(captured: captured) {
@@ -6821,6 +6870,67 @@ fn body_lower_let_name_position(after_let: Node) -> Node {
   }
 }
 
+// v1's OTHER SPELLINGS OF A STATEMENT LET (v2.extdeps.languages.dag dag_grammar_let_sugar_expr):
+// `node x: e` / `node x = e` and a bare `x = e`. Each names a binder and a value exactly as `let x = e`
+// does and writes no annotation, so the three statement-let readers below consult this first and
+// read the same two positions from it -- one reader of a let's parts, three spellings.
+type BodyLowerLetSugar {
+  name: Node,
+  value: Node,
+}
+
+// Read by SHAPE, not by the head's spelling: the `node` head is a literal terminal, whose parse atom
+// carries its token class rather than its lexeme. The two shapes are disjoint -- a bare assignment is
+// seq(name, seq(`=`, value)); the node form is seq(head, seq(name, seq(`:`|`=`, value))) -- and the
+// node form's head is required NOT to be `let`, so `let x: T = e` is never read as sugar (its
+// annotation would otherwise be taken for the value).
+fn body_lower_let_sugar_optional(captured: Node) -> Optional<BodyLowerLetSugar> {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: body_lower_unwrap_surface_shell(node: captured))) {
+    Absent => optional_absent()
+    Present { value: head } =>
+      match body_lower_let_sugar_after_name(name: head.left, rest: head.right, colon_admitted: false) {
+        Present { value: bare } => optional_present(value: bare)
+        Absent =>
+          if body_lower_token_is(node: head.left, token: ^dag_token_kw_let) {
+            optional_absent()
+          } else {
+            match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: head.right)) {
+              Absent => optional_absent()
+              Present { value: name_rest } => body_lower_let_sugar_after_name(name: name_rest.left, rest: name_rest.right, colon_admitted: true)
+            }
+          }
+      }
+  }
+}
+
+fn body_lower_token_is(node: Node, token: Symbol) -> Bool {
+  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+    Present { value: id } => id == token
+    Absent => false
+  }
+}
+
+// seq(separator, expr) after the name: `=` always, `:` only in the `node` form.
+fn body_lower_let_sugar_after_name(name: Node, rest: Node, colon_admitted: Bool) -> Optional<BodyLowerLetSugar> {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: rest)) {
+    Absent => optional_absent()
+    Present { value: sep_value } =>
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: sep_value.left)) {
+        Absent => optional_absent()
+        Present { value: sep } =>
+          if (sep == ^dag_token_eq) || (colon_admitted && (sep == ^dag_token_colon)) {
+            match body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: name)) {
+              Absent => optional_absent()
+              Present { value: _ } => optional_present(value: BodyLowerLetSugar { name: name, value: sep_value.right })
+            }
+          } else {
+            optional_absent()
+          }
+      }
+  }
+}
+
+
 // The let's key binding. The name is the projection of the binder atom below, which is lowered from
 // the token it was read from so it keeps its minted occurrence (v2.compiler.occurrence_role reads it).
 fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
@@ -6831,6 +6941,13 @@ fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
 }
 
 fn body_lower_let_in_key_binding_atom_optional(captured: Node) -> Optional<Node> {
+  match body_lower_let_sugar_optional(captured: captured) {
+    Present { value: sugar } => body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: sugar.name))
+    Absent => body_lower_let_keyword_key_binding_atom_optional(captured: captured)
+  }
+}
+
+fn body_lower_let_keyword_key_binding_atom_optional(captured: Node) -> Optional<Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Present { value: left } =>
@@ -6849,19 +6966,19 @@ fn body_lower_let_in_key_binding_atom_optional(captured: Node) -> Optional<Node>
                     }
                 }
               } else {
-                match body_lower_let_in_key_binding_atom_optional(captured: left) {
+                match body_lower_let_keyword_key_binding_atom_optional(captured: left) {
                   Present { value: found } => Present { value: found }
-                  Absent => body_lower_let_in_key_binding_atom_optional(captured: right)
+                  Absent => body_lower_let_keyword_key_binding_atom_optional(captured: right)
                 }
               }
             Absent =>
-              match body_lower_let_in_key_binding_atom_optional(captured: left) {
+              match body_lower_let_keyword_key_binding_atom_optional(captured: left) {
                 Present { value: found } => Present { value: found }
-                Absent => body_lower_let_in_key_binding_atom_optional(captured: right)
+                Absent => body_lower_let_keyword_key_binding_atom_optional(captured: right)
               }
           }
         Absent =>
-          match body_lower_let_in_key_binding_atom_optional(captured: left) {
+          match body_lower_let_keyword_key_binding_atom_optional(captured: left) {
             Present { value: found } => Present { value: found }
             Absent => Absent
           }
@@ -6869,15 +6986,15 @@ fn body_lower_let_in_key_binding_atom_optional(captured: Node) -> Optional<Node>
     Absent =>
       match sugar_sequence_pair_optional(node: spine) {
         Present { value: pair } =>
-          match body_lower_let_in_key_binding_atom_optional(captured: pair.left) {
+          match body_lower_let_keyword_key_binding_atom_optional(captured: pair.left) {
             Present { value: found } => Present { value: found }
-            Absent => body_lower_let_in_key_binding_atom_optional(captured: pair.right)
+            Absent => body_lower_let_keyword_key_binding_atom_optional(captured: pair.right)
           }
         Absent =>
           fold(spine.children, init: Absent, f: fn(acc, e) {
             match acc {
               Present { value: _ } => acc
-              Absent => body_lower_let_in_key_binding_atom_optional(captured: e.target)
+              Absent => body_lower_let_keyword_key_binding_atom_optional(captured: e.target)
             }
           })
       }
@@ -7042,6 +7159,13 @@ fn body_lower_type_annotation_not_carried(at: Node) -> Outcome<Node> {
 // `let NAME : type_expr = value` -- the colon is the first element after NAME, read positionally the
 // way the `<T>` slot is; the unannotated arm has `=` there.
 fn body_lower_let_annotation_optional(captured: Node) -> Optional<Node> {
+  match body_lower_let_sugar_optional(captured: captured) {
+    Present { value: _ } => optional_absent()
+    Absent => body_lower_let_keyword_annotation_optional(captured: captured)
+  }
+}
+
+fn body_lower_let_keyword_annotation_optional(captured: Node) -> Optional<Node> {
   match body_lower_fn_decl_spine_right(node: body_lower_unwrap_surface_shell(node: captured)) {
     Absent => optional_absent()
     Present { value: after_let } =>
@@ -7190,6 +7314,13 @@ fn body_lower_statement_let_captured_optional(stmt: Node) -> Optional<Node> {
 // that position for both let forms: the in-form narrows its answer to what precedes `in`
 // (body_lower_let_in_value_capture_optional).
 fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
+  match body_lower_let_sugar_optional(captured: captured) {
+    Present { value: sugar } => optional_present(value: sugar.value)
+    Absent => body_lower_let_keyword_statement_value_optional(captured: captured)
+  }
+}
+
+fn body_lower_let_keyword_statement_value_optional(captured: Node) -> Optional<Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Absent => optional_absent()
@@ -7202,9 +7333,9 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
               if id == ^dag_token_eq {
                 optional_present(value: right)
               } else {
-                body_lower_let_statement_value_optional(captured: right)
+                body_lower_let_keyword_statement_value_optional(captured: right)
               }
-            Absent => body_lower_let_statement_value_optional(captured: right)
+            Absent => body_lower_let_keyword_statement_value_optional(captured: right)
           }
       }
   }
@@ -8147,7 +8278,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
     d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item)
   )
   if body_lower_field_init_is_string_keyed(item: captured) {
-    refuse
+    body_lower_map_literal_entry_edge_from_item(captured: captured, item: item, refuse: refuse)
   } else {
   match sugar_sequence_pair_optional(node: captured) {
     Absent => refuse
@@ -8169,6 +8300,101 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
           }
       }
   }
+  }
+}
+
+// A STRING-KEYED ITEM `"k": v` (a map literal's entry), recognised by the grammar's own production
+// (body_lower_field_init_is_string_keyed, the one reader). Its key is lowered as the VALUE any string
+// literal lowers to, never read as a field name, so the key's kind survives to resolve
+// (docs/plans/map-literal-introduction-design.md).
+fn body_lower_map_literal_entry_edge_from_item(captured: Node, item: Node, refuse: Outcome<Edge>) -> Outcome<Edge> {
+  match sugar_sequence_pair_optional(node: parse_production_captured_child_optional_or_self(node: captured)) {
+    Absent => refuse
+    Present { value: pair } =>
+      match body_lower_value_read(value: pair.left) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: key, diagnostics: _ } => body_lower_map_literal_entry_edge(key: key, after_key: pair.right, item: item, refuse: refuse)
+      }
+  }
+}
+
+fn parse_production_captured_child_optional_or_self(node: Node) -> Node {
+  match parse_production_captured_child_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+    Present { value: c } => c
+    Absent => node
+  }
+}
+
+// The entry edge: v2.std.map_introduction map_literal_entry_label, targeting a tag-elided construct
+// carrying `key` and `value`. Only resolve's map arm reads it.
+fn body_lower_map_literal_entry_edge(key: Node, after_key: Node, item: Node, refuse: Outcome<Edge>) -> Outcome<Edge> {
+  match sugar_sequence_pair_optional(node: after_key) {
+    Absent => refuse
+    Present { value: after_colon } =>
+      match body_lower_value_read(value: after_colon.right) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: value, diagnostics: d } =>
+          outcome_with_diagnostics(
+            value: Edge {
+              label: Named { name: map_literal_entry_label() },
+              target: construct_node_elided(
+                field_edges: [
+                  Edge { label: Named { name: ^key }, target: key },
+                  Edge { label: Named { name: ^value }, target: value }
+                ],
+                source: item
+              )
+            },
+            diagnostics: d
+          )
+      }
+  }
+}
+
+// A brace already known to be all string keys (body_lower_brace_key_kinds_refusal_optional ran
+// first) carries its pairs on ONE edge, a list literal of them in authored order; any other brace
+// is returned as it is.
+fn body_lower_map_literal_entries_collapsed(edges: List<Edge>, source: Node) -> List<Edge> {
+  let pairs = fold(edges, init: [], f: fn(acc, e) {
+    if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entry_label()) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+  })
+  match pairs {
+    Empty => edges
+    Cons { head: _, tail: _ } =>
+      [Edge { label: Named { name: map_literal_entries_label() }, target: lower_list_introduction(elements: pairs, source: source) }]
+  }
+}
+
+// ONE KIND OF KEY PER BRACE, AND STRING KEYS ONLY WITHOUT A HEAD. Lowering does not choose record or
+// map, but it can see a brace no choice could type: a constructor head over string keys
+// (`R { "k": v }`), or a headless brace mixing name keys and string keys. Each refuses at the first
+// item of the offending kind.
+fn body_lower_brace_key_kinds_refusal_optional(reference: Node, edges: List<Edge>) -> Optional<Edge> {
+  let headless = match construct_tag_reading_of_target(target: reference) {
+    ConstructTagElided => true
+    ConstructTagAuthored { reference: _ } => false
+    NotAConstruct => false
+  }
+  let first_entry = fold(edges, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entry_label()) { optional_present(value: e) } else { optional_absent() }
+    }
+  })
+  let first_field = fold(edges, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entry_label()) { optional_absent() } else { optional_present(value: e) }
+    }
+  })
+  match first_entry {
+    Absent => optional_absent()
+    Present { value: entry } =>
+      if headless {
+        first_field
+      } else {
+        optional_present(value: entry)
+      }
   }
 }
 
@@ -8225,9 +8451,14 @@ fn body_lower_record_construct(reference: Node, items: List<Node>, source: Node)
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: edges, diagnostics: d } =>
+      match body_lower_brace_key_kinds_refusal_optional(reference: reference, edges: edges) {
+        Present { value: offending } =>
+          outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_brace_key_kind_mismatch, n: offending.target))
+        Absent =>
       Accepted {
-        value: construct_node(reference: reference, field_edges: edges, source: source),
+        value: construct_node(reference: reference, field_edges: body_lower_map_literal_entries_collapsed(edges: edges, source: source), source: source),
         diagnostics: d
+      }
       }
   }
 }
@@ -8270,8 +8501,8 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<RecordLite
 // (v2.std.node_query construct_tag_elided_reference), and resolve's construct-tag writer either
 // writes the expected record's reference or refuses located
 // (docs/plans/anonymous-record-literal-design.md). The field set is never consulted to choose. A
-// string-keyed item (a map literal) has no field edge here and still refuses at the item; the map
-// arm gives it one (gunbc#12734).
+// string-keyed brace (a map literal) carries its pairs on one map_literal_entries edge; resolve's map arm reads
+// it (docs/plans/map-literal-introduction-design.md).
 fn body_lower_try_headless_record_literal(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_record_brace_items_optional(brace: captured) {
     Absent => outcome_accepted(value: optional_absent())
