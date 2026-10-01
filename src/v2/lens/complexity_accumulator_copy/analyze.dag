@@ -533,10 +533,20 @@ fn lowered_transform_combiner_optional(node: Node) -> Optional<Symbol> {
       fold(v2.std.node_query.node_positional_child_targets(node: node), init: Absent, f: fn(acc, t) {
         match acc {
           Present { value: _ } => acc
-          Absent => v2.std.grammar.node_atom_identity_optional(node: t)
+          Absent => lowered_value_name_optional(node: t)
         }
       })
     _ => Absent
+  }
+}
+
+// THE NAME A LOWERED VALUE IS SPELLED BY: a bare atom's identity, or a resolved local's
+// (v2.std.qualified_name local_reference_symbol_optional) -- after resolution a let, arm binder or
+// closure parameter is a binder reference, not an atom, and still names exactly one value.
+fn lowered_value_name_optional(node: Node) -> Optional<Symbol> {
+  match v2.std.grammar.node_atom_identity_optional(node: node) {
+    Present { value: sym } => Present { value: sym }
+    Absent => v2.std.qualified_name.local_reference_symbol_optional(node: node)
   }
 }
 
@@ -547,7 +557,7 @@ fn lowered_arg_port_reading(arg: Node) -> v2.lens.complexity_accumulator_copy.Po
     v2.lens.complexity_accumulator_copy.PortPureLiteral
   } else {
     if idents == 1 {
-      match v2.std.grammar.node_atom_identity_optional(node: arg) {
+      match lowered_value_name_optional(node: arg) {
         Present { value: sym } =>
           if v2.extdeps.languages.dag.dag_lex_token_symbol(sym: sym) {
             v2.lens.complexity_accumulator_copy.PortPureLiteral
