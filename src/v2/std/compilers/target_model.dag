@@ -98,6 +98,7 @@ import v2.std.node {
   LoopDomainValue,
   LoopEdgeUnrecognized,
   LoopIteratedBody,
+  LoopRealizedDeclaration,
   loop_edge_role,
   Arrow,
   ComputationBody,
@@ -159,13 +160,16 @@ import v2.std.node_query {
   node_positional_child_targets,
   nullary_inhabitant_by_discriminant,
   is_wildcard_pattern_identity,
-  pattern_wildcard_name
+  pattern_wildcard_name,
+  construct_field_edges,
+  construct_tag_optional
 }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_node,
   qualified_name_init,
-  qualified_name_last_segment
+  qualified_name_last_segment,
+  declaration_reference_path_optional
 }
 import v2.std.logic {
   Bool
@@ -370,29 +374,29 @@ fn produced_decl_render_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
-// A type reference renders as one bound token in the target's identifier class. Any
-// other type shape REFUSES, typed and located -- never a fabricated spelling.
+// A type reference renders as one bound token in the target's identifier class, bound to what the
+// caller's type_binding resolves the type to: a declared type's reference spelled by the target's
+// declaration-reference form, a kernel carrier's atom realization, or an explicit target spelling
+// (v2.compiler.emit_produced
+// produced_type_binding). EVERY type shape is handed to the resolver, which is the one place that
+// decides a spelling or refuses, typed and located; the token is never bound to a type nothing resolved,
+// so the serializer's interned-name fallback cannot fabricate a type spelling.
 fn produced_decl_type_ref_tokens(
   token_class: Symbol,
-  type_node: Node
+  type_node: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  match type_node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      outcome_accepted(value: [BoundToken { token_class: token_class, binding: id }])
-    _ =>
-      outcome_rejected(
-        d: produced_decl_render_diagnostic(
-          reason: ^produced_decl_render_type_shape_unsupported,
-          node: type_node
-        )
-      )
-  }
+  bind_outcome(
+    o: type_binding(type_node),
+    f: fn(binding) { outcome_accepted(value: [BoundToken { token_class: token_class, binding: binding }]) }
+  )
 }
 
 fn produced_decl_param_segment_tokens(
   rows: ProducedDeclRenderRows,
   edge: Edge,
-  segment: ProducedDeclParamSegment
+  segment: ProducedDeclParamSegment,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match segment {
     ProducedParamFixed { token_class: tc } =>
@@ -412,7 +416,8 @@ fn produced_decl_param_segment_tokens(
     ProducedParamType =>
       produced_decl_type_ref_tokens(
         token_class: rows.type_ref_token_class,
-        type_node: edge.target
+        type_node: edge.target,
+        type_binding: type_binding
       )
   }
 }
@@ -420,7 +425,8 @@ fn produced_decl_param_segment_tokens(
 fn produced_decl_param_layout_tokens(
   rows: ProducedDeclRenderRows,
   edge: Edge,
-  layout: List<ProducedDeclParamSegment>
+  layout: List<ProducedDeclParamSegment>,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   fold_list(
     xs: layout,
@@ -430,7 +436,7 @@ fn produced_decl_param_layout_tokens(
         o: acc,
         f: fn(so_far) {
           bind_outcome(
-            o: produced_decl_param_segment_tokens(rows: rows, edge: edge, segment: segment),
+            o: produced_decl_param_segment_tokens(rows: rows, edge: edge, segment: segment, type_binding: type_binding),
             f: fn(toks) {
               outcome_accepted(value: list_append(left: so_far, right: toks))
             }
@@ -463,7 +469,8 @@ type ProducedDeclParamsFold {
 
 fn produced_decl_params_tokens(
   rows: ProducedDeclRenderRows,
-  params: List<Edge>
+  params: List<Edge>,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: fold_list(
@@ -479,7 +486,8 @@ fn produced_decl_params_tokens(
               o: produced_decl_param_layout_tokens(
                 rows: rows,
                 edge: edge,
-                layout: rows.param_layout
+                layout: rows.param_layout,
+                type_binding: type_binding
               ),
               f: fn(toks) {
                 outcome_accepted(
@@ -513,7 +521,8 @@ fn produced_decl_params_tokens(
 fn produced_decl_signature_segment_tokens(
   rows: ProducedDeclRenderRows,
   subject: ProducedDeclSignatureSubject,
-  segment: ProducedDeclSignatureSegment
+  segment: ProducedDeclSignatureSegment,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match segment {
     ProducedSignatureFixed { token_class: tc } =>
@@ -521,12 +530,13 @@ fn produced_decl_signature_segment_tokens(
     ProducedSignatureDeclName { token_class: tc } =>
       outcome_accepted(value: [BoundToken { token_class: tc, binding: subject.fn_name }])
     ProducedSignatureParams =>
-      produced_decl_params_tokens(rows: rows, params: subject.params)
+      produced_decl_params_tokens(rows: rows, params: subject.params, type_binding: type_binding)
     ProducedSignatureReturnType =>
       produced_decl_type_tokens_at(
         rows: rows,
         position: FunctionTypeAtItemReturn,
-        type_node: subject.codomain
+        type_node: subject.codomain,
+        type_binding: type_binding
       )
   }
 }
@@ -538,7 +548,8 @@ fn produced_decl_signature_segment_tokens(
 fn produced_decl_type_tokens_at(
   rows: ProducedDeclRenderRows,
   position: FunctionTypePosition,
-  type_node: Node
+  type_node: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match type_node.kind {
     TypeNode { connective: Arrow } =>
@@ -558,14 +569,16 @@ fn produced_decl_type_tokens_at(
                 o: produced_decl_function_type_params_tokens(
                   rows: rows,
                   sugar: row.sugar,
-                  params: produced_decl_function_type_domain_edges(arrow: type_node, params: shape.params)
+                  params: shape.params,
+                  type_binding: type_binding
                 ),
                 f: fn(param_tokens) {
                   bind_outcome(
                     o: produced_decl_type_tokens_at(
                       rows: rows,
                       position: FunctionTypeAtFnBoundReturn,
-                      type_node: shape.codomain
+                      type_node: shape.codomain,
+                      type_binding: type_binding
                     ),
                     f: fn(return_tokens) {
                       outcome_accepted(
@@ -584,35 +597,23 @@ fn produced_decl_type_tokens_at(
             }
           )
       }
-    _ => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node)
-  }
-}
-
-// A function TYPE's domain is lowered two ways: a single parameter type stands as the domain itself
-// (`fn(Int) -> R` lowers to Arrow(Int, R)), and several stand as a Conj of their edges. The Conj's
-// edges are the parameters; a lone type is one parameter, carried as one positional edge.
-fn produced_decl_function_type_domain_edges(arrow: Node, params: List<Edge>) -> List<Edge> {
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
-    Present { value: domain } =>
-      match domain.kind {
-        TypeNode { connective: Conj } => params
-        _ => [Edge { label: Positional, target: domain }]
-      }
-    Absent => params
+    _ => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node, type_binding: type_binding)
   }
 }
 
 fn produced_decl_function_type_param_tokens(
   rows: ProducedDeclRenderRows,
-  edge: Edge
+  edge: Edge,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: edge.target)
+  produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: edge.target, type_binding: type_binding)
 }
 
 fn produced_decl_function_type_params_tokens(
   rows: ProducedDeclRenderRows,
   sugar: FunctionTypeSugarRows,
-  params: List<Edge>
+  params: List<Edge>,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: fold_list(
@@ -623,7 +624,7 @@ fn produced_decl_function_type_params_tokens(
           o: acc,
           f: fn(so_far) {
             bind_outcome(
-              o: produced_decl_function_type_param_tokens(rows: rows, edge: edge),
+              o: produced_decl_function_type_param_tokens(rows: rows, edge: edge, type_binding: type_binding),
               f: fn(toks) {
                 outcome_accepted(
                   value: ProducedDeclParamsFold {
@@ -657,7 +658,8 @@ fn produced_decl_function_type_params_tokens(
 fn produced_decl_signature_segments_tokens(
   rows: ProducedDeclRenderRows,
   subject: ProducedDeclSignatureSubject,
-  segments: List<ProducedDeclSignatureSegment>
+  segments: List<ProducedDeclSignatureSegment>,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   fold_list(
     xs: segments,
@@ -670,7 +672,8 @@ fn produced_decl_signature_segments_tokens(
             o: produced_decl_signature_segment_tokens(
               rows: rows,
               subject: subject,
-              segment: segment
+              segment: segment,
+              type_binding: type_binding
             ),
             f: fn(toks) {
               outcome_accepted(value: list_append(left: so_far, right: toks))
@@ -687,47 +690,43 @@ fn produced_decl_signature_segments_tokens(
 // the one reader of ^arrow_signature_order_edge) -- never the domain Conj's stored sequence, which is
 // a set's storage and which canonicalization sorts by label. The domain is read only for MEMBERSHIP:
 // each declared label selects its binder edge, so the parameter's type still comes from the domain.
-// A domain that binds named parameters but carries no readable order refuses typed; there is no
-// domain-order fallback. A domain that binds no name -- a function TYPE's positional product, or a
-// lone parameter type (produced_decl_function_type_domain_edges) -- has no labels to order: its
-// positional edges are the sequence, so its children pass through. A domain mixing named and
-// positional edges is neither and refuses as malformed rather than dropping the positional ones.
+// Every Arrow has one encoding (Program P): a function TYPE's parameters are minted anonymous binders
+// with their own declared order (v2.std.arrow_signature anonymous_signature_arrow), and a nullary
+// function declares the empty order. So there is no "domain binding no names" arm: an Arrow with no
+// readable order -- the retired positional-types shape among them -- refuses typed, and there is no
+// domain-order fallback.
 fn produced_decl_ordered_params(arrow: Node, domain: Node) -> Outcome<List<Edge>> {
-  match arrow_domain_binder_names(arrow: arrow) {
-    Empty => outcome_accepted(value: domain.children)
-    Cons { head: _, tail: _ } =>
-      match arrow_declared_parameter_order(arrow: arrow) {
-        ArrowParameterOrderDeclared { labels: labels } =>
-          if length(xs: labels) != length(xs: domain.children) {
-            outcome_rejected(
-              d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
-            )
-          } else {
-            fold_list(
-              xs: labels,
-              empty: outcome_accepted(value: Empty),
-              cons: fn(acc, label) {
+  match arrow_declared_parameter_order(arrow: arrow) {
+    ArrowParameterOrderDeclared { labels: labels } =>
+      if length(xs: labels) != length(xs: domain.children) {
+        outcome_rejected(
+          d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+        )
+      } else {
+        fold_list(
+          xs: labels,
+          empty: outcome_accepted(value: Empty),
+          cons: fn(acc, label) {
+            bind_outcome(
+              o: acc,
+              f: fn(so_far) {
                 bind_outcome(
-                  o: acc,
-                  f: fn(so_far) {
-                    bind_outcome(
-                      o: produced_decl_domain_binder(arrow: arrow, domain: domain, label: label),
-                      f: fn(edge) { outcome_accepted(value: list_snoc_item(xs: so_far, item: edge)) }
-                    )
-                  }
+                  o: produced_decl_domain_binder(arrow: arrow, domain: domain, label: label),
+                  f: fn(edge) { outcome_accepted(value: list_snoc_item(xs: so_far, item: edge)) }
                 )
               }
             )
           }
-        ArrowParameterOrderAbsent =>
-          outcome_rejected(
-            d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_absent, node: arrow)
-          )
-        ArrowParameterOrderMalformed =>
-          outcome_rejected(
-            d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
-          )
+        )
       }
+    ArrowParameterOrderAbsent =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_absent, node: arrow)
+      )
+    ArrowParameterOrderMalformed =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+      )
   }
 }
 
@@ -825,7 +824,8 @@ fn produced_decl_subject_from_decl(decl: Node) -> Outcome<ProducedDeclSignatureS
 
 fn produced_decl_signature_with_open_from_rows(
   rows: ProducedDeclRenderRows,
-  decl: Node
+  decl: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: produced_decl_subject_from_decl(decl: decl),
@@ -833,7 +833,8 @@ fn produced_decl_signature_with_open_from_rows(
       produced_decl_signature_segments_tokens(
         rows: rows,
         subject: subject,
-        segments: rows.signature
+        segments: rows.signature,
+        type_binding: type_binding
       )
     }
   )
@@ -843,10 +844,11 @@ fn produced_decl_signature_with_open_from_rows(
 // is the structural inverse of the target's rows and holds no per-target knowledge.
 fn produced_decl_render_from_rows(
   rows: ProducedDeclRenderRows,
-  decl: Node
+  decl: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<TargetBodiedArrowStatementScaffold> {
   bind_outcome(
-    o: produced_decl_signature_with_open_from_rows(rows: rows, decl: decl),
+    o: produced_decl_signature_with_open_from_rows(rows: rows, decl: decl, type_binding: type_binding),
     f: fn(signature_with_open) {
       outcome_accepted(
         derive_bodied_arrow_scaffold(
@@ -1158,7 +1160,15 @@ fn lex_pattern_fixed_spelling(pattern: LexPattern) -> Optional<String> {
   match pattern {
     LiteralPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
     KeywordPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
-    _ => optional_absent()
+    EmptyPattern => optional_absent()
+    CharPattern { char: _ } => optional_absent()
+    CharClassPattern { class: _ } => optional_absent()
+    SequencePattern { left: _, right: _ } => optional_absent()
+    ChoicePattern { left: _, right: _ } => optional_absent()
+    OptionalPattern { element: _ } => optional_absent()
+    RepeatPattern { element: _ } => optional_absent()
+    OneOrMorePattern { element: _ } => optional_absent()
+    DelimitedPattern { open: _, body: _, close: _ } => optional_absent()
   }
 }
 
@@ -6774,22 +6784,6 @@ fn target_value_expr_record_construct_field_slots_from_wire(
   }
 }
 
-fn target_value_expr_labeled_edge_head(labeled: List<Edge>) -> Optional<Edge> {
-  fold(labeled, init: optional_absent(), f: fn(acc, edge) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => optional_present(value: edge)
-    }
-  })
-}
-
-fn target_value_expr_labeled_edges_tail(labeled: List<Edge>) -> List<Edge> {
-  match list_tail(xs: labeled) {
-    TailFound { tail: rest } => rest
-    TailAbsent => Empty
-  }
-}
-
 fn target_value_expr_record_construct_field_tokens(
   slots: List<TargetValueExprFieldInitSlot>,
   projection: TargetValueExpressionProjection,
@@ -9299,7 +9293,8 @@ fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge>
     Named { name: n } =>
 
       match n == ^target_model_edge_atom_realizations
-        || n == ^target_model_edge_signature_realizations {
+        || n == ^target_model_edge_signature_realizations
+        || n == ^target_model_edge_refinement_declaration {
         true => acc
         false => list_snoc_item(xs: acc, item: edge)
       }
@@ -14189,7 +14184,14 @@ fn target_project_transform_primitive_apply_in_arrow_scope(
   match canonical_op {
     CoercionCrossing { homomorphism_rule: _ } =>
       target_project_cast_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
-    _ => target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    AlgebraPrimitive { algebra_field: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    AlgebraInverseCompose { binary_field: _, inverse_field: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    OrderingComparison { compare_field: _, predicate: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+    EqualityComparison { eq_field: _, predicate: _ } =>
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
   }
 }
 
@@ -14580,24 +14582,37 @@ fn target_value_expr_project_atom_literal_or(
   }
 }
 
-fn target_value_expr_record_construct_gate(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      if !all_edges_named(children: node.children) {
-        false
-      } else {
-        match target_value_expr_labeled_edge_head(
-          labeled: node_labeled_child_edges(node: node)
-        ) {
-          Present { value: first_edge } =>
-            match first_edge.target.kind {
-              TypeNode { connective: Atom { identity: _ } } => true
-              _ => false
-            }
-          Absent => false
-        }
+// A CONSTRUCT REACHES EMISSION RESOLVED. Its tag (v2.std.node_query construct_tag_optional) must be a
+// resolved reference -- a declaration reference, whose path names the constructor declaration, or a
+// kernel canonical atom -- and the emitted type name is that declaration's own name, spelled by the
+// target's binding rows downstream. An authored path that never went through resolution is not an
+// identity and refuses here, as does any Conj that is not a construct. Before the tag was a marked
+// reference this gate read the first labelled edge's target as an Atom, which a resolved user
+// construct never has (gunbc.recurring_failure_mode
+// construct_tag_read_by_label_equality_after_resolve_rewrote_the_target), so it refused every one.
+fn target_value_expr_record_construct_type_name_optional(node: Node) -> Optional<Symbol> {
+  match construct_tag_optional(n: node) {
+    Absent => optional_absent()
+    Present { value: reference } =>
+      match declaration_reference_path_optional(node: reference) {
+        Present { value: path } =>
+          match qualified_name_last_segment(qn: path) {
+            Present { value: name } => optional_present(value: name)
+            Absent => optional_absent()
+          }
+        Absent =>
+          match reference.kind {
+            TypeNode { connective: Atom { identity: kernel } } => optional_present(value: kernel)
+            _ => optional_absent()
+          }
       }
-    _ => false
+  }
+}
+
+fn target_value_expr_record_construct_gate(node: Node) -> Bool {
+  match target_value_expr_record_construct_type_name_optional(node: node) {
+    Present { value: _ } => all_edges_named(children: node.children)
+    Absent => false
   }
 }
 
@@ -14668,36 +14683,25 @@ fn target_project_record_construct(
       )
     )
   } else {
-    let labeled = node_labeled_child_edges(node: body)
-    match target_value_expr_labeled_edge_head(labeled: labeled) {
-      Present { value: type_edge } =>
-        match type_edge.target.kind {
-          TypeNode { connective: Atom { identity: type_name } } =>
-            bind_outcome(
-              o: target_value_expr_record_construct_field_slots_from_edges(
-                arrow: arrow,
-                edges: target_value_expr_labeled_edges_tail(labeled: labeled),
-                target: target,
-                source_bool_form: source_bool_form,
-                handle_transform: handle_transform
-              ),
-              f: fn(fields) {
-                outcome_accepted(
-                  target_value_expression_record_construct(
-                    type_name: type_name,
-                    fields: fields
-                  )
-                )
-              }
-            )
-          _ =>
-            outcome_rejected(
-              target_value_expr_diagnostic(
-                reason: ^target_value_expr_reason_transform_shape_invalid,
-                node: body
+    match target_value_expr_record_construct_type_name_optional(node: body) {
+      Present { value: type_name } =>
+        bind_outcome(
+          o: target_value_expr_record_construct_field_slots_from_edges(
+            arrow: arrow,
+            edges: construct_field_edges(n: body),
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          ),
+          f: fn(fields) {
+            outcome_accepted(
+              target_value_expression_record_construct(
+                type_name: type_name,
+                fields: fields
               )
             )
-        }
+          }
+        )
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
@@ -15060,6 +15064,7 @@ fn target_value_expr_loop_gate(node: Node) -> Bool {
           LoopBoundMeasure => acc
           LoopDomainValue => false
           LoopCarrierBinder => false
+          LoopRealizedDeclaration => false
           LoopEdgeUnrecognized => false
         }
       })
@@ -15421,24 +15426,20 @@ fn symbol_list_contains(xs: List<Symbol>, wanted: Symbol) -> Bool {
 // arrow_declared_parameter_order, the one reader of ^arrow_signature_order_edge) -- never the domain
 // Conj's stored sequence, which canonicalization sorts by label and is not the signature (#12361). Scope
 // MEMBERSHIP for captures stays arrow_domain_binder_names, an unordered set question. A domain that
-// binds names but carries no readable order refuses typed, exactly as eval's
-// eval_param_labels_in_declared_order does: there is no domain-order fallback. A domain that binds
-// no name emits no parameter.
+// carrying no readable order refuses typed, exactly as eval's eval_param_labels_in_declared_order
+// does: there is no domain-order fallback. A nullary closure declares the empty order, so there is
+// no "domain binding no names" arm (Program P, one Arrow encoding).
 fn realized_closure_ordered_params(closure: Node) -> Outcome<List<Symbol>> {
-  match arrow_domain_binder_names(arrow: closure) {
-    Empty => outcome_accepted(value: Empty)
-    Cons { head: _, tail: _ } =>
-      match arrow_declared_parameter_order(arrow: closure) {
-        ArrowParameterOrderDeclared { labels: labels } => outcome_accepted(value: labels)
-        ArrowParameterOrderAbsent =>
-          outcome_rejected(
-            target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_absent, node: closure)
-          )
-        ArrowParameterOrderMalformed =>
-          outcome_rejected(
-            target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_malformed, node: closure)
-          )
-      }
+  match arrow_declared_parameter_order(arrow: closure) {
+    ArrowParameterOrderDeclared { labels: labels } => outcome_accepted(value: labels)
+    ArrowParameterOrderAbsent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_absent, node: closure)
+      )
+    ArrowParameterOrderMalformed =>
+      outcome_rejected(
+        target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_malformed, node: closure)
+      )
   }
 }
 
@@ -15599,6 +15600,12 @@ fn target_project_arrow_body_to_value_expression(
 
 // The per-kind projection of a body classify_arrow_body_form did not classify as a function
 // value; a function-value body is dispatched above by its ArrowBodyForm, never by a raw kind here.
+// A TAIL ATOM IS THE SAME VALUE FORM AS A NESTED ONE. A body that is a bare parameter (`{ x }`) or a
+// bare literal (`{ true }`) is an Atom, and it projects through the one atom projection nested operands
+// already use (target_value_expr_project_atom_in_arrow_scope): a parameter binding first, then the
+// target's literal realizations, and an unresolved name refuses body_scope_binding_invalid. The Atom arm
+// used to accept only an integer literal and refuse every other atom as transform_shape_invalid, so a
+// bare-parameter or boolean body could not be emitted although the same atom emitted as an operand.
 fn target_project_arrow_body_by_kind(
   arrow: Node,
   body: Node,
@@ -15670,16 +15677,12 @@ fn target_project_arrow_body_by_kind(
           )
         }
       TypeNode { connective: Atom { identity: _ } } =>
-        if target_value_expr_is_int_literal_atom(node: body) {
-          target_value_expr_project_int_literal_atom(node: body)
-        } else {
-          outcome_rejected(
-            target_value_expr_diagnostic(
-              reason: ^target_value_expr_reason_transform_shape_invalid,
-              node: body
-            )
-          )
-        }
+        target_value_expr_project_atom_in_arrow_scope(
+          arrow: arrow,
+          node: body,
+          target: target,
+          source_bool_form: source_bool_form
+        )
       _ =>
         outcome_rejected(
           target_value_expr_diagnostic(

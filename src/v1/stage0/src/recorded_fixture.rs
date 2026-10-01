@@ -630,7 +630,6 @@ pub fn operation_result_type_name(op_node: &Rc<Node>, ctx: &InterpContext) -> St
 #[cfg(test)]
 mod map_set_fixture_encoding_tests {
     use super::*;
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{map_value, CanonKey, Env, ExecutionMode, Value};
     use crate::v1_std_core::{make_expr_node, ExprData, SourceSpan};
@@ -643,8 +642,8 @@ mod map_set_fixture_encoding_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HamtMap::new()),
+            item_leaf_owner_modules: Rc::new(HamtMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HamtMap::new()), ExecutionMode::Hermetic)
     }

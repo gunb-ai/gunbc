@@ -1,0 +1,25 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-reconcile
+✓ typecheck v2.std.compilers.target_model done in 27 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=16 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=18 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=4728 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=640 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1821 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=22 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=42 scale=closure
+[pre-entry] phase=closure_load ms=7413 scale=closure
+[pre-entry] phase=closure_parse ms=4852 scale=closure
+[pre-entry] phase=closure_resolve ms=279 scale=closure
+[pre-entry] phase=closure_normalize ms=955 scale=closure
+[pre-entry] phase=closure_typecheck ms=86863 scale=closure
+[pre-entry] phase=closure_parent_envs ms=8 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=158 scale=closure
+[pre-entry] phase=closure_ownership ms=1180 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=126713 scale=closure
+[pre-entry] population pool_modules=690 closure_files=690
+[pre-entry] process_cpu user_ms=124206 sys_ms=2066 max_rss_kib=4247480
+◐ started Filesystem.Write provisioning/srv1/gunbc-ghrunner.sudoers (10000 bytes)

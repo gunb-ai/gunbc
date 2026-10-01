@@ -43,7 +43,8 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldReleaseKeyNotSlotAddressable,
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
 }
-import gunbc.fabric_floor_policy { floor_execution_requirements, floor_grant_duration }
+import gunbc.fabric_floor_policy { floor_grant_duration }
+import gunbc.floor_demand { floor_execution_requirements }
 import product.fabric.budget {
   MoneyAccount, MoneyReservationRequest, MoneySettlementRequest, MoneyRefusal, MoneyOutcome,
   CurrencyMismatch, LedgerRefused, StaleLeaseGeneration,

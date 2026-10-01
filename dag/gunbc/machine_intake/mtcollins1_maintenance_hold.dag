@@ -176,11 +176,18 @@ fn unit_hold_acquire(root: NonEmptyStr, key: NonEmptyStr, owner: DurableHoldOwne
   match outcome {
     FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
       UnitHeld { proof: UnitHoldProof { root: root, key: key, owner: o, generation: g } }
-    _ =>
-      match unit_hold_refusal(outcome: outcome) {
-        Present { value: r } => UnitHoldRefused { reason: r }
-        Absent => UnitHoldRefused { reason: "unit hold outcome unclassified; controller untouched" as NonEmptyStr }
-      }
+    FileHoldOccupied { slot_key: _, holder: _, generation: _ } => unit_hold_not_acquired(outcome: outcome)
+    FileHoldAcquireLost { slot_key: _ } => unit_hold_not_acquired(outcome: outcome)
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => unit_hold_not_acquired(outcome: outcome)
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => unit_hold_not_acquired(outcome: outcome)
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => unit_hold_not_acquired(outcome: outcome)
+  }
+}
+
+fn unit_hold_not_acquired(outcome: FileHoldAcquireOutcome) -> UnitHoldAcquisition {
+  match unit_hold_refusal(outcome: outcome) {
+    Present { value: r } => UnitHoldRefused { reason: r }
+    Absent => UnitHoldRefused { reason: "unit hold outcome unclassified; controller untouched" as NonEmptyStr }
   }
 }
 

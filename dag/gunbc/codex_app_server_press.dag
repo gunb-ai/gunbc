@@ -658,7 +658,10 @@ fn disposition_from_account_read_result(result: JsonValue) -> AccountTripFrameDi
         key: codex_account_read_result_requires_openai_auth_key as String,
       ) {
         JsonMemberFound { value: JsonBool { value: true } } => AccountTripLoginRequiredSignal
-        _ => AccountTripMissing
+        JsonMemberFound { value: _ } => AccountTripMissing
+        JsonMemberAbsent => AccountTripMissing
+        JsonMemberDuplicated { count: _ } => AccountTripMissing
+        JsonMemberNotAnObject => AccountTripMissing
       }
     JsonMemberDuplicated { count: _ } => AccountTripMissing
     JsonMemberNotAnObject => AccountTripMissing
@@ -732,23 +735,37 @@ fn rate_limits_snapshot_has_exhaustion_signal(snapshot: JsonValue) -> Bool {
     key: codex_rate_limits_snapshot_rate_limit_reached_type_key as String,
   ) {
     JsonMemberFound { value: JsonString { value: t } } => t != ""
-    _ =>
-      match json_object_unique_member(
-        v: snapshot,
-        key: codex_rate_limits_snapshot_spend_control_reached_key as String,
-      ) {
-        JsonMemberFound { value: JsonBool { value: true } } => true
-        _ =>
-          rate_limits_snapshot_window_saturated(
-            snapshot: snapshot,
-            key: codex_rate_limits_snapshot_primary_key as String,
-          )
-            || rate_limits_snapshot_window_saturated(
-              snapshot: snapshot,
-              key: codex_rate_limits_snapshot_secondary_key as String,
-            )
-      }
+    JsonMemberFound { value: _ } => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
+    JsonMemberAbsent => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
+    JsonMemberDuplicated { count: _ } => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
+    JsonMemberNotAnObject => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
   }
+}
+
+// No rate-limit-reached type: exhaustion is the spend-control flag, else a saturated window.
+fn rate_limits_snapshot_spend_or_window_signal(snapshot: JsonValue) -> Bool {
+  match json_object_unique_member(
+    v: snapshot,
+    key: codex_rate_limits_snapshot_spend_control_reached_key as String,
+  ) {
+    JsonMemberFound { value: JsonBool { value: true } } => true
+    JsonMemberFound { value: _ } => rate_limits_snapshot_window_signal(snapshot: snapshot)
+    JsonMemberAbsent => rate_limits_snapshot_window_signal(snapshot: snapshot)
+    JsonMemberDuplicated { count: _ } => rate_limits_snapshot_window_signal(snapshot: snapshot)
+    JsonMemberNotAnObject => rate_limits_snapshot_window_signal(snapshot: snapshot)
+  }
+}
+
+// No spend-control flag: exhaustion is a saturated primary or secondary window.
+fn rate_limits_snapshot_window_signal(snapshot: JsonValue) -> Bool {
+  rate_limits_snapshot_window_saturated(
+    snapshot: snapshot,
+    key: codex_rate_limits_snapshot_primary_key as String,
+  )
+    || rate_limits_snapshot_window_saturated(
+      snapshot: snapshot,
+      key: codex_rate_limits_snapshot_secondary_key as String,
+    )
 }
 
 fn rate_limits_snapshot_window_saturated(snapshot: JsonValue, key: String) -> Bool {
@@ -781,9 +798,13 @@ fn rate_limits_primary_resets_at(snapshot: JsonValue) -> EpochSecs? {
         key: codex_rate_limits_window_resets_at_key as String,
       ) {
         JsonMemberFound { value: ts } => json_number_as_epoch_secs(v: ts)
-        _ => none
+        JsonMemberAbsent => none
+        JsonMemberDuplicated { count: _ } => none
+        JsonMemberNotAnObject => none
       }
-    _ => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -798,7 +819,10 @@ fn rate_limits_reached_type(snapshot: JsonValue) -> NonEmptyStr? {
       } else {
         Present { value: t as NonEmptyStr }
       }
-    _ => none
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -905,7 +929,11 @@ fn rate_limit_buckets_from_result(result: JsonValue) -> List<CodexRateLimitBucke
     JsonMemberFound { value: by_id } =>
       match by_id {
         JsonObject { members: _ } => rate_limit_buckets_from_by_limit_id(by_id: by_id)
-        _ => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonNull => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonBool { value: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonNumber { lexeme: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonString { value: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonArray { elements: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
       }
     JsonMemberAbsent => rate_limit_buckets_from_legacy_rate_limits(result: result)
     JsonMemberDuplicated { count: _ } => []
@@ -940,9 +968,15 @@ fn rate_limit_buckets_from_legacy_rate_limits(
               ]
             CodexRateLimitIdMalformed { cause: _ } => []
           }
-        _ => []
+        JsonNull => []
+        JsonBool { value: _ } => []
+        JsonNumber { lexeme: _ } => []
+        JsonString { value: _ } => []
+        JsonArray { elements: _ } => []
       }
-    _ => []
+    JsonMemberAbsent => []
+    JsonMemberDuplicated { count: _ } => []
+    JsonMemberNotAnObject => []
   }
 }
 
@@ -955,7 +989,10 @@ fn disposition_from_rate_limits_result(result: JsonValue) -> AccountTripFrameDis
       match snapshot {
         JsonObject { members: _ } => AccountTripResultOk
         JsonNull => AccountTripMissing
-        _ => AccountTripMissing
+        JsonBool { value: _ } => AccountTripMissing
+        JsonNumber { lexeme: _ } => AccountTripMissing
+        JsonString { value: _ } => AccountTripMissing
+        JsonArray { elements: _ } => AccountTripMissing
       }
     JsonMemberAbsent => AccountTripMissing
     JsonMemberDuplicated { count: _ } => AccountTripMissing
@@ -1037,9 +1074,14 @@ fn disposition_from_structured_rpc_error(err: JsonValue) -> AccountTripFrameDisp
         native_cause_from_json_rpc_error(err: err)
       }
     JsonMemberFound { value: JsonNumber { lexeme: n } } =>
-      AccountTripNativeCauseNumericCode { code: n }
-    _ =>
-      native_cause_from_json_rpc_error(err: err)
+      match parse_int(s: n as String) {
+        Present { value: c } => AccountTripNativeCauseNumericCode { code: c }
+        Absent => native_cause_from_json_rpc_error(err: err)
+      }
+    JsonMemberFound { value: _ } => native_cause_from_json_rpc_error(err: err)
+    JsonMemberAbsent => native_cause_from_json_rpc_error(err: err)
+    JsonMemberDuplicated { count: _ } => native_cause_from_json_rpc_error(err: err)
+    JsonMemberNotAnObject => native_cause_from_json_rpc_error(err: err)
   }
 }
 
@@ -1193,7 +1235,9 @@ fn buckets_from_rate_limits_frame(
     AccountTripResponseAbsent =>
       match json_object_unique_member(v: obj, key: "result") {
         JsonMemberFound { value: result } => rate_limit_buckets_from_result(result: result)
-        _ => []
+        JsonMemberAbsent => []
+        JsonMemberDuplicated { count: _ } => []
+        JsonMemberNotAnObject => []
       }
     AccountTripResponseUnique { response: _ } => prior_buckets
     AccountTripResponseDuplicate { id: _, count: _ } => prior_buckets
@@ -1314,13 +1358,9 @@ fn absorb_account_trip_line(
                   )
                 }
             }
-          _ =>
-            push_unknown_digest(
-              acc: acc,
-              line: trimmed,
-              evidence_root: evidence_root,
-              mode: mode,
-            )
+          JsonMemberAbsent => push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root, mode: mode)
+          JsonMemberDuplicated { count: _ } => push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root, mode: mode)
+          JsonMemberNotAnObject => push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root, mode: mode)
         }
     }
   }

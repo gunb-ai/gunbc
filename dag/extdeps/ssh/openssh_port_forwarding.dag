@@ -8,6 +8,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.network.endpoint { SocketAddress, NetworkHost, render_network_host }
 import extdeps.access.posix { PosixLoginName }
 
@@ -47,7 +48,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // PATH-resolved program name for the reason extdeps.exec.command records once at
 // program_spelling_is_an_observation_claim: this repository has made no filesystem observation of
 // the host the command runs on, and an absolute path would be a claim about one.
-data ssh_program: NonEmptyStr = "ssh"
+fn ssh_program() -> ProgramIdentity = uncataloged_program(invocation: "ssh")
 
 // THE TWO CLIENT-SIDE FORWARD SHAPES THIS REPOSITORY USES. -L binds a listener on the CLIENT and
 // carries each connection to one fixed target reached from the server; -R binds a listener on the
@@ -178,7 +179,7 @@ fn ssh_stdio_forward_command(subject: ForwardingAdmissionSubject, options: List<
         Absent => none
         Present { value: relay_wire } => match render_network_host(host: subject.target.host) {
           Absent => none
-          Present { value: target_wire } => Present { value: argv_command(program: ssh_program,
+          Present { value: target_wire } => Present { value: argv_command(program: ssh_program(),
             arguments: concat(flat_map(options, option => serialize_ssh_config_file_flag(option: option)),
               ["-W", join([target_wire as String, ":", to_string(subject.target.port)], ""), "-l", observed_login as String, relay_wire as String])) }
         }

@@ -1,13 +1,13 @@
 module gunbc.fabric_witness_run
 
-import gunbc.fabric_floor_policy { floor_isolation_requirement, gunbc_internal_fleet_trust_domain, floor_execution_requirements, floor_offer_fungibility, floor_grant_duration, floor_offer_affordability, floor_satisfaction_requirement, floor_buy_terms, floor_admission_terms }
+import gunbc.fabric_floor_policy { floor_offer_fungibility, floor_grant_duration, floor_offer_affordability, floor_satisfaction_requirement, floor_buy_terms, floor_admission_terms }
 import std.types { NonEmptyStr }
 import extdeps.currency.currency { CurrencyCode, Usd }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro, Second, second }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.envelope { ResourceEnvelope }
-import gunbc.floor_demand { floor_memory_requirement }
+import gunbc.floor_demand { floor_execution_requirements }
 import product.fabric.identity {
   FabricIdentity, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey,
   fabric_identity_eq,
@@ -41,6 +41,7 @@ import gunbc.claim_executor_cli { claim_executor_command, claim_executor_program
 import gunbc.repo_self_build { repo_self_build_all_bins_command }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.types { String, List }
+import std.algebra { Cons, Empty }
 
 // THE EXACT BUILD-LANE WORK, NOT ANOTHER CI COMMAND.
 //

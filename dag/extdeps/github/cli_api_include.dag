@@ -1,7 +1,7 @@
 module extdeps.github.cli_api_include
 
 import std.types { String, NonEmptyStr, Int, List }
-import std.algebra { trim }
+import std.algebra { Cons, Empty, trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.github.pagination { GitHubLinkHeader, LinkHeaderPresent, LinkHeaderAbsent }
