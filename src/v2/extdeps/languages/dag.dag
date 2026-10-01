@@ -22,6 +22,10 @@ import v2.std.optional {
 }
 import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, ParseRefusalReason }
 import v2.std.grammar {
+  GrammarEmitClassTerminal,
+  GrammarEmitLexemeTerminal,
+  GrammarEmitTerminal,
+  grammar_emit_parse_tree,
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
   grammar_formal_terminal_free,
@@ -119,6 +123,7 @@ import v2.std.node {
 }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
+  lex_rules_literal_for_class,
   IntLiteralUnwired,
   ProducedDeclUnwired,
   CanonicalOperation,
@@ -187,6 +192,7 @@ import v2.std.integer {
   decimal_digits_to_magnitude,
   integer_decimal_magnitude_node,
   integer_decimal_magnitude_node_to_int,
+  integer_int_to_decimal_string,
   integer_int_type_node,
   integer_string_to_decimal_digits_optional,
   DecimalMagnitude,
@@ -3622,111 +3628,6 @@ fn dag_formal_production_fn_field_access() -> FormalProduction {
   )
 }
 
-fn dag_type_decl_structural_formal_productions() -> List<FormalProduction> {
-  [
-    grammar_formal_production(
-      lhs: ^dag_production_qualified_name,
-      rhs: [
-        grammar_formal_terminal_free(identity: ^dag_token_ident)
-      ]
-    ),
-    grammar_formal_production(lhs: ^dag_production_qualified_name_repeat_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: ^dag_production_type_expr,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_qualified_name)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^dag_production_comma_field_decl_list,
-      rhs: [
-        grammar_formal_terminal_free(identity: ^dag_token_ident),
-        grammar_formal_terminal(identity: ^dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
-        grammar_formal_terminal(identity: ^dag_token_comma),
-        grammar_formal_terminal_free(identity: ^dag_token_ident),
-        grammar_formal_terminal(identity: ^dag_token_colon),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_field_decl_list_suffix)
-      ]
-    ),
-    grammar_formal_production(lhs: ^dag_production_comma_field_decl_list_suffix, rhs: []),
-    grammar_formal_production(
-      lhs: ^dag_production_field_decl_block,
-      rhs: [
-        grammar_formal_terminal(identity: ^dag_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_field_decl_list),
-        grammar_formal_terminal(identity: ^dag_token_rbrace)
-      ]
-    ),
-    grammar_formal_production(
-      lhs: ^dag_production_type_decl,
-      rhs: [
-        grammar_formal_terminal(identity: ^dag_token_kw_type),
-        grammar_formal_terminal_free(identity: ^dag_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_field_decl_block)
-      ]
-    )
-  ]
-}
-
-fn dag_type_decl_productions_only_translation_rules() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      dag_named_edge(
-        name: ^grammar_relation_rules_formal_productions,
-        target: formal_productions_catalog_to_node(
-          productions: dag_type_decl_structural_formal_productions()
-        )
-      )
-    ],
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
-fn dag_type_decl_structural_lex_rules() -> LexRuleSet {
-
-  LexRuleSet {
-    rules: [
-      dag_whitespace_trivia_rule(),
-      dag_string_literal_lex_rule(),
-      dag_int_literal_lex_rule(),
-      dag_literal_lex_rule(token_class: ^dag_token_kw_type, text: "type "),
-      dag_literal_lex_rule(token_class: ^dag_token_lbrace, text: " { "),
-      dag_literal_lex_rule(token_class: ^dag_token_colon, text: ": "),
-      dag_literal_lex_rule(token_class: ^dag_token_comma, text: ", "),
-      dag_literal_lex_rule(token_class: ^dag_token_rbrace, text: " }"),
-      dag_ident_lex_rule()
-    ]
-  }
-}
-
-fn dag_type_decl_structural_lex() -> LexRules {
-  ModeledLexRules { root: dag_type_decl_structural_lex_rules() }
-}
-
-fn dag_type_decl_structural_target_model() -> TargetModel {
-  TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
-    bundle: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        dag_named_edge(
-          name: ^target_model_edge_translation_rules,
-          target: dag_type_decl_productions_only_translation_rules()
-        )
-      ],
-      occurrence_id: OccurrenceSynthetic
-    },
-    lex: dag_type_decl_structural_lex(),
-    binding_spellings: empty_map(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: "",
-    runtime_row: target_emit_host_runtime_row_unconfigured
-  }
-}
-
 fn dag_add_grammar_relation_row_node() -> Node {
   dag_grammar_relation_row_node(
     row: DagGrammarRelationRow {
@@ -4284,6 +4185,59 @@ fn dag_string_literal_decoded_text(lexeme: String, occurrence_id: NodeOccurrence
         DagStringDecodeMalformed { spelled: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
       }
   }
+}
+
+// THE ENCODE IS THE DECODE'S INVERSE OVER ONE TABLE. A scalar that some dag_string_escapes row
+// decodes to is written as that row's escape; any other control scalar is written in the numeric
+// `\u{H..H}` form the decode admits; everything else is written as itself. So decode(encode(v)) is v
+// for every value, and no second escape vocabulary exists. Encode(decode(s)) need not be s, and does
+// not need to be: the round trip is owed on the parse tree, not on the spelling.
+fn dag_string_escape_spelled_optional(value: Int) -> Optional<Int> {
+  fold_list(
+    xs: dag_string_escapes(),
+    empty: optional_absent(),
+    cons: fn(found, row) { if row.value == value { optional_present(value: row.spelled) } else { found } }
+  )
+}
+
+fn dag_string_hex_digit_text(value: Int) -> String {
+  fold_list(
+    xs: base16_digit_rows,
+    empty: "",
+    cons: fn(found, row) { if row.value == value { row.lower } else { found } }
+  )
+}
+
+fn dag_string_hex_text(value: Int) -> String {
+  let rest = value / 16
+  let digit = dag_string_hex_digit_text(value: value - (rest * 16))
+  if rest == 0 {
+    digit
+  } else {
+    concat(dag_string_hex_text(value: rest), digit)
+  }
+}
+
+fn dag_string_encode_scalar(c: Int) -> String {
+  match dag_string_escape_spelled_optional(value: c) {
+    Present { value: spelled } => concat("\\", from_code_point(cp: spelled))
+    Absent =>
+      if (c < 32) || (c == 127) {
+        concat("\\u\{", concat(dag_string_hex_text(value: c), "\}"))
+      } else {
+        from_code_point(cp: c)
+      }
+  }
+}
+
+fn dag_string_literal_encoded(value: String) -> String {
+  concat(
+    "\"",
+    concat(
+      fold(chars(s: value), init: "", f: fn(acc, c) { concat(acc, dag_string_encode_scalar(c: c)) }),
+      "\""
+    )
+  )
 }
 
 // The string-literal node for a lexeme: its decoded text as the value payload, or the decode's
@@ -6783,4 +6737,102 @@ fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
         qualified_name_from_emit_shaped_module_root(root: root)
     }
   }
+}
+
+// THE DAG TARGET EMITS BY READING dag_grammar_root BACKWARD (docs/plans/dag-emit-one-grammar-backward.md).
+// The productions are the ones ingest reads forward, so a production added there is emitted with no
+// edit here. Emit's subject is the PARSE TREE. Emitting a lowered or constructed program needs body
+// lowering's own inverse, a declared frontier whose consumer is gen-2 self-host emission. This
+// function is not that, and must not be cited as full dag emission.
+//
+// A terminal's spelling is either a fixed lexeme (its lex rule, or the word a literal terminal names)
+// or the inverse of the decode that parse ran on its class: the int magnitude, the float lexeme, and
+// the string value re-encoded over the same escape rows. A value-carrying class with no inverse here
+// refuses, located at the terminal. It never falls back to an atom's spelling.
+fn dag_emit_untransformable(captured: Node) -> Outcome<String> {
+  outcome_rejected(
+    d: Diagnostic {
+      reason: ^dag_emit_token_class_untransformable,
+      at: node_locus(node: captured),
+      correction: Unavailable { reason: CorrectionNotModeled }
+    }
+  )
+}
+
+fn dag_emit_payload_atom_lexeme(captured: Node, field: Symbol) -> Outcome<String> {
+  bind_outcome(
+    o: find_named_child(root: captured, name: field),
+    f: fn(payload) {
+      match node_atom_identity_optional(node: payload) {
+        Present { value: id } => outcome_accepted(value: symbol_lexeme(sym: id))
+        Absent => dag_emit_untransformable(captured: captured)
+      }
+    }
+  )
+}
+
+fn dag_emit_class_terminal_spelling(token_class: Symbol, captured: Node) -> Outcome<String> {
+  if token_class == ^dag_token_int_literal {
+    bind_outcome(
+      o: find_named_child(root: captured, name: ^integer_literal_magnitude_field),
+      f: fn(magnitude) {
+        bind_outcome(
+          o: integer_decimal_magnitude_node_to_int(node: magnitude),
+          f: fn(v) { outcome_accepted(value: integer_int_to_decimal_string(value: v)) }
+        )
+      }
+    )
+  } else if token_class == ^dag_token_string_literal {
+    bind_outcome(
+      o: dag_emit_payload_atom_lexeme(captured: captured, field: ^string_literal_value_field),
+      f: fn(value) { outcome_accepted(value: dag_string_literal_encoded(value: value)) }
+    )
+  } else if token_class == ^dag_token_float_literal {
+    dag_emit_payload_atom_lexeme(captured: captured, field: ^float_literal_lexeme_field)
+  } else {
+    match lex_rules_literal_for_class(rules: dag_lex(), token_class: token_class) {
+      Accepted { value: spelling, diagnostics: d } => Accepted { value: spelling, diagnostics: d }
+      Rejected { diagnostics: _ } => dag_emit_untransformable(captured: captured)
+    }
+  }
+}
+
+fn dag_emit_terminal_spelling(terminal: GrammarEmitTerminal) -> Outcome<String> {
+  match terminal {
+    GrammarEmitClassTerminal { token_class: c, captured: n } => dag_emit_class_terminal_spelling(token_class: c, captured: n)
+    GrammarEmitLexemeTerminal { token_class: _, lexeme: l } => outcome_accepted(value: symbol_lexeme(sym: l))
+  }
+}
+
+// Whitespace is trivia in dag_lex_rules, so one space between tokens cannot change the tree that is
+// read back. Layout is a projection over this text, not a fact of the emit.
+fn dag_emit_terminals_text(terminals: List<GrammarEmitTerminal>) -> Outcome<String> {
+  fold(
+    terminals,
+    init: outcome_accepted(value: ""),
+    f: fn(acc, t) {
+      bind_outcome(
+        o: acc,
+        f: fn(text) {
+          bind_outcome(
+            o: dag_emit_terminal_spelling(terminal: t),
+            f: fn(spelled) {
+              if text == "" { outcome_accepted(value: spelled) } else { outcome_accepted(value: concat(text, concat(" ", spelled))) }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn dag_emit_parse_tree_with_root(root: GrammarRoot, tree: Node) -> Outcome<String> {
+  bind_outcome(
+    o: grammar_emit_parse_tree(root: root, tree: tree),
+    f: fn(terminals) { dag_emit_terminals_text(terminals: terminals) }
+  )
+}
+
+fn dag_emit_parse_tree(tree: Node) -> Outcome<String> {
+  dag_emit_parse_tree_with_root(root: dag_grammar_root(), tree: tree)
 }

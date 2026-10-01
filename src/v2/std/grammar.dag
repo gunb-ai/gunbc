@@ -3,7 +3,7 @@ module v2.std.grammar
 import v2.std.parse_refusal_reason { ParseRefusalReason, parse_refusal_reason_symbol }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, list_append, list_snoc_item }
-import v2.std.algebra { fold_list, fold_list_node, zip_eq, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.algebra { is_empty, fold_list, fold_list_node, zip_eq, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.collection {
   List,
   Map,
@@ -23,6 +23,7 @@ import v2.std.optional {
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  CorrectionNotModeled,
   ExternalContractUnknown,
   Outcome,
   Rejected,
@@ -33,7 +34,13 @@ import v2.std.diagnostic {
   outcome_rejected,
   invariant_port_locus
 }
-import v2.std.node_query { find_named_child }
+import v2.std.node_query {
+  NamedChildAmbiguous,
+  NamedChildFound,
+  NamedChildMissing,
+  find_named_child,
+  named_child_lookup
+}
 import v2.std.compilers.lexing { LexRules }
 import v2.std.logic { Bool }
 import v2.std.witness { Holds, Violates, Witness }
@@ -3101,4 +3108,239 @@ fn grammar_relation_row_forward_production_selection(
         )
       )
   }
+}
+
+// ONE GRAMMAR, READ BACKWARD (docs/plans/dag-emit-one-grammar-backward.md). Emit's subject is the
+// PARSE TREE: the production-stamped surface Node that v2.compiler.parse builds. It is never the
+// core Node that body lowering produces from it; emitting a lowered or constructed program needs
+// that lowering's own inverse, which is a separate authority (the declared frontier in the plan).
+//
+// THE PRODUCTION IS READ OFF THE STAMP, NOT GUESSED FROM A SHAPE. Every production capture is the
+// Conj that v2.compiler.parse parse_wrap_production_captured mints, carrying the production's
+// `emitted` identity, so selection is one lookup in an index keyed by that identity. Inside a
+// production, the walk inverts each GrammarExpr arm exactly as its parse arm built it. A terminal's
+// token class is the GRAMMAR POSITION's, never the atom's: a StampLexeme atom carries the interned
+// lexeme, from which no class can be read back, and the grammar already holds the class there.
+//
+// The walk yields terminals, never text. Spelling them is the language's fact (its lex rules and its
+// value-carrying literal rows), so this fold stays generic over every grammar in the corpus.
+type GrammarEmitTerminal
+  = GrammarEmitClassTerminal { token_class: Symbol, captured: Node }
+  | GrammarEmitLexemeTerminal { token_class: Symbol, lexeme: Symbol }
+
+// Ordered choice backtracks only over an ARM THAT DOES NOT FIT. A stamp naming no production at all
+// fits no arm, so it is refused outright rather than retried, and the refusal keeps its own locus
+// instead of being replaced by the last arm's.
+type GrammarEmitWalk
+  = GrammarEmitWalked { terminals: List<GrammarEmitTerminal> }
+  | GrammarEmitArmMismatch { diagnostic: Diagnostic }
+  | GrammarEmitRefused { diagnostic: Diagnostic }
+
+type GrammarEmitIndex {
+  by_emitted: Map<Symbol, GrammarProduction>
+}
+
+fn grammar_emit_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
+fn grammar_emit_mismatch(reason: Symbol, at: Node) -> GrammarEmitWalk {
+  GrammarEmitArmMismatch { diagnostic: grammar_emit_diagnostic(reason: reason, at: at) }
+}
+
+fn grammar_emit_index_insert(acc: Outcome<GrammarEmitIndex>, production: GrammarProduction) -> Outcome<GrammarEmitIndex> {
+  bind_outcome(
+    o: acc,
+    f: fn(index) {
+      match node_atom_identity_optional(node: production.emitted) {
+        Absent =>
+          outcome_rejected(d: grammar_emit_diagnostic(reason: ^grammar_emit_production_emitted_not_atom, at: production.emitted))
+        Present { value: id } =>
+          match map_lookup(m: index.by_emitted, key: id) {
+            Present { value: _ } =>
+              outcome_rejected(d: grammar_emit_diagnostic(reason: ^grammar_emit_production_emitted_duplicate, at: production.emitted))
+            Absent =>
+              outcome_accepted(value: GrammarEmitIndex { by_emitted: map_insert(m: index.by_emitted, key: id, value: production) })
+          }
+      }
+    }
+  )
+}
+
+// The index is built once per grammar, and refuses a grammar in which two productions share one
+// emitted identity: backward selection would then be ambiguous for every tree either one stamped.
+fn grammar_emit_index(root: GrammarRoot) -> Outcome<GrammarEmitIndex> {
+  fold(
+    root.productions,
+    init: outcome_accepted(value: GrammarEmitIndex { by_emitted: empty_map() }),
+    f: fn(acc, production) { grammar_emit_index_insert(acc: acc, production: production) }
+  )
+}
+
+fn grammar_emit_named_child_optional(node: Node, name: Symbol) -> Optional<Node> {
+  match named_child_lookup(root: node, name: name) {
+    NamedChildFound { target: target } => optional_present(value: target)
+    NamedChildMissing => optional_absent()
+    NamedChildAmbiguous => optional_absent()
+  }
+}
+
+fn grammar_emit_is_empty_conj(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } => is_empty(xs: node.children)
+    _ => false
+  }
+}
+
+fn grammar_emit_concat(left: List<GrammarEmitTerminal>, right: GrammarEmitWalk) -> GrammarEmitWalk {
+  match right {
+    GrammarEmitWalked { terminals: r } => GrammarEmitWalked { terminals: list_append(left: left, right: r) }
+    GrammarEmitArmMismatch { diagnostic: d } => GrammarEmitArmMismatch { diagnostic: d }
+    GrammarEmitRefused { diagnostic: d } => GrammarEmitRefused { diagnostic: d }
+  }
+}
+
+// A StampLexeme position reads a childless atom as its lexeme FIRST, so an identifier whose spelling
+// happens to equal a token-class symbol is still that identifier. A decoded literal (int, string,
+// float) carries its class atom with a payload, whatever the position's stamp, exactly as
+// v2.compiler.parse parse_expr_terminal builds it.
+fn grammar_emit_terminal(token_class: Symbol, stamp: TerminalStampMode, node: Node) -> GrammarEmitWalk {
+  match node_atom_identity_optional(node: node) {
+    Absent => grammar_emit_mismatch(reason: ^grammar_emit_terminal_not_atom, at: node)
+    Present { value: id } =>
+      match stamp {
+        StampLexeme =>
+          if is_empty(xs: node.children) {
+            GrammarEmitWalked { terminals: [GrammarEmitLexemeTerminal { token_class: token_class, lexeme: id }] }
+          } else if id == token_class {
+            GrammarEmitWalked { terminals: [GrammarEmitClassTerminal { token_class: token_class, captured: node }] }
+          } else {
+            grammar_emit_mismatch(reason: ^grammar_emit_terminal_class_mismatch, at: node)
+          }
+        StampClass =>
+          if id == token_class {
+            GrammarEmitWalked { terminals: [GrammarEmitClassTerminal { token_class: token_class, captured: node }] }
+          } else {
+            grammar_emit_mismatch(reason: ^grammar_emit_terminal_class_mismatch, at: node)
+          }
+        StampBinding { binding: b } =>
+          if (id == b) || (id == token_class) {
+            GrammarEmitWalked { terminals: [GrammarEmitClassTerminal { token_class: token_class, captured: node }] }
+          } else {
+            grammar_emit_mismatch(reason: ^grammar_emit_terminal_class_mismatch, at: node)
+          }
+      }
+  }
+}
+
+fn grammar_emit_literal_terminal(token_class: Symbol, lexeme: Symbol, node: Node) -> GrammarEmitWalk {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == token_class {
+        GrammarEmitWalked { terminals: [GrammarEmitLexemeTerminal { token_class: token_class, lexeme: lexeme }] }
+      } else {
+        grammar_emit_mismatch(reason: ^grammar_emit_terminal_class_mismatch, at: node)
+      }
+    Absent => grammar_emit_mismatch(reason: ^grammar_emit_terminal_not_atom, at: node)
+  }
+}
+
+fn grammar_emit_sequence(index: GrammarEmitIndex, left: GrammarExpr, right: GrammarExpr, node: Node) -> GrammarEmitWalk {
+  match grammar_emit_named_child_optional(node: node, name: ^grammar_sequence_left_node_projection) {
+    Absent => grammar_emit_mismatch(reason: ^grammar_emit_sequence_shape_mismatch, at: node)
+    Present { value: cap1 } =>
+      match grammar_emit_named_child_optional(node: node, name: ^grammar_sequence_right_node_projection) {
+        Absent => grammar_emit_mismatch(reason: ^grammar_emit_sequence_shape_mismatch, at: node)
+        Present { value: cap2 } =>
+          match grammar_emit_expr(index: index, expr: left, node: cap1) {
+            GrammarEmitWalked { terminals: l } =>
+              grammar_emit_concat(left: l, right: grammar_emit_expr(index: index, expr: right, node: cap2))
+            GrammarEmitArmMismatch { diagnostic: d } => GrammarEmitArmMismatch { diagnostic: d }
+            GrammarEmitRefused { diagnostic: d } => GrammarEmitRefused { diagnostic: d }
+          }
+      }
+  }
+}
+
+// The inverse of v2.compiler.parse parse_repeat_captured_node: a right-folded left/right spine that
+// ends in the empty Conj.
+fn grammar_emit_repeat(index: GrammarEmitIndex, element: GrammarExpr, node: Node) -> GrammarEmitWalk {
+  if grammar_emit_is_empty_conj(node: node) {
+    GrammarEmitWalked { terminals: [] }
+  } else {
+    grammar_emit_sequence(index: index, left: element, right: Repeat { element: element }, node: node)
+  }
+}
+
+fn grammar_emit_optional(index: GrammarEmitIndex, element: GrammarExpr, node: Node) -> GrammarEmitWalk {
+  if grammar_emit_is_empty_conj(node: node) {
+    GrammarEmitWalked { terminals: [] }
+  } else {
+    grammar_emit_expr(index: index, expr: element, node: node)
+  }
+}
+
+fn grammar_emit_choice(index: GrammarEmitIndex, left: GrammarExpr, right: GrammarExpr, node: Node) -> GrammarEmitWalk {
+  match grammar_emit_expr(index: index, expr: left, node: node) {
+    GrammarEmitWalked { terminals: ts } => GrammarEmitWalked { terminals: ts }
+    GrammarEmitArmMismatch { diagnostic: _ } => grammar_emit_expr(index: index, expr: right, node: node)
+    GrammarEmitRefused { diagnostic: d } => GrammarEmitRefused { diagnostic: d }
+  }
+}
+
+fn grammar_emit_expr(index: GrammarEmitIndex, expr: GrammarExpr, node: Node) -> GrammarEmitWalk {
+  match expr {
+    Terminal { token_class: c, stamp: stamp } => grammar_emit_terminal(token_class: c, stamp: stamp, node: node)
+    LiteralTerminal { token_class: c, lexeme: l } => grammar_emit_literal_terminal(token_class: c, lexeme: l, node: node)
+    Nonterminal { production: p } => grammar_emit_production_capture(index: index, expected: p, node: node)
+    Sequence { left: l, right: r } => grammar_emit_sequence(index: index, left: l, right: r, node: node)
+    Choice { left: l, right: r } => grammar_emit_choice(index: index, left: l, right: r, node: node)
+    Optional { element: e } => grammar_emit_optional(index: index, element: e, node: node)
+    Repeat { element: e } => grammar_emit_repeat(index: index, element: e, node: node)
+    Expect { element: e, reason: _ } => grammar_emit_expr(index: index, expr: e, node: node)
+  }
+}
+
+// A capture with no stamp does not fit a nonterminal position, and if no arm around it fits either,
+// that refusal is what reaches the caller: emit never infers a production from a shape.
+fn grammar_emit_production_capture(index: GrammarEmitIndex, expected: Symbol, node: Node) -> GrammarEmitWalk {
+  match grammar_emit_named_child_optional(node: node, name: ^grammar_production_identity_node_projection) {
+    Absent => grammar_emit_mismatch(reason: ^grammar_emit_production_stamp_absent, at: node)
+    Present { value: stamp } =>
+      match node_atom_identity_optional(node: stamp) {
+        Absent => grammar_emit_mismatch(reason: ^grammar_emit_production_stamp_absent, at: node)
+        Present { value: emitted } =>
+          match map_lookup(m: index.by_emitted, key: emitted) {
+            Absent =>
+              GrammarEmitRefused { diagnostic: grammar_emit_diagnostic(reason: ^grammar_emit_production_unknown, at: node) }
+            Present { value: production } =>
+              if production.name == expected {
+                match grammar_emit_named_child_optional(node: node, name: ^grammar_production_captured_node_projection) {
+                  Absent => grammar_emit_mismatch(reason: ^grammar_emit_production_stamp_absent, at: node)
+                  Present { value: captured } => grammar_emit_expr(index: index, expr: production.expression, node: captured)
+                }
+              } else {
+                grammar_emit_mismatch(reason: ^grammar_emit_nonterminal_stamp_mismatch, at: node)
+              }
+          }
+      }
+  }
+}
+
+// THE ENTRY: a whole parse tree, rooted at the grammar's start production, to its terminal spine.
+fn grammar_emit_parse_tree(root: GrammarRoot, tree: ParseTree) -> Outcome<List<GrammarEmitTerminal>> {
+  bind_outcome(
+    o: grammar_emit_index(root: root),
+    f: fn(index) {
+      match grammar_emit_production_capture(index: index, expected: root.start, node: tree) {
+        GrammarEmitWalked { terminals: ts } => outcome_accepted(value: ts)
+        GrammarEmitArmMismatch { diagnostic: d } => outcome_rejected(d: d)
+        GrammarEmitRefused { diagnostic: d } => outcome_rejected(d: d)
+      }
+    }
+  )
 }

@@ -1,0 +1,177 @@
+module v2.test.execution.dag_grammar_backward_round_trip
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_emit_parse_tree, dag_emit_parse_tree_with_root, dag_grammar_root, dag_lex }
+import std.algebra { list_snoc_item }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, bind_outcome, node_locus, outcome_accepted }
+import v2.std.grammar { GrammarRoot, node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, content_hash }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE GRAMMAR, BOTH DIRECTIONS (docs/plans/dag-emit-one-grammar-backward.md). Each claim runs the
+// real ingest route -- dag_prepared_grammar, the dag lexer, parse_module_prepared -- then emits the
+// parse tree by reading dag_grammar_root backward, ingests that text again, and asks for the same
+// tree. Identity is v2.std.node content_hash, which does not read occurrence ids, so spans may move.
+// Nothing here supplies a tree: the emit's subject is what the parser actually built.
+
+fn rt_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^dag_grammar_backward_round_trip_probe, rules: dag_lex()),
+        f: fn(stream) {
+          match parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn rt_emit_of(text: String) -> Outcome<String> {
+  bind_outcome(o: rt_parse(text: text), f: fn(tree) { dag_emit_parse_tree(tree: tree) })
+}
+
+fn rt_round_trips(text: String) -> Bool {
+  match rt_parse(text: text) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match dag_emit_parse_tree(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: emitted, diagnostics: _ } =>
+          match rt_parse(text: emitted) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: again, diagnostics: _ } => content_hash(n: tree) == content_hash(n: again)
+          }
+      }
+  }
+}
+
+data rt_data_decl_source: String = "module rt.data_decl\ndata m: Int = 1\n"
+data rt_fn_decl_source: String = "module rt.fn_decl\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+data rt_record_type_source: String = "module rt.record_type\ntype Point { x: Int, y: Int }\n"
+data rt_coproduct_source: String = "module rt.coproduct\ntype Shape = Circle { r: Int } | Square\n"
+data rt_match_source: String = "module rt.match\nfn pick(a: Bool) -> Int { match a { true => 1, false => 2 } }\n"
+data rt_let_source: String = "module rt.let\nfn one() -> Int { let x = 1 in x }\n"
+data rt_list_source: String = "module rt.list\nimport std.types { List }\ndata xs: List<Int> = [1, 2, 3]\n"
+data rt_map_literal_source: String = "module rt.map_literal\nimport std.types { Map }\ndata m: Map<String, Bool> = { \"a\": true, \"b\": false }\n"
+data rt_quoted_key_source: String = "module rt.quoted_key\ndata r: R = { \"Node\": true }\n"
+data rt_bare_key_source: String = "module rt.bare_key\ndata r: R = { Node: true }\n"
+data rt_escaped_key_source: String = "module rt.escaped_key\nimport std.types { Map }\ndata m: Map<String, Bool> = { \"a\\\"b\": true, \"\\u\{e9\}\": false }\n"
+data rt_string_escapes_source: String = "module rt.string_escapes\ndata s: String = \"q\\\"b\\\\s\\nt\\tz\\u\{e9\}\\x41\\\{\\\}\"\n"
+data rt_caret_symbol_source: String = "module rt.caret_symbol\ndata k: Symbol = ^some_name\n"
+
+test fn a_data_declaration_round_trips_holds() -> Bool { rt_round_trips(text: rt_data_decl_source) }
+test fn a_fn_declaration_round_trips_holds() -> Bool { rt_round_trips(text: rt_fn_decl_source) }
+test fn a_record_type_round_trips_holds() -> Bool { rt_round_trips(text: rt_record_type_source) }
+test fn a_coproduct_round_trips_holds() -> Bool { rt_round_trips(text: rt_coproduct_source) }
+test fn a_match_round_trips_holds() -> Bool { rt_round_trips(text: rt_match_source) }
+test fn a_let_round_trips_holds() -> Bool { rt_round_trips(text: rt_let_source) }
+test fn a_list_literal_round_trips_holds() -> Bool { rt_round_trips(text: rt_list_source) }
+
+// The SURFACE map literal, before resolve elaborates it to map_from_entries (gunbc#12758).
+test fn a_map_literal_round_trips_holds() -> Bool { rt_round_trips(text: rt_map_literal_source) }
+test fn a_string_with_escapes_round_trips_holds() -> Bool { rt_round_trips(text: rt_string_escapes_source) }
+test fn a_caret_symbol_round_trips_holds() -> Bool { rt_round_trips(text: rt_caret_symbol_source) }
+test fn an_escaped_quoted_key_round_trips_holds() -> Bool { rt_round_trips(text: rt_escaped_key_source) }
+
+// A KEY'S KIND IS ITS PRODUCTION, NOT ITS SPELLING. `"Node"` spells the same text as the bare key
+// `Node`, so an emit that chose by text would write both bare and read the quoted one back as an
+// identifier. Each round trips, and the two trees are different trees.
+test fn a_quoted_key_spelled_like_an_identifier_round_trips_holds() -> Bool { rt_round_trips(text: rt_quoted_key_source) }
+test fn a_bare_key_round_trips_holds() -> Bool { rt_round_trips(text: rt_bare_key_source) }
+
+test fn a_quoted_key_and_a_bare_key_are_different_trees_holds() -> Bool {
+  match rt_parse(text: "module rt.k\ndata r: R = { \"Node\": true }\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: quoted, diagnostics: _ } =>
+      match rt_parse(text: "module rt.k\ndata r: R = { Node: true }\n") {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: bare, diagnostics: _ } => content_hash(n: quoted) != content_hash(n: bare)
+      }
+  }
+}
+
+// THE RED: A PRODUCTION WITH NO ROW REFUSES, TYPED AND LOCATED. The same parse tree is emitted
+// against dag_grammar_root with the data-declaration production removed. The refusal names the
+// unknown production and sits at the stamped data_decl capture the parser built, not at the root.
+fn rt_root_without(production: Symbol) -> GrammarRoot {
+  let root = dag_grammar_root()
+  GrammarRoot {
+    start: root.start,
+    productions: fold(root.productions, init: [], f: fn(acc, p) { if p.name == production { acc } else { list_snoc_item(xs: acc, item: p) } }),
+    sync_tokens: root.sync_tokens
+  }
+}
+
+fn rt_stamp_of(node: Node) -> Optional<Symbol> {
+  match named_child_lookup(root: node, name: ^grammar_production_identity_node_projection) {
+    NamedChildFound { target: t } => node_atom_identity_optional(node: t)
+    NamedChildMissing => optional_absent()
+    NamedChildAmbiguous => optional_absent()
+  }
+}
+
+fn rt_first_stamped(node: Node, emitted: Symbol) -> Optional<Node> {
+  match rt_stamp_of(node: node) {
+    Present { value: s } =>
+      if s == emitted {
+        optional_present(value: node)
+      } else {
+        rt_first_stamped_in_children(node: node, emitted: emitted)
+      }
+    Absent => rt_first_stamped_in_children(node: node, emitted: emitted)
+  }
+}
+
+fn rt_first_stamped_in_children(node: Node, emitted: Symbol) -> Optional<Node> {
+  fold(
+    node.children,
+    init: optional_absent(),
+    f: fn(found, e) {
+      match found {
+        Present { value: n } => optional_present(value: n)
+        Absent => rt_first_stamped(node: e.target, emitted: emitted)
+      }
+    }
+  )
+}
+
+fn rt_refused_at(ds: List<Diagnostic>, reason: Symbol, at: Node) -> Bool {
+  fold(ds, init: false, f: fn(acc, d) { acc || ((d.reason == reason) && (d.at == node_locus(node: at))) })
+}
+
+test fn a_production_missing_its_row_refuses_located_at_its_capture_holds() -> Bool {
+  match rt_parse(text: rt_data_decl_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match rt_first_stamped(node: tree, emitted: ^dag_surface_data_decl) {
+        Absent => false
+        Present { value: capture } =>
+          match dag_emit_parse_tree_with_root(root: rt_root_without(production: ^dag_production_data_decl), tree: tree) {
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: ds } => rt_refused_at(ds: ds, reason: ^grammar_emit_production_unknown, at: capture)
+          }
+      }
+  }
+}
+
+// The same tree against the whole root is the red's positive control: the refusal is caused by the
+// missing row, not by the fixture.
+test fn the_unmutated_root_emits_the_red_fixture_holds() -> Bool {
+  match rt_emit_of(text: rt_data_decl_source) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

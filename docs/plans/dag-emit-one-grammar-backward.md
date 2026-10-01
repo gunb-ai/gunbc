@@ -119,19 +119,35 @@ tree and are not emitted. A target that needs layout is a separate projection.
 
 ## Typed refusals
 
-Each refusal is located with `node_locus` at the node being emitted:
+Each refusal is located with `node_locus` at the node being emitted. The generic ones come from
+`v2.std.grammar`; the spelling one comes from the dag model.
 
-- `dag_emit_production_unknown`: the identity stamp names no production in the root. This is the
-  "missing emit row" red: a fixture grammar with one production removed must refuse here, at the
-  stamped node.
-- `dag_emit_nonterminal_stamp_mismatch`: a `Nonterminal { p }` position holds a wrap stamped with
-  some other production.
-- `dag_emit_shape_mismatch`: the captured shape is not what the arm builds, for example a non-Conj
-  under a `Sequence`.
-- `dag_emit_token_class_untransformable`: a value-carrying class with no transform row. This is the
-  successor of `parse_tree_atom_token_class_not_recoverable`, which is deleted along with its only
-  route.
-- `dag_emit_choice_arm_ambiguous`: as described above.
+**Hard refusals.** These are never retried by an enclosing choice:
+
+- `grammar_emit_production_unknown`: the stamp names no production in the root. This is the
+  "missing emit row" red.
+
+**Arm mismatches.** An enclosing ordered choice tries its next arm; if no arm fits, the last
+mismatch is the refusal:
+
+- `grammar_emit_production_stamp_absent`: a nonterminal position holds a capture with no
+  production stamp. This is neat-boar-16's condition (3): a production is never guessed.
+- `grammar_emit_nonterminal_stamp_mismatch`: the stamp names a different production than the
+  position expects.
+- `grammar_emit_sequence_shape_mismatch`, `grammar_emit_terminal_not_atom`,
+  `grammar_emit_terminal_class_mismatch`: the capture is not what the arm's parse builds.
+
+**Index refusals.** These refuse the grammar itself:
+
+- `grammar_emit_production_emitted_not_atom`
+- `grammar_emit_production_emitted_duplicate`
+
+**Spelling refusal.** `dag_emit_token_class_untransformable`: a class with neither a fixed lexeme nor
+a value inverse. It is located at the terminal.
+
+The atom-collision case named above (a class atom versus a lexeme atom) is not a separate refusal. A
+`StampLexeme` position reads a childless atom as its lexeme first, and the round-trip control is the
+falsifier.
 
 There is no fallback arm anywhere. A refusal never widens to "emit the atom's spelling" (DESIGN §5).
 
@@ -143,17 +159,23 @@ This is one change, per DESIGN §3 on replacement migrations: delete first, then
    rows to `v2.extdeps.languages.dag`, with the string encoder sharing `dag_string_escapes`.
 2. **Route** the dag target's emit through it. `dag_translation_rules_node` stops carrying
    hand-built rows and names `dag_grammar_root`.
-3. **Delete, in the same change:**
-   - `dag_type_decl_structural_formal_productions`
-   - `dag_type_decl_productions_only_translation_rules`
-   - `dag_type_decl_structural_lex_rules`
-   - `dag_type_decl_structural_target_model`
-   - the flat `dag_formal_production_fn_*` table and its relation rows (the census roster)
-   - `parse_tree_atom_token_class_not_recoverable` and its map-based recovery in `v2.compiler.ingest`
+3. **Delete, in the same change:** the hand-authored declaration grammar. That means
+   `dag_type_decl_structural_formal_productions`,
+   `dag_type_decl_productions_only_translation_rules`, `dag_type_decl_structural_lex_rules`,
+   `dag_type_decl_structural_lex`, `dag_type_decl_structural_target_model`, and their only consumer,
+   `v2.test.execution.emit_ingest_type_decl_round_trip`. Its roster entries in
+   `v2.workflow.floor_grandfathered_roster` and `gunbc.witness.witness_deferral_freeze` go with it.
 
-   The census closes against the roster in `gunbc.dag_grammar_fork_census`, so its consumers are
-   enumerated before deletion. Four consumers sit outside the module for `fn_add`, among them
-   `v2.compiler.body_producer_forward`.
+   **Correction, measured while cutting.** The flat `dag_formal_production_fn_*` table and
+   `v2.compiler.ingest` `parse_atom_frontier_class` are **not** part of this route, so this change
+   does not delete them:
+   - They serve the cross-language forward bridge `parse_tree_to_emitted_node`, which Python and
+     TypeScript also use.
+   - They serve `v2.compiler.body_producer_forward`.
+   - They serve the core-route emit, `compile_dag_source_to_target_text`.
+
+   That is the core -> surface frontier above. They are retired when that item lands, against the
+   roster in `gunbc.dag_grammar_fork_census`, which keeps rostering them until then.
 4. **Replace** `emit_ingest_type_decl_round_trip` with the coverage round trip over the real
    grammar.
 
