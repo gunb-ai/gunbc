@@ -1,0 +1,30 @@
+module v2.test.claim.zz_probe.stp_probe
+
+import v2.test.claim.namespace_xl0.reference_conservation_accepted_drops { map_literal_value_subject, qualified_constructor_value_subject }
+import v2.test.claim.reference_derived_graph_call_arg_tree { ca_normalized_call_arg_edge_count }
+import v2.test.claim.execution.data_decl_lowering_grounding { ddl_hand_grounding, ddl_childless_conj, ddl_unauthorized_atom, ddl_arrow_with }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme }
+import v2.std.text { String }
+import std.process { ProcessExit, exit_failure }
+
+fn stp_int(n: Int) -> String {
+  if n == -1 { "-1" } else if n == 0 { "0" } else if n == 1 { "1" } else if n == 2 { "2" } else if n > 2 { ">2" } else { "<-1" }
+}
+
+fn stp_norm(o: Outcome<NormalizedTree>) -> String {
+  match o {
+    Accepted { value: _, diagnostics: _ } => "accepted"
+    Rejected { diagnostics: d } => "rejected:" + symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+  }
+}
+
+fn stp_report() -> ProcessExit {
+  let codomain = ddl_childless_conj()
+  let tree = ddl_arrow_with(domain: ddl_unauthorized_atom(), codomain: codomain)
+  exit_failure(reason: "STP map=" + stp_norm(o: map_literal_value_subject().normalized)
+    + " qual=" + stp_norm(o: qualified_constructor_value_subject().normalized)
+    + " ca_norm=" + stp_int(n: ca_normalized_call_arg_edge_count())
+    + " ddl_codomain=" + stp_int(n: ddl_hand_grounding(tree: tree, n: codomain)))
+}
