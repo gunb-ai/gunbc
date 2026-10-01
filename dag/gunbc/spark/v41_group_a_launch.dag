@@ -845,7 +845,7 @@ fn v41_dev_stage_engram_privileged(hosts: List<HostIdentity>, manifest_text: Str
 fn v41_group_a_launch_session(now_word: String, context: FleetSshExecutionContext, ctx: SparkMaterializeContext) -> SparkBuildHostWork {
   // DEV-ONLY log reader (branch deploy/ds41-dev-logs, never merged): print each Group A host's last V4.1 rank log and exit.
   let hosts = fabric_group_hosts(g: FabricGroupA)
-  let lines = map(hosts, h => match spark_remote_run(ctx: vllm_image_target_ctx(source_ctx: ctx, host: h), argv: ["sh", "-c", "for f in /var/log/gunbc/v41-tp4-head.log /var/log/gunbc/v41-tp4-rank.log; do [ -f $f ] && { echo \"== $f $(stat -c %y $f) $(wc -l < $f) lines\"; grep -nE 'Error|ERROR|Traceback|OOM|out of memory|Killed|exit|Loading|loaded|weights|Engram|engram|took|Starting|Uvicorn|listening|30000' $f | tail -n 60; echo '-- tail'; tail -n 40 $f; }; done; free -g | head -2"]) {
+  let lines = map(hosts, h => match spark_remote_run(ctx: vllm_image_target_ctx(source_ctx: ctx, host: h), argv: ["sh", "-c", "for f in /var/log/gunbc/v41-tp4-head.log /var/log/gunbc/v41-tp4-rank.log; do [ -f $f ] && { echo \"== $f $(wc -l < $f) lines\"; echo -- first-errors; grep -nE 'Error|Traceback|Killed|OOM|out of memory|CUDA error|NCCL WARN|exited with' $f | grep -vE 'frame #|File |  \\^' | head -n 25; echo -- starts; grep -nE 'non-default args|distributed_init_method|Loading weights|Loading safetensors|Model loading took|weights took|Engram|init engine|KV cache|Available|Starting vLLM|Uvicorn' $f | head -n 60; }; done"]) {
     RemoteUnreachable { cause: c } => join(["== ", h as String, " UNREACHABLE ", c, "\n"], "")
     RemoteRan { exit_code: _, stdout: o, stderr: _ } => join(["===== ", h as String, "\n", o, "\n"], "")
   })
