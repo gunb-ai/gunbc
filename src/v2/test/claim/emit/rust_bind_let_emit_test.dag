@@ -1,8 +1,8 @@
 module v2.test.emit.rust_bind_let_emit
 
-import v2.test.complexity_gate.table_fixture_bind_subject_producer {
-  table_fixture_bind_arrow_with_body,
-  table_fixture_bind_wrong_value_arrow_with_body
+import v2.extdeps.languages.dag {
+  dag_bind_resolved_arrow_with_body_fixture,
+  dag_bind_resolved_arrow_with_body_wrong_value_fixture
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -104,25 +104,11 @@ fn rust_bind_let_inferred_tree_for(root: Node) -> InferredTree {
 }
 
 fn rust_bind_let_producer_tree() -> Outcome<InferredTree> {
-  match table_fixture_bind_arrow_with_body() {
-    Accepted { value: root, diagnostics: d } =>
-      Accepted {
-        value: rust_bind_let_inferred_tree_for(root: root),
-        diagnostics: d
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
+  Accepted { value: rust_bind_let_inferred_tree_for(root: dag_bind_resolved_arrow_with_body_fixture), diagnostics: None }
 }
 
 fn rust_bind_let_wrong_value_producer_tree() -> Outcome<InferredTree> {
-  match table_fixture_bind_wrong_value_arrow_with_body() {
-    Accepted { value: root, diagnostics: d } =>
-      Accepted {
-        value: rust_bind_let_inferred_tree_for(root: root),
-        diagnostics: d
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
+  Accepted { value: rust_bind_let_inferred_tree_for(root: dag_bind_resolved_arrow_with_body_wrong_value_fixture), diagnostics: None }
 }
 
 fn rust_bind_let_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {

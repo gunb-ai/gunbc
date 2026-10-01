@@ -211,7 +211,7 @@ import v2.std.integer {
 import v2.std.text { String }
 import extdeps.numeric.base16 { base16_digit_rows }
 import std.unicode.types { unicode_scalar }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
+import v2.std.qualified_name { QualifiedName, binder_reference_node, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.extdeps.languages.fidelity {
   DeclaredNormalized,
@@ -4987,13 +4987,13 @@ fn dag_variant_holds_pattern_node() -> Node {
   dag_variant_holds_construct_node(value_lit: ^dag_binding_rec_v)
 }
 
-fn dag_variant_match_arm_node(pattern_target: Node, body_lit: Symbol) -> Node {
+fn dag_variant_match_arm_node(pattern_target: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       core_edge(marker: MatchArmPatternEdge, target: pattern_target),
       core_edge(marker: MatchArmBodyEdge,
-        target: dag_type_atom_node(identity: body_lit)
+        target: body
       )
     ],
     occurrence_id: OccurrenceSynthetic
@@ -5005,7 +5005,7 @@ fn dag_variant_construct_body_from_value(value_lit: Symbol) -> Node {
     scrutinee: dag_variant_holds_construct_node(value_lit: value_lit),
     true_arm: dag_variant_match_arm_node(
       pattern_target: dag_variant_holds_pattern_node(),
-      body_lit: ^dag_binding_rec_v
+      body: binder_reference_node(binder: ^dag_binding_rec_v, occurrence_id: OccurrenceSynthetic)
     ),
     false_arm: dag_match_arm_node(
       pattern_lit: ^dag_binding_type_variant_true,
@@ -5290,6 +5290,41 @@ fn dag_bind_let_body_wrong_value_node() -> Node {
     body_binding: ^dag_binding_bind_x
   )
 }
+
+// THE SAME LET AFTER RESOLUTION. Lowering leaves the tail a bare atom (the fixture above, which the
+// body-lowering claims compare against); v2.compiler.resolve rewrites a reference to the let binder
+// into a binder reference (v2.std.qualified_name binder_reference_node). A consumer downstream of
+// resolution -- emission, evaluation -- is supplied this form.
+fn dag_bind_let_resolved_body_from_value(value: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_bind_x) },
+      Edge { label: Positional, target: value },
+      Edge { label: Positional, target: binder_reference_node(binder: ^dag_binding_bind_x, occurrence_id: OccurrenceSynthetic) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn dag_bind_resolved_arrow_with_body_node() -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_pick_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_bind_let_resolved_body_from_value(value: dag_int_literal_fixture_one())
+  )
+}
+
+fn dag_bind_resolved_arrow_with_body_wrong_value_node() -> Node {
+  dag_arrow_with_body_node(
+    domain: dag_pick_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_bind_let_resolved_body_from_value(value: dag_int_literal_fixture_two())
+  )
+}
+
+data dag_bind_resolved_arrow_with_body_fixture: Node = dag_bind_resolved_arrow_with_body_node()
+data dag_bind_resolved_arrow_with_body_wrong_value_fixture: Node = dag_bind_resolved_arrow_with_body_wrong_value_node()
 
 fn dag_bind_arrow_with_body_node() -> Node {
   dag_arrow_with_body_node(
