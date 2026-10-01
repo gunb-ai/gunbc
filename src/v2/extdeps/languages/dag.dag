@@ -6925,7 +6925,7 @@ fn dag_emit_refusal(reason: Symbol, captured: Node) -> Outcome<String> {
 
 // Each literal is read back by the model's own reader for its payload -- the same readers lowering
 // uses -- and a literal without its payload refuses by a reason that names which one, at the literal.
-fn dag_emit_class_terminal_spelling(token_class: Symbol, captured: Node) -> Outcome<String> {
+fn dag_emit_class_terminal_spelling(lex: LexRules, token_class: Symbol, captured: Node) -> Outcome<String> {
   if token_class == ^dag_token_int_literal {
     match dag_int_literal_magnitude_node_optional(node: captured) {
       Absent => dag_emit_refusal(reason: ^dag_emit_int_literal_magnitude_missing, captured: captured)
@@ -6946,23 +6946,24 @@ fn dag_emit_class_terminal_spelling(token_class: Symbol, captured: Node) -> Outc
       Absent => dag_emit_refusal(reason: ^dag_emit_float_literal_lexeme_missing, captured: captured)
     }
   } else {
-    match lex_rules_literal_for_class(rules: dag_lex(), token_class: token_class) {
+    match lex_rules_literal_for_class(rules: lex, token_class: token_class) {
       Accepted { value: spelling, diagnostics: d } => Accepted { value: spelling, diagnostics: d }
       Rejected { diagnostics: _ } => dag_emit_refusal(reason: ^dag_emit_token_class_untransformable, captured: captured)
     }
   }
 }
 
-fn dag_emit_terminal_spelling(terminal: GrammarEmitTerminal) -> Outcome<String> {
+fn dag_emit_terminal_spelling(lex: LexRules, terminal: GrammarEmitTerminal) -> Outcome<String> {
   match terminal {
-    GrammarEmitClassTerminal { token_class: c, captured: n } => dag_emit_class_terminal_spelling(token_class: c, captured: n)
+    GrammarEmitClassTerminal { token_class: c, captured: n } => dag_emit_class_terminal_spelling(lex: lex, token_class: c, captured: n)
     GrammarEmitLexemeTerminal { token_class: _, lexeme: l } => outcome_accepted(value: symbol_lexeme(sym: l))
   }
 }
 
 // Whitespace is trivia in dag_lex_rules, so one space between tokens cannot change the tree that is
 // read back. Layout is a projection over this text, not a fact of the emit.
-fn dag_emit_terminals_text(terminals: List<GrammarEmitTerminal>) -> Outcome<String> {
+// The lexer is built once per emit and read by every terminal, never rebuilt per token.
+fn dag_emit_terminals_text(lex: LexRules, terminals: List<GrammarEmitTerminal>) -> Outcome<String> {
   fold(
     terminals,
     init: outcome_accepted(value: ""),
@@ -6971,7 +6972,7 @@ fn dag_emit_terminals_text(terminals: List<GrammarEmitTerminal>) -> Outcome<Stri
         o: acc,
         f: fn(text) {
           bind_outcome(
-            o: dag_emit_terminal_spelling(terminal: t),
+            o: dag_emit_terminal_spelling(lex: lex, terminal: t),
             f: fn(spelled) {
               if text == "" { outcome_accepted(value: spelled) } else { outcome_accepted(value: concat(text, concat(" ", spelled))) }
             }
@@ -6985,7 +6986,7 @@ fn dag_emit_terminals_text(terminals: List<GrammarEmitTerminal>) -> Outcome<Stri
 fn dag_emit_parse_tree_with_root(root: GrammarRoot, tree: Node) -> Outcome<String> {
   bind_outcome(
     o: grammar_emit_parse_tree(root: root, tree: tree),
-    f: fn(terminals) { dag_emit_terminals_text(terminals: terminals) }
+    f: fn(terminals) { dag_emit_terminals_text(lex: dag_lex(), terminals: terminals) }
   )
 }
 
