@@ -1,0 +1,72 @@
+module v2.test.claim.parse.default_value
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A DEFAULT VALUE IS ONE PRODUCTION (v2.extdeps.languages.dag dag_grammar_default_value_expr) and ONE
+// REFUSAL REASON wherever it is written (body_lowering_reason_default_value_unmodeled,
+// gunbc.recurring_failure_mode default_value_has_no_carrier): a fn parameter's default refuses at the
+// default, and a record field's default refuses with the same reason. A record field's wire key, a
+// different interface fact, keeps body_lowering_reason_interface_member_unmodeled.
+data param_default_source: String = "module probe.default\n\nfn fetch(version: String = \"latest\") -> String {\n  version\n}\n"
+data field_default_source: String = "module probe.default\n\ntype Config {\n  headless: Bool = false\n}\n"
+data field_key_source: String = "module probe.default\n\ntype Account {\n  unique_id: String from \"uniqueId\"\n}\n"
+
+fn anchored_at(d: Diagnostic, emitted: Symbol) -> Bool {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match parse_production_emitted_identity_optional(node: a.at) {
+        Present { value: id } => id == emitted
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// Each outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it.
+fn param_default_parsed() -> Bool {
+  match conservation_subject_of_text(path: "probe_param_default.dag", text: param_default_source).parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn param_default_refused_at_default() -> Bool {
+  match conservation_subject_of_text(path: "probe_param_default.dag", text: param_default_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^body_lowering_reason_default_value_unmodeled
+        && anchored_at(d: diagnostics_fatal(d: d), emitted: ^dag_surface_default_value)
+  }
+}
+
+fn field_default_refused_as_default() -> Bool {
+  match conservation_subject_of_text(path: "probe_field_default.dag", text: field_default_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_default_value_unmodeled
+  }
+}
+
+fn field_key_refused_as_interface() -> Bool {
+  match conservation_subject_of_text(path: "probe_field_key.dag", text: field_key_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_interface_member_unmodeled
+  }
+}
+
+test fn a_parameter_default_parses_holds() -> Bool { param_default_parsed() }
+
+test fn a_parameter_default_refuses_at_the_default_holds() -> Bool { param_default_refused_at_default() }
+
+test fn a_record_field_default_refuses_with_the_same_reason_holds() -> Bool { field_default_refused_as_default() }
+
+test fn a_record_wire_key_keeps_its_interface_reason_holds() -> Bool { field_key_refused_as_interface() }

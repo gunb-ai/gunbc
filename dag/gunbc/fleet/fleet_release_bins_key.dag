@@ -875,10 +875,40 @@ fn release_bins_main_lookup_ref() -> ReleaseBinsLookupRef {
   }
 }
 
+// THE DISPATCH'S OWN SCOPE, IN THE SPELLING THE CACHE API RECORDS IT. The admitted second ref is
+// "the ref this dispatch runs on", but the cache API does not report that scope as GITHUB_REF for
+// every ref kind: a workflow_dispatch on a TAG saves its entry under a scope the API lists as
+// "refs/heads/" + GITHUB_REF. Observed, not documented: the key release-bins-25f14b25... saved by
+// fleet-converge plan run 36652280985 on tag deploy/door-8e0c1fad16 is listed with
+// ref=refs/heads/refs/tags/deploy/door-8e0c1fad16, so both apply runs on that tag (36653382960,
+// 36653490246) looked up ref==GITHUB_REF, read absent, and refused
+// StoreTransportDisagreeAbsentHit over their own dispatch's entry. A branch dispatch is recorded
+// verbatim (refs/heads/main entries answer the main lookup), so only a tag is respelled.
+//
+// This is ONE spelling of the SAME ref, derived from the dispatch's own ref by one expression, not a
+// second admitted scope: an entry under any other tag or branch still does not match, and the
+// disagreement check is untouched. Its evidence is
+// test.claim.long.fleet_release_bins_key_witness release_bins_tag_dispatch_entry_is_present and
+// release_bins_RED_other_tag_entry_is_absence. If the API's spelling changes, the lookup reads
+// absent again and the run refuses loudly, never widens.
+data release_bins_dispatch_scope_ref_env: String = "RELEASE_BINS_DISPATCH_SCOPE_REF"
+
+fn release_bins_dispatch_scope_ref_expression() -> String {
+  join(["$", "{{ startsWith(github.ref, 'refs/tags/') && format('refs/heads/{0}', github.ref) || github.ref }}"], "")
+}
+
+fn release_bins_dispatch_lookup_ref() -> ReleaseBinsLookupRef {
+  ReleaseBinsLookupRef {
+    tag: "dispatch",
+    url_ref: var(n: release_bins_dispatch_scope_ref_env),
+    jq_ref_expression: join(["$ENV.", release_bins_dispatch_scope_ref_env], ""),
+  }
+}
+
 fn release_bins_lookup_refs() -> List<ReleaseBinsLookupRef> {
   [
     release_bins_main_lookup_ref(),
-    ReleaseBinsLookupRef { tag: "dispatch", url_ref: var(n: "GITHUB_REF"), jq_ref_expression: "$ENV.GITHUB_REF" },
+    release_bins_dispatch_lookup_ref(),
   ]
 }
 
