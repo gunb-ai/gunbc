@@ -3,6 +3,7 @@ module v2.test.resolve.qualified_module_projection_resolve
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
+  NotDeclaring,
   Namespace,
   ResolveContext,
   empty_canonical_symbol_set,
@@ -115,7 +116,8 @@ test fn witness_qualified_name_node_resolves_holds() -> Bool {
       policy: NamespaceOnlyY,
       position: qualified_name_snoc(qn: qmpr_consumer_qn, segment: ^LocalAlias),
       lm: dag_language_model(),
-      under_module_root: false
+      under_module_root: false,
+      declaring: NotDeclaring
     },
     n: qmpr_qualified_ref
   ) {
@@ -134,7 +136,8 @@ test fn witness_qualified_name_node_miss_red_holds() -> Bool {
       policy: NamespaceOnlyY,
       position: qmpr_consumer_qn,
       lm: dag_language_model(),
-      under_module_root: false
+      under_module_root: false,
+      declaring: NotDeclaring
     },
     n: qmpr_qualified_ref
   ) {

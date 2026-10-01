@@ -12,7 +12,7 @@ import gunbc.runner_browser_toolchain {
   RunnerBrowserToolchainLocation, RunnerBrowserToolchainResolution, runner_browser_toolchain_here_wet, runner_browser_toolchain_standing_text,
   BrowserToolchainReady, BrowserToolchainNotReady, BrowserToolchainUnresolved,
 }
-import gunbc.bmc_model { BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle }
+import gunbc.bmc_model { BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle, bmc_world, bmc_with_web, bmc_with_pending }
 import gunbc.bmc_megarac_web_adapter { MegaRacWebLogin, megarac_web_transition_table, megarac_web_exploration_depth }
 import gunbc.bmc_megarac_web_transport {
   MegaRacWebTransportStart, TransportServing, TransportNotServing,
@@ -43,19 +43,14 @@ import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_screen_boundar
 // established line and first hash-bound still (REAL ROUTE UNEXECUTED until the first hold-lifted boot).
 
 fn world(other_viewers: Int, close_at: Nat?, canvas_readable: Bool) -> BmcWorld {
-  BmcWorld {
-    power: BmcPowerOn,
+  bmc_with_pending(
+    world: bmc_with_web(world: bmc_world(power: BmcPowerOn), web: BmcWebWorld {
+      account: Present { value: BmcWebAccount { username: "admin", password: "pw", privilege: 4 } },
+      sessions: [], next_session_id: 7, other_kvm_viewers: other_viewers, kvm: BmcKvmIdle {}, canvas_readable: canvas_readable,
+    }),
     pending: match close_at { Absent => []  Present { value: t } => [BmcScheduledEvent { at: second(count: t), event: BmcKvmStreamClosed {} }] },
     fired: [],
-    web: BmcWebWorld {
-      account: Present { value: BmcWebAccount { username: "admin", password: "pw", privilege: 4 } },
-      sessions: [],
-      next_session_id: 7,
-      other_kvm_viewers: other_viewers,
-      kvm: BmcKvmIdle {},
-      canvas_readable: canvas_readable,
-    },
-  }
+  )
 }
 
 // A table the lifecycle controls never reach: their "node" exits or is blocked before it reads it.
@@ -148,6 +143,22 @@ test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> B
     && string_contains(s: log, pattern: "transition request=[\"login\",\"admin\",\"pw\"] status=200")
     && string_contains(s: log, pattern: "transition request=[\"logout\",\"csrf-7\"] status=200")
     && string_contains(s: log, pattern: "stream closed by the model")
+}
+
+// THE LOGIN DOES NOT RUN IN A DOCUMENT THAT CAN NAVIGATE AWAY (fleet-converge run 36721915217). The
+// transport's root page replaces itself on DOMContentLoaded. The observer that loaded "/" and logged in
+// by evaluating a fetch inside it journalled "failed ... Execution context was destroyed" against this
+// transport, the hardware journal line for line, and was never established. The ROUTE is asserted, not
+// only the answer: the controller saw the login and never served its root page.
+test fn a_root_page_that_navigates_cannot_destroy_the_login() -> Bool {
+  let r = rig(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: true))
+  let admitted = match kvm_handoff_admission(start: r.start) { KvmHandoffAdmitted { session: s } => s == "7"  _ => false }
+  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let log = transport_log(r: r)
+  let closed = close_rig(r: r)
+  admitted && released(rec: rec) && closed
+    && string_contains(s: log, pattern: "transition request=[\"login\",\"admin\",\"pw\"] status=200")
+    && !string_contains(s: log, pattern: "spa-root served")
 }
 
 // VIEWER SLOT BUSY: the model's other viewer makes viewer_count 1; the observer refuses with that count,

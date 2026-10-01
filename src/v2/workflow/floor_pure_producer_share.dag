@@ -751,7 +751,18 @@ import v2.std.collection { List }
 // read the arrow this roster already serves (ingested_emit_shape_frontier_tree_from_arrow) rather than
 // re-ingesting, so with this row served they fit the new-witness budget; gunbc#12639's floor runs
 // measure present against absent.
+//
+// THE parameter_reference PROGRAM IS ONE FRONT END FOR FOUR ROUTE ROWS. gunbc#12766's floor refused
+// v2.test.claim.parameter_reference's four route rows as ENROLMENT-MARGIN-REFUSED and
+// COMPLETED-OVER-COST-REQUIREMENT (re-derive: that run's lines, or claim_batch's [witness] receipt over
+// the file): each re-ran ingest -> resolve (and one, infer) over its own module-constant source and
+// inspected only a list of paths or four types. The rows now ask one program, so the share point is
+// the two nullary producers over it. The values are an Optional list of QualifiedNames and a record of
+// four Optional<Node> -- portable, no closure, no resolution context -- and both are WARM for the
+// ceiling arithmetic above: one front end is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.claim.parameter_reference.pr_program_parameter_paths",
+  "v2.test.claim.parameter_reference.pr_program_grounding",
   "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_loaded_roots",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_located_roots",
