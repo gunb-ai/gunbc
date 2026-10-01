@@ -305,6 +305,24 @@ pub struct FinitelySupportedFunction<K, V> {
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MapIntroductionEntry<K: Clone, V: Clone> {
+    pub key: K,
+    pub value: V,
+    pub _phantom: std::marker::PhantomData<(K, V)>,
+}
+
+pub fn map_from_entries<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    entries: Rc<FreeMonoid<Rc<MapIntroductionEntry<K, V>>>>,
+) -> Rc<HashMap<K, V>> {
+    entries.iter().cloned().fold(
+        v1_rt::rc_empty_map::<_, _>(),
+        |acc: _, entry: Rc<MapIntroductionEntry<K, V>>| {
+            v1_rt::rc_map_insert(acc, entry.key.clone(), entry.value.clone())
+        },
+    )
+}
+
 #[derive(Clone)]
 pub struct TotalMap<K, V> {
     pub lookup: Rc<dyn Fn(K) -> V>,

@@ -292,7 +292,61 @@ data known_frontier_causes: List<CauseOwnership> = [
     cause: ^resolve_anonymous_record_expected_type_not_record,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a headless record literal whose authored expected type does not resolve, by syntactic peel and the existing lexical lookup, to a single record (v2.std.symbol_index RecordTypePayload): a coproduct with several constructors, a primitive, a type binder, an optional, or a head reached only through alias unfolding resolve does not do. Refused rather than guessed (docs/plans/anonymous-record-literal-design.md, review condition 1). Flips per site when the source writes the constructor head; a Map head is the map arm (gunbc#12734), which takes that population when it lands"
+    flip_trigger: "a headless record literal whose authored expected type does not resolve, by syntactic peel and the existing lexical lookup, to a single record (v2.std.symbol_index RecordTypePayload): a coproduct with several constructors, a primitive, a type binder, an optional, or a head reached only through alias unfolding resolve does not do. Refused rather than guessed (docs/plans/anonymous-record-literal-design.md, review condition 1). Flips per site when the source writes the constructor head. A Map head is not in this population: it takes the map arm (resolve_anonymous_map_*)"
+  },
+  CauseOwnership {
+    cause: ^resolve_anonymous_map_no_expected_type,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a headless string-keyed map literal reached by an edge no authored annotation types (a call argument, an unannotated let, a match-arm body), so v2.compiler.resolve's map arm has no Map<K, V> to elaborate from and refuses rather than guess (docs/plans/map-literal-introduction-design.md). Not a frontier: each occurrence flips when its source writes an annotation"
+  },
+  CauseOwnership {
+    cause: ^resolve_anonymous_map_expected_type_not_map,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a headless map literal whose authored expected type does not resolve, by declaration identity, to a Map head (v2.std.map_introduction map_introduction_expected_head_is_map): a record, a coproduct, a binder, or a head reached only by alias unfolding resolve does not do. Refused, never guessed; flips per site when the source writes a Map annotation"
+  },
+  CauseOwnership {
+    cause: ^resolve_anonymous_map_expected_type_not_closed,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a headless map literal under a Map head that is not syntactically a closed Map<K, V> instantiation, so K and V cannot be peeled without inference. Refused at the literal; flips per site when the annotation writes both type arguments"
+  },
+  CauseOwnership {
+    cause: ^resolve_anonymous_map_name_key,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a headless brace of NAME keys under an authored Map head: a record literal where a map was declared. Refused at its first item; flips when the source writes string keys or the declared type is corrected"
+  },
+  CauseOwnership {
+    cause: ^resolve_anonymous_map_key_kind_mismatch,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a map literal whose declared key type K is not the type a string literal denotes (the unbound kernel String, v2.extdeps.languages.dag dag_kernel_string_type_spelling), so a literal key would cross into K with no declared route (DESIGN section 4). Refused at the first key; flips when K is the kernel String or a declared unfold route is written"
+  },
+  CauseOwnership {
+    cause: ^resolve_anonymous_map_key_text_unavailable,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a map literal key that carries no string-literal lexeme, so the key law has no text to compare: in v2 today every string literal lowers to one class-stamped atom with no payload (gunbc.recurring_failure_mode string_literal_lowers_to_one_class_stamped_atom). Refused at the key rather than compared, since comparing payload-less keys would call every pair a duplicate. A frontier: flips to zero when string literals lower to lexeme-stamped terminals (sleek-owl-120, gunbc#12759)"
+  },
+  CauseOwnership {
+    cause: ^resolve_anonymous_map_entry_malformed,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a map literal pair that does not carry both its key and its value field, refused at the pair by v2.compiler.resolve's map arm rather than substituting a node for the missing field (DESIGN 5). Body lowering always writes both, so this names a lowering defect if it ever fires; not a frontier, and expected to stay at zero"
+  },
+  CauseOwnership {
+    cause: ^resolve_anonymous_map_duplicate_key,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a map literal whose keys repeat under the key type's equality (decoded text, via the decoder gunbc#12759 lands), judged by the one key law v2.std.map_introduction map_introduction_duplicate_key and refused at the SECOND occurrence, never last-wins. Not a frontier: each occurrence is a source defect and flips when the repeated entry is removed"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_brace_key_kind_mismatch,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a brace no key-kind choice could type: a constructor head over string keys, or a headless brace mixing name keys and string keys. Refused at lowering at the first item of the offending kind (docs/plans/map-literal-introduction-design.md); flips per site when the source writes one kind"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_record_alias_cycle,
