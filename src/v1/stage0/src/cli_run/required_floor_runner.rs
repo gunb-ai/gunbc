@@ -6087,42 +6087,73 @@ pub(crate) fn install_pure_producer_share(
             .map(|(m, _)| m.to_string())
             .unwrap_or_else(|| q.to_string())
     };
-    let mut prepared_inputs = prepared_inputs;
-    prepared_inputs.sort_by_key(|i| module_of(&i.acquisition));
-    frames.begin_pass("acquisition");
-    for input in &prepared_inputs {
-        let module = match input.acquisition.rsplit_once('.') {
-            Some((module, _)) => module.to_string(),
-            None => input.acquisition.clone(),
-        };
-        let Some(frame) = frames.frame(
-            prepared,
-            corpus_modules,
-            &mut outside_subject,
-            &module,
-            "acquisition",
-            &input.acquisition,
-        )?
-        else {
-            inputs_outside_subject.insert(input.acquisition.clone());
-            continue;
-        };
-        let node = frame.lookup_fn_node(&input.acquisition).ok_or_else(|| {
+    // ONE PASS, GROUPED BY MODULE. Every row a module owns -- its acquisitions, then its
+    // carried-input producers, then its plain warms -- runs while that module's frame is the one
+    // held, so each module is framed exactly once for the whole warm. Modules are ordered by the
+    // earliest kind of row they own, so every acquisition precedes every carried row; a carried
+    // row whose acquisition is not yet bound refuses rather than reading an absent input.
+    let rank_of = |module: &str| -> u8 {
+        if prepared_inputs
+            .iter()
+            .any(|i| module_of(&i.acquisition) == module)
+        {
+            0
+        } else if carried_rows
+            .iter()
+            .any(|r| module_of(&r.producer) == module)
+        {
+            1
+        } else {
+            2
+        }
+    };
+    let mut ordered_modules: Vec<String> = prepared_inputs
+        .iter()
+        .map(|i| module_of(&i.acquisition))
+        .chain(carried_rows.iter().map(|r| module_of(&r.producer)))
+        .chain(warm_rows.iter().map(|q| module_of(q)))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    ordered_modules.sort_by_key(|m| (rank_of(m), m.clone()));
+    frames.begin_pass("warm");
+    for group in &ordered_modules {
+        for input in prepared_inputs
+            .iter()
+            .filter(|i| &module_of(&i.acquisition) == group)
+        {
+            let module = match input.acquisition.rsplit_once('.') {
+                Some((module, _)) => module.to_string(),
+                None => input.acquisition.clone(),
+            };
+            let Some(frame) = frames.frame(
+                prepared,
+                corpus_modules,
+                &mut outside_subject,
+                &module,
+                "acquisition",
+                &input.acquisition,
+            )?
+            else {
+                inputs_outside_subject.insert(input.acquisition.clone());
+                continue;
+            };
+            let node = frame.lookup_fn_node(&input.acquisition).ok_or_else(|| {
             format!(
                 "REQUIRED-FLOOR REFUSAL cause=PreparedEffectInputUnresolved acquisition={} — the rostered spelling names no declaration in its module's frame; fix or delete the roster row",
                 input.acquisition
             )
         })?;
-        let (acquired, observation) = observe_shared_build(false, "floor-preparation", || {
-            v1_interpreter::acquire_prepared_effect_input(frame, &input.acquisition)
-        });
-        let carry = acquired.map_err(|why| {
+            let (acquired, observation) = observe_shared_build(false, "floor-preparation", || {
+                v1_interpreter::acquire_prepared_effect_input(frame, &input.acquisition)
+            });
+            let carry = acquired.map_err(|why| {
             format!(
                 "REQUIRED-FLOOR REFUSAL cause=PreparedEffectInputAcquisitionFailed acquisition={} checkout_input={} — {why}",
                 input.acquisition, input.checkout_input
             )
         })?;
-        eprintln!(
+            eprintln!(
             "[floor-phase] phase=prepared-effect-input-acquire state=completed acquisition={} checkout_input={} content_digest={} disposition={} cpu_ms={} wall_ms={} rss_growth_bytes={}",
             input.acquisition,
             input.checkout_input,
@@ -6132,107 +6163,119 @@ pub(crate) fn install_pure_producer_share(
             observation.wall_ms,
             observation.rss_growth_bytes,
         );
-        v1_interpreter::install_prepared_effect_input(&node, carry);
-        acquisition_nodes.insert(input.acquisition.clone(), node);
-        warm_observations.push((
-            format!("PreparedEffectInputAcquire/{}", input.acquisition),
-            observation,
-        ));
-    }
-    let mut carried_rows = carried_rows;
-    carried_rows.sort_by_key(|r| module_of(&r.producer));
-    frames.begin_pass("carried");
-    for row in &carried_rows {
-        let producer_module = match row.producer.rsplit_once('.') {
-            Some((module, _)) => module,
-            None => row.producer.as_str(),
-        };
-        if outside_subject.contains(producer_module) {
-            continue;
+            v1_interpreter::install_prepared_effect_input(&node, carry);
+            acquisition_nodes.insert(input.acquisition.clone(), node);
+            warm_observations.push((
+                format!("PreparedEffectInputAcquire/{}", input.acquisition),
+                observation,
+            ));
         }
-        // The producer is demandable in this subject but its input was not prepared here: the
-        // claim would be served an uncarried value. Refuse, and name the real cause rather
-        // than reporting the input as unknown to the roster.
-        if inputs_outside_subject.contains(&row.carried_input) {
-            return Err(format!(
+        for row in carried_rows
+            .iter()
+            .filter(|r| &module_of(&r.producer) == group)
+        {
+            let producer_module = match row.producer.rsplit_once('.') {
+                Some((module, _)) => module,
+                None => row.producer.as_str(),
+            };
+            if outside_subject.contains(producer_module) {
+                continue;
+            }
+            // The producer is demandable in this subject but its input was not prepared here: the
+            // claim would be served an uncarried value. Refuse, and name the real cause rather
+            // than reporting the input as unknown to the roster.
+            if inputs_outside_subject.contains(&row.carried_input) {
+                return Err(format!(
                 "REQUIRED-FLOOR REFUSAL cause=CarriedInputWarmRowInputOutsideSubject producer={} input={} — the producer's module is in the prepared subject but its carried input's module is not; the closure must carry the acquisition's module (an import from the producer's module is the edge preparation follows)",
                 row.producer, row.carried_input
             ));
-        }
-        let acquisition_node = acquisition_nodes.get(&row.carried_input).ok_or_else(|| {
+            }
+            if !acquisition_nodes.contains_key(&row.carried_input)
+                && prepared_inputs
+                    .iter()
+                    .any(|i| i.acquisition == row.carried_input)
+            {
+                return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CarriedInputWarmRowInputNotYetBound producer={} input={} \
+                 -- the one-pass warm reached this carried row before its acquisition's module, so the \
+                 module order does not put every acquisition first",
+                row.producer, row.carried_input
+            ));
+            }
+            let acquisition_node = acquisition_nodes.get(&row.carried_input).ok_or_else(|| {
             format!(
                 "REQUIRED-FLOOR REFUSAL cause=CarriedInputWarmRowInputUnknown producer={} input={} — the row declares a dependence on an input no floor_cross_claim_prepared_effect_inputs row prepares, so the value it names would never be bound",
                 row.producer, row.carried_input
             )
         })?;
-        let module = match row.producer.rsplit_once('.') {
-            Some((module, _)) => module.to_string(),
-            None => row.producer.clone(),
-        };
-        // Resolution above already framed every rostered producer's module, carried-input rows
-        // included (they are part of the admitted population), so the frame is present.
-        let Some(frame) = frames.frame(
-            prepared,
-            corpus_modules,
-            &mut outside_subject,
-            &module,
-            "producer",
-            &row.producer,
-        )?
-        else {
-            continue;
-        };
-        let producer_node = frame.lookup_fn_node(&row.producer).ok_or_else(|| {
+            let module = match row.producer.rsplit_once('.') {
+                Some((module, _)) => module.to_string(),
+                None => row.producer.clone(),
+            };
+            // Resolution above already framed every rostered producer's module, carried-input rows
+            // included (they are part of the admitted population), so the frame is present.
+            let Some(frame) = frames.frame(
+                prepared,
+                corpus_modules,
+                &mut outside_subject,
+                &module,
+                "producer",
+                &row.producer,
+            )?
+            else {
+                continue;
+            };
+            let producer_node = frame.lookup_fn_node(&row.producer).ok_or_else(|| {
             format!(
                 "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerUnresolved producer={} — the rostered spelling names no declaration in its module's frame",
                 row.producer
             )
         })?;
-        // The implicit binding is installed ONLY for the shape that needs it: a `BoundParameter`
-        // row's caller passes the carried value itself, so its key already represents the
-        // content and folding it in a second time would key one call two ways.
-        if row.bound_parameter.is_none() {
-            v1_interpreter::install_carried_input_producer(&producer_node, acquisition_node)
-                .map_err(|why| {
-                    format!(
-                        "REQUIRED-FLOOR REFUSAL cause=CarriedInputWarmRowInputUnknown \
+            // The implicit binding is installed ONLY for the shape that needs it: a `BoundParameter`
+            // row's caller passes the carried value itself, so its key already represents the
+            // content and folding it in a second time would key one call two ways.
+            if row.bound_parameter.is_none() {
+                v1_interpreter::install_carried_input_producer(&producer_node, acquisition_node)
+                    .map_err(|why| {
+                        format!(
+                            "REQUIRED-FLOOR REFUSAL cause=CarriedInputWarmRowInputUnknown \
                          producer={} input={} — {why}",
-                        row.producer, row.carried_input
+                            row.producer, row.carried_input
+                        )
+                    })?;
+            }
+            let (warm_result, warm_observation) =
+                observe_shared_build(false, "floor-preparation", || {
+                    v1_interpreter::warm_cross_claim_carried_input_producer(
+                        frame,
+                        &row.producer,
+                        &row.carried_input,
+                        row.bound_parameter.as_deref(),
                     )
-                })?;
-        }
-        let (warm_result, warm_observation) =
-            observe_shared_build(false, "floor-preparation", || {
-                v1_interpreter::warm_cross_claim_carried_input_producer(
-                    frame,
-                    &row.producer,
-                    &row.carried_input,
-                    row.bound_parameter.as_deref(),
-                )
-            });
-        match warm_result {
-            Ok(outcome) => {
-                if !outcome.is_servable() {
-                    let detail = match outcome.not_portable_detail() {
-                        Some(refusal) => format!(
-                            "{} path={} kind={}",
-                            outcome.cause(),
-                            if refusal.path_into_value.is_empty() {
-                                "<root>"
-                            } else {
-                                refusal.path_into_value.as_str()
-                            },
-                            refusal.encountered_kind
-                        ),
-                        None => outcome.cause().to_string(),
-                    };
-                    return Err(format!(
+                });
+            match warm_result {
+                Ok(outcome) => {
+                    if !outcome.is_servable() {
+                        let detail = match outcome.not_portable_detail() {
+                            Some(refusal) => format!(
+                                "{} path={} kind={}",
+                                outcome.cause(),
+                                if refusal.path_into_value.is_empty() {
+                                    "<root>"
+                                } else {
+                                    refusal.path_into_value.as_str()
+                                },
+                                refusal.encountered_kind
+                            ),
+                            None => outcome.cause().to_string(),
+                        };
+                        return Err(format!(
                         "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored producer={} — the carried-input producer evaluated but its value was refused by the cross-claim store: {detail}",
                         row.producer
                     ));
-                }
-                floor_warm_row_identity(&row.producer);
-                eprintln!(
+                    }
+                    floor_warm_row_identity(&row.producer);
+                    eprintln!(
                     "[floor-phase] phase=prepared-effect-input-warm state=completed producer={} input={} disposition={} cpu_ms={} wall_ms={} rss_growth_bytes={}",
                     row.producer,
                     row.carried_input,
@@ -6241,147 +6284,145 @@ pub(crate) fn install_pure_producer_share(
                     warm_observation.wall_ms,
                     warm_observation.rss_growth_bytes,
                 );
-                warm_observations.push((
-                    format!("CrossClaimCarriedInputWarm/{}", row.producer),
-                    warm_observation,
-                ));
-            }
-            Err(why) => {
-                return Err(format!(
+                    warm_observations.push((
+                        format!("CrossClaimCarriedInputWarm/{}", row.producer),
+                        warm_observation,
+                    ));
+                }
+                Err(why) => {
+                    return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed producer={} — {why}",
                     row.producer
                 ));
+                }
             }
         }
-    }
 
-    let mut warm_by_module: Vec<&String> = warm_rows.iter().collect();
-    warm_by_module.sort_by_key(|q| module_of(q));
-    frames.begin_pass("warm");
-    for qualified in warm_by_module {
-        let module = match qualified.rsplit_once('.') {
-            Some((module, _)) => module.to_string(),
-            None => qualified.clone(),
-        };
-        // Resolution above either framed this row's module or recorded it as outside the
-        // prepared subject (not evaluated here, counted below); a stale row already refused.
-        let Some(producer_frame) = frames.frame(
-            prepared,
-            corpus_modules,
-            &mut outside_subject,
-            &module,
-            "producer",
-            qualified,
-        )?
-        else {
-            continue;
-        };
-        let framed = producer_frame.lookup_fn_node(qualified);
-        let admitted = admitted_by_qualified.get(qualified.as_str());
-        if !matches!((&framed, admitted), (Some(f), Some(a)) if std::rc::Rc::ptr_eq(f, a)) {
-            return Err(format!(
+        for qualified in warm_rows.iter().filter(|q| &module_of(q) == group) {
+            let module = match qualified.rsplit_once('.') {
+                Some((module, _)) => module.to_string(),
+                None => qualified.clone(),
+            };
+            // Resolution above either framed this row's module or recorded it as outside the
+            // prepared subject (not evaluated here, counted below); a stale row already refused.
+            let Some(producer_frame) = frames.frame(
+                prepared,
+                corpus_modules,
+                &mut outside_subject,
+                &module,
+                "producer",
+                qualified,
+            )?
+            else {
+                continue;
+            };
+            let framed = producer_frame.lookup_fn_node(qualified);
+            let admitted = admitted_by_qualified.get(qualified.as_str());
+            if !matches!((&framed, admitted), (Some(f), Some(a)) if std::rc::Rc::ptr_eq(f, a)) {
+                return Err(format!(
                 "REQUIRED-FLOOR REFUSAL cause=PureProducerShareFrameLookupDiverges producer={qualified} \
                  — the module frame resolves the producer to a different declaration than admission \
                  read from the prepared graph, so the admitted identity is not the one evaluated"
             ));
-        }
-        // PROVENANCE IS DERIVED FROM THE TYPED OUTCOME, NOT ASSERTED BEFORE THE CALL, and the
-        // first revision of this line got that wrong in the direction DESIGN section 4b names.
-        // It passed `already_built: false` unconditionally, on the reasoning that the outcome
-        // below is the authority for whether the value was already retained. THAT REASONING
-        // FAILS BECAUSE THIS LOOP ALSO REPORTS A PROVENANCE: on the `AlreadyPresent` path the
-        // receipt said `BuiltByPreparation` for an artifact preparation FOUND rather than built.
-        // Two representations of one fact with one of them lying is worse than either alone, and
-        // a fabricated provenance in a receipt is the fabricated-plausible-output failure applied
-        // to this compiler's own self-description (review 59035, codex/gpt-5.6-sol).
-        //
-        // The flag cannot carry it: `observe_shared_build` is told before it runs, and the fact
-        // does not exist until the call returns. So the observation is corrected AFTER the fact,
-        // from the outcome that owns it.
-        //
-        // THE TRIGGER NAME STATES ONLY WHAT IS DECIDABLE. `AlreadyPresent` establishes PRESENCE
-        // and not who caused it, so the label names the boundary that is knowable rather than
-        // fabricating a call site -- inside this loop the only writer that can already have
-        // stored a rostered producer's value is an earlier rostered producer whose traversal
-        // reached it. That is the same discipline `warm_bare_reference_edge_index` uses when it
-        // names `a-site-ahead-of-floor-preparation` instead of inventing an author, and it is
-        // deliberately weaker than a call-site name because a call site is not recorded.
-        let (warm_result, mut warm_observation) =
-            observe_shared_build(false, "floor-preparation", || {
-                v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified)
-            });
-        if let Ok(outcome) = &warm_result {
-            if matches!(
-                outcome,
-                v1_interpreter::CrossClaimStoreOutcome::AlreadyPresent
-            ) {
-                warm_observation.provenance = SharedBuildProvenance::AlreadyWarmOnEntry {
-                    triggered_by: "an-earlier-rostered-producer-in-this-warm-loop",
-                };
             }
-        }
-        match warm_result {
-            Ok(outcome) => {
-                // A NON-SERVABLE outcome means nothing is retained for later claims, so a
-                // silent decline would relocate the fill onto the first toucher: stop the
-                // line, naming the ONE cause rather than a disjunction of three. An
-                // `AlreadyPresent` outcome is servable and therefore not a refusal — a
-                // rostered producer reachable from an earlier rostered producer is stored
-                // by that traversal, and its own warm correctly finds the work done.
-                if !outcome.is_servable() {
-                    // The located detail comes from the OUTCOME, so a cause can only ever be
-                    // paired with its own evidence. Reading the retained slot here instead
-                    // would decorate a byte-budget or entry-cap refusal with a stale path
-                    // left by an earlier producer's unportable value (review 57554).
-                    let detail = match outcome.not_portable_detail() {
-                        Some(refusal) => format!(
-                            "{} path={} kind={}",
-                            outcome.cause(),
-                            if refusal.path_into_value.is_empty() {
-                                "<root>"
-                            } else {
-                                refusal.path_into_value.as_str()
-                            },
-                            refusal.encountered_kind
-                        ),
-                        None => outcome.cause().to_string(),
+            // PROVENANCE IS DERIVED FROM THE TYPED OUTCOME, NOT ASSERTED BEFORE THE CALL, and the
+            // first revision of this line got that wrong in the direction DESIGN section 4b names.
+            // It passed `already_built: false` unconditionally, on the reasoning that the outcome
+            // below is the authority for whether the value was already retained. THAT REASONING
+            // FAILS BECAUSE THIS LOOP ALSO REPORTS A PROVENANCE: on the `AlreadyPresent` path the
+            // receipt said `BuiltByPreparation` for an artifact preparation FOUND rather than built.
+            // Two representations of one fact with one of them lying is worse than either alone, and
+            // a fabricated provenance in a receipt is the fabricated-plausible-output failure applied
+            // to this compiler's own self-description (review 59035, codex/gpt-5.6-sol).
+            //
+            // The flag cannot carry it: `observe_shared_build` is told before it runs, and the fact
+            // does not exist until the call returns. So the observation is corrected AFTER the fact,
+            // from the outcome that owns it.
+            //
+            // THE TRIGGER NAME STATES ONLY WHAT IS DECIDABLE. `AlreadyPresent` establishes PRESENCE
+            // and not who caused it, so the label names the boundary that is knowable rather than
+            // fabricating a call site -- inside this loop the only writer that can already have
+            // stored a rostered producer's value is an earlier rostered producer whose traversal
+            // reached it. That is the same discipline `warm_bare_reference_edge_index` uses when it
+            // names `a-site-ahead-of-floor-preparation` instead of inventing an author, and it is
+            // deliberately weaker than a call-site name because a call site is not recorded.
+            let (warm_result, mut warm_observation) =
+                observe_shared_build(false, "floor-preparation", || {
+                    v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified)
+                });
+            if let Ok(outcome) = &warm_result {
+                if matches!(
+                    outcome,
+                    v1_interpreter::CrossClaimStoreOutcome::AlreadyPresent
+                ) {
+                    warm_observation.provenance = SharedBuildProvenance::AlreadyWarmOnEntry {
+                        triggered_by: "an-earlier-rostered-producer-in-this-warm-loop",
                     };
-                    return Err(format!(
-                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
+                }
+            }
+            match warm_result {
+                Ok(outcome) => {
+                    // A NON-SERVABLE outcome means nothing is retained for later claims, so a
+                    // silent decline would relocate the fill onto the first toucher: stop the
+                    // line, naming the ONE cause rather than a disjunction of three. An
+                    // `AlreadyPresent` outcome is servable and therefore not a refusal — a
+                    // rostered producer reachable from an earlier rostered producer is stored
+                    // by that traversal, and its own warm correctly finds the work done.
+                    if !outcome.is_servable() {
+                        // The located detail comes from the OUTCOME, so a cause can only ever be
+                        // paired with its own evidence. Reading the retained slot here instead
+                        // would decorate a byte-budget or entry-cap refusal with a stale path
+                        // left by an earlier producer's unportable value (review 57554).
+                        let detail = match outcome.not_portable_detail() {
+                            Some(refusal) => format!(
+                                "{} path={} kind={}",
+                                outcome.cause(),
+                                if refusal.path_into_value.is_empty() {
+                                    "<root>"
+                                } else {
+                                    refusal.path_into_value.as_str()
+                                },
+                                refusal.encountered_kind
+                            ),
+                            None => outcome.cause().to_string(),
+                        };
+                        return Err(format!(
+                            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
                          producer={qualified} — the rostered producer evaluated but its value \
                          was refused by the cross-claim store: {detail}"
-                    ));
-                }
-                floor_warm_row_identity(qualified);
-                eprintln!(
-                    "[floor-phase] phase=pure-producer-share-warm state=completed \
+                        ));
+                    }
+                    floor_warm_row_identity(qualified);
+                    eprintln!(
+                        "[floor-phase] phase=pure-producer-share-warm state=completed \
                      producer={qualified} disposition={} cpu_ms={} wall_ms={} \
                      rss_growth_bytes={} provenance={}",
-                    outcome.cause(),
-                    warm_observation.cpu_ms,
-                    warm_observation.wall_ms,
-                    warm_observation.rss_growth_bytes,
-                    warm_observation.provenance.render(),
-                );
-                warm_observations.push((
-                    format!("CrossClaimPureProducerWarm/{qualified}"),
-                    warm_observation,
-                ));
-            }
-            Err(v1_interpreter::PureProducerWarmRefusal::DispatchedEffect { effects }) => {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmDispatchedEffect \
+                        outcome.cause(),
+                        warm_observation.cpu_ms,
+                        warm_observation.wall_ms,
+                        warm_observation.rss_growth_bytes,
+                        warm_observation.provenance.render(),
+                    );
+                    warm_observations.push((
+                        format!("CrossClaimPureProducerWarm/{qualified}"),
+                        warm_observation,
+                    ));
+                }
+                Err(v1_interpreter::PureProducerWarmRefusal::DispatchedEffect { effects }) => {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmDispatchedEffect \
                      producer={qualified} effects={effects} — the warm row reached the world, \
                      so the value depends on an input its empty argument row cannot represent; \
                      roster the read as a prepared effect input and the fold as a carried-input \
                      warm row instead"
-                ));
-            }
-            Err(v1_interpreter::PureProducerWarmRefusal::Failed(why)) => {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed \
+                    ));
+                }
+                Err(v1_interpreter::PureProducerWarmRefusal::Failed(why)) => {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed \
                      producer={qualified} — {why}"
-                ));
+                    ));
+                }
             }
         }
     }
