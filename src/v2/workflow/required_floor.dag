@@ -43,7 +43,7 @@ import std.measure {
   eval_step_count,
   eval_step_count_value,
 }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Milliseconds }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
 import extdeps.languages.yaml.types { yaml_entry_count }
 import std.algebra { Cons, Empty }
@@ -2577,17 +2577,18 @@ fn reach_head_cannot_block(head: String) -> Bool {
 // the base arm's budget, and an arm over that budget refuses with a typed cause and never
 // truncates. There is no flag that changes this.
 type ReachDifferentialStanding
-  = DifferentialBlocking { base_arm_wall_budget_ms: Int }
+  = DifferentialBlocking { base_arm_wall_budget: Milliseconds }
   | DifferentialReportOnly { pending: String }
 
 data reach_differential_standing: ReachDifferentialStanding = DifferentialReportOnly {
   pending: "the operator cost ruling on the base arm, measured by neat-boar-16 on srv1 (2026-10-01)"
 }
 
-// The host wire: 0 means report-only, and a positive value is the blocking arm's wall budget.
-fn reach_differential_blocking_budget_ms() -> Int {
+// The host wire: 0 means report-only, and a positive value is the blocking arm's wall budget. Typed
+// Milliseconds (std.types) at birth, so the unit is the type's and not the name's (review 73528).
+fn reach_differential_blocking_budget() -> Milliseconds {
   match reach_differential_standing {
-    DifferentialBlocking { base_arm_wall_budget_ms: b } => b
+    DifferentialBlocking { base_arm_wall_budget: b } => b
     DifferentialReportOnly { pending: _ } => 0
   }
 }

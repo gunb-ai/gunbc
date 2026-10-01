@@ -9502,14 +9502,14 @@ pub fn run_required_floor(
     // the frame is released on the next line and the differential is decided after the fold.
     let reach_blocking_budget_ms = match v1_interpreter::run_in_context(
         &hermetic,
-        "v2.workflow.required_floor.reach_differential_blocking_budget_ms",
+        "v2.workflow.required_floor.reach_differential_blocking_budget",
         false,
     ) {
         Ok(v1_interpreter::Value::Int(n)) if n >= 0 => n as u64,
         other => {
             return Err(format!(
                 "REQUIRED-FLOOR REFUSAL cause=ReachDifferentialStandingUnreadable \
-                 reach_differential_blocking_budget_ms returned {}",
+                 reach_differential_blocking_budget (Milliseconds) returned {}",
                 floor_value_shape(other.as_ref().ok())
             ))
         }
