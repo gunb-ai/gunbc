@@ -13,8 +13,18 @@ import v2.compiler.infer {
   inferred_facts_grounding_derived,
   inferred_facts_resolved_type
 }
-import std.algebra { Cons, Empty }
-import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
+import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.type_binder { edge_is_cast_target }
+import v2.std.arrow_signature {
+  ApplicationBindingRefused,
+  ApplicationBound,
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  application_actual_edges,
+  application_binding_plan,
+  arrow_declared_parameter_order
+}
 import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
@@ -24,7 +34,7 @@ import v2.std.collection {
   list_at_optional,
   list_nth
 }
-import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.qualified_name { declaration_reference_path_optional, parameter_reference_path_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -105,6 +115,7 @@ import v2.std.node {
   ComputationBody,
   RecordConstructBody,
   DeclarationReferenceBody,
+  ParameterReferenceBody,
   UnsupportedArrowBody,
   arrow_body_admits_eval_entry,
   bag_hash_digest,
@@ -861,6 +872,21 @@ type InterpretationCacheDigestAuthority
       structure_digest: Hash
     }
 
+// A VERDICT IS REUSED ON CONTENT IDENTITY ONLY WHERE CONTENT IDENTITY DETERMINES THE RUN. A named
+// actual's position is not part of an application's identity (v2.std.node
+// canonicalize_positional_then_named sorts the named suffix), but it is part of its
+// EVALUATION ORDER, which is authored order. For pure evaluation the two coincide; with an effect
+// bundle present, f(a: e1(), b: e2()) and f(b: e2(), a: e1()) hash equal and perform their effects
+// in opposite orders, so a verdict keyed on the hash could be reused across two different runs. An
+// effectful evaluation context is therefore cache-ineligible (gunbc.recurring_failure_mode
+// argument_order_silently_orders_two_effects, until v2 carries uses facts and the order wall lands).
+fn eval_context_performs_effects(context: EvalContext) -> Bool {
+  match context.effect_io {
+    EffectIoEvalAbsent => false
+    EffectIoEvalPresent { bundle: _ } => true
+  }
+}
+
 fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> InterpretationCacheDigestAuthority {
   let authority = context.cache_authority
   let registry_witness = interpretation_registry_semantics_digest(
@@ -872,7 +898,17 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
     interpretation: v2_evaluator_interpretation()
   )
   let registry_mismatch = test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_semantics_mismatch_tag)
-  if authority.runtime_identity == ^v2_evaluator_runtime_id
+  if eval_context_performs_effects(context: context) {
+    InterpretationCacheIneligible {
+      runtime_identity: authority.runtime_identity,
+      registry_witness: registry_witness,
+      structure_digest: interpretation_algebra_executed_structure_digest(
+        runtime_identity: authority.runtime_identity,
+        interpretation: authority.interpretation,
+        structure_witness: authority.structure_witness
+      )
+    }
+  } else if authority.runtime_identity == ^v2_evaluator_runtime_id
     && interpretation_algebra_slot_identities_equal(a: authority.interpretation, b: v2_evaluator_interpretation())
     && authority.semantics_digest == registered_semantics
     && registry_witness == registered_semantics
@@ -1267,6 +1303,14 @@ fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -
 // Atom miss was before the carrier: unbound in this environment, refused with the miss reason at
 // the reference's own locus. Binding module-level declarations by their path is the evaluator's
 // own next step and is not taken here.
+//
+// A PARAMETER REFERENCE REFUSES THE SAME WAY, UNDER ITS OWN REASON, AND NEVER BY LABEL. A named fn's
+// parameter is resolved as a path-keyed reference (v2.std.qualified_name parameter_reference_node),
+// while eval_bind_arrow_params binds by bare label; reading the leaf here would re-derive the binding
+// from the spine's shape. No route evaluates a declared fn body over resolver output yet, so no
+// accepted program reaches this arm. DECLARED FRONTIER, TRIGGER NAMING THE CAPABILITY: gunbc#12506's
+// named-call route evaluates a declared fn body over resolver output, SUFFICIENT FOR eval to key
+// parameters by QualifiedName with this refusal arm deleted.
 fn eval_type_node_atom(
   node: Node,
   interpretation: InterpretationAlgebra,
@@ -1276,6 +1320,12 @@ fn eval_type_node_atom(
     Present { value: _ } =>
       outcome_rejected(
         d: eval_diagnostic(reason: ^eval_rejected_runtime_binding_lookup_miss, node: node)
+      )
+    Absent =>
+  match parameter_reference_path_optional(node: node) {
+    Present { value: _ } =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node)
       )
     Absent =>
   match node.kind {
@@ -1301,46 +1351,15 @@ fn eval_type_node_atom(
       outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
   }
-}
-
-type EvalParamBindAcc {
-  idx: Int
-  acc: Outcome<EvaluationEnvironment>
-}
-
-fn eval_bind_param_label_step(
-  state: EvalParamBindAcc,
-  label: Symbol,
-  args: List<RuntimeValue>,
-  bind: BindInterpreter,
-  node: Node
-) -> EvalParamBindAcc {
-  match state.acc {
-    Rejected { diagnostics: r } =>
-      EvalParamBindAcc { idx: state.idx + 1, acc: Rejected { diagnostics: r } }
-    Accepted { value: env, diagnostics: _ } =>
-      EvalParamBindAcc {
-        idx: state.idx + 1,
-        acc: bind_outcome(
-          o: eval_witness_outcome(
-            witness: list_nth(
-              xs: args,
-              wanted: state.idx,
-              absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
-            )
-          ),
-          f: fn(value) {
-            bind.bind_value(
-              environment_binding_key_for_symbol(sym: label),
-              value,
-              env
-            )
-          }
-        )
-      }
   }
 }
 
+
+// BINDING GOES THROUGH THE ONE PLAN. `args` are the application's actuals evaluated in authored
+// order (eval_edge_is_runtime_argument); v2.std.arrow_signature application_binding_plan says,
+// for each declared parameter, which of them fills it -- the same plan v2.compiler.infer checked, so
+// the two stages cannot bind one call differently. A domain with no named binder keeps its positional
+// edges, bound in their own order.
 fn eval_bind_arrow_params(
   arrow: Node,
   args: List<RuntimeValue>,
@@ -1351,52 +1370,55 @@ fn eval_bind_arrow_params(
   bind_outcome(
     o: eval_nth_child(node: arrow, wanted: 0, absent_reason: ^eval_rejected_callee_absent),
     f: fn(domain_edge) {
-      bind_outcome(o: eval_param_labels_in_declared_order(arrow: arrow, domain: domain_edge.target, node: node), f: fn(labels) {
-      match fold_list(
-        xs: labels,
-        empty: EvalParamBindAcc { idx: 0, acc: Accepted { value: environment, diagnostics: None } },
-        cons: fn(state, label) {
-          eval_bind_param_label_step(state: state, label: label, args: args, bind: bind, node: node)
+      if eval_domain_has_named_binder(domain: domain_edge.target) {
+        match application_binding_plan(arrow: arrow, actuals: application_actual_edges(site: node)) {
+          ApplicationBindingRefused { reason: reason, at: _ } =>
+            outcome_rejected(d: eval_diagnostic(reason: reason, node: node))
+          ApplicationBound { slots: slots } =>
+            fold(slots, init: Accepted { value: environment, diagnostics: None }, f: fn(acc, slot) {
+              bind_outcome(o: acc, f: fn(env) {
+                bind_outcome(
+                  o: eval_witness_outcome(
+                    witness: list_nth(
+                      xs: args,
+                      wanted: slot.actual_index,
+                      absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
+                    )
+                  ),
+                  f: fn(value) { bind.bind_value(environment_binding_key_for_symbol(sym: slot.label), value, env) }
+                )
+              })
+            })
         }
-      ) {
-        EvalParamBindAcc { idx: param_count, acc: bound } =>
-          if eval_actual_present(args: args, wanted: param_count, node: node) {
-            outcome_rejected(
-              d: eval_diagnostic(reason: ^eval_rejected_argument_arity_excess, node: node)
-            )
-          } else {
-            bound
-          }
+      } else {
+        eval_bind_positional_domain(domain: domain_edge.target, args: args, environment: environment, bind: bind, node: node)
       }
-      })
     }
   )
 }
 
-// THE PARAMETERS' BINDING LABELS, IN DECLARED ORDER. A domain of named binders is a Conj sorted by
-// label for identity, so its stored sequence is not a declared order; the order is read from the
-// Arrow's ^arrow_signature_order_edge through the one reader infer also uses
-// (v2.std.arrow_signature arrow_declared_parameter_order), so the two stages cannot bind one
-// call differently. The answer is the LABELS, not edges: a binder's type is not what binding reads,
-// and an edge built here would have to point somewhere it does not. A named domain with no readable
-// order refuses. A domain with no named binder binds no name, exactly as its positional edges bound
-// nothing before, so it answers no labels.
-fn eval_param_labels_in_declared_order(arrow: Node, domain: Node, node: Node) -> Outcome<List<Symbol>> {
-  if fold(domain.children, init: false, f: fn(acc, e) {
+fn eval_domain_has_named_binder(domain: Node) -> Bool {
+  fold(domain.children, init: false, f: fn(acc, e) {
     match e.label {
       Named { name: _ } => true
       Positional => acc
     }
-  }) {
-    match arrow_declared_parameter_order(arrow: arrow) {
-      ArrowParameterOrderDeclared { labels: labels } => Accepted { value: labels, diagnostics: None }
-      ArrowParameterOrderAbsent =>
-        outcome_rejected(d: eval_diagnostic(reason: ^application_parameter_order_absent, node: node))
-      ArrowParameterOrderMalformed =>
-        outcome_rejected(d: eval_diagnostic(reason: ^application_parameter_order_malformed, node: node))
-    }
+  })
+}
+
+// A DOMAIN WITH NO NAMED BINDER BINDS NO NAME: its positional edges carry types, not binders, so the
+// only question is arity -- an actual beyond the domain's zero named slots is excess.
+fn eval_bind_positional_domain(
+  domain: Node,
+  args: List<RuntimeValue>,
+  environment: EvaluationEnvironment,
+  bind: BindInterpreter,
+  node: Node
+) -> Outcome<EvaluationEnvironment> {
+  if eval_actual_present(args: args, wanted: 0, node: node) {
+    outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_argument_arity_excess, node: node))
   } else {
-    Accepted { value: Empty, diagnostics: None }
+    Accepted { value: environment, diagnostics: None }
   }
 }
 
@@ -1656,6 +1678,7 @@ fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
     DirectAtomBody => ^eval_rejected_unsupported_callee
     RecordConstructBody => ^eval_rejected_unsupported_callee
     DeclarationReferenceBody => ^eval_rejected_unsupported_callee
+    ParameterReferenceBody => ^eval_rejected_parameter_reference_unbound
     ComputationBody { behavior: _ } => ^eval_rejected_unsupported_callee
     UnsupportedArrowBody => ^eval_rejected_unsupported_callee
   }
@@ -2136,13 +2159,19 @@ fn empty_runtime_values() -> List<RuntimeValue> {
   []
 }
 
+// An applied callee's actuals are every edge after the callee, positional AND named, evaluated in
+// authored order -- never a cast's <cast-target>, which is a type (v2.std.type_binder), whichever arm
+// the node takes; eval_bind_arrow_params binds them through the one binding plan. Every other
+// Transform -- including an application whose callee is a resolved declaration reference, which
+// eval_transform_has_callee_reference does not recognise -- evaluates EVERY child: its named edges are
+// named actuals (v2.std.node PositionalPrefixThenLabeled), and filtering to positional edges dropped
+// them silently.
 fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edge) -> Bool {
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
-      AwaitingChildren { processed: p } =>
-        if p == 0 { false } else { is_positional(e: edge) }
-      ReadyToInterpret => is_positional(e: edge)
-      Interpreted => is_positional(e: edge)
+      AwaitingChildren { processed: p } => (p != 0) && !edge_is_cast_target(e: edge)
+      ReadyToInterpret => !edge_is_cast_target(e: edge)
+      Interpreted => !edge_is_cast_target(e: edge)
     }
   } else if eval_node_is_branch(node: parent) {
     match progress {
@@ -2153,8 +2182,17 @@ fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edg
     }
   } else if eval_node_is_loop(node: parent) {
     false
+  } else if eval_node_is_transform(node: parent) {
+    !edge_is_cast_target(e: edge)
   } else {
     is_positional(e: edge)
+  }
+}
+
+fn eval_node_is_transform(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Transform } => true
+    _ => false
   }
 }
 

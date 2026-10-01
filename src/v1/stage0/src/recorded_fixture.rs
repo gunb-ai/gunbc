@@ -56,6 +56,11 @@ pub enum FixtureError {
     UnreplayableValue {
         kind: String,
     },
+    /// The encoding would nest past the depth serde_json reads back; carries the located refusal
+    /// from `v1_interpreter::claim_json_nesting`.
+    JsonDepthExceeded {
+        detail: String,
+    },
     ClockUnavailable,
     Io {
         path: PathBuf,
@@ -123,6 +128,7 @@ impl fmt::Display for FixtureError {
             FixtureError::UnknownTag { tag } => {
                 write!(f, "fixture unknown tag {:?} — refusing to fabricate a value", tag)
             }
+            FixtureError::JsonDepthExceeded { detail } => write!(f, "fixture {detail}"),
             FixtureError::UnreplayableValue { kind } => {
                 write!(
                     f,
@@ -407,6 +413,27 @@ pub fn value_to_fixture_json(
     val: &Value,
     ctx: &InterpContext,
 ) -> Result<serde_json::Value, FixtureError> {
+    crate::v1_interpreter::value_depth_guarded(|| {
+        let _own = match val {
+            Value::Null => None,
+            _ => Some(fixture_nesting(1, "")?),
+        };
+        value_to_fixture_json_shape(val, ctx)
+    })
+}
+
+fn fixture_nesting(
+    levels: usize,
+    segment: &str,
+) -> Result<crate::v1_interpreter::JsonNestingClaim, FixtureError> {
+    crate::v1_interpreter::claim_json_nesting(levels, segment)
+        .map_err(|detail| FixtureError::JsonDepthExceeded { detail })
+}
+
+fn value_to_fixture_json_shape(
+    val: &Value,
+    ctx: &InterpContext,
+) -> Result<serde_json::Value, FixtureError> {
     match val {
         Value::Null => Ok(serde_json::Value::Null),
         Value::Unit => Ok(json!({ "__tag": "Unit" })),
@@ -415,16 +442,24 @@ pub fn value_to_fixture_json(
         Value::Float(f) => Ok(json!({ "__tag": "Float", "value": f })),
         Value::Str(s) => Ok(json!({ "__tag": "Str", "value": s.as_str() })),
         Value::List(items) => {
+            let _items = fixture_nesting(1, "")?;
             let arr: Result<Vec<_>, _> = items
                 .iter()
-                .map(|v| value_to_fixture_json(v, ctx))
+                .enumerate()
+                .map(|(i, v)| {
+                    let _at = fixture_nesting(0, &format!(".items[{i}]"))?;
+                    value_to_fixture_json(v, ctx)
+                })
                 .collect();
             Ok(json!({ "__tag": "List", "items": arr? }))
         }
         Value::Record { type_name, fields } => {
+            let _fields = fixture_nesting(1, "")?;
             let mut obj = serde_json::Map::new();
             for (k, v) in fields.iter() {
-                obj.insert(ctx.resolve(*k), value_to_fixture_json(v, ctx)?);
+                let name = ctx.resolve(*k);
+                let _at = fixture_nesting(0, &format!(".{name}"))?;
+                obj.insert(name, value_to_fixture_json(v, ctx)?);
             }
             Ok(json!({
                 "__tag": "Record",
@@ -437,9 +472,12 @@ pub fn value_to_fixture_json(
             variant_name,
             fields,
         } => {
+            let _fields = fixture_nesting(1, "")?;
             let mut obj = serde_json::Map::new();
             for (k, v) in fields.iter() {
-                obj.insert(ctx.resolve(*k), value_to_fixture_json(v, ctx)?);
+                let name = ctx.resolve(*k);
+                let _at = fixture_nesting(0, &format!(".{name}"))?;
+                obj.insert(name, value_to_fixture_json(v, ctx)?);
             }
             Ok(json!({
                 "__tag": "Variant",
@@ -449,9 +487,11 @@ pub fn value_to_fixture_json(
             }))
         }
         Value::Map(entries) => {
+            let _entries = fixture_nesting(1, "")?;
             let mut encoded: Vec<(String, serde_json::Value, serde_json::Value)> =
                 Vec::with_capacity(entries.len());
             for (k, v) in entries.iter() {
+                let _entry = fixture_nesting(1, ".entries[]")?;
                 let key_json = value_to_fixture_json(k.value_ref(), ctx)?;
                 let value_json = value_to_fixture_json(v, ctx)?;
                 let sort_key = canonical_json_sort_key(&key_json)?;
@@ -465,8 +505,10 @@ pub fn value_to_fixture_json(
             Ok(json!({ "__tag": "Map", "entries": items }))
         }
         Value::Set(members) => {
+            let _members = fixture_nesting(1, "")?;
             let mut encoded: Vec<(String, serde_json::Value)> = Vec::with_capacity(members.len());
             for m in members.iter() {
+                let _at = fixture_nesting(0, ".members[]")?;
                 let member_json = value_to_fixture_json(&str_value(m.clone()), ctx)?;
                 let sort_key = canonical_json_sort_key(&member_json)?;
                 encoded.push((sort_key, member_json));
@@ -492,130 +534,132 @@ pub fn value_from_fixture_json(
     json: &serde_json::Value,
     ctx: &InterpContext,
 ) -> Result<Value, FixtureError> {
-    use crate::v1_interpreter::list_value;
+    crate::v1_interpreter::value_depth_guarded(|| {
+        use crate::v1_interpreter::list_value;
 
-    if json.is_null() {
-        return Ok(Value::Null);
-    }
+        if json.is_null() {
+            return Ok(Value::Null);
+        }
 
-    let obj = require_object(json)?;
-    let tag = require_tag(obj)?;
-    match tag {
-        "Unit" => Ok(Value::Unit),
-        "Bool" => Ok(Value::Bool(require_bool(obj, "value")?)),
-        "Int" => Ok(Value::Int(require_i64(obj, "value")?)),
-        "Float" => Ok(Value::Float(require_f64(obj, "value")?)),
-        "Str" => Ok(str_value(require_str(obj, "value")?)),
-        "List" => {
-            let items = obj.get("items").and_then(|v| v.as_array()).ok_or_else(|| {
-                FixtureError::DeserializationMismatch {
-                    reason: "List missing items array".to_string(),
-                }
-            })?;
-            let mut out = Vec::with_capacity(items.len());
-            for item in items {
-                out.push(value_from_fixture_json(item, ctx)?);
-            }
-            Ok(list_value(out))
-        }
-        "Record" => {
-            let type_name = ctx.sym(&require_str(obj, "__type")?);
-            let fields_obj = require_fields_obj(obj)?;
-            let mut fields = Vec::with_capacity(fields_obj.len());
-            for (k, v) in fields_obj {
-                fields.push((ctx.sym(k), value_from_fixture_json(v, ctx)?));
-            }
-            Ok(Value::Record {
-                type_name,
-                fields: Rc::new(sorted_fields(fields)),
-            })
-        }
-        "Variant" => {
-            let type_name = ctx.sym(&require_str(obj, "__type")?);
-            let variant_name = ctx.sym(&require_str(obj, "__variant")?);
-            let fields_obj = require_fields_obj(obj)?;
-            let mut fields = Vec::with_capacity(fields_obj.len());
-            for (k, v) in fields_obj {
-                fields.push((ctx.sym(k), value_from_fixture_json(v, ctx)?));
-            }
-            Ok(Value::Variant {
-                type_name,
-                variant_name,
-                fields: Rc::new(sorted_fields(fields)),
-            })
-        }
-        "Map" => {
-            let entries = obj
-                .get("entries")
-                .and_then(|v| v.as_array())
-                .ok_or_else(|| FixtureError::DeserializationMismatch {
-                    reason: "Map missing entries array".to_string(),
-                })?;
-            let mut out = im::HashMap::new();
-            for entry in entries {
-                let pair = require_object(entry)?;
-                let key_json =
-                    pair.get("key")
-                        .ok_or_else(|| FixtureError::DeserializationMismatch {
-                            reason: "Map entry missing key".to_string(),
-                        })?;
-                let value_json =
-                    pair.get("value")
-                        .ok_or_else(|| FixtureError::DeserializationMismatch {
-                            reason: "Map entry missing value".to_string(),
-                        })?;
-                let key = value_from_fixture_json(key_json, ctx)?;
-                let ck = crate::v1_interpreter::CanonKey::new(key).ok_or_else(|| {
+        let obj = require_object(json)?;
+        let tag = require_tag(obj)?;
+        match tag {
+            "Unit" => Ok(Value::Unit),
+            "Bool" => Ok(Value::Bool(require_bool(obj, "value")?)),
+            "Int" => Ok(Value::Int(require_i64(obj, "value")?)),
+            "Float" => Ok(Value::Float(require_f64(obj, "value")?)),
+            "Str" => Ok(str_value(require_str(obj, "value")?)),
+            "List" => {
+                let items = obj.get("items").and_then(|v| v.as_array()).ok_or_else(|| {
                     FixtureError::DeserializationMismatch {
-                        reason: "Map key has no decidable identity".to_string(),
+                        reason: "List missing items array".to_string(),
                     }
                 })?;
-                if out.contains_key(&ck) {
-                    return Err(FixtureError::DeserializationMismatch {
-                        reason: "duplicate Map key".to_string(),
-                    });
+                let mut out = Vec::with_capacity(items.len());
+                for item in items {
+                    out.push(value_from_fixture_json(item, ctx)?);
                 }
-                out = out.update(ck, value_from_fixture_json(value_json, ctx)?);
+                Ok(list_value(out))
             }
-            Ok(crate::v1_interpreter::map_value(out))
-        }
-        "Set" => {
-            let members = obj
-                .get("members")
-                .and_then(|v| v.as_array())
-                .ok_or_else(|| FixtureError::DeserializationMismatch {
-                    reason: "Set missing members array".to_string(),
-                })?;
-            let mut out = im::OrdSet::new();
-            for member in members {
-                let value = value_from_fixture_json(member, ctx)?;
-                let text = match value {
-                    Value::Str(s) => s.to_string(),
-                    other => {
+            "Record" => {
+                let type_name = ctx.sym(&require_str(obj, "__type")?);
+                let fields_obj = require_fields_obj(obj)?;
+                let mut fields = Vec::with_capacity(fields_obj.len());
+                for (k, v) in fields_obj {
+                    fields.push((ctx.sym(k), value_from_fixture_json(v, ctx)?));
+                }
+                Ok(Value::Record {
+                    type_name,
+                    fields: Rc::new(sorted_fields(fields)),
+                })
+            }
+            "Variant" => {
+                let type_name = ctx.sym(&require_str(obj, "__type")?);
+                let variant_name = ctx.sym(&require_str(obj, "__variant")?);
+                let fields_obj = require_fields_obj(obj)?;
+                let mut fields = Vec::with_capacity(fields_obj.len());
+                for (k, v) in fields_obj {
+                    fields.push((ctx.sym(k), value_from_fixture_json(v, ctx)?));
+                }
+                Ok(Value::Variant {
+                    type_name,
+                    variant_name,
+                    fields: Rc::new(sorted_fields(fields)),
+                })
+            }
+            "Map" => {
+                let entries = obj
+                    .get("entries")
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(|| FixtureError::DeserializationMismatch {
+                        reason: "Map missing entries array".to_string(),
+                    })?;
+                let mut out = im::HashMap::new();
+                for entry in entries {
+                    let pair = require_object(entry)?;
+                    let key_json =
+                        pair.get("key")
+                            .ok_or_else(|| FixtureError::DeserializationMismatch {
+                                reason: "Map entry missing key".to_string(),
+                            })?;
+                    let value_json =
+                        pair.get("value")
+                            .ok_or_else(|| FixtureError::DeserializationMismatch {
+                                reason: "Map entry missing value".to_string(),
+                            })?;
+                    let key = value_from_fixture_json(key_json, ctx)?;
+                    let ck = crate::v1_interpreter::CanonKey::new(key).ok_or_else(|| {
+                        FixtureError::DeserializationMismatch {
+                            reason: "Map key has no decidable identity".to_string(),
+                        }
+                    })?;
+                    if out.contains_key(&ck) {
                         return Err(FixtureError::DeserializationMismatch {
-                            reason: format!(
-                                "Set member must be Str, got {}",
-                                other.type_label_public()
-                            ),
-                        })
+                            reason: "duplicate Map key".to_string(),
+                        });
                     }
-                };
-                if out.contains(&text) {
-                    return Err(FixtureError::DeserializationMismatch {
-                        reason: "duplicate Set member".to_string(),
-                    });
+                    out = out.update(ck, value_from_fixture_json(value_json, ctx)?);
                 }
-                out.insert(text);
+                Ok(crate::v1_interpreter::map_value(out))
             }
-            Ok(Value::Set(Rc::new(out)))
+            "Set" => {
+                let members = obj
+                    .get("members")
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(|| FixtureError::DeserializationMismatch {
+                        reason: "Set missing members array".to_string(),
+                    })?;
+                let mut out = im::OrdSet::new();
+                for member in members {
+                    let value = value_from_fixture_json(member, ctx)?;
+                    let text = match value {
+                        Value::Str(ref s) => s.to_string(),
+                        other => {
+                            return Err(FixtureError::DeserializationMismatch {
+                                reason: format!(
+                                    "Set member must be Str, got {}",
+                                    other.type_label_public()
+                                ),
+                            })
+                        }
+                    };
+                    if out.contains(&text) {
+                        return Err(FixtureError::DeserializationMismatch {
+                            reason: "duplicate Set member".to_string(),
+                        });
+                    }
+                    out.insert(text);
+                }
+                Ok(Value::Set(Rc::new(out)))
+            }
+            "Opaque" => Err(FixtureError::UnknownTag {
+                tag: "Opaque".to_string(),
+            }),
+            other => Err(FixtureError::UnknownTag {
+                tag: other.to_string(),
+            }),
         }
-        "Opaque" => Err(FixtureError::UnknownTag {
-            tag: "Opaque".to_string(),
-        }),
-        other => Err(FixtureError::UnknownTag {
-            tag: other.to_string(),
-        }),
-    }
+    })
 }
 
 pub fn operation_result_type_name(op_node: &Rc<Node>, ctx: &InterpContext) -> String {
@@ -630,7 +674,6 @@ pub fn operation_result_type_name(op_node: &Rc<Node>, ctx: &InterpContext) -> St
 #[cfg(test)]
 mod map_set_fixture_encoding_tests {
     use super::*;
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{map_value, CanonKey, Env, ExecutionMode, Value};
     use crate::v1_std_core::{make_expr_node, ExprData, SourceSpan};
@@ -643,8 +686,8 @@ mod map_set_fixture_encoding_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HamtMap::new()),
+            item_leaf_owner_modules: Rc::new(HamtMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HamtMap::new()), ExecutionMode::Hermetic)
     }

@@ -12,7 +12,7 @@ import gunbc.runner_slot_allocation {
 }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
 
 // THE POPULATION A SHRINK ACTS ON, READ RATHER THAN ASSUMED.
@@ -251,22 +251,25 @@ fn slot_census_from_command_outcome(
   }
 }
 
-// A TRANSPORT REFUSAL IS UNOBSERVED, NEVER AN EMPTY POPULATION. An unreachable host or a nonzero
-// exit says nothing about how many slots it is running, and rendering either as "no surplus" is the
-// narrow that would let a shrink raise caps on a host it could not read.
-fn observe_slot_population_over_ssh(
+// ONE DECODE OF A TYPED-ARGV OUTCOME AS A SLOT CENSUS, AND THE ONLY ONE. A transport refusal is
+// UNOBSERVED, NEVER AN EMPTY POPULATION: an unreachable host or a refused leg says nothing about
+// how many slots it is running, and rendering either as "no surplus" is the narrow that would let a
+// shrink raise caps on a host it could not read. A converged leg hands its bytes to the one
+// classifier above. Every reader that runs the census words over a typed argv leg decodes through
+// this fn -- observe_slot_population_over_ssh over the fleet edge, and the host-effect realizer's
+// remote arms -- so there are not two places for one of them to render an unreadable host as an
+// empty population. The refusal names WHERE the read failed, and the caller supplies that noun: the
+// fleet reader says "the fleet edge", the realizer's remote arms say "the transport" -- a census
+// refused over the ssh edge is not a fleet-edge fact. The refused reason that follows the noun
+// names the concrete endpoint either way.
+fn slot_census_from_typed_argv_outcome(
   host: HostIdentity,
-  target: SshTarget,
-  context: FleetSshExecutionContext,
-) -> SlotCensus
-{
-  match typed_argv_exec_over_fleet_ssh(
-    target: target,
-    context: context,
-    argv: systemctl_list_all_service_units_argv(),
-  ) {
+  outcome: TypedArgvExecOutcome,
+  edge_noun: String,
+) -> SlotCensus {
+  match outcome {
     TypedArgvExecRefused { reason: why } =>
-      CensusRefused { cause: join(["runner slot population unreadable over the fleet edge: ", why], "") }
+      CensusRefused { cause: join(["runner slot population unreadable over ", edge_noun, ": ", why], "") }
     TypedArgvExecConverged { result: listed } =>
       slot_census_from_command_outcome(
         host: host,
@@ -276,4 +279,23 @@ fn observe_slot_population_over_ssh(
         stderr: listed.stderr,
       )
   }
+}
+
+// THE FLEET-EDGE READER. The census words over the fleet principal leg, decoded by the one adapter
+// above; this fn adds no judgment of its own.
+fn observe_slot_population_over_ssh(
+  host: HostIdentity,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+) -> SlotCensus
+{
+  slot_census_from_typed_argv_outcome(
+    host: host,
+    outcome: typed_argv_exec_over_fleet_ssh(
+      target: target,
+      context: context,
+      argv: systemctl_list_all_service_units_argv(),
+    ),
+    edge_noun: "the fleet edge",
+  )
 }

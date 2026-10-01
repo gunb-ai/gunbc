@@ -9,6 +9,7 @@ import v2.std.optional {
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.node { Node, node_subtree_nodes }
+import v2.compiler.normalized_tree { no_resource_declarations }
 import v2.compiler.normalize { record_declaration_capture }
 import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
@@ -134,7 +135,8 @@ fn alias_decl_fill_lexical_lookup_holds() -> Bool {
           let idx = symbol_index_fill_module_root(
             index: empty_symbol_index(),
             root: tree,
-            record_declarations: record_declaration_capture(nodes: node_subtree_nodes(root: tree))
+            record_declarations: record_declaration_capture(nodes: node_subtree_nodes(root: tree)),
+            resource_declarations: no_resource_declarations()
           )
           let target_path = qualified_name_snoc(qn: module_qn, segment: ^AliasTargetType)
           match symbol_index_lexical_lookup(

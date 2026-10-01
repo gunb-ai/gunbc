@@ -1050,6 +1050,41 @@ mod compiler_tests {
     }
 
     #[test]
+    fn generic_optional_over_a_type_application_keeps_the_optional() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let semiring = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_semiring.dag".to_string(),
+                    content: "module probe.semiring\ntype Ring<M> { m: M }\ntype Mag { v: Int }\ntype NatLike = Ring<Mag>\n".to_string(),
+                });
+                let holder = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_holder.dag".to_string(),
+                    content: "module probe.holder\nimport probe.semiring { NatLike }\ntype Opt<L> { last: L? }\ntype Req<L> { v: L }\nfn opt_ok(h: Opt<NatLike>) -> Bool {\n  match h { Opt { last: l } => match l { Present { value: _ } => true, Absent => false } }\n}\nfn opt_int(h: Opt<Int>) -> Bool {\n  match h { Opt { last: l } => match l { Present { value: _ } => true, Absent => false } }\n}\nfn req_bad(h: Req<NatLike>) -> Bool {\n  match h { Req { v: l } => match l { Present { value: _ } => true, Absent => false } }\n}\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![semiring, holder]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let variant_not_found: Vec<std::rc::Rc<crate::std_types::SourceSpan>> = result.diagnostics.iter()
+                    .filter(|e| matches!(&*e.diagnostic, crate::v1_std_core::CompilerDiagnostic::VariantNotFound { .. }))
+                    .map(|e| crate::v1_std_core::diagnostic_to_span(e.diagnostic.clone()))
+                    .collect();
+                let rendered: Vec<String> = result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert_eq!(
+                    variant_not_found.len(), 2,
+                    "exactly the two arms of req_bad (a NON-optional field) must refuse; opt_ok binds l at NatLike? and opt_int at Int?, so Present/Absent are its variants. Four refusals means substitution dropped the slot's ? for the type-application argument; diagnostics: {:?}",
+                    rendered
+                );
+                assert!(
+                    variant_not_found.iter().all(|s| s.file == "probe_holder.dag"),
+                    "a refused variant is located at the pattern that names it, never at the declaration of the scrutinee's type argument (probe_semiring.dag); spans: {:?}",
+                    variant_not_found.iter().map(|s| (s.file.clone(), s.start)).collect::<Vec<_>>()
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("generic_optional_over_a_type_application_keeps_the_optional panicked");
+    }
+
+    #[test]
     fn pub_use_crate_lines_are_sorted_and_two_emissions_are_byte_identical() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
@@ -1988,6 +2023,98 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("function_value_named_application_controls_witness panicked");
+    }
+
+    #[test]
+    fn effect_summary_refusals_carry_their_call_site() {
+        // An effect-summary refusal names a caller and a callee; it used to name no PLACE. Every
+        // cause raised over a callee edge now carries the span of the call it was derived from, and
+        // this control holds both halves: the cause-to-diagnostic mapping renders each such cause
+        // AT its call site, and the producer derives that site from the authored call expression.
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                use crate::v1_compiler_infer_service::EffectIncompleteness;
+                let site = std::rc::Rc::new(crate::std_types::SourceSpan {
+                    file: "located/caller.dag".to_string(),
+                    start: 41,
+                    end: 58,
+                });
+                let id = |m: &str, d: &str| {
+                    std::rc::Rc::new(crate::v1_std_core::DeclaredCallableIdentity {
+                        owner_module_path: m.to_string(),
+                        decl_name: d.to_string(),
+                    })
+                };
+                // 1. THE MAPPING. One cause per call-site arm, all at one known site.
+                let causes = std::rc::Rc::new(im::vector![
+                    std::rc::Rc::new(EffectIncompleteness::UnresolvedCalleeEdge {
+                        item_identity: id("located.caller", "f"),
+                        spelling: "g".to_string(),
+                        call_site: site.clone(),
+                    }),
+                    std::rc::Rc::new(EffectIncompleteness::ResolvedCalleeRegistryRowAbsent {
+                        caller: id("located.caller", "f"),
+                        callee: id("located.callee", "g"),
+                        call_site: site.clone(),
+                    }),
+                    std::rc::Rc::new(EffectIncompleteness::FunctionValueEffectsUnresolved {
+                        caller: id("located.caller", "f"),
+                        call_site: site.clone(),
+                    }),
+                    std::rc::Rc::new(EffectIncompleteness::LocalBindingEffectsUnresolved {
+                        caller: id("located.caller", "f"),
+                        name: "g".to_string(),
+                        call_site: site.clone(),
+                    }),
+                ]);
+                let rendered = crate::v1_compiler_infer::effect_incompleteness_diagnostics(causes);
+                assert_eq!(rendered.len(), 4, "one diagnostic per cause");
+                for d in rendered.iter() {
+                    let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
+                    assert_eq!(
+                        *span, *site,
+                        "an effect-summary refusal over a callee edge must render at its call site, got {:?} for {:?}",
+                        span, d.diagnostic
+                    );
+                }
+                // 2. THE PRODUCER. A call through a function value is the one call-site cause a
+                // single hermetic source can raise; its span must name the authored file and
+                // cover the call expression, not the null span.
+                let content = "module located_fv\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2) }\n";
+                let compiled = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                        crate::v1_compiler_compile::SourceFile {
+                            path: "located_fv.dag".to_string(),
+                            content: content.to_string(),
+                        }
+                    )]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let at_function_value: Vec<_> = compiled.diagnostics.iter()
+                    .filter(|d| matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. }
+                    ))
+                    .collect();
+                assert_eq!(
+                    at_function_value.len(), 1,
+                    "the function-value call must raise exactly one effect-summary advisory, got: {:?}",
+                    compiled.diagnostics
+                );
+                let span = crate::v1_std_core::diagnostic_to_span(at_function_value[0].diagnostic.clone());
+                assert_eq!(span.file, "located_fv.dag", "the advisory must name the authored file, got {:?}", span);
+                let call_start = content.find("agree(1, 2)").expect("fixture carries the call") as i64;
+                let call_end = call_start + "agree(1, 2)".len() as i64;
+                assert!(
+                    span.start <= call_start && call_start < span.end && span.end <= call_end + 1 && span.start >= call_start - 1,
+                    "the advisory must sit on the call expression [{}, {}), got {:?}",
+                    call_start, call_end, span
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("effect_summary_refusals_carry_their_call_site panicked");
     }
 
     #[test]
@@ -4196,6 +4323,93 @@ mod compiler_tests {
     }
 
     #[test]
+    fn unresolved_variant_pattern_refuses_instead_of_binding_bare() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
+        let no_fields = std::rc::Rc::new(im::Vector::new());
+        let no_path = std::rc::Rc::new(im::Vector::new());
+        let no_shared = std::rc::Rc::new(im::OrdSet::new());
+        let unresolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Add".to_string(),
+            None,
+            no_fields.clone(),
+            no_path.clone(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved.starts_with("compile_error!(") && unresolved.contains("`Add`"),
+            "unresolved parent must refuse, got {}",
+            unresolved
+        );
+        let unresolved_rc = crate::v1_compiler_emit_rust::emit_variant_pattern_rc_aware(
+            "Add".to_string(),
+            None,
+            no_fields.clone(),
+            no_path.clone(),
+            crate::v1_compiler_emit_rust::empty_rc_pattern_analysis(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved_rc.starts_with("compile_error!("),
+            "rc-aware producer must refuse, got {}",
+            unresolved_rc
+        );
+        let unresolved_shape = crate::v1_compiler_emit_rust::variant_pattern_shape_for(
+            "Add".to_string(),
+            None,
+            String::new(),
+            empty_emit.clone(),
+        );
+        assert!(
+            unresolved_shape.starts_with("compile_error!("),
+            "shape producer must refuse, got {}",
+            unresolved_shape
+        );
+        let resolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Add".to_string(),
+            Some("BinOp".to_string()),
+            no_fields.clone(),
+            no_path.clone(),
+            no_shared.clone(),
+            String::new(),
+            source_indices.clone(),
+            empty_emit.clone(),
+        );
+        assert_eq!(resolved, "BinOp::Add");
+        let optional = crate::v1_compiler_emit_rust::emit_variant_pattern(
+            "Absent".to_string(),
+            None,
+            no_fields,
+            no_path,
+            no_shared,
+            String::new(),
+            source_indices,
+            empty_emit,
+        );
+        assert_eq!(optional, "std::option::Option::None");
+        let fielded_emit = std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+            fielded_variants: std::rc::Rc::new(im::OrdSet::unit("Named".to_string())),
+            ..(*crate::v1_compiler_infer_emit_info::empty_emit_graph_info()).clone()
+        });
+        assert_eq!(
+            crate::v1_compiler_emit_rust::variant_pattern_shape_for(
+                "Named".to_string(),
+                None,
+                String::new(),
+                fielded_emit
+            ),
+            "Named { .. }",
+            "a braced render is a struct pattern, never a binding, and is not refused"
+        );
+    }
+
+    #[test]
     fn diagnostics_carrier_grounds_to_native_option() {
         assert!(
             crate::v1_compiler_emit_rust::is_host_diagnostics_carrier_alias(
@@ -4934,16 +5148,8 @@ mod compiler_tests {
     fn declaration_field_reference_names_its_declaration() {
         use crate::v1_compiler_compile::SourceFile;
         let sources = vec![
-            std::rc::Rc::new(SourceFile {
-                path: "fixtures/field_identity/a.dag".to_string(),
-                content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n".to_string(),
-            }),
-            std::rc::Rc::new(SourceFile {
-                path: "fixtures/field_identity/b.dag".to_string(),
-                content:
-                    "module fid.b\n\nimport fid.a { Leaf }\n\ntype Holder {\n  leaf: Leaf\n}\n"
-                        .to_string(),
-            }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/a.dag".to_string(), content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n\ntype Tree {\n  kids: List<Tree>\n}\n\nfn tree_size(t: Tree) -> Int {\n  1\n}\n\ntype Box<T> {\n  held: T\n}\n\nfn rebox<T>(b: Box<T>) -> Box<T> {\n  b\n}\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/b.dag".to_string(), content: "module fid.b\n\nimport fid.a { Leaf }\n\ntype Holder {\n  leaf: Leaf\n}\n".to_string() }),
         ];
         let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
             std::rc::Rc::new(sources.into()),
@@ -4952,15 +5158,17 @@ mod compiler_tests {
             !receipt.starts_with("REFUSED"),
             "the census must compile the fixture: {receipt}"
         );
-        let decl_identity = |enclosing: &str, authored: &str| -> Vec<String> {
+        let identity_at = |enclosing: &str, position: &str, authored: &str| -> Vec<String> {
             receipt
                 .lines()
                 .skip(1)
                 .map(|l| l.split('\t').collect::<Vec<_>>())
-                .filter(|c| c[1] == enclosing && c[2] == "declaration_field" && c[3] == authored)
+                .filter(|c| c[1] == enclosing && c[2] == position && c[3] == authored)
                 .map(|c| format!("{}|{}", c[8], c[12]))
                 .collect()
         };
+        let decl_identity =
+            |enclosing: &str, authored: &str| identity_at(enclosing, "declaration_field", authored);
         // (1) THE RED: a field naming another module's record.
         assert_eq!(
             decl_identity("Holder", "Leaf"),
@@ -4975,6 +5183,62 @@ mod compiler_tests {
             decl_identity("Leaf", "Int"),
             vec!["Kernel:Int|none".to_string()],
             "{receipt}"
+        );
+        // (3) CAUSE 1a, THE RED: a signature reference to a RECURSIVE type. Resolve leaves it in place
+        // rather than expanding it (is_recursive_type_for), and now records its identity there. Only the
+        // shadow column is asserted: the production reading of this position is not this row's subject.
+        let tree = identity_at("tree_size", "fn_signature_param", "Tree");
+        assert!(
+            tree.len() == 1 && tree[0].ends_with("|Declaration:fid.a::Tree"),
+            "{receipt}"
+        );
+        // (4) CAUSE 3, THE RED: a reference to a type parameter names its BINDER, (owner, TypeParameter).
+        // The two binders are spelled T, and the owner is the nearest header binding the name, so Box's
+        // field T and rebox's T inside Box<T> are DIFFERENT identities. Keying by spelling would make them one.
+        let box_t = identity_at("Box", "declaration_field", "T");
+        let rebox_t = identity_at("rebox", "fn_signature_param/type_arg", "T");
+        assert!(
+            box_t.len() == 1 && box_t[0].ends_with("|Declaration:fid.a::Box::<T>"),
+            "{receipt}"
+        );
+        assert!(
+            rebox_t.len() == 1 && rebox_t[0].ends_with("|Declaration:fid.a::rebox::<T>"),
+            "{receipt}"
+        );
+    }
+
+    // A REPEATED TYPE PARAMETER IN ONE HEADER REFUSES, LOCATED, AND SAYS WHICH NAME. The refusal
+    // predates this row. Its message once blamed a value parameter and called a type a fn, so the
+    // row asserts the NAME and the OWNER, not merely that some diagnostic fired. The control header
+    // binds two distinct names and must not produce that diagnostic.
+    #[test]
+    fn duplicate_type_parameter_in_one_header_refuses() {
+        use crate::v1_compiler_compile::SourceFile;
+        let messages = |content: &str| -> Vec<String> {
+            let sources = vec![std::rc::Rc::new(SourceFile {
+                path: "fixtures/dup_binder/a.dag".to_string(),
+                content: content.to_string(),
+            })];
+            let result =
+                crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources.into()));
+            result
+                .diagnostics
+                .iter()
+                .map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone()))
+                .collect()
+        };
+        let red = messages("module dup.a\n\ntype Pair<T, T> {\n  left: T\n}\n");
+        assert!(
+            red.iter()
+                .any(|m| m.contains("the name 'T' is bound twice in the header of 'Pair'")),
+            "{red:?}"
+        );
+        let control = messages("module dup.b\n\ntype Pair<T, U> {\n  left: T\n  right: U\n}\n");
+        assert!(
+            !control
+                .iter()
+                .any(|m| m.contains("is bound twice in the header")),
+            "{control:?}"
         );
     }
 

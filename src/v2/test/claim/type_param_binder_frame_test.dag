@@ -109,14 +109,14 @@ fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
 // Each tpb_* specimen below is nullary and pure over an inline source -- Nodes and located
 // diagnostics, no closure -- and is enrolled in v2.workflow.floor_pure_producer_share, so
 // preparation runs the real route once per specimen and the rows read it.
-fn tpb_accepts(o: Outcome<ResolvedTree>) -> Bool {
+fn tpb_accepts<T>(o: Outcome<T>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn tpb_refuses_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+fn tpb_refuses_with<T>(o: Outcome<T>, reason: Symbol) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
@@ -330,16 +330,35 @@ test fn tpb_distinct_type_variables_do_not_alias() -> Bool {
   }
 }
 
-// (12) The type variable is the callee's OWN: an Arrow declaring no `T` still judges `x: T` as the
-// ordinary declared type, and the Int argument refuses.
+// (12) The type variable is the callee's OWN: an Arrow declaring no `T` still judges `x: T` as an
+// ordinary declared type, never instantiating it. RE-STATED 2026-10-01 against gunbc#12566 (bisected:
+// green at its parent, red at it), which routes every declared position through
+// infer_declared_position_undecidable_reason: a declared atom that denotes no value type and is not
+// one of the callee's type variables is counted UndecidableFormalUnresolved on the Accepted path,
+// "never refused for the spelling and never admitted silently". So `T` no longer refuses the Int as
+// the structural atom `T`; the evidence that it was not taken as a type variable is that it was
+// judged at all -- an instantiated variable carries no undecidable advisory (the twin below).
 test fn tpb_undeclared_t_is_not_a_type_variable() -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^U], formals: [tpb_formal(name: ^x, declared: ^T)]),
     args: [dag_int_literal_fixture_one()]
   ))) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^application_argument_does_not_inhabit)
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
+  }
+}
+
+// THE TWIN THAT MAKES (12) DISCRIMINATE: the same application with `T` declared as the callee's type
+// parameter instantiates it from the Int argument and carries no undecidable-formal advisory.
+test fn tpb_declared_t_is_instantiated_not_judged_unresolved() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
+    arrow: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T)]),
+    args: [dag_int_literal_fixture_one()]
+  ))) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved) == false
   }
 }
 
@@ -519,17 +538,24 @@ fn tpb_box_member_mixed() -> Node {
   )
 }
 
-fn tpb_type_decl_emit_twin() -> Outcome<ResolvedTree> {
+fn tpb_type_decl_emit_twin() -> Outcome<Node> {
   translate_type_expression_project(node: tpb_box_member(with_params: false), target: rust_target_model(), projection: rust_type_expression_projection())
 }
 
-fn tpb_type_decl_emit_generic() -> Outcome<ResolvedTree> {
+fn tpb_type_decl_emit_generic() -> Outcome<Node> {
   translate_type_expression_project(node: tpb_box_member(with_params: true), target: rust_target_model(), projection: rust_type_expression_projection())
 }
 
 test fn tpb_translator_refuses_a_generic_type_decl_member() -> Bool {
-  tpb_accepts(o: tpb_type_decl_emit_twin())
-    && tpb_refuses_with(o: tpb_type_decl_emit_generic(), reason: ^translate_reason_generic_type_decl_not_rendered)
+  let accepted = match tpb_type_decl_emit_twin() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+  let refused = match tpb_type_decl_emit_generic() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^translate_reason_generic_type_decl_not_rendered
+  }
+  accepted && refused
 }
 
 // A GENERIC DECLARATION'S BINDERS SIT BESIDE ITS MEMBER (v2.std.type_binder type_decl_wrapper), so a
@@ -603,7 +629,8 @@ fn tpb_semantic_emit(with_params: Bool) -> Outcome<Medium<String>> {
     name: ^Box,
     params: Empty,
     node: tpb_box_member(with_params: with_params),
-    target: rust_semantic_decl_target_model_staging()
+    target: rust_semantic_decl_target_model_staging(),
+    realization_host: rust_semantic_decl_target_model_staging()
   )
 }
 

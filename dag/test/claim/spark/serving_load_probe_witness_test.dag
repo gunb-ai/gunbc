@@ -19,6 +19,10 @@ import gunbc.spark.vllm_endpoint_process_launch {
   vllm_endpoint_process_launch, VllmEndpointProcessLaunchObservation, LaunchObserved,
 }
 import gunbc.harness.harness_backend { harness_queue_from_body }
+import gunbc.spark.glm_serving_load {
+  glm_native_live_subject, glm_native_live_subject_standing, glm_native_smoke_protocol, glm_native_protected_subject,
+  glm_native_workload_admission, glm_native_qualification_frontier,
+}
 import gunbc.spark.serving_load_probe {
   histogram_delta, HistogramDeltaRead, HistogramDeltaUnread, HistogramCounterReset,
   SamePrincipal, DriverObserverSplit, provenance_text, ProbeProvenance,
@@ -31,12 +35,12 @@ import gunbc.spark.serving_load_probe {
   ServingLoadObservation, tokens_per_observation_second, foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread,
   ForeignWorkContradiction, occupancy_from_body, occupancy_trace_from_endpoint_scrapes, itl_latency_delta, iteration_tokens_booked_delta,
   LatencyHistogramRead, LatencyHistogramUnread, LatencyHistogramReset, TokenHistogramRead, TokenHistogramUnread,
-  TokenHistogramReset, glm_native_live_subject_standing, counter_continuity, SameExporter, ExporterChanged,
-  ContinuityUnread, ClientOutputTokensUnread, ClientOutputTokensObserved, glm_native_smoke_protocol, decode_corroboration_for_protocol,
+  TokenHistogramReset, counter_continuity, SameExporter, ExporterChanged,
+  ContinuityUnread, ClientOutputTokensUnread, ClientOutputTokensObserved, decode_corroboration_for_protocol,
   CorroborationNotApplicable, CorroborationUnread, SuccessfulClientRequestSecondBucketPeak, ClientItlDistributionObserved, ClientItlDistributionUnread,
   client_itl_text, client_bucket_peak_text, ledger_from_bench_stdout, client_output_from_bench_stdout, scrape_millis_from_bench_stdout,
-  client_itl_from_bench_stdout, client_bucket_peak_from_bench_stdout, glm_native_protected_subject, protected_subject_key, bench_serve_from_remote,
-  BenchServeExecution, bench_serve_interval, bench_serve_completed_output, glm_native_live_subject, arrival_text,
+  client_itl_from_bench_stdout, client_bucket_peak_from_bench_stdout, protected_subject_key, bench_serve_from_remote,
+  BenchServeExecution, bench_serve_interval, bench_serve_completed_output, arrival_text,
   ArrivalSkewObserved,
 }
 import gunbc.spark.serving_performance_subject { serving_subject_standing, ServingPerformanceSubjectStanding }
@@ -282,6 +286,8 @@ fn fx_obs_for(subject: ServingPerformanceSubjectStanding) -> ServingLoadObservat
     after_incarnation: fx_same_incarnation(),
     bench: fx_bench_receipt(stdout: fx_bench_stdout),
     provenance: fx_provenance,
+    admission: glm_native_workload_admission,
+    qualification_frontier: glm_native_qualification_frontier,
   )
 }
 
@@ -545,6 +551,8 @@ fn fx_obs_between(before: String, after: String) -> ServingLoadObservation {
     after_incarnation: fx_same_incarnation(),
     bench: fx_bench_receipt(stdout: fx_bench_stdout),
     provenance: fx_provenance,
+    admission: glm_native_workload_admission,
+    qualification_frontier: glm_native_qualification_frontier,
   )
 }
 
@@ -693,6 +701,8 @@ test fn the_retained_evidence_is_the_execution_it_was_captured_from() -> Bool {
     after_incarnation: fx_same_incarnation(),
     bench: bench,
     provenance: fx_provenance,
+    admission: glm_native_workload_admission,
+    qualification_frontier: glm_native_qualification_frontier,
   )
   let ev = obs.evidence
   ev.metrics_before.body == fx_idle

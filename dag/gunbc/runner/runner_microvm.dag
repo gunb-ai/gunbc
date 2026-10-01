@@ -19,7 +19,7 @@ import std.measure {
 }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.envelope { StorageRequirement }
-import gunbc.fabric_witness_run { floor_execution_requirements }
+import gunbc.floor_demand { floor_execution_requirements }
 import gunbc.floor_demand {
   floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable,
   round_up_to_gibibyte_grain,

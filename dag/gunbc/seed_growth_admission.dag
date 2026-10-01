@@ -5,6 +5,7 @@ import gunbc.primitive_egress_census_seed_growth { primitive_egress_census_seed_
 import gunbc.required_lane_resolution_census_seed_growth { required_lane_resolution_census_seed_growth_justification }
 import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
 import gunbc.unimported_bare_provider_gate_seed_growth { unimported_bare_provider_gate_seed_growth_justification }
+import gunbc.native_cache_root_seed_growth { native_cache_root_seed_growth_justification }
 import gunbc.persisted_resolved_graph_consumer_test_seed_growth {
   persisted_resolved_graph_format_wall_seed_growth_justification,
   resolved_graph_provider_ctx_reuse_seed_growth_justification
@@ -25,6 +26,7 @@ import gunbc.decl_facts_authored_string_attach_seed_growth {
 }
 import gunbc.keyed_declaration_read_seed_growth { keyed_declaration_read_seed_growth_justification }
 import gunbc.keyed_dependency_edge_read_seed_growth { keyed_dependency_edge_read_seed_growth_justification }
+import gunbc.host_crypto_digest_seed_growth { host_crypto_digest_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.fabric_door_socket_seed_growth { fabric_door_socket_seed_growth_justification }
 import gunbc.kind_reflection_seed_growth { kind_reflection_seed_growth_justification }
@@ -37,12 +39,18 @@ import gunbc.declaration_lookup_index_seed_growth { declaration_lookup_index_see
 import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_growth_justification }
 import gunbc.exit_failure_outcome_seed_growth { exit_failure_outcome_seed_growth_justification }
 import gunbc.evaluation_budget_falsifier_seed_growth { evaluation_budget_falsifier_seed_growth_justification }
+import gunbc.floor_memory_instrumentation_seed_growth { floor_memory_instrumentation_seed_growth_justification }
 import gunbc.namespace_structural_observation_bridge_seed_growth { namespace_structural_observation_bridge_seed_growth_justification }
 import gunbc.emit_rust_reference_derived_rows_bridge_seed_growth { emit_rust_reference_derived_rows_bridge_seed_growth_justification }
 import gunbc.namespace_baseline_seed_growth { namespace_baseline_seed_growth_justification }
 import gunbc.parsed_import_statement_bridge_seed_growth { parsed_import_statement_bridge_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
 import gunbc.red_lib_population_seed_growth { red_lib_population_seed_growth_justification }
+import gunbc.interpreter_eval_correctness_seed_growth {
+  match_arm_guard_seed_growth_justification,
+  value_depth_seed_growth_justification,
+  value_drop_binding_adaptation_seed_growth_justification
+}
 import gunbc.interpreter_error_location_seed_growth { interpreter_error_location_seed_growth_justification }
 import gunbc.regen_digest_spelling_seed_growth { regen_digest_spelling_seed_growth_justification }
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
@@ -51,6 +59,7 @@ import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
+import gunbc.observation_file_effect_seed_growth { observation_file_effect_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
 import gunbc.emitted_crate_workspace_seed_growth { emitted_crate_workspace_seed_growth_justification }
 import gunbc.bootstrap_operation_seed_growth {
@@ -67,6 +76,7 @@ import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justi
 import gunbc.dag_artifact_identity_seed_growth { dag_artifact_identity_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
+import gunbc.floor_checker_input_seed_growth { floor_checker_input_seed_growth_justification }
 import gunbc.data_eval_counters_seed_growth { data_eval_counters_seed_growth_justification }
 import gunbc.param_binder_seed_growth { param_binder_seed_growth_justification }
 import gunbc.rust_item_host_observation {
@@ -290,6 +300,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     emitted_closure_compile_seed_growth_justification,
     exit_failure_outcome_seed_growth_justification,
     evaluation_budget_falsifier_seed_growth_justification,
+    floor_memory_instrumentation_seed_growth_justification,
     namespace_structural_observation_bridge_seed_growth_justification,
     emit_rust_reference_derived_rows_bridge_seed_growth_justification,
     namespace_baseline_seed_growth_justification,
@@ -309,6 +320,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     with_authored_string_literals_seed_growth_justification,
     keyed_declaration_read_seed_growth_justification,
     keyed_dependency_edge_read_seed_growth_justification,
+    host_crypto_digest_seed_growth_justification,
     cli_wire_host_seed_growth_justification,
     filesystem_create_new_seed_growth_justification,
     required_lane_judgment_seed_growth_justification,
@@ -323,8 +335,14 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     bare_reference_channel_outcome_seed_growth_justification,
     floor_corpus_census_allowance_seed_growth_justification,
     unimported_bare_provider_gate_seed_growth_justification,
+    native_cache_root_seed_growth_justification,
     enrolment_dead_band_seed_growth_justification,
-    modeled_operation_realization_seed_growth_justification
+    modeled_operation_realization_seed_growth_justification,
+    observation_file_effect_seed_growth_justification,
+    floor_checker_input_seed_growth_justification,
+    match_arm_guard_seed_growth_justification,
+    value_depth_seed_growth_justification,
+    value_drop_binding_adaptation_seed_growth_justification
   ]
 }
 

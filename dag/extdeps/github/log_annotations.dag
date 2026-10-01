@@ -56,3 +56,41 @@ fn shell_single_quote(s: String) -> String {
 fn emit_line_shell(line: String) -> String {
   concat("printf '%s\\n' ", shell_single_quote(s: line))
 }
+
+// THE WORKFLOW-COMMAND LINE, ENCODED AS THE RUNNER PARSES IT (actions/toolkit packages/core
+// src/command.ts: escapeData escapes %, CR and LF in the message; escapeProperty additionally escapes
+// ':' and ','). One annotation is one line, so a multi-line message stays one command. Only the three
+// message-bearing annotation arms are encoded here; the others carry no free text a relayed notice
+// needs, and they refuse by returning Absent rather than minting a command this row has not modeled.
+fn gha_escape_data(s: String) -> String {
+  replace(replace(replace(s, "%", "%25"), "\r", "%0D"), "\n", "%0A")
+}
+
+fn gha_escape_property(s: String) -> String {
+  replace(replace(gha_escape_data(s: s), ":", "%3A"), ",", "%2C")
+}
+
+fn gha_location_properties(file: String?, line: Int?, col: Int?) -> String {
+  let f = match file { Present { value: v } => [concat("file=", gha_escape_property(s: v))]  Absent => [] }
+  let l = match line { Present { value: v } => [concat("line=", to_string(v))]  Absent => [] }
+  let c = match col { Present { value: v } => [concat("col=", to_string(v))]  Absent => [] }
+  join(f.concat(l).concat(c), ",")
+}
+
+fn gha_message_command_line(command: String, message: String, file: String?, line: Int?, col: Int?) -> String {
+  let props = gha_location_properties(file: file, line: line, col: col)
+  concat(if props == "" { gha_message_command_prefix(command: command) } else { concat(gha_param_command_prefix(command: command), concat(props, "::")) }, gha_escape_data(s: message))
+}
+
+fn log_annotation_message_line(annotation: LogAnnotation) -> String? {
+  match annotation {
+    AnnotationError { message: m, file: f, line: l, col: c } => Present { value: gha_message_command_line(command: gha_log_command_error, message: m, file: f, line: l, col: c) }
+    AnnotationWarning { message: m, file: f, line: l, col: c } => Present { value: gha_message_command_line(command: gha_log_command_warning, message: m, file: f, line: l, col: c) }
+    AnnotationNotice { message: m, file: f, line: l, col: c } => Present { value: gha_message_command_line(command: gha_log_command_notice, message: m, file: f, line: l, col: c) }
+    AnnotationGroup { title: _ } => Absent
+    AnnotationEndGroup => Absent
+    SetOutput { name: _, value: _ } => Absent
+    AddMask { value: _ } => Absent
+    StopCommands { token: _ } => Absent
+  }
+}

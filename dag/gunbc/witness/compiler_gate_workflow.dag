@@ -2,8 +2,16 @@ module gunbc.compiler_gate_workflow
 
 // NO LANE THE REQUIRED CONTEXT READS RUNS ON A HOSTED RUNNER (operator ruling 2026-09-28). The
 // lanes the `witnesses` aggregate reads -- `floor` and `generated` -- run on the fleet, and so does
-// the aggregate. The two lanes that block nothing, the v1 unit-test measurement (`rust-unit-tests`)
-// and `emit-build`, stay on `ubuntu-24.04-arm`.
+// the aggregate. The one lane that blocks nothing, `emit-build`, stays on `ubuntu-24.04-arm`.
+//
+// THE HOSTED UNIT-TEST LANE IS DELETED (operator ruling 2026-09-29). `rust-unit-tests` ran
+// `cargo test --release -p v1-compiler --lib` on every pull request and merge_group as a
+// non-blocking measurement, and its step's continue_on_error rendered every run green while the
+// population was red on main -- a verdict nobody could read, bought with about a third of the
+// hosted pool, which it shared with the heal publisher and pushed into multi-hour waits. The v1
+// unit tests are back to the state gunbc.rung_drop rust_unit_tests_off_the_merge_path declares:
+// no CI step executes them. They return as a BLOCKING fleet lane once the population is green,
+// never as a hosted measurement again.
 //
 // WHY THE HOSTED LANES LEFT THE MERGE PATH. The history below put them there because the fleet was
 // the bottleneck. On 2026-09-28 the bottleneck was the hosted pool: it held at 20 running jobs with
@@ -19,13 +27,11 @@ module gunbc.compiler_gate_workflow
 // compiler_gate_merge_path_runs_on_the_fleet refuses emission of a workflow in which a blocking
 // lane or the aggregate runs hosted.
 //
-// WHY TWO LANES STAY HOSTED. Neither is read by the required context, so neither can delay a
-// landing, and together they are most of a run's runner time: the unit-test step and the two
-// emit-build compilations would roughly double the fleet slot-minutes a push costs, which is the
-// cost the history below moved off the fleet. The unit-test step also binds its own cgroup with
-// sudo, which is sound on a throwaway hosted VM and not on a fleet host whose slots share one
-// cgroup tree. Each lane's flip trigger (compiler_gate_lane_rows) states that turning it blocking
-// moves it onto the fleet in the same change.
+// WHY `emit-build` STAYS HOSTED. It is not read by the required context, so it cannot delay a
+// landing, and its two compilations would roughly double the fleet slot-minutes a push costs,
+// which is the cost the history below moved off the fleet. Its flip trigger
+// (compiler_gate_lane_rows) states that turning it blocking moves it onto the fleet in the same
+// change.
 //
 // SUPERSESSION CANCELS FLEET JOBS, AND THIS RULING DID NOT START THAT. The concurrency policy
 // cancels a running pull-request run on the next push, and the history below justified that by the
@@ -117,8 +123,6 @@ import gunbc.witness_floor_workflow {
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.ci_spec {
-  hosted_runner_memory_cgroup_bind_commands,
-  hosted_arm_runner_cgroup_memory_max,
   gunbc_ci_generated_artifact_verify_invoke,
   gunbc_ci_generated_artifact_regen_verified_invoke,
   gunbc_ci_heal_repair_declaration_invoke,
@@ -135,7 +139,7 @@ import gunbc.heal_candidate {
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 // The fork clauses are heal's authorship; the fleet lane inherited the work they guarded.
 import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_clause }
-import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
 import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { interpolate, ContextAccess, Needs, default_expression_spellings }
 import extdeps.github.log_annotations { emit_line_shell }
@@ -246,144 +250,6 @@ fn compiler_gate_lint_step() -> Step {
     if_condition: Present { value: witness_step_status_guard_expression() },
     continue_on_error: none,
     timeout_minutes: none
-  }
-}
-
-// THE v1 UNIT TESTS ARE A HOSTED LANE OF THEIR OWN, AND IT BLOCKS NOTHING (operator ruling
-// 2026-09-28). Operator ruling 2026-09-27 ran them as a step after the lint on the hosted `clippy`
-// job and ordered ONE wall-time measurement on this runner BEFORE the step is required, so the step
-// landed NON-REQUIRED (continue_on_error) under a job timeout long enough to complete once. The
-// first run was cancelled at the shared 45-minute cap (the first run on PR #12450), and tests were
-// red on main -- the harm gunbc.rung_drop rust_unit_tests_off_the_merge_path records. That drop
-// stays Standing until the population is green and the complete wall is measured.
-//
-// WHY IT DID NOT FOLLOW THE LINT ONTO THE FLEET. It is the longest step in the workflow, so a fleet
-// slot would pay that wall on every push for a verdict nothing requires, and its cgroup bind (below)
-// is a hosted-VM construction. And as a step on a blocking lane it could still delay a landing: the
-// required context waited for the whole `clippy` job, unit wall included, even though the step
-// could not fail it. So the step keeps its runner and becomes its own lane, announced as not
-// blocking (compiler_gate_lane_rows), and the required context no longer waits for it. The drop's
-// restoration trigger is that lane's flip trigger, and flipping it moves the job onto the fleet.
-//
-// THE BOUND IS REAL, NOT DECLARED. The regeneration-host tests read their budget through
-// gunbc.host_budget_source and refuse HostBudgetUnreadable where no cgroup binds the process, which
-// is every hosted runner. GUNBC_MEMORY_BUDGET_BYTES would be the escape hatch that refusal exists to
-// refuse, so the step's shell moves itself into a leaf with memory.max set -- the same bind the heal
-// publisher performs, at the one hosted-runner bound gunbc.ci_spec hosted_arm_runner_cgroup_memory_max
-// -- and cargo, and every test binary it starts, inherits it.
-data compiler_gate_unit_test_step_name: String = "Run the v1 unit tests"
-data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
-data compiler_gate_unit_test_cgroup_name: String = "gunbc-unit-tests"
-// THE UNIT STEP CARRIES ITS OWN CAP, AND THE JOB CAP IS DERIVED FROM IT. continue_on_error covers a
-// step FAILURE, not a JOB timeout: with the step uncapped, a slow unit run consumed the whole job cap,
-// GitHub cancelled the clippy job inside the non-required step, and the required witnesses aggregate
-// failed on it (merge_group run 36431733521) -- a harm the 2026-09-28 split also closes from the other
-// side, since the aggregate no longer reads this job at all. A step-level timeout expires as a step
-// failure, which continue_on_error does cover, so the job's conclusion does not depend on the unit
-// step's wall. The job cap is the sum of the step cap and a reserve for everything before it, so the
-// step ends inside the job by construction rather than by two literals agreeing. Both are sized from
-// the clippy job records of witnesses runs 36424259908 and 36434277095 (completed unit walls) and
-// 36431733521 (a unit wall past the job cap), re-read there rather than copied here; they are
-// re-derived when the step turns required or the live-tree tests are reshaped.
-fn compiler_gate_unit_test_timeout() -> Minute {
-  minute(count: 50)
-}
-
-// Checkout and the toolchain install run before the unit step; their measured sum is a small
-// fraction of this reserve.
-fn compiler_gate_unit_test_pre_step_reserve() -> Minute {
-  minute(count: 10)
-}
-
-fn compiler_gate_unit_test_job_timeout() -> Minute {
-  minute(count: minute_count(compiler_gate_unit_test_timeout()) + minute_count(compiler_gate_unit_test_pre_step_reserve()))
-}
-
-fn compiler_gate_unit_test_command() -> String {
-  join(
-    list_append(
-      hosted_runner_memory_cgroup_bind_commands(
-        cgroup_name: compiler_gate_unit_test_cgroup_name,
-        memory_max: hosted_arm_runner_cgroup_memory_max(),
-      ),
-      [repo_self_test_command()],
-    ),
-    "; "
-  )
-}
-
-fn compiler_gate_unit_test_step() -> Step {
-  RunStep {
-    name: Present { value: compiler_gate_unit_test_step_name },
-    id: Present { value: compiler_gate_unit_test_step_id },
-    run: concat(wrap_command_with_floor_attempt_receipt(command: compiler_gate_unit_test_command()), "\n"),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: Present { value: true },
-    timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_timeout()) }
-  }
-}
-
-data compiler_gate_unit_test_job_id: String = "rust-unit-tests"
-
-fn compiler_gate_unit_test_bound_steps() -> List<CompilerGateBoundStep> {
-  [
-    CompilerGateBoundStep {
-      step: compiler_gate_checkout_step(),
-      role: capability_neutral,
-      step_name: "Checkout",
-    },
-    CompilerGateBoundStep {
-      step: toolchain_home_isolation_step(),
-      role: capability_neutral,
-      step_name: "Isolate toolchain homes",
-    },
-    CompilerGateBoundStep {
-      step: witness_floor_toolchain_step(),
-      role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
-      step_name: "Install Rust toolchain",
-    },
-    CompilerGateBoundStep {
-      step: toolchain_pin_rustup_default_step(),
-      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
-      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
-    },
-    CompilerGateBoundStep {
-      step: compiler_gate_unit_test_step(),
-      role: consumes_only(capabilities: [CargoCapability]),
-      step_name: compiler_gate_unit_test_step_name,
-    },
-  ]
-}
-
-fn compiler_gate_unit_test_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(
-      steps: list_map(
-        xs: compiler_gate_unit_test_bound_steps(),
-        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
-      )
-    ),
-  )
-}
-
-fn compiler_gate_unit_test_job() -> Job {
-  Job {
-    id: compiler_gate_unit_test_job_id,
-    name: none,
-    runner: HostedRunner { label: Ubuntu2404Arm },
-    environment: none,
-    steps: list_map(xs: compiler_gate_unit_test_bound_steps(), f: fn(b) { b.step }),
-    needs: [],
-    env: none,
-    outputs: none,
-    if_condition: none,
-    timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_job_timeout()) },
-    continue_on_error: none,
-    concurrency: none,
-    permissions: Present { value: compiler_gate_permissions }
   }
 }
 
@@ -1146,11 +1012,20 @@ fn compiler_gate_var_report(row: CompilerGateLaneRow) -> String {
 }
 
 fn compiler_gate_blocking_rows() -> List<CompilerGateLaneRow> {
-  filter(xs: compiler_gate_lane_rows(), predicate: compiler_gate_lane_blocks)
+  compiler_gate_blocking_rows_of(rows: compiler_gate_lane_rows())
 }
 
-fn compiler_gate_strict_rows() -> List<CompilerGateLaneRow> {
-  filter(xs: compiler_gate_blocking_rows(), predicate: fn(row) {
+// THE AGGREGATE IS A FUNCTION OF A SUPPLIED ROSTER, and the live gate is that function applied to
+// `compiler_gate_lane_rows`. The roster is the one input every surface below derives from, so
+// taking it as a parameter lets a witness state a LAW over any roster -- an announced lane binds no
+// variable, a blocking lane is read by every arm -- over a supplied row, while the live claims
+// assert which lanes block today (DESIGN section 3: a witness discriminates at one interface).
+fn compiler_gate_blocking_rows_of(rows: List<CompilerGateLaneRow>) -> List<CompilerGateLaneRow> {
+  filter(xs: rows, predicate: compiler_gate_lane_blocks)
+}
+
+fn compiler_gate_strict_rows_of(rows: List<CompilerGateLaneRow>) -> List<CompilerGateLaneRow> {
+  filter(xs: compiler_gate_blocking_rows_of(rows: rows), predicate: fn(row) {
     match row.arm {
       GateArmStrict => true
       GateArmSkippableOnFork { notice: _, unobserved_error: _ } => false
@@ -1158,8 +1033,8 @@ fn compiler_gate_strict_rows() -> List<CompilerGateLaneRow> {
   })
 }
 
-fn compiler_gate_fork_rows() -> List<CompilerGateLaneRow> {
-  filter(xs: compiler_gate_blocking_rows(), predicate: fn(row) {
+fn compiler_gate_fork_rows_of(rows: List<CompilerGateLaneRow>) -> List<CompilerGateLaneRow> {
+  filter(xs: compiler_gate_blocking_rows_of(rows: rows), predicate: fn(row) {
     match row.arm {
       GateArmStrict => false
       GateArmSkippableOnFork { notice: _, unobserved_error: _ } => true
@@ -1185,20 +1060,20 @@ fn compiler_gate_not_success_clause(row: CompilerGateLaneRow) -> String {
   join(["[ ", compiler_gate_var_read(row: row), " != success ]"], "")
 }
 
-fn compiler_gate_echo_line() -> String {
+fn compiler_gate_echo_line(rows: List<CompilerGateLaneRow>) -> String {
   join([
     "echo \"required lanes: ",
-    compiler_gate_report_text(rows: compiler_gate_blocking_rows()),
+    compiler_gate_report_text(rows: compiler_gate_blocking_rows_of(rows: rows)),
     " (same_repo=$SAME_REPO)\""
   ], "")
 }
 
-fn compiler_gate_failure_line() -> String {
+fn compiler_gate_failure_line(rows: List<CompilerGateLaneRow>) -> String {
   join([
     "if ",
-    join(list_map(xs: compiler_gate_blocking_rows(), f: compiler_gate_is_failure_clause), " || "),
+    join(list_map(xs: compiler_gate_blocking_rows_of(rows: rows), f: compiler_gate_is_failure_clause), " || "),
     "; then echo \"::error::a required lane concluded failure (",
-    compiler_gate_report_text(rows: compiler_gate_blocking_rows()),
+    compiler_gate_report_text(rows: compiler_gate_blocking_rows_of(rows: rows)),
     ") - open that job's log\" >&2; exit 1; fi"
   ], "")
 }
@@ -1207,12 +1082,12 @@ fn compiler_gate_failure_line() -> String {
 // there are two: a lane that FAILED is a verdict about the diff, and a lane that produced no
 // conclusion of its own leaves the head UNOBSERVED. Both block; they send a reader to different
 // places.
-fn compiler_gate_unobserved_line() -> String {
+fn compiler_gate_unobserved_line(rows: List<CompilerGateLaneRow>) -> String {
   join([
     "if ",
-    join(list_map(xs: compiler_gate_strict_rows(), f: compiler_gate_not_success_clause), " || "),
+    join(list_map(xs: compiler_gate_strict_rows_of(rows: rows), f: compiler_gate_not_success_clause), " || "),
     "; then echo \"::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (",
-    compiler_gate_report_text(rows: compiler_gate_strict_rows()),
+    compiler_gate_report_text(rows: compiler_gate_strict_rows_of(rows: rows)),
     ")\" >&2; exit 1; fi"
   ], "")
 }
@@ -1236,14 +1111,18 @@ fn compiler_gate_fork_line(row: CompilerGateLaneRow) -> String {
 // unobserved line over zero rows would render `if ; then` -- a shell syntax error that reds the
 // required context on every run, a gate whose only reachable state is red. The fork lines already
 // refuse `!= success` for every fleet lane, so omitting the empty line loses no refusal.
-fn compiler_gate_unobserved_lines() -> List<String> {
-  if length(xs: compiler_gate_strict_rows()) == 0 { [] } else { [compiler_gate_unobserved_line()] }
+fn compiler_gate_unobserved_lines(rows: List<CompilerGateLaneRow>) -> List<String> {
+  if length(xs: compiler_gate_strict_rows_of(rows: rows)) == 0 { [] } else { [compiler_gate_unobserved_line(rows: rows)] }
 }
 
 fn compiler_gate_aggregate_script_lines() -> List<String> {
+  compiler_gate_aggregate_script_lines_for(rows: compiler_gate_lane_rows())
+}
+
+fn compiler_gate_aggregate_script_lines_for(rows: List<CompilerGateLaneRow>) -> List<String> {
   list_append(
-    left: list_append(left: [compiler_gate_echo_line(), compiler_gate_failure_line()], right: compiler_gate_unobserved_lines()),
-    right: list_map(xs: compiler_gate_fork_rows(), f: compiler_gate_fork_line)
+    left: list_append(left: [compiler_gate_echo_line(rows: rows), compiler_gate_failure_line(rows: rows)], right: compiler_gate_unobserved_lines(rows: rows)),
+    right: list_map(xs: compiler_gate_fork_rows_of(rows: rows), f: compiler_gate_fork_line)
   )
 }
 
@@ -1273,8 +1152,12 @@ fn compiler_gate_same_repo_expression() -> String {
 }
 
 fn compiler_gate_aggregate_step_env() -> List<YamlKeyValue> {
+  compiler_gate_aggregate_step_env_for(rows: compiler_gate_lane_rows())
+}
+
+fn compiler_gate_aggregate_step_env_for(rows: List<CompilerGateLaneRow>) -> List<YamlKeyValue> {
   list_append(
-    left: list_map(xs: compiler_gate_blocking_rows(), f: fn(row) {
+    left: list_map(xs: compiler_gate_blocking_rows_of(rows: rows), f: fn(row) {
       kv(key: row.var_name, value: yaml_string(s: compiler_gate_lane_result_expression(job_id: row.job_id)))
     }),
     right: [kv(key: "SAME_REPO", value: yaml_string(s: compiler_gate_same_repo_expression()))]
@@ -1375,19 +1258,11 @@ type CompilerGateLaneRow {
 fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
   [
     CompilerGateLaneRow {
-      job_id: compiler_gate_unit_test_job_id,
-      var_name: "RUST_UNIT_TESTS",
-      arm: GateArmStrict,
-      standing: LaneAnnouncedNotBlocking {
-        flip_trigger: "THE v1 UNIT-TEST POPULATION IS GREEN AND ONE COMPLETE WALL IS MEASURED -- the restoration trigger of gunbc.rung_drop rust_unit_tests_off_the_merge_path, which this row names rather than restates. Sufficient for: a head of main on which `cargo test --release -p v1-compiler --lib` exits zero inside the step cap, so that requiring this lane blocks merges only for defects the head in front of it introduced. At that point this row becomes LaneBlocks, the step drops continue_on_error, and the job moves onto the fleet runner in the same change -- taking the fleet lanes' fork guard and GateArmSkippableOnFork arm, and a memory bound that does not reach for sudo -- because no blocking lane runs hosted (operator ruling 2026-09-28) and compiler_gate_merge_path_runs_on_the_fleet refuses emission otherwise."
-      }
-    },
-    CompilerGateLaneRow {
       job_id: compiler_gate_emit_build_job_id,
       var_name: "EMIT_BUILD",
       arm: GateArmStrict,
       standing: LaneAnnouncedNotBlocking {
-        flip_trigger: "THE EMITTED SELF-HOST CLOSURE BUILDS ON MAIN. Measured red on run 35686128136: the emitted src/extdeps_numeric_base16.rs refuses with E0425 (UInt8 not found in scope at base16_decode_lower) and E0282, cargo status 101 -- gunbc#12004 pulling base16 into the closure while it still spelled the UNINHABITED UInt8 carrier where values are put -- NOT an emitter import gap, which is what the E0425 reads like and what this row first said; the repair (gunbc#12056) changes base16 to carry std.integer QualifiedOctets and leaves the emitter untouched. Sufficient for: a head of main on which `gunbc test //gunbc/instruments:self-host` and `gunbc test //gunbc/instruments:v2-native-cli` both exit zero, so that requiring this lane blocks merges only for defects the head in front of it introduced. At that point this row becomes LaneBlocks, the aggregate gains the needs edge and the variable, the job moves onto the fleet runner with the fleet lanes' fork guard and arm (operator ruling 2026-09-28: no blocking lane runs hosted, and compiler_gate_merge_path_runs_on_the_fleet refuses emission otherwise), and the measured GREEN wall is reported to the operator -- the 12m33s figure from the run above is a red run's wall and is a lower bound, not the number the decision turns on."
+        flip_trigger: "OPERATOR SIGN-OFF ON THE FLEET RUNNER CLAIM. The self-host closure builds on main -- the E0573 standing is retired (gunbc.emitted_subject_build_gate emit_build_standing = EmitBuildExpectedGreen; hosted emit-build green on main c39426540c, run 36580079634) -- so what now keeps this lane non-blocking is not a red but the runner: a blocking lane may not run hosted (operator ruling 2026-09-28, compiler_gate_merge_path_runs_on_the_fleet), and moving these two compilations onto the fleet is a standing claim on it for every pull request and merge_group that the job-roster rule gives to the operator. Sufficient for: the operator agreeing the fleet cost of this job, measured from a green wall of this lane. At that point this row becomes LaneBlocks, the aggregate gains the needs edge and the variable, and the job moves onto the fleet runner with the fleet lanes' fork guard and arm, in one change."
       }
     },
     CompilerGateLaneRow {
@@ -1540,7 +1415,7 @@ data compiler_gate_workflow: Workflow = Workflow {
     kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
   ] },
   permissions: Present { value: compiler_gate_permissions },
-  jobs: [compiler_gate_unit_test_job(), compiler_gate_emit_build_job(), compiler_gate_floor_job(), compiler_gate_generated_job(), compiler_gate_aggregate_job()]
+  jobs: [compiler_gate_emit_build_job(), compiler_gate_floor_job(), compiler_gate_generated_job(), compiler_gate_aggregate_job()]
 }
 
 data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: a job's capability closure does not hold, a floor script is not renderable, the workflow runs a job that compiler_gate_lane_rows does not roster, or a blocking lane or the aggregate runs on a hosted runner (compiler_gate_merge_path_runs_on_the_fleet, operator ruling 2026-09-28). No workflow yaml was emitted. Fix the step roles in the lane's bound steps, add the job's row, or put the merge-path job on gunbc_ci_selected_runner_spec. The gate's needs, env bindings and every conditional are FOLDED from that roster, so they cannot disagree with it and this refusal has nothing to say about them."
@@ -1554,7 +1429,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if compiler_gate_unit_test_capability_closure_holds() && compiler_gate_emit_build_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_generated_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_lane_standings_hold() && compiler_gate_merge_path_runs_on_the_fleet() {
+          if compiler_gate_emit_build_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_generated_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_lane_standings_hold() && compiler_gate_merge_path_runs_on_the_fleet() {
             match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
               EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
               YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.compiler_gate_workflow", path: p, reason: r) }
