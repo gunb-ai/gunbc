@@ -4808,31 +4808,6 @@ fn derive_module_scope_fragment(
     }
 }
 
-// INDEX DEMAND, armed by a caller that wants to know how much of a frame's indexes a phase reads:
-// the distinct names looked up between begin and end. Unarmed (the default) it records nothing.
-thread_local! {
-    static INDEX_DEMAND: RefCell<Option<std::collections::HashSet<String>>> = const { RefCell::new(None) };
-}
-
-fn note_index_demand(name: &str) {
-    INDEX_DEMAND.with(|d| {
-        if let Some(set) = d.borrow_mut().as_mut() {
-            if !set.contains(name) {
-                set.insert(name.to_string());
-            }
-        }
-    });
-}
-
-pub fn begin_index_demand() {
-    INDEX_DEMAND.with(|d| *d.borrow_mut() = Some(std::collections::HashSet::new()));
-}
-
-/// The distinct names looked up since `begin_index_demand`, and disarms.
-pub fn end_index_demand() -> usize {
-    INDEX_DEMAND.with(|d| d.borrow_mut().take().map_or(0, |s| s.len()))
-}
-
 pub struct PreparedScopeIndexes {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -5783,14 +5758,7 @@ impl InterpContext {
     }
 
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
-        note_index_demand(name);
         self.indexes.fn_nodes.get(name)
-    }
-
-    /// How many entries this frame's function and type indexes hold: the size a frame is built
-    /// and dropped at, reported beside how many of them a phase actually asked for.
-    pub fn index_sizes(&self) -> (usize, usize) {
-        (self.indexes.fn_nodes.len(), self.indexes.type_items.len())
     }
 
     /// Is this bare spelling claimed by more than one module in this scope?
@@ -5841,14 +5809,12 @@ impl InterpContext {
         // bare-name ambiguity census asks whether a reference falls through to the slot below.
         // One implementation, so the population the census names is the population execution
         // resolves.
-        note_index_demand(name);
         self.indexes
             .site_resolved_fn(site_file, name)
             .or_else(|| self.indexes.fn_nodes.get(name))
     }
 
     pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {
-        note_index_demand(qualified_name);
         self.indexes.fn_nodes.get(qualified_name).cloned()
     }
 
@@ -11351,7 +11317,6 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
     if eval_profile_enabled() {
         TYPE_LOOKUP_CALLS.with(|c| c.set(c.get() + 1));
     }
-    note_index_demand(type_name);
     ctx.indexes.type_items.get(type_name).cloned()
 }
 

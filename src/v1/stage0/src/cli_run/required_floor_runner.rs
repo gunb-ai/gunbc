@@ -5848,18 +5848,6 @@ struct WarmFrameSlot {
 }
 
 impl WarmFrameSlot {
-    /// What the held frame's warm rows read of its indexes, against what the frame holds: the
-    /// measurement deciding whether a pure-producer warm needs a whole-closure frame.
-    fn report_demand(&self) {
-        if let (Some(module), Some(frame)) = (&self.module, &self.frame) {
-            let demanded = v1_interpreter::end_index_demand();
-            let (fn_index, type_index) = frame.index_sizes();
-            eprintln!(
-                "[floor-frame-demand] module={module} fn_index={fn_index} type_index={type_index} demanded_names={demanded}"
-            );
-        }
-    }
-
     fn frame(
         &mut self,
         prepared: &PreparedRepository,
@@ -5886,7 +5874,6 @@ impl WarmFrameSlot {
             ));
         }
         // The held frame goes BEFORE the next is built, so two are never resident together.
-        self.report_demand();
         let dropping = std::time::Instant::now();
         self.frame = None;
         self.module = None;
@@ -5900,7 +5887,6 @@ impl WarmFrameSlot {
                 self.framed.insert(module.to_string());
                 self.module = Some(module.to_string());
                 self.frame = Some(frame);
-                v1_interpreter::begin_index_demand();
                 Ok(self.frame.as_ref())
             }
             Err(_) if !corpus_modules.contains(module) => Err(format!(
@@ -6464,7 +6450,6 @@ pub(crate) fn install_pure_producer_share(
         frames.build_ms,
         frames.drop_ms,
         {
-            frames.report_demand();
             let dropping = std::time::Instant::now();
             frames.frame = None;
             dropping.elapsed().as_millis()
