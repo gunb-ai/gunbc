@@ -290,6 +290,7 @@ type V41RankPair { before: V41RankPressure, after: V41RankPressure }
 type V41StepProjection
   = V41StepProjected { reading: V41StaircaseStepReading }
   | V41StepUnprojected { concurrency: Nat, causes: List<String> }
+  | V41StepConcurrencyUnbound { cause: String }
 
 fn v41_observed_ranks(p: V41StepPressure) -> List<V41RankPressure> {
   flat_map(p.ranks, r => match r {
@@ -404,10 +405,21 @@ fn v41_project_step(run_id: NonEmptyStr, concurrency: Nat, before: V41StepPressu
   }
 }
 
+// The step's staircase level is the concurrency its own request carries; a request with none names
+// no level and refuses rather than being judged at a made-up one.
+fn v41_project_for_request(run_id: NonEmptyStr, req: VllmBenchServeRequest, before: V41StepPressure, after: V41StepPressure, before_body: String, after_body: String, latency: ClientBenchLatency) -> V41StepProjection {
+  match req.max_concurrency {
+    Absent => V41StepConcurrencyUnbound { cause: "the step's request carried no max_concurrency, so it names no staircase level and is judged at none" }
+    Present { value: c } => v41_project_step(
+      run_id: run_id, concurrency: c, before: before, after: after,
+      before_body: before_body, after_body: after_body, latency: latency,
+    )
+  }
+}
+
 fn v41_project_record(run_id: NonEmptyStr, r: ServingLoadStepRecord<V41StepPressure>) -> V41StepProjection {
-  let c = match r.request.max_concurrency { Present { value: n } => n  Absent => 0 }
-  v41_project_step(
-    run_id: run_id, concurrency: c, before: r.host_before, after: r.host_after,
+  v41_project_for_request(
+    run_id: run_id, req: r.request, before: r.host_before, after: r.host_after,
     before_body: r.before_body, after_body: r.after_body,
     latency: bench_serve_latency(e: r.bench, window: r.observation.window),
   )
@@ -417,6 +429,7 @@ fn v41_projection_text(p: V41StepProjection) -> String {
   match p {
     V41StepProjected { reading: r } => join(["x", to_string(r.concurrency), ": step reading formed (worst rank per stop rule)"], "")
     V41StepUnprojected { concurrency: c, causes: cs } => join(["x", to_string(c), ": NO step reading (run_staircase reports it missing): ", join(cs, "; ")], "")
+    V41StepConcurrencyUnbound { cause: why } => join(["a step with no staircase level: NO step reading: ", why], "")
   }
 }
 
@@ -424,6 +437,7 @@ fn v41_projected_readings(ps: List<V41StepProjection>) -> List<V41StaircaseStepR
   flat_map(ps, p => match p {
     V41StepProjected { reading: r } => [r]
     V41StepUnprojected { concurrency: _, causes: _ } => [] as List<V41StaircaseStepReading>
+    V41StepConcurrencyUnbound { cause: _ } => [] as List<V41StaircaseStepReading>
   })
 }
 

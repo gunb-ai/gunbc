@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.measure { microsecond, microsecond_count, millisecond, millisecond_count, token_count_value }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
+import extdeps.vllm.bench_serve { VllmBenchServeRequest }
 import extdeps.linux.psi { PsiReading, PsiRead, PsiUnparseable }
 import extdeps.linux.diskstats { DiskstatsReading, DiskstatsDeviceRead, DiskstatsDeviceAbsent, DiskstatsUnparseable, DiskstatsRow }
 import gunbc.spark.serving_load_probe { ClientBenchLatencyUnread }
@@ -12,7 +13,7 @@ import gunbc.spark.serving_load_runner { step_subject_mismatch }
 import gunbc.spark.v41_capacity_measurement { v41_staircase_concurrencies }
 import gunbc.spark.v41_serving_load {
   V41RankPressure, V41RankPressureObserved, V41RankPressureUnread, V41StepPressure,
-  V41StepProjected, V41StepUnprojected, v41_project_step, v41_serving_load_steps,
+  V41StepProjected, V41StepUnprojected, V41StepConcurrencyUnbound, v41_project_step, v41_project_for_request, v41_serving_load_step, v41_serving_load_steps,
   v41_serving_load_subject, v41_serving_load_dataset, v41_device_of_findmnt,
 }
 
@@ -46,6 +47,7 @@ test fn each_stop_rule_reads_its_own_worst_rank() -> Bool {
   let after = step([rank_after(host: "srv5", refault: 20, psi_full: 900, ticks: 10), rank_after(host: "srv6", refault: 11, psi_full: 5, ticks: 10), rank_after(host: "srv7", refault: 510, psi_full: 5, ticks: 10), rank_after(host: "srv8", refault: 12, psi_full: 5, ticks: 400)])
   match v41_project_step(run_id: "run-1" as NonEmptyStr, concurrency: 4, before: before, after: after, before_body: metrics_before, after_body: metrics_after, latency: ClientBenchLatencyUnread { cause: "fixture" as NonEmptyStr }) {
     V41StepUnprojected { concurrency: _, causes: _ } => false
+    V41StepConcurrencyUnbound { cause: _ } => false
     V41StepProjected { reading: r } =>
       r.concurrency == 4
         && r.refault_file_after == 510
@@ -80,6 +82,7 @@ test fn an_unread_rank_unprojects_the_step_and_names_it() -> Bool {
   ] }
   match v41_project_step(run_id: "run-1" as NonEmptyStr, concurrency: 4, before: before, after: after, before_body: metrics_before, after_body: metrics_after, latency: ClientBenchLatencyUnread { cause: "fixture" as NonEmptyStr }) {
     V41StepProjected { reading: _ } => false
+    V41StepConcurrencyUnbound { cause: _ } => false
     V41StepUnprojected { concurrency: c, causes: cs } => c == 4 && any(cs, x => contains(x, "after srv7: cat /proc/diskstats unreachable"))
   }
 }
@@ -100,4 +103,25 @@ test fn the_protocol_row_is_glms_shape_declared_as_v41s_own() -> Bool {
 test fn findmnt_source_names_the_diskstats_device() -> Bool {
   (match v41_device_of_findmnt(stdout: "/dev/nvme0n1p2\n") { Present { value: d } => (d as String) == "nvme0n1p2"  Absent => false })
     && (match v41_device_of_findmnt(stdout: "overlay\n") { Present { value: _ } => false  Absent => true })
+}
+
+test fn a_request_without_a_concurrency_refuses_instead_of_judging_level_zero() -> Bool {
+  let p = v41_serving_load_step(concurrency: 4)
+  let unbound = VllmBenchServeRequest {
+    backend: p.backend, base_url: p.base_url, model: p.model, tokenizer: p.tokenizer, dataset: p.dataset,
+    num_prompts: p.num_prompts, arrival: p.arrival, max_concurrency: none, ignore_eos: p.ignore_eos, seed: p.seed,
+  }
+  let ranks = step([rank(host: "srv5", refault: 10, psi_full: 0, ticks: 0), rank(host: "srv6", refault: 10, psi_full: 0, ticks: 0), rank(host: "srv7", refault: 10, psi_full: 0, ticks: 0), rank(host: "srv8", refault: 10, psi_full: 0, ticks: 0)])
+  let later = step([rank_after(host: "srv5", refault: 11, psi_full: 1, ticks: 1), rank_after(host: "srv6", refault: 11, psi_full: 1, ticks: 1), rank_after(host: "srv7", refault: 11, psi_full: 1, ticks: 1), rank_after(host: "srv8", refault: 11, psi_full: 1, ticks: 1)])
+  let refused = match v41_project_for_request(run_id: "run-1" as NonEmptyStr, req: unbound, before: ranks, after: later, before_body: metrics_before, after_body: metrics_after, latency: ClientBenchLatencyUnread { cause: "fixture" as NonEmptyStr }) {
+    V41StepConcurrencyUnbound { cause: why } => contains(why, "no max_concurrency")
+    V41StepProjected { reading: _ } => false
+    V41StepUnprojected { concurrency: _, causes: _ } => false
+  }
+  let bound = match v41_project_for_request(run_id: "run-1" as NonEmptyStr, req: p, before: ranks, after: later, before_body: metrics_before, after_body: metrics_after, latency: ClientBenchLatencyUnread { cause: "fixture" as NonEmptyStr }) {
+    V41StepProjected { reading: r } => r.concurrency == 4
+    V41StepConcurrencyUnbound { cause: _ } => false
+    V41StepUnprojected { concurrency: _, causes: _ } => false
+  }
+  refused && bound
 }
