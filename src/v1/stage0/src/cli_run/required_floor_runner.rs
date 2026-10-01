@@ -2725,16 +2725,31 @@ pub(crate) fn enrolment_expensiveness_declaration(
     }
 }
 
+/// THE FOUR THRESHOLDS THE ENROLMENT GATE DECIDES AGAINST, read out of
+/// `v2.workflow.floor_enrolment_margin` together and passed together: the margin, the dead band's
+/// envelope floor under it, the per-subject line, and the typed cost-debt row's envelope floor under
+/// that. Each floor is its bound applied once more to the same measured runner envelope.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EnrolmentThresholds {
+    pub(crate) budget_ms: u64,
+    pub(crate) dead_band_envelope_floor_ms: u64,
+    pub(crate) per_subject_line_ms: u64,
+    pub(crate) roster_envelope_floor_ms: u64,
+}
+
 pub(crate) fn enrolment_margin_standing_for(
     identity: &str,
     claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
     dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
-    budget_ms: u64,
-    dead_band_envelope_floor_ms: u64,
-    per_subject_line_ms: u64,
-    roster_envelope_floor_ms: u64,
+    thresholds: &EnrolmentThresholds,
     declared_expensiveness: Option<EnrolmentExpensivenessGround>,
 ) -> EnrolmentMarginStanding {
+    let EnrolmentThresholds {
+        budget_ms,
+        dead_band_envelope_floor_ms,
+        per_subject_line_ms,
+        roster_envelope_floor_ms,
+    } = *thresholds;
     // THE EXECUTION JOIN COMES FIRST, AND SKIPPING IT IS THE DEFECT review 64022 FOUND.
     //
     // The enrolled population is derived from the DIFF and is root-agnostic; the executed
@@ -11651,6 +11666,12 @@ pub fn run_required_floor(
         let per_subject_line_ms = floor_per_subject_cpu_line_ms(&prepared)?;
         let roster_envelope_floor_ms =
             floor_enrolment_roster_envelope_floor_ms(&prepared, per_subject_line_ms)?;
+        let thresholds = EnrolmentThresholds {
+            budget_ms,
+            dead_band_envelope_floor_ms,
+            per_subject_line_ms,
+            roster_envelope_floor_ms,
+        };
         enrolment_budget_ms = Some(budget_ms);
         let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
         let dispositions: HashMap<&str, &RequiredFloorDisposition> = outcome
@@ -11671,10 +11692,7 @@ pub fn run_required_floor(
                 identity,
                 &cost_by_identity,
                 &dispositions,
-                budget_ms,
-                dead_band_envelope_floor_ms,
-                per_subject_line_ms,
-                roster_envelope_floor_ms,
+                &thresholds,
                 declared_expensiveness,
             );
             eprintln!(
@@ -12920,6 +12938,16 @@ mod scope_fragment_memo_equivalence {
 #[cfg(test)]
 mod changed_witness_projection_tests {
     use super::*;
+
+    /// The enrolment thresholds these tests decide against: the 302 ms margin, its 182 ms dead-band
+    /// floor, the 500 ms per-subject line, and its 302 ms typed cost-debt floor -- the values the model
+    /// derives today, fixed here so each test pins a boundary rather than re-deriving one.
+    const TEST_ENROLMENT_THRESHOLDS: EnrolmentThresholds = EnrolmentThresholds {
+        budget_ms: 302,
+        dead_band_envelope_floor_ms: 182,
+        per_subject_line_ms: 500,
+        roster_envelope_floor_ms: 302,
+    };
 
     /// THE STATE EVERY CHANGED IDENTITY OUTSIDE THE LOCAL-REPO WET LANE IS IN: the lane ran, held,
     /// and admitted nobody. Named once so the wet witnesses below differ from the others by
@@ -15369,10 +15397,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &cost_owned,
             &dispositions,
-            302,
-            182,
-            500,
-            302,
+            &TEST_ENROLMENT_THRESHOLDS,
             Some(declared),
         );
         let terminals: Vec<ClaimTerminalRow> = terminal_row.into_iter().collect();
@@ -15641,10 +15666,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
                 identity,
                 &cost,
                 &dispositions,
-                302,
-                182,
-                500,
-                302,
+                &TEST_ENROLMENT_THRESHOLDS,
                 dead_band,
             )
         };
@@ -15671,10 +15693,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &HashMap::new(),
             &dispositions,
-            302,
-            182,
-            500,
-            302,
+            &TEST_ENROLMENT_THRESHOLDS,
             dead_band,
         );
         assert_eq!(absent.name(), "not_measured");
@@ -15719,10 +15738,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &over_cost,
             &dispositions,
-            302,
-            182,
-            500,
-            302,
+            &TEST_ENROLMENT_THRESHOLDS,
             roster,
         );
         assert_eq!(admitted.name(), "expensiveness_declared");
@@ -15741,10 +15757,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
                 identity,
                 &cost,
                 &dispositions,
-                302,
-                182,
-                500,
-                302,
+                &TEST_ENROLMENT_THRESHOLDS,
                 ground,
             )
         };
@@ -15777,10 +15790,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &HashMap::new(),
             &dispositions,
-            302,
-            182,
-            500,
-            302,
+            &TEST_ENROLMENT_THRESHOLDS,
             roster,
         );
         assert_eq!(absent.name(), "not_measured");
@@ -15811,10 +15821,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &bound_over_cost,
             &dispositions,
-            302,
-            182,
-            500,
-            302,
+            &TEST_ENROLMENT_THRESHOLDS,
             roster,
         );
         assert_eq!(bound_admitted.name(), "expensiveness_declared");
@@ -15826,10 +15833,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &bound_under_cost,
             &dispositions,
-            302,
-            182,
-            500,
-            302,
+            &TEST_ENROLMENT_THRESHOLDS,
             roster,
         );
         assert_eq!(bound_refused.name(), "bound_without_ceiling");
@@ -15839,10 +15843,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &HashMap::new(),
             &dispositions,
-            302,
-            182,
-            500,
-            302,
+            &TEST_ENROLMENT_THRESHOLDS,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         assert_eq!(long_home_absent.name(), "expensiveness_declared");
@@ -15865,10 +15866,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &cost_owned,
             &dispositions,
-            302,
-            182,
-            500,
-            302,
+            &TEST_ENROLMENT_THRESHOLDS,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         assert_eq!(standing.name(), "expensiveness_declared");
@@ -15898,10 +15896,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &cost_owned,
             &dispositions,
-            302,
-            182,
-            500,
-            302,
+            &TEST_ENROLMENT_THRESHOLDS,
             None,
         );
         assert_eq!(standing.name(), "outside_this_runs_execution");
@@ -15999,20 +15994,14 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &cost_owned,
             &dispositions,
-            302,
-            182,
-            500,
-            302,
+            &TEST_ENROLMENT_THRESHOLDS,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         let absent = enrolment_margin_standing_for(
             identity,
             &HashMap::new(),
             &dispositions,
-            302,
-            182,
-            500,
-            302,
+            &TEST_ENROLMENT_THRESHOLDS,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         assert!(
