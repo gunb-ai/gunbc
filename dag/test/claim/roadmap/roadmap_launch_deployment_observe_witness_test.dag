@@ -29,6 +29,7 @@ test fn witness_iso8601_utc_epoch_seconds_matches_known_instants() -> Bool {
     && (match iso8601_utc_epoch_seconds(text: "2026-02-30T00:00:00Z") { Present { value: _ } => false  Absent => true })
     && (match iso8601_utc_epoch_seconds(text: "2027-04-31T00:00:00Z") { Present { value: _ } => false  Absent => true })
     && (match iso8601_utc_epoch_seconds(text: "2024-02-29T00:00:00Z") { Present { value: s } => second_count(s) == 1709164800  Absent => false })
+    && (match iso8601_utc_epoch_seconds(text: iso8601_utc_text(unix: 4102444799)) { Present { value: s } => second_count(s) == 4102444799  Absent => false })
 }
 
 // (2) Freshness: fresh within the cadence bound, stale beyond it, refused before the deploy, and
