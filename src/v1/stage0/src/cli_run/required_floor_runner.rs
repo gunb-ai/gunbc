@@ -8788,11 +8788,27 @@ pub fn run_required_floor(
             },
         });
     }
+    // A selection in a declared no-CI-wet-lane file was DECLINED at its site, not planned
+    // (gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci): it carries its own
+    // DeclinedNoCiWetLane row, so the sublane is not entitled to execute it.
+    let declined_no_ci_wet_lane: HashSet<String> = disposition_rows
+        .iter()
+        .filter(|row| {
+            matches!(
+                row.disposition,
+                RequiredFloorDisposition::DeclinedNoCiWetLane { .. }
+            )
+        })
+        .map(|row| row.identity.clone())
+        .collect();
     // The set the sublane join is entitled to expect: everything the selector chose MINUS the
-    // selections the enumerator could never declare, each of which now carries its own row.
+    // selections the enumerator could never declare and the selections declined as no-CI-wet-lane,
+    // each of which carries its own row.
     let changed_witness_expected: HashSet<String> = changed_witness_set
         .iter()
-        .filter(|identity| !undeclarable_changed.contains(identity))
+        .filter(|identity| {
+            !undeclarable_changed.contains(identity) && !declined_no_ci_wet_lane.contains(*identity)
+        })
         .cloned()
         .collect();
     if !undeclarable_changed.is_empty() {
