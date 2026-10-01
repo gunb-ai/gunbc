@@ -68,10 +68,24 @@ fn ingested_fixture_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   }
 }
 
+type IngestedArrowSearchStep = ArrowFound | DescendChildren
+
+fn ingested_arrow_search_step(node: Node) -> IngestedArrowSearchStep {
+  match node.kind {
+    TypeNode { connective: Arrow } => ArrowFound
+    TypeNode { connective: Atom { identity: _ } } => DescendChildren
+    TypeNode { connective: Conj } => DescendChildren
+    TypeNode { connective: Disj } => DescendChildren
+    TypeNode { connective: Cardinality } => DescendChildren
+    TypeNode { connective: Instantiation } => DescendChildren
+    ComputationNode { behavior: _ } => DescendChildren
+  }
+}
+
 fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
-  match root.kind {
-    TypeNode { connective: Arrow } => Present { value: root }
-    _ =>
+  match ingested_arrow_search_step(node: root) {
+    ArrowFound => Present { value: root }
+    DescendChildren =>
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
