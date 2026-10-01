@@ -1,7 +1,5 @@
 module v2.test.manual.fact_density_anchor
 
-import v2.std.node_query { binder_edge }
-
 data fact_density_anchor_hollow_alias: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_density_anchor_int32_symbol } },
   children: [],

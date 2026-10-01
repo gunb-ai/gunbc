@@ -1,7 +1,5 @@
 module v2.test.claim.grounding_lens
 
-import v2.std.node_query { binder_edge }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_coincide_caseinsensitive() -> Bool {
