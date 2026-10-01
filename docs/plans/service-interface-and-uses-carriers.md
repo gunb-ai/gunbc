@@ -104,13 +104,15 @@ Resolution of this half:
 | PR | Content | Unblocks | Behaviour change |
 | --- | --- | --- | --- |
 | 1 (this) | this document; `uses_clause_has_no_carrier` trigger amended to D13; DESIGN CLI-section sentence amended (separate hunk) | — | none |
-| 2a | Arrow contract edges (`^arrow_effect_claims_edge`, `^arrow_execution_mode_claim_edge`) and their conformance in `v2.std.node` | — | substrate only |
+| 2a | Arrow contract edges (`^arrow_effect_claims_edge`, `^arrow_execution_mode_claim_edge`) and their conformance in `v2.std.node`. **DESIGN §3c declared frontier** (see below) | — | substrate only |
 | 2b | the one binder representation with an optional default: a replacement migration of every binder producer and reader, measured first | — | yes |
 | 2c | lowering of modifiers and io defaults onto 2a and 2b; discriminating red per refusal row above | the 3 interface-only services | yes |
 | 3 | `^service_realization_binding` sibling lowering of transport / config / exit / response / mock_response / `from`; delete `ServiceSetAside` and both set-aside reasons; per-stage located causes for any stage that cannot yet consume the sibling | the 111 realization-bearing services, up to the next stage's refusal | yes |
 | 4 | flip `service_interface_member_has_no_carrier` and the cause-ownership rows; re-measure the census on the CI population | — | ledger only |
 | `uses` (separate lane) | first the resource-keyed `DependencyDemand` carrier (the rung drop's restoration trigger); only then retire restatement rows by D13's criterion, measured by resolution | up to 30 modules, and none before the carrier lands | carrier, then source rows deleted |
 
-No model lands in PR 1. Each lands with its first consumer. A model with no consumer in its own change is dangling by DESIGN §3c.
+No model lands in PR 1.
+
+**2a is a DESIGN §3c declared frontier, not dangling.** In 2a, its consumers by execution are the conformance wall itself (`v2.std.node` `arrow_signature_edges_conform`, reached by every `well_formed` check of an Arrow) and the discriminating test that exercises it. Its *production* consumer is 2c: the operation-modifier lowering in `v2.compiler.body_lowering_fold` `body_lower_operation` emits the two edges, and the resolve, infer and translate readers gain their metadata arms in the same change. **Transition trigger:** 2c lands. If 2c is abandoned, the two edges and their conformance are deleted, not left standing. 2a lands ahead of 2c because the ruling asked for the substrate change to be reviewable on its own. That separation is the stated reason for the frontier. A model with no consumer in its own change is dangling by DESIGN §3c.
 
 **Caveat, stated so it is not read as a promise.** No service has ever reached resolve or infer on the full route. PR 3 will surface new downstream refusals, located at the sibling or the operation under the consuming stage's cause. The count of services that reach the census is therefore re-measured on the CI population after PR 3, not inferred from the grep above.

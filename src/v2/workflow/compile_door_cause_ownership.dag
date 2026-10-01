@@ -148,7 +148,7 @@ data known_frontier_causes: List<CauseOwnership> = [
     cause: ^body_lowering_reason_service_realization_unreachable,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; full normalize refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips when a realization binding carrier (a transport handler bound to the interface shape) and a typed operation-modifier carrier exist, so that no set-aside reason has a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
+    flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; full normalize refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips only when ALL of these exist: the realization binding (a sibling keyed by OperationRef carrying transport, config, exit, response, mock_response and the io `from` wire key); the Arrow effect-claims edge (readonly, idempotent); the separate Arrow execution-mode edge (hermetic); and the one binder representation carrying an optional default. Only then does no set-aside reason have a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_uses_clause_unmodeled,
