@@ -1,6 +1,7 @@
 module extdeps.stripe.webhook
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.mac { MacKey, MacVerification, VerifiedMessage, mac_verify, MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed }
@@ -47,15 +48,15 @@ fn parse_stripe_signature_header(raw: String) -> StripeSignatureHeaderParse {
     let entry = trim(s: item)
     if starts_with(s: entry, prefix: "t=") {
       StripeHeaderScan {
-        timestamp: parse_int(s: substring(s: entry, start: 2, end: entry.length())),
+        timestamp: parse_int(s: substring(s: entry, start: 2, end: string_length(s: entry))),
         timestamp_count: acc.timestamp_count + 1,
         v1: acc.v1,
       }
-    } else if starts_with(s: entry, prefix: "v1=") && entry.length() > 3 {
+    } else if starts_with(s: entry, prefix: "v1=") && string_length(s: entry) > 3 {
       StripeHeaderScan {
         timestamp: acc.timestamp,
         timestamp_count: acc.timestamp_count,
-        v1: append(acc.v1, [substring(s: entry, start: 3, end: entry.length()) as NonEmptyStr]),
+        v1: append(acc.v1, [substring(s: entry, start: 3, end: string_length(s: entry)) as NonEmptyStr]),
       }
     } else {
       acc

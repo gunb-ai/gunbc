@@ -186,7 +186,7 @@ test fn w_session_token_authenticates_and_tampering_or_expiry_refuses() -> Bool 
   let st = run([SignUp { account_id: "acct_a", email: "a@example.com" }]).state
   let tok = token_for(account: "acct_a")
   let ok = match authenticate(key: session_key, state: st, token: tok, now: t0 + 1) { Authenticated { account_id: a } => (a as String) == "acct_a"  _ => false }
-  let forged = match authenticate(key: session_key, state: st, token: concat("acct_b", substring(s: tok, start: 6, end: tok.length())), now: t0 + 1) { AuthenticationRefused { reason: _ } => true  _ => false }
+  let forged = match authenticate(key: session_key, state: st, token: concat("acct_b", substring(s: tok, start: 6, end: string_length(s: tok))), now: t0 + 1) { AuthenticationRefused { reason: _ } => true  _ => false }
   let expired = match authenticate(key: session_key, state: st, token: tok, now: t0 + 3601) { AuthenticationRefused { reason: _ } => true  _ => false }
   let no_account = match issue_session(key: session_key, policy: policy(), state: st, account_id: "acct_z", now: t0) { SessionRefused { reason: _ } => true  _ => false }
   ok && forged && expired && no_account
