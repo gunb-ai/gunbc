@@ -220,12 +220,16 @@ So the cache is the vehicle of transitivity, across the four maps `union_base_ch
   pool's kernel cache. The pool identity fixes the source set and the kernel cache, and the module
   identity fixes the source. No other input reaches it. The exporter-count non-hermeticity
   (gunbc#12815) lives in the rewire's pass 2, which runs after assembly and is not an input here.
-- **Scope.** The resolve that typechecks the pool: the least common ancestor of every module's
-  typecheck, so every demand for a module's surface joins one provider. It is never shared across
-  resolves or graphs until gunbc#12815's declared-scope fix makes surfaces graph-independent.
-- **Retention.** For the resolve, not the process. It drops with the resolve's working state,
-  exactly as the typecheck caches do after gunbc#12774, so it cannot become a process-lifetime
-  memo standing where the per-module copies stood.
+- **Scope.** Every reader of a module's surface within one prepared pool. That is NOT only the
+  typecheck: evaluation reads the same map. `v1_interpreter` `resolve_coproduct_type_node` reaches
+  `v1_compiler_infer_env` `lookup_type_by_name` -> `lookup_binding_by_name` ->
+  `lookup_binding_on_chain`, which reads `ancestry_str_bindings`. So the least common ancestor of
+  the demands is the prepared repository (the floor's `prepared`, held by `run_required_floor`
+  through claim evaluation), not the resolve. The walk is never shared across pools or graphs until
+  gunbc#12815's declared-scope fix makes surfaces graph-independent.
+- **Retention.** The prepared pool's lifetime: the same lifetime the materialized maps have today, and
+  no longer. The memo therefore lives through evaluation, so its size is the figure that decides the
+  saving. The 10-20% assumption below is unmeasured, and the A/B reads it directly.
 
 **The union winner and the fork ledger stay identical, and the differential checks both.**
 `union_parent_type_env_caches` folds a module's imports IN IMPORT ORDER through
