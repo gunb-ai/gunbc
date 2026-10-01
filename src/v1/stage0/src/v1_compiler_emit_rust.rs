@@ -24667,10 +24667,7 @@ pub fn emit_typed_expr(
                 op: UnaryOpKind::Neg,
                 ..
             } => {
-                if expr_realizes_as_refusing_int(
-                    texpr.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                ) {
+                if expr_realizes_as_refusing_int(texpr.clone(), scope.type_env.clone()) {
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(rust_refusing_int_negation_helper(), "(".to_string()),
@@ -33741,7 +33738,7 @@ pub fn emit_rust_host_bin_op(
                             Some(helper) => {
                                 if expr_realizes_as_refusing_int(
                                     left.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
+                                    scope.type_env.clone(),
                                 ) {
                                     v1_rt::concat(
                                         v1_rt::concat(
@@ -33802,10 +33799,7 @@ pub fn emit_rust_host_bin_op(
     }
 }
 
-pub fn expr_realizes_as_refusing_int(
-    e: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
+pub fn expr_realizes_as_refusing_int(e: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
             if (rt.return_cardinality.clone() == Cardinality::CardOptional) {
@@ -33814,18 +33808,61 @@ pub fn expr_realizes_as_refusing_int(
                 {
                     let normed =
                         crate::v1_compiler_infer_types::normalize_access_type_node(rt.clone());
+                    let name = crate::v1_std_core::authored_name_at(
+                        env.source_indices.clone(),
+                        normed.clone(),
+                    );
                     match crate::v1_compiler_coercion::realized_checkpoint(
                         crate::v1_compiler_coercion::type_reference_realization(
                             normed.clone(),
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                normed.clone(),
-                            ),
+                            name.clone(),
                             RenderTarget::Rust,
                         ),
                     ) {
                         Some(cp) => (cp.target_type.clone() == rust_refusing_int_target_type()),
-                        std::option::Option::None => false,
+                        std::option::Option::None => match normed.declaration.clone() {
+                            Some(d) => {
+                                match (*crate::std_literal_elaboration::kernel_grounding_for(
+                                    kernel_grounding_rows(),
+                                    LiteralSourceKind::KernelIntLiteral,
+                                    d.clone(),
+                                ))
+                                .clone()
+                                {
+                                    KernelGroundingLookup::KernelGroundingFound {
+                                        row: _, ..
+                                    } => match Rc::new({
+                                        let mut __result = Vec::new();
+                                        for cp in crate::v1_compiler_coercion::target_checkpoints(
+                                            RenderTarget::Rust,
+                                        )
+                                        .iter()
+                                        .cloned()
+                                        {
+                                            if (cp.dag_name.clone() == "Int".to_string()) {
+                                                __result.push(cp);
+                                            }
+                                        }
+                                        __result
+                                    })
+                                    .first()
+                                    .cloned()
+                                    {
+                                        Some(cp) => {
+                                            (cp.grounding_type.clone()
+                                                == rust_refusing_int_target_type())
+                                        }
+                                        std::option::Option::None => false,
+                                    },
+                                    KernelGroundingLookup::KernelGroundingAbsent => false,
+                                    KernelGroundingLookup::KernelGroundingAmbiguous {
+                                        row_count: _,
+                                        ..
+                                    } => false,
+                                }
+                            }
+                            std::option::Option::None => false,
+                        },
                     }
                 }
             }

@@ -181,10 +181,10 @@ pub fn native_driver_cost_account(
             })
         } else {
             {
-                let residual = crate::std_measure::nanosecond(
-                    (crate::std_measure::nanosecond_count(parent_span.clone())
-                        - crate::std_measure::nanosecond_count(sum.clone())),
-                );
+                let residual = crate::std_measure::nanosecond(v1_rt::int_sub(
+                    crate::std_measure::nanosecond_count(parent_span.clone()),
+                    crate::std_measure::nanosecond_count(sum.clone()),
+                ));
                 if (crate::std_measure::nanosecond_count(residual.clone())
                     > crate::std_measure::nanosecond_count(tolerance.clone()))
                 {

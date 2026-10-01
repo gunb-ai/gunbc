@@ -145,14 +145,14 @@ pub fn scale_exponent(s: Scale) -> Option<i64> {
 pub fn gibibyte_scale_factor_bytes() -> Nat {
     {
         let k = kibi_factor();
-        ((k.clone() * k.clone()) * k.clone())
+        v1_rt::int_mul(v1_rt::int_mul(k.clone(), k.clone()), k.clone())
     }
 }
 
 pub fn mebibyte_scale_factor_bytes() -> Nat {
     {
         let k = kibi_factor();
-        (k.clone() * k.clone())
+        v1_rt::int_mul(k.clone(), k.clone())
     }
 }
 
@@ -173,7 +173,10 @@ pub fn hours_per_day() -> Nat {
 }
 
 pub fn seconds_per_day() -> Nat {
-    ((hours_per_day() * minutes_per_hour()) * seconds_per_minute())
+    v1_rt::int_mul(
+        v1_rt::int_mul(hours_per_day(), minutes_per_hour()),
+        seconds_per_minute(),
+    )
 }
 
 pub fn milliseconds_per_second() -> Nat {
@@ -185,7 +188,7 @@ pub fn milli_per_unit() -> Nat {
 }
 
 pub fn micro_per_unit() -> Nat {
-    (milli_per_unit() * milli_per_unit())
+    v1_rt::int_mul(milli_per_unit(), milli_per_unit())
 }
 
 pub fn mega_factor() -> Nat {
@@ -224,9 +227,9 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
     match s.clone() {
         Scale::One => Some(1),
         Scale::Kibi => Some(kibi_factor()),
-        Scale::Mebi => Some((kibi_factor() * kibi_factor())),
+        Scale::Mebi => Some(v1_rt::int_mul(kibi_factor(), kibi_factor())),
         Scale::Gibi => Some(gibibyte_scale_factor_bytes()),
-        Scale::Tebi => Some((gibibyte_scale_factor_bytes() * kibi_factor())),
+        Scale::Tebi => Some(v1_rt::int_mul(gibibyte_scale_factor_bytes(), kibi_factor())),
         Scale::Atto => std::option::Option::None,
         Scale::Femto => std::option::Option::None,
         Scale::Pico => std::option::Option::None,
@@ -267,7 +270,7 @@ pub fn measure_scale_fraction_floor<Q, S>(
         count: if (den.clone() == 0) {
             den.clone()
         } else {
-            ((m.count.clone() * num.clone()) / den.clone())
+            v1_rt::int_div(v1_rt::int_mul(m.count.clone(), num.clone()), den.clone())
         },
         _phantom: std::marker::PhantomData,
     })
@@ -282,7 +285,7 @@ pub fn measure_fit_count_floor<Q, S>(
         if (each_count.clone() == 0) {
             each_count.clone()
         } else {
-            (capacity.count.clone() / each_count.clone())
+            v1_rt::int_div(capacity.count.clone(), each_count.clone())
         }
     }
 }
@@ -294,9 +297,15 @@ pub fn measure_scale_fraction_ceil<Q, S>(
 ) -> Rc<Measure<Q, S, i64>> {
     Rc::new(Measure {
         count: if (den.clone() == 0) {
-            (m.count.clone() * num.clone())
+            v1_rt::int_mul(m.count.clone(), num.clone())
         } else {
-            (((m.count.clone() * num.clone()) + (den.clone() - 1)) / den.clone())
+            v1_rt::int_div(
+                v1_rt::int_add(
+                    v1_rt::int_mul(m.count.clone(), num.clone()),
+                    v1_rt::int_sub(den.clone(), 1),
+                ),
+                den.clone(),
+            )
         },
         _phantom: std::marker::PhantomData,
     })
@@ -307,7 +316,7 @@ pub fn measure_add<Q, S>(
     b: Rc<Measure<Q, S, i64>>,
 ) -> Rc<Measure<Q, S, i64>> {
     Rc::new(Measure {
-        count: (a.count.clone() + b.count.clone()),
+        count: v1_rt::int_add(a.count.clone(), b.count.clone()),
         _phantom: std::marker::PhantomData,
     })
 }
@@ -338,7 +347,7 @@ pub fn measure_sub<Q, S>(
     } else {
         Rc::new(MeasureSubtraction::MeasureDifference {
             value: Rc::new(Measure {
-                count: (a.count.clone() - b.count.clone()),
+                count: v1_rt::int_sub(a.count.clone(), b.count.clone()),
                 _phantom: std::marker::PhantomData,
             }),
         })
@@ -402,12 +411,18 @@ pub fn gibibyte_count(g: Gibibyte) -> Nat {
 pub fn gibibyte_ceiling(b: ByteSize) -> Gibibyte {
     {
         let scale = gibibyte_scale_factor_bytes();
-        gibibyte(((byte_size_count(b.clone()) + (scale.clone() - 1)) / scale.clone()))
+        gibibyte(v1_rt::int_div(
+            v1_rt::int_add(byte_size_count(b.clone()), v1_rt::int_sub(scale.clone(), 1)),
+            scale.clone(),
+        ))
     }
 }
 
 pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
-    byte_size((gibibyte_count(g.clone()) * gibibyte_scale_factor_bytes()))
+    byte_size(v1_rt::int_mul(
+        gibibyte_count(g.clone()),
+        gibibyte_scale_factor_bytes(),
+    ))
 }
 
 pub fn kibibyte(count: Nat) -> Kibibyte {
@@ -422,15 +437,18 @@ pub fn kibibyte_count(k: Kibibyte) -> Nat {
 }
 
 pub fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
-    byte_size((kibibyte_count(k.clone()) * kibi_factor()))
+    byte_size(v1_rt::int_mul(kibibyte_count(k.clone()), kibi_factor()))
 }
 
 pub fn kibibyte_from_byte_size_floor(b: ByteSize) -> Kibibyte {
-    kibibyte((byte_size_count(b.clone()) / kibi_factor()))
+    kibibyte(v1_rt::int_div(byte_size_count(b.clone()), kibi_factor()))
 }
 
 pub fn mebibyte_to_byte_size(m: Mebibyte) -> ByteSize {
-    byte_size((mebibyte_count(m.clone()) * mebibyte_scale_factor_bytes()))
+    byte_size(v1_rt::int_mul(
+        mebibyte_count(m.clone()),
+        mebibyte_scale_factor_bytes(),
+    ))
 }
 
 pub type BitWidth = Rc<Measure<Information, One, Nat>>;
@@ -657,7 +675,7 @@ pub fn positive_measure_count_value(count: Rc<PositiveMeasureCount>) -> i64 {
         PositiveMeasureCount::PositiveMeasureSuccessor {
             predecessor: predecessor,
             ..
-        } => (predecessor.clone() + 1),
+        } => v1_rt::int_add(predecessor.clone(), 1),
     }
 }
 
@@ -768,7 +786,10 @@ pub fn finite_byte_size_from_byte_size(size: ByteSize) -> Rc<FiniteByteSizeBuild
 }
 
 pub fn gibibyte_grain() -> FiniteByteSize {
-    finite_byte_size(positive_measure_count((gibibyte_scale_factor_bytes() - 1)))
+    finite_byte_size(positive_measure_count(v1_rt::int_sub(
+        gibibyte_scale_factor_bytes(),
+        1,
+    )))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -782,7 +803,7 @@ pub fn round_up_to_grain(bytes: ByteSize, grain: FiniteByteSize) -> Rc<GrainRoun
     {
         let n = byte_size_count(bytes.clone());
         let g = finite_byte_size_count(grain.clone());
-        let remainder = (n.clone() % g.clone());
+        let remainder = v1_rt::int_rem(n.clone(), g.clone());
         let pad = if (remainder.clone() == 0) {
             0
         } else {
@@ -805,7 +826,7 @@ pub fn round_up_to_grain(bytes: ByteSize, grain: FiniteByteSize) -> Rc<GrainRoun
             })
         } else {
             Rc::new(GrainRounding::GrainRounded {
-                bytes: byte_size((n.clone() + pad.clone())),
+                bytes: byte_size(v1_rt::int_add(n.clone(), pad.clone())),
             })
         }
     }
@@ -830,7 +851,7 @@ pub fn milliwatt(count: Nat) -> Milliwatt {
 }
 
 pub fn milliwatt_to_watt_floor(w: Milliwatt) -> Watt {
-    watt((milliwatt_count(w.clone()) / milli_per_unit()))
+    watt(v1_rt::int_div(milliwatt_count(w.clone()), milli_per_unit()))
 }
 
 pub fn milliwatt_count(w: Milliwatt) -> Nat {
@@ -908,7 +929,7 @@ pub fn nanometer_count(n: Nanometer) -> Nat {
 }
 
 pub fn micrometer_to_nanometer(m: Micrometer) -> Nanometer {
-    nanometer((micrometer_count(m.clone()) * 1000))
+    nanometer(v1_rt::int_mul(micrometer_count(m.clone()), 1000))
 }
 
 pub fn micrometer(count: Nat) -> Micrometer {
@@ -1156,7 +1177,10 @@ pub fn credits_per_minute_issuer(r: CreditsPerMinute) -> Rc<DeclarationRef> {
 
 pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
     Rc::new(MoneyRate {
-        amount: money_amount_micro((money_per_minute_micros(q.clone()) * minutes_per_hour())),
+        amount: money_amount_micro(v1_rt::int_mul(
+            money_per_minute_micros(q.clone()),
+            minutes_per_hour(),
+        )),
         currency: q.currency.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -1168,9 +1192,10 @@ pub fn billing_month_as_hour_count() -> Nat {
 
 pub fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
     Rc::new(MoneyRate {
-        amount: money_amount_micro(
-            (money_per_month_micros(q.clone()) / billing_month_as_hour_count()),
-        ),
+        amount: money_amount_micro(v1_rt::int_div(
+            money_per_month_micros(q.clone()),
+            billing_month_as_hour_count(),
+        )),
         currency: q.currency.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -1306,7 +1331,7 @@ pub fn token_count_remaining_in_window(window: TokenCount, used: TokenCount) -> 
         if (u.clone() >= w.clone()) {
             token_count(0)
         } else {
-            token_count((w.clone() - u.clone()))
+            token_count(v1_rt::int_sub(w.clone(), u.clone()))
         }
     }
 }
@@ -1594,11 +1619,17 @@ pub fn nanoseconds_per_millisecond() -> Nat {
 }
 
 pub fn millisecond_to_nanosecond(m: Millisecond) -> Nanosecond {
-    nanosecond((millisecond_count(m.clone()) * nanoseconds_per_millisecond()))
+    nanosecond(v1_rt::int_mul(
+        millisecond_count(m.clone()),
+        nanoseconds_per_millisecond(),
+    ))
 }
 
 pub fn nanosecond_to_millisecond_floor(n: Nanosecond) -> Millisecond {
-    millisecond((nanosecond_count(n.clone()) / nanoseconds_per_millisecond()))
+    millisecond(v1_rt::int_div(
+        nanosecond_count(n.clone()),
+        nanoseconds_per_millisecond(),
+    ))
 }
 
 pub type Second = Rc<Measure<Time, One, Nat>>;
@@ -1628,7 +1659,10 @@ pub fn second_displacement_count(d: SecondDisplacement) -> i64 {
 }
 
 pub fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
-    joule((watt_count(power.clone()) * second_count(time.clone())))
+    joule(v1_rt::int_mul(
+        watt_count(power.clone()),
+        second_count(time.clone()),
+    ))
 }
 
 pub fn volt_ampere(count: Nat) -> VoltAmpere {
@@ -1643,7 +1677,10 @@ pub fn volt_ampere_count(v: VoltAmpere) -> Nat {
 }
 
 pub fn apparent_power_from_supply(supply_voltage: Volt, rated_current: Ampere) -> VoltAmpere {
-    volt_ampere((volt_count(supply_voltage.clone()) * ampere_count(rated_current.clone())))
+    volt_ampere(v1_rt::int_mul(
+        volt_count(supply_voltage.clone()),
+        ampere_count(rated_current.clone()),
+    ))
 }
 
 pub type Minute = Rc<Measure<Time, Sixty, Nat>>;
@@ -1660,15 +1697,24 @@ pub fn minute_count(m: Minute) -> Nat {
 }
 
 pub fn minute_to_second(m: Minute) -> Second {
-    second((minute_count(m.clone()) * seconds_per_minute()))
+    second(v1_rt::int_mul(
+        minute_count(m.clone()),
+        seconds_per_minute(),
+    ))
 }
 
 pub fn minute_to_millisecond(m: Minute) -> Millisecond {
-    millisecond(((minute_count(m.clone()) * seconds_per_minute()) * milliseconds_per_second()))
+    millisecond(v1_rt::int_mul(
+        v1_rt::int_mul(minute_count(m.clone()), seconds_per_minute()),
+        milliseconds_per_second(),
+    ))
 }
 
 pub fn second_to_millisecond(s: Second) -> Millisecond {
-    millisecond((second_count(s.clone()) * milliseconds_per_second()))
+    millisecond(v1_rt::int_mul(
+        second_count(s.clone()),
+        milliseconds_per_second(),
+    ))
 }
 
 pub type Percent = Rc<Measure<Dimensionless, One, Nat>>;
@@ -1698,7 +1744,10 @@ pub fn concurrent_request_hundredths_count(c: ConcurrentRequestHundredths) -> Na
 }
 
 pub fn permyriad_half_for_round_half_up() -> i64 {
-    (crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count() / 2)
+    v1_rt::int_div(
+        crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count(),
+        2,
+    )
 }
 
 pub fn percent_scale_hundred() -> i64 {
@@ -1817,17 +1866,17 @@ pub fn clock_basis_label(b: ClockBasis) -> String {
 }
 
 pub fn square_metres_to_square_millimetres(area: SquareMeter) -> SquareMillimeter {
-    square_millimeter(
-        (square_meter_count(area.clone())
-            * crate::extdeps_units_iso_80000_3::square_millimetres_per_square_metre()),
-    )
+    square_millimeter(v1_rt::int_mul(
+        square_meter_count(area.clone()),
+        crate::extdeps_units_iso_80000_3::square_millimetres_per_square_metre(),
+    ))
 }
 
 pub fn cubic_metres_to_cubic_millimetres(volume: CubicMeter) -> CubicMillimeter {
-    cubic_millimeter(
-        (cubic_meter_count(volume.clone())
-            * crate::extdeps_units_iso_80000_3::cubic_millimetres_per_cubic_metre()),
-    )
+    cubic_millimeter(v1_rt::int_mul(
+        cubic_meter_count(volume.clone()),
+        crate::extdeps_units_iso_80000_3::cubic_millimetres_per_cubic_metre(),
+    ))
 }
 
 pub fn full_turn_arcseconds() -> Arcsecond {
@@ -1835,18 +1884,24 @@ pub fn full_turn_arcseconds() -> Arcsecond {
 }
 
 pub fn degrees_to_arcseconds(degrees: Degree) -> Arcsecond {
-    arcsecond(
-        (degree_count(degrees.clone())
-            * crate::extdeps_units_iso_80000_3::arcseconds_per_degree_derived()),
-    )
+    arcsecond(v1_rt::int_mul(
+        degree_count(degrees.clone()),
+        crate::extdeps_units_iso_80000_3::arcseconds_per_degree_derived(),
+    ))
 }
 
 pub fn turns_to_arcseconds(turns: Turn) -> Arcsecond {
-    arcsecond((turn_count(turns.clone()) * crate::extdeps_units_iso_80000_3::arcseconds_per_turn()))
+    arcsecond(v1_rt::int_mul(
+        turn_count(turns.clone()),
+        crate::extdeps_units_iso_80000_3::arcseconds_per_turn(),
+    ))
 }
 
 pub fn quarter_turn_arcseconds() -> Arcsecond {
-    arcsecond((crate::extdeps_units_iso_80000_3::arcseconds_per_turn() / 4))
+    arcsecond(v1_rt::int_div(
+        crate::extdeps_units_iso_80000_3::arcseconds_per_turn(),
+        4,
+    ))
 }
 
 pub fn turn(count: Nat) -> Turn {
