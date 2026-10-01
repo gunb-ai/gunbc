@@ -3518,6 +3518,50 @@ fn body_lower_fn_decl_exit_refusal_optional(captured: Node) -> Optional<Outcome<
 // (gunbc.recurring_failure_mode uses_clause_has_no_carrier), so lowering the fn would drop the
 // requirement. Both arms -- the full arrow and the census arrow -- ask this first, because the
 // requirement is part of the signature both of them read.
+// A `pattern` IS A FN WITH v1's NARROWER FORM (dag syntax dag_item_forms: has_type_params false,
+// body_kind BlockBody), sharing the one fn_decl production. The grammar cannot express the narrowing
+// without changing the spine depth the positional readers walk, so it is held here, on both arms: a
+// pattern-headed declaration that writes generic params, or an `= expr` body, refuses located at
+// what it wrote (body_lowering_reason_pattern_form_not_admitted) and never lowers as a fn. The head
+// is told apart by its token: `fn` is the keyword token, `pattern` a literal identifier.
+fn body_lower_pattern_form_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+    Absent => optional_absent()
+    Present { value: head_rest } =>
+      if body_lower_token_is(node: head_rest.left, token: ^dag_token_kw_fn) {
+        optional_absent()
+      } else {
+        match body_lower_pattern_generics_optional(captured: captured) {
+          Present { value: generics } =>
+            optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_form_not_admitted, n: generics)))
+          Absent =>
+            match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_fn_body) {
+              Present { value: _ } => optional_absent()
+              Absent =>
+                optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_form_not_admitted, n: captured)))
+            }
+        }
+      }
+  }
+}
+
+// The generic_params production in the declaration's own `<T>` slot, if the source wrote one.
+fn body_lower_pattern_generics_optional(captured: Node) -> Optional<Node> {
+  match body_lower_decl_generic_params_slot_optional(captured: captured) {
+    Absent => optional_absent()
+    Present { value: slot } => body_lower_find_production_shell_optional(root: slot, emitted: ^dag_surface_generic_params)
+  }
+}
+
+// The signature refusals both arms ask before reading anything: a pattern head written in a form v1
+// does not admit, then a `uses` clause v2 has no carrier for.
+fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
+  match body_lower_pattern_form_refusal_optional(captured: captured) {
+    Present { value: refused } => optional_present(value: refused)
+    Absent => body_lower_fn_uses_refusal_optional(captured: captured)
+  }
+}
+
 fn body_lower_fn_uses_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
   match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_uses_clause) {
     Absent => optional_absent()
@@ -3530,7 +3574,7 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_fn_uses_refusal_optional(captured: captured) {
+      match body_lower_first_signature_refusal_optional(captured: captured) {
         Present { value: refused } => body_lowering_lowered(o: refused)
         Absent =>
           match body_lower_fn_decl_exit_refusal_optional(captured: captured) {
@@ -3786,7 +3830,7 @@ fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_fn_uses_refusal_optional(captured: captured) {
+      match body_lower_first_signature_refusal_optional(captured: captured) {
         Present { value: refused } => body_lowering_lowered(o: refused)
         Absent =>
           match body_lower_fn_signature_optional(captured: captured) {
@@ -6821,6 +6865,67 @@ fn body_lower_let_name_position(after_let: Node) -> Node {
   }
 }
 
+// v1's OTHER SPELLINGS OF A STATEMENT LET (v2.extdeps.languages.dag dag_grammar_let_sugar_expr):
+// `node x: e` / `node x = e` and a bare `x = e`. Each names a binder and a value exactly as `let x = e`
+// does and writes no annotation, so the three statement-let readers below consult this first and
+// read the same two positions from it -- one reader of a let's parts, three spellings.
+type BodyLowerLetSugar {
+  name: Node,
+  value: Node,
+}
+
+// Read by SHAPE, not by the head's spelling: the `node` head is a literal terminal, whose parse atom
+// carries its token class rather than its lexeme. The two shapes are disjoint -- a bare assignment is
+// seq(name, seq(`=`, value)); the node form is seq(head, seq(name, seq(`:`|`=`, value))) -- and the
+// node form's head is required NOT to be `let`, so `let x: T = e` is never read as sugar (its
+// annotation would otherwise be taken for the value).
+fn body_lower_let_sugar_optional(captured: Node) -> Optional<BodyLowerLetSugar> {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: body_lower_unwrap_surface_shell(node: captured))) {
+    Absent => optional_absent()
+    Present { value: head } =>
+      match body_lower_let_sugar_after_name(name: head.left, rest: head.right, colon_admitted: false) {
+        Present { value: bare } => optional_present(value: bare)
+        Absent =>
+          if body_lower_token_is(node: head.left, token: ^dag_token_kw_let) {
+            optional_absent()
+          } else {
+            match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: head.right)) {
+              Absent => optional_absent()
+              Present { value: name_rest } => body_lower_let_sugar_after_name(name: name_rest.left, rest: name_rest.right, colon_admitted: true)
+            }
+          }
+      }
+  }
+}
+
+fn body_lower_token_is(node: Node, token: Symbol) -> Bool {
+  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+    Present { value: id } => id == token
+    Absent => false
+  }
+}
+
+// seq(separator, expr) after the name: `=` always, `:` only in the `node` form.
+fn body_lower_let_sugar_after_name(name: Node, rest: Node, colon_admitted: Bool) -> Optional<BodyLowerLetSugar> {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: rest)) {
+    Absent => optional_absent()
+    Present { value: sep_value } =>
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: sep_value.left)) {
+        Absent => optional_absent()
+        Present { value: sep } =>
+          if (sep == ^dag_token_eq) || (colon_admitted && (sep == ^dag_token_colon)) {
+            match body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: name)) {
+              Absent => optional_absent()
+              Present { value: _ } => optional_present(value: BodyLowerLetSugar { name: name, value: sep_value.right })
+            }
+          } else {
+            optional_absent()
+          }
+      }
+  }
+}
+
+
 // The let's key binding. The name is the projection of the binder atom below, which is lowered from
 // the token it was read from so it keeps its minted occurrence (v2.compiler.occurrence_role reads it).
 fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
@@ -6831,6 +6936,13 @@ fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
 }
 
 fn body_lower_let_in_key_binding_atom_optional(captured: Node) -> Optional<Node> {
+  match body_lower_let_sugar_optional(captured: captured) {
+    Present { value: sugar } => body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: sugar.name))
+    Absent => body_lower_let_keyword_key_binding_atom_optional(captured: captured)
+  }
+}
+
+fn body_lower_let_keyword_key_binding_atom_optional(captured: Node) -> Optional<Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Present { value: left } =>
@@ -6849,19 +6961,19 @@ fn body_lower_let_in_key_binding_atom_optional(captured: Node) -> Optional<Node>
                     }
                 }
               } else {
-                match body_lower_let_in_key_binding_atom_optional(captured: left) {
+                match body_lower_let_keyword_key_binding_atom_optional(captured: left) {
                   Present { value: found } => Present { value: found }
-                  Absent => body_lower_let_in_key_binding_atom_optional(captured: right)
+                  Absent => body_lower_let_keyword_key_binding_atom_optional(captured: right)
                 }
               }
             Absent =>
-              match body_lower_let_in_key_binding_atom_optional(captured: left) {
+              match body_lower_let_keyword_key_binding_atom_optional(captured: left) {
                 Present { value: found } => Present { value: found }
-                Absent => body_lower_let_in_key_binding_atom_optional(captured: right)
+                Absent => body_lower_let_keyword_key_binding_atom_optional(captured: right)
               }
           }
         Absent =>
-          match body_lower_let_in_key_binding_atom_optional(captured: left) {
+          match body_lower_let_keyword_key_binding_atom_optional(captured: left) {
             Present { value: found } => Present { value: found }
             Absent => Absent
           }
@@ -6869,15 +6981,15 @@ fn body_lower_let_in_key_binding_atom_optional(captured: Node) -> Optional<Node>
     Absent =>
       match sugar_sequence_pair_optional(node: spine) {
         Present { value: pair } =>
-          match body_lower_let_in_key_binding_atom_optional(captured: pair.left) {
+          match body_lower_let_keyword_key_binding_atom_optional(captured: pair.left) {
             Present { value: found } => Present { value: found }
-            Absent => body_lower_let_in_key_binding_atom_optional(captured: pair.right)
+            Absent => body_lower_let_keyword_key_binding_atom_optional(captured: pair.right)
           }
         Absent =>
           fold(spine.children, init: Absent, f: fn(acc, e) {
             match acc {
               Present { value: _ } => acc
-              Absent => body_lower_let_in_key_binding_atom_optional(captured: e.target)
+              Absent => body_lower_let_keyword_key_binding_atom_optional(captured: e.target)
             }
           })
       }
@@ -7042,6 +7154,13 @@ fn body_lower_type_annotation_not_carried(at: Node) -> Outcome<Node> {
 // `let NAME : type_expr = value` -- the colon is the first element after NAME, read positionally the
 // way the `<T>` slot is; the unannotated arm has `=` there.
 fn body_lower_let_annotation_optional(captured: Node) -> Optional<Node> {
+  match body_lower_let_sugar_optional(captured: captured) {
+    Present { value: _ } => optional_absent()
+    Absent => body_lower_let_keyword_annotation_optional(captured: captured)
+  }
+}
+
+fn body_lower_let_keyword_annotation_optional(captured: Node) -> Optional<Node> {
   match body_lower_fn_decl_spine_right(node: body_lower_unwrap_surface_shell(node: captured)) {
     Absent => optional_absent()
     Present { value: after_let } =>
@@ -7190,6 +7309,13 @@ fn body_lower_statement_let_captured_optional(stmt: Node) -> Optional<Node> {
 // that position for both let forms: the in-form narrows its answer to what precedes `in`
 // (body_lower_let_in_value_capture_optional).
 fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
+  match body_lower_let_sugar_optional(captured: captured) {
+    Present { value: sugar } => optional_present(value: sugar.value)
+    Absent => body_lower_let_keyword_statement_value_optional(captured: captured)
+  }
+}
+
+fn body_lower_let_keyword_statement_value_optional(captured: Node) -> Optional<Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Absent => optional_absent()
@@ -7202,9 +7328,9 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
               if id == ^dag_token_eq {
                 optional_present(value: right)
               } else {
-                body_lower_let_statement_value_optional(captured: right)
+                body_lower_let_keyword_statement_value_optional(captured: right)
               }
-            Absent => body_lower_let_statement_value_optional(captured: right)
+            Absent => body_lower_let_keyword_statement_value_optional(captured: right)
           }
       }
   }

@@ -151,6 +151,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; full normalize refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips when a realization binding carrier (a transport handler bound to the interface shape) and a typed operation-modifier carrier exist, so that no set-aside reason has a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_pattern_form_not_admitted,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a `pattern` declaration shares the one fn_decl production but v1 admits it only without generic params and with a block body (dag syntax dag_item_forms: has_type_params false, body_kind BlockBody); a pattern-headed declaration writing generic params or an `= expr` body refuses located at what it wrote (v2.compiler.body_lowering_fold body_lower_pattern_form_refusal_optional). This is a fidelity wall, not a frontier: it retires only if the grammar can express the narrower pattern form without changing the fn_decl spine depth the positional readers walk, so the form becomes unwritable rather than refused"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_uses_clause_unmodeled,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
