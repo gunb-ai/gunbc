@@ -38,10 +38,22 @@ fn bdj_refused_as_not_inhabiting(o: Outcome<Bool>) -> Bool {
   }
 }
 
+// Each outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it: assembling and inferring the program
+// inside each claim put both over the new-witness eval-step budget. The inferred outcome carries the
+// assembly's own refusal, so a program that did not assemble cannot pass either claim.
+fn bdj_inhabiting_inferred() -> Outcome<Bool> {
+  bdj_infers(o: bdj_inhabiting())
+}
+
+fn bdj_not_inhabiting_inferred() -> Outcome<Bool> {
+  bdj_infers(o: bdj_not_inhabiting())
+}
+
 test fn a_default_that_inhabits_its_binder_type_infers() -> Bool {
-  tpb_accepts(o: bdj_inhabiting()) && tpb_accepts(o: bdj_infers(o: bdj_inhabiting()))
+  tpb_accepts(o: bdj_inhabiting_inferred())
 }
 
 test fn a_default_that_does_not_inhabit_its_binder_type_refuses() -> Bool {
-  tpb_accepts(o: bdj_not_inhabiting()) && bdj_refused_as_not_inhabiting(o: bdj_infers(o: bdj_not_inhabiting()))
+  bdj_refused_as_not_inhabiting(o: bdj_not_inhabiting_inferred())
 }
