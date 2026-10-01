@@ -104,7 +104,10 @@ test fn etr_a_field_value_disagreeing_with_the_contexts_instance_refuses_holds()
 // known and counted its field `a: Ph<T>` as a generic formal (T had no instance yet). A bottom-up fold
 // does not retract a child's advisory once its parent decides more, so that one obligation is still
 // reported. It is an overcount -- the safe direction -- and never a silent pass; withholding it at the
-// child would leave a construct no typed position consumes unjudged and uncounted.
+// child would leave a construct no typed position consumes unjudged and uncounted. TRIGGER for
+// retiring it: infer can revise a child's facts once its parent decides more, which the facts tree
+// mirroring the typed tree provides (eager-newt-412's facts-trie work, in progress). When that lands,
+// this claim tightens to assert no counted obligation at all, as the phantom claim above does.
 fn etr_member_accepted_without(resolved: Outcome<ResolvedTree>, member: Symbol, reason: Symbol) -> Bool {
   match resolved {
     Rejected { diagnostics: _ } => false
