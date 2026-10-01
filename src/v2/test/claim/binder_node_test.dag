@@ -2,7 +2,8 @@ module v2.test.claim.binder_node
 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.lens.unit_modeling { field_unit_violation }
 import v2.std.type_binder { type_binder_node_conforms }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.node_query {
@@ -165,4 +166,33 @@ test fn an_arrow_domain_with_a_hand_built_member_refuses() -> Bool {
 test fn a_default_changes_the_binder_node_and_a_name_does_not() -> Bool {
   (content_hash(n: binder_node(type_node: bn_int(), default: Absent)) != content_hash(n: binder_node(type_node: bn_int(), default: Present { value: bn_value() })))
     && (content_hash(n: binder_edge(name: ^x, type_node: bn_int()).target) == content_hash(n: binder_edge(name: ^y, type_node: bn_int()).target))
+}
+
+fn bn_unit_lens_reason(edge: Edge) -> Optional<Symbol> {
+  match field_unit_violation(carrier: bn_conj(children: [edge]), edge: edge) {
+    Present { value: d } => optional_present(value: d.reason)
+    Absent => optional_absent()
+  }
+}
+
+fn bn_reason_is(r: Optional<Symbol>, expected: Symbol) -> Bool {
+  match r {
+    Present { value: s } => s == expected
+    Absent => false
+  }
+}
+
+fn bn_reason_absent(r: Optional<Symbol>) -> Bool {
+  match r {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// A LENS NEVER ANSWERS "NO VIOLATION" FOR A FIELD THAT IS NOT A BINDER: the unit-modeling lens reports
+// a hand-built name-to-type field as ^member_not_a_binder, located, while the same field built as a
+// binder of a non-flat type has no violation.
+test fn a_lens_refuses_a_field_that_is_not_a_binder() -> Bool {
+  bn_reason_is(r: bn_unit_lens_reason(edge: Edge { label: Named { name: ^x }, target: bn_atom(identity: ^Text) }), expected: ^member_not_a_binder)
+    && bn_reason_absent(r: bn_unit_lens_reason(edge: binder_edge(name: ^x, type_node: bn_atom(identity: ^Text))))
 }
