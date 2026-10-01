@@ -1,0 +1,50 @@
+module v2.test.claim.long.text_string_importer_census_real_route
+
+import v2.lens.text_string_importer_census {
+  ImporterVerdict, HostUsing, Rosters, RawTreeEstablished, RawTreeNotEstablished,
+  walk_atoms, tree_atoms, raw_tree_of_text, verdict_with_crossings
+}
+import v2.lens.common.source_analysis_standing { SourceParseRejected }
+import v2.std.algebra { list_reverse }
+import std.algebra { Cons, Empty }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REAL ROUTE for v2.test.claim.text_string_importer_census, whose floor rows SUPPLY the atom
+// stream: deleting the raw-parse integration (raw_tree_of_text -> tree_atoms) must red a row
+// here. Each row costs about 1M eval steps, dominated by grammar validation, against a 72300-step
+// new-witness floor budget, so this file runs on the substrate long lane
+// (gunbc.explicit_witness_admission, FalsifierSubstrateLongLane).
+
+data rosters_supplied: Rosters = Rosters {
+  host: Cons { head: "string_length", tail: Empty },
+  structural: Cons { head: "string_is_empty", tail: Empty },
+  structural_text_result: Empty
+}
+
+fn is_host(v: ImporterVerdict) -> Bool {
+  match v {
+    HostUsing => true
+    _ => false
+  }
+}
+
+test fn tsic_real_raw_parse_route_reaches_the_classifier() -> Bool {
+  match raw_tree_of_text(text: "module m\nimport v2.std.text { String }\ndata d: String = \"x\"\n") {
+    RawTreeNotEstablished { cause: _ } => false
+    RawTreeEstablished { root: root } => {
+      let w = walk_atoms(atoms: tree_atoms(root: root), r: rosters_supplied)
+      w.imports_text_string && is_host(v: verdict_with_crossings(sites: list_reverse(xs: w.sites), crossings: Empty))
+    }
+  }
+}
+
+test fn tsic_parse_refusal_is_listed_with_its_cause() -> Bool {
+  match raw_tree_of_text(text: "module m\nimport v2.std.text { String }\nfn broken(s: String) -> {\n") {
+    RawTreeNotEstablished { cause: SourceParseRejected } => true
+    _ => false
+  }
+}
+

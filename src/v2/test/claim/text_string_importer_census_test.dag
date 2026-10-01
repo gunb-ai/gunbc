@@ -33,8 +33,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // produced for the same-named file under test/fixture_roots/text_string_importer_census, captured
 // once; the rosters are supplied too. Parsing a module or v2.std.text per row cost more than a
 // whole row's floor budget, and re-ran production these rows are not about. THE PAIRING
-// OBLIGATION is kept by the real-route rows at the bottom: one raw parse of a small source that
-// must reach a HOST verdict through tree_atoms, and one parse refusal.
+// OBLIGATION is kept by v2.test.claim.long.text_string_importer_census_real_route: one raw parse
+// of a small source that must reach a HOST verdict through tree_atoms, and one parse refusal --
+// about 1M eval steps each (grammar validation), so they run on the substrate long lane, admitted
+// by gunbc.explicit_witness_admission.
 //
 // Each row asserts the EXACT arm its input exists for, never "not" another arm.
 
@@ -53,13 +55,20 @@ fn callee_modules_supplied() -> FreeMonoid<CalleeModule> {
     tail: Cons { head: CalleeModule { module: "fixture.text_string_importer_census.importing_callee", standing: WalkEstablished { walk: walk_of(atoms: atoms_importing_callee) } }, tail: Empty } }
 }
 
-fn verdict_of_atoms(atoms: List<String>) -> ImporterVerdict {
-  let w = walk_of(atoms: atoms)
-  verdict_with_crossings(sites: list_reverse(xs: w.sites), crossings: crossings_of(own: w, callees: callee_modules_supplied()))
+// Each row walks its stream ONCE and reads both the verdict and the sites from that walk.
+type Classified {
+  verdict: ImporterVerdict
+  sites: FreeMonoid<Site>
 }
 
-fn sites_of_atoms(atoms: List<String>) -> FreeMonoid<Site> {
-  list_reverse(xs: walk_of(atoms: atoms).sites)
+fn classified(atoms: List<String>) -> Classified {
+  let w = walk_of(atoms: atoms)
+  let sites = list_reverse(xs: w.sites)
+  Classified { verdict: verdict_with_crossings(sites: sites, crossings: crossings_of(own: w, callees: callee_modules_supplied())), sites: sites }
+}
+
+fn verdict_of_atoms(atoms: List<String>) -> ImporterVerdict {
+  classified(atoms: atoms).verdict
 }
 
 fn is_host(v: ImporterVerdict) -> Bool {
@@ -70,8 +79,9 @@ fn is_host(v: ImporterVerdict) -> Bool {
 }
 
 test fn tsic_literal_at_bare_string_annotation_is_host() -> Bool {
-  is_host(v: verdict_of_atoms(atoms: atoms_host_literal))
-    && any(xs: sites_of_atoms(atoms: atoms_host_literal), predicate: fn(s) {
+  let c = classified(atoms: atoms_host_literal)
+  is_host(v: c.verdict)
+    && any(xs: c.sites, predicate: fn(s) {
       match s.kind {
         HostLiteralAtStringAnnotation => true
         _ => false
@@ -80,8 +90,9 @@ test fn tsic_literal_at_bare_string_annotation_is_host() -> Bool {
 }
 
 test fn tsic_host_primitive_call_is_host() -> Bool {
-  is_host(v: verdict_of_atoms(atoms: atoms_host_primitive))
-    && any(xs: sites_of_atoms(atoms: atoms_host_primitive), predicate: fn(s) {
+  let c = classified(atoms: atoms_host_primitive)
+  is_host(v: c.verdict)
+    && any(xs: c.sites, predicate: fn(s) {
       match s.kind {
         HostPrimitiveCall { name: n } => n == "string_length"
         _ => false
@@ -90,8 +101,9 @@ test fn tsic_host_primitive_call_is_host() -> Bool {
 }
 
 test fn tsic_host_method_call_is_host() -> Bool {
-  is_host(v: verdict_of_atoms(atoms: atoms_host_method))
-    && any(xs: sites_of_atoms(atoms: atoms_host_method), predicate: fn(s) {
+  let c = classified(atoms: atoms_host_method)
+  is_host(v: c.verdict)
+    && any(xs: c.sites, predicate: fn(s) {
       match s.kind {
         HostMethodCall { name: n } => n == "split"
         _ => false
@@ -102,8 +114,9 @@ test fn tsic_host_method_call_is_host() -> Bool {
 // `+` over two binders annotated bare `String` is host concatenation; the same `+` over Int is
 // not, which is why the route is asserted and not only the verdict.
 test fn tsic_plus_over_string_binders_is_host() -> Bool {
-  is_host(v: verdict_of_atoms(atoms: atoms_host_plus))
-    && any(xs: sites_of_atoms(atoms: atoms_host_plus), predicate: fn(s) {
+  let c = classified(atoms: atoms_host_plus)
+  is_host(v: c.verdict)
+    && any(xs: c.sites, predicate: fn(s) {
       match s.kind {
         HostPlusConcatenation => true
         _ => false
@@ -118,25 +131,34 @@ test fn tsic_structural_only_is_structural() -> Bool {
   }
 }
 
-test fn tsic_both_is_mixed_with_the_other_site_at_the_let() -> Bool {
-  let sites = sites_of_atoms(atoms: atoms_mixed)
-  let mixed = match verdict_of_atoms(atoms: atoms_mixed) {
+test fn tsic_host_and_structural_is_mixed_with_the_other_site_at_the_let() -> Bool {
+  let c = classified(atoms: atoms_mixed)
+  let mixed = match c.verdict {
     Mixed => true
     _ => false
   }
-  let other_at_let = any(xs: sites, predicate: fn(s) {
+  mixed && any(xs: c.sites, predicate: fn(s) {
     match s.kind {
       StructuralCall { name: n, result: ResultAtOtherPosition } => (n == "string_join") && (s.decl == "joined")
       _ => false
     }
   })
-  let argument_at_call = any(xs: sites, predicate: fn(s) {
+}
+
+// A text-carrier result that is itself an argument of another structural call is CALL-ARGUMENT,
+// not OTHER: the route the MIXED split depends on.
+test fn tsic_structural_result_at_a_structural_argument_is_call_argument() -> Bool {
+  let c = classified(atoms: atoms_nested_structural)
+  let structural = match c.verdict {
+    StructuralUsing => true
+    _ => false
+  }
+  structural && any(xs: c.sites, predicate: fn(s) {
     match s.kind {
       StructuralCall { name: n, result: ResultAtCallArgument } => (n == "string_join") && (s.decl == "joined_is_empty")
       _ => false
     }
   })
-  mixed && other_at_let && argument_at_call
 }
 
 test fn tsic_import_without_a_bare_spelling_is_import_unused() -> Bool {
@@ -308,26 +330,6 @@ test fn tsic_fixpoint_refuses_an_undecodable_verdict() -> Bool {
   match fixpoint_over_lines(lines: ["M\thost.dag\tHOSTISH\t1\t0\t0\t1\t0"], decls: fixpoint_decls) {
     FixpointInputRefused { line: _, reason: _ } => true
     FixpointComputed { outcome: _ } => false
-  }
-}
-
-// THE REAL ROUTE (the pairing obligation): one raw parse of a small source through tree_atoms into
-// the classifier must reach HOST, and an unparseable source must be refused by the parse with its
-// cause -- so deleting the parse integration reds a row.
-test fn tsic_real_raw_parse_route_reaches_the_classifier() -> Bool {
-  match raw_tree_of_text(text: "module m\nimport v2.std.text { String }\ndata d: String = \"x\"\n") {
-    RawTreeNotEstablished { cause: _ } => false
-    RawTreeEstablished { root: root } => {
-      let w = walk_atoms(atoms: tree_atoms(root: root), r: rosters_supplied)
-      w.imports_text_string && is_host(v: verdict_with_crossings(sites: list_reverse(xs: w.sites), crossings: Empty))
-    }
-  }
-}
-
-test fn tsic_parse_refusal_is_listed_with_its_cause() -> Bool {
-  match raw_tree_of_text(text: "module m\nimport v2.std.text { String }\nfn broken(s: String) -> {\n") {
-    RawTreeNotEstablished { cause: SourceParseRejected } => true
-    _ => false
   }
 }
 
@@ -655,81 +657,7 @@ data atoms_mixed: List<String> = [
   "dag_token_lbrace",
   "String",
   "dag_token_comma",
-  "string_head",
-  "dag_token_comma",
   "string_join",
-  "dag_token_comma",
-  "string_is_empty",
-  "dag_token_rbrace",
-  "dag_surface_top_level_item",
-  "dag_surface_fn_decl",
-  "dag_token_kw_fn",
-  "joined_is_empty",
-  "dag_surface_param_list",
-  "dag_token_lparen",
-  "xs",
-  "dag_token_colon",
-  "dag_surface_type_expr",
-  "dag_surface_qualified_name",
-  "List",
-  "dag_token_lt",
-  "dag_surface_type_expr",
-  "dag_surface_qualified_name",
-  "String",
-  "dag_token_gt",
-  "dag_token_comma",
-  "sep",
-  "dag_token_colon",
-  "dag_surface_type_expr",
-  "dag_surface_qualified_name",
-  "String",
-  "dag_token_rparen",
-  "dag_token_arrow",
-  "dag_surface_type_expr",
-  "dag_surface_qualified_name",
-  "Bool",
-  "dag_surface_fn_body",
-  "dag_token_lbrace",
-  "dag_surface_stmt_seq",
-  "dag_surface_stmt",
-  "dag_surface_expr",
-  "dag_surface_binary_expr",
-  "dag_surface_unary_expr",
-  "dag_surface_postfix_expr",
-  "dag_surface_primary_expr",
-  "string_is_empty",
-  "dag_token_lparen",
-  "dag_surface_arg",
-  "s",
-  "dag_token_colon",
-  "dag_surface_expr",
-  "dag_surface_binary_expr",
-  "dag_surface_unary_expr",
-  "dag_surface_postfix_expr",
-  "dag_surface_primary_expr",
-  "string_join",
-  "dag_token_lparen",
-  "dag_surface_arg",
-  "fields",
-  "dag_token_colon",
-  "dag_surface_expr",
-  "dag_surface_binary_expr",
-  "dag_surface_unary_expr",
-  "dag_surface_postfix_expr",
-  "dag_surface_primary_expr",
-  "xs",
-  "dag_token_comma",
-  "dag_surface_arg",
-  "separator",
-  "dag_token_colon",
-  "dag_surface_expr",
-  "dag_surface_binary_expr",
-  "dag_surface_unary_expr",
-  "dag_surface_postfix_expr",
-  "dag_surface_primary_expr",
-  "sep",
-  "dag_token_rparen",
-  "dag_token_rparen",
   "dag_token_rbrace",
   "dag_surface_top_level_item",
   "dag_surface_fn_decl",
@@ -810,6 +738,105 @@ data atoms_mixed: List<String> = [
   "dag_surface_postfix_expr",
   "dag_surface_primary_expr",
   "sep",
+  "dag_token_rparen",
+  "dag_token_rbrace"
+]
+
+data atoms_nested_structural: List<String> = [
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_token_kw_module",
+  "dag_surface_qualified_name",
+  "fixture",
+  "dag_token_dot",
+  "text_string_importer_census",
+  "dag_token_dot",
+  "nested_structural",
+  "dag_surface_top_level_item",
+  "dag_surface_import_decl",
+  "dag_token_kw_import",
+  "dag_surface_qualified_name",
+  "v2",
+  "dag_token_dot",
+  "std",
+  "dag_token_dot",
+  "text",
+  "dag_surface_import_block",
+  "dag_token_lbrace",
+  "String",
+  "dag_token_comma",
+  "string_join",
+  "dag_token_comma",
+  "string_is_empty",
+  "dag_token_rbrace",
+  "dag_surface_top_level_item",
+  "dag_surface_fn_decl",
+  "dag_token_kw_fn",
+  "joined_is_empty",
+  "dag_surface_param_list",
+  "dag_token_lparen",
+  "xs",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "List",
+  "dag_token_lt",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_gt",
+  "dag_token_comma",
+  "sep",
+  "dag_token_colon",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "String",
+  "dag_token_rparen",
+  "dag_token_arrow",
+  "dag_surface_type_expr",
+  "dag_surface_qualified_name",
+  "Bool",
+  "dag_surface_fn_body",
+  "dag_token_lbrace",
+  "dag_surface_stmt_seq",
+  "dag_surface_stmt",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "string_is_empty",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "s",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "string_join",
+  "dag_token_lparen",
+  "dag_surface_arg",
+  "fields",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "xs",
+  "dag_token_comma",
+  "dag_surface_arg",
+  "separator",
+  "dag_token_colon",
+  "dag_surface_expr",
+  "dag_surface_binary_expr",
+  "dag_surface_unary_expr",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "sep",
+  "dag_token_rparen",
   "dag_token_rparen",
   "dag_token_rbrace"
 ]
