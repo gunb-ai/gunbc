@@ -63,7 +63,8 @@ fn srv3_bmcweb_session_login() -> ProcessExit
   return match resolution {
     CredentialResolutionRefused { reason: r } =>
       exit_failure(reason: concat("bmcweb-login: credential resolution refused: ", r))
-    _ => srv3_bmcweb_session_login_resolved(resolution: resolution)
+    UseFactoryCredential { login: _ } => srv3_bmcweb_session_login_resolved(resolution: resolution)
+    UseRotatedSecretRef { secret_ref: _ } => srv3_bmcweb_session_login_resolved(resolution: resolution)
   }
 }
 
@@ -107,7 +108,7 @@ fn srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> Pr
   )
   match login_exit {
     ExitSuccess => {}
-    _ => return login_exit
+    ExitFailure { code: _, reason: _ } => return login_exit
   }
 
   let extract_exit = srv3_apply_to_process_exit(
@@ -116,7 +117,7 @@ fn srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> Pr
   )
   match extract_exit {
     ExitSuccess => {}
-    _ => return extract_exit
+    ExitFailure { code: _, reason: _ } => return extract_exit
   }
 
   ExitSuccess
@@ -139,7 +140,8 @@ fn srv3_nbd_proxy_serve() -> ProcessExit
 fn srv3_os_install_actuator_plan_refuses_on_unestablished_path(image: SeededImageResolution) -> Bool {
   match srv3_os_install_actuator_plan_standing(image: image) {
     ActuatorPlanRefused { cause: ActuatorMechanismRefused { cause: _ } } => true
-    _ => false
+    ActuatorPlanReady { plan: _, intents: _ } => false
+    ActuatorPlanRefused { cause: ActuatorStepsUnrealized { refusals: _ } } => false
   }
 }
 

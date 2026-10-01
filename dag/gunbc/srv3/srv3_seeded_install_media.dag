@@ -42,7 +42,7 @@ fn srv3_seeded_install_media_remaster() -> ProcessExit
   )
   match ensure_exit {
     ExitSuccess => {}
-    _ => return ensure_exit
+    ExitFailure { code: _, reason: _ } => return ensure_exit
   }
   srv3_apply_to_process_exit(
     d: srv3_seeded_install_media_remaster_apply(),
