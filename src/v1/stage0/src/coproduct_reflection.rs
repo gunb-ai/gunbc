@@ -1216,17 +1216,19 @@ fn hoist_call_arg_string_literal_edges(
     node: &Rc<Node>,
     edges: &mut Vec<Value>,
 ) {
-    if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
-        edges.push(literal_edge);
-        return;
-    }
-    if let Some(child0) = node.children.first() {
-        if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+    crate::v1_interpreter::value_depth_guarded(|| {
+        if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
             edges.push(literal_edge);
-        } else {
-            hoist_call_arg_string_literal_edges(ctx, child0, edges);
+            return;
         }
-    }
+        if let Some(child0) = node.children.first() {
+            if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+                edges.push(literal_edge);
+            } else {
+                hoist_call_arg_string_literal_edges(ctx, child0, edges);
+            }
+        }
+    })
 }
 
 fn should_emit_nullary_variant_value_atom(binding_kind: Option<&Rc<VarBindingKind>>) -> bool {

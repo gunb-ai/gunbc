@@ -13874,7 +13874,8 @@ fn bind_argv_expr(
     env: &HashMap<String, Value>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Result<Value, ArgvRefusalCause> {
-    match node.expr_data.as_ref() {
+    value_depth_guarded(|| {
+        match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
             LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
             other => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
@@ -13914,6 +13915,7 @@ fn bind_argv_expr(
             expr_data_form_name(node.expr_data.as_ref())
         ))),
     }
+    })
 }
 
 /// Materialize an operation's transport argv by binding its own declared inputs.
