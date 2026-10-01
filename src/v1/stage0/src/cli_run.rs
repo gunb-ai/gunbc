@@ -42813,6 +42813,7 @@ pub fn prepare_repository_from_corpus(
     } = subject;
     let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
     let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
+    let graph = prepared_graph_without_typecheck_caches(&graph);
     Ok((
         PreparedRepository {
             graph,
@@ -42825,6 +42826,46 @@ pub fn prepare_repository_from_corpus(
         },
         inventory,
     ))
+}
+
+/// THE PREPARED GRAPH KEEPS WHAT EVALUATION READS, NOT WHAT TYPECHECKING NEEDED ON THE WAY.
+///
+/// `TypedModule.type_env_cache` is a typecheck-time carrier: `union_parent_type_env_caches` builds
+/// each module's cache as the union of its imports' caches, so its one consumer is the typecheck
+/// of a LATER importer, and every module materializes the union of its ancestry -- size grows as
+/// modules x visible names. The strict resolve that produced this graph has typechecked every
+/// importer it will ever have (the prepared subject is closed and never re-resolved), and no
+/// reader of a `PreparedRepository` touches the cache: the claim scopes, the interpreter, the
+/// declarer index and discovery read `module`, `items`, `item_registry`, `type_env` and
+/// `func_env`. So every module's cache is kept past its demanded lifetime (DESIGN §2). Its SIZE is
+/// small, because the maps are persistent HAMTs whose merge shares nodes; the leave-one-out reading
+/// (//gunbc/instruments:typed-graph-exclusive-bytes, `type_env_cache`) re-derives what it holds. It
+/// is fixed because it is a lifetime defect (DESIGN §6, bare minimum), not because it is the floor's
+/// dominant term.
+///
+/// So the repository holds a projection with the cache emptied. The resolve is a fresh compile
+/// with no process-level memo, so the original modules drop here and their caches with them.
+/// Every other field is the same `Rc`, so no evaluated value changes.
+fn prepared_graph_without_typecheck_caches(
+    graph: &Rc<v1_compiler_compile::ResolvedGraph>,
+) -> Rc<v1_compiler_compile::ResolvedGraph> {
+    let empty = crate::v1_compiler_infer_env::empty_type_env_cache();
+    let modules: Vec<Rc<crate::v1_compiler_infer_items::TypedModule>> = graph
+        .modules
+        .iter()
+        .map(|m| {
+            Rc::new(crate::v1_compiler_infer_items::TypedModule {
+                type_env_cache: empty.clone(),
+                ..(**m).clone()
+            })
+        })
+        .collect();
+    Rc::new(v1_compiler_compile::ResolvedGraph {
+        modules: Rc::new(modules.into()),
+        item_registry: graph.item_registry.clone(),
+        diagnostics: graph.diagnostics.clone(),
+        item_leaf_owner_modules: graph.item_leaf_owner_modules.clone(),
+    })
 }
 
 /// THE EXACT SCOPE ONE CLAIM EVALUATES IN — a projection of the one preparation, never a

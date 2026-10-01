@@ -5364,6 +5364,22 @@ pub fn floor_seam(name: &str) {
     floor_heap_beat(name);
 }
 
+/// WHICH STRUCTURES HOLD A SEAM'S RESIDENT SET: the graphs the process resolve store keeps for the
+/// rest of the thread, and, once preparation has run, the prepared subject's graph -- read
+/// together so a module held by both is counted once and a module typechecked into two resident
+/// copies is visible as such (`crate::cli_run::floor_retention_census`).
+fn floor_retained_census(seam: &str, prepared: Option<&crate::v1_compiler_compile::ResolvedGraph>) {
+    let store = crate::cli_run::process_resolve_store_graphs();
+    let mut graphs: Vec<(&str, &crate::v1_compiler_compile::ResolvedGraph)> = store
+        .iter()
+        .map(|(entry, graph)| (entry.as_str(), graph.as_ref()))
+        .collect();
+    if let Some(graph) = prepared {
+        graphs.push(("prepared-subject", graph));
+    }
+    crate::cli_run::floor_retention_census(seam, &graphs);
+}
+
 /// THE ALLOCATOR'S OWN SPLIT AT A SEAM: bytes live in allocations, and bytes the allocator holds
 /// free. A resident set that stays high across a phase boundary has two causes with opposite
 /// remedies -- state still owned by the program (shorten its ownership) or memory freed and kept
@@ -6943,7 +6959,7 @@ pub(crate) fn floor_cgroup_stat_beat(
 }
 
 ///
-/// `planning_index` is the parse phase's `DeclarationIndex`, LENT rather than rebuilt: the
+/// `planning_index` is the parse phase's `DeclarationIndex`, HANDED OVER rather than rebuilt: the
 /// floor's planning row derives the match-bearing consumers of a changed coproduct from it
 /// (`interface_consumer_planning`). `None` is "no such index in this process" -- the standalone
 /// `--required-floor` entry -- and on a CI commit that is a refusal, not a blind plan.
@@ -6951,7 +6967,7 @@ pub fn run_required_floor(
     source_roots: &[String],
     commit: &str,
     style: ShardStyle,
-    planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
+    planning_index: Option<crate::cli_run::declaration_index::DeclarationIndex>,
 ) -> Result<RequiredFloorOutcome, String> {
     // HONEST SCOPE (review 53487): the caller marker below is a self-attested string, not
     // authentication — any caller able to set `_ONLY` can set `_ONLY_CALLER` too. What it
@@ -7020,7 +7036,7 @@ pub fn run_required_floor(
         match changed_and_enrolled_witness_identities_with_index(
             &gate_entry_index,
             source_roots,
-            planning_index,
+            planning_index.as_ref(),
         ) {
             Ok(projections) => (
                 Some(projections.changed_witnesses),
@@ -7045,6 +7061,10 @@ pub fn run_required_floor(
                 (None, None, None, None)
             }
         };
+    // THE PARSE INDEX'S LAST READER HAS RETURNED. It was lent for the planning row alone, and
+    // holding it for the rest of the floor kept a corpus-wide index resident through preparation
+    // and evaluation that nothing after this line reads.
+    drop(planning_index);
     let changed_witness_set: HashSet<String> = changed_witnesses
         .iter()
         .flat_map(|rows| rows.iter().cloned())
@@ -7061,6 +7081,7 @@ pub fn run_required_floor(
         })
         .collect();
     floor_seam("nominal-subject-seeds");
+    floor_retained_census("nominal-subject-seeds", None);
     // THE NOMINAL SEEDS -- gate prefixes, gate authored modules, the wet schedule -- come from
     // the one producer the resolution census also reads, so what the floor prepares on a run
     // that touches nothing and what the census reports as reached are the same fact.
@@ -7356,6 +7377,9 @@ pub fn run_required_floor(
     )
     .chain(interface_consumer_seeds.iter().cloned())
     .collect();
+    // The strict resolve's graph is attributed by bytes where the floor frees it (entry_resolve
+    // `typed_graph_byte_attribution`); armed here so no other resolve caller pays or prints it.
+    crate::cli_run::arm_floor_byte_attribution();
     floor_seam("prepare-closure-resolve");
     // BEFORE THE SUBJECT VERDICT, not only after it: the strict compile below is where a heavy
     // subject refuses, and a control placed after it never runs on exactly the subjects that
@@ -7375,6 +7399,7 @@ pub fn run_required_floor(
     )?;
     drop(gate_entry_index);
     floor_seam("prepared-subject-warm");
+    floor_retained_census("prepared-subject-warm", Some(&prepared.graph));
     // THE FULL INDEX THE DISCOVERY AUTHORITY WILL JUDGE, captured here because the prepared
     // graph is intentionally only the required gate closure. Declaration discovery is a
     // corpus-wide question: fold the one modeled producer over every indexed source, finalize
@@ -7655,6 +7680,7 @@ pub fn run_required_floor(
     if let Some(warm) = languages_census_warm {
         shared_build_warms.push(("LanguagesConsumerCensusBuild".to_string(), warm));
     }
+    floor_seam("bare-reference-edge-index-warm");
     shared_build_warms.push((
         "BareReferenceEdgeIndexBuild/source-roots".to_string(),
         warm_bare_reference_edge_index(&process_shared_index(source_roots))?,
@@ -10584,6 +10610,12 @@ pub fn run_required_floor(
             )),
         }
     }
+    // THE FOLD'S LAST SCOPE HAS NO READER AFTER THE FOLD. Each scope is dropped before the next is
+    // built; the last one was instead held to the end of this function, past its demanded
+    // lifetime. It is NOT what keeps most prepared modules shared at teardown: with this drop in
+    // place, `typed_graph_byte_attribution` still reported the same shared_modules on main's
+    // subject, so that owner is elsewhere and untraced.
+    drop(current_scope);
     outcome.receipt_identities = receipted.len();
     // THE LEDGER IS PUBLISHED OVER THE PLANNED POPULATION, NEVER OVER THE PREFIX THAT RAN.
     //
@@ -11791,6 +11823,9 @@ pub fn run_required_floor(
     }
     outcome.changed_witness_blocking = changed_blocking;
     outcome.enrolment_margin_blocking = enrolment_blocking;
+    // The prepared subject's last reader has returned; it is freed here either way, so its bytes
+    // are attributed by class as it goes (`typed_graph_byte_attribution`).
+    crate::cli_run::typed_graph_byte_attribution("prepared-teardown", prepared.graph);
     Ok(outcome)
 }
 
