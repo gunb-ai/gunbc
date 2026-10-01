@@ -79,6 +79,7 @@ import v2.std.qualified_name {
   qualified_name_snoc,
   declaration_reference_node,
   parameter_reference_node,
+  binder_reference_node,
   declaration_reference_path_optional
 }
 import v2.std.resolution_policy {
@@ -1287,7 +1288,9 @@ fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending:
 }
 
 // A FRAME-BOUND REFERENCE IS MINTED BY ITS FRAME'S KIND, WHICH WAS FIXED WHEN THE FRAME WAS BUILT.
-// A Lexical frame's binder stays the bare canonical atom. A ParameterFrame's binder is the parameter
+// A Lexical frame's binder (a let, a match-arm pattern binder, a closure parameter) is minted as a
+// binder reference over its canonical symbol (v2.std.qualified_name binder_reference_node), so every
+// later stage reads it by its kind instead of re-deriving a local scope. A ParameterFrame's binder is the parameter
 // v2.compiler.symbol_index_fill indexed at <arrow_path>.<label>, and the reference is minted over
 // exactly that path -- after the index confirms it. A path the index does not hold means the
 // resolver's containment position and the fill's disagree about where this fn is declared; that is
@@ -1303,7 +1306,7 @@ fn resolve_frame_bound_reference(
   match kind {
     LexicalFrame =>
       Accepted {
-        value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
+        value: binder_reference_node(binder: canonical, occurrence_id: n.occurrence_id),
         diagnostics: pending
       }
     ParameterFrame { arrow_path: arrow_path } =>

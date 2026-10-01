@@ -34,7 +34,7 @@ import v2.std.collection {
   list_at_optional,
   list_nth
 }
-import v2.std.qualified_name { declaration_reference_path_optional, parameter_reference_path_optional }
+import v2.std.qualified_name { binder_reference_symbol_optional, declaration_reference_path_optional, parameter_reference_path_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -117,6 +117,7 @@ import v2.std.node {
   RecordConstructBody,
   DeclarationReferenceBody,
   ParameterReferenceBody,
+  BinderReferenceBody,
   UnsupportedArrowBody,
   arrow_body_admits_eval_entry,
   bag_hash_digest,
@@ -1329,6 +1330,9 @@ fn eval_type_node_atom(
         d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node)
       )
     Absent =>
+  match binder_reference_symbol_optional(node: node) {
+    Present { value: binder } => eval_binder_reference_lookup(binder: binder, environment: environment)
+    Absent =>
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } =>
       if v2_eval_is_literal_shaped_node(node: node) {
@@ -1353,6 +1357,15 @@ fn eval_type_node_atom(
   }
   }
   }
+  }
+}
+
+// A BINDER REFERENCE READS ITS LOCAL BINDING AND NOTHING ELSE. The environment binds a let, an arm
+// binder and a closure parameter by symbol, which is the binder reference's one segment. A miss is a
+// miss: unlike a bare atom, a binder reference is never a literal, so there is no allocation to fall
+// back to.
+fn eval_binder_reference_lookup(binder: Symbol, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  eval_runtime_binding_lookup(node: eval_binding_key_node(sym: binder), environment: environment)
 }
 
 
@@ -1454,6 +1467,11 @@ fn eval_node_is_callee_reference(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     TypeNode { connective: Atom { identity: _ } } => true
+    TypeNode { connective: Conj } =>
+      match binder_reference_symbol_optional(node: node) {
+        Present { value: _ } => true
+        Absent => false
+      }
     _ => false
   }
 }
@@ -1682,6 +1700,7 @@ fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
     RecordConstructBody => ^eval_rejected_unsupported_callee
     DeclarationReferenceBody => ^eval_rejected_unsupported_callee
     ParameterReferenceBody => ^eval_rejected_parameter_reference_unbound
+    BinderReferenceBody => ^eval_rejected_unsupported_callee
     ComputationBody { behavior: _ } => ^eval_rejected_unsupported_callee
     UnsupportedArrowBody => ^eval_rejected_unsupported_callee
   }
@@ -1730,6 +1749,12 @@ fn eval_transform_node(
                     f: fn(call_environment) {
                       match body_form {
                         DirectAtomBody =>
+                          eval_type_node_atom(
+                            node: body,
+                            interpretation: interpretation,
+                            environment: call_environment
+                          )
+                        BinderReferenceBody =>
                           eval_type_node_atom(
                             node: body,
                             interpretation: interpretation,

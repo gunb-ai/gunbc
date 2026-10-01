@@ -60,7 +60,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional }
+import v2.std.qualified_name { QualifiedName, binder_reference_symbol_optional, declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional }
 import v2.std.node_query { construct_field_edges, construct_tag_optional, find_labeled_child }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.node { Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of, match_arm_pattern_edge, resolved_reference_body_kind, MatchArmBodyEdge, MatchArmPatternEdge, production_edge_label }
@@ -1111,10 +1111,14 @@ fn infer_arrow_declared_return_type(arrow: Node) -> Optional<Node> {
   }
 }
 
+// THE NAME A TERM IS READ BY. A bare atom is its identity; a local binder reference (v2.std.qualified_name
+// binder_reference_node) is its binder's symbol, so a closure parameter reaches the existing frozen
+// scope search (infer_parameter_scope_search) through the same two call sites it reached as a bare
+// atom, and a let or arm binder reaches the same not-derived answer -- no new caller, no new rule.
 fn infer_atom_binding_sym(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
-    _ => Absent
+    _ => binder_reference_symbol_optional(node: node)
   }
 }
 
@@ -3276,6 +3280,9 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
       match parameter_reference_path_optional(node: n) {
         Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
         Absent =>
+      match binder_reference_symbol_optional(node: n) {
+        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
+        Absent =>
       if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
         infer_gather_fold_acc_ok(
           node: n,
@@ -3289,6 +3296,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
         )
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
+      }
       }
       }
       }

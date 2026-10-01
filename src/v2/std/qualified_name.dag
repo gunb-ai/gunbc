@@ -27,7 +27,7 @@ import v2.std.optional {
 }
 import v2.std.logic { Bool }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Authored, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, core_edge_label, StructuralLabel }
+import v2.std.node { Atom, Conj, Edge, EdgeLabel, Authored, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, BinderReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, core_edge_label, StructuralLabel }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -332,6 +332,13 @@ fn parameter_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIden
   resolved_reference_node_of_kind(kind: ParameterReferenceKind, qn: qn, occurrence_id: occurrence_id)
 }
 
+// THE ONE PRODUCER OF A LOCAL BINDER REFERENCE (consumed by v2.compiler.resolve
+// resolve_frame_bound_reference for a LexicalFrame hit): the binder's canonical symbol as a
+// one-segment spine under BinderReferenceEdge.
+fn binder_reference_node(binder: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  resolved_reference_node_of_kind(kind: BinderReferenceKind, qn: Cons { head: binder, tail: Empty }, occurrence_id: occurrence_id)
+}
+
 fn resolved_reference_node_of_kind(kind: ResolvedReferenceKind, qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
@@ -369,6 +376,15 @@ fn declaration_reference_path_optional(node: Node) -> Optional<QualifiedName> {
 // rules as a declaration reference; a declaration reference answers Absent here and vice versa.
 fn parameter_reference_path_optional(node: Node) -> Optional<QualifiedName> {
   resolved_reference_path_optional(node: node, kind: ParameterReferenceKind)
+}
+
+// A BINDER REFERENCE READS AS ITS BINDER SYMBOL OR AS NOTHING; a declaration or parameter reference
+// answers Absent here, and a binder reference answers Absent to both of their readers.
+fn binder_reference_symbol_optional(node: Node) -> Optional<Symbol> {
+  match resolved_reference_path_optional(node: node, kind: BinderReferenceKind) {
+    Present { value: qn } => qualified_name_last_segment(qn: qn)
+    Absent => optional_absent()
+  }
 }
 
 fn resolved_reference_path_optional(node: Node, kind: ResolvedReferenceKind) -> Optional<QualifiedName> {
