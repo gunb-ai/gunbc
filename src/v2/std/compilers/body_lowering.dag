@@ -665,3 +665,44 @@ fn branch_view(site: Node) -> Outcome<BranchView> {
     _ => view_refusal(reason: ^body_view_not_branch, at: site)
   }
 }
+
+// WHICH PRODUCER LOWERED A NODE IS A FACT OF ITS CONSTRUCTION, NOT A READING OF ITS SHAPE (MQ-5,
+// neat-boar-16 ruling 2026-09-30, option A; realized as the operator-approved interim B, msg_63aee66e).
+// Body lowering is a bottom-up fold over a tree that holds raw parse and lowered output at once, and
+// nothing on a Node says which is which, so every reader used to ask a hand-kept shape allowlist
+// (body_lower_is_core_substrate) and re-read anything it missed as raw parse. Each producer now
+// declares what it built: its result leaves the producer inside the stage's Lowered wrapper, carrying
+// one of these arms as a constant the producer writes, and a reader matches the term
+// (v2.compiler.body_lowering_fold body_term_of) instead of classifying the node. The arms name the
+// producer family that built the value, so a refusal can say whose output it was.
+type LoweredShape
+  = LoweredOperatorExpression
+  | LoweredFunctionValue
+  | LoweredFoldEncoding
+  | LoweredMatch
+  | LoweredBranch
+  | LoweredLoop
+  | LoweredLet
+  | LoweredStatementSequence
+  | LoweredPostfix
+  | LoweredPrimary
+  | LoweredFnDeclaration
+  | LoweredTestDeclaration
+  | LoweredDataDeclaration
+  | LoweredFnBody
+  | LoweredTypeDeclaration
+  | LoweredTypeVariant
+  | LoweredServiceDeclaration
+  | LoweredOperand
+
+// A NODE IN THE FOLD'S TREE IS ONE OF THREE THINGS, EACH IDENTIFIED POSITIVELY. Raw parse is a
+// composite the parse stage stamped (it carries a grammar projection edge); a raw leaf is an atom or
+// the childless conj the parse emits as a repeat or optional terminator, and is its own arm so it can
+// never stand in for a composite; lowered output is a node a producer wrapped. Anything else is not a
+// term and refuses where it is read (body_term_of). The leaf arm is the honest limit of today's
+// occurrence model: a leaf carries no projection edge and inherits its source occurrence, so its
+// provenance is not on it; it has no interior, so no part of it can be re-read for the whole.
+type BodyTerm
+  = RawParse { node: Node }
+  | RawLeaf { node: Node }
+  | Lowered { node: Node, shape: LoweredShape }
