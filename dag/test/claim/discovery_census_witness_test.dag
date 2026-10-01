@@ -36,7 +36,7 @@ import gunbc.discovery_census {
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
-  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane,
   required_floor_site_disposition,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
@@ -218,6 +218,7 @@ test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
@@ -234,6 +235,7 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
@@ -253,6 +255,7 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
@@ -269,6 +272,7 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
@@ -289,6 +293,7 @@ test fn w_deleted_lane_countable_is_planned_by_the_required_gate() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
@@ -308,6 +313,7 @@ test fn w_site_outside_the_required_gate_is_declined() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
@@ -367,6 +373,7 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
     DeclinedOutsideRequiredGate => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
@@ -389,6 +396,7 @@ test fn w_unrostered_sibling_in_the_same_module_reaches_the_gate_decline() -> Bo
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     PlannedAsChangedWitness => false
@@ -410,6 +418,7 @@ test fn w_home_decline_outranks_cost_debt() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     Planned => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     PlannedAsChangedWitness => false
@@ -459,6 +468,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      DeclinedNoCiWetLane { pattern: _ } => false
       PlannedAsChangedWitness => false
     })
     && all(split.declined, r => match r.disposition {
@@ -469,6 +479,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      DeclinedNoCiWetLane { pattern: _ } => false
       PlannedAsChangedWitness => false
     })
 }
@@ -604,4 +615,24 @@ test fn w_derived_aggregate_is_satisfiable_against_standings() -> Bool {
       }
     }
   }
+}
+
+// THE MODELED CENSUS CLASSIFIES A DeclinedNoCiWetLane ROW (gunbc#12794's arm, now in the .dag
+// type): it is counted in its own bucket and partitioned as declined, never as planned.
+test fn the_census_counts_a_declined_no_ci_wet_lane_row_in_its_own_bucket() -> Bool {
+  let real = census_rows_of(sites: [
+    hermetic_site(module_path: "v2.test.claim.bootstrap", function: "bootstrap_witness_keystone_holds")
+  ])
+  let rows = map(real, r => CensusRow {
+    label: r.label,
+    disposition: DeclinedNoCiWetLane { pattern: "bootstrap_test.dag" }
+  })
+  let counts = census_counts(rows: rows)
+  let split = census_partition(rows: rows)
+  count(rows) == 1
+    && counts.declined_no_ci_wet_lane == 1
+    && counts.declined_discovery_excluded == 0
+    && counts.offered == 1
+    && count(split.declined) == 1
+    && count(split.planned) == 0
 }

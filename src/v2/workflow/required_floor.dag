@@ -2,6 +2,7 @@ module v2.workflow.required_floor
 
 import v2.std.algebra { Cons, Empty, contains }
 import v2.std.collection { List }
+import v2.std.optional { Optional, Present, Absent }
 import v2.std.logic { Bool, True, False }
 import v2.std.integer { Int, int_gt, int_add, int_mul }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
@@ -125,6 +126,7 @@ type RequiredFloorDisposition =
   | DeclinedOutsideGateClosure
   | DeclinedDiscoveryExcluded { matched_substring: String }
   | DeclinedCostDebt
+  | DeclinedNoCiWetLane { pattern: String }
 
 // THE WIRE NAME OF ONE ARM, HOMED WITH THE COPRODUCT IT NAMES. This spelling is what every
 // receipt, counter and blocking cause downstream prints, so it is a fact about the arm and not
@@ -142,7 +144,8 @@ fn required_floor_disposition_name(d: RequiredFloorDisposition) -> String {
     DeclinedOutsideRequiredGate => "declined_outside_required_gate",
     DeclinedOutsideGateClosure => "declined_outside_gate_closure",
     DeclinedDiscoveryExcluded { matched_substring } => "declined_discovery_excluded",
-    DeclinedCostDebt => "declined_cost_debt"
+    DeclinedCostDebt => "declined_cost_debt",
+    DeclinedNoCiWetLane { pattern } => "declined_no_ci_wet_lane"
   }
 }
 
@@ -151,12 +154,22 @@ fn required_floor_disposition_name(d: RequiredFloorDisposition) -> String {
 // therefore replaces the static gate's answer with one planned arm before execution; every
 // identity still has exactly one disposition and the ordinary answer is preserved unchanged for
 // the standing population.
+//
+// A SELECTED IDENTITY WHOSE FILE IS A DECLARED BinWitnessWet ROW IS DECLINED, NOT PLANNED. No CI
+// lane executes that class, so planning it only mints a route gap; `declared_wet_pattern` is the
+// BinWitnessWet exclusion pattern the file matched AND that `gunbc.rung_drop`
+// `edited_bin_witness_wet_rows_not_executed_by_ci` names in its bounded population, or Absent.
+// The seed's `required_floor_runner` decision is the host mirror of THIS function.
 fn required_floor_disposition_with_changed_selection(
   ordinary: RequiredFloorDisposition,
   selected_as_changed_witness: Bool,
+  declared_wet_pattern: Optional<String>,
 ) -> RequiredFloorDisposition {
   if selected_as_changed_witness {
-    PlannedAsChangedWitness {}
+    match declared_wet_pattern {
+      Present { value: p } => DeclinedNoCiWetLane { pattern: p }
+      Absent => PlannedAsChangedWitness {}
+    }
   } else {
     ordinary
   }
@@ -314,6 +327,7 @@ fn cost_debt_roster_standing(reading: CostDebtDispositionReading) -> CostDebtRos
         PlannedAsChangedWitness => CostDebtWithholdOverriddenForChangedVerdict {}
         DeclinedOutsideGateClosure => CostDebtOutsideThisRunsUniverse {}
         DeclinedDiscoveryExcluded { matched_substring: _ } => CostDebtOutsideThisRunsUniverse {}
+        DeclinedNoCiWetLane { pattern: _ } => CostDebtOutsideThisRunsUniverse {}
         Planned => CostDebtDeclaredButNotWithheld {}
         DeclinedLongModule { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
         DeclinedFixtureMember { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
