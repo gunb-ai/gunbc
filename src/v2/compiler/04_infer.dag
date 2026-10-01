@@ -63,7 +63,7 @@ import v2.std.optional {
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional }
 import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
-import v2.std.node { Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of, match_arm_pattern_edge, resolved_reference_body_kind }
+import v2.std.node { Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -661,15 +661,15 @@ fn infer_roster_member_declared_type(n: Node) -> Optional<Node> {
 }
 
 // AN ARROW'S DECLARED ORDER IS ITS OWN EVIDENCE: the ^arrow_signature_order_edge's atoms are labels,
-// not values, so the derived type carries that edge unchanged (see infer_arrow_signature_order_edge).
+// not values, so the derived type carries that edge unchanged (v2.std.node arrow_signature_order_edge).
 fn infer_product_child_evidence_edges(
-  children: List<Edge>,
+  node: Node,
   entries: List<InferredFactsEntry>,
 ) -> Optional<List<Edge>> {
   infer_formation_child_evidence_edges(
-    children: children,
+    children: node.children,
     entries: entries,
-    is_metadata: fn(edge) { edge_label_of(e: edge) == arrow_signature_order_label }
+    is_metadata: fn(edge) { arrow_signature_order_edge(parent: node, edge: edge) }
   )
 }
 
@@ -871,7 +871,7 @@ fn infer_product_facts_from_entries(
         Violates { diagnostic: d } =>
           Rejected { diagnostics: diagnostics_singleton(d: d) }
         Holds { value: descent_proof } =>
-          match infer_product_child_evidence_edges(children: node.children, entries: entries) {
+          match infer_product_child_evidence_edges(node: node, entries: entries) {
             Absent =>
               bind_outcome_accepted(
                 od: cd,
@@ -3656,7 +3656,7 @@ fn infer_sum_nullary_payload_edge(parent: Node, edge: Edge) -> Bool {
 // declaration's binder Conj -- names the binder authority checks and resolve scopes, not values -- so
 // there is no type for its subtree to derive, and an EMPTY binder list is never a unit value. The
 // wrapper carries the edge unchanged as its own evidence, the same shape as the Arrow's declared order
-// (infer_arrow_signature_order_edge). Asked through the view, never by the label alone, so the marker
+// (v2.std.node arrow_signature_order_edge). Asked through the view, never by the label alone, so the marker
 // on an Arrow (a fn's type parameters) is not swept in.
 fn infer_declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
   declaration_binder_edge(parent: parent, edge: edge)
@@ -3678,15 +3678,10 @@ fn infer_disj_is_named_sum(n: Node) -> Bool {
 // the domain's binder LABELS (v2.std.arrow_signature signature_order_edge), not values: there
 // is no type for a label atom to derive, so walking it left every declared Arrow's order atoms on the
 // frontier (infer_grounding_not_derived) and the Arrow itself NotDerived. The Arrow carries the edge
-// as its own evidence (infer_product_child_evidence_edges), and this step takes nothing from its subtree --
-// the same shape as infer_arrow_empty_domain_edge and the literal payload arm, where the parent's
-// model, not the child's walk, says what the child is.
-fn infer_arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
-  match parent.kind {
-    TypeNode { connective: Arrow } => (edge_label_of(e: edge) == arrow_signature_order_label)
-    _ => false
-  }
-}
+// as its own evidence (infer_product_child_evidence_edges), and the gather step below takes nothing
+// from its subtree -- the same shape as infer_arrow_empty_domain_edge and the literal payload arm, where
+// the parent's model, not the child's walk, says what the child is. The edge is classified by
+// v2.std.node arrow_signature_order_edge, the one predicate std.kind's roster index also asks.
 
 // A MATCH ARM'S PATTERN IS A BINDING FORM, NOT A VALUE, so this step carries its edge the way it
 // carries a declaration's binders (v2.std.node match_arm_pattern_edge). A fielded pattern is the
@@ -3704,7 +3699,7 @@ fn infer_gather_fold_step(
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
-  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge)
+  } else if arrow_signature_order_edge(parent: acc.node, edge: edge)
     || infer_declaration_binder_edge(parent: acc.node, edge: edge)
     || match_arm_pattern_edge(parent: acc.node, edge: edge)
     || (resolved_reference_body_kind(target: acc.node) != NotMarkedReference) {
