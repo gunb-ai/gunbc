@@ -2175,7 +2175,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "src/v2/test/lens_structural_resolution/unresolved_infer_witness.dag", name: "fact_single_dependency_projects_status", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "src/v2/test/lens_structural_resolution/unresolved_infer_witness.dag", name: "lens_structural_resolution_actual", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/test/lens_wiring_liveness/wiring_liveness_test.dag", name: "wiring_input_is_wired", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "src/v2/test/manual/ownership_movable_test.dag", name: "Read", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "src/v2/test/manual/ownership_movable_test.dag", name: "Read", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/test/manual/ownership_movable_test.dag", name: "empty_map", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "src/v2/test/manual/ownership_movable_test.dag", name: "map_insert", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "src/v2/test/manual/tm_probe.dag", name: "Filesystem", standing: ActiveDebt },
