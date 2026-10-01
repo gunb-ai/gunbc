@@ -2317,8 +2317,8 @@ impl UnimportedBareProviderRosterReading {
 /// file carries (through the loader's own `unimported_bare_providers`). The `.dag`
 /// (`unimported_bare_provider_roster_standing`) decides everything: delete-without-retire, each
 /// cause's truth, staleness, and whether a carried pair is active debt. `checked` is the route's own
-/// files (touched, or entry) plus every ImportsFixed row's file, so a retirement is re-derived on
-/// every run rather than trusted once.
+/// files (the whole pool on the floor, the entry files on the entry route) plus every ImportsFixed
+/// row's file, so a retirement is re-derived on every run rather than trusted once.
 fn unimported_bare_provider_standing_refusals(
     route: &str,
     index: &MultiEntryIndex,
@@ -2392,8 +2392,8 @@ fn unimported_bare_provider_standing_refusals(
         .collect())
 }
 
-/// THE RULE ON THE REQUIRED FLOOR, applied where the floor already knows what the diff touched.
-/// Coherence and standing run on every diff; the edit judgment runs when the roster itself changed,
+/// THE RULE ON THE REQUIRED FLOOR. Coherence runs on every diff and standing over every pool file;
+/// the edit judgment runs when the roster itself changed,
 /// against the roster evaluated at the diff base. The change that ADDS the roster has no base, and
 /// that is decided from the diff's own added paths, never from a failed base read. Every refusal is
 /// reported before the line stops.
@@ -2445,15 +2445,29 @@ pub(crate) fn unimported_bare_provider_gate(
             }
         }
     }
+    // THE STANDING JUDGMENT RUNS OVER THE WHOLE POOL, NOT THE DIFF. Scoped to touched files, a
+    // pair born in an UNTOUCHED file -- by a resolver change elsewhere, as #12540 made every bare
+    // kernel-type spelling resolve by its declaration -- never refused here, while the entry route
+    // (`unimported_bare_provider_entry_refusals`) refused the same file the first time anyone ran it:
+    // two harnesses disagreeing about admission of one file. The roster is a monotone debt contract,
+    // which DESIGN 5 admits only over a closed subject universe checked at identity grain, and a
+    // diff is not that universe. Measured cost over the 7,175-file pool on the floor's own warm
+    // index: 13.6 s (arm64 session container, 2026-10-01); it reads the index, never resolves.
+    let pool_files: Vec<String> = index
+        .source_files
+        .values()
+        .map(|sf| workspace_relative_repo_path(&sf.path))
+        .collect();
     refusals.extend(unimported_bare_provider_standing_refusals(
         ROUTE,
         index,
         &head,
-        changed_paths,
+        &pool_files,
     )?);
     eprintln!(
-        "[floor-phase] phase=unimported-bare-provider-gate touched_paths={} refusals={}",
+        "[floor-phase] phase=unimported-bare-provider-gate touched_paths={} judged_files={} refusals={}",
         changed_paths.len(),
+        pool_files.len(),
         refusals.len()
     );
     if refusals.is_empty() {

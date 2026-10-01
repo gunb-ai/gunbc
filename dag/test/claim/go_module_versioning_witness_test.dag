@@ -1,5 +1,6 @@
 module test.claim.go_module_versioning_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import extdeps.languages.go.emit { go_manifest_file }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

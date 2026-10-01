@@ -1,5 +1,6 @@
 module v2.test.claim.map_carrier_shape_gate
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.decl_ref { decl_ref }
 import std.primitive_identity {
   declaration_and_primitive_are_one_authority,

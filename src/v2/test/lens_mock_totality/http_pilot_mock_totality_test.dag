@@ -1,5 +1,6 @@
 module v2.test.lens_mock_totality.http_pilot_mock_totality
 
+import v2.std.live_tree { LiveTreeDisposition }
 import extdeps.test.mock_corpus { http_pilot_published_mock_corpus }
 import v2.std.diagnostic { outcome_accepted }
 import v2.lens.mock_totality { mock_unhandled_rejection }

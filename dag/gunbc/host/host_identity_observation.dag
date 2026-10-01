@@ -1,5 +1,6 @@
 module gunbc.host_identity_observation
 
+import std.disposition { Disposition }
 import std.algebra { trim }
 
 

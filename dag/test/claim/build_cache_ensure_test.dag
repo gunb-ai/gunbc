@@ -1,5 +1,6 @@
 module test.claim.build_cache_ensure
 
+import v2.std.live_tree { LiveTreeDisposition }
 import gunbc.build_cache_ensure {
   build_cache_ensure_is_converged
 }

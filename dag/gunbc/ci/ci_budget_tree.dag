@@ -1,5 +1,8 @@
 module gunbc.ci_budget_tree
 
+import std.realization_width { byte_size_saturating_sub }
+import gunbc.host_memory_observation { HostFixedOverheadAllowance, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured, gunbc_ci_host_fixed_overhead_for, host_usable_ram_ceiling_bytes }
+import product.budget_tree { BudgetNode }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.ci_runner_target {
   FleetSelfHosted,

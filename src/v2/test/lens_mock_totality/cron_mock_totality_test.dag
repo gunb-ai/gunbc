@@ -1,5 +1,6 @@
 module v2.test.lens_mock_totality.cron_mock_totality
 
+import v2.std.live_tree { LiveTreeDisposition }
 import extdeps.cron.mock_corpus { cron_published_mock_corpus }
 import v2.std.diagnostic { outcome_accepted }
 import v2.lens.mock_totality { mock_unhandled_rejection }

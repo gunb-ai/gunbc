@@ -1,5 +1,7 @@
 module gunbc.fleet_show_effective_read
 
+import gunbc.runner_unit_live_read { RunnerUnitLiveReadRow }
+import std.disposition { Disposition }
 import std.algebra { trim }
 import gunbc.host_identity_adopt {
   srv1_host_identity_ssh_transport,
