@@ -1936,8 +1936,12 @@ fn floor_route_gap_expectation_chunk_29() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_relative_observer_directory_is_resolved_once", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_root_page_that_navigates_cannot_destroy_the_login", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_viewer_without_its_feature_list_never_opens_kvm", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } } } } } } }
+    tail: Empty {} } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {

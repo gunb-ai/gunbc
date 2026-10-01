@@ -343,7 +343,7 @@ pub fn make_eval_context_with_runtime_options(
 /// function that way; that variant is deleted and the one honest arm now covers it.
 pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: &str) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
-        Ok(Value::Str(s)) => s.to_string(),
+        Ok(Value::Str(ref s)) => s.to_string(),
         Ok(other) => format!(
             "failure_receipt_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
@@ -2284,7 +2284,7 @@ impl UnimportedBareProviderRosterReading {
             (Some("name".to_string()), str_value(name)),
         ];
         match Self::call(&self.ctx, "unimported_bare_provider_identity", &args)? {
-            v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+            v1_interpreter::Value::Str(ref s) => Ok(s.to_string()),
             other => Err(format!(
                 "unimported_bare_provider_identity: expected a String, got {}",
                 floor_value_shape(Some(&other))
@@ -3126,6 +3126,32 @@ fn identity_home_is_declared_non_executing(module_path: &str) -> bool {
         })
 }
 
+/// The host mirror of `v2.workflow.required_floor` `changed_selections_outside_discovery`: every
+/// changed selection the run's discovered index did not declare, as a
+/// `DeclinedChangedWitnessOutsideDiscovery` row carrying the module before the identity's LAST `.`
+/// (the whole identity when it has none). Sorted by identity, so the receipt order is stable.
+/// `changed_selections_outside_discovery_mirror_tests` joins it with the .dag authority over the
+/// shared fixture `v2.test.fixture.changed_selection_outside_discovery`.
+pub(crate) fn changed_selections_outside_discovery(
+    changed: &HashSet<String>,
+    declared: &HashSet<String>,
+) -> Vec<RequiredFloorDispositionRow> {
+    let mut undeclarable: Vec<&String> = changed.difference(declared).collect();
+    undeclarable.sort();
+    undeclarable
+        .into_iter()
+        .map(|identity| RequiredFloorDispositionRow {
+            identity: identity.clone(),
+            disposition: RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                module_path: identity
+                    .rsplit_once('.')
+                    .map(|(module, _)| module.to_string())
+                    .unwrap_or_else(|| identity.clone()),
+            },
+        })
+        .collect()
+}
+
 /// The host realization of `v2.workflow.floor_changed_witness`
 /// `changed_witness_execution_standing`, one row per changed identity, joined against the two
 /// receipt populations the run already holds: the disposition rows (the admission authority)
@@ -3341,7 +3367,14 @@ pub(crate) struct LocalRepoWetScheduledRow {
     pub entry: String,
     pub entry_module: String,
     pub function: String,
+    /// THE DECLARED HOST PREMISE, if any, by its `v2.workflow.wet_evidence` `WetHostPremise` arm
+    /// name, joined from `local_repo_wet_premise_roster`. The executor reads it BEFORE invoking
+    /// the claim; the readback and its verdict are `.dag` (`gunbc.wet_host_premise_readback`).
+    pub premise: Option<String>,
 }
+
+/// The module whose `local_repo_wet_premise_readings_wet` answers every declared premise once.
+pub(crate) const LOCAL_REPO_WET_PREMISE_READBACK_MODULE: &str = "gunbc.wet_host_premise_readback";
 
 /// WHAT ONE MEMBER ACTUALLY REACHED, at the width of the `.dag` authority's observed side.
 ///
@@ -3356,6 +3389,13 @@ pub(crate) enum LocalRepoWetObserved {
     Refused(String),
     Nonterminal(String),
     CompletedOverBudget(String),
+    /// THE CLAIM WAS NEVER INVOKED: its declared host premise read back unmet. Host realization of
+    /// `WetPremiseUnmetBeforeAttempt`; the join refuses it as `WetTerminalHostPremiseUnmet`, which
+    /// sends the reader to the RUNNER rather than the subject. Still a refusal, never a pass.
+    HostPremiseUnmet {
+        premise: String,
+        words: String,
+    },
 }
 
 impl LocalRepoWetObserved {
@@ -3366,6 +3406,7 @@ impl LocalRepoWetObserved {
             LocalRepoWetObserved::Refused(_) => "refused",
             LocalRepoWetObserved::Nonterminal(_) => "nonterminal",
             LocalRepoWetObserved::CompletedOverBudget(_) => "completed-over-budget",
+            LocalRepoWetObserved::HostPremiseUnmet { .. } => "host-premise-unmet",
         }
     }
 
@@ -3375,6 +3416,7 @@ impl LocalRepoWetObserved {
             LocalRepoWetObserved::Refused(d)
             | LocalRepoWetObserved::Nonterminal(d)
             | LocalRepoWetObserved::CompletedOverBudget(d) => d.as_str(),
+            LocalRepoWetObserved::HostPremiseUnmet { words, .. } => words.as_str(),
         }
     }
 
@@ -3648,6 +3690,15 @@ pub(crate) fn finalize_local_repo_wet_lane(
                          scheduled {}",
                         row.identity, t.function, row.function
                     ));
+                } else if let LocalRepoWetObserved::HostPremiseUnmet { premise, words } =
+                    &t.observed
+                {
+                    refusals.push(format!(
+                        "{}: WetTerminalHostPremiseUnmet — not invoked: the runner does not hold \
+                         the declared host premise {premise}; remedy the RUNNER, not the subject \
+                         — {words}",
+                        row.identity
+                    ));
                 } else if !t.observed.meets_pass_expectation() {
                     let detail = t.observed.detail();
                     let suffix = if detail.is_empty() {
@@ -3842,7 +3893,145 @@ fn local_repo_wet_schedule(
             entry,
             entry_module,
             function,
+            premise: None,
         });
+    }
+    local_repo_wet_join_premises(hermetic, &mut out)?;
+    Ok(out)
+}
+
+/// JOIN `v2.workflow.local_repo_wet_terminal.local_repo_wet_premise_roster` onto the schedule at
+/// identity grain. A premise row naming an identity nobody scheduled, or naming one twice, REFUSES:
+/// a premise that gates nothing is a roster defect, and two premises for one claim have no order.
+fn local_repo_wet_join_premises(
+    hermetic: &v1_interpreter::InterpContext,
+    schedule: &mut [LocalRepoWetScheduledRow],
+) -> Result<(), String> {
+    let value = v1_interpreter::run_in_context(
+        hermetic,
+        "v2.workflow.local_repo_wet_terminal.local_repo_wet_premise_roster",
+        false,
+    )
+    .map_err(|e| format!("local_repo_wet_premise_roster: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value))
+        .map_err(|e| format!("local_repo_wet_premise_roster: {e}"))?;
+    for item in items {
+        let v1_interpreter::Value::Record { fields, .. } = item else {
+            return Err(format!(
+                "local_repo_wet_premise_roster: expected WetPremisedClaim, got {}",
+                floor_value_shape(Some(item))
+            ));
+        };
+        let identity = match hermetic.field(fields, "identity") {
+            Some(v1_interpreter::Value::Record {
+                fields: id_fields, ..
+            }) => {
+                let id_str = |name: &str| -> Result<String, String> {
+                    match hermetic.field(id_fields, name) {
+                        Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                        other => Err(format!(
+                            "local_repo_wet_premise_roster: identity.{name} must be String, got {}",
+                            floor_value_shape(other)
+                        )),
+                    }
+                };
+                format!("{}.{}", id_str("module_path")?, id_str("function")?)
+            }
+            other => {
+                return Err(format!(
+                    "local_repo_wet_premise_roster: identity must be a WitnessIdentity record, \
+                     got {}",
+                    floor_value_shape(other)
+                ));
+            }
+        };
+        let premise = match hermetic.field(fields, "premise") {
+            Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+                hermetic.resolve(*variant_name).to_string()
+            }
+            other => {
+                return Err(format!(
+                    "local_repo_wet_premise_roster: premise must be a WetHostPremise variant, \
+                     got {}",
+                    floor_value_shape(other)
+                ));
+            }
+        };
+        let Some(row) = schedule.iter_mut().find(|r| r.identity == identity) else {
+            return Err(format!(
+                "local_repo_wet_premise_roster: {identity} declares premise {premise} but is not \
+                 scheduled"
+            ));
+        };
+        if let Some(prior) = &row.premise {
+            return Err(format!(
+                "local_repo_wet_premise_roster: {identity} declares two premises ({prior}, \
+                 {premise})"
+            ));
+        }
+        row.premise = Some(premise);
+    }
+    Ok(())
+}
+
+/// READ EVERY DECLARED PREMISE ONCE, wet, through `gunbc.wet_host_premise_readback`. Returns the
+/// readings by premise arm name: `None` met, `Some(words)` unmet. The seed decides nothing here:
+/// readiness and its words are the toolchain authority's.
+fn local_repo_wet_premise_readings(
+    prepared: &PreparedRepository,
+    published: Option<Rc<HashSet<String>>>,
+) -> Result<HashMap<String, Option<String>>, String> {
+    let scope = claim_scope_for(prepared, LOCAL_REPO_WET_PREMISE_READBACK_MODULE)?;
+    let ctx = crate::cli_run::evaluation_frame(
+        &scope,
+        v1_interpreter::ExecutionMode::Wet,
+        None,
+        published,
+    );
+    let value = v1_interpreter::run_in_context(
+        &ctx,
+        &format!("{LOCAL_REPO_WET_PREMISE_READBACK_MODULE}.local_repo_wet_premise_readings_wet"),
+        false,
+    )
+    .map_err(|e| format!("{e}"))?;
+    let mut out = HashMap::new();
+    for item in floor_decode_list(&ctx, Some(&value))? {
+        let v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = item
+        else {
+            return Err(format!(
+                "expected WetHostPremiseReading, got {}",
+                floor_value_shape(Some(item))
+            ));
+        };
+        let premise = match ctx.field(fields, "premise") {
+            Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+                ctx.resolve(*variant_name).to_string()
+            }
+            other => {
+                return Err(format!(
+                    "reading premise must be a WetHostPremise variant, got {}",
+                    floor_value_shape(other)
+                ))
+            }
+        };
+        let reading = match ctx.resolve(*variant_name).as_str() {
+            "WetHostPremiseMet" => None,
+            "WetHostPremiseUnmet" => match ctx.field(fields, "words") {
+                Some(v1_interpreter::Value::Str(w)) => Some(w.to_string()),
+                other => {
+                    return Err(format!(
+                        "WetHostPremiseUnmet.words must be String, got {}",
+                        floor_value_shape(other)
+                    ))
+                }
+            },
+            other => return Err(format!("unknown WetHostPremiseReading arm {other}")),
+        };
+        out.insert(premise, reading);
     }
     Ok(out)
 }
@@ -3865,6 +4054,7 @@ pub(crate) fn run_local_repo_wet_lane(
     published: Option<Rc<HashSet<String>>>,
 ) -> LocalRepoWetExecution {
     let mut terminals: Vec<LocalRepoWetTerminalRow> = Vec::new();
+    let mut premise_readings: Option<Result<HashMap<String, Option<String>>, String>> = None;
     // Group by module so one scope is prepared per entry rather than per witness.
     let mut by_module: Vec<(String, Vec<&LocalRepoWetScheduledRow>)> = Vec::new();
     for row in schedule {
@@ -3908,8 +4098,31 @@ pub(crate) fn run_local_repo_wet_lane(
             published.clone(),
         );
         for row in rows {
-            let observed =
-                local_repo_wet_observed_from(&crate::cli_run::run_claim(&ctx, &row.function));
+            // THE PREMISE IS READ BEFORE THE CLAIM IS INVOKED, never after it failed: a premise
+            // consulted to explain a red would be an excuse authored by the verdict. A readback
+            // that itself refuses is a typed refusal of the member, not an unmet premise -- it
+            // says nothing about the runner -- and never a skip.
+            let premise_reading = row.premise.as_ref().map(|premise| {
+                let readings = premise_readings.get_or_insert_with(|| {
+                    local_repo_wet_premise_readings(prepared, published.clone())
+                });
+                match readings {
+                    Ok(r) => match r.get(premise) {
+                        Some(reading) => Ok((premise.clone(), reading.clone())),
+                        None => Err(format!("host premise {premise} was not read back")),
+                    },
+                    Err(e) => Err(format!("host premise readback refused: {e}")),
+                }
+            });
+            let observed = match premise_reading {
+                Some(Err(e)) => LocalRepoWetObserved::Refused(e),
+                Some(Ok((premise, Some(words)))) => {
+                    LocalRepoWetObserved::HostPremiseUnmet { premise, words }
+                }
+                Some(Ok((_, None))) | None => {
+                    local_repo_wet_observed_from(&crate::cli_run::run_claim(&ctx, &row.function))
+                }
+            };
             eprintln!(
                 "[local-repo-wet] identity={} expected=passed observed={}",
                 row.identity,
@@ -5042,6 +5255,12 @@ pub(crate) fn required_floor_nominal_closure_module_seeds(
                 .iter()
                 .map(|row| row.entry_module.clone()),
         )
+        .chain(
+            local_repo_wet_schedule_rows
+                .iter()
+                .any(|row| row.premise.is_some())
+                .then(|| LOCAL_REPO_WET_PREMISE_READBACK_MODULE.to_string()),
+        )
         .collect()
 }
 
@@ -5063,6 +5282,13 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // vanished seed), and `ExclusionOrphansImporter` refuses the day anything imports one.
         "test/probe/".to_string(),
         "test/fixture/meta_exec_confinement_scan/".to_string(),
+        // THE FLEET HEALTH FORBIDDEN PROGRAM. test.fixture.health_read_only.mutation_probe is the
+        // program the no-mutation witness derives its findings from, consumed PARSE-ONLY: its
+        // callees are undeclared spellings by design, so it must never resolve. Nothing imports it,
+        // so it stayed out of preparation by that accident alone until gunbc#12761's widened
+        // subject prepared it and it refused. Its designed refusal is asserted by class and subject
+        // in test.claim.fleet.health_read_only_fixture_refusal_witness.
+        "test/fixture/health_read_only/".to_string(),
         "test/manual/ownership_movable_test.dag".to_string(),
         // WET RECEIPT, AND IT HAS NO CI CONSUMER TODAY — stated plainly rather than dressed up
         // as an enrollment. case4_expansion_carrier_splices dispatches a real jq through
@@ -5709,7 +5935,7 @@ pub(crate) fn floor_required_string(
 ) -> Result<String, String> {
     let qualified = format!("v2.workflow.required_floor.{func}");
     match v1_interpreter::run_in_context(ctx, &qualified, false) {
-        Ok(v1_interpreter::Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
+        Ok(v1_interpreter::Value::Str(ref s)) if !s.is_empty() => Ok(s.to_string()),
         Ok(other) => Err(format!(
             "{qualified}: expected a non-empty String, got {}",
             floor_value_shape(Some(&other))
@@ -9079,26 +9305,13 @@ pub fn run_required_floor(
     // THIS HANDLES THE MISMATCH AND DOES NOT RETIRE IT. NEXT-RUNG TRIGGER, named as the
     // capability: SELECTION AND DISPOSITION CONSUME ONE RANGE. A green floor over these rows
     // means the mismatch is represented, never that the two denominators have been reconciled.
-    let undeclarable_changed: Vec<String> = {
-        let mut v: Vec<String> = changed_witness_set
-            .difference(&declared_identity_set)
-            .cloned()
-            .collect();
-        v.sort();
-        v
-    };
-    for identity in &undeclarable_changed {
-        let module_path = identity
-            .rsplit_once('.')
-            .map(|(module, _)| module.to_string())
-            .unwrap_or_else(|| identity.clone());
-        disposition_rows.push(RequiredFloorDispositionRow {
-            identity: identity.clone(),
-            disposition: RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
-                module_path,
-            },
-        });
-    }
+    let outside_discovery_rows =
+        changed_selections_outside_discovery(&changed_witness_set, &declared_identity_set);
+    let undeclarable_changed: Vec<String> = outside_discovery_rows
+        .iter()
+        .map(|row| row.identity.clone())
+        .collect();
+    disposition_rows.extend(outside_discovery_rows);
     // The set the sublane join is entitled to expect: everything the selector chose MINUS the
     // selections the enumerator could never declare, each of which now carries its own row.
     let changed_witness_expected: HashSet<String> = changed_witness_set
@@ -13211,6 +13424,7 @@ mod changed_witness_projection_tests {
             entry: "dag/test/claim/x_test.dag".to_string(),
             entry_module: "test.claim.x".to_string(),
             function: "w_holds".to_string(),
+            premise: None,
         }
     }
 
@@ -13352,6 +13566,30 @@ mod changed_witness_projection_tests {
         assert!(
             refused.contains("WetTerminalVerdictNotExpected")
                 && refused.contains("observed failed"),
+            "got: {refused}"
+        );
+    }
+
+    /// THE HOST-PREMISE CELL, discriminated from the verdict cell above. A member whose declared
+    /// premise read back unmet was never invoked: it refuses as the RUNNER
+    /// (`WetTerminalHostPremiseUnmet`, carrying the premise and the authority's words) and never as
+    /// `WetTerminalVerdictNotExpected` -- while it still refuses, so the lane does not pass.
+    #[test]
+    fn an_unmet_host_premise_refuses_as_the_runner_not_as_a_verdict() {
+        let schedule = [scheduled_row("test.claim.x.w_holds")];
+        let mut terminal = terminal_row("test.claim.x.w_holds", TEST_CANDIDATE);
+        terminal.observed = LocalRepoWetObserved::HostPremiseUnmet {
+            premise: "RunnerBrowserToolchainReadyForJobUser".to_string(),
+            words: "tree /home/ghrunner/.local/share/gunbc-browser-toolchain/abc absent"
+                .to_string(),
+        };
+        let refused = finalize(&schedule, vec![terminal])
+            .expect_err("an unmet premise must still refuse the lane");
+        assert!(
+            refused.contains("WetTerminalHostPremiseUnmet")
+                && refused.contains("RunnerBrowserToolchainReadyForJobUser")
+                && refused.contains("/home/ghrunner/.local/share/gunbc-browser-toolchain/abc")
+                && !refused.contains("WetTerminalVerdictNotExpected"),
             "got: {refused}"
         );
     }
@@ -16793,4 +17031,149 @@ fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<St
         .into_iter()
         .collect()
     })
+}
+
+/// THE HOST DECIDER AND ITS .dag AUTHORITY CLASSIFY ONE SHARED FIXTURE IDENTICALLY.
+///
+/// The rows are `v2.test.fixture.changed_selection_outside_discovery`, which
+/// `test.claim.discovery_census_witness` also asserts on the floor. This test evaluates them through
+/// `v2.workflow.required_floor` `changed_selections_outside_discovery` and through the host's
+/// `changed_selections_outside_discovery`, and joins the two at identity grain: same identities,
+/// each with the same `DeclinedChangedWitnessOutsideDiscovery` module. The .dag side is enforced
+/// on the floor today; this cross-side join is enforced only once the Rust unit tests are a
+/// blocking lane (`gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`).
+#[cfg(test)]
+mod changed_selections_outside_discovery_mirror_tests {
+    use super::*;
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::collections::BTreeMap;
+    use std::rc::Rc;
+
+    const FIXTURE: &str = "v2.test.fixture.changed_selection_outside_discovery";
+
+    fn string_list(value: &Value, what: &str) -> Vec<String> {
+        let Value::List(items) = value else {
+            panic!("{what} is not a List");
+        };
+        items
+            .iter()
+            .map(|item| match item {
+                Value::Str(s) => s.to_string(),
+                _ => panic!("{what} holds a non-String element"),
+            })
+            .collect()
+    }
+
+    fn dag_rows(ctx: &v1_interpreter::InterpContext, value: &Value) -> BTreeMap<String, String> {
+        let Value::List(rows) = value else {
+            panic!("the .dag decider did not return a List");
+        };
+        let mut out = BTreeMap::new();
+        for row in rows.iter() {
+            let Value::Record { fields, .. } = row else {
+                panic!("a .dag decider row is not a record");
+            };
+            let Some(Value::Str(identity)) = ctx.field(fields, "identity") else {
+                panic!("a .dag decider row has no String identity");
+            };
+            let Some(Value::Variant {
+                variant_name,
+                fields: arm,
+                ..
+            }) = ctx.field(fields, "disposition")
+            else {
+                panic!("a .dag decider row has no disposition variant");
+            };
+            assert!(
+                ctx.sym_eq(*variant_name, "DeclinedChangedWitnessOutsideDiscovery"),
+                "the .dag decider produced {} for {identity}",
+                ctx.resolve(*variant_name)
+            );
+            let Some(Value::Str(module_path)) = ctx.field(arm, "module_path") else {
+                panic!("the .dag arm for {identity} has no String module_path");
+            };
+            assert!(
+                out.insert(identity.to_string(), module_path.to_string())
+                    .is_none(),
+                "the .dag decider produced {identity} twice"
+            );
+        }
+        out
+    }
+
+    fn host_rows(changed: &[String], declared: &[String]) -> BTreeMap<String, String> {
+        let changed: HashSet<String> = changed.iter().cloned().collect();
+        let declared: HashSet<String> = declared.iter().cloned().collect();
+        changed_selections_outside_discovery(&changed, &declared)
+            .into_iter()
+            .map(|row| match row.disposition {
+                RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                    module_path,
+                } => (row.identity, module_path),
+                other => panic!(
+                    "the host decider produced {} for {}",
+                    required_floor_disposition_label(&other),
+                    row.identity
+                ),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn host_and_dag_deciders_agree_on_the_shared_fixture() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let entry = root
+                .join("src/v2/test/fixture/changed_selection_outside_discovery.dag")
+                .to_string_lossy()
+                .to_string();
+            let index = crate::cli_run::process_shared_index(&roots);
+            let (graph, indices) =
+                crate::cli_run::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+                    .expect("the shared fixture resolves");
+            let ctx = crate::cli_run::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+            let read = |name: &str| {
+                v1_interpreter::with_active_context(&ctx, || {
+                    v1_interpreter::run_in_context(&ctx, &format!("{FIXTURE}.{name}"), false)
+                })
+                .unwrap_or_else(|e| panic!("{name} does not evaluate: {e}"))
+            };
+            let changed = string_list(&read("changed_selection_fixture_changed"), "changed");
+            let declared = string_list(&read("changed_selection_fixture_declared"), "declared");
+            let as_list = |xs: &[String]| {
+                Value::List(Rc::new(
+                    xs.iter()
+                        .map(v1_interpreter::str_value)
+                        .collect::<Vec<Value>>()
+                        .into(),
+                ))
+            };
+            let decided = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    "v2.workflow.required_floor.changed_selections_outside_discovery",
+                    &[
+                        (Some("changed".to_string()), as_list(&changed)),
+                        (Some("declared".to_string()), as_list(&declared)),
+                    ],
+                    false,
+                )
+            })
+            .expect("the .dag decider evaluates over the fixture");
+            let dag = dag_rows(&ctx, &decided);
+            let host = host_rows(&changed, &declared);
+            assert!(
+                !dag.is_empty(),
+                "the fixture produced no undeclarable selection"
+            );
+            assert_eq!(
+                host, dag,
+                "host and .dag deciders disagree on the shared fixture"
+            );
+        });
+    }
 }

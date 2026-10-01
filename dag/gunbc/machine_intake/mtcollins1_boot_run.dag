@@ -14,7 +14,7 @@ import std.temporal_effect {
   held_lease_observed_verdict,
 }
 import std.algebra { trim }
-import std.measure { Second, second, second_count, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
+import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond, measure_add, measure_le, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.machine_intake_mtcollins1_census_medium_readback {
@@ -39,7 +39,7 @@ import gunbc.machine_intake_mtcollins1_boot_phase_timing {
   MtCollins1PhaseRunResult, PhaseVerified, PhaseRefused, MtCollins1PhaseStep, PhaseStepRan, PhaseStepSkipped, MtCollins1BootRoute,
   mtcollins1_boot_phase_timing_of, mtcollins1_boot_route_sol_refused, mtcollins1_smpro_pass_result,
 }
-import extdeps.linux.proc_uptime { proc_uptime_read }
+import extdeps.linux.proc_uptime { proc_uptime_read, UptimeObserved, UptimeRefused }
 import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_milestone {
   MtCollins1BootTopologyExpectation, mtcollins1_boot_topology_expectation,
@@ -62,7 +62,7 @@ import extdeps.bootloader.grub {
   GrubConsoleReport, GrubNothingStated, GrubBannerOnly, GrubStillTrying, GrubBootFailed, grub_console_report,
   GrubError, grub_error_text,
 }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import v2.std.optional { Present }
 import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
@@ -81,11 +81,10 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
   SensorsNotTaken, mtcollins1_boot_sensors, SmproProbed, SmproNotTaken,
-  mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after,
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
-  SmproReading, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, PowerAfterUnobserved, MtCollins1BootRunRecord, run_record_not_taken, MtCollins1MediaAttachRecord, MediaAttachNotAttempted, MtCollins1HandoffMedia, recheck_text, MtCollins1EndMedia, EndMediaNotTaken, EndMediaObserved, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, end_media_is_owed, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
+  SmproReading, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, PowerAfterUnobserved, MtCollins1BootRunRecord, run_record_not_taken, MtCollins1MediaAttachRecord, MediaAttachNotAttempted, MtCollins1HandoffMedia, recheck_text, MtCollins1EndMedia, EndMediaNotTaken, EndMediaObserved, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
   BmcReachability, bmc_reachability_text, mtcollins1_boot_bmc_reachability,
   BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, mtcollins1_ipmi_endpoint,
   PowerAfterAttempt, PoweredOffAfterCensusEnd, PoweredOffWithoutCensusEnd, PoweredOnAfterAttempt, PowerAfterNotTaken, power_after_attempt, OverrideNotHandedOff, boot_override_consumption,
@@ -94,7 +93,7 @@ import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.owned_process { owned_process_record, OwnedRecorded, OwnedUnrecorded }
-import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet }
+import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet, RunnerBrowserToolchainResolution }
 import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord, KvmJournalEvent,
   KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission, kvm_observer_standing_now, kvm_standing_text,
@@ -120,10 +119,10 @@ data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.t
 
 data mtcollins1_boot_poll_cadence: Second = second(count: 15)
 
-// The acquisition's establishment allowance (mtcollins1_sol_await_establishment), counted in POLLS: that
-// many observations one second apart, each also paying its own reads and scheduling, so it is not a
-// strict wall-clock deadline. The RMCP+ session setup and Activate Payload exchange take a few seconds.
-// Paid inside the prelude allowance, which covers the acquisition.
+// The acquisition's establishment allowance (mtcollins1_sol_await_establishment): a monotonic deadline
+// measured on /proc/uptime from the start of the wait, polled about once a second. The RMCP+ session
+// setup and Activate Payload exchange take a few seconds. Paid inside the prelude allowance, which
+// covers the acquisition.
 data mtcollins1_boot_sol_establish_allowance: Second = second(count: 15)
 
 data mtcollins1_boot_prelude_allowance: Second = second(count: 120)
@@ -502,6 +501,9 @@ type SolEstablishmentFailure
   | SolCollectorLeftUnexplained { collector: SolCollectorObservation, last_line: String }
   | SolActivationUnconfirmed { collector: SolCollectorObservation, allowance: Second }
   | SolActivationUnrecorded { detail: String }
+  | SolEstablishmentClockUnread { detail: String }
+  | SolEstablishmentPaceRefused
+  | SolEstablishmentClockStalled { uptime: Millisecond }
   | SolAdoptedActivationUnproven { collector: SolCollectorObservation, receipt: String }
 
 fn last_nonempty_line(s: String) -> String {
@@ -537,6 +539,9 @@ fn sol_establishment_failure_text(failure: SolEstablishmentFailure) -> String {
     SolSessionRefused { cause: c } => bmc_read_cause_text(cause: c)
     SolCollectorLeftUnexplained { collector: o, last_line: l } => concat(sol_collector_observation_text(observation: o), "; its last line: ", if l == "" { "(none)" } else { l })
     SolActivationUnconfirmed { collector: o, allowance: a } => concat(sol_collector_observation_text(observation: o), concat(", but the session did not print its operational banner within ", concat(to_string(second_count(s: a)), " s, so activation is unconfirmed")))
+    SolEstablishmentClockUnread { detail: d } => concat("the establishment deadline could not be measured, so activation is unconfirmed: ", d)
+    SolEstablishmentPaceRefused => "the establishment wait could not pace its next poll, so activation is unconfirmed"
+    SolEstablishmentClockStalled { uptime: t } => concat("the monotonic clock did not advance across a paced poll (uptime ", concat(to_string(millisecond_count(m: t)), " ms), so the establishment deadline cannot be measured and activation is unconfirmed"))
     SolActivationUnrecorded { detail: d } => concat("the banner was seen but the activation receipt could not be recorded: ", d)
     SolAdoptedActivationUnproven { collector: o, receipt: r } => concat(sol_collector_observation_text(observation: o), concat("; no activation receipt names this instance, so an adopted collector is not taken as established (receipt: ", concat(if r == "" { "(none)" } else { r }, ")")))
   })
@@ -587,7 +592,7 @@ fn mtcollins1_sol_activate_held(
   if !spawned.success {
     return exit_failure(reason: concat(dissolution_description(condition: mtcollins1_sol_hold_shell_emit_dissolution_trigger), concat(" ", sol_establishment_failure_text(failure: SolSpawnRefused { detail: concat(trim(s: spawned.transport_stderr), concat(" ", trim(s: spawned.stdout))) }))))
   }
-  match mtcollins1_sol_await_establishment(pid_path: pid_path, capture_path: capture_path, remaining: second_count(s: mtcollins1_boot_sol_establish_allowance) as Int) {
+  match mtcollins1_sol_await_establishment(pid_path: pid_path, capture_path: capture_path, allowance: mtcollins1_boot_sol_establish_allowance) {
     SolEstablished { at: _ } => ExitSuccess
     SolNotEstablished { failure: f } =>
       exit_failure(reason: concat(sol_establishment_failure_text(failure: f), concat("; not deactivating a session this hold did not establish; client diagnostics: ", client_diagnostic_path)))
@@ -621,37 +626,102 @@ fn sol_capture_opens_with_banner(capture: String) -> Bool {
 // publication pending, not a failure. The hold's own words end the wait early: its "pid not published"
 // line is SolPidNotPublished, and an exit record with nothing published is a collector that left. At
 // the deadline an unpublished collector is SolActivationUnconfirmed with that observation.
-fn mtcollins1_sol_await_establishment(pid_path: String, capture_path: String, remaining: Int) -> SolEstablishment {
+// THE ALLOWANCE IS A MONOTONIC DEADLINE, not a count of polls. The deadline is the /proc/uptime reading
+// at the start of the wait plus the allowance, and each poll compares a fresh reading against it
+// (sol_establishment_expired), so the time the wait grants does not depend on how long a poll takes:
+// fast polls do not exhaust it early and slow polls do not stretch it. An unreadable clock refuses
+// with its cause (SolEstablishmentClockUnread) rather than falling back to counting.
+// THE ORDER IS OBSERVE, THEN READ THE CLOCK, THEN DECIDE. Success depends on a readable monotonic
+// reading inside the deadline: a banner first observed at or after the deadline is not admitted, so a
+// slow poll cannot carry an establishment past its allowance (sol_establishment_gate). The deadline
+// is a Millisecond on /proc/uptime -- start plus the allowance through std.measure
+// second_to_millisecond -- never an untyped count.
+type SolEstablishmentGate
+  = GateEstablish
+  | GateExpired
+  | GateContinue
+
+fn sol_establishment_deadline(start: Millisecond, allowance: Second) -> Millisecond {
+  measure_add(a: start, b: second_to_millisecond(s: allowance))
+}
+
+fn sol_establishment_gate(banner_seen: Bool, now: Millisecond, deadline: Millisecond) -> SolEstablishmentGate {
+  if measure_le(a: deadline, b: now) {
+    GateExpired
+  } else if banner_seen {
+    GateEstablish
+  } else {
+    GateContinue
+  }
+}
+
+// THE LOOP'S OWN TERMINATION DOES NOT DEPEND ON THE CLOCK BEING RIGHT. The pace's result is consumed: a
+// refused pace ends the wait (SolEstablishmentPaceRefused). And after an admitted pace the next reading
+// must be later than the previous one; a clock that did not advance ends the wait
+// (SolEstablishmentClockStalled) instead of polling without bound.
+type SolEstablishmentPace
+  = PaceAdvanced
+  | PaceRefused
+  | PaceClockStalled
+
+fn sol_establishment_pace(paced: Bool, previous: Millisecond, now: Millisecond) -> SolEstablishmentPace {
+  if !paced {
+    PaceRefused
+  } else if measure_le(a: now, b: previous) {
+    PaceClockStalled
+  } else {
+    PaceAdvanced
+  }
+}
+
+fn mtcollins1_sol_await_establishment(pid_path: String, capture_path: String, allowance: Second) -> SolEstablishment {
+  match proc_uptime_read() {
+    UptimeRefused { detail: d } => SolNotEstablished { failure: SolEstablishmentClockUnread { detail: d } }
+    UptimeObserved { uptime: u } => sol_await_establishment_until(pid_path: pid_path, capture_path: capture_path, allowance: allowance, deadline: sol_establishment_deadline(start: u, allowance: allowance), previous: u, paced: true, first: true)
+  }
+}
+
+fn sol_await_establishment_until(pid_path: String, capture_path: String, allowance: Second, deadline: Millisecond, previous: Millisecond, paced: Bool, first: Bool) -> SolEstablishment {
   let at = clock_now_probed_at_or_unknown()
   let collector = mtcollins1_sol_collector_observe(pid_path: pid_path)
-  let pending = match collector {
+  let banner_seen = match collector {
     SolCollectorHeld => {
       let capture = Filesystem.Read(path: capture_path)
-      if capture.success && sol_capture_opens_with_banner(capture: capture.content) {
-        return sol_record_activation(pid_path: pid_path, at: at)
-      }
-      true
+      capture.success && sol_capture_opens_with_banner(capture: capture.content)
     }
-    SolCollectorUnobservable { cause: _ } => true
+    SolCollectorUnobservable { cause: _ } => false
     SolCollectorUnrecorded => {
       let client = Filesystem.Read(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path))
       let words = if client.success { client.content } else { "" }
       if string_contains(s: words, pattern: sol_hold_pid_not_published_line) || string_contains(s: words, pattern: sol_hold_pid_not_published_unstopped_line) || string_contains(s: words, pattern: sol_hold_exit_record_prefix) {
         return SolNotEstablished { failure: sol_establishment_failure(collector: collector, client_diagnostics: words, at: at) }
       }
-      true
+      false
     }
-    _ => false
+    _ => {
+      let client = Filesystem.Read(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path))
+      return SolNotEstablished { failure: sol_establishment_failure(collector: collector, client_diagnostics: if client.success { client.content } else { "" }, at: at) }
+    }
   }
-  if !pending {
-    let client = Filesystem.Read(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path))
-    return SolNotEstablished { failure: sol_establishment_failure(collector: collector, client_diagnostics: if client.success { client.content } else { "" }, at: at) }
+  let now = match proc_uptime_read() {
+    UptimeRefused { detail: d } => return SolNotEstablished { failure: SolEstablishmentClockUnread { detail: d } }
+    UptimeObserved { uptime: n } => n
   }
-  if remaining <= 0 {
-    return SolNotEstablished { failure: SolActivationUnconfirmed { collector: collector, allowance: mtcollins1_boot_sol_establish_allowance } }
+  if !first {
+    match sol_establishment_pace(paced: paced, previous: previous, now: now) {
+      PaceRefused => return SolNotEstablished { failure: SolEstablishmentPaceRefused }
+      PaceClockStalled => return SolNotEstablished { failure: SolEstablishmentClockStalled { uptime: now } }
+      PaceAdvanced => {}
+    }
   }
-  let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
-  mtcollins1_sol_await_establishment(pid_path: pid_path, capture_path: capture_path, remaining: remaining - 1)
+  match sol_establishment_gate(banner_seen: banner_seen, now: now, deadline: deadline) {
+    GateExpired => SolNotEstablished { failure: SolActivationUnconfirmed { collector: collector, allowance: allowance } }
+    GateEstablish => sol_record_activation(pid_path: pid_path, at: at)
+    GateContinue => {
+      let slept = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+      sol_await_establishment_until(pid_path: pid_path, capture_path: capture_path, allowance: allowance, deadline: deadline, previous: now, paced: slept, first: false)
+    }
+  }
 }
 
 // THE ACTIVATION RECEIPT IS BOUND TO THE INSTANCE. Once the banner is seen for the held collector, its
@@ -1768,7 +1838,7 @@ fn mtcollins1_boot_screen_liveness_lines(standing: KvmObserverStanding) -> List<
 // runner without the browser toolchain, a busy viewer seat, a mismatched subject or a lost connection
 // all stop the boot there, with that standing as the cause. It gates on the witness existing, never on
 // what the screen shows.
-fn mtcollins1_boot_screen_start(password_file: String, attempt: String) -> KvmObserverStart {
+fn mtcollins1_boot_screen_start(password_file: String, attempt: String, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> KvmObserverStart {
   match mtcollins1_bmc_username {
     Absent => KvmObserverNotStarted { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to log in to the viewer with" }
     Present { value: user } =>
@@ -1777,7 +1847,7 @@ fn mtcollins1_boot_screen_start(password_file: String, attempt: String) -> KvmOb
         bmc_host: mtcollins1_endpoint.host,
         username: user,
         password_file: password_file,
-        toolchain: runner_browser_toolchain_here_wet(),
+        toolchain: resolve_toolchain(),
         attempt: attempt,
       )
   }
@@ -2182,6 +2252,7 @@ fn mtcollins1_boot_actuate(
   attempt: String,
   sol_pid_path: String,
   sol_capture_path: String,
+  resolve_toolchain: fn() -> RunnerBrowserToolchainResolution,
 ) -> MtCollins1BootActuation
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
@@ -2214,7 +2285,7 @@ fn mtcollins1_boot_actuate(
       let acquired_at = clock_now_probed_at_or_unknown() as String
       let p5_before = mtcollins1_boot_param5_under_hold(password_file: password_file)
       let p5_before_read = proc_uptime_read()
-      let screen = mtcollins1_boot_screen_start(password_file: password_file, attempt: attempt)
+      let screen = mtcollins1_boot_screen_start(password_file: password_file, attempt: attempt, resolve_toolchain: resolve_toolchain)
       let before_attach = mtcollins1_sol_supervised(stage: SolLostBeforeAttach, pid_path: sol_pid_path, capture_path: sol_capture_path, password_file: password_file, last_live_at: acquired_at)
       let media = match before_attach {
         SolLostAt { outcome: o } => MediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
@@ -2320,7 +2391,7 @@ fn mtcollins1_boot_actuate(
         outcome: match observed.outcome {
           ExitSuccess =>
             if sol_release_is_clean(outcome: teardown) { ExitSuccess } else { exit_failure(reason: concat("mtcollins1 boot: ", sol_release_outcome_text(outcome: teardown))) }
-          other => other
+          other => outcome_attributing_media_loss(outcome: other, loss: media_loss_after_handoff(handoff: gated.media, end: end_media))
         },
         stage: observed.stage,
         screen: screen_record,
@@ -2354,9 +2425,10 @@ fn mtcollins1_boot_under_live_unit_hold(
   password_file: String,
   sol_pid_path: String,
   sol_capture_path: String,
+  resolve_toolchain: fn() -> RunnerBrowserToolchainResolution,
 ) -> MtCollins1BootActuation
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_on_srv1_resolving_toolchain"),
   ]
 {
   match mtcollins1_boot_acquire_unit_hold(run_id: run_id) {
@@ -2369,6 +2441,7 @@ fn mtcollins1_boot_under_live_unit_hold(
         attempt: run_id as String,
         sol_pid_path: sol_pid_path,
         sol_capture_path: sol_capture_path,
+        resolve_toolchain: resolve_toolchain,
       )
       MtCollins1BootActuation { outcome: unit_hold_release(proof: p, outcome: act.outcome), media: act.media, handoff_media: act.handoff_media, end_media: act.end_media, stage: act.stage, override_before: act.override_before, override_after: act.override_after, power_after: act.power_after, timing: act.timing, screen: act.screen }
     }
@@ -2573,7 +2646,18 @@ fn mtcollins1_boot_wet() -> ProcessExit
 
 // THE "BEFORE" SEL SNAPSHOT IS A READONLY READ taken once the credential is read, and before the unit hold is taken, so the delta brackets every controller write
 // the attempt makes (gunbc#12093).
+// THE WET ENTRY IS ONE CALL: the runner's own browser-toolchain resolution into the entry that runs
+// the boot. Nothing else lives on this side, so every step of the boot is the inner entry's and runs
+// wherever it does (ruling of eager-owl-205 on gunbc#12533). The resolution is passed as a function and
+// called where the observer starts, exactly where the boot resolved it before, so the route's order
+// and phase clock are unchanged; a caller that supplies it (the boot acceptance matrix) supplies a
+// resolution arm without running the readback, which keeps its own witnesses.
 fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
+{
+  mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() { runner_browser_toolchain_here_wet() })
+}
+
+fn mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt
 {
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {
@@ -2614,7 +2698,7 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
   let subject = mtcollins1_boot_subject(execution_revision: sha as NonEmptyStr)
   match mtcollins1_bmc_username {
     Absent => {
-      let act = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path)
+      let act = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain)
       MtCollins1BootAttempt {
         outcome: act.outcome,
         media: act.media,
@@ -2632,7 +2716,7 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
     Present { value: user } => {
       let sdr = mtcollins1_boot_sdr_cache(username: user, password_file: cred as NonEmptyStr, path: concat(cred, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
       let before = mtcollins1_boot_sel_snapshot(username: user, password_file: cred as NonEmptyStr, sdr: sdr)
-      let act = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path)
+      let act = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain)
       MtCollins1BootAttempt {
         outcome: act.outcome,
         media: act.media,
