@@ -47,18 +47,18 @@ Measured by a source grep at the base of this change. This is a sizing, **not an
 
 | Fact | v1 semantics | Owning authority today |
 | --- | --- | --- |
-| the resources a fn's body demands | `v1` `04_items` `ResourceRequirement` (`binding_name`, `resource`), consumed by the Rust emitter's call-site binding | **D13** (`gunbc.plans.demand_engine_program`): for a transparent body, demand is DERIVED (`DependencyDemand`, produced once by resolution). Authored restatement rows are deleted (USES-0, `docs/plans/uses-occurrence-census.md`). Binder, opaque-contract and policy rows move to their own carriers |
+| the resources a fn's body demands | `v1` `04_items` `ResourceRequirement` (`binding_name`, `resource`), consumed by the Rust emitter's call-site binding | **D13** (`gunbc.plans.demand_engine_program`): for a transparent body, demand is DERIVED (`DependencyDemand`, produced once by resolution). Authored restatement rows are deleted (USES-0, `docs/plans/uses-occurrence-census.md`). Binder, opaque-contract and policy rows move to their own carriers. Derivation does not yet name Network (`gunbc.rung_drop` `network_requirement_unrepresented_after_uses_cut`) |
 
 ## One carrier per fact
 
-### Interface: lowered onto the existing service node
+### Interface: carried on the operation's Arrow and on its input binders (ruled 2026-10-01)
 
-The operation edge `body_lower_operation` builds today gains two carriers, each modelled once:
+The first draft of this section put modifiers as edges on the operation node and defaults on the payload field. Neither is admitted by the substrate: `v2.std.node` `arrow_signature_edges_conform` counts every Arrow named edge other than the body and the declared order as the one type-binder edge, and a payload field is a bare name-to-type edge with no slot for a default. The side-chat ruling (option A) places them:
 
-1. **Operation modifier.** The closed set `OperationModifier = Idempotent | Readonly | Hermetic` already exists in v1 `00_core`. It moves to `std.effects`, its semantic home: two of its three arms are claims checked there by `check_modifier_vs_derivation`, and v1 then imports it from std. This is a move, not a second declaration. Each modifier lowers as a childless named edge `^operation_modifier_<arm>` on the operation node. A repeated modifier refuses located (`body_lowering_reason_service_operation_modifier_repeated`). Whether the claim *agrees* with the derived effect shape stays with `check_modifier_vs_derivation`, which reads these edges once resolution establishes the shape. The lowering carries the claim. It does not judge it.
-2. **Field default.** An io field's `= v` lowers as a `^field_default` edge whose target is the value expression, through the same value reader every expression position uses. A default the reader cannot lower refuses at the default, under the reader's own cause.
+1. **Effect and execution-mode claims are Arrow contract edges, kept apart.** `readonly` and `idempotent` are effect claims, checked against the derived effect shape by `std.effects` `check_modifier_vs_derivation`. They lower onto `^arrow_effect_claims_edge`. `hermetic` is a `std.execution_mode` claim and lowers onto `^arrow_execution_mode_claim_edge`. The surface `OperationModifier` stays one syntax vocabulary, and lowering projects each arm to its semantic home. Arrow conformance enumerates the legal labels and target shapes. Duplicates and unknown labels refuse. Contract edges are not binders, and canonical identity is order-independent.
+2. **A default belongs to the binder, not to its type.** One binder representation (a required type, an optional single default, closed labels, one reader and builder) is reused by fn parameters, service io fields and record fields. Because that changes the existing name-to-type binder shape, it is a replacement migration (DESIGN §3): every producer and reader moves, and the two shapes never coexist.
 
-After step 1, `InterfaceMemberUnmodeled` has no producer for modifiers or defaults. Wire keys move to the realization carrier (below), so that set-aside kind is deleted, not left empty.
+Once these carriers exist, `InterfaceMemberUnmodeled` has no producer for modifiers or defaults. Wire keys move to the realization carrier (below), so that set-aside kind is deleted, not left empty.
 
 ### Realization: a sibling node, never inside the interface
 
@@ -74,20 +74,24 @@ The interface node never references the sibling. The sibling references the inte
 
 **What the full route does with the sibling.** Resolution resolves its references, which is what puts them in the census. Infer types the projection expressions against the declared outputs. Eval and emission select a binding through the existing `HandlerBinding`. A stage that cannot yet consume the sibling **refuses at the sibling under its own stage cause**, so the old blanket `service_realization_unreachable` becomes a set of per-stage located causes. Once no member is set aside, `ServiceSetAside` and both set-aside reasons are deleted.
 
-### `uses`: no carrier (ruled: follow D13)
+### `uses`: no carrier (ruled: follow D13), with a prerequisite
 
-A v2 carrier for the authored row would be a second authority for `DependencyDemand`, the fact D13 rules DERIVED for every transparent body. All 97 measured rows sit in transparent bodies and none reads its alias, so each is a USES-0 restatement. Resolution of this half:
+A v2 carrier for the authored row would be a second authority for `DependencyDemand`, the fact D13 rules DERIVED for every transparent body. **But D13's derivation is not yet complete for Network.** `gunbc.rung_drop` `network_requirement_unrepresented_after_uses_cut` records that derived demand (`ItemInfo.service_names`) names the services a Network effect reaches and never Network itself, and that earlier deletions of `uses net: Network` rows were a silent rung loss. The D13 follow-up audit found that nearly every live row binds Network. So a Network row is **not yet a restatement**, and deleting it now would repeat that loss.
 
-- The refusal stays. `body_lower_fn_uses_refusal_optional` keeps refusing at the clause, which also walls out new restatement arrivals. EFFECTS-1's open slice is the "nothing walls new rows out yet" gap that `gunbc.plans.demand_restatement_follow_up` records.
-- The population is unblocked by **retiring restatement rows** under D13's existing criterion. Rows `demand_restatement_follow_up` already retains keep their stated triggers.
+Resolution of this half:
+
+- **The refusal stays.** `body_lower_fn_uses_refusal_optional` keeps refusing at the clause. Until the prerequisite lands, the authored clause is the only carrier of a Network requirement, so a fn carrying one stays out of the census rather than lowering without its requirement.
+- **Prerequisite (the rung drop's restoration trigger):** D13's `DependencyDemand` carrier derives each resource requirement keyed on the resource declaration's identity (`std.resources.Network`), so that the derived demand of every function authoring `uses net: Network` names Network.
+- **Then** the restatement rows are retired under D13's criterion, measured by resolution, not grep.
 - What could survive is a named dependency binder (a distinct subject), an opaque contract (no body) or a policy envelope. Each moves to its own carrier when one first appears. The live corpus has none, so none is designed here.
 
 ## The smallest lowering change, member by member
 
 | Member | Lowers into | Refuses (located) when |
 | --- | --- | --- |
-| `readonly` / `idempotent` / `hermetic` | `^operation_modifier_*` edge on the operation | repeated on one operation |
-| io `= default` | `^field_default` edge | the value reader refuses the expression |
+| `readonly` / `idempotent` | `^arrow_effect_claims_edge` on the operation's Arrow | repeated on one operation |
+| `hermetic` | `^arrow_execution_mode_claim_edge` on the operation's Arrow | repeated on one operation |
+| io `= default` | the input field's binder default (2b) | the value reader refuses the expression |
 | io `from "key"` | projection row in `^service_realization_binding` | the key is not a string literal |
 | `transport` / `config` | transport config record in the sibling | the transport kind has no config record |
 | `exit` / `response` | output projection in the sibling | the value reader refuses the expression |
@@ -100,11 +104,13 @@ A v2 carrier for the authored row would be a second authority for `DependencyDem
 | PR | Content | Unblocks | Behaviour change |
 | --- | --- | --- | --- |
 | 1 (this) | this document; `uses_clause_has_no_carrier` trigger amended to D13; DESIGN CLI-section sentence amended (separate hunk) | — | none |
-| 2 | `OperationModifier` moved to `std.effects` (v1 imports it, stage0 mirrors regenerated); interface lowering of modifiers and defaults; discriminating red per refusal row above | the 3 interface-only services | yes |
+| 2a | Arrow contract edges (`^arrow_effect_claims_edge`, `^arrow_execution_mode_claim_edge`) and their conformance in `v2.std.node` | — | substrate only |
+| 2b | the one binder representation with an optional default: a replacement migration of every binder producer and reader, measured first | — | yes |
+| 2c | lowering of modifiers and io defaults onto 2a and 2b; discriminating red per refusal row above | the 3 interface-only services | yes |
 | 3 | `^service_realization_binding` sibling lowering of transport / config / exit / response / mock_response / `from`; delete `ServiceSetAside` and both set-aside reasons; per-stage located causes for any stage that cannot yet consume the sibling | the 111 realization-bearing services, up to the next stage's refusal | yes |
 | 4 | flip `service_interface_member_has_no_carrier` and the cause-ownership rows; re-measure the census on the CI population | — | ledger only |
-| `uses` (parallel, separate lane) | retire restatement rows by D13's criterion, module by module, measured by resolution | up to 30 modules | source rows deleted |
+| `uses` (separate lane) | first the resource-keyed `DependencyDemand` carrier (the rung drop's restoration trigger); only then retire restatement rows by D13's criterion, measured by resolution | up to 30 modules, and none before the carrier lands | carrier, then source rows deleted |
 
-The `OperationModifier` move lands in PR 2, with its first v2 consumer, not in PR 1. A model with no consumer in its own change is dangling by DESIGN §3c.
+No model lands in PR 1. Each lands with its first consumer. A model with no consumer in its own change is dangling by DESIGN §3c.
 
 **Caveat, stated so it is not read as a promise.** No service has ever reached resolve or infer on the full route. PR 3 will surface new downstream refusals, located at the sibling or the operation under the consuming stage's cause. The count of services that reach the census is therefore re-measured on the CI population after PR 3, not inferred from the grep above.
