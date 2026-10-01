@@ -47,7 +47,7 @@ import std.content_hash {
   Fnv1a64Structural,
 }
 import extdeps.filesystem.filesystem_io
-import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence, filesystem_established_absence_path, filesystem_listing_names_entry }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEstablishedAbsence, filesystem_established_absence_path, filesystem_listing_names_entry }
 import extdeps.languages.json.emit { serialize_json, JsonValue }
 import std.measure { ByteSize, byte_size }
 import std.checked_arithmetic { nat_magnitude }

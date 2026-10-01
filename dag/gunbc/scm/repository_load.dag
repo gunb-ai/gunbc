@@ -44,7 +44,7 @@ module gunbc.scm.repository_load
 
 import std.types { List, String }
 import std.content_hash { Fnv1a64Structural }
-import extdeps.filesystem.filesystem_io {
+import extdeps.filesystem.filesystem_io { Filesystem,
   FilesystemReadOutcome,
   FilesystemReadSucceeded,
   FilesystemReadRefused,

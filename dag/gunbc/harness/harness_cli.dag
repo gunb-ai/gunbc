@@ -43,6 +43,7 @@ import gunbc.harness.harness_seat { harness_turn_request,
 import product.capacity.lease { LeasePolicy, QuiescenceRequired, GrantIdentity }
 import extdeps.tools.hostname
 import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 // THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
 // rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
