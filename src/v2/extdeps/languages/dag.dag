@@ -20,7 +20,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, ParseRefusalReason }
+import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, NewlineBeforeDualRoleOperator, ParseRefusalReason }
 import v2.std.grammar {
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
@@ -56,7 +56,9 @@ import v2.std.grammar {
   grammar_production_to_node,
   grammar_relation_tokens_node,
   grammar_empty_sync_tokens,
+  grammar_expr_after_line_break,
   grammar_expr_expect,
+  grammar_expr_refuse_on_match,
   derive_grammar_relation_row,
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
@@ -1283,13 +1285,29 @@ fn dag_grammar_multiplicative_expr_helper() -> GrammarExpr {
   )
 }
 
+// A `-` THAT BEGINS A LINE AFTER A COMPLETE OPERAND REFUSES. `-` is both infix (subtraction) and
+// prefix (negation), and this grammar carries no statement terminator, so `x` then a line `-1` could
+// be `x - 1` or two statements; neither reading is safe to pick silently. The seed refuses it
+// (v1.compiler.parse is_ambiguous_prefix_infix_newline_boundary, whose dual-role set is exactly
+// `-`), and so does this row: the refusal alternative is tried FIRST at every additive
+// continuation, it matches only a `-` preceded by a line break (v2.std.grammar AfterLineBreak, read
+// from the stream's layout), and where it matches the parse refuses at the `-` with
+// NewlineBeforeDualRoleOperator. A same-line `-` falls through to subtraction. Every expression
+// reaches this continuation, so the rule holds for every statement form -- including a block-headed
+// statement, which is an operand since block forms are primaries of binary_expr (#12817).
 fn dag_grammar_additive_expr_helper() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_multiplicative_expr_helper(),
     right: dag_grammar_repeat(
-      element: dag_grammar_sequence(
-        left: dag_grammar_additive_op_choice(),
-        right: dag_grammar_multiplicative_expr_helper()
+      element: dag_grammar_choice(
+        left: grammar_expr_refuse_on_match(
+          element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_minus)),
+          reason: NewlineBeforeDualRoleOperator
+        ),
+        right: dag_grammar_sequence(
+          left: dag_grammar_additive_op_choice(),
+          right: dag_grammar_multiplicative_expr_helper()
+        )
       )
     )
   )

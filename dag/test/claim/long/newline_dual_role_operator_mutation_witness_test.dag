@@ -1,0 +1,136 @@
+module test.claim.long.newline_dual_role_operator_mutation_witness_test
+
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_grammar, dag_lex }
+import v2.std.algebra { fold_list }
+import v2.std.grammar {
+  AfterLineBreak,
+  Choice,
+  Expect,
+  GrammarExpr,
+  GrammarExprFold,
+  GrammarProduction,
+  GrammarRoot,
+  LiteralTerminal,
+  ModeledGrammar,
+  Nonterminal,
+  Optional,
+  ParseGrammar,
+  RefuseOnMatch,
+  Repeat,
+  Sequence,
+  StampClass,
+  Terminal,
+  VoidGrammar,
+  fold_grammar_expr
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.test.parse.newline_dual_role_operator_parse {
+  newline_minus_after_block_source,
+  newline_minus_after_operand_source,
+  same_line_minus_source
+}
+
+// THE MUTATION THAT REDS THE NEWLINE-`-` REFUSAL (v2.test.parse.newline_dual_role_operator_parse).
+// It rebuilds the live dag grammar with every RefuseOnMatch arm replaced by a terminal no token
+// carries -- an alternative that can never match -- and asserts there is exactly ONE such arm, so the
+// mutant differs from the live grammar in that refusal and nothing else. Under the mutant the
+// next-line sources parse again (the silent merge into one subtraction is back); under the live
+// grammar they refuse. The same-line control parses under both. Long lane: preparing the mutant
+// grammar is past the floor's per-claim budget.
+
+fn strip_refusals(expr: GrammarExpr) -> GrammarExpr {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class, stamp) { Terminal { token_class: token_class, stamp: stamp } },
+      literal_terminal: fn(token_class, lexeme) { LiteralTerminal { token_class: token_class, lexeme: lexeme } },
+      nonterminal: fn(production) { Nonterminal { production: production } },
+      sequence: fn(l, r) { Sequence { left: l, right: r } },
+      choice: fn(l, r) { Choice { left: l, right: r } },
+      optional: fn(e) { Optional { element: e } },
+      repeat: fn(e) { Repeat { element: e } },
+      expect: fn(e, reason) { Expect { element: e, reason: reason } },
+      refuse_on_match: fn(_e, _reason) { Terminal { token_class: ^newline_mutation_no_token_carries_this_class, stamp: StampClass } },
+      after_line_break: fn(e) { AfterLineBreak { element: e } }
+    }
+  )
+}
+
+fn refusal_arm_count(expr: GrammarExpr) -> Int {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_, _) { 0 },
+      literal_terminal: fn(_, _) { 0 },
+      nonterminal: fn(_) { 0 },
+      sequence: fn(l, r) { l + r },
+      choice: fn(l, r) { l + r },
+      optional: fn(e) { e },
+      repeat: fn(e) { e },
+      expect: fn(e, _reason) { e },
+      refuse_on_match: fn(e, _reason) { e + 1 },
+      after_line_break: fn(e) { e }
+    }
+  )
+}
+
+fn no_productions() -> List<GrammarProduction> {
+  []
+}
+
+fn mutant_grammar() -> ParseGrammar {
+  match dag_grammar() {
+    ModeledGrammar { root: r } =>
+      ModeledGrammar {
+        root: GrammarRoot {
+          start: r.start,
+          productions: fold_list(xs: r.productions, empty: no_productions(), cons: fn(acc, prod) {
+            concat(acc, [GrammarProduction { name: prod.name, expression: strip_refusals(expr: prod.expression), emitted: prod.emitted }])
+          }),
+          sync_tokens: r.sync_tokens
+        }
+      }
+    VoidGrammar => VoidGrammar
+  }
+}
+
+fn live_refusal_arm_count() -> Int {
+  match dag_grammar() {
+    ModeledGrammar { root: r } => fold_list(xs: r.productions, empty: 0, cons: fn(acc, prod) { acc + refusal_arm_count(expr: prod.expression) })
+    VoidGrammar => 0
+  }
+}
+
+fn accepts_with(text: String, file: Symbol, grammar: ParseGrammar) -> Bool {
+  match tokenize(text: text, file: file, rules: dag_lex()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: grammar) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn witness_the_live_grammar_carries_exactly_one_refusal_arm() -> Bool {
+  live_refusal_arm_count() == 1
+}
+
+test fn witness_the_live_grammar_refuses_both_next_line_forms() -> Bool {
+  (accepts_with(text: newline_minus_after_operand_source, file: ^nlm_plain, grammar: dag_grammar()) == false)
+    && (accepts_with(text: newline_minus_after_block_source, file: ^nlm_block, grammar: dag_grammar()) == false)
+    && accepts_with(text: same_line_minus_source, file: ^nlm_same, grammar: dag_grammar())
+}
+
+test fn witness_without_the_refusal_both_next_line_forms_merge_RED() -> Bool {
+  let mutant = mutant_grammar()
+  accepts_with(text: newline_minus_after_operand_source, file: ^nlm_plain, grammar: mutant)
+    && accepts_with(text: newline_minus_after_block_source, file: ^nlm_block, grammar: mutant)
+    && accepts_with(text: same_line_minus_source, file: ^nlm_same, grammar: mutant)
+}
