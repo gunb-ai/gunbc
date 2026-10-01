@@ -1,0 +1,267 @@
+module test.claim.durable_volume_witness
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.content_hash { content_hash_of_value }
+import std.durable_compare_and_set {
+  CasGeneration, CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
+  CasReadableAbsent, CasReadablePresent, CasSlotVersion, CasUnreadableReadRefused,
+  CasExpectation, ExpectSlotGeneration, CasStoreFailure, CasSlotObservationRefused,
+  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  cas_attempt, cas_decide, cas_generation_count,
+}
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, HoldSlotHeld, HoldSlotFree,
+  DurableHoldHolderReport, HolderObservedDead, HolderObservedLive,
+  HoldRecoveryEligible, HoldRecoveryRefused, HoldAcquireEligible, HoldAcquireRefused,
+  durable_hold_recovery_assess, durable_hold_acquire_assess,
+}
+import product.fabric.durable_volume {
+  VolumeExtent, VolumeHead, VolumeWriter, VolumeWriteDecision, VolumeWriteProposed, VolumeWriteRefused,
+  VolumeWriterFenced, VolumeHeadAbsent, VolumeHeadUnreadable,
+  VolumeAckOutcome, VolumeAcked, VolumeNotAcked, VolumeAckUncertain, VolumeWriteAck,
+  VolumeAckedReadOutcome, VolumeAckedDataPresent, VolumeAckedDataLost, VolumeHeadUnreadableAtRead,
+  volume_write, volume_take_over, volume_acknowledge, volume_read_acked,
+}
+
+// FIXTURE-LEVEL PROOF of product.fabric.durable_volume: an acked write survives a modeled host kill,
+// a stale writer is refused, and each has a discriminating red.
+//
+// WHAT "HOST KILL" MEANS HERE, AND WHAT IT DOES NOT. The writer on host A is discarded: nothing it held
+// in memory is consulted again. What survives is only the head store's slot (a value passed forward)
+// and the writer hold's slot. The successor on host B recovers the hold through
+// durable_hold_recovery_assess on an OBSERVED-dead report, acquires it at a new generation (its epoch),
+// takes the head over, and reads. No clean shutdown runs: A never releases its hold.
+//
+// NOT EXECUTED, STATED RATHER THAN IMPLIED: this is the pure decision layer only. That the head store
+// is placed off the writer's failure domain, and that a real guest on srv3/srv4 observes the same
+// thing across a real host kill, are realization obligations with no executing route today -- host
+// reach for that proof is with the operator (2026-10-01).
+//
+// Generations are 7 / 9 / 11 rather than 1 / 2 so that no successor of one fixture coincides with
+// another fixture's literal.
+
+data host_a: DurableHoldOwnerRef = "srv3/volume-writer/boot-a" as DurableHoldOwnerRef
+data host_b: DurableHoldOwnerRef = "srv4/volume-writer/boot-b" as DurableHoldOwnerRef
+
+fn extent(label: NonEmptyStr, offset: Int) -> VolumeExtent {
+  VolumeExtent { offset: offset, content: content_hash_of_value(value: label) }
+}
+
+fn head_at(generation: CasGeneration, writer: DurableHoldOwnerRef, epoch: CasGeneration, latest: VolumeExtent) -> CasSlotObservation<VolumeHead> {
+  CasObservedReadable { readable: CasReadablePresent { version: CasSlotVersion {
+    generation: generation,
+    content: latest.content,
+    value: VolumeHead { writer: writer, writer_epoch: epoch, latest: latest },
+  } } }
+}
+
+// The head store after A's earlier writes: generation 7, written under A's epoch 9.
+fn head_before() -> CasSlotObservation<VolumeHead> {
+  head_at(generation: 7, writer: host_a, epoch: 9, latest: extent(label: "block-0-v1", offset: 0))
+}
+
+fn writer_a() -> VolumeWriter { VolumeWriter { owner: host_a, epoch: 9 } }
+
+fn outcome_of(decision: VolumeWriteDecision) -> CasOutcome<VolumeHead> {
+  match decision {
+    VolumeWriteProposed { outcome: o } => o
+    VolumeWriteRefused { refusal: _ } =>
+      CasStoreRefused { cause: refused_before_store() }
+  }
+}
+
+fn refused_before_store() -> CasStoreFailure {
+  CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "write refused before the store" } }
+}
+
+// The store's state after a committed outcome: the committed version, read back as the store holds it.
+fn store_after(outcome: CasOutcome<VolumeHead>, otherwise: CasSlotObservation<VolumeHead>) -> CasSlotObservation<VolumeHead> {
+  match outcome {
+    CasCommitted { committed: c } => CasObservedReadable { readable: CasReadablePresent { version: c } }
+    CasPreconditionFailed { expected: _, observed: _ } => otherwise
+    CasStoreRefused { cause: _ } => otherwise
+  }
+}
+
+fn acked_write() -> VolumeWriteAck {
+  let outcome = outcome_of(decision: volume_write(writer: writer_a(), extent: extent(label: "block-0-v2", offset: 0), observed: head_before()))
+  match volume_acknowledge(outcome: outcome, readback: store_after(outcome: outcome, otherwise: head_before())) {
+    VolumeAcked { ack: a } => a
+    VolumeNotAcked { outcome: _ } => VolumeWriteAck { generation: 1, writer_epoch: 1, extent: extent(label: "not-acked", offset: 99) }
+    VolumeAckUncertain { committed: _, readback: _ } => VolumeWriteAck { generation: 1, writer_epoch: 1, extent: extent(label: "uncertain", offset: 99) }
+  }
+}
+
+// What survives A's death: the head store as it stood after the acked write.
+fn surviving_head() -> CasSlotObservation<VolumeHead> {
+  let outcome = outcome_of(decision: volume_write(writer: writer_a(), extent: extent(label: "block-0-v2", offset: 0), observed: head_before()))
+  store_after(outcome: outcome, otherwise: head_before())
+}
+
+// THE SUCCESSOR'S EPOCH, DERIVED THROUGH THE HOLD -- never authored. A holds the writer hold at 9 and is
+// observed dead; recovery frees it at 9 -> the free slot commits at 10; B's acquire commits at 11.
+fn successor_epoch() -> CasGeneration {
+  let report = DurableHoldHolderReport { holder: host_a, generation: 9, liveness: HolderObservedDead { evidence: "srv3 boot-a absent: host killed" } }
+  match durable_hold_recovery_assess(observed: HoldSlotHeld { generation: 9, owner: host_a }, report: report) {
+    HoldRecoveryRefused { refusal: _ } => 1
+    HoldRecoveryEligible { generation: g, dead_holder: _, evidence: _ } =>
+      match durable_hold_acquire_assess(observed: HoldSlotFree { generation: cas_generation_count(g: g) + 1, released_by: "recovered: holder observed dead" }) {
+        HoldAcquireRefused { refusal: _ } => 1
+        HoldAcquireEligible { expected: e } =>
+          match cas_decide(
+            attempt: cas_attempt(key: "volume-writer-hold", expected: e, proposed: host_b as NonEmptyStr, proposed_content: content_hash_of_value(value: host_b as NonEmptyStr)),
+            observed: CasObservedReadable { readable: CasReadablePresent { version: CasSlotVersion {
+              generation: cas_generation_count(g: g) + 1,
+              content: content_hash_of_value(value: "free"),
+              value: "free" as NonEmptyStr,
+            } } },
+          ) {
+            CasCommitted { committed: c } => c.generation
+            CasPreconditionFailed { expected: _, observed: _ } => 1
+            CasStoreRefused { cause: _ } => 1
+          }
+      }
+  }
+}
+
+fn writer_b() -> VolumeWriter { VolumeWriter { owner: host_b, epoch: successor_epoch() } }
+
+fn head_after_take_over() -> CasSlotObservation<VolumeHead> {
+  store_after(outcome: outcome_of(decision: volume_take_over(successor: writer_b(), observed: surviving_head())), otherwise: surviving_head())
+}
+
+test fn the_successor_epoch_is_derived_through_hold_recovery_and_acquire() -> Bool {
+  cas_generation_count(g: successor_epoch()) == 11
+}
+
+// POSITIVE: A's write is acked at generation 8, under epoch 9.
+test fn a_committed_write_with_an_agreeing_readback_is_acked() -> Bool {
+  let a = acked_write()
+  cas_generation_count(g: a.generation) == 8 && cas_generation_count(g: a.writer_epoch) == 9
+}
+
+// THE HOST-KILL PROOF: B, after recovery and take-over, reads the extent A acked.
+test fn an_acked_write_is_read_by_the_successor_after_the_writer_host_is_killed() -> Bool {
+  match volume_read_acked(ack: acked_write(), observed: head_after_take_over()) {
+    VolumeAckedDataPresent { head_generation: g } => cas_generation_count(g: g) == 9
+    VolumeAckedDataLost { ack: _ } => false
+    VolumeHeadUnreadableAtRead { cause: _ } => false
+  }
+}
+
+// RED for the host-kill proof: a successor that started from the head as it stood BEFORE the acked
+// write (e.g. a realization whose head lived on the killed host and was rebuilt from an older image)
+// must report the ack lost, not present. If volume_read_acked answered from the ack alone, this greens
+// the claim above while the data is gone.
+test fn a_successor_reading_a_head_older_than_the_ack_reports_the_ack_lost() -> Bool {
+  match volume_read_acked(ack: acked_write(), observed: head_before()) {
+    VolumeAckedDataLost { ack: _ } => true
+    VolumeAckedDataPresent { head_generation: _ } => false
+    VolumeHeadUnreadableAtRead { cause: _ } => false
+  }
+}
+
+// THE ACK POINT'S THIRD ARM: the CAS said committed, the readback shows the old head. Not acked, not
+// failed -- uncertain, and never reported to the guest as durable.
+test fn a_commit_whose_readback_disagrees_is_uncertain_not_acked() -> Bool {
+  let outcome = outcome_of(decision: volume_write(writer: writer_a(), extent: extent(label: "block-0-v2", offset: 0), observed: head_before()))
+  match volume_acknowledge(outcome: outcome, readback: head_before()) {
+    VolumeAckUncertain { committed: c, readback: _ } => cas_generation_count(g: c) == 8
+    VolumeAcked { ack: _ } => false
+    VolumeNotAcked { outcome: _ } => false
+  }
+}
+
+test fn an_unreadable_readback_is_uncertain_not_acked() -> Bool {
+  let outcome = outcome_of(decision: volume_write(writer: writer_a(), extent: extent(label: "block-0-v2", offset: 0), observed: head_before()))
+  match volume_acknowledge(outcome: outcome, readback: CasObservedUnreadable { cause: CasUnreadableReadRefused { detail: "store unreachable" } }) {
+    VolumeAckUncertain { committed: _, readback: _ } => true
+    VolumeAcked { ack: _ } => false
+    VolumeNotAcked { outcome: _ } => false
+  }
+}
+
+test fn a_write_that_lost_the_race_is_not_acked() -> Bool {
+  let moved = head_at(generation: 8, writer: host_a, epoch: 9, latest: extent(label: "block-0-other", offset: 0))
+  let outcome = cas_decide(
+    attempt: cas_attempt(key: "volume-head", expected: expectation_at_seven(), proposed: VolumeHead { writer: host_a, writer_epoch: 9, latest: extent(label: "block-0-v2", offset: 0) }, proposed_content: content_hash_of_value(value: "block-0-v2")),
+    observed: moved,
+  )
+  match volume_acknowledge(outcome: outcome, readback: moved) {
+    VolumeNotAcked { outcome: _ } => true
+    VolumeAcked { ack: _ } => false
+    VolumeAckUncertain { committed: _, readback: _ } => false
+  }
+}
+
+fn expectation_at_seven() -> CasExpectation { ExpectSlotGeneration { generation: 7 } }
+
+// THE STALE-WRITER PROOF: A's realization was not dead, only partitioned, and resumes after B took
+// over. It presents epoch 9 against a head at epoch 11 and is fenced, reporting both epochs -- even
+// though it observed the CURRENT head generation, so a CAS precondition alone would have admitted it.
+test fn a_stale_writer_from_the_killed_host_is_fenced_and_cannot_move_the_head() -> Bool {
+  match volume_write(writer: writer_a(), extent: extent(label: "block-0-stale", offset: 0), observed: head_after_take_over()) {
+    VolumeWriteRefused { refusal: r } => match r {
+      VolumeWriterFenced { presented: p, head_epoch: h } => cas_generation_count(g: p) == 9 && cas_generation_count(g: h) == 11
+      VolumeHeadAbsent => false
+      VolumeHeadUnreadable { cause: _ } => false
+    }
+    VolumeWriteProposed { outcome: _ } => false
+  }
+}
+
+// RED for the fence: the SAME stale write, judged by the CAS precondition alone (no epoch check),
+// commits over B's head. This is the corruption the fence exists to prevent, kept executable so a
+// fence that silently stopped firing would leave the claim above as the only thing standing.
+test fn without_the_epoch_fence_the_stale_write_would_commit_over_the_successor_head() -> Bool {
+  match head_after_take_over() {
+    CasObservedUnreadable { cause: _ } => false
+    CasObservedReadable { readable: r } => match r {
+      CasReadableAbsent => false
+      CasReadablePresent { version: v } =>
+        match cas_decide(
+          attempt: cas_attempt(key: "volume-head", expected: ExpectSlotGeneration { generation: v.generation },
+            proposed: VolumeHead { writer: host_a, writer_epoch: 9, latest: extent(label: "block-0-stale", offset: 0) },
+            proposed_content: content_hash_of_value(value: "block-0-stale")),
+          observed: head_after_take_over(),
+        ) {
+          CasCommitted { committed: _ } => true
+          CasPreconditionFailed { expected: _, observed: _ } => false
+          CasStoreRefused { cause: _ } => false
+        }
+    }
+  }
+}
+
+// The live successor still writes: the fence refuses the old epoch, not every writer.
+test fn the_successor_writes_under_its_own_epoch() -> Bool {
+  match volume_write(writer: writer_b(), extent: extent(label: "block-0-v3", offset: 0), observed: head_after_take_over()) {
+    VolumeWriteProposed { outcome: o } => match o {
+      CasCommitted { committed: c } => cas_generation_count(g: c.generation) == 10
+      CasPreconditionFailed { expected: _, observed: _ } => false
+      CasStoreRefused { cause: _ } => false
+    }
+    VolumeWriteRefused { refusal: _ } => false
+  }
+}
+
+// A take-over cannot re-use or lower the epoch: a "successor" presenting the head's own epoch is fenced.
+test fn a_take_over_that_does_not_advance_the_epoch_is_fenced() -> Bool {
+  match volume_take_over(successor: VolumeWriter { owner: host_b, epoch: 9 }, observed: surviving_head()) {
+    VolumeWriteRefused { refusal: r } => match r {
+      VolumeWriterFenced { presented: _, head_epoch: _ } => true
+      VolumeHeadAbsent => false
+      VolumeHeadUnreadable { cause: _ } => false
+    }
+    VolumeWriteProposed { outcome: _ } => false
+  }
+}
+
+// Recovery never fires on a live holder: a partition is not a death.
+test fn a_live_holder_report_does_not_open_a_new_epoch() -> Bool {
+  let report = DurableHoldHolderReport { holder: host_a, generation: 9, liveness: HolderObservedLive { evidence: "srv3 boot-a answers" } }
+  match durable_hold_recovery_assess(observed: HoldSlotHeld { generation: 9, owner: host_a }, report: report) {
+    HoldRecoveryRefused { refusal: _ } => true
+    HoldRecoveryEligible { generation: _, dead_holder: _, evidence: _ } => false
+  }
+}

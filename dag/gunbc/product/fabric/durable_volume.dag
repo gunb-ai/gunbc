@@ -1,0 +1,226 @@
+module product.fabric.durable_volume
+
+// AN INSTANCE'S DURABLE VOLUME: WHO MAY WRITE ITS HEAD, WHEN A WRITE IS ACKNOWLEDGED, AND WHY A
+// WRITER FROM A KILLED HOST CANNOT LATER CORRUPT IT.
+//
+// Operator defaults 2026-10-01 (gunbc-private strategy.year_end_plan): a host failure may TERMINATE
+// an instance -- no live migration, no automatic resume -- but durable storage correctness stays a
+// first-customer requirement. So the obligation this module carries is narrow and exact: every write
+// the guest was told is durable is readable by the NEXT realization of the volume after the host that
+// acknowledged it is gone, and the realization on the dead host can never move the head again.
+//
+// NO NEW LEASE VOCABULARY (DESIGN 3b leasing row). Two existing authorities carry everything:
+//   - std.durable_exclusive_hold decides WHO is the writer. The writer hold's acquisition generation
+//     IS the volume's global writer epoch; a successor gets a new epoch only through
+//     durable_hold_recovery_assess (holder OBSERVED dead, never aged out) and then acquire.
+//   - std.durable_compare_and_set is the head itself. Every write is one CAS over the head slot, and
+//     the head's value carries the epoch of the writer that committed it.
+//
+// THE ACK POINT, as implemented here: a write is acknowledged to the guest exactly when the head CAS
+// for it has COMMITTED at the head store AND a readback of the head returns that committed version
+// (same generation, same content, same writer epoch). The ack is a VolumeWriteAck, and the only
+// function that mints one is volume_acknowledge, which requires both. "The host wrote its local page
+// cache", "the CAS request was sent" and "the CAS returned committed but the readback disagreed" are
+// NOT acks; the last is VolumeAckUncertain and the guest must not be told the write is durable.
+// The ack point is only as durable as the head store's placement is independent of the writer's
+// host: that placement is a realization fact (gunbc.fabric_storage_placement), outside this pure
+// model, and the real-host proof on srv3/srv4 is a stated, unexecuted obligation (see the witness).
+//
+// THE FENCE: a write presents the epoch its writer acquired. It is admitted only when that epoch
+// equals the epoch recorded on the current head; otherwise VolumeWriterFenced, carrying both, and the
+// head is not touched. Because every committed head records its writer's epoch and a successor's
+// first act is an epoch-advancing CAS (volume_take_over), a stale writer's epoch is strictly older
+// than the head's from that commit on -- regardless of what generation it last observed.
+
+import std.types { NonEmptyStr, Int, Bool }
+import std.content_hash { ContentHash, content_hash_equal }
+import std.durable_compare_and_set {
+  CasGeneration, ExpectSlotGeneration, ExpectSlotAbsent,
+  CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion,
+  CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableSlot,
+  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  cas_attempt, cas_decide, cas_generation_count,
+}
+import std.durable_exclusive_hold { DurableHoldOwnerRef, durable_hold_owner_equal }
+
+// One extent the guest wrote: where, and the identity of the bytes. The bytes themselves live in the
+// object store the head points into; this module decides the head, not the byte transport.
+type VolumeExtent {
+  offset: Int
+  content: ContentHash
+}
+
+// What the head slot holds. writer_epoch is the writer hold's acquisition generation; it is the
+// global epoch for the writable head.
+type VolumeHead {
+  writer: DurableHoldOwnerRef
+  writer_epoch: CasGeneration
+  latest: VolumeExtent
+}
+
+// A writer's standing as it presents a write: who it is and the epoch it acquired.
+type VolumeWriter {
+  owner: DurableHoldOwnerRef
+  epoch: CasGeneration
+}
+
+type VolumeWriteRefusal
+  = VolumeWriterFenced { presented: CasGeneration, head_epoch: CasGeneration }
+  | VolumeHeadAbsent
+  | VolumeHeadUnreadable { cause: CasUnreadableSlot }
+
+type VolumeWriteDecision
+  = VolumeWriteProposed { outcome: CasOutcome<VolumeHead> }
+  | VolumeWriteRefused { refusal: VolumeWriteRefusal }
+
+fn volume_epoch_equal(left: CasGeneration, right: CasGeneration) -> Bool {
+  cas_generation_count(g: left) == cas_generation_count(g: right)
+}
+
+fn volume_head_content(head: VolumeHead) -> ContentHash {
+  head.latest.content
+}
+
+// THE FENCE, then the CAS. The expectation is derived from the head this writer observed, never
+// supplied by the writer, so a fenced writer has no parameter through which to name a generation.
+fn volume_write(writer: VolumeWriter, extent: VolumeExtent, observed: CasSlotObservation<VolumeHead>) -> VolumeWriteDecision {
+  match observed {
+    CasObservedUnreadable { cause: c } => VolumeWriteRefused { refusal: VolumeHeadUnreadable { cause: c } }
+    CasObservedReadable { readable: r } => match r {
+      CasReadableAbsent => VolumeWriteRefused { refusal: VolumeHeadAbsent }
+      CasReadablePresent { version: v } =>
+        if !volume_epoch_equal(left: writer.epoch, right: v.value.writer_epoch) {
+          VolumeWriteRefused { refusal: VolumeWriterFenced { presented: writer.epoch, head_epoch: v.value.writer_epoch } }
+        } else {
+          let next = VolumeHead { writer: writer.owner, writer_epoch: writer.epoch, latest: extent }
+          VolumeWriteProposed {
+            outcome: cas_decide(
+              attempt: cas_attempt(
+                key: "volume-head",
+                expected: ExpectSlotGeneration { generation: v.generation },
+                proposed: next,
+                proposed_content: extent.content,
+              ),
+              observed: observed,
+            ),
+          }
+        }
+    }
+  }
+}
+
+// TAKE-OVER: the successor realization, holding a NEW writer epoch obtained through the exclusive
+// hold's recovery + acquire, commits a head that records that epoch and carries the acked extent
+// forward unchanged. From this commit on every write from the old epoch is fenced. An absent head
+// is the volume's creation and takes ExpectSlotAbsent; there is nothing to carry forward then, so
+// creation states its first extent explicitly.
+fn volume_take_over(successor: VolumeWriter, observed: CasSlotObservation<VolumeHead>) -> VolumeWriteDecision {
+  match observed {
+    CasObservedUnreadable { cause: c } => VolumeWriteRefused { refusal: VolumeHeadUnreadable { cause: c } }
+    CasObservedReadable { readable: r } => match r {
+      CasReadableAbsent => VolumeWriteRefused { refusal: VolumeHeadAbsent }
+      CasReadablePresent { version: v } =>
+        if cas_generation_count(g: successor.epoch) <= cas_generation_count(g: v.value.writer_epoch) {
+          VolumeWriteRefused { refusal: VolumeWriterFenced { presented: successor.epoch, head_epoch: v.value.writer_epoch } }
+        } else {
+          let next = VolumeHead { writer: successor.owner, writer_epoch: successor.epoch, latest: v.value.latest }
+          VolumeWriteProposed {
+            outcome: cas_decide(
+              attempt: cas_attempt(
+                key: "volume-head",
+                expected: ExpectSlotGeneration { generation: v.generation },
+                proposed: next,
+                proposed_content: v.value.latest.content,
+              ),
+              observed: observed,
+            ),
+          }
+        }
+    }
+  }
+}
+
+fn volume_create(writer: VolumeWriter, first: VolumeExtent) -> CasOutcome<VolumeHead> {
+  cas_decide(
+    attempt: cas_attempt(
+      key: "volume-head",
+      expected: ExpectSlotAbsent,
+      proposed: VolumeHead { writer: writer.owner, writer_epoch: writer.epoch, latest: first },
+      proposed_content: first.content,
+    ),
+    observed: CasObservedReadable { readable: CasReadableAbsent },
+  )
+}
+
+// THE ACK POINT. Three arms: durable (commit + agreeing readback), not acknowledged (the CAS did not
+// commit -- lost race or store refusal, the write did not happen), and uncertain (the CAS reported
+// commit but the readback does not show it, or could not be taken). Only the first may be reported
+// to the guest as durable; uncertain is never rounded to either neighbour.
+type VolumeWriteAck {
+  generation: CasGeneration
+  writer_epoch: CasGeneration
+  extent: VolumeExtent
+}
+
+type VolumeAckOutcome
+  = VolumeAcked { ack: VolumeWriteAck }
+  | VolumeNotAcked { outcome: CasOutcome<VolumeHead> }
+  | VolumeAckUncertain { committed: CasGeneration, readback: CasSlotObservation<VolumeHead> }
+
+fn volume_readback_confirms(committed: CasSlotVersion<VolumeHead>, readback: CasSlotObservation<VolumeHead>) -> Bool {
+  match readback {
+    CasObservedUnreadable { cause: _ } => false
+    CasObservedReadable { readable: r } => match r {
+      CasReadableAbsent => false
+      CasReadablePresent { version: v } =>
+        cas_generation_count(g: v.generation) == cas_generation_count(g: committed.generation)
+          && volume_epoch_equal(left: v.value.writer_epoch, right: committed.value.writer_epoch)
+          && v.value.latest.offset == committed.value.latest.offset
+          && content_hash_equal(left: v.value.latest.content, right: committed.value.latest.content)
+          && durable_hold_owner_equal(left: v.value.writer, right: committed.value.writer)
+    }
+  }
+}
+
+fn volume_acknowledge(outcome: CasOutcome<VolumeHead>, readback: CasSlotObservation<VolumeHead>) -> VolumeAckOutcome {
+  match outcome {
+    CasCommitted { committed: c } =>
+      if volume_readback_confirms(committed: c, readback: readback) {
+        VolumeAcked { ack: VolumeWriteAck { generation: c.generation, writer_epoch: c.value.writer_epoch, extent: c.value.latest } }
+      } else {
+        VolumeAckUncertain { committed: c.generation, readback: readback }
+      }
+    CasPreconditionFailed { expected: _, observed: _ } => VolumeNotAcked { outcome: outcome }
+    CasStoreRefused { cause: _ } => VolumeNotAcked { outcome: outcome }
+  }
+}
+
+// A later realization's read of the volume: does the head it reads carry the acked extent? This is
+// what "another realization reads the acked data" means at this layer.
+//
+// SCOPE, DECLARED: the head carries the LATEST extent only, so this read establishes the acked write
+// is present while it is still the latest. A head over many extents is the object chain of
+// std.fabric_storage (links the store can see); binding the volume head to that chain is the next
+// rung, and until then a later write to another offset makes an earlier ack unreadable HERE --
+// reported as VolumeAckedDataLost, never as present.
+type VolumeAckedReadOutcome
+  = VolumeAckedDataPresent { head_generation: CasGeneration }
+  | VolumeAckedDataLost { ack: VolumeWriteAck }
+  | VolumeHeadUnreadableAtRead { cause: CasUnreadableSlot }
+
+fn volume_read_acked(ack: VolumeWriteAck, observed: CasSlotObservation<VolumeHead>) -> VolumeAckedReadOutcome {
+  match observed {
+    CasObservedUnreadable { cause: c } => VolumeHeadUnreadableAtRead { cause: c }
+    CasObservedReadable { readable: r } => match r {
+      CasReadableAbsent => VolumeAckedDataLost { ack: ack }
+      CasReadablePresent { version: v } =>
+        if cas_generation_count(g: v.generation) >= cas_generation_count(g: ack.generation)
+          && v.value.latest.offset == ack.extent.offset
+          && content_hash_equal(left: v.value.latest.content, right: ack.extent.content) {
+          VolumeAckedDataPresent { head_generation: v.generation }
+        } else {
+          VolumeAckedDataLost { ack: ack }
+        }
+    }
+  }
+}
