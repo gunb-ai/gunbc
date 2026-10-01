@@ -14405,6 +14405,11 @@ fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: 
   } else { none }
 }
 
+// A ONE-FIELD ANONYMOUS RECORD LITERAL MATCHING TWO OR MORE STRUCTS REFUSES. The literal names no
+// type, so any struct chosen -- or the bare field value, which the single-field arm used to emit --
+// is a guess. It refuses exactly as the multi-field arm does; the remedy is a nominal type on the
+// literal. Found when std.algebra TotalOrder gained the same single `compare` field as
+// extdeps.version VersionScheme and `{ compare: f }` silently emitted `f`.
 fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: String?, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let qualified_name = match struct_name {
@@ -14447,12 +14452,6 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                     } else { struct_lit }
                   } else { fval0 }
                 Absent =>
-                  // TWO OR MORE structs share this one field name: the literal names no type, so
-                  // any struct chosen here -- or the bare field value, which is what this arm used
-                  // to emit -- is a guess. Refuse exactly as the multi-field arm below does; the
-                  // remedy is a nominal type on the literal. (Found when std.algebra TotalOrder
-                  // gained the same single `compare` field as extdeps.version VersionScheme and
-                  // `{ compare: f }` silently emitted `f`.)
                   if struct_candidates_by_field_names(field_names: single_field_names, type_summaries: emit_info.type_summaries) |> count > 1 {
                     "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")"
                   } else { fval0 }
