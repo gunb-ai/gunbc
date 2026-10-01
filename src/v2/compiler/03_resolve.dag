@@ -1035,22 +1035,37 @@ fn lookup_symbol_index_atom_identity(
 // control (`Bool` has no child `v`), and the positive `Rec.v` specimen needs declaration grafting
 // as well as this projection and is owned by those lanes. This check only closes the fail-open
 // arm beside the projection.
-fn qualified_head_bound_on_chain(ctx: ResolveContext, path: QualifiedName) -> Outcome<Bool> {
+// THE DECISION BETWEEN A DECLARATION PATH AND A VALUE PROJECTION, CARRIED AT THE GRAIN THAT DECIDES IT.
+// This answered Bool, collapsing BoundInFrame and BoundAtRoot to `true`, and that Bool was the SOLE
+// discriminator its caller used to choose between reading a dotted path as a field projection and reading
+// it as a qualified declaration name. The two questions are different: "is this head bound anywhere on the
+// chain" is not "is this head a lexical value a field can be projected from". A module-level name bound at
+// the root is a DECLARATION or a namespace segment, so a path THROUGH it is a qualified name.
+//
+// NO NATIVE RECEIPT IS CLAIMED FOR THIS CHANGE, and an earlier revision of this header claimed one that
+// was false. It attributed the native refusal of v2.test.parse.expression_bodied_fn_decl_parse to a
+// fully-qualified annotation being read as nested field projections through this collapsed Bool. That was
+// read off a diagnostic CHAIN HEAD and was wrong twice: the native eight measured identically before and
+// after the change, and the actual cause entry in that chain anchors a genuine two-edge field projection
+// (`e.target`) whose base is a fold-step binder -- a subject this function never sees. The specimen is an
+// inference-side join, not a resolution one.
+//
+// WHAT JUSTIFIES THE CHANGE IS THE READING ITSELF, which needs no incident: one Bool cannot carry a
+// discriminator its consumer must make between two readings, and a consumer forced to re-derive what it was
+// handed is DESIGN section 5's validation standing where construction was available. The controls in
+// v2.test.claim.field_projection.field_projection_stages establish the rule; no claim is made here about the
+// eight, about wall 3d, or about any native refusal consuming this arm.
+//
+// WHY THE ANSWER IS ScopeBinding AND NOT A SECOND Bool. lookup_chain already computes the distinction and
+// already returns it; collapsing it here and then trying to recover it downstream is what forced the
+// earlier repair attempt into the wrong link -- a `projects_fields` gate inside the projection builder,
+// which could only turn the case into an unbound refusal because the declaration door is in the CALLER and
+// not reachable from there. Carrying the value this function was handed is the construction; re-deriving it
+// later was the validation standing where construction was available.
+fn qualified_head_scope_binding(ctx: ResolveContext, path: QualifiedName) -> Outcome<ScopeBinding> {
   match path {
-    Cons { head: head, tail: _ } =>
-      match lookup_chain(s: ctx.scope, name: head) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: found, diagnostics: d } =>
-          Accepted {
-            value: (match found {
-              BoundInFrame { canonical: _ } => true
-              BoundAtRoot { canonical: _ } => true
-              ScopeUnbound => false
-            }),
-            diagnostics: d
-          }
-      }
-    Empty => Accepted { value: false, diagnostics: None }
+    Cons { head: head, tail: _ } => lookup_chain(s: ctx.scope, name: head)
+    Empty => Accepted { value: ScopeUnbound, diagnostics: None }
   }
 }
 
@@ -1103,11 +1118,7 @@ fn resolve_bound_head_projection(
             )
           }
         Cons { head: head_segment, tail: field_segments } =>
-          match resolve_projection_base(
-            ctx: ctx,
-            head_segment: head_segment,
-            projects_fields: match field_segments { Empty => false  Cons { head: _, tail: _ } => true }
-          ) {
+          match resolve_projection_base(ctx: ctx, head_segment: head_segment) {
             Absent =>
               Rejected {
                 diagnostics: rejected_with_pending(
@@ -1131,32 +1142,22 @@ fn resolve_bound_head_projection(
   }
 }
 
-// A ROOT BINDING RESOLVES A NAME BUT MAY NOT BE PROJECTED THROUGH, AND THE TWO CASES ARE DISTINGUISHED BY
-// WHETHER THERE ARE FIELDS. This arm serves two shapes that look alike at the head: a single-segment name
-// bound at the module root (`Box` in `fn f(b: Box)`), where there is nothing to project and the head IS the
-// answer; and a dotted path whose head is a LOCAL binder (`b.tree` where `b` is a parameter), which is a
-// field projection and is why this arm exists -- it is what dissolved the earlier
-// AmbiguousQualifiedHeadShadowsAbsolute guard.
+// THE BASE OF A PROJECTION IS WHATEVER THE HEAD SEGMENT IS BOUND TO, AND THIS FUNCTION NO LONGER DECIDES
+// WHETHER A PROJECTION IS THE RIGHT READING AT ALL. That decision is resolve_dotted_path_reading's, made
+// from the head's ScopeBinding and the corpus's declarations before this is ever called, so by the time a
+// head segment arrives here the caller has already committed to the projection reading and this function's
+// only job is to produce the base node.
 //
-// It admitted BoundAtRoot in BOTH shapes, and that is the defect: a name bound at the module root is a
-// DECLARATION or a namespace segment, so a dotted path THROUGH it is a qualified name, not a projection.
-// MEASURED: the head segment of a module path (`v2` in v2.std.live_tree.LiveTreeDisposition) became a
-// projection base and the remaining segments became nested field projections, so infer asked a COPRODUCT
-// for its fields and all eight of v2.test.parse.expression_bodied_fn_decl_parse refused natively with
-// infer_reason_projection_receiver_declares_no_fields -- the chain walking "v2", "live_tree",
-// "LiveTreeDisposition". Removing BoundAtRoot outright was also wrong, and the controls said so
-// immediately: it is how a plain root-bound ANNOTATION resolves, so a module with a record type and no
-// projection at all stopped inferring.
-//
-// So the gate is projects_fields: with no field segments this resolves a name and admits either binding;
-// with field segments it is building a projection and the base must be a lexical binder. lookup_chain
-// already carries that distinction (ScopeBinding), and it is the same one the value-binder admission uses
-// to decide what hiding means.
-fn resolve_projection_base(
-  ctx: ResolveContext,
-  head_segment: Node,
-  projects_fields: Bool
-) -> Optional<Node> {
+// A `projects_fields` GATE STOOD HERE AND WAS THE WRONG LINK, recorded because the reasoning that put it
+// here is the reasoning worth not repeating. It refused a root-bound head whenever field segments followed,
+// which looks like the same rule the caller now applies and is not: refusing HERE can only produce an
+// unbound-symbol diagnostic, because the declaration-path door is in the caller and unreachable from this
+// function, so it could only ever convert one wrong answer into another. The native eight measured
+// identically with it and without it, which is consistent with the gate being inert on that path AND with
+// the path never having been this function's subject at all; the later receipt established the second. Its
+// deletion is therefore a correctness repair on this function's own contract, claiming nothing about the
+// eight.
+fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<Node> {
   match head_segment.kind {
     TypeNode { connective: Atom { identity: name } } =>
       match lookup_chain(s: ctx.scope, name: name) {
@@ -1168,13 +1169,9 @@ fn resolve_projection_base(
                 value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id)
               )
             BoundAtRoot { canonical: canonical } =>
-              if projects_fields {
-                optional_absent()
-              } else {
-                optional_present(
-                  value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id)
-                )
-              }
+              optional_present(
+                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id)
+              )
             ScopeUnbound => optional_absent()
           }
       }
@@ -1202,60 +1199,130 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: path, diagnostics: pending } =>
       if length(xs: path) > 1 {
-        match qualified_head_bound_on_chain(ctx: ctx, path: path) {
+        match qualified_head_scope_binding(ctx: ctx, path: path) {
           Rejected { diagnostics: r } =>
             optional_present(value: Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: r) })
-          Accepted { value: head_bound, diagnostics: chain_pending } =>
-        if head_bound {
-          optional_present(
-            value: resolve_bound_head_projection(
-              ctx: ctx,
-              n: n,
-              pending: diagnostics_merge(outer: pending, inner: chain_pending)
-            )
-          )
-        } else {
-        match symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path) {
-          Empty =>
-              optional_present(
-                value: Rejected {
-                  diagnostics: rejected_with_pending(
-                    pending: diagnostics_merge(outer: pending, inner: chain_pending),
-                    rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
-                  )
-                }
+          Accepted { value: head_binding, diagnostics: chain_pending } =>
+            optional_present(
+              value: resolve_dotted_path_reading(
+                ctx: ctx,
+                n: n,
+                path: path,
+                head_binding: head_binding,
+                pending: diagnostics_merge(outer: pending, inner: chain_pending)
               )
-          Cons { head: candidate, tail: rest } =>
-            match rest {
-              Empty =>
-                optional_present(
-                  value: resolve_atom_bound(
-                    ctx: ctx,
-                    n: n,
-                    path: candidate.path,
-                    pending: diagnostics_merge(outer: pending, inner: chain_pending)
-                  )
-                )
-              Cons { head: _, tail: _ } =>
-                optional_present(
-                  value: Rejected {
-                    diagnostics: rejected_with_pending(
-                      pending: diagnostics_merge(outer: pending, inner: chain_pending),
-                      rejected: ambiguous_symbol_diagnostics(
-                        n: n,
-                        class: AmbiguousAtBindingPosition {
-                          candidates: Cons { head: candidate, tail: rest }
-                        }
-                      )
-                    )
-                  }
-                )
-            }
-        }
-        }
+            )
         }
       } else {
         optional_absent()
+      }
+  }
+}
+
+// BOTH READINGS OF A DOTTED PATH, DECIDED IN ONE PLACE, which is what makes this a decision rather than a
+// gate. A path of two or more segments is either a FIELD PROJECTION off a value or a QUALIFIED DECLARATION
+// NAME, and the discriminator is the head's ScopeBinding together with whether the corpus actually declares
+// the path.
+//
+// BoundInFrame IS THE PROJECTION, UNCONDITIONALLY, and that is Section 13's chain-wins rule unchanged: a
+// head the author bound lexically answers with that binder, and the absolute candidates are not consulted
+// at all. A frame binder shadowing a module path is the author's own name winning, which is the rule.
+//
+// ScopeUnbound IS THE DECLARATION PATH, with no fallback: there is no value to project from, so an
+// undeclared path is an unbound name and says so.
+//
+// BoundAtRoot READS AS A DECLARATION PATH, which is the arm that previously had no decision at all. A name
+// bound at the module root is a declaration or a namespace segment, so a path THROUGH it is a qualified
+// name; when the corpus declares no such name the answer is an unbound symbol with its own locus, and NOT a
+// re-reading of the path as a projection -- see resolve_declared_path_reading for why that fallback is
+// forbidden.
+//
+// A ROOT-BOUND VALUE PROJECTED THROUGH IS A REAL FORM THIS DOES NOT YET SERVE. `data cfg: Config = ...`
+// followed by `cfg.field` is legitimate source, and the fail-closed cut above does not legislate that
+// module-level values may never be projected -- it declines to guess which reading a path takes when the
+// declaration reading fails. That frontier is held by
+// v2.test.claim.field_projection.field_projection_stages
+// fps_a_root_bound_data_value_is_not_yet_projectable, written AT THE REFUSAL so it flips the moment the form
+// is served; its head is not in the scope chain at all, so closing it means making module-level value
+// bindings answerable there rather than adding an arm here.
+//
+// FIELD INFERENCE IS NOT RELAXED BY ANY OF THIS. Committing to the projection reading commits to the SHAPE
+// only; whether the field exists on the receiver's type is still refused later by the stage that can see
+// the type, exactly as resolve_bound_head_projection's own header says. A path admitted here as a
+// projection off a fieldless receiver still refuses at infer -- this change moves which paths are READ as
+// projections, and changes nothing about what a projection must satisfy.
+fn resolve_dotted_path_reading(
+  ctx: ResolveContext,
+  n: Node,
+  path: QualifiedName,
+  head_binding: ScopeBinding,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match head_binding {
+    BoundInFrame { canonical: _ } => resolve_bound_head_projection(ctx: ctx, n: n, pending: pending)
+    BoundAtRoot { canonical: _ } => resolve_declared_path_reading(ctx: ctx, n: n, path: path, pending: pending)
+    ScopeUnbound => resolve_declared_path_reading(ctx: ctx, n: n, path: path, pending: pending)
+  }
+}
+
+// A DECLARATION PATH THAT NAMES NOTHING REFUSES, AND MAY NOT WIDEN TO THE PROJECTION READING. This arm
+// held a fallback -- no candidate for the path, so re-read it as a field projection off the root binding --
+// and that fallback is the absorbing arm DESIGN section 5 forbids, written into the very repair that was
+// meant to remove a misreading.
+//
+// WHY A FALLBACK IS FORBIDDEN HERE, STATED AS THE RULE AND NOT AS AN INCIDENT. When the declaration
+// reading cannot be established, the tempting arm substitutes the other reading, so nothing is ever
+// reported as unresolvable. That is DESIGN section 5's absorbing fallback: the precise answer was
+// unavailable and the arm widened to a superset reading, which both fabricates a derivation the source does
+// not support and destroys the signal that the declaration evidence was missing. An earlier revision of
+// this change shipped exactly that fallback and then attributed a native refusal to it; the attribution was
+// falsified by measurement, and the fallback was wrong independently of whether anything consumed it.
+//
+// SO THE ARM REFUSES, and BoundAtRoot and ScopeUnbound reach the same reading: a path of two or more
+// segments whose head is not a LEXICAL binder is a declaration name, and if the corpus declares no such
+// name that is an unbound symbol with its own locus. Only BoundInFrame projects. The single-segment
+// root-bound annotation that made deleting BoundAtRoot wrong earlier never arrives here -- the caller's
+// length > 1 guard keeps it out -- so this costs that form nothing.
+fn resolve_declared_path_reading(
+  ctx: ResolveContext,
+  n: Node,
+  path: QualifiedName,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path) {
+    Empty =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+        )
+      }
+    Cons { head: candidate, tail: rest } =>
+      resolve_declared_path_candidates(ctx: ctx, n: n, candidate: candidate, rest: rest, pending: pending)
+  }
+}
+
+// ONE CANDIDATE IS THE ANSWER AND SEVERAL ARE AMBIGUOUS. Factored out because both arms above reach it and
+// a second copy of an ambiguity refusal is the duplicated authority DESIGN section 2 prices -- the two arms
+// differ in what they do with an EMPTY candidate list, not in how they read a non-empty one.
+fn resolve_declared_path_candidates(
+  ctx: ResolveContext,
+  n: Node,
+  candidate: LexicalBindingCandidate,
+  rest: FreeMonoid<LexicalBindingCandidate>,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match rest {
+    Empty => resolve_atom_bound(ctx: ctx, n: n, path: candidate.path, pending: pending)
+    Cons { head: _, tail: _ } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: ambiguous_symbol_diagnostics(
+            n: n,
+            class: AmbiguousAtBindingPosition { candidates: Cons { head: candidate, tail: rest } }
+          )
+        )
       }
   }
 }

@@ -521,12 +521,14 @@ fn fps_root_data_projection_source() -> Outcome<ResolvedTree> {
   fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\ndata cfg: Box = Box { tree: 1 }\n\nfn f() -> Int {\n  cfg.tree\n}\n")
 }
 
-// MEASURED, AND IT IS NOT YET SUPPORTED -- BY A ROUTE THIS REPAIR NEITHER CAUSED NOR FIXED. `cfg.tree`
-// where `cfg` is a module-level `data` value refuses at resolve with resolve_reason_unbound_symbol.
+// MEASURED, AND IT IS NOT YET SUPPORTED -- BY A ROUTE THE DOTTED-PATH DECISION NEITHER CAUSED NOR FIXED.
+// `cfg.tree` where `cfg` is a module-level `data` value refuses at resolve with resolve_reason_unbound_symbol.
 // Receipt, taken in a detached worktree so the two heads are the only variable: the SAME reason at
-// 2bd1f0ded41 (before the BoundAtRoot gate) and at bd9d3d3bb5c (after it). So the gate did not remove a
-// working capability -- the head segment is not bound in the scope chain at all, upstream of the arm that
-// decides projection bases, so it was Absent before the gate and is Absent after it.
+// 2bd1f0ded41 and at bd9d3d3bb5c. The cause is upstream of every arm that chooses a reading -- the head
+// segment is not in the scope chain AT ALL, so it answers ScopeUnbound, and the declaration reading finds no
+// candidate for the path `cfg.tree`. It is therefore a THIRD form, distinct from the two
+// resolve_dotted_path_reading decides between, and closing it means making module-level value bindings
+// answerable on the chain rather than adding an arm here.
 //
 // THE ROW IS WRITTEN AT THE REFUSAL, NOT AT THE CAPABILITY, so it cannot sit green while the thing it names
 // stays broken, and it flips the moment a root-bound value becomes projectable. It is asserted BY REASON:
@@ -540,5 +542,81 @@ test fn fps_a_root_bound_data_value_is_not_yet_projectable_holds() -> Bool {
   match fps_root_data_projection_source() {
     Rejected { diagnostics: r } => r.head.reason == ^resolve_reason_unbound_symbol
     Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// BOTH READINGS OF A DOTTED PATH, QUALIFIED TOGETHER. v2.compiler.resolve resolve_dotted_path_reading
+// decides between a qualified DECLARATION NAME and a value FIELD PROJECTION from the head's ScopeBinding,
+// and the two forms are qualified in one place because the defect was never in either arm -- it was in a
+// discriminator that could not tell them apart. A pair of rows is what holds that: either one alone is
+// satisfied by a resolver that always picks its own arm.
+// TWO MODULES, AND A MULTI-SEGMENT MODULE NAME, because the native subject is neither same-module nor
+// two-segment: it is `v2.std.live_tree.LiveTreeDisposition`, a FOUR-segment path into ANOTHER module. A
+// first version of this row used `p.Box` inside module `p` and passed, which is why it is written out here
+// -- a same-module two-segment path exercises a different lookup than a cross-module one, so that row was
+// green about a property it never tested. The fixture now carries the subject's actual shape.
+fn fps_two_module_assemble(provider: String, consumer: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: provider, fidelity: Lossless },
+        artifact: fps_provider_artifact,
+        compilation_unit: ^field_projection_provider_cu,
+        source_root: V2Tree
+      },
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: consumer, fidelity: Lossless },
+          artifact: fps_artifact,
+          compilation_unit: ^field_projection_stages_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+data fps_provider_artifact: Artifact = Artifact {
+  kind: SourceFile, id: ^fps_provider_artifact, file_path: "src/v2/pilot/fps_provider.dag"
+}
+
+fn fps_qualified_declaration_path_source() -> Outcome<ResolvedTree> {
+  fps_two_module_assemble(
+    provider: "module a.b.c\n\ntype Box {\n  tree: Int\n}\n",
+    consumer: "module p\n\nimport a.b.c { Box }\n\nfn f(b: a.b.c.Box) -> Int {\n  b.tree\n}\n"
+  )
+}
+
+fn fps_frame_binder_projection_source() -> Outcome<ResolvedTree> {
+  fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\nfn f(b: Box) -> Int {\n  b.tree\n}\n")
+}
+
+// (1) A QUALIFIED DECLARATION PATH RESOLVES. A four-segment cross-module path names a declaration the
+// corpus carries, so the head segment being bound at root must NOT make the path a projection of a field off
+// that head. NO NATIVE SUBJECT IS CLAIMED FOR THIS ROW: an earlier revision described it as the native
+// refusal in miniature, and that attribution was falsified -- the eight's actual cause entry anchors a real
+// two-edge projection off a fold-step binder, which resolution never sees. This row stands on the rule.
+test fn fps_a_qualified_declaration_path_resolves_holds() -> Bool {
+  match fps_qualified_declaration_path_source() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (2) AND A FRAME BINDER IS STILL PROJECTED THROUGH. `b.tree` off a parameter is the form the declaration
+// reading must not swallow, and it is why the decision is BoundInFrame-first rather than
+// declaration-path-first for every head: Section 13's chain-wins rule says the name the author bound
+// lexically answers, and the absolute candidates are not consulted.
+//
+// THE PAIR IS THE EVIDENCE, NOT EITHER ROW. A resolver that read every dotted path as a declaration passes
+// (1) and reds (2); one that read every dotted path as a projection passes (2) and reds (1). Only a real
+// discriminator passes both, which is the discriminating red the single-arm controls could not supply.
+test fn fps_a_frame_binder_is_still_projected_through_holds() -> Bool {
+  match fps_frame_binder_projection_source() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
