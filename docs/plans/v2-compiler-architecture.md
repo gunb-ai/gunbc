@@ -7,6 +7,7 @@
 
 > **Status: the top-down design authority for the v2 compiler, one level below DESIGN.md; established 2026-10-01 (operator direction, session wonderful-feynman, on the second review of #12872 finding that the compiler's defining law was housed inside a program-runtime provisioning design). No implementation lands from this document.** It owns the universal law its children specialize, the pipeline those children sit in, the role of lenses, and the plan document graph that joins them. DESIGN.md stays the axioms and their consequences; this document is where 'what it means to author a v2 program' is stated once. The children it governs are listed under the derived heading above; the relation is authored once in `gunbc.plan_governance` and nowhere else.
 > **Operator intention carried (the operator's words, 2026-09-30 to 2026-10-01).** 'If you forget to model this, the interface will not let you use it, at compile time.' 'The developer tells us what we do NOT know, versus the developer specifying the entire world repeatedly.' 'For materialization I want to tell the developer when we cannot cache something, or do not know how -- this is the opposite of normal programming.' 'With CLI args, the flags you pass are actually decisions or policy that can be modeled or derived from other inputs; only ask the developer for what is truly irreducible.' 'If we want to coerce Rust to Python, the compiler should do everything within its power and then stop when it is unaware or needs a decision from the user.' 'I want as much to be derived from the structure as physically possible.'
+> **Review of 14f36a479f folded in (2026-10-01, request changes; every finding accepted).** The pipeline placed selection after the closure that depends on it; section 3 now fixes static selection and binding BEFORE completion, as inputs that decide which holes exist, and names what follows the seal as the realization of choices already made. The over-asking ratchet is qualified: avoidable over-asking under a fixed contract ratchets down, while newly modeled behavior can legitimately expose new residuals. The plan-governance lookup silently took the first row for a child with two parents, letting a reordered cycle pass the walk and a banner disagree with two children lists; uniqueness is now admitted before lookup, walk and projection, with duplicate-parent and reordered-cycle controls in the witness. The environmental specialization's provenance rung and its fsmonitor residual are corrected there.
 
 ## 1. The law: compiler completion
 
@@ -25,7 +26,7 @@ the fact is the feature's own input -> residual addressed to the caller
 the fact was never modeled     -> residual addressed to the upstream module
 ```
 
-The review question that follows from the law, asked of every interface: why is the developer supplying this -- is it actually residual? Its two measured defects: OVER-ASKING, a residual addressed to a call site that structure or a root could have answered, is a counted modeling defect with a location, and the residual population per interface may only shrink as modeling grows; UNDER-ASKING, a completion that fills a hole from ambient state -- PATH, a framework default device, 'probably apt', a best-effort cast -- is fail-open and is refused by construction, because no route reads ambient state. Silence means fully derived; a residual means genuinely unknown; nothing exists between them.
+The review question that follows from the law, asked of every interface: why is the developer supplying this -- is it actually residual? Its two measured defects: OVER-ASKING, a residual addressed to a call site that structure or a root could have answered, is a counted modeling defect with a location, and, under a FIXED contract, avoidable over-asking only ratchets down -- a newly modeled behavior (an overlooked child spawn) or a newly discovered second candidate can legitimately expose a residual that did not exist before, which is the model growing, not over-asking; UNDER-ASKING, a completion that fills a hole from ambient state -- PATH, a framework default device, 'probably apt', a best-effort cast -- is fail-open and is refused by construction, because no route reads ambient state. Silence means fully derived; a residual means genuinely unknown; nothing exists between them.
 
 ### 1.1 Completion is a partition of routes by type, never a search
 
@@ -68,16 +69,23 @@ ingested core structure (Node + Edge, six behaviors)
    |  resolve and infer (v2.compiler resolve, name_resolve, normalize, infer; v2.std.inhabitance)
    v
 resolved and inferred program
-   |  LAWFUL COMPLETION: every uniquely derivable operand supplied; every other hole a typed residual
+   |  STATIC SELECTION AND BINDING -- inputs to completion, never outputs of it: the realization selected for
+   |  each interface (git CLI or native SCM), the root's provider families and policies, the bound observers.
+   |  These decide WHICH holes exist, so they are fixed here and nothing after sealing may add a dependency.
+   v
+   |  LAWFUL COMPLETION: every uniquely derivable operand supplied, transitively through the selected
+   |  providers' own prerequisites; every other hole a typed residual
    v
 completed program, or an open one
    |  CLOSURE at an executable or deployment root: residuals addressed beyond the caller must be empty
    v
 closed program with derived DependencyRelations
-   |  demand derivation and minimization (D13; v2.std.demand_engine seals here)
+   |  demand derivation and minimization (D13); v2.std.demand_engine SEALS here
    v
 sealed demand graph
-   |  selected realization, materialization, placement, grants, leases (v2.std.materialize, std.materialization_ladder)
+   |  REALIZATION OF THE ALREADY-SELECTED PLAN: lowering, scheduling, placement acquisition, lease and grant
+   |  redemption, store lookups (v2.std.materialize, std.materialization_ladder) -- the execution of choices
+   |  already made, never a new choice
    v
 evaluation (v2.compiler eval) or target emission (v2.compiler emit, translate, target carriers; extdeps.languages rows read backward)
    |
@@ -93,7 +101,7 @@ lenses run across the arrows:
    dependency  <-> interaction     (v2.lens.dependency_fidelity)
 ```
 
-Where the environmental specialization sits, read off the pipeline: an ordinary call omits a `MaterializedProgram`; completion derives the environmental target; the root's blueprint closes it; the DependencyRelations are emitted; the demand engine runs the resulting closed graph. The demand engine does not own the omission or the completion law. It consumes their product.
+Selection sits BEFORE completion because selection decides which holes exist: choosing git-as-CLI over native SCM is what makes a MaterializedProgram hole appear at all, and choosing apt over an image is what decides the prerequisite subtree; a choice that could introduce a dependency after sealing would be a graph the engine never saw. What follows the seal is the realization of a plan whose every choice is already fixed. Where the environmental specialization sits, read off the pipeline: an ordinary call omits a `MaterializedProgram`; completion derives the environmental target; the root's blueprint closes it; the DependencyRelations are emitted; the demand engine runs the resulting closed graph. The demand engine does not own the omission or the completion law. It consumes their product.
 
 ## 4. Stages, their authorities today, and where the law holds
 

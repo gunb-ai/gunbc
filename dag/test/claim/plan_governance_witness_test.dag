@@ -6,7 +6,7 @@ import gunbc.plan_registry { all_plans }
 import gunbc.plan_governance {
   PlanGovernance, CompilerStageAuthority, CompilerStageSpecialization,
   plan_governance_rows, compiler_architecture_root_slug,
-  plan_governance_of, governance_reaches_root_from, governance_rows_all_reach_root,
+  plan_governance_of, governance_reaches_root_from, governance_rows_all_reach_root, governance_rows_unique,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -69,4 +69,38 @@ test fn an_orphan_does_not_reach_the_root() -> Bool {
 test fn a_two_step_chain_reaches_the_root() -> Bool {
   governance_reaches_root_from(rows: rooted_chain_rows(), slug: "leaf")
     && governance_rows_all_reach_root(rows: rooted_chain_rows())
+}
+
+// THE DUPLICATE-PARENT CONTROL (review of 14f36a479f). Every endpoint is registered-looking and the
+// first row of the duplicated child reaches the root, so a lookup that took the first row would pass
+// the walk and hide the cycle through the second row. Uniqueness is admitted first, so this refuses.
+fn duplicate_parent_rows() -> List<PlanGovernance> {
+  [
+    PlanGovernance { plan_slug: "child", governed_by_slug: compiler_architecture_root_slug, role: CompilerStageSpecialization, stage: "x" },
+    PlanGovernance { plan_slug: "child", governed_by_slug: "other", role: CompilerStageSpecialization, stage: "x" },
+    PlanGovernance { plan_slug: "other", governed_by_slug: "child", role: CompilerStageAuthority, stage: "x" },
+  ]
+}
+
+// THE SAME ROWS WITH THE TWO CHILD ROWS SWAPPED: the verdict must not depend on order.
+fn duplicate_parent_rows_reordered() -> List<PlanGovernance> {
+  [
+    PlanGovernance { plan_slug: "child", governed_by_slug: "other", role: CompilerStageSpecialization, stage: "x" },
+    PlanGovernance { plan_slug: "child", governed_by_slug: compiler_architecture_root_slug, role: CompilerStageSpecialization, stage: "x" },
+    PlanGovernance { plan_slug: "other", governed_by_slug: "child", role: CompilerStageAuthority, stage: "x" },
+  ]
+}
+
+test fn the_live_rows_are_unique_per_child() -> Bool {
+  governance_rows_unique(rows: plan_governance_rows)
+}
+
+test fn a_duplicate_parent_is_refused_even_when_its_first_row_reaches_the_root() -> Bool {
+  (governance_rows_unique(rows: duplicate_parent_rows()) == false)
+    && (governance_rows_all_reach_root(rows: duplicate_parent_rows()) == false)
+}
+
+test fn reordering_the_duplicate_rows_does_not_change_the_verdict() -> Bool {
+  (governance_rows_all_reach_root(rows: duplicate_parent_rows_reordered()) == false)
+    && (governance_rows_all_reach_root(rows: duplicate_parent_rows()) == governance_rows_all_reach_root(rows: duplicate_parent_rows_reordered()))
 }

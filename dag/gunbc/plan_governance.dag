@@ -13,6 +13,14 @@ import std.types { String, Bool, List }
 //
 // A plan with no row is not a compiler plan: the registry still inventories it, this relation says
 // nothing about it. The compiler root has no row and no governor; every other row must reach it.
+//
+// UNIQUENESS IS ADMITTED BEFORE ANY LOOKUP OR PROJECTION (review of 14f36a479f): a child with two
+// rows has two parents, and a lookup that silently took the first row would let a cycle through the
+// second one pass the walk, would render a banner naming one parent while both parents' children
+// lists claimed the child, and would change its answer when the rows were reordered. So the lookup
+// answers with a verdict, a duplicated slug answers NO ROW rather than the first row, the walk and
+// the projection both refuse on it, and the witness carries the duplicate-parent and
+// reordered-cycle controls beside the simple cycle and orphan ones.
 
 type CompilerPlanRole
   = CompilerStageAuthority
@@ -53,26 +61,62 @@ fn plan_governance_role_label(role: CompilerPlanRole) -> String {
   }
 }
 
-fn governance_row_in(rows: List<PlanGovernance>, slug: String) -> PlanGovernance? {
-  fold(rows, init: none, f: (acc, r) =>
-    match acc {
-      Present { value: found } => Present { value: found }
-      none => if r.plan_slug == slug { Present { value: r } } else { none }
+type GovernanceLookup
+  = GovernanceNoRow
+  | GovernanceOneRow { row: PlanGovernance }
+  | GovernanceDuplicateRows { slug: String }
+
+fn governance_lookup(rows: List<PlanGovernance>, slug: String) -> GovernanceLookup {
+  fold(rows, init: GovernanceNoRow, f: (acc, r) =>
+    if r.plan_slug == slug {
+      match acc {
+        GovernanceNoRow => GovernanceOneRow { row: r }
+        GovernanceOneRow { row: _ } => GovernanceDuplicateRows { slug: slug }
+        GovernanceDuplicateRows { slug: s } => GovernanceDuplicateRows { slug: s }
+      }
+    } else {
+      acc
     })
+}
+
+// A DUPLICATED SLUG IS NOT A ROW. The optional form answers only the unique case, so every consumer
+// that asks 'who governs this plan' sees nothing for a plan whose governance is ambiguous, and the
+// ambiguity itself is reported by governance_lookup and refused by gunbc.plan plan_generation.
+fn governance_row_in(rows: List<PlanGovernance>, slug: String) -> PlanGovernance? {
+  match governance_lookup(rows: rows, slug: slug) {
+    GovernanceOneRow { row: r } => Present { value: r }
+    GovernanceNoRow => none
+    GovernanceDuplicateRows { slug: _ } => none
+  }
 }
 
 fn plan_governance_of(slug: String) -> PlanGovernance? {
   governance_row_in(rows: plan_governance_rows, slug: slug)
 }
 
+fn plan_governance_lookup(slug: String) -> GovernanceLookup {
+  governance_lookup(rows: plan_governance_rows, slug: slug)
+}
+
 fn plans_governed_by(slug: String) -> List<PlanGovernance> {
   filter(plan_governance_rows, r => r.governed_by_slug == slug)
+}
+
+fn governance_rows_unique(rows: List<PlanGovernance>) -> Bool {
+  all(rows, r =>
+    match governance_lookup(rows: rows, slug: r.plan_slug) {
+      GovernanceOneRow { row: _ } => true
+      GovernanceNoRow => false
+      GovernanceDuplicateRows { slug: _ } => false
+    })
 }
 
 // THE WALK TO THE ROOT, BOUNDED BY THE ROW POPULATION. One edge per step, and a chain through n
 // rows has at most n edges, so folding once over the rows is enough fuel for any acyclic chain; a
 // cycle never reaches the root within that fuel and reads as not reaching it, which is the verdict
-// the witness wants -- a cycle and an orphan are both 'not rooted', and neither is admitted.
+// the witness wants -- a cycle and an orphan are both 'not rooted', and neither is admitted. The walk
+// presumes unique rows; governance_rows_all_reach_root admits uniqueness first so the presumption is
+// never silently false.
 type GovernanceWalk {
   current: String,
   reached: Bool,
@@ -104,5 +148,6 @@ fn governance_reaches_root(slug: String) -> Bool {
 }
 
 fn governance_rows_all_reach_root(rows: List<PlanGovernance>) -> Bool {
-  all(rows, r => governance_reaches_root_from(rows: rows, slug: r.plan_slug))
+  governance_rows_unique(rows: rows)
+    && all(rows, r => governance_reaches_root_from(rows: rows, slug: r.plan_slug))
 }
