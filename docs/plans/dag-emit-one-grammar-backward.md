@@ -1,6 +1,6 @@
 # The dag target emits by reading `dag_grammar_root` backward
 
-Status: **model accepted, implementation in progress** (work item adhoc-da997c00-fa0). This page states how emit selects a
+Status: **implemented** in gunbc#12878 (`v2.std.grammar` `grammar_emit_parse_tree`, `v2.extdeps.languages.dag` `dag_emit_parse_tree`) (work item adhoc-da997c00-fa0). This page states how emit selects a
 production for a Node shape and how each terminal's token class is recovered. Nothing here is
 implemented yet. The implementing change follows only once this model is accepted.
 
@@ -113,7 +113,14 @@ For strings, the encoder and the decoder read one table. Decode composed with en
 identity on values. Encode composed with decode is not the identity on spellings, and does not need
 to be: the round trip is on the Node.
 
-**Token separation.** Emit writes one space between adjacent tokens. Whitespace is a
+**Literal payloads are read through the model's own readers:**
+`dag_int_literal_magnitude_int_from_node`, `dag_string_literal_value_optional`, and
+`dag_float_literal_lexeme_optional`. Lowering uses the same readers. A literal is an `Atom` that
+carries a payload edge, and `v2.std.node_query` `named_child_lookup` searches only `Conj` roots, so
+it cannot be used to read one.
+
+**Token separation.** Emit writes one space between adjacent tokens. This is **not** source-faithful
+layout: `module rt.x` comes back as `module rt . x`. Whitespace is a
 `TriviaRule`, so this cannot change the Node. Annotations (DESIGN §4c) are erased from the parse
 tree and are not emitted. A target that needs layout is a separate projection.
 
