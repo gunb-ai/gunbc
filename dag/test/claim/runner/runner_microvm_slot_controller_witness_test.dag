@@ -168,10 +168,10 @@ test fn the_shakedown_slot_carries_28_gib_no_swap_and_no_throttle_line_while_the
 // THE WIDTH CHARGE IS THE CELL PLUS THE CONTROLLER'S SLICE, SPENT FIRST: an envelope holding the
 // charge plus fourteen fleet rows admits fifteen, one byte less admits fourteen, and a host that
 // cannot hold the charge at all admits zero.
+// THE FLOOR SLOT CLASS BLOCK (3 x the class row) is charged before the fleet row divides, on every
+// host (gunbc.runner_slot_allocation floor_class_then_fleet_width), so each envelope below carries it.
 test fn the_shakedown_slot_is_charged_its_cell_plus_its_controller_before_the_fleet_row_divides() -> Bool {
   let fleet_row = gunbc_runner_slot_memory_max_bytes
-  // the floor slot class block (3 x the class row) is charged before the fleet row divides, on
-  // every host (gunbc.runner_slot_allocation floor_class_then_fleet_width)
   let class_block = 3 * gunbc_runner_floor_slot_memory_max_bytes
   let charge = byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
   charge == byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max) + byte_size_count(b: microvm_controller_slice_memory_max())
