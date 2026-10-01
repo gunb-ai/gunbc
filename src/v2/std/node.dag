@@ -151,6 +151,8 @@ type CoreEdgeLabel
   | ConstructTagEdge
   | ConstructTagElidedEdge
   | ParameterReferenceEdge
+  | ArrowEffectClaimsEdge
+  | ArrowExecutionModeClaimEdge
   | MapLiteralEntryEdge
   | MapLiteralEntriesEdge
 
@@ -208,6 +210,8 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     ConstructTagEdge,
     ConstructTagElidedEdge,
     ParameterReferenceEdge,
+    ArrowEffectClaimsEdge,
+    ArrowExecutionModeClaimEdge,
     MapLiteralEntryEdge,
     MapLiteralEntriesEdge,
   ]
@@ -236,6 +240,8 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ConstructTagEdge => ^core_construct_tag_edge
     ConstructTagElidedEdge => ^core_construct_tag_elided_edge
     ParameterReferenceEdge => ^core_parameter_reference_edge
+    ArrowEffectClaimsEdge => ^core_arrow_effect_claims_edge
+    ArrowExecutionModeClaimEdge => ^core_arrow_execution_mode_claim_edge
     MapLiteralEntryEdge => ^core_map_literal_entry_edge
     MapLiteralEntriesEdge => ^core_map_literal_entries_edge
   }
@@ -666,30 +672,54 @@ fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
 // one place and no stage writes its own variant match.
 data arrow_signature_order_label: EdgeLabel = StructuralLabel { label: CoreMarker { marker: ArrowSignatureOrderEdge } }
 
+// AN ARROW'S CONTRACT EDGES (XL-2 PR2a; ruling 2026-10-01, docs/plans/arrow-contract-edges.md). Two
+// optional core-marker edges that state what the Arrow promises: ArrowEffectClaimsEdge (its declared
+// effect claims) and ArrowExecutionModeClaimEdge (its declared execution-mode claim). This module
+// owns only their STRUCTURE: each appears at most once, and neither is a binder, so neither counts
+// toward the one type-binder Conj and the binder, order and body readers never consume them. Their
+// VOCABULARY -- which claims and modes exist -- is not this module's fact: it lives in std.effects
+// EffectClaim and std.execution_mode ExecutionMode, and v2.std.arrow_contract checks a contract edge's
+// target against those homes (v2.std.type_binder type_binder_node_conforms runs it on every Arrow).
+fn arrow_named_edge_is_contract(e: Edge) -> Bool {
+  edge_is_core(e: e, marker: ArrowEffectClaimsEdge) || edge_is_core(e: e, marker: ArrowExecutionModeClaimEdge)
+}
+
+// The Arrow named edges that are not binders: its body, its declared order and its contract edges.
+// The one predicate every count of an Arrow's binders reads (here and v2.std.type_binder
+// arrow_named_labels_conform), so they agree on what a binder is.
+fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
+  match e.label {
+    Positional => false
+    Authored { name: _ } => false
+    StructuralLabel { label: _ } =>
+      edge_is_core(e: e, marker: ArrowBodyEdge)
+        || edge_is_core(e: e, marker: ArrowSignatureOrderEdge)
+        || arrow_named_edge_is_contract(e: e)
+  }
+}
+
 fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   let binder_edges = fold(children, init: 0, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      StructuralLabel { label: _ } =>
-        if edge_is_core(e: e, marker: ArrowBodyEdge) || edge_is_core(e: e, marker: ArrowSignatureOrderEdge) { acc } else { acc + 1 }
+      StructuralLabel { label: _ } => if arrow_named_edge_is_non_binder(e: e) { acc } else { acc + 1 }
       Authored { name: _ } => acc + 1
     }
   })
   (binder_edges <= 1)
   && arrow_signature_order_conforms(children: children)
+  && (core_occurrences(marker: ArrowEffectClaimsEdge, children: children) <= 1)
+  && (core_occurrences(marker: ArrowExecutionModeClaimEdge, children: children) <= 1)
   && fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      StructuralLabel { label: _ } =>
-        if edge_is_core(e: e, marker: ArrowBodyEdge) || edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
-          acc
-        } else {
-          acc && type_binder_conj_conforms(t: e.target)
-        }
+      StructuralLabel { label: _ } => acc && (arrow_named_edge_is_non_binder(e: e) || type_binder_conj_conforms(t: e.target))
       Authored { name: _ } => acc && type_binder_conj_conforms(t: e.target)
     }
   })
 }
+
+
 
 // THE ONE PARSER OF AN ARROW'S DECLARED ORDER. An Arrow built from a declared signature carries one
 // ^arrow_signature_order_edge (v2.std.arrow_signature signature_order_edge): a Transform
