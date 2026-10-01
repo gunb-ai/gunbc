@@ -536,7 +536,7 @@ test fn bcn_cast_out_of_a_refinement_to_its_declared_carrier_widens() -> Bool {
 // atom supplied here is the shape the real producer emits. Row (16)'s partner keeps `x as Bool` from
 // x: Pos refusing on the production route.
 fn bcn_int_type() -> Node { dag_type_atom_node(identity: ^dag_binding_type_int) }
-fn bcn_bool_type() -> Node { dag_type_atom_node(identity: ^dag_binding_type_bool) }
+fn bcn_bool_type() -> Node { dag_type_atom_node(identity: ^bool_node_symbol) }
 fn bcn_ref(leaf: Symbol) -> Node {
   declaration_reference_node(qn: Cons { head: ^p, tail: Cons { head: leaf, tail: Empty } }, occurrence_id: OccurrenceSynthetic)
 }

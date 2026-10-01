@@ -377,18 +377,13 @@ test fn rcf_a_construct_is_its_declared_record_at_a_declared_type_holds() -> Boo
   rcf_refuses_with(resolved: rcf_resolved_other(), reason: ^arrow_body_does_not_inhabit_declared_return)
 }
 
-// THE BOOL-DECLARED FORM, PINNED AS IT IS. `m: Bool` holding `3` is accepted with a counted
-// UndecidableFormalUnresolved: resolve binds a declared Bool to bool_node_symbol
-// (v2.extdeps.languages.dag dag_kernel_type_binding_optional) and the binding->denotation join
-// denotes dag_binding_type_bool (dag_binding_denotation), so a resolved Bool reaches the judge as an
-// atom the join does not denote. This claim goes red when the two agree, and is then rewritten to
-// assert the refusal.
-test fn rcf_a_bool_declared_field_value_is_counted_not_judged_holds() -> Bool {
-  match rcf_verdict(resolved: rcf_resolved_bool_field()) {
-    RcfInferAccepted { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
-    RcfInferRefused { diagnostics: _ } => false
-    RcfResolveRefused => false
-  }
+// A BOOL-DECLARED FIELD IS JUDGED LIKE AN INT-DECLARED ONE: `m: Bool` holding `3` refuses. Until the
+// kernel value-type roster (v2.extdeps.languages.dag dag_kernel_value_type_roster) this was accepted
+// with a counted obligation, because resolve bound a declared Bool to one symbol and the
+// binding->denotation join denoted another; this claim was pinned to that state and is rewritten
+// here to the refusal, as its note said it would be.
+test fn rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_bool_field(), reason: ^record_field_value_does_not_inhabit)
 }
 
 // THE CROSS-MODULE STATE, PINNED AS IT IS. The field SET of a record declared in another module is

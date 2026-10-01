@@ -115,7 +115,7 @@ fn dr_int() -> Node {
 }
 
 fn dr_bool() -> Node {
-  dag_type_atom_node(identity: ^dag_binding_type_bool)
+  dag_type_atom_node(identity: ^bool_node_symbol)
 }
 
 fn dr_bool_literal() -> Node {
