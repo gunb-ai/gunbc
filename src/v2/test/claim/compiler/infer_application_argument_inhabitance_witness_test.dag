@@ -3,6 +3,11 @@ module v2.test.claim.compiler.infer_application_argument_inhabitance_witness_tes
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer { infer }
 import v2.std.inhabitance {
+  DeclaredTypeObligation,
+  InhabitanceRefused,
+  Inhabits,
+  declared_type_inhabitance,
+  position_direct_call_argument,
   inhabitance_cardinality_type,
   inhabitance_node_undecidable_reason,
   inhabitance_undecidable_reason_symbol
@@ -24,7 +29,7 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import std.algebra { list_snoc_item }
 import v2.std.type_binder { type_params_edge }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.node {
   ComputationNode,
   Conj,
@@ -370,4 +375,67 @@ test fn inhabitance_product_produced_at_a_collection_formal_refuses_holds() -> B
         reason: ^application_argument_does_not_inhabit
       )
   }
+}
+
+// THE ARGUMENT POSITION WIDENS A REFINEMENT TO ITS DECLARED CARRIER, one step, through the same
+// relation a let, a declared return and a record field reach (v2.std.inhabitance
+// declared_type_inhabitance_declared_carrier). The obligation is SUPPLIED: from source a call to a
+// named fn does not reach the judge yet (infer reads no formals off a callee reference), so the
+// argument position is claimed at the relation's interface, and the real route's inhabitance is
+// v2.test.claim.body_let_annotation (5e), which runs the same rule from source at the other three
+// positions. `Pos` stands for a refinement whose declaration states carrier Int, `Pos2` one whose
+// carrier is Pos, `Neg` a sibling refinement of Int. RED BEFORE: the relation had no carrier arm, so
+// a Pos argument at an Int formal refused.
+fn aai_argument_obligation(produced: Symbol, carrier: Optional<Node>, declared: Symbol) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position_direct_call_argument(),
+    parameter_identity: ^inhabitance_param_x,
+    declared: dag_type_atom_node(identity: declared),
+    produced: dag_type_atom_node(identity: produced),
+    produced_declared_carrier: carrier,
+    application: dag_type_atom_node(identity: produced),
+    type_variables: []
+  }
+}
+
+fn aai_inhabits_by_carrier(o: DeclaredTypeObligation) -> Bool {
+  match declared_type_inhabitance(obligation: o) {
+    Inhabits { homomorphism: h } => h.rule == ^homomorphism_rule_refinement_declared_carrier
+    _ => false
+  }
+}
+
+fn aai_refused(o: DeclaredTypeObligation) -> Bool {
+  match declared_type_inhabitance(obligation: o) {
+    InhabitanceRefused { find_witness_reason: _ } => true
+    _ => false
+  }
+}
+
+test fn inhabitance_refinement_argument_widens_to_its_declared_carrier_holds() -> Bool {
+  aai_inhabits_by_carrier(o: aai_argument_obligation(
+    produced: ^aai_pos,
+    carrier: Present { value: dag_type_atom_node(identity: ^dag_binding_type_int) },
+    declared: ^dag_binding_type_int
+  ))
+}
+
+test fn inhabitance_refinement_argument_without_a_carrier_refuses_holds() -> Bool {
+  aai_refused(o: aai_argument_obligation(produced: ^aai_pos, carrier: Absent, declared: ^dag_binding_type_int))
+}
+
+test fn inhabitance_refinement_argument_widens_one_step_only_holds() -> Bool {
+  aai_refused(o: aai_argument_obligation(
+    produced: ^aai_pos2,
+    carrier: Present { value: dag_type_atom_node(identity: ^aai_pos) },
+    declared: ^dag_binding_type_int
+  ))
+}
+
+test fn inhabitance_sibling_refinement_argument_refuses_holds() -> Bool {
+  aai_refused(o: aai_argument_obligation(
+    produced: ^aai_neg,
+    carrier: Present { value: dag_type_atom_node(identity: ^dag_binding_type_int) },
+    declared: ^aai_pos
+  ))
 }

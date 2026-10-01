@@ -238,6 +238,7 @@ fn dr_return_obligation(declared: Node, produced: Node, type_variables: List<Sym
     parameter_identity: ^declared_return,
     declared: declared,
     produced: produced,
+    produced_declared_carrier: Absent,
     application: dr_empty_domain(),
     type_variables: type_variables
   }
