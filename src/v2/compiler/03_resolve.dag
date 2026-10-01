@@ -110,6 +110,7 @@ import v2.std.symbol_index {
   symbol_index_renaming_alias_at
 }
 import v2.std.node {
+  BinderSite,
   MapLiteralEntriesEdge,
   labeled_core_is,
   named_edges,
@@ -260,7 +261,7 @@ type Scope
 // then this arm opens a ParameterFrame for them and the scope search is deleted.
 type FrameKind
   = ParameterFrame { arrow_path: QualifiedName }
-  | LexicalFrame
+  | LexicalFrame { base: Map<Symbol, Int> }
   | TypeParameterFrame
 
 // type_scope IS THE TYPE-ROLE FRAME: the scope a name in a TYPE position resolves in. It is the
@@ -331,12 +332,54 @@ fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
   }
 }
 
-fn direct_atom_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, Symbol>> {
+// A FRAME'S BINDERS, AS THE LOOKUP MAP AND IN THE ORDER THEY ARE DECLARED. The map answers lookups;
+// the list is what a LexicalFrame advances its binder counts over (open_lexical_frame), because a
+// Map is insert-and-lookup only and cannot be enumerated.
+type FrameLocals {
+  map: Map<Symbol, Symbol>
+  names: List<Symbol>
+}
+
+fn frame_locals_empty() -> FrameLocals {
+  FrameLocals { map: empty_map(), names: [] }
+}
+
+fn frame_locals_of_map(m: Map<Symbol, Symbol>) -> FrameLocals {
+  FrameLocals { map: m, names: [] }
+}
+
+fn frame_locals_insert(fl: FrameLocals, name: Symbol, canonical: Symbol) -> FrameLocals {
+  FrameLocals { map: map_insert(fl.map, name, canonical), names: list_snoc_item(xs: fl.names, item: name) }
+}
+
+fn binder_count(counts: Map<Symbol, Int>, name: Symbol) -> Int {
+  match map_lookup(m: counts, key: name) {
+    Present { value: k } => k
+    Absent => 0
+  }
+}
+
+// OPENING A LEXICAL FRAME: the frame keeps the counts it opened over, which give each of its binders
+// its ordinal (v2.std.node BinderSite), and the walk below it continues from the counts with each of
+// its binders added -- so a later binder of the same name, in pre-order, takes the next ordinal.
+type LexicalFrameOpening {
+  scope: Scope
+  counts: Map<Symbol, Int>
+}
+
+fn open_lexical_frame(locals: FrameLocals, outer: Scope, counts: Map<Symbol, Int>) -> LexicalFrameOpening {
+  LexicalFrameOpening {
+    scope: ScopeFrame { locals: locals.map, outer: outer, kind: LexicalFrame { base: counts } },
+    counts: fold(locals.names, init: counts, f: fn(c, name) { map_insert(c, name, binder_count(counts: c, name: name) + 1) })
+  }
+}
+
+fn direct_atom_binding_fold(base: FrameLocals) -> NodeFold<FrameLocals> {
   NodeFold {
     init: fn(n0) {
       match n0.kind {
         TypeNode { connective: Atom { identity: sym } } =>
-          map_insert(base, sym, sym)
+          frame_locals_insert(fl: base, name: sym, canonical: sym)
         _ => base
       }
     },
@@ -346,12 +389,12 @@ fn direct_atom_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, S
   }
 }
 
-fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+fn harvest_conj_named_bindings(root: Node, acc: FrameLocals) -> FrameLocals {
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: acc, f: fn(a, e) {
         match try_edge_declared_binding(e: e) {
-          Present { value: b } => map_insert(a, b.name, b.name)
+          Present { value: b } => frame_locals_insert(fl: a, name: b.name, canonical: b.name)
           Absent => a
         }
       })
@@ -359,7 +402,7 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
   }
 }
 
-fn harvest_direct_atom_binding(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+fn harvest_direct_atom_binding(root: Node, acc: FrameLocals) -> FrameLocals {
   fold_node(
     n: root,
     algebra: direct_atom_binding_fold(base: acc)
@@ -379,10 +422,10 @@ fn namespace_bindings_augment_from_module_atoms(
   root: Node,
   bindings: Map<Symbol, Symbol>
 ) -> Map<Symbol, Symbol> {
-  harvest_conj_named_bindings(root: root, acc: bindings)
+  harvest_conj_named_bindings(root: root, acc: frame_locals_of_map(m: bindings)).map
 }
 
-fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+fn add_arrow_domain_named_params(n: Node, acc: FrameLocals) -> FrameLocals {
   match n.kind {
     TypeNode { connective: Arrow } =>
       match arrow_first_positional_target(children: n.children) {
@@ -397,7 +440,7 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
   }
 }
 
-fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+fn add_bind_atom_binder(n: Node, acc: FrameLocals) -> FrameLocals {
   match n.kind {
     ComputationNode { behavior: Bind } =>
       if positional_child_count(children: n.children) == 3 {
@@ -432,7 +475,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
     bindings: empty_map()
   )
   let bindings = match namespace_graft_module_body_optional(root: tree.root) {
-    Present { value: body } => harvest_conj_named_bindings(root: body, acc: root_bindings)
+    Present { value: body } => harvest_conj_named_bindings(root: body, acc: frame_locals_of_map(m: root_bindings)).map
     Absent => root_bindings
   }
   Namespace {
@@ -1333,9 +1376,9 @@ fn resolve_frame_bound_reference(
   pending: Diagnostics
 ) -> Outcome<Node> {
   match kind {
-    LexicalFrame =>
+    LexicalFrame { base: base } =>
       Accepted {
-        value: binder_reference_node(binder: canonical, occurrence_id: n.occurrence_id),
+        value: binder_reference_node(site: BinderSite { name: canonical, ordinal: binder_count(counts: base, name: canonical) }, occurrence_id: n.occurrence_id),
         diagnostics: pending
       }
     TypeParameterFrame =>
@@ -1848,7 +1891,7 @@ fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bo
   }
 }
 
-fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameLocals) -> FrameLocals {
   match construct_tag_optional(n: pat) {
     Absent => acc
     Present { value: _ } =>
@@ -1860,7 +1903,7 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
             } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
               m
             } else {
-              map_insert(m, id, id)
+              frame_locals_insert(fl: m, name: id, canonical: id)
             }
           _ => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
         }
@@ -2480,15 +2523,9 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
     Accepted { value: pat, diagnostics: _ } =>
-      let arm_ctx = resolve_ctx_with_scope(
-        ctx: ctx,
-        scope: ScopeFrame {
-          locals: resolve_pattern_binders(ctx: ctx, pat: pat, acc: empty_map()),
-          outer: ctx.scope,
-          kind: LexicalFrame
-        }
-      )
-      child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+      let opening = open_lexical_frame(locals: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_locals_empty()), outer: ctx.scope, counts: ctx.binder_counts)
+      let arm_ctx = resolve_ctx_with_scope(ctx: ctx, scope: opening.scope)
+      child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(counts: opening.counts), f: fn(acc, e) {
     let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
     let arm_ctx = resolve_ctx_with_binder_counts(ctx: arm_ctx, counts: acc.binder_counts)
         child_walk_step(
@@ -2780,20 +2817,15 @@ fn resolve_children_homogeneous_scope(
 ) -> ResolveNodeWalk {
   let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
-  let scope_here = match arrow_domain_has_named_bindings(n: n) {
-    true =>
-      ScopeFrame {
-        locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
-        outer: scope_type,
-        kind: LexicalFrame
-      }
-    false => scope_type
+  let opening = match arrow_domain_has_named_bindings(n: n) {
+    true => open_lexical_frame(locals: add_arrow_domain_named_params(n: n, acc: frame_locals_empty()), outer: scope_type, counts: ctx.binder_counts)
+    false => LexicalFrameOpening { scope: scope_type, counts: ctx.binder_counts }
   }
   let child_ctx = resolve_ctx_with_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
-    scope: scope_here
+    scope: opening.scope
   )
-  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: opening.counts), f: fn(acc, e) {
     let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
     let child_ctx = resolve_ctx_with_binder_counts(ctx: child_ctx, counts: acc.binder_counts)
     if edge_is_type_params(e: e) {
@@ -2950,16 +2982,28 @@ fn resolve_node_consumes_expectation(n: Node) -> Bool {
 // opens a LexicalFrame.
 fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
-  let value_params = add_arrow_domain_named_params(n: n, acc: empty_map())
+  let value_params = add_arrow_domain_named_params(n: n, acc: frame_locals_empty())
+  // A NAMED DECLARATION IS THE BINDER-SITE KEY'S SCOPE: its walk starts from no counts, and what it
+  // counted does not leave it (resolve_walk_with_binder_counts below), so sibling and enclosing
+  // declarations number their binders independently. A lambda's parameters open a LexicalFrame
+  // inside the declaration and are counted like any other binder there.
+  let declares = match ctx.declaring {
+    DeclaringAt { path: _ } => true
+    DeclaringInSpine { path: _, body: _ } => false
+    NotDeclaring => false
+  }
+  let start_counts = if declares { empty_map() } else { ctx.binder_counts }
+  let lambda_opening = open_lexical_frame(locals: value_params, outer: ctx.scope, counts: start_counts)
   let frame_kind = match ctx.declaring {
     DeclaringAt { path: path } => ParameterFrame { arrow_path: path }
-    DeclaringInSpine { path: _, body: _ } => LexicalFrame
-    NotDeclaring => LexicalFrame
+    DeclaringInSpine { path: _, body: _ } => LexicalFrame { base: start_counts }
+    NotDeclaring => LexicalFrame { base: start_counts }
   }
-  let scope_codomain = ScopeFrame { locals: value_params, outer: scope_type, kind: frame_kind }
-  let scope_body = ScopeFrame { locals: value_params, outer: ctx.scope, kind: frame_kind }
+  let body_counts = if declares { start_counts } else { lambda_opening.counts }
+  let scope_codomain = ScopeFrame { locals: value_params.map, outer: scope_type, kind: frame_kind }
+  let scope_body = ScopeFrame { locals: value_params.map, outer: ctx.scope, kind: frame_kind }
   let inner_ctx = resolve_ctx_leaving_containment(ctx: ctx)
-  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+  let walked = child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: body_counts), f: fn(acc, e) {
     let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
     let inner_ctx = resolve_ctx_with_binder_counts(ctx: inner_ctx, counts: acc.binder_counts)
     let outer_ctx = resolve_ctx_with_binder_counts(ctx: outer_ctx, counts: acc.binder_counts)
@@ -3000,6 +3044,14 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
         )
     }
   }))
+  if declares { resolve_walk_with_binder_counts(w: walked, counts: ctx.binder_counts) } else { walked }
+}
+
+fn resolve_walk_with_binder_counts(w: ResolveNodeWalk, counts: Map<Symbol, Int>) -> ResolveNodeWalk {
+  match w {
+    ResolveWalkAccepted { value: v, diagnostics: d, binder_counts: _ } => ResolveWalkAccepted { value: v, diagnostics: d, binder_counts: counts }
+    ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
+  }
 }
 
 fn resolve_bind_binder_target(t: Node, counts: Map<Symbol, Int>) -> ResolveNodeWalk {
@@ -3082,15 +3134,12 @@ fn resolve_bind_node(
   n: Node
 ) -> ResolveNodeWalk {
   if positional_child_count(children: n.children) == 3 {
+    let opening = open_lexical_frame(locals: add_bind_atom_binder(n: n, acc: frame_locals_empty()), outer: ctx.scope, counts: ctx.binder_counts)
     child_walk_node(n: n, w: resolve_bind_edges(
-      ctx: ctx,
+      ctx: resolve_ctx_with_binder_counts(ctx: ctx, counts: opening.counts),
       edges: n.children,
       scope_outer: ctx.scope,
-      scope_inner: ScopeFrame {
-        locals: add_bind_atom_binder(n: n, acc: empty_map()),
-        outer: ctx.scope,
-        kind: LexicalFrame
-      }
+      scope_inner: opening.scope
     ))
   } else {
     resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)))

@@ -189,7 +189,7 @@ test fn pr_unindexed_parameter_path_refuses_at_resolve_holds() -> Bool {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_parameter_path_not_indexed
     Accepted { value: _, diagnostics: _ } => false
   }
-  let lexical_accepts = match resolve_node(ctx: pr_ctx(kind: LexicalFrame), n: pr_x_atom) {
+  let lexical_accepts = match resolve_node(ctx: pr_ctx(kind: LexicalFrame { base: empty_map() }), n: pr_x_atom) {
     Accepted { value: v, diagnostics: _ } => v == pr_x_atom
     Rejected { diagnostics: _ } => false
   }
