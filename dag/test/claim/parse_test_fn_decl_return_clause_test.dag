@@ -337,12 +337,12 @@ test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds(
 // the full parse-and-lower route it exceeded the required floor's per-claim eval-step budget while its
 // assertion inspected one diagnostic. The second row is that boundary's one inhabitance claim: a parsed
 // fn through body_lower_fn_decl_to_census_arrow, which reaches the same refusal without lowering the
-// body. Both assert the cause and that the locus is the SECOND binding's type (B; the first is A).
+// body; its `= a` body keeps the parsed source to the fewest tokens that still reach the signature. Both assert the cause and that the locus is the SECOND binding's type (B; the first is A).
 // Answering optional_absent from the bindings arm restores the ill-formed domain and reds both rows.
 // Ordinary distinct parameters are the existing nfbcp_control_ordinary_fn_return_type_holds.
 // Two `_` parameters are NOT a repeat: each anonymous slot lowers to its own minted binder
 // (v2.std.anonymous_binder), and v2.test.claim.anonymous_param_binder holds that route.
-data nfbcp_named_repeat_source: String = "module m\nfn g(a: A, a: B) -> A { a }\n"
+data nfbcp_named_repeat_source: String = "module m\nfn g(a: A, a: B) -> A = a\n"
 
 fn nfbcp_locus_is_atom(d: Diagnostic, atom: Symbol) -> Bool {
   match d.at {
