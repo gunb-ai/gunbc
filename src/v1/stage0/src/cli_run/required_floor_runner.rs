@@ -2764,7 +2764,8 @@ pub(crate) fn enrolment_margin_standing_for(
     // block exists to repair, and asking the cost population first rebuilds it one gate over.
     match enrolment_gate_execution_disposition(identity, dispositions) {
         Some(crate::cli_run::RequiredFloorDisposition::Planned)
-        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
+        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness)
+        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsReachConsumer) => {}
         // Named, not caught: a new arm must state whether the margin gate runs for it.
         Some(
             other @ (crate::cli_run::RequiredFloorDisposition::DeclinedLongModule { .. }
@@ -3200,7 +3201,8 @@ pub(crate) fn changed_witness_projection_rows(
             },
             Some(
                 RequiredFloorDisposition::Planned
-                | RequiredFloorDisposition::PlannedAsChangedWitness,
+                | RequiredFloorDisposition::PlannedAsChangedWitness
+                | RequiredFloorDisposition::PlannedAsReachConsumer,
             ) => {
                 let outcome = outcomes.get(identity.as_str()).copied();
                 // THE COST POLICY THIS IDENTITY EXECUTED UNDER, and the measurement published
@@ -9567,7 +9569,8 @@ pub fn run_required_floor(
     for row in &disposition_rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned
-            | RequiredFloorDisposition::PlannedAsChangedWitness => {}
+            | RequiredFloorDisposition::PlannedAsChangedWitness
+            | RequiredFloorDisposition::PlannedAsReachConsumer => {}
             RequiredFloorDisposition::DeclinedLongModule { .. } => long_declined += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => fixture_declined += 1,
             RequiredFloorDisposition::DeclinedOutsideRequiredGate => outside_gate_declined += 1,
@@ -17741,6 +17744,7 @@ fn suppresses_a_changed_witness_enrollment(disposition: &RequiredFloorDispositio
         RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::PlannedAsReachConsumer
         | RequiredFloorDisposition::DeclinedLongModule { .. }
         | RequiredFloorDisposition::DeclinedFixtureMember { .. }
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate

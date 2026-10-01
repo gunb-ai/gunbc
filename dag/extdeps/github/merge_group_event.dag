@@ -62,12 +62,13 @@ data merge_queue_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// parent_is_preceding_group_head: the group's parent is the head of the group queued ahead (or
+// the base branch tip). each_group_runs_required_checks: each group runs the required checks on
+// its own composed head. successors_rebuilt_when_a_group_fails: a failed group's successors are
+// recomposed on a new parent, never landed on the failed one.
 type MergeQueueGroupComposition {
-  // The group's parent is the head of the group queued ahead (or the base branch tip).
   parent_is_preceding_group_head: Bool
-  // Each group runs the required checks on its own composed head.
   each_group_runs_required_checks: Bool
-  // A failed group's successors are recomposed on a new parent, never landed on the failed one.
   successors_rebuilt_when_a_group_fails: Bool
 }
 

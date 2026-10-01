@@ -20288,6 +20288,7 @@ pub fn partition_cost_debt_roster<'a>(
                     ..
                 }) => CostDebtRosterStanding::OutsideThisRunsUniverse,
                 Some(RequiredFloorDisposition::Planned)
+                | Some(RequiredFloorDisposition::PlannedAsReachConsumer)
                 | Some(RequiredFloorDisposition::DeclinedLongModule { .. })
                 | Some(RequiredFloorDisposition::DeclinedFixtureMember { .. })
                 | Some(RequiredFloorDisposition::DeclinedOutsideRequiredGate) => {
@@ -20309,6 +20310,7 @@ fn disposition_is_a_cost_debt_withhold(disposition: &RequiredFloorDisposition) -
         RequiredFloorDisposition::DeclinedCostDebt => true,
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::PlannedAsReachConsumer
         | RequiredFloorDisposition::DeclinedLongModule { .. }
         | RequiredFloorDisposition::DeclinedFixtureMember { .. }
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
