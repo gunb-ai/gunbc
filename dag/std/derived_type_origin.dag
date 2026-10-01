@@ -1,6 +1,7 @@
 module std.derived_type_origin
 
-import std.types { Bool, Int, NonEmptyStr }
+import std.types { Bool }
+import std.nat { Nat }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, declaration_ref_eq }
 
 // THE ORIGIN A TYPE NODE CARRIES WHEN A COMPILER STAGE BUILDS IT, named by the constructor that
@@ -19,13 +20,26 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, T
 // Its trigger is step 2 of docs/plans/derived-node-identity-design.md, the infer implementation
 // across the node-copying paths, which starts after eager-newt-412's facts work lands its last stage.
 //
-// `container` names the kernel carrier by its std.algebra algebra_carriers row name, the authority
-// for which kernel containers exist; `position` is the element slot, 0 for a single-argument carrier.
+// Every identity here is a reference, never a spelling: `container` is the DeclarationRef of the
+// carrier's declaration (std.algebra FreeMonoid, FinitePowerSet, PartialFunction, ...), which the
+// floor's citation phase checks resolves; `position` is the element slot as a Nat, so a negative slot
+// has no constructor; `constructor` is the DeclarationRef of the function that built the node; and
+// `cause` is a closed set of reasons.
 type DerivedTypeOrigin
   = CarriedDeclaration { declaration: DeclarationRef }
   | ParameterBinding { parameter: DeclarationRef }
-  | KernelElementPosition { container: NonEmptyStr, position: Int }
-  | DerivationRefused { constructor: NonEmptyStr, cause: NonEmptyStr }
+  | KernelElementPosition { container: DeclarationRef, position: Nat }
+  | DerivationRefused { constructor: DeclarationRef, cause: DerivationRefusalCause }
+
+// WHY A CONSTRUCTOR COULD NOT NAME AN ORIGIN. Closed, one arm per reason the model in
+// docs/plans/derived-node-identity-design.md section 3 names; a new reason is a new arm, never
+// free text. InputCarriesNoOrigin: the node the constructor copied had no origin to carry (law L1
+// has nothing to preserve). SignatureReadBeforeBinderMarking: the constructor read a signature
+// representation built before v1.compiler.resolve binder_marked_type marked it (that section's
+// first bet).
+type DerivationRefusalCause
+  = InputCarriesNoOrigin
+  | SignatureReadBeforeBinderMarking
 
 // WHETHER A NODE IS A GENERIC PARAMETER, decided from its origin alone. The three arms are distinct
 // facts: a refusal is neither a parameter nor a concrete type, and a consumer reaching it refuses
@@ -33,7 +47,7 @@ type DerivedTypeOrigin
 type GenericIdentityVerdict
   = IsGenericParameter { parameter: DeclarationRef }
   | NotAGenericParameter
-  | GenericIdentityRefused { constructor: NonEmptyStr, cause: NonEmptyStr }
+  | GenericIdentityRefused { constructor: DeclarationRef, cause: DerivationRefusalCause }
 
 // L1, copy: a constructor that rebuilds a node from another carries its input's origin unchanged.
 fn derived_origin_copy(input: DerivedTypeOrigin) -> DerivedTypeOrigin {
@@ -66,7 +80,7 @@ fn generic_identity_of(origin: DerivedTypeOrigin) -> GenericIdentityVerdict {
 type SelfBindingVerdict
   = SelfBinding
   | NotSelfBinding
-  | SelfBindingRefused { constructor: NonEmptyStr, cause: NonEmptyStr }
+  | SelfBindingRefused { constructor: DeclarationRef, cause: DerivationRefusalCause }
 
 fn self_binding_of(parameter: DeclarationRef, binding: DerivedTypeOrigin) -> SelfBindingVerdict {
   match generic_identity_of(origin: binding) {
