@@ -1,5 +1,7 @@
 module gunbc.fleet_show_effective_read
 
+import gunbc.runner_unit_live_read { RunnerUnitLiveReadRow }
+import std.disposition { Disposition }
 import std.algebra { trim }
 import std.disposition { Disposition }
 import std.measure { percent_count }

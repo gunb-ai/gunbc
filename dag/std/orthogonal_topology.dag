@@ -1,5 +1,6 @@
 module std.orthogonal_topology
 
+import v2.std.algebra { length }
 import std.types { Bool, List }
 import std.integer { Int }
 import std.nat { Nat }

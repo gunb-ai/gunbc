@@ -1,5 +1,6 @@
 module test.claim.ebay_browse_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.types { Bool, String, List }
 import v2.std.algebra { for_all, filter }
 import std.roster_frontier { FrontierRow, FrontierSubject, DeclSubject, frontier_rows_well_formed, frontier_subject_eq }
