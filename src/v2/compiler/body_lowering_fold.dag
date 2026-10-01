@@ -3597,13 +3597,9 @@ fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outco
   match body_lower_pattern_form_refusal_optional(captured: captured) {
     Present { value: refused } => optional_present(value: refused)
     Absent =>
-      match body_lower_param_refinement_refusal_optional(captured: captured) {
+      match body_lower_param_list_refusal_optional(captured: captured) {
         Present { value: refused } => optional_present(value: refused)
-        Absent =>
-          match body_lower_param_default_refusal_optional(captured: captured) {
-            Present { value: refused } => optional_present(value: refused)
-            Absent => body_lower_fn_uses_refusal_optional(captured: captured)
-          }
+        Absent => body_lower_fn_uses_refusal_optional(captured: captured)
       }
   }
 }
@@ -3617,27 +3613,31 @@ fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outco
 // A PARAMETER THAT CARRIES A DEFAULT REFUSES, LOCATED AT THE DEFAULT. Nothing on a lowered parameter
 // can hold it, so lowering the fn would drop it (gunbc.recurring_failure_mode
 // default_value_has_no_carrier); the same reason refuses a record field's default.
-fn body_lower_param_default_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
+// The declaration's param_list is found once and both parameter refusals read it.
+fn body_lower_param_list_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
     ParseSubtreeAbsent => optional_absent()
     ParseSubtreeFound { captured: param_list } =>
-      match body_lower_find_production_shell_optional(root: param_list, emitted: ^dag_surface_default_value) {
-        Absent => optional_absent()
-        Present { value: default } =>
-          optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_default_value_unmodeled, n: default)))
+      match body_lower_param_refinement_refusal_optional(param_list: param_list) {
+        Present { value: refused } => optional_present(value: refused)
+        Absent => body_lower_param_default_refusal_optional(param_list: param_list)
       }
   }
 }
 
-fn body_lower_param_refinement_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
-  match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
-    ParseSubtreeAbsent => optional_absent()
-    ParseSubtreeFound { captured: param_list } =>
-      match body_lower_find_production_shell_optional(root: param_list, emitted: ^dag_surface_where_refinement_clause) {
-        Absent => optional_absent()
-        Present { value: clause } =>
-          optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_parameter_refinement_unmodeled, n: clause)))
-      }
+fn body_lower_param_default_refusal_optional(param_list: Node) -> Optional<Outcome<Node>> {
+  match body_lower_find_production_shell_optional(root: param_list, emitted: ^dag_surface_default_value) {
+    Absent => optional_absent()
+    Present { value: default } =>
+      optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_default_value_unmodeled, n: default)))
+  }
+}
+
+fn body_lower_param_refinement_refusal_optional(param_list: Node) -> Optional<Outcome<Node>> {
+  match body_lower_find_production_shell_optional(root: param_list, emitted: ^dag_surface_where_refinement_clause) {
+    Absent => optional_absent()
+    Present { value: clause } =>
+      optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_parameter_refinement_unmodeled, n: clause)))
   }
 }
 
