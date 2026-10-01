@@ -28,6 +28,7 @@ import gunbc.machine_intake_oob_boot_handoff {
   PowerStateReadFailed,
   oob_boot_handoff,
 }
+import gunbc.machine_intake_mtcollins1_boot_phase_timing { MtCollins1BootStart, BootStartUnobserved, mtcollins1_boot_start_of }
 import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootCdrom,
@@ -137,33 +138,59 @@ fn mtcollins1_drive_handoff(
   password_file_raw: String,
   capability_row: BmcFirmwareReleaseCapabilityRow,
   selection: IpmiBootSelection,
-) -> ProcessExit
+) -> MtCollins1HandoffResult
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
   ]
 {
   match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: label as String) {
-    Present { value: why } => return exit_failure(reason: why)
+    Present { value: why } => return handoff_not_issued(outcome: exit_failure(reason: why))
     Absent => {}
   }
   match mtcollins1_bmc_username {
     Absent =>
-      exit_failure(reason: concat(label as String, ": BMC is not BmcSecured; refusing before any controller write"))
+      handoff_not_issued(outcome: exit_failure(reason: concat(label as String, ": BMC is not BmcSecured; refusing before any controller write")))
     Present { value: username } =>
       match mtcollins1_password_file(raw: password_file_raw) {
         CredentialPathMissing =>
-          exit_failure(reason: concat(label as String, ": no credential path supplied; refusing before any controller write"))
-        CredentialPathGiven { path: pw } =>
-          mtcollins1_render_outcome(
-            label: label,
-            outcome: oob_boot_handoff(
-              observation: mtcollins1_access_observation,
-              capability_row: capability_row,
-              username: username,
-              password_file: pw,
-              selection: selection,
-            ),
+          handoff_not_issued(outcome: exit_failure(reason: concat(label as String, ": no credential path supplied; refusing before any controller write")))
+        CredentialPathGiven { path: pw } => {
+          let outcome = oob_boot_handoff(
+            observation: mtcollins1_access_observation,
+            capability_row: capability_row,
+            username: username,
+            password_file: pw,
+            selection: selection,
           )
+          MtCollins1HandoffResult {
+            outcome: mtcollins1_render_outcome(label: label, outcome: outcome),
+            start: match outcome {
+              BootControlIssued { selected: _, power: p } => mtcollins1_boot_start_of(transition: p)
+              BootSelectionRefused => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootSelectionNotApplied { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootSelectionUnverifiable { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootSelectionFlagInvalid { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootSelectionNotOneShot { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootSelectionFirmwareMismatch { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              PowerStateReadFailed { selected: _, observed_state: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              PowerCommandRefused { selected: _, action: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              PowerCommandAcceptedNoTransition { selected: _, action: _, progress: _, last_observed: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+              BootHandoffNotAdmitted { admission: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+            },
+          }
+        }
       }
   }
+}
+
+// THE HANDOFF'S EXIT AND THE START IT OBSERVED, so the boot's phase timing can say whether the
+// attempt was a cold or a warm boot (gunbc.machine_intake_mtcollins1_boot_phase_timing) without a
+// second chassis read.
+type MtCollins1HandoffResult {
+  outcome: ProcessExit
+  start: MtCollins1BootStart
+}
+
+fn handoff_not_issued(outcome: ProcessExit) -> MtCollins1HandoffResult {
+  MtCollins1HandoffResult { outcome: outcome, start: BootStartUnobserved { reason: "the handoff refused before any controller write" } }
 }

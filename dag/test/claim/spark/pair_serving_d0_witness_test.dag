@@ -28,17 +28,20 @@ import gunbc.spark.pair_serving_authority {
 import std.scoped_authorization {
   OperatorGrant, ScopedAuthorization, AuthorizationGranted, Unclaimed, AuthorizationScope, AttemptIdentity, AuthorizedAction,
   AuthorizationClaimState, ClaimedBy, CompletedBy, AbortedBy,
+  parse_intent_scopes, authorization_scope_eq,
 }
 import std.effect_grant { Read, Write, NamespacePosition, CodeNameTree }
 import gunbc.rung_drop { Standing, Retired }
 import gunbc.rung_drop.fabric_storage_append_principal_unrefused { fabric_storage_append_principal_unrefused }
+import gunbc.rung_drop.d0_store_walls_single_lifecycle { d0_store_walls_single_lifecycle }
 import gunbc.spark.pair_serving_d0 {
   d0_store_write_wall_standing, d0_store_operation_wall, StoreOperationWallMissing, StoreOperationWallRestored,
+  d0_single_lifecycle_escalation_id, d0_single_lifecycle_admits_under,
   D0Subject, RankOccupancyReading, IncumbentReading, IncumbentAnswered, IncumbentAnsweredUnread, IncumbentDidNotAnswer, IncumbentRouteUnread, D0Observation,
   HeadEndpointReading, HeadEndpointQuiet, HeadEndpointListening, HeadEndpointEngineProcess, HeadEndpointUnread, d0_held_lease,
   OccupancyReconciliation, OccupancyNotQuiet, DeclaredOccupantDrifted, OccupancyUnread, reconcile_occupancy,
   D0Decision, D0DecidedSuspend, D0DecidedRestore, D0DecidedFence, D0Cause, D0IncumbentLive, D0IncumbentUnidentified, D0OccupancyUnread, D0DeclarationUnavailable,
-  d0_decide, d0_decision_is_eligible, d0_authorized_action, d0_intent_text,
+  d0_decide, d0_decision_is_eligible, d0_authorized_action, d0_intent_text, d0_required_scope, d0_purpose,
   D0Population, D0PopulationAgrees, D0PopulationDiffers, d0_population,
   D0ClaimReading, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
   D0Recovery, D0RecoverStart, D0RecoverFirstWrite, D0RecoverResume, D0RecoverComplete, D0RecoverAbort, D0RecoveryRefused, d0_recovery,
@@ -386,12 +389,33 @@ test fn the_intent_text_is_canonical_over_the_operation() -> Bool {
   d0w_with_digests(scenario: fn(a, b, c) {
     d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
       let one = d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1000)
-      let t = d0_intent_text(subject: one, group: FabricGroupA, transaction: d0w_t_tx)
-      t == d0_intent_text(subject: d0w_t_subject_over(hs: [h4, h2, h1, h3], successor: c, term: 1000), group: FabricGroupA, transaction: d0w_t_tx)
-        && t != d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1001), group: FabricGroupA, transaction: d0w_t_tx)
-        && t != d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: a, term: 1000), group: FabricGroupA, transaction: d0w_t_tx)
-        && t != d0_intent_text(subject: one, group: FabricGroupA, transaction: "tx-other" as NonEmptyStr)
+      let t = (match d0_intent_text(subject: one, group: FabricGroupA, transaction: d0w_t_tx) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
+      t == (match d0_intent_text(subject: d0w_t_subject_over(hs: [h4, h2, h1, h3], successor: c, term: 1000), group: FabricGroupA, transaction: d0w_t_tx) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
+        && t != (match d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1001), group: FabricGroupA, transaction: d0w_t_tx) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
+        && t != (match d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: a, term: 1000), group: FabricGroupA, transaction: d0w_t_tx) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
+        && t != (match d0_intent_text(subject: one, group: FabricGroupA, transaction: "tx-other" as NonEmptyStr) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
         && t.contains("suspend-pair-serving-authority")
+    })
+  })
+}
+
+// THE INTENT STATES ITS SCOPE IN THE SHARED FRAME: a verifier that holds only the text reads the
+// one required scope through std.scoped_authorization parse_intent_scopes, with no D0 knowledge;
+// and the purpose the operator reads names that scope and the whole subject, so the approval is
+// over what the store will check.
+test fn the_intent_text_states_its_scope_in_the_shared_frame() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
+      let one = d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1000)
+      let purpose = d0_purpose(subject: one, transaction: d0w_t_tx) as String
+      (match parse_intent_scopes(text: (match d0_intent_text(subject: one, group: FabricGroupA, transaction: d0w_t_tx) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })) {
+        Present { value: f } => count(f.scopes) == 1 && all(f.scopes, sc => authorization_scope_eq(a: sc, b: d0_required_scope()))
+        Absent => false
+      })
+        && purpose.contains("suspend-pair-serving-authority")
+        && purpose.contains("code-name:gunbc/spark/pair_serving_authority")
+        && purpose.contains(h1 as String)
+        && purpose.contains(d0w_t_tx as String)
     })
   })
 }
@@ -590,14 +614,34 @@ test fn the_states_d0_writes_commit_the_authorized_hosts_not_the_roster() -> Boo
 // THE WET DOOR CONSUMES THE STORE'S WRITE-WALL DROP: while gunbc.rung_drop
 // fabric_storage_append_principal_unrefused stands the door's first gate names it and refuses; when the
 // row is retired the gate is absent. The gate is read from the row, so retiring the row is the
-// only thing that opens it.
+// only thing that opens it. Asked for a lifecycle the single-lifecycle drop does not admit (group-b),
+// so the walls' own refusal is what answers.
 test fn the_wet_door_refuses_while_the_fabric_storage_write_wall_drop_stands() -> Bool {
+  let other = d0_store_write_wall_standing(group: FabricGroupB, escalation_id: d0_single_lifecycle_escalation_id)
   match fabric_storage_append_principal_unrefused.standing {
-    Standing => (match d0_store_write_wall_standing() { Present { value: why } => why.contains("fabric_storage_append_principal_unrefused") && why.contains("does not run")  Absent => false })
+    Standing => (match other { Present { value: why } => why.contains("fabric_storage_append_principal_unrefused") && why.contains("does not run")  Absent => false })
     Retired { trigger_fired: _ } =>
       match d0_store_operation_wall {
-        StoreOperationWallMissing { trigger: _ } => (match d0_store_write_wall_standing() { Present { value: why } => why.contains("d0_store_operation_wall") && why.contains("does not run")  Absent => false })
-        StoreOperationWallRestored { by: _ } => (match d0_store_write_wall_standing() { Absent => true  Present { value: _ } => false })
+        StoreOperationWallMissing { trigger: _ } => (match other { Present { value: why } => why.contains("d0_store_operation_wall") && why.contains("does not run")  Absent => false })
+        StoreOperationWallRestored { by: _ } => (match other { Absent => true  Present { value: _ } => false })
       }
   }
+}
+
+// THE SINGLE DECLARED LIFECYCLE (gunbc.rung_drop d0_store_walls_single_lifecycle, operator-ruled
+// 2026-09-30). POSITIVE CONTROL: with the drop standing, FabricGroupA under the named escalation id is
+// admitted by the walls' gate on the real row. REDS: a second consent id refuses; group-b refuses; and
+// with the drop retired even the named lifecycle refuses (the admission over a supplied standing).
+test fn the_declared_single_lifecycle_is_admitted_while_the_drop_stands() -> Bool {
+  match d0_store_walls_single_lifecycle.standing {
+    Retired { trigger_fired: _ } => true
+    Standing => (match d0_store_write_wall_standing(group: FabricGroupA, escalation_id: d0_single_lifecycle_escalation_id) { Absent => true  Present { value: _ } => false })
+  }
+}
+
+test fn a_second_consent_id_or_group_b_or_a_retired_drop_refuses_the_single_lifecycle() -> Bool {
+  !d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupA, escalation_id: "ds41-group-a-d0-20260927" as NonEmptyStr)
+    && !d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupB, escalation_id: d0_single_lifecycle_escalation_id)
+    && !d0_single_lifecycle_admits_under(standing: Retired { trigger_fired: "witness" as NonEmptyStr }, group: FabricGroupA, escalation_id: d0_single_lifecycle_escalation_id)
+    && d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupA, escalation_id: d0_single_lifecycle_escalation_id)
 }

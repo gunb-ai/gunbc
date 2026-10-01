@@ -20,7 +20,6 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.node {
-  Atom,
   Edge,
   Node,
   Symbol,
@@ -32,7 +31,6 @@ import v2.std.node {
 import v2.std.compilers.sugar {
   ProductionIdentityKey,
   SugarKey,
-  SurfaceAtomKey,
   apply_sugar,
   sugar_rule_for_key
 }
@@ -52,7 +50,9 @@ import v2.compiler.body_lowering_fold {
   body_lower_fn_decl_to_census_arrow,
   body_lower_service_decl,
   body_lower_is_deferred_lower_at_normalize,
-  body_lower_type_decl_record_name_optional
+  DeclaredTypeKind,
+  body_lower_type_decl_declared_kind_optional,
+  declared_record_names
 }
 import v2.compiler.normalized_tree {
   CensusTree,
@@ -192,8 +192,6 @@ fn normalize_sugar_tree_finish(n: Node, t: BodyLoweredTree, cd: Diagnostics) -> 
 
 fn normalize_sugar_key_optional(folded: Node) -> SugarKey? {
   match folded.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      optional_present(value: SurfaceAtomKey { atom: id })
     TypeNode { connective: _ } =>
       match parse_production_emitted_identity_optional(node: folded) {
         Present { value: id } =>
@@ -362,13 +360,12 @@ fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<FreeMon
   )
 }
 
-// WHICH OF THIS MODULE'S TYPES ARE RECORDS, read from the parse tree for the reason
-// import_binding_capture reads imports there: after lowering, a record is a bare
-// `Conj { R: payload }` that no reader can tell from a where-alias or a module spine. The question is
-// answered by the rehome's own predicate (v2.compiler.body_lowering_fold
-// body_lower_type_decl_record_name_optional), so what is carried and what was rehomed are one
-// decision, not two.
-fn record_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
+// WHICH KIND EACH OF THIS MODULE'S PLAIN-CONJ TYPES IS, read from the parse tree for the reason
+// import_binding_capture reads imports there: after lowering, a record, a where-refinement and a
+// payload-bearing single variant are one `Conj { R: payload }` shape. The question is answered by the
+// lowering's own predicate (v2.compiler.body_lowering_fold body_lower_type_decl_declared_kind_optional),
+// so what is carried and what was lowered are one decision, not two.
+fn type_declaration_kind_capture(nodes: List<Node>) -> FreeMonoid<DeclaredTypeKind> {
   fold_list(
     xs: nodes,
     empty: Empty,
@@ -379,14 +376,20 @@ fn record_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
           if id != ^dag_surface_type_decl {
             acc
           } else {
-            match body_lower_type_decl_record_name_optional(shell: n) {
+            match body_lower_type_decl_declared_kind_optional(shell: n) {
               Absent => acc
-              Present { value: name } => list_snoc_item(xs: acc, item: name)
+              Present { value: kind } => list_snoc_item(xs: acc, item: kind)
             }
           }
       }
     }
   )
+}
+
+// The record names alone, for the census and the fixtures that fill a symbol index: a projection of
+// the one capture above, never a second reading of the parse.
+fn record_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
+  declared_record_names(kinds: type_declaration_kind_capture(nodes: nodes))
 }
 
 fn bind_retention_free(o: Outcome<BodyLoweredTree>) -> Outcome<Node> {
@@ -421,7 +424,7 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
                       root: grafted,
                       test_markers: markers,
                       import_bindings: bindings,
-                      record_declarations: record_declaration_capture(nodes: parse_nodes),
+                      type_declaration_kinds: type_declaration_kind_capture(nodes: parse_nodes),
                       diagnostics: d1
                     )
                 }

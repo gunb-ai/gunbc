@@ -32,8 +32,6 @@ import gunbc.live_deploy.emit {
   live_deploy_belt_timer_unit_file,
   live_deploy_serve_unit_file,
   live_deploy_slice_unit_file,
-  ReleaseRevisionBinding,
-  RevisionBoundAtEmission,
   user_manager_environment_directives,
   belt_tick_cadence,
   eval_budget_flag_text,
@@ -43,6 +41,10 @@ import gunbc.live_deploy.emit {
   repository_convergence_slice_unit_file,
   emit_repository_convergence_slice_unit_doc,
   live_deploy_approval_broker_unit_file,
+}
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
@@ -56,7 +58,6 @@ import gunbc.live_deploy.spec {
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc }
-import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax }
 import extdeps.http.server { HttpServerListenConfig }
 import v2.std.algebra { any, for_all }
@@ -267,7 +268,7 @@ test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
 // that into an immediate kill at a declared bound.
 test fn the_approval_broker_slice_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_approval_broker_slice_unit_doc(), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc approval broker cgroup bound (separate from the roadmap deployment slice)\n\n[Slice]\nMemoryMax=10737418240\nMemoryHigh=9663676416\nMemorySwapMax=0\n"
+  emitted == "[Unit]\nDescription=gunbc approval broker cgroup bound (separate from the roadmap deployment slice)\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=15032385536\nMemorySwapMax=0\n"
 }
 
 // THE BROKER UNIT. Every difference from the roadmap unit above is the split: a different

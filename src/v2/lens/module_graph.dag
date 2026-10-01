@@ -1,5 +1,6 @@
 module v2.lens.module_graph
 
+import v2.compiler.normalized_tree { normalized_tree_record_declarations }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -300,7 +301,7 @@ fn located_roots_from_source_root_ingest(
               item: LocatedModuleRoot {
                 path: item.path,
                 root: item.tree.root,
-                record_declarations: item.tree.record_declarations
+                record_declarations: normalized_tree_record_declarations(t: item.tree)
               }
             )
           }
@@ -804,19 +805,97 @@ fn import_closure(
 
 data module_graph_exclude_substrings: List<String> = []
 
+// THE KEYED READ OF THE ONE EDGE PRODUCER: the edges whose importer is `importer_path`, as the
+// population read dependency_resolution_facts_live would carry them for that path. The host groups
+// the same reference-first union by importer (v1_compiler.cli_run dependency_resolution_facts_at);
+// it is a narrowing of that authority, not a second reader.
+fn dependency_resolution_facts_at_live(
+  pool_roots: List<String>,
+  importer_path: String,
+  exclude_substrings: List<String>
+) -> List<ModuleDependencyEdge> {
+  dependency_resolution_facts_at(
+    pool_roots: pool_roots,
+    importer_path: importer_path,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+// THE LIVE CLOSURE IS EXPANDED FROM THE ENTRY, NOT READ OFF A CORPUS-WIDE ADJACENCY. The question is
+// "which modules does THIS entry reach", so the only edges it may demand are those of modules it has
+// already reached: each visited path asks the one edge producer's keyed read
+// (dependency_resolution_facts_at_live) for its own importer edges, and each target module resolves through the keyed declaration read
+// (module_declaration_facts_at_live). The previous body produced every module's edges and folded all
+// of them into an adjacency map before walking the entry's slice -- on the broker entry that
+// corpus-wide fold measured about 4.9s of a 5.4s claim (gunbc#12523's floor [cross-claim-demand]
+// line), paid for edges no walk would ever read. The edge law is unchanged: an edge whose target
+// module is undeclared contributes no path, as extend_adjacency_for_dependency_edge refuses it, and
+// the reached order is breadth-first from the entry. Visited membership is a keyed map rather than a
+// scan of the reached list, so absorbing a neighbor no longer costs the closure's size.
+type DemandClosureState {
+  reached: FreeMonoid<String>
+  seen: Map<String, Bool>
+  queue: List<String>
+}
+
+fn demand_closure_absorb(state: DemandClosureState, path: String) -> DemandClosureState {
+  match map_lookup_where_rejected_unreachable(m: state.seen, key: path) {
+    Present { value: _ } => state
+    Absent =>
+      DemandClosureState {
+        reached: list_snoc_item(xs: state.reached, item: path),
+        seen: map_insert(m: state.seen, key: path, value: true),
+        queue: list_snoc_item(xs: state.queue, item: path)
+      }
+  }
+}
+
+fn demand_edge_target_paths(edge: ModuleDependencyEdge, pool_roots: List<String>) -> List<String> {
+  map(module_declaration_facts_at_live(pool_roots: pool_roots, module_path: edge.target_module), d => d.path)
+}
+
+fn demand_closure_walk(
+  state: DemandClosureState,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> FreeMonoid<String> {
+  match state.queue |> first {
+    Present { value: importer } =>
+      let rest = state.queue |> skip(1)
+      let edges = dependency_resolution_facts_at_live(
+        pool_roots: pool_roots,
+        importer_path: importer,
+        exclude_substrings: exclude_substrings
+      )
+      let next = fold_list(
+        xs: edges,
+        empty: DemandClosureState { reached: state.reached, seen: state.seen, queue: rest },
+        cons: fn(acc, edge) {
+          fold_list(
+            xs: demand_edge_target_paths(edge: edge, pool_roots: pool_roots),
+            empty: acc,
+            cons: fn(inner, path) { demand_closure_absorb(state: inner, path: path) }
+          )
+        }
+      )
+      demand_closure_walk(state: next, pool_roots: pool_roots, exclude_substrings: exclude_substrings)
+    Absent => state.reached
+  }
+}
+
 fn dependency_closure_live_excluding(
   entry_path: String,
   pool_roots: List<String>,
   exclude_substrings: List<String>
 ) -> FreeMonoid<String> {
-  dependency_closure(
-    entry_path: entry_path,
-    edges: dependency_resolution_facts_live(
-      pool_roots: pool_roots,
-      importer_roots: pool_roots,
-      exclude_substrings: exclude_substrings
-    ),
-    nodes: module_declaration_facts_live(pool_roots: pool_roots)
+  demand_closure_walk(
+    state: DemandClosureState {
+      reached: list_snoc_item(xs: no_paths, item: entry_path),
+      seen: map_insert(m: empty_map(), key: entry_path, value: true),
+      queue: list_snoc_item(xs: no_paths, item: entry_path)
+    },
+    pool_roots: pool_roots,
+    exclude_substrings: exclude_substrings
   )
 }
 
@@ -852,8 +931,8 @@ fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
   let file = strip_leading_dot_slash(closure_path)
   let target = strip_leading_dot_slash(touched_path)
   string_eq(a: file, b: target)
-    || ends_with(s: file, suffix: target)
-    || ends_with(s: target, suffix: file)
+    || file.ends_with(suffix: target)
+    || target.ends_with(suffix: file)
 }
 
 fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {

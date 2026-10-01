@@ -1,5 +1,7 @@
 module extdeps.tools.jq
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { NonEmptyStr, Bool, Int, List, Unit }
 import std.string_type { String }
@@ -8,7 +10,7 @@ import v2.std.algebra { fold_list }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.text { string_join }
 import v2.std.compilers.cli_surface { CliArgumentSyntax, CliSurface, cli_long_option_spelling, process_argv_expansion, serialize_cli_arguments }
-import v2.std.compilers.lexing { LexRuleSet, LiteralPattern, ModeledLexRules, TokenRule, symbol_intern_lexeme }
+import v2.std.compilers.lexing { LexRuleSet, LiteralPattern, ModeledLexRules, TokenRule }
 import v2.std.compilers.target_model { BoundToken, FixedToken }
 import v2.std.diagnostic {
   Diagnostic,
@@ -20,7 +22,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme }
 import v2.std.optional { Absent, Optional, Present }
 import std.types { FilePath }
 import extdeps.languages.json.emit { JsonValue, serialize_json }
@@ -45,8 +47,10 @@ data jq_authority: ExternalAuthority = extdeps_external_authority_anchor
 // v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus
 // witness.
 
+fn jq_program() -> ProgramIdentity = cataloged_program(invocation: "jq")
+
 data jq_cli_tool: CliTool = CliTool {
-  name: "jq",
+  program: jq_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_jq, bin_dir: apt_bin_dir }],
 }

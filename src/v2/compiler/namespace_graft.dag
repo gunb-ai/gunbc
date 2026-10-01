@@ -46,6 +46,8 @@ import v2.extdeps.languages.dag {
   namespace_graft_already_grafted,
   namespace_graft_has_module_header,
   namespace_graft_module_body_marker_node,
+  namespace_graft_node_is_module_body,
+  namespace_graft_spine_body_optional,
   namespace_graft_unwrap_module_working_root,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
@@ -175,7 +177,8 @@ fn namespace_graft_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> Li
       sequence: fn(left, right) { list_append(left: left, right: right) },
       choice: fn(left, right) { list_append(left: left, right: right) },
       optional: fn(xs) { xs },
-      repeat: fn(xs) { xs }
+      repeat: fn(xs) { xs },
+      expect: fn(xs, _reason) { xs }
     }
   )
 }
@@ -279,12 +282,6 @@ fn namespace_graft_reconstruct_declaration_forest(units: List<Node>) -> List<Edg
   ]
 }
 
-fn namespace_graft_type_decl_name(unit: Node) -> Symbol? {
-  match namespace_graft_unit_captured(unit: unit) {
-    Present { value: captured } => dag_surface_kw_then_ident_from_captured(captured: captured)
-    Absent => optional_absent()
-  }
-}
 
 // Machinery is decided by PROVENANCE, not spelling (review 68542): a flattened Named
 // edge whose target is a parse production shell (it carries an identity projection) is
@@ -303,37 +300,6 @@ fn namespace_graft_unit_captured(unit: Node) -> Node? {
   parse_production_captured_child_optional(node: unit)
 }
 
-fn namespace_graft_type_decl_target(root: Node) -> Node {
-  match parse_subtree_locate_production(root: root, emitted: ^dag_surface_type_alias_rhs) {
-    Present { value: rhs } => rhs
-    Absent =>
-      match namespace_graft_unit_captured(unit: root) {
-        Present { value: captured } => captured
-        Absent => root
-      }
-  }
-}
-
-// EVERY type_decl unit is Named. Records and fielded variants used to take a residual arm here
-// because no stage lowered their field_decl_block; body lowering now declares those fields
-// (v2.compiler.body_lowering_fold body_lower_type_variant / body_lower_record_type_decl), a
-// record reaches this flatten as `Conj { R: payload }` the way a where-alias does, and a
-// coproduct's unit carries its Disj with every arm's payload declared. The skip and the class
-// it mitigated, gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft,
-// close together: a field block that cannot lower is body lowering's typed refusal, so no
-// unlowered block can reach this partition.
-fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
-  match namespace_graft_type_decl_name(unit: unit) {
-    Absent => optional_absent()
-    Present { value: type_name } =>
-      optional_present(
-        value: Edge {
-          label: Named { name: type_name },
-          target: namespace_graft_type_decl_target(root: unit)
-        }
-      )
-  }
-}
 
 fn namespace_graft_kw_ident_named_edge(unit: Node) -> Edge? {
   match namespace_graft_unit_captured(unit: unit) {
@@ -417,26 +383,32 @@ fn namespace_graft_disposition_from_named_opt(named: Edge?) -> NamespaceGraftUni
   }
 }
 
+// NO type_decl UNIT REACHES THIS PARTITION. Body lowering runs before the graft and turns every
+// type_decl into its lowered declaration or a typed refusal (v2.compiler.body_lowering_fold
+// body_lower_type_decl, body_lower_eq_type_decl), so the arm that named a type_decl unit by reading its
+// parse shell -- locating dag_surface_type_alias_rhs, else the captured child -- had no remaining input
+// and is DELETED with its helpers (gunbc.recurring_failure_mode plain_type_alias_left_as_a_parse_shell_in_v2:
+// the shell representation's readers go with its producer). Measured before deletion: with the arm
+// answering UnitResidual, every claim in v2.test.claim.declaration_graft_assemble,
+// v2.test.claim.type_param_binder_frame and v2.test.claim.body_lowering.plain_type_decl_lowering held.
+// A type_decl shell that did arrive would fall to UnitResidual and be refused by normalize's retention
+// admission, never named from a shell.
 fn namespace_graft_unit_disposition(unit: Node, id: Symbol) -> NamespaceGraftUnitDisposition {
   match id == ^dag_surface_import_decl {
     true => UnitDissolved
     false =>
-      match id == ^dag_surface_type_decl {
-        true => namespace_graft_disposition_from_named_opt(named: namespace_graft_type_decl_named_edge(unit: unit))
+      match id == ^dag_surface_data_decl {
+        true => namespace_graft_disposition_from_named_opt(named: namespace_graft_kw_ident_named_edge(unit: unit))
         false =>
-          match id == ^dag_surface_data_decl {
+          match id == ^dag_surface_fn_decl {
             true => namespace_graft_disposition_from_named_opt(named: namespace_graft_kw_ident_named_edge(unit: unit))
             false =>
-              match id == ^dag_surface_fn_decl {
-                true => namespace_graft_disposition_from_named_opt(named: namespace_graft_kw_ident_named_edge(unit: unit))
+              match id == ^dag_surface_test_fn_decl {
+                true => namespace_graft_disposition_from_named_opt(named: namespace_graft_test_fn_named_edge(unit: unit))
                 false =>
-                  match id == ^dag_surface_test_fn_decl {
-                    true => namespace_graft_disposition_from_named_opt(named: namespace_graft_test_fn_named_edge(unit: unit))
-                    false =>
-                      match id == ^dag_surface_alias_decl {
-                        true => namespace_graft_disposition_from_named_opt(named: namespace_graft_kw_ident_named_edge(unit: unit))
-                        false => UnitResidual
-                      }
+                  match id == ^dag_surface_alias_decl {
+                    true => namespace_graft_disposition_from_named_opt(named: namespace_graft_kw_ident_named_edge(unit: unit))
+                    false => UnitResidual
                   }
               }
           }
@@ -555,7 +527,7 @@ fn namespace_graft_body_for_graft(root: Node) -> NamespaceGraftBody {
   }
   NamespaceGraftBody {
     edges: edges,
-    loss: namespace_graft_subtree_count_atom(n: working, sym: ^dag_surface_top_level_item)
+    loss: namespace_graft_subtree_count_emitted(n: working, sym: ^dag_surface_top_level_item)
       > (count(units) + count(flattened))
   }
 }
@@ -580,13 +552,19 @@ fn namespace_graft_is_graft_candidate(root: Node) -> Bool {
 // An empty flatten with surviving top-level-item alternatives reconstructs one Named forest
 // (Cardinality of those units as Positional children, interiors kept). Empty flatten, no units,
 // and a leftover dag_surface_top_level_item is a genuine loss and still refuses.
-fn namespace_graft_subtree_count_atom(n: Node, sym: Symbol) -> Int {
-  let here = match n.kind {
-    TypeNode { connective: Atom { identity: id } } => if id == sym { 1 } else { 0 }
-    _ => 0
+// A MARKER IS COUNTED BY ITS EMISSION, NEVER BY A BARE ATOM IDENTITY. A top-level item is a
+// production whose emitted identity (the atom under ^grammar_production_identity_node_projection,
+// read by v2.extdeps.languages.dag parse_production_emitted_identity_optional) is the marker. A bare
+// atom spelled the same way is authored text -- an identifier, or a caret symbol's name -- and
+// counting it inflated `loss` and refused a module whose declarations were all carried
+// (gunbc.recurring_failure_mode authored_lexeme_read_as_a_grammar_marker).
+fn namespace_graft_subtree_count_emitted(n: Node, sym: Symbol) -> Int {
+  let here = match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } => if id == sym { 1 } else { 0 }
+    Absent => 0
   }
   fold(n.children, init: here, f: fn(acc, e) {
-    acc + namespace_graft_subtree_count_atom(n: e.target, sym: sym)
+    acc + namespace_graft_subtree_count_emitted(n: e.target, sym: sym)
   })
 }
 
@@ -777,4 +755,40 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
 
 fn namespace_graft_strip_provenance_marker(root: Node) -> Node {
   namespace_graft_unwrap_module_working_root(root: root)
+}
+
+// WHERE A GRAFTED MODULE'S BODY IS, read from the producer's own marks rather than from names. The
+// graft builds a spine of single-Named Conj wrappers and stamps the body Conj
+// (v2.extdeps.languages.dag namespace_graft_node_is_module_body). The spine is descended until a
+// step is not a spine segment, and descent never restarts. The admission reader
+// (v2.compiler.name_resolve admit_named_exports) takes wherever descent stops. The typed selection
+// (namespace_graft_module_body_optional) answers only when that stop IS the marked body, so a record
+// declaration that happens to share a path segment's name is never read as a module body. A header
+// or flat representation has no grafted body: Absent.
+fn namespace_graft_module_body_root(root: Node) -> Node {
+  if namespace_graft_already_grafted(root: root) {
+    namespace_graft_descend_spine(node: namespace_graft_strip_provenance_marker(root: root))
+  } else {
+    root
+  }
+}
+
+fn namespace_graft_descend_spine(node: Node) -> Node {
+  match namespace_graft_spine_body_optional(node: node) {
+    Present { value: body } => body
+    Absent => node
+  }
+}
+
+fn namespace_graft_module_body_optional(root: Node) -> Node? {
+  if namespace_graft_already_grafted(root: root) {
+    let stop = namespace_graft_descend_spine(node: namespace_graft_strip_provenance_marker(root: root))
+    if namespace_graft_node_is_module_body(node: stop) {
+      optional_present(value: stop)
+    } else {
+      optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
 }

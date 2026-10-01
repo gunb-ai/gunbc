@@ -19,6 +19,7 @@ import gunbc.host_hygiene_liveness {
   reconcile_fleet_listening,
   gunbc_host_hygiene_liveness_bound,
 }
+import std.algebra { trim }
 
 data gunbc_host_hygiene_liveness_observe_scope_disposition: Disposition = Terminal {
   reason: "The OBSERVE half of the liveness vertical (brief: split observe from mutate). Runs LocalShell only: unit enumeration reuses gunbc.systemctl_list_units's all-states seam (the same one-op, different-binding move the reaper observe module uses — a listener slot is worth checking whether active, inactive, or failed, since a failed slot is exactly the outage this exists to catch), and the journal read goes through the new extdeps.systemd.Journalctl.UnitLog typed op rather than a piped `journalctl | grep | tail` shell body. Marker-matching (last 'Listening for Jobs' line) and freshness (age against extdeps.clock's typed Clock.UnixMillis read) are pure .dag folds over one typed stdout read, replacing what the deleted host_hygiene_liveness_script.dag did as one hand-written pipeline in a single shell body."
@@ -35,12 +36,19 @@ fn host_hygiene_journal_matching_lines(stdout: String) -> List<String> {
 // journalctl -o short-unix prints "SECONDS.MICROSECONDS host proc[pid]: msg" — the first
 // whitespace field is the epoch stamp; the fractional part is dropped the same way the
 // deleted script's `last_int=$\{last%%.*}` did.
-fn host_hygiene_line_epoch_field(line: String) -> String {
+fn host_hygiene_line_epoch_field(line: String) -> String? {
   split(s: trim(line), delimiter: " ").first()
 }
 
-fn host_hygiene_epoch_field_whole_seconds(field: String) -> Int? {
-  parse_int(s: split(s: field, delimiter: ".").first())
+fn host_hygiene_epoch_field_whole_seconds(field: String?) -> Int? {
+  match field {
+    Absent => none
+    Present { value: stamp } =>
+      match split(s: stamp, delimiter: ".").first() {
+        Absent => none
+        Present { value: whole } => parse_int(s: whole)
+      }
+  }
 }
 
 type SlotListeningReadOutcome
@@ -66,16 +74,19 @@ fn host_hygiene_observe_slot_listening(unit: NonEmptyStr, now_epoch_secs: Int) -
     if length(matches) == 0 {
       SlotListeningRead { observation: ListeningNeverSeen { unit: unit } }
     } else {
-      let last_line = matches.skip(n: length(matches) - 1).first()
-      match host_hygiene_epoch_field_whole_seconds(field: host_hygiene_line_epoch_field(line: last_line)) {
-        Absent =>
-          SlotListeningRead {
-            observation: ListeningReadInaccessible {
-              unit: unit,
-              detail: "unparseable journal timestamp on the matched 'Listening for Jobs' line" as NonEmptyStr,
-            },
+      match matches.skip(n: length(matches) - 1).first() {
+        Absent => SlotListeningReadRefused { unit: unit, cause: "journal match list was nonempty but its last line could not be read" }
+        Present { value: last_line } =>
+          match host_hygiene_epoch_field_whole_seconds(field: host_hygiene_line_epoch_field(line: last_line)) {
+            Absent =>
+              SlotListeningRead {
+                observation: ListeningReadInaccessible {
+                  unit: unit,
+                  detail: "unparseable journal timestamp on the matched 'Listening for Jobs' line" as NonEmptyStr,
+                },
+              }
+            Present { value: last_epoch_secs } => host_hygiene_slot_listening_age(unit: unit, last_epoch_secs: last_epoch_secs, now_epoch_secs: now_epoch_secs)
           }
-        Present { value: last_epoch_secs } => host_hygiene_slot_listening_age(unit: unit, last_epoch_secs: last_epoch_secs, now_epoch_secs: now_epoch_secs)
       }
     }
   }

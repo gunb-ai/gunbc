@@ -33,8 +33,9 @@ import v2.std.machine {
 }
 import v2.std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
-type Int = GroupCompletion<v2.std.nat.Nat>
-type UInt = v2.std.nat.Nat
+import std.bit { Word64 }
+type Int = GroupCompletion<Nat>
+type UInt = Nat
 type Compose<carrier, dimension>
 
 type Representation
@@ -833,6 +834,16 @@ fn integer_range_endpoint_node(endpoint: IntegerRangeEndpoint) -> Node {
   }
 }
 
+// THE INT VALUE TYPE, AS A NODE. This module owns what `Int` denotes, exactly as v2.std.logic
+// bool_node owns what `Bool` denotes: a language's binding join (v2.extdeps.languages.dag
+// dag_binding_denotation) points here, and every consumer of an Int value's type -- infer's
+// literal, add and branch rules, the evaluator's primitive type -- reads this one node. Its atom
+// identity keeps the spelling `dag_binding_type_int` it carried before the authority moved here;
+// that is the identity every consumer compares against, so renaming it is a separate migration.
+fn integer_int_type_node() -> Node {
+  integer_inhabitant_atom(id: ^dag_binding_type_int)
+}
+
 // THE TYPES OF A DECIMAL MAGNITUDE'S NODE ENCODING, AS NODES. integer_decimal_magnitude_node encodes
 // a magnitude as fold_list_node over integer_decimal_digit_node: each digit atom is a DecimalDigit and
 // each cons cell (and the empty tail) is a FreeMonoid<DecimalDigit>. v2.compiler.infer
@@ -1419,10 +1430,10 @@ fn decimal_digit_glyph(d: DecimalDigit) -> String {
 }
 
 // The Peano value of each decimal digit. Every arm is a kernel integer literal at a
-// v2.std.nat.Nat return boundary: the literal elaborates through the declared homomorphism
+// Nat return boundary: the literal elaborates through the declared homomorphism
 // (gunbc.structural_realization_bindings literal_homomorphism_rows) to its Zero/Succ image --
 // this function is the return-position exemplar of std.literal_elaboration.
-fn decimal_digit_nat(d: DecimalDigit) -> v2.std.nat.Nat {
+fn decimal_digit_nat(d: DecimalDigit) -> Nat {
   match d {
     D0 => 0
     D1 => 1
@@ -1438,12 +1449,12 @@ fn decimal_digit_nat(d: DecimalDigit) -> v2.std.nat.Nat {
 }
 
 // A Peano digit (a Nat below ten) to its glyph: select the DecimalDigit whose Peano value equals
-// the digit by STRUCTURAL equality (std.operator_realization StructuralEquality on v2.std.nat.Nat),
+// the digit by STRUCTURAL equality (std.operator_realization StructuralEquality on Nat),
 // then read the one glyph table. A digit outside the roster (ten or more) is not a decimal digit
 // and this function is not its authority: the caller obtains digits from nat_div_rem_by_succ by
 // ten, whose remainder is below ten by construction, so the fold's D0 seed is never the answer
 // for an in-domain input.
-fn integer_nat_decimal_digit_char(digit: v2.std.nat.Nat) -> String {
+fn integer_nat_decimal_digit_char(digit: Nat) -> String {
   decimal_digit_glyph(d: fold_list(
     xs: decimal_digit_roster,
     empty: D0,
@@ -1458,7 +1469,7 @@ fn integer_nat_decimal_digit_char(digit: v2.std.nat.Nat) -> String {
 // operator is applied to a Nat here: the previous body spelled `value == 0`, `value < 10`,
 // `value / 10` and `value - (rest * 10)` on Rc<Nat>, which rustc refused (E0308 x10, E0369) and
 // which the operator realization authority now refuses at emission by typed diagnostic instead.
-fn integer_nat_to_decimal_string(value: v2.std.nat.Nat) -> String {
+fn integer_nat_to_decimal_string(value: Nat) -> String {
   let q = nat_div_rem_by_succ(a: value, divisor_prev: 9)
   match q.quotient {
     Zero => integer_nat_decimal_digit_char(digit: q.remainder)

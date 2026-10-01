@@ -46,6 +46,7 @@ import gunbc.machine_intake_mtcollins1_census_image {
   mtcollins1_census_volume_id,
   mtcollins1_seeded_image_input,
 }
+import gunbc.host_command_binding { LocalCommandHost }
 import gunbc.seeded_install_media_publish {
   SeededImageResolution,
   SeededImageResolved,
@@ -284,18 +285,18 @@ test fn a_removed_image_is_absent_not_diverged_by_real_execution() -> Bool {
   }
   let record = ubuntu_seeded_install_media_record_path(dir: d, input: census_input_supplied())
   let wrote_record = Filesystem.Write(path: record as String, content: concat(digest as String, "\n"))
-  let absent = match resolve_seeded_image(input: census_input_supplied(), dir: d) {
+  let absent = match resolve_seeded_image(host: LocalCommandHost, input: census_input_supplied(), dir: d) {
     SeededImageRecordedImageAbsent { path: _, recorded: r } => r == digest
     _ => false
   }
   let image = census_image_path_in(dir: d, digest: digest)
   let wrote_other = Filesystem.Write(path: image as String, content: "some-other-bytes")
-  let diverged = match resolve_seeded_image(input: census_input_supplied(), dir: d) {
+  let diverged = match resolve_seeded_image(host: LocalCommandHost, input: census_input_supplied(), dir: d) {
     SeededImageRecordDiverged { path: _, recorded: _, observed: _ } => true
     _ => false
   }
   let wrote_same = Filesystem.Write(path: image as String, content: "census-image-bytes")
-  let resolved = match resolve_seeded_image(input: census_input_supplied(), dir: d) {
+  let resolved = match resolve_seeded_image(host: LocalCommandHost, input: census_input_supplied(), dir: d) {
     SeededImageResolved { built: b, path: p } => b.output_digest == digest && p == image
     _ => false
   }
@@ -350,7 +351,19 @@ data workload_stub_both_empty: String = "sha256sum() { return 1; };"
 data workload_stub_partial: String = "sha256sum() { for f in \"$@\"; do case \"$f\" in *chunk1) continue;; esac; echo \"deadbeef  $f\"; done; };"
 
 // Complete passes that DISAGREE: the genuine instability this stage exists to detect.
-data workload_stub_disagree: String = "sha256sum() { n=$(cat /tmp/gunbc-wl-counter 2>/dev/null || echo 0); n=$((n+1)); echo $n > /tmp/gunbc-wl-counter; for f in \"$@\"; do echo \"dead$n  $f\"; done; };"
+//
+// THE COUNTER LIVES IN A DIRECTORY THIS CLAIM OWNS, never at a host-global path. It was
+// /tmp/gunbc-wl-counter: several runner instances share one host's /tmp (srv1), so a counter left by
+// another runner's user could be read but not rewritten, both passes then printed the same digest,
+// the "disagreeing" case agreed, and the stage emitted the token -- red by which runner ran it
+// (gunbc.recurring_failure_mode wet_witness_keyed_to_the_runner_not_its_subject, shared host path).
+fn workload_scratch() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_wl.XXXXXX").path
+}
+
+fn workload_stub_disagree(dir: String) -> String {
+  concat("sha256sum() { n=$(cat ", dir, "/counter 2>/dev/null || echo 0); n=$((n+1)); echo $n > ", dir, "/counter; for f in \"$@\"; do echo \"dead$n  $f\"; done; };")
+}
 
 test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution() -> Bool {
   let complete = workload_case(stubs: concat(workload_stub_dd, workload_stub_complete))
@@ -370,17 +383,18 @@ test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_ex
 // claim -- it also rules out the token appearing with anything appended -- and a RED may not be
 // weakened to share a helper with the positive case.
 test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution() -> Bool {
-  let cleared = shell.Remove.FileForce(path: "/tmp/gunbc-wl-counter")
+  let dir = workload_scratch()
   let empty = workload_case(stubs: concat(workload_stub_dd, workload_stub_both_empty))
   let partial = workload_case(stubs: concat(workload_stub_dd, workload_stub_partial))
-  let cleared_again = shell.Remove.FileForce(path: "/tmp/gunbc-wl-counter")
-  let disagree = workload_case(stubs: concat(workload_stub_dd, workload_stub_disagree))
+  let disagree = workload_case(stubs: concat(workload_stub_dd, workload_stub_disagree(dir: dir)))
+  let removed = shell.Remove.RecursiveForce(path: dir)
   string_contains(s: empty.stdout, pattern: "workload-digest-stable=yes") == false
     && empty.exit_code != 0
     && string_contains(s: partial.stdout, pattern: "workload-digest-stable=yes") == false
     && partial.exit_code != 0
     && string_contains(s: disagree.stdout, pattern: "workload-digest-stable=yes") == false
     && disagree.exit_code != 0
+    && removed.success
 }
 
 
@@ -389,15 +403,18 @@ test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execu
 // writes; the dual-socket profile's 64 GiB -- the shape run 35808203121 wrote into this machine --
 // prints the refused token, exits nonzero, and never reaches dd (its stub leaves a marker that must
 // stay absent). Only the declared shape varies, so the refusal is the preflight's and nothing else's.
-data workload_stub_dd_marks: String = "dd() { echo dd-ran > /tmp/gunbc-wl-dd-marker; }; rm() { :; }; mkdir() { :; };"
+fn workload_stub_dd_marks(marker: String) -> String {
+  concat("dd() { echo dd-ran > ", marker, "; }; rm() { :; }; mkdir() { :; };")
+}
 
 test fn a_workload_larger_than_capacity_refuses_at_preflight_by_real_execution() -> Bool {
-  let cleared = shell.Remove.FileForce(path: "/tmp/gunbc-wl-dd-marker")
-  let big = workload_case_of(stubs: concat(workload_stub_dd_marks, workload_stub_capacity_16gib, workload_stub_complete), workload: mtcollins1_dual_socket_workload)
-  let dd_after_big = Filesystem.Read(path: "/tmp/gunbc-wl-dd-marker").success
-  let small = workload_case_of(stubs: concat(workload_stub_dd_marks, workload_stub_capacity_16gib, workload_stub_complete), workload: mtcollins1_one_socket_workload)
-  let dd_after_small = Filesystem.Read(path: "/tmp/gunbc-wl-dd-marker").success
-  let cleaned = shell.Remove.FileForce(path: "/tmp/gunbc-wl-dd-marker")
+  let dir = workload_scratch()
+  let marker = concat(dir, "/dd-marker")
+  let big = workload_case_of(stubs: concat(workload_stub_dd_marks(marker: marker), workload_stub_capacity_16gib, workload_stub_complete), workload: mtcollins1_dual_socket_workload)
+  let dd_after_big = Filesystem.Read(path: marker).success
+  let small = workload_case_of(stubs: concat(workload_stub_dd_marks(marker: marker), workload_stub_capacity_16gib, workload_stub_complete), workload: mtcollins1_one_socket_workload)
+  let dd_after_small = Filesystem.Read(path: marker).success
+  let removed = shell.Remove.RecursiveForce(path: dir)
   string_contains(s: concat("\n", big.stdout, "\n"), pattern: "\nworkload-preflight=refused\n")
     && string_contains(s: big.stdout, pattern: "workload-bytes=68719476736")
     && string_contains(s: big.stdout, pattern: "workload-write-rc=") == false
@@ -408,6 +425,7 @@ test fn a_workload_larger_than_capacity_refuses_at_preflight_by_real_execution()
     && string_contains(s: small.stdout, pattern: "workload-bytes=4294967296")
     && workload_emitted_the_token(o: small) && small.exit_code == 0
     && dd_after_small
+    && removed.success
 }
 
 // AN UNREADABLE CAPACITY REFUSES, it is not read as room: df printing no figure must not fit.

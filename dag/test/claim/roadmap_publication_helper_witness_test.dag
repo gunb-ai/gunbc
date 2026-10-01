@@ -44,6 +44,8 @@ import gunbc.live_deploy.emit {
   emit_publication_service_unit_doc,
   emit_belt_service_unit_doc,
   emit_systemd_unit_doc,
+}
+import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
 }

@@ -469,6 +469,113 @@ pub fn collection_filter_shape() -> Rc<AlgebraFieldTemplate> {
     })
 }
 
+pub fn collection_fold_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "fold".to_string(),
+        param_types: Rc::new(vec![
+            Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+            Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                id: "FoldAccumulator".to_string(),
+            }),
+            Rc::new(AlgebraTypeTemplate::CallableOf {
+                params: Rc::new(vec![
+                    Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                        id: "FoldAccumulator".to_string(),
+                    }),
+                    Rc::new(AlgebraTypeTemplate::ReceiverElement),
+                ]),
+                return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+                    id: "FoldAccumulator".to_string(),
+                }),
+            }),
+        ]),
+        return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
+            id: "FoldAccumulator".to_string(),
+        }),
+        size_effect: std::option::Option::None,
+        cost_shape: Some(CostShape::ShapeIterateBody),
+        callback_element_position: Some(1),
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StepPositionScan {
+    pub next: i64,
+    pub found: Option<i64>,
+}
+
+pub fn template_param_position(
+    t: Rc<AlgebraFieldTemplate>,
+    admits: impl Fn(Rc<AlgebraTypeTemplate>) -> bool + Clone,
+) -> Option<i64> {
+    {
+        let scan = t.param_types.clone().iter().cloned().fold(
+            StepPositionScan {
+                next: 0,
+                found: std::option::Option::None,
+            },
+            |acc: StepPositionScan, p: Rc<AlgebraTypeTemplate>| match acc.found.clone() {
+                Some(_) => acc.clone(),
+                std::option::Option::None => {
+                    if admits(p.clone()) {
+                        StepPositionScan {
+                            next: v1_rt::int_add(acc.next.clone(), 1),
+                            found: Some(acc.next.clone()),
+                        }
+                    } else {
+                        StepPositionScan {
+                            next: v1_rt::int_add(acc.next.clone(), 1),
+                            found: std::option::Option::None,
+                        }
+                    }
+                }
+            },
+        );
+        scan.found.clone()
+    }
+}
+
+pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
+    template_param_position(t.clone(), |p| match (*p.clone()).clone() {
+        AlgebraTypeTemplate::CallableOf { .. } => true,
+        _ => false,
+    })
+}
+
+pub fn template_receiver_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
+    template_param_position(t.clone(), |p| {
+        (p.clone() == Rc::new(AlgebraTypeTemplate::ReceiverSelf))
+    })
+}
+
+pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
+    {
+        let step_return = t.param_types.clone().iter().cloned().fold(
+            std::option::Option::None,
+            |acc: _, p: Rc<AlgebraTypeTemplate>| match acc.clone() {
+                Some(_) => acc.clone(),
+                std::option::Option::None => match (*p.clone()).clone() {
+                    AlgebraTypeTemplate::CallableOf { return_type: r, .. } => Some(r.clone()),
+                    _ => std::option::Option::None,
+                },
+            },
+        );
+        match step_return.clone() {
+            std::option::Option::None => std::option::Option::None,
+            Some(acc_type) => {
+                if (acc_type.clone() == Rc::new(AlgebraTypeTemplate::ReceiverSelf)) {
+                    std::option::Option::None
+                } else {
+                    template_param_position(t.clone(), |p| match (*p.clone()).clone() {
+                        AlgebraTypeTemplate::CallableOf { .. } => false,
+                        _ => (p.clone() == acc_type.clone()),
+                    })
+                }
+            }
+        }
+    }
+}
+
 pub fn is_collection_filter_template(t: Rc<AlgebraFieldTemplate>) -> bool {
     {
         let proto = collection_filter_shape();
@@ -1217,31 +1324,7 @@ pub fn finite_power_set_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: Some(CostShape::ShapeIterateBody),
             callback_element_position: Some(0),
         }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "fold".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                    id: "FoldAccumulator".to_string(),
-                }),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![
-                        Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                            id: "FoldAccumulator".to_string(),
-                        }),
-                        Rc::new(AlgebraTypeTemplate::ReceiverElement),
-                    ]),
-                    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                        id: "FoldAccumulator".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                id: "FoldAccumulator".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(1),
-        }),
+        collection_fold_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "any".to_string(),
             param_types: Rc::new(vec![
@@ -1597,31 +1680,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: Some(CostShape::ShapeIterateBody),
             callback_element_position: Some(0),
         }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "fold".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                    id: "FoldAccumulator".to_string(),
-                }),
-                Rc::new(AlgebraTypeTemplate::CallableOf {
-                    params: Rc::new(vec![
-                        Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                            id: "FoldAccumulator".to_string(),
-                        }),
-                        Rc::new(AlgebraTypeTemplate::ReceiverElement),
-                    ]),
-                    return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                        id: "FoldAccumulator".to_string(),
-                    }),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::AlgebraTypeVariable {
-                id: "FoldAccumulator".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeIterateBody),
-            callback_element_position: Some(1),
-        }),
+        collection_fold_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "any".to_string(),
             param_types: Rc::new(vec![

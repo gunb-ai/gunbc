@@ -1,10 +1,13 @@
 module extdeps.tools.findutils
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr, Int, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.crypto.hash { sha256sum_program }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -29,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data find_program: NonEmptyStr = "find"
+fn find_program() -> ProgramIdentity = uncataloged_program(invocation: "find")
 
 // xargs SHIPS WITH findutils, not coreutils, which is why it is homed here beside find rather than
 // in extdeps.tools.gnu_coreutils. The pairing is the usual one: find -print0 emits NUL-separated
@@ -55,7 +58,7 @@ fn find_symlink_target_glob_command(
   link_target_glob: String,
 ) -> ArgvCommand {
   argv_command(
-    program: find_program,
+    program: find_program(),
     arguments: [
       search_root,
       "-maxdepth", to_string(max_depth),
@@ -71,13 +74,30 @@ fn find_symlink_target_glob_command(
 // is never handed to a command that would refuse it. `-exec ... {} +` batches the paths into as few
 // invocations as ARG_MAX admits; find exits nonzero when any invocation does.
 fn find_owned_regular_files_exec_argv(dir: String, owner: String, command: List<String>) -> List<String> {
-  concat(concat([find_program as String, dir, "-maxdepth", "1", "-type", "f", "-user", owner, "-exec"], command), ["{}", "+"])
+  concat(concat([find_program().invocation as String, dir, "-maxdepth", "1", "-type", "f", "-user", owner, "-exec"], command), ["{}", "+"])
 }
 
 // THE REGULAR FILES UNDER A ROOT, ONE `<size> <relative path>` LINE EACH (find(1) -printf: %s is the
 // size in bytes, %P the path with the starting point removed). A plain argv: no shell, and find's own
 // status is the one the caller reads.
 fn find_regular_file_sizes_argv(root: String) -> List<String> {
-  [find_program as String, root, "-type", "f", "-printf", "%s %P\n"]
+  [find_program().invocation as String, root, "-type", "f", "-printf", "%s %P\n"]
 }
 
+
+// THREE READS OF ONE TREE THAT TOGETHER DESCRIBE ITS CONTENT: every regular file's sha256 (batched
+// through sha256sum by `-exec ... {} +`, printed as `<hex>  <absolute path>`), every regular file
+// with its owner-execute bit set (`x <relative path>`), and every symbolic link with its target
+// (`l <relative path> -> <target>`). %P is the path with the starting point removed; the printf
+// escape \n is find's own, so the argv word carries a backslash and an n, not a newline.
+fn find_regular_files_sha256_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-type", "f", "-exec", sha256sum_program().invocation as String, "{}", "+"])
+}
+
+fn find_owner_executable_files_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-type", "f", "-perm", "-u+x", "-printf", "x %P\\n"])
+}
+
+fn find_symlink_targets_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-type", "l", "-printf", "l %P -> %l\\n"])
+}

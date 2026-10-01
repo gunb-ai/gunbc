@@ -13,6 +13,7 @@ import std.measure {
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.optional { Present, Absent }
+import std.staircase { StepVerdict, StepStops, StepContinues, StaircaseOutcome, StaircaseStopped, StaircaseCompleted, StaircaseRefused, StaircasePlanEmpty, StaircasePlanLevelDuplicated, run_staircase }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.engine_args { VllmPrefixCachingRequest, PrefixCachingExplicit, PrefixCachingOmitted }
@@ -25,6 +26,7 @@ import extdeps.linux.cgroup_v2_memory { CgroupMemoryStat }
 import extdeps.container.oci.digest { OciContentDigest, OciSha256Digest, render_oci_content_digest_wire }
 import gunbc.floor_memory_demand { CgroupMemoryEvents }
 import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
+import gunbc.spark.v41_runtime_image_converge { V41ProducedImageHeld, v41_arm_a_produced_image, v41_production_produced_image }
 import gunbc.spark.serving_load_probe { ClientBenchLatency, ClientBenchLatencyUnread, ClientBenchLatencyReported }
 
 // ══ V4.1 CAPACITY MEASUREMENT ═══════════════════════════════════════════════════════════════════
@@ -124,27 +126,26 @@ data v41_probe_cells: List<V41ProbeCell> = [
 // and a switch to keep it is the escape hatch #12304 refused. The arm is read off the image by a
 // binding keyed on the image's CONFIG DIGEST, the same digest every rank's startup receipt carries,
 // and an image no binding names (or two bindings name) has no arm and refuses. The build run that
-// produced the image is carried beside the digest as its provenance.
+// produced the image is carried beside the digest as its provenance: a binding names the image's
+// receipt row (gunbc.spark.v41_runtime_image_converge V41ProducedImageHeld), never a copy of its digest.
 type V41EngramStartupArm = EngramUpstreamPinned | EngramFileBackedReleased
 
-type V41EngramArmBinding { arm: V41EngramStartupArm, image_config: OciContentDigest, build_run: NonEmptyStr }
+type V41EngramArmBinding { arm: V41EngramStartupArm, image: V41ProducedImageHeld }
 
+// Arm B: fleet-converge run 36327364664 (tag gunbc-vllm-dsv41-gb10:3cedb66f0ec0869e), the production
+// V4.1 image built on srv8 with the design-B cutover's patch set (#12359), so it serves Engram
+// file-backed with the page cache released. Both arms are now bound, so the binding frontier is gone.
 // Arm A: fleet-converge spark_v41_runtime_image_build run 36207135528 (tag
 // gunbc-vllm-dsv41-gb10:d73e307009a5d716), reported by proud-deer-538 2026-09-26. Built before the
 // _allocate_weights cutover, so it serves upstream pinned storage.
 data v41_engram_arm_bindings: List<V41EngramArmBinding> = [
-  V41EngramArmBinding {
-    arm: EngramUpstreamPinned,
-    image_config: OciSha256Digest(Sha256Digest { hex: "ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as Sha256DigestHex }),
-    build_run: "36207135528" as NonEmptyStr,
-  },
+  V41EngramArmBinding { arm: EngramUpstreamPinned, image: v41_arm_a_produced_image },
+  V41EngramArmBinding { arm: EngramFileBackedReleased, image: v41_production_produced_image },
 ]
-
-data v41_engram_arm_binding_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the first srv8 V4.1 runtime image built after the ParallelEngramEmbedding._allocate_weights cutover to allocate_file_backed finishes, and its config digest is bound to EngramFileBackedReleased with its build run. An image built after #12304 but before the cutover serves upstream pinned storage and binds to EngramUpstreamPinned, not here. SUFFICIENT FOR: both residency timelines name their arm by image content, so a cell from either image resolves to exactly one arm." as NonEmptyStr)
 
 fn v41_engram_arm_of(image: V41OciImageDigest, bindings: List<V41EngramArmBinding>) -> V41EngramStartupArm? {
   let wire = render_oci_content_digest_wire(d: image.config)
-  let matching = filter(bindings, b => render_oci_content_digest_wire(d: b.image_config) == wire)
+  let matching = filter(bindings, b => render_oci_content_digest_wire(d: b.image.config) == wire)
   if length(matching) != 1 {
     none
   } else {
@@ -671,12 +672,12 @@ type V41StaircaseStop
   | StopSloBreach { concurrency: Nat, which: NonEmptyStr, observed: Millisecond }
   | StopReadingMissing { concurrency: Nat, cause: NonEmptyStr }
 
-type V41StaircaseOutcome
-  = StaircaseStopped { last_sustained: Nat?, stop: V41StaircaseStop }
-  | StaircaseCompleted { last_sustained: Nat }
-  | StaircaseRefused { cause: NonEmptyStr }
-
-type V41StairScan { outcome: V41StaircaseOutcome?, last: Nat?, previous_per_request: Nat? }
+// THE UNSIGNED-POLICY REFUSAL IS V4.1'S OWN ARM. std.staircase has no policy gate by design (the
+// thresholds' sign-off is this module's V41PolicyStanding), so the gate is applied here, before the
+// generic staircase runs, and its refusal is a V4.1 fact beside the generic outcome rather than in it.
+type V41StaircaseRun
+  = V41StaircasePolicyUnsigned { cause: NonEmptyStr }
+  | V41StaircaseRan { outcome: StaircaseOutcome<Nat, V41StaircaseStop> }
 
 fn v41_step_stop(policy: V41CapacityPolicy, step: V41StaircaseStepReading, previous_per_request: Nat?) -> V41StaircaseStop? {
   let c = step.concurrency
@@ -731,40 +732,36 @@ fn v41_slo_stop(policy: V41CapacityPolicy, c: Nat, latency: ClientBenchLatency) 
   }
 }
 
-// THE STAIRCASE RUNS IN PLAN ORDER AND STOPS AT THE FIRST STOP RULE. A step reading that is missing
-// for a planned concurrency is a StopReadingMissing, never a skipped step: a staircase with a hole
-// cannot claim anything above the hole.
-fn v41_run_staircase(policy: V41PolicyStanding, run_id: NonEmptyStr, steps: List<V41StaircaseStepReading>) -> V41StaircaseOutcome {
+// THE STAIRCASE RUNS IN PLAN ORDER AND STOPS AT THE FIRST STOP RULE, through std.staircase
+// run_staircase: a step reading missing or duplicated at a planned concurrency is a StopReadingMissing,
+// never a skipped step, so nothing is claimed above a hole. Readings are joined to this run BEFORE the
+// staircase sees them, so a reading from another run is a hole here, never data. The accumulator is the
+// previous step's per-request refault, which the superlinear-refault rule compares against.
+type V41StairCarry { previous_per_request: Nat? }
+
+fn v41_step_verdict(p: V41CapacityPolicy, carry: V41StairCarry, step: V41StaircaseStepReading) -> StepVerdict<V41StaircaseStop, V41StairCarry> {
+  match v41_step_stop(policy: p, step: step, previous_per_request: carry.previous_per_request) {
+    Present { value: stop } => StepStops { stop: stop }
+    Absent => StepContinues { acc: V41StairCarry { previous_per_request: Present { value: (step.refault_file_after - step.refault_file_before) / step.concurrency } } }
+  }
+}
+
+fn v41_run_staircase(policy: V41PolicyStanding, run_id: NonEmptyStr, steps: List<V41StaircaseStepReading>) -> V41StaircaseRun {
   match policy {
     PolicyProposed { proposal: _, reasons: _ } =>
-      StaircaseRefused { cause: "the staircase thresholds are an unsigned proposal; operator sign-off is required before any stop rule is applied" as NonEmptyStr }
-    PolicyOperatorSigned { policy: p, ruling: _ } => {
-      let scan = fold(v41_staircase_concurrencies, init: V41StairScan { outcome: none, last: none, previous_per_request: none }, f: (acc, c) =>
-        match acc.outcome {
-          Present { value: _ } => acc
-          Absent => {
-            let at = filter(steps, s => s.concurrency == c && s.run_id == run_id)
-            if length(at) != 1 {
-              V41StairScan { outcome: Present { value: StaircaseStopped { last_sustained: acc.last, stop: StopReadingMissing { concurrency: c, cause: "no single step reading for this run at this concurrency" as NonEmptyStr } } }, last: acc.last, previous_per_request: acc.previous_per_request }
-            } else {
-              match list_at_optional(xs: at, index: 0) {
-                Absent => acc
-                Present { value: step } => match v41_step_stop(policy: p, step: step, previous_per_request: acc.previous_per_request) {
-                  Present { value: stop } => V41StairScan { outcome: Present { value: StaircaseStopped { last_sustained: acc.last, stop: stop } }, last: acc.last, previous_per_request: acc.previous_per_request }
-                  Absent => V41StairScan { outcome: none, last: Present { value: c }, previous_per_request: Present { value: (step.refault_file_after - step.refault_file_before) / c } }
-                }
-              }
-            }
-          }
-        })
-      match scan.outcome {
-        Present { value: o } => o
-        Absent => match scan.last {
-          Present { value: l } => StaircaseCompleted { last_sustained: l }
-          Absent => StaircaseRefused { cause: "the staircase plan is empty" as NonEmptyStr }
-        }
+      V41StaircasePolicyUnsigned { cause: "the staircase thresholds are an unsigned proposal; operator sign-off is required before any stop rule is applied" as NonEmptyStr }
+    PolicyOperatorSigned { policy: p, ruling: _ } =>
+      V41StaircaseRan {
+        outcome: run_staircase(
+          plan: v41_staircase_concurrencies,
+          readings: filter(steps, s => s.run_id == run_id),
+          level_key: c => to_string(c),
+          reading_level: s => s.concurrency,
+          init: V41StairCarry { previous_per_request: none },
+          stop_of: (carry, c, step) => v41_step_verdict(p: p, carry: carry, step: step),
+          missing: (c, cause) => StopReadingMissing { concurrency: c, cause: cause },
+        ),
       }
-    }
   }
 }
 
@@ -861,17 +858,21 @@ fn v41_probe_verdict_cell_is(v: V41ProbeVerdict, cell: V41ProbeCell) -> Bool {
 }
 
 // SLA SUSTAINABLE: the last staircase step before the first stop.
-fn v41_sla_capacity(o: V41StaircaseOutcome) -> V41Capacity {
+fn v41_sla_capacity(o: V41StaircaseRun) -> V41Capacity {
   match o {
-    StaircaseRefused { cause: c } => CapacityRefused { cause: c }
-    StaircaseCompleted { last_sustained: l } => CapacityAt { concurrency: l }
-    StaircaseStopped { last_sustained: l, stop: s } => match s {
-      StopReadingMissing { concurrency: c, cause: why } => CapacityRefused { cause: join(["a reading is missing at x", to_string(c), ": ", why as String], "") as NonEmptyStr }
-      StopKvPreemption { concurrency: _, preemptions: _ } => v41_last_or_below(l: l)
-      StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => v41_last_or_below(l: l)
-      StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => v41_last_or_below(l: l)
-      StopNvmeLatency { concurrency: _, mean_read_await: _ } => v41_last_or_below(l: l)
-      StopSloBreach { concurrency: _, which: _, observed: _ } => v41_last_or_below(l: l)
+    V41StaircasePolicyUnsigned { cause: c } => CapacityRefused { cause: c }
+    V41StaircaseRan { outcome: r } => match r {
+      StaircaseRefused { refusal: StaircasePlanEmpty } => CapacityRefused { cause: "the staircase plan is empty" as NonEmptyStr }
+      StaircaseRefused { refusal: StaircasePlanLevelDuplicated { level: c } } => CapacityRefused { cause: join(["the staircase plan names x", to_string(c), " twice"], "") as NonEmptyStr }
+      StaircaseCompleted { last_sustained: l } => CapacityAt { concurrency: l }
+      StaircaseStopped { last_sustained: l, stop: s } => match s {
+        StopReadingMissing { concurrency: c, cause: why } => CapacityRefused { cause: join(["a reading is missing at x", to_string(c), ": ", why as String], "") as NonEmptyStr }
+        StopKvPreemption { concurrency: _, preemptions: _ } => v41_last_or_below(l: l)
+        StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => v41_last_or_below(l: l)
+        StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => v41_last_or_below(l: l)
+        StopNvmeLatency { concurrency: _, mean_read_await: _ } => v41_last_or_below(l: l)
+        StopSloBreach { concurrency: _, which: _, observed: _ } => v41_last_or_below(l: l)
+      }
     }
   }
 }
@@ -887,7 +888,7 @@ fn v41_capacity_report(
   run_id: NonEmptyStr,
   startup: V41StartupAdmission,
   probes: List<V41ProbeReading>,
-  staircase: V41StaircaseOutcome,
+  staircase: V41StaircaseRun,
 ) -> V41CapacityReport {
   V41CapacityReport {
     run_id: run_id,
@@ -953,8 +954,8 @@ fn v41_serving_admission(realization: V41ServingRealization, report: V41Capacity
 // The plan the wet runner will execute, rendered without touching a host: the startup receipt from
 // every rank, the residency timeline for each bound image arm, the probe cells, the staircase, and
 // the standing of every precondition that is not met yet. The wet runner is a fleet mode that lands
-// after the srv8 runtime image exists (v41_wet_runner_frontier), and it consumes this same plan.
-data v41_wet_runner_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the srv8 V4.1 runtime image exists (after #12294) and a Group A fleet mode (a gunbc.ci.ci_spec GunbcRunStepTarget) brings up the measurement serve and reads the startup log lines, cgroup files, PSI, diskstats, mincore residency, torch memory, and vLLM metrics on every rank, producing the readings this module admits. SUFFICIENT FOR: v41_capacity_report is computed from readings taken on srv5-8 under one run id." as NonEmptyStr)
+// by the Group A fleet mode (v41_wet_runner_frontier), and it consumes this same plan.
+data v41_wet_runner_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a Group A fleet mode (a gunbc.ci.ci_spec GunbcRunStepTarget) brings up the measurement serve and reads the startup log lines, cgroup files, PSI, diskstats, mincore residency, torch memory, and vLLM metrics on every rank, producing the readings this module admits, and reads each rank's Engram arm off the config digest its startup receipt carries through v41_engram_arm_of over v41_engram_arm_bindings. SUFFICIENT FOR: v41_capacity_report is computed from readings taken on srv5-8 under one run id, with each rank's arm read from its own image rather than asserted." as NonEmptyStr)
 
 fn v41_capacity_measurement_plan_text() -> String {
   let arms = if length(v41_engram_arm_bindings) == 0 {

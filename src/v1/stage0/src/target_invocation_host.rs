@@ -264,6 +264,7 @@ pub enum TargetProducer {
     PrimitiveEgressCensusSeed,
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
+    SelfHostBehavioralEquivalence,
     /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
     /// shape is a registry row naming its entry, never another variant.
     NativeClaimProgram {
@@ -379,6 +380,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("bare-reference-channel-outcome"),
             TargetProducer::BareReferenceChannelOutcome,
+        ),
+        (
+            instrument_label("self-host-behavioral-equivalence"),
+            TargetProducer::SelfHostBehavioralEquivalence,
         ),
     ]
 }
@@ -509,9 +514,10 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
         };
     }
     let mut message = format!(
-        "heads-reading-differential: compared={} divergent={} narrowed={} regressed={} both_refused={}",
+        "heads-reading-differential: compared={} divergent={} occurrence_identity_only={} narrowed={} regressed={} both_refused={}",
         d.modules_compared,
         d.divergent.len(),
+        d.occurrence_identity_only.len(),
         d.narrowed.len(),
         d.regressed.len(),
         d.both_refused.len(),
@@ -521,6 +527,20 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     }
     for path in d.regressed.iter() {
         message.push_str(&format!("\nheads-reading-differential: REGRESSED {path}"));
+    }
+    // DECLARATION-NAME AGREEMENT, printed as host output beside the parse figures rather than
+    // folded into the verdict: `HeadsReadingDifferentialObservation` carries four populations and
+    // this is a fifth, so it has no home in the modeled standing yet. It is the population a pool
+    // name census consumes, which the whole-node `divergent` row cannot isolate. FOLD-IN TRIGGER:
+    // the first consumer that decides on this population (a gate, or step 1's reference-edge name
+    // index claiming its exactness) lands it as a field of `HeadsReadingDifferentialObservation`
+    // with `holds()` requiring it empty; until then it is a reading, not a verdict.
+    message.push_str(&format!(
+        "\nheads-reading-differential: declaration_names_divergent={}",
+        d.declaration_names_divergent.len()
+    ));
+    for row in d.declaration_names_divergent.iter() {
+        message.push_str(&format!("\nheads-reading-differential: NAMES {row}"));
     }
     // THE PARSE-WALL FIGURES ARE CARRIED OVER FROM THE DELETED `--heads-reading-differential`
     // MODE, AND THEY ARE HOST OUTPUT RATHER THAN PART OF THE MODELED OBSERVATION.
@@ -768,6 +788,11 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
+        TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
+            "self-host-behavioral-equivalence",
+            "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
+            "take_self_host_behavioral_equivalence_receipt",
+        ),
         TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
             "required-lane-resolution-census",
             "dag/gunbc/required_lane_resolution_census_live.dag",
@@ -1003,13 +1028,21 @@ fn exact_head_standing_outcome(
 /// broken compiler.
 fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_self_host(source_roots) {
-        Ok(held) => InvocationOutcome {
-            termination: if held.exit_status == 0 && held.warning_count == 0 {
+        Ok(held) => {
+            // THE TERMINATION IS DERIVED FROM THE CAUSE, so a did-not-hold cannot exit 1 without
+            // printing why: the cause IS the discriminator (DESIGN §5).
+            let not_clean = cli_run::emitted_build_not_clean_cause(
+                "SELF-HOST",
+                held.exit_status,
+                held.warning_count,
+                &held.warning_headers,
+            );
+            let termination = if not_clean.is_none() {
                 Termination::ObservationHeld
             } else {
                 Termination::ObservationDidNotHold
-            },
-            message: format!(
+            };
+            let counters = format!(
                 "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={} \
                  door_refusal_reason=\"{}\"",
                 held.closure_identity,
@@ -1018,8 +1051,15 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
                 held.exit_status,
                 held.warning_count,
                 held.door_refusal_reason,
-            ),
-        },
+            );
+            InvocationOutcome {
+                termination,
+                message: match not_clean {
+                    Some(cause) => format!("{cause}\n{counters}"),
+                    None => counters,
+                },
+            }
+        }
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
@@ -1034,7 +1074,12 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 ///
 /// `held` and `advanced` are the observation holding: every planned identity reached a terminal
 /// verdict and every honest failure is rostered debt. An advance also prints a proposed smaller
-/// roster, which the nightly turns into a pull request. `lost` and `unminted` are the observation
+/// roster, which a reviewed pull request may carry (the required native-route lane publishes it). An owned
+/// correctness flip (`grew-by-owned-correctness-flip`) holds for the same reason: every added
+/// identity is owed debt under a declared, owned cause, and it too prints a proposed roster.
+/// (v1 PURPOSE admission, `gunbc.v1_maintenance_standing`: this arm only maps a v2 frontier
+/// verdict word to its termination; the verdict itself is decided in `.dag`, so no seed growth.)
+/// `lost` and `unminted` are the observation
 /// not holding. `unminted` is a complete run with nothing to hold it to, and an empty roster read as
 /// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
 /// clause or the pattern was narrower than the universe, so the subject was not reached.
@@ -1043,7 +1088,7 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_frontier(source_roots, &pattern) {
         Ok(run) => {
             let termination = match run.frontier.as_str() {
-                "held" | "advanced" => Termination::ObservationHeld,
+                "held" | "advanced" | "grew-by-owned-correctness-flip" => Termination::ObservationHeld,
                 "lost" | "unminted" => Termination::ObservationDidNotHold,
                 "not-a-measurement" => Termination::SubjectUnreached,
                 other => {
@@ -1094,13 +1139,21 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
 /// never opened.
 fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_cli(source_roots) {
-        Ok(held) => InvocationOutcome {
-            termination: if held.exit_status == 0 && held.warning_count == 0 {
+        Ok(held) => {
+            // THE TERMINATION IS DERIVED FROM THE CAUSE, so a did-not-hold cannot exit 1 without
+            // printing why: the cause IS the discriminator (DESIGN §5).
+            let not_clean = cli_run::emitted_build_not_clean_cause(
+                "V2-NATIVE-CLI",
+                held.exit_status,
+                held.warning_count,
+                &held.warning_headers,
+            );
+            let termination = if not_clean.is_none() {
                 Termination::ObservationHeld
             } else {
                 Termination::ObservationDidNotHold
-            },
-            message: format!(
+            };
+            let counters = format!(
                 "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={} \
                  door_exit_status={} door_emitted_bytes={} door_refusal_exit_status={} \
                  generation_one_executable={}",
@@ -1113,8 +1166,15 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
                 held.door_emitted_bytes,
                 held.door_refusal_exit_status,
                 held.generation_one_executable,
-            ),
-        },
+            );
+            InvocationOutcome {
+                termination,
+                message: match not_clean {
+                    Some(cause) => format!("{cause}\n{counters}"),
+                    None => counters,
+                },
+            }
+        }
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,

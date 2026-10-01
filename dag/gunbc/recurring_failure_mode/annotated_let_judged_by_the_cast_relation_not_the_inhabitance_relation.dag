@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.annotated_let_judged_by_the_cast_relation_not_the_inhabitance_relation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data annotated_let_judged_by_the_cast_relation_not_the_inhabitance_relation: RecurringFailureMode = RecurringFailureMode {
+  identity: "annotated_let_judged_by_the_cast_relation_not_the_inhabitance_relation" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: v2 answers one question -- does this produced value inhabit this declared type? -- through two relations chosen by position. An argument at its formal and a fn body at its declared return build a DeclaredTypeObligation and consult v2.std.inhabitance declared_type_inhabitance; an annotated let (`let x: T = e`) is judged by v2.compiler.infer infer_bind_annotation_check through v2.std.coercion coercion_cast_crossing, the fold a cast's crossing asks.",
+
+    "HARM: a meaning fork at the relation layer (DESIGN section 3). The two relations are different procedures -- coercion selects a target-language inhabitant spelling under a TargetSelectionPolicy with its own mismatch vocabulary, inhabitance is find_witness over the declared singleton -- so one produced/declared pair can be admitted at a let and refused at an argument or a return, or refused under two different reason vocabularies. v2.std.inhabitance declared_type_inhabitance already records why routing an inhabitance question through coercion_fold would nickname target selection as typechecking; the let position does exactly that.",
+
+    "DISTINGUISHING FACTS: an ascription converts nothing (infer_bind_annotation_check uses only the verdict, never a crossed value), so the let question is inhabitance, not a cast. DeclaredTypePosition names PositionDirectCallArgument and PositionDeclaredReturn and has no let arm; v1's DeclaredTypePosition carries PositionLetAnnotation, so the seed already models the let as a declared-type position of the one relation.",
+
+    "RECOGNITION RULE: a DeclaredTypePosition-shaped question (produced type at an authored declared type) answered anywhere other than declared_type_inhabitance. Found 2026-09-27 while wiring the PositionDeclaredReturn producer (brief node adhoc-0e837314-c3c), and kept out of that change by the lane manager's ruling so the return producer lands on the relation its frontier named.",
+
+    "RUNG FOUND AT: mitigatable on the let path (a mismatch coercion recognises refuses, located at the annotation, infer_reason_bound_value_does_not_inhabit_annotation); the fork itself is unrefused by any gate and held only by review.",
+
+    "CEILING: structurally impossible -- one relation, positions as data. Decidable and fully modeled: the relation and the position vocabulary both exist.",
+
+    "NEXT-RUNG TRIGGER: a PositionLetAnnotation arm on v2.std.inhabitance DeclaredTypePosition with infer_bind_annotation_check building a DeclaredTypeObligation and consulting declared_type_inhabitance, and coercion_cast_crossing no longer imported by that check, sufficient that every declared-type position in v2.compiler.infer reaches one relation; the let's discriminating RED and positive control re-enrolled on that route.",
+  ],
+
+  evidence: [],
+}

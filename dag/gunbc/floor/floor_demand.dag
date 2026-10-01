@@ -14,7 +14,11 @@ import std.checked_arithmetic {
 }
 import extdeps.storage.types { Ephemeral }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
-import product.fabric.envelope { MemoryRequirement, StorageRequirement }
+import product.fabric.envelope { MemoryRequirement, StorageRequirement, ResourceEnvelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.work {
+  ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity, TrustDomainRef,
+}
 
 data floor_demand_disposition: ConstructionMechanism = SingleAuthority
 
@@ -740,7 +744,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
   run_completed: false,
   swap_policy: SwapMaxDeclaredUnread {
     declared: byte_size(34359738368),
-    declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
+    declaring_authority: "gunbc.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
   },
 }
 
@@ -985,7 +989,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_21: FloorHeldSetReceipt = FloorHeld
   run_completed: true,
   swap_policy: SwapMaxDeclaredUnread {
     declared: byte_size(34359738368),
-    declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
+    declaring_authority: "gunbc.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
   },
 }
 
@@ -1407,7 +1411,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_23: FloorHeldSetReceipt = FloorHeld
   run_completed: true,
   swap_policy: SwapMaxDeclaredUnread {
     declared: byte_size(34359738368),
-    declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
+    declaring_authority: "gunbc.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
   },
 }
 
@@ -1563,3 +1567,112 @@ data gunbc_floor_job_wall_receipt_2026_09_19: FloorJobWallReceipt = FloorJobWall
   build_step_wall: second(count: 198),
   sccache_reachable: true,
 }
+
+// Moved here from gunbc.fabric_witness_run (gunbc#12788): the floor's execution demand is a fact
+// about floor demand. Each declaration below keeps its own rationale.
+//
+// WHAT A FLOOR RUN REQUIRES OF ITS EXECUTOR, AND WHY THAT IS HONESTLY NOTHING.
+//
+// A floor run is OUR OWN work on OUR OWN fleet, and it runs today on slots providing none of the
+// isolation guarantees -- a reused writable root by design, the host's process namespace, and
+// /home/ghrunner shared across every slot. Declaring a requirement the floor does not have would
+// invent a gap: the run modeled as ineligible for the executor it has been green on for months.
+//
+// SO THE EMPTY PROFILE HERE IS A MEASUREMENT, NOT A PLACEHOLDER: the floor asks for no tenancy
+// guarantee. The gap this model expresses belongs to CUSTOMER work -- see product.fabric.isolation
+// tenant_workload_isolation_requirement and the witness measuring today's slots against it.
+//
+// CONSUMPTION STATUS: the fold that reads this (floor_offer_fungibility -> offer_fungibility_for)
+// has NO production consumer, like its siblings ShapeNotCovered and CapabilitiesNotOffered. It is
+// the modeled decision the broker will consume, not a live wall; calling it enforcement would be
+// the rung inflation recorded on gunbc.fabric_witness_run floor_work_contract (whose leading block covers affordability and the module's other unconsumed functions). NEXT-RUNG TRIGGER is the same: a broker
+// fold that selects an Offer for this Demand.
+fn floor_isolation_requirement() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+// THE FLEET'S OWN TRUST DOMAIN, AS A ROW RATHER THAN A LITERAL, because a second consumer now
+// decides on it: gunbc.runner_attempt_launch admits the reservation-authorized planner arm only for
+// a Work whose trust_domain IS this row -- the untrusted-CI route carries another domain and cannot
+// reach that arm by construction. Two spellings of the domain would let the two drift apart and
+// the selection silently widen or narrow.
+data gunbc_internal_fleet_trust_domain: TrustDomainRef = "gunbc.trust.internal-fleet" as TrustDomainRef
+
+// OUR FLOOR IS arm64. THE CLASS IS NOT.
+//
+// This function previously spelled the architecture INSIDE a capability tag --
+// "gunbc.capabilities.linux-aarch64-rust-toolchain" -- making an accident of our supply look like
+// a property of the execution class. Ampere is what we stock; the product must serve x86 and arm
+// at the lowest cost, and rented x86 is an anticipated supplier. A class that names its
+// architecture cannot admit one it did not -- the GitHub-vocabulary argument one layer over. So
+// the tag below names the toolchain and NOT the machine.
+//
+// WHY NO Architecture VALUE IS DECLARED HERE YET. Matching a declared architecture needs the OFFER
+// to carry one, and SupplierOffer has 25 constructors in tree, so the field and the arm that reads
+// it land together. An earlier revision declared `floor_architecture() -> Architecture = Aarch64`
+// anyway, with ZERO consumers; v2.lens.inert_carrier caught it on CI as an unrostered inert
+// carrier -- in the same commit whose message refused to add an unread field to SupplierOffer by
+// citing review 53848's declared-but-nothing-derives-it defect. Refusing the defect on one side of
+// a module boundary and authoring it on the other is the same defect.
+//
+// So the architecture decision lives in prose and in the recut plan until it has a consumer: a
+// decision recorded is not a carrier modeled, and minting it early buys only a row that lies about
+// being load-bearing.
+//
+// THE FLOOR IS CONTROL-PLANE WORK AND SAYS SO. This is the demand the capacity
+// class exists to protect: our own scheduler, reconciliation, admission and
+// receipt work, which must never be satisfied by capacity sanctioned for
+// customer execution. Declared on the side we ORIGINATE, so no supplier can
+// author it and the refusal is decided at admission rather than after ranking.
+//
+// THE ENVELOPE STATES MEMORY AND NOTHING ELSE, AND EACH ABSENCE HAS A REASON.
+//
+// Memory was unstated while the runner cells were sized to this very Work's
+// demand (gunbc.runner_slot_allocation, the 2026-09-12 ruling) -- the cell knew
+// what the floor needed and the floor's own Work did not say, so a microVM guest
+// sized for it had nothing to read. It now reads gunbc.floor_demand: the
+// resident held-set lower bound derived from raw memory.stat beats on the host
+// slot, and NOTHING while that is unmeasured -- a cgroup peak charges reclaimable
+// cache, so it is a ceiling rather than a demand, and stating it here would size
+// every consumer to a bet. The guest's cache allowance is the guest shape's own
+// fact (gunbc.runner_microvm), not this Work's. Stating memory has a
+// consequence on the offer side that is the point rather than a cost: an offer
+// that does not state memory no longer covers this Work (product.fabric.supply
+// MemoryNotOffered), so every offer that claims to run the floor must say how
+// much memory it runs it in.
+//
+// Storage is a DECLARED FRONTIER, stated in gunbc.floor_demand
+// floor_storage_demand and consumed there by the microVM shape's
+// workspace fit and the cold-build receipt plan, but NOT placed on this
+// envelope yet. product.fabric.supply compares no storage axis, so a stated
+// requirement here would be silently unchecked -- the fail-open absence of
+// observation the envelope exists to prevent -- and adding the axis to the
+// fold would make every host-slot offer refuse, because a shared host slot has
+// no storage number to offer (gunbc.runner_slot_allocation: disk admits
+// nothing numeric anywhere). TRIGGER: an offer-side storage fact for the cells
+// the floor runs on, at which point the axis joins the fold and this field
+// reads floor_storage_demand.
+//
+// Architecture is unstated because the Work does not require one: the job
+// builds what it runs, and the aarch64 the fleet provides is a fact about the
+// fleet's labels rather than about this Work. Stating it would refuse an x86
+// offer for a reason the Work does not have (DESIGN 4d, over-prohibition).
+fn floor_execution_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+      envelope: ResourceEnvelope {
+        cpu: none,
+        gpu: none,
+        memory: floor_memory_requirement(),
+        storage: none,
+        network: none,
+      },
+    },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: gunbc_internal_fleet_trust_domain,
+    isolation: floor_isolation_requirement(),
+  }
+}
+

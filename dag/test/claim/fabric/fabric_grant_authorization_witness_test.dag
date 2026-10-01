@@ -13,12 +13,14 @@ import test.claim.fabric_grant_issuance_witness {
 import product.fabric.execution { ExecutionGrant }
 import product.fabric.identity { FabricIdentity }
 import product.fabric.grant_issue {
-  GrantCommitted, GrantRefused,
+  GrantIssue, GrantCommitted, GrantRefused,
   GrantAuthorization, GrantAuthorizes, GrantFenceRefused,
   GrantAuthorizesDifferentWork, GrantAnswersDifferentDemand, GrantIssuedAgainstDifferentOffer,
   grant_authorizes_reservation,
 }
 import product.fabric.budget { MoneyAccount, MoneyReservationRequest }
+import std.measure { Count, One }
+import std.algebra { Cons, Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -54,14 +56,18 @@ type IssuedAuthorization {
 }
 
 fn issued_authorizations() -> List<IssuedAuthorization> {
-  match issue(
+  issue(
     work: subject_work,
     attempt: first_attempt,
     offer: admitted_offer,
     outstanding: [],
     account: funded_account,
     ledger: thread_appropriation,
-  ) {
+  ) |> map(o => issued_authorization_of(o: o)) |> fold(init: [], f: fn(acc, xs) { concat(acc, xs) })
+}
+
+fn issued_authorization_of(o: GrantIssue<NonEmptyStr, Count, One>) -> List<IssuedAuthorization> {
+  match o {
     GrantCommitted { grant: g, account: a, ledger: _ } =>
       [IssuedAuthorization { grant: g, account: a }]
     GrantRefused { refusal: _ } => []

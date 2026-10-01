@@ -108,6 +108,14 @@ fn context(rows: List<ObservedToolIdentity>) -> ResolvedBuildContext {
 // aggregate, but rustfmt readiness stays admitted because the decision reads only
 // observed_tool_identity(rustfmt).
 
+// WORKAROUND, not a modeling choice: reading `subj.program.invocation` directly through a binder of
+// a generic call's inferred result typechecks and then fails at evaluation ("error type cascade").
+// Reading through this CliTool-typed helper evaluates. Delete it when
+// gunbc.recurring_failure_mode nested_field_read_through_a_binder_of_an_inferred_generic_result climbs.
+fn tool_invocation(tool: CliTool) -> String {
+  tool.program.invocation as String
+}
+
 test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool {
   match tool_readiness(
     request: PinnedToolReadinessRequest { pin: rustfmt_pin },
@@ -117,7 +125,7 @@ test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool {
     ]),
   ) {
     PinnedAdmitted { pin: admitted, plan: plan } =>
-      ((admitted.subject.name as String) == "rustfmt")
+      (tool_invocation(tool: admitted.subject) == "rustfmt")
         && membership_write_count(plan: plan) == 0
         && membership_refusal_count(plan: plan) == 0
     PinnedRefused { refusals: _ } => false
@@ -138,7 +146,7 @@ test fn digest_mismatch_refuses_and_frontier_cannot_bypass_it() -> Bool {
       tool_readiness_refusal_count(readiness: readiness) == 1
         && match rows |> first {
           Present { value: refusal } =>
-            ((refusal.tool.name as String) == "rustfmt")
+            (tool_invocation(tool: refusal.tool) == "rustfmt")
               && match refusal.cause {
                 ToolMembershipNotConverged { plan: plan, admission: admission } =>
                   membership_write_count(plan: plan) == 1
@@ -288,7 +296,7 @@ test fn declared_unpinned_rustfmt_frontier_is_explicit() -> Bool {
     ]),
   ) {
     UnpinnedFrontier { row: row, observed: observation } =>
-      (row.tool.name as String) == "rustfmt"
+      tool_invocation(tool: row.tool) == "rustfmt"
         && (observation.tool_name as String) == "rustfmt"
         && row.trigger.decl_name == "witness_unpinned_frontier_row"
     PinnedAdmitted { pin: _, plan: _ } => false

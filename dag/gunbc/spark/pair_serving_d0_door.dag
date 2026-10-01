@@ -120,7 +120,10 @@ fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEm
         D0RequestUnestablished { obligations: o } => D0RunRefused { reason: join(["the consent has no subject to be asked over yet; still to be established: ", join(map(o, x => x as String), "; ")], "") }
         D0RequestRefused { defects: d } => D0RunRefused { reason: join(["the consent has no subject to be asked over: the candidate's source is refused and must be corrected, not read further: ", join(map(d, x => x as String), "; ")], "") }
         D0RequestFor { request: request } =>
-          match d0_freeze_filing(store: store, escalation_id: escalation_id, intent_text: d0_request_intent_text(request: request, group: g, transaction: transaction), execution_revision: execution_revision) {
+          match d0_request_intent_text(request: request, group: g, transaction: transaction) {
+            Absent => D0RunRefused { reason: "the consent's scope has no wire, so no intent can be stated over it (std.scoped_authorization intent_frame_head refused)" }
+            Present { value: intent_text } =>
+          match d0_freeze_filing(store: store, escalation_id: escalation_id, intent_text: intent_text, execution_revision: execution_revision) {
             D0FilingFreezeRefused { reason: r } => D0RunRefused { reason: r as String }
             D0FilingFrozen => D0FirstRun { request: request }
             D0FilingAlreadyHeld { text: t } =>
@@ -128,6 +131,7 @@ fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEm
                 D0FiledRequestRefused { reason: r } => D0RunRefused { reason: r as String }
                 D0FiledRequestFor { request: filed, intent_text: _ } => D0Rerun { request: filed }
               }
+          }
           }
       }
   }
@@ -226,7 +230,7 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
       } else if execution_revision == "" {
         refuse(reason: "the execution revision must be named; it is frozen with the filing and a rerun must execute it")
       } else {
-      match d0_store_write_wall_standing() {
+      match d0_store_write_wall_standing(group: g, escalation_id: authorization as NonEmptyStr) {
         Present { value: wall } => refuse(reason: wall)
         Absent =>
       match observe_executor_reach() {

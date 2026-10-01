@@ -996,6 +996,27 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
     )
 }
 
+/// `floor_diff_edits_from_diff_text_with_base_names` with each changed path's new-side
+/// content SUPPLIED rather than read from the working tree.
+#[cfg(test)]
+pub(crate) fn floor_diff_edits_from_diff_text_with_base_names_and_sources(
+    index: &MultiEntryIndex,
+    diff_text: &str,
+    base_test_decl_names: &std::collections::HashMap<String, HashSet<String>>,
+    sources: &std::collections::HashMap<String, String>,
+) -> Result<FloorDiffEdits, String> {
+    floor_diff_edits_from_line_ranges_reading(
+        index,
+        &parse_unified_diff_line_ranges(diff_text),
+        &parse_unified_diff_changed_new_lines(diff_text),
+        &parse_unified_diff_departed_paths(diff_text),
+        &parse_unified_diff_added_paths(diff_text),
+        Some(base_test_decl_names),
+        &parse_unified_diff_rename_sources(diff_text),
+        &|path: &str| Ok(sources.get(path).cloned()),
+    )
+}
+
 // Host realization under a declared scaffold: the governing row is the `SCAFFOLD (DESIGN
 // §6–§7)` declaration above `FloorDiffEdits` in `cli_run`, which owns this function's
 // reason, dissolve-on trigger and census. Read it there; it is not restated here.
@@ -1007,6 +1028,44 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     added_paths: &HashSet<String>,
     base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
     rename_from: &std::collections::HashMap<String, String>,
+) -> Result<FloorDiffEdits, String> {
+    floor_diff_edits_from_line_ranges_reading(
+        index,
+        line_ranges_by_file,
+        changed_new_lines_by_file,
+        departed_paths,
+        added_paths,
+        base_test_decl_names,
+        rename_from,
+        &read_working_tree_source,
+    )
+}
+
+/// The production reader: a changed path's content at the working tree. `Ok(None)` is
+/// "absent from the tree", which the caller dispositions against the diff's departed set.
+fn read_working_tree_source(file_norm: &str) -> Result<Option<String>, String> {
+    let disk_path = process_workspace_root().join(file_norm);
+    if !disk_path.is_file() {
+        return Ok(None);
+    }
+    std::fs::read_to_string(&disk_path)
+        .map(Some)
+        .map_err(|e| format!("read failed for {file_norm}: {e}"))
+}
+
+/// Attribution over a supplied reader of each changed path's new-side content. The
+/// interface is diff + census + content -> edits, so a witness supplies the content as a
+/// value (DESIGN §3 witness rule) rather than reading whatever the live tree now holds.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn floor_diff_edits_from_line_ranges_reading(
+    index: &MultiEntryIndex,
+    line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
+    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
+    departed_paths: &HashSet<String>,
+    added_paths: &HashSet<String>,
+    base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
+    rename_from: &std::collections::HashMap<String, String>,
+    read_source: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
@@ -1036,8 +1095,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
             continue;
         }
         let file_norm = normalize_repo_path(file_path);
-        let disk_path = process_workspace_root().join(&file_norm);
-        if !disk_path.is_file() {
+        let Some(content) = read_source(&file_norm)? else {
             if departed_paths.contains(&file_norm) {
                 // Departed per the diff (deletion / rename-from): its decl set
                 // is empty by construction — the file has no declarations to
@@ -1053,15 +1111,11 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
                  content changes but the path is absent from the working tree \
                  and the diff does not mark it departed (deletion/rename)"
             ));
-        }
+        };
         let resolve_index = if file_norm.starts_with("src/v1/") {
             v1_attribution_index.as_ref().expect("v1 attribution index")
         } else {
             index
-        };
-        let content = match std::fs::read_to_string(&disk_path) {
-            Ok(c) => c,
-            Err(e) => return Err(format!("read failed for {file_path}: {e}")),
         };
         // Attribution is a PARSE-grade fact: it needs each touched file's
         // declaration line map (names + spans + data/fn kind), never its typecheck.
@@ -1366,9 +1420,22 @@ fn changed_and_enrolled_witness_identities_with_index(
     let touched_declarations =
         declaration_seeds_from_touched_declarations(&root, &edits.touched_declarations)?;
     let interface_consumers = interface_consumer_planning(planning_index, &touched_declarations)?;
+    // THE FIFTH PROJECTION IS THE DIFF'S PATHS THEMSELVES, for the checker-input rule
+    // (`v2.workflow.floor_subject_seed` `checker_subject_rule`): a changed non-.dag path is
+    // structural-empty for the .dag frontier above and still an input to every Strict verdict
+    // when the checker compiled it. Departed paths are included, since deleting a file the
+    // checker compiled changes the checker.
+    let mut diff_paths: Vec<String> = changed_paths
+        .iter()
+        .cloned()
+        .chain(departed_paths.iter().cloned())
+        .collect();
+    diff_paths.sort();
+    diff_paths.dedup();
     Ok(FloorDiffProjections {
         changed_witnesses: changed,
         newly_enrolled_witnesses: enrolled,
+        diff_paths,
         compile_subject: CompileSubjectSeeds {
             touched_modules,
             touched_outside_floor_roots,
@@ -1383,6 +1450,8 @@ fn changed_and_enrolled_witness_identities_with_index(
 pub(crate) struct FloorDiffProjections {
     pub changed_witnesses: Vec<String>,
     pub newly_enrolled_witnesses: Vec<String>,
+    /// Every path the diff names, changed or departed, as the checker-input rule reads them.
+    pub diff_paths: Vec<String>,
     pub compile_subject: CompileSubjectSeeds,
 }
 
@@ -1649,6 +1718,16 @@ pub(crate) enum EnrolmentMarginStanding {
     DeadBandStale {
         observed_cpu_ms: u64,
         budget_ms: u64,
+        envelope_floor_ms: u64,
+    },
+    /// Mirror of `EnrolmentDeadBandWithinRunnerEnvelope`: a dead-band row whose live reading is at
+    /// or under the margin but above the envelope floor (the margin applied once more to the same
+    /// measured runner envelope). A fast runner's reading of a band member: reported with both
+    /// bounds, and it does not block.
+    DeadBandWithinRunnerEnvelope {
+        observed_cpu_ms: u64,
+        budget_ms: u64,
+        envelope_floor_ms: u64,
     },
     /// Mirror of `EnrolmentDeadBandWrongGround`: a dead-band row whose live reading is above the
     /// per-subject line, where ordinary typed cost debt is the authority. It blocks.
@@ -1701,6 +1780,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::RosterGroundStale { .. } => true,
             EnrolmentMarginStanding::DeadBandStale { .. } => true,
             EnrolmentMarginStanding::DeadBandWrongGround { .. } => true,
+            EnrolmentMarginStanding::DeadBandWithinRunnerEnvelope { .. } => false,
         }
     }
 
@@ -1720,7 +1800,10 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
                 EnrolmentPairingHole::OutsideExecution
             }
-            EnrolmentMarginStanding::ExpensivenessDeclared { .. } => EnrolmentPairingHole::Declared,
+            EnrolmentMarginStanding::ExpensivenessDeclared { .. }
+            | EnrolmentMarginStanding::DeadBandWithinRunnerEnvelope { .. } => {
+                EnrolmentPairingHole::Declared
+            }
         }
     }
 
@@ -1743,6 +1826,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::DeadBandWrongGround { .. } => {
                 "enrolment_dead_band_wrong_ground"
             }
+            EnrolmentMarginStanding::DeadBandWithinRunnerEnvelope { .. } => "",
         }
     }
 
@@ -1764,6 +1848,9 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::RosterGroundStale { .. } => "roster_ground_stale",
             EnrolmentMarginStanding::DeadBandStale { .. } => "dead_band_stale",
             EnrolmentMarginStanding::DeadBandWrongGround { .. } => "dead_band_wrong_ground",
+            EnrolmentMarginStanding::DeadBandWithinRunnerEnvelope { .. } => {
+                "dead_band_within_runner_envelope"
+            }
         }
     }
 
@@ -1845,9 +1932,20 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::DeadBandStale {
                 observed_cpu_ms,
                 budget_ms,
+                envelope_floor_ms,
             } => format!(
-                "dead band stale: observed_cpu_ms={observed_cpu_ms} is not above the enrolment \
-                 margin budget_ms={budget_ms}; the dead-band row for this identity must delete"
+                "dead band stale: observed_cpu_ms={observed_cpu_ms} is not above the envelope \
+                 floor envelope_floor_ms={envelope_floor_ms} (margin budget_ms={budget_ms}); the \
+                 dead-band row for this identity must delete"
+            ),
+            EnrolmentMarginStanding::DeadBandWithinRunnerEnvelope {
+                observed_cpu_ms,
+                budget_ms,
+                envelope_floor_ms,
+            } => format!(
+                "dead band within runner envelope: observed_cpu_ms={observed_cpu_ms} is at or \
+                 under the margin budget_ms={budget_ms} and above the envelope floor \
+                 envelope_floor_ms={envelope_floor_ms} (a fast runner's reading of a band member)"
             ),
             EnrolmentMarginStanding::DeadBandWrongGround {
                 observed_cpu_ms,
@@ -1918,6 +2016,33 @@ pub(crate) fn floor_enrolment_margin_budget_ms(
     }
 }
 
+/// THE DEAD BAND'S ENVELOPE FLOOR, READ OUT OF THE MODEL like the margin above:
+/// `v2.workflow.floor_enrolment_margin` `floor_enrolment_dead_band_envelope_floor_ms_count` derives it
+/// by applying the same measured p90 runner envelope to the margin. Strictly positive and strictly
+/// below the margin, or it would stale every row (at zero) or admit none below the margin (at it).
+pub(crate) fn floor_enrolment_dead_band_envelope_floor_ms(
+    prepared: &crate::cli_run::PreparedRepository,
+    budget_ms: u64,
+) -> Result<u64, String> {
+    const MODULE: &str = "v2.workflow.floor_enrolment_margin";
+    let scope = claim_scope_for(prepared, MODULE)?;
+    let ctx = evaluation_frame(&scope, v1_interpreter::ExecutionMode::Hermetic, None, None);
+    let qualified = format!("{MODULE}.floor_enrolment_dead_band_envelope_floor_ms_count");
+    match v1_interpreter::run_in_context(&ctx, &qualified, false) {
+        Ok(v1_interpreter::Value::Int(n)) if n > 0 && (n as u64) < budget_ms => Ok(n as u64),
+        Ok(v1_interpreter::Value::Int(n)) => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=EnrolmentDeadBandFloorUngrounded {qualified} returned \
+             {n}ms against a {budget_ms}ms margin -- the envelope floor must be strictly positive \
+             and strictly below the margin it sits under"
+        )),
+        Ok(other) => Err(format!(
+            "{qualified}: expected a positive Int, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!("{qualified}: {e}")),
+    }
+}
+
 /// `v2.workflow.floor_enrolment_margin` `enrolment_typed_cost_debt_identities`, decoded
 /// from the frame the same way `floor_cost_debt_roster` is. Never a Rust-empty HashSet:
 /// authoring a `floor_cost_debt_typed_admissions` row must reach this gate (review 65692).
@@ -1974,7 +2099,9 @@ fn unimported_bare_provider_authority(rel: &str) -> String {
 /// decision about the rows is the `.dag`'s; the host passes the rows back to it as values.
 struct RosterRow {
     file: String,
-    imports_fixed: bool,
+    /// A retirement the host re-derives on every run to hold it true: `ImportsFixed` or
+    /// `NotAReference`, read from the row view's own fields.
+    rechecked: bool,
 }
 
 /// The roster as one evaluation reads it: the rows as a `.dag` value (passed back unchanged to the
@@ -1989,15 +2116,30 @@ struct UnimportedBareProviderRosterReading {
 impl UnimportedBareProviderRosterReading {
     /// `function` is `unimported_bare_provider_head_rows` in the verdict module (the head) or
     /// `unimported_bare_provider_roster_rows` in a lone base roster.
-    fn read(roots: &[String], entry: &str, function: &str) -> Result<Self, String> {
-        let (graph, indices) = resolve_entry_graph_shared(roots, entry)
+    ///
+    /// Only the HEAD's rows are decoded by the host: the standing judgment reads them to choose
+    /// which files to re-derive. A BASE roster is read for its `.dag` value alone, which the edit
+    /// judgment compares in `.dag`, so the host never spells a base row's fields -- a base written
+    /// before a view field existed (`not_a_reference`, gunbc#12609) is still a readable base.
+    fn read(
+        index: &MultiEntryIndex,
+        entry: &str,
+        function: &str,
+        decode_host_rows: bool,
+    ) -> Result<Self, String> {
+        // THE CALLER SUPPLIES THE INDEX: the head reads the floor tree's shared index, and the
+        // base reads its one-file scratch pool through an index of its own. Resolving the base
+        // through `resolve_entry_graph_shared` put that pool in the thread's shared slot,
+        // evicting the head tree's index, which the floor then rebuilt from scratch
+        // (neat-boar-16, #12761 subject: gen1 evicted at the base read, rebuilt as gen5).
+        let (graph, indices) = resolve_entry_with_index(index, entry)
             .map_err(|e| format!("unimported-bare-provider roster resolve ({entry}): {e}"))?;
         let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
         let rows_value = Self::call(&ctx, function, &[])?;
         let mut rows = Vec::new();
-        for item in
-            floor_decode_list(&ctx, Some(&rows_value)).map_err(|e| format!("{function}: {e}"))?
-        {
+        let items =
+            floor_decode_list(&ctx, Some(&rows_value)).map_err(|e| format!("{function}: {e}"))?;
+        for item in items.into_iter().filter(|_| decode_host_rows) {
             let v1_interpreter::Value::Record { fields, .. } = item else {
                 return Err(format!(
                     "{function}: expected UnimportedBareProviderRowView, got {}",
@@ -2022,9 +2164,18 @@ impl UnimportedBareProviderRosterReading {
                     ))
                 }
             };
+            let not_a_reference = match ctx.field(fields, "not_a_reference") {
+                Some(v1_interpreter::Value::Bool(b)) => *b,
+                other => {
+                    return Err(format!(
+                        "{function}: row `not_a_reference` is not a Bool ({})",
+                        floor_value_shape(other)
+                    ))
+                }
+            };
             rows.push(RosterRow {
                 file,
-                imports_fixed,
+                rechecked: imports_fixed || not_a_reference,
             });
         }
         Ok(Self {
@@ -2035,10 +2186,12 @@ impl UnimportedBareProviderRosterReading {
     }
 
     fn head(source_roots: &[String]) -> Result<Self, String> {
+        let index: Rc<MultiEntryIndex> = try_process_shared_index(source_roots)?;
         Self::read(
-            source_roots,
+            &index,
             &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
             "unimported_bare_provider_head_rows",
+            true,
         )
     }
 
@@ -2129,7 +2282,7 @@ fn unimported_bare_provider_standing_refusals(
     for row in &head.rows {
         if lookup.contains_key(row.file.as_str()) {
             present.insert(row.file.clone());
-            if row.imports_fixed {
+            if row.rechecked {
                 checked.insert(row.file.clone());
             }
         }
@@ -2370,13 +2523,59 @@ fn unimported_bare_provider_base_reading(
     std::fs::write(&entry, base_source)
         .map_err(|e| format!("base roster write {}: {e}", entry.display()))?;
     let root = dir.to_string_lossy().to_string();
+    // A scratch pool is its own demand: its index lives for this read and drops with it.
     let reading = UnimportedBareProviderRosterReading::read(
-        &[root],
+        &build_multi_entry_index(&[root]),
         &entry.to_string_lossy(),
         "unimported_bare_provider_roster_rows",
+        false,
     );
     std::fs::remove_dir_all(&dir).ok();
     reading
+}
+
+/// ONE FULL PARSE PER (INDEX, FILE) and ONE INDEX PER MODULE-NAME SET, asserted at `at`. Called
+/// before the subject's strict compile, so a subject that refuses there has still been checked,
+/// and again after the whole-pool warms, which read every pool file. Each named root set's
+/// shared index must already exist: a control does not build what it inspects.
+pub(crate) fn floor_index_controls(
+    at: &str,
+    root_sets: &[(&str, Vec<String>)],
+) -> Result<(), String> {
+    for (which, roots) in root_sets {
+        // Looked up, never built: an absent index is a control with nothing to inspect, and
+        // building one here would report on a population the control made itself.
+        let index =
+            super::entry_resolve::memoized_process_shared_index(roots).ok_or_else(|| {
+                format!(
+                "REQUIRED-FLOOR REFUSAL at={at} roots={which} cause=IndexControlsWithoutIndex -- \
+                 no shared index was built over these roots before the control ran"
+            )
+            })?;
+        let (files, parses) = super::reference_reading_parse_control(&index)
+            .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} roots={which} {e}"))?;
+        eprintln!(
+            "[floor-phase] phase=reference-reading-parses at={at} roots={which} \
+             index_generation={} files={files} full_parses={parses}",
+            index.generation
+        );
+    }
+    // The floor legitimately demands more than one name set (its source roots, the dag-only
+    // environment closure, the v1 attribution roots when src/v1 is touched), so the invariant is
+    // not a count: it is that no set is indexed twice.
+    let builds = super::multi_entry_index_builds();
+    let name_sets = super::multi_entry_index_sharing_control(&builds)
+        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} cause={e}"))?;
+    eprintln!(
+        "[floor-phase] phase=multi-entry-index-builds at={at} builds={} name_sets={name_sets} \
+         sites={:?}",
+        builds.len(),
+        builds
+            .iter()
+            .map(|b| format!("{}@{}", b.modules, b.site))
+            .collect::<Vec<_>>(),
+    );
+    Ok(())
 }
 
 /// `v2.workflow.floor_enrolment_margin` `enrolment_dead_band_observed_identities`, decoded
@@ -2477,6 +2676,7 @@ pub(crate) fn enrolment_margin_standing_for(
     claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
     dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
     budget_ms: u64,
+    dead_band_envelope_floor_ms: u64,
     per_subject_line_ms: u64,
     declared_expensiveness: Option<EnrolmentExpensivenessGround>,
 ) -> EnrolmentMarginStanding {
@@ -2545,9 +2745,17 @@ pub(crate) fn enrolment_margin_standing_for(
                         };
                     }
                     if observed_cpu_ms <= budget_ms {
+                        if observed_cpu_ms > dead_band_envelope_floor_ms {
+                            return EnrolmentMarginStanding::DeadBandWithinRunnerEnvelope {
+                                observed_cpu_ms,
+                                budget_ms,
+                                envelope_floor_ms: dead_band_envelope_floor_ms,
+                            };
+                        }
                         return EnrolmentMarginStanding::DeadBandStale {
                             observed_cpu_ms,
                             budget_ms,
+                            envelope_floor_ms: dead_band_envelope_floor_ms,
                         };
                     }
                 }
@@ -3000,6 +3208,25 @@ pub(crate) fn changed_witness_projection_rows(
                     cause: String::new(),
                 }
             }
+            // A CHANGED BinWitnessWet ROW: declined because no CI lane executes the class, which is
+            // the declared loss `gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci`.
+            // Non-blocking on that declaration, and never silent: the row prints with its pattern
+            // and the summary line counts it beside the blocking and the declared-root declines.
+            Some(declined @ RequiredFloorDisposition::DeclinedNoCiWetLane { .. }) => {
+                ChangedWitnessProjectionRow {
+                    identity: identity.clone(),
+                    cost: None,
+                    standing: "declined-no-ci-wet-lane",
+                    disposition: format!(
+                        "{} pattern={}",
+                        required_floor_disposition_label(declined),
+                        required_floor_disposition_matched_prefix(declined)
+                    ),
+                    outcome: "not_executed".to_string(),
+                    blocks: false,
+                    cause: String::new(),
+                }
+            }
             // THE DECLINE'S CAUSE IS ITS DISPOSITION, VERBATIM. This arm is the one the
             // `non_verdict_disposition_surfaces_as_refusal` receipt was measured on: a witness
             // enrolled because the DIFF touched it and declined because DISCOVERY reaches no
@@ -3194,6 +3421,83 @@ pub(crate) enum LocalRepoWetExecution {
 /// on this tree, so production reaches only the refusing cell of that arm.
 ///
 /// `LocalRepoWetLaneOutcome` is DERIVED from a join that held, never accepted from the executor.
+/// THE LANE A REFUSED FINALIZATION STANDS FOR, for the one reader that must still run after it:
+/// the changed-witness projection. It admits nothing and carries the refusal, so every wet-joined
+/// arm reads it as a join that did not hold -- the same answer the refusal itself gives.
+pub(crate) fn refused_local_repo_wet_lane_outcome(
+    candidate: &str,
+    refusal: &str,
+) -> LocalRepoWetLaneOutcome {
+    LocalRepoWetLaneOutcome {
+        scheduled: 0,
+        candidate: candidate.to_string(),
+        admitted: HashSet::new(),
+        refusals: vec![refusal.to_string()],
+    }
+}
+
+/// FINALIZE THE LOCAL-REPO WET LANE, BUT RETURN ITS REFUSAL ONLY AFTER THE CHANGED-WITNESS
+/// PROJECTION HAS BEEN EMITTED. The refusal used to be `?`-ed before the projection printed, so a
+/// floor red on an unrelated wet member published no `[changed-witness]` row at all, and two
+/// sessions read that silence as "the changed witnesses never executed" (#12499); they had, only
+/// their report was lost. The projection reads a refused lane as one that admits nothing -- its
+/// `refusals` are non-empty, the arm `changed_witness_projection_rows` already reads as "the join
+/// does not hold" -- so no row's standing changes. `emit` is the floor's
+/// `emit_changed_witness_projection`; it is a parameter so the order is observable by a control.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn finalize_wet_lane_after_changed_projection(
+    schedule: &[LocalRepoWetScheduledRow],
+    execution: LocalRepoWetExecution,
+    candidate: &str,
+    changed: Option<&[String]>,
+    disposition_rows: &[RequiredFloorDispositionRow],
+    terminal: &[ClaimTerminalRow],
+    verdict_only: &HashSet<String>,
+    observations: &HashMap<String, ChangedWitnessCostObservation>,
+    emit: &mut dyn FnMut(&[ChangedWitnessProjectionRow]) -> Result<(), String>,
+) -> Result<Option<Vec<ChangedWitnessProjectionRow>>, String> {
+    let finalized = finalize_local_repo_wet_lane(schedule, execution, candidate);
+    let refused_lane;
+    let projection_lane = match &finalized {
+        Ok(lane) => lane,
+        Err(refusal) => {
+            refused_lane = refused_local_repo_wet_lane_outcome(candidate, refusal);
+            &refused_lane
+        }
+    };
+    let rows = match changed {
+        Some(changed) => {
+            let rows = changed_witness_projection_rows(
+                changed,
+                disposition_rows,
+                terminal,
+                verdict_only,
+                observations,
+                projection_lane,
+                candidate,
+            );
+            emit(&rows)?;
+            Some(rows)
+        }
+        None => None,
+    };
+    finalized?;
+    // A BLOCKING ROW WITH NO CAUSE IS THE DEFECT REINTRODUCED, so it refuses here rather than
+    // travelling as an empty string the receipt would print as nothing at all.
+    if let Some(row) = rows
+        .iter()
+        .flatten()
+        .find(|r| r.blocks && r.cause.is_empty())
+    {
+        return Err(format!(
+            "required-floor: changed witness {} blocks with standing {} and no cause \
+             (v2.workflow.floor_changed_witness changed_witness_blocking_cause is total)",
+            row.identity, row.standing
+        ));
+    }
+    Ok(rows)
+}
+
 pub(crate) fn finalize_local_repo_wet_lane(
     schedule: &[LocalRepoWetScheduledRow],
     execution: LocalRepoWetExecution,
@@ -3597,12 +3901,18 @@ pub(crate) fn emit_changed_witness_projection(
         .iter()
         .filter(|r| r.standing == "declined-in-declared-non-executing-root")
         .count();
+    let declined_no_ci_wet_lane = rows
+        .iter()
+        .filter(|r| r.standing == "declined-no-ci-wet-lane")
+        .count();
     eprintln!(
         "required-floor: changed_witnesses={} changed_witness_blocking={} \
-         changed_witness_declined_in_declared_nonexecuting_root={}",
+         changed_witness_declined_in_declared_nonexecuting_root={} \
+         changed_witness_declined_no_ci_wet_lane={}",
         rows.len(),
         blocking,
-        declared_non_executing
+        declared_non_executing,
+        declined_no_ci_wet_lane
     );
     if let Ok(path) = std::env::var("GITHUB_STEP_SUMMARY") {
         if !rows.is_empty() {
@@ -6601,7 +6911,9 @@ pub fn run_required_floor(
     // ONE ENTRY INDEX FOR BOTH CLOSURES: building it is the expensive part (~75-110s on the
     // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
     // policy-closure prepare and the gate-closure prepare alike.
-    let gate_entry_index = build_multi_entry_index(source_roots);
+    // The process-shared index over these roots: the same name set every other floor consumer
+    // resolves against, so its files' readings are parsed once for all of them.
+    let gate_entry_index = process_shared_index(source_roots);
     floor_seam("changed-witness-planning");
     // ONE CORPUS READ FOR BOTH PREPARES, CARRIED FROM THE ANCESTOR THAT OWNS BOTH DEMANDS.
     //
@@ -6623,7 +6935,7 @@ pub fn run_required_floor(
     // `touched_entry_files`, and the match-bearing consumers of every coproduct whose arm set
     // that diff changed. Re-observing the diff after execution would create two authorities
     // over which identities this run promised to execute.
-    let (changed_witnesses, newly_enrolled_witnesses, compile_subject) =
+    let (changed_witnesses, newly_enrolled_witnesses, compile_subject, diff_paths) =
         match changed_and_enrolled_witness_identities_with_index(
             &gate_entry_index,
             source_roots,
@@ -6633,6 +6945,7 @@ pub fn run_required_floor(
                 Some(projections.changed_witnesses),
                 Some(projections.newly_enrolled_witnesses),
                 Some(projections.compile_subject),
+                Some(projections.diff_paths),
             ),
             Err(e) if commit != "local" && !commit.is_empty() => {
                 return Err(format!(
@@ -6648,7 +6961,7 @@ pub fn run_required_floor(
                 // `None` here is "this run could not look", which is a different fact from "this run
                 // looked and found nothing" (`Some(vec![])`) — the distinction the enrolment gate's
                 // own not-measured arm turns on, so it may not be lost at its source.
-                (None, None, None)
+                (None, None, None, None)
             }
         };
     let changed_witness_set: HashSet<String> = changed_witnesses
@@ -6824,6 +7137,13 @@ pub fn run_required_floor(
                             module_path,
                             declaration,
                         } => format!("PropagatedThrough through={module_path}.{declaration}"),
+                        InterfaceChangeGround::RefinementPredicatesChanged => {
+                            "RefinementPredicatesChanged".to_string()
+                        }
+                        InterfaceChangeGround::AdmittedThroughInput {
+                            module_path,
+                            declaration,
+                        } => format!("AdmittedThroughInput through={module_path}.{declaration}"),
                     };
                     eprintln!(
                         "[floor-plan] SeedDeclarationInterfaceChangedConsumer declaration={}.{} \
@@ -6870,11 +7190,99 @@ pub fn run_required_floor(
         .iter()
         .filter_map(|identity| identity.rsplit_once('.').map(|(m, _)| m.to_string()))
         .collect();
+    // THE CHECKER IS A DEPENDENCY OF EVERY MODULE IT JUDGES (`v2.workflow.floor_subject_seed`
+    // `SeedCheckerSourceChanged`, decided by `checker_subject_rule`). When the diff names a file
+    // the running checker was compiled from, every admitted module is seeded into Strict
+    // preparation, because every one of their verdicts changed input. Claim planning does not
+    // read this: only preparation widens. gunbc#12441 is the receipt: a checker edit whose
+    // landing subject left out the module its new check refused.
+    let checker_module_seeds: Vec<String> = match &diff_paths {
+        Some(paths) => {
+            let observation = crate::cli_run::checker_dependency::observe_checker_input_paths(
+                &process_workspace_root(),
+            );
+            let application = crate::cli_run::checker_dependency::checker_subject_application(
+                source_roots,
+                &observation,
+                paths,
+            )?;
+            let dependency_count = observation.as_ref().map(Vec::len).unwrap_or(0);
+            use crate::cli_run::checker_dependency::CheckerSubjectApplication;
+            match &application {
+                CheckerSubjectApplication::CheckerSubjectApplicationRefused { reason } => {
+                    if commit != "local" && !commit.is_empty() {
+                        return Err(format!(
+                            "REQUIRED-FLOOR REFUSAL cause=CheckerSubjectRefused {reason} -- \
+                             whether this change reaches the checker is unknown, and the floor \
+                             neither narrows to the .dag frontier nor widens to the corpus on \
+                             that ignorance"
+                        ));
+                    }
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=CheckerSubjectRefused \
+                         state=not-evaluated reason={reason:?}"
+                    );
+                    Vec::new()
+                }
+                CheckerSubjectApplication::PrepareEveryAdmittedModule {
+                    changed_checker_paths,
+                } => {
+                    let seeds = crate::cli_run::checker_dependency::checker_module_seeds(
+                        &application,
+                        &floor_corpus,
+                    );
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=EveryAdmittedModule \
+                         applied=true seed_ground=SeedCheckerSourceChanged \
+                         checker_inputs={dependency_count} \
+                         changed_checker_paths={changed_checker_paths:?} modules_seeded={} -- \
+                         the checker is a dependency of every module it judges, so every \
+                         admitted module is Strict-prepared; claims are planned as before",
+                        seeds.len()
+                    );
+                    seeds
+                }
+                CheckerSubjectApplication::EveryAdmittedModuleWithheld {
+                    changed_checker_paths,
+                    drop_identity,
+                } => {
+                    // A DECLARED DROP, ANNOUNCED ON EVERY RUN IT BEARS ON: the rule chose the
+                    // whole corpus, and the standing drop says why this run does not prepare it.
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=EveryAdmittedModule \
+                         applied=false withheld_under=gunbc.rung_drop.{drop_identity} \
+                         checker_inputs={dependency_count} \
+                         changed_checker_paths={changed_checker_paths:?} modules_not_prepared={} \
+                         -- this checker change is judged over the narrow subject only; a module \
+                         its new check refuses outside that subject is not seen on this run",
+                        floor_corpus.inventory.len()
+                    );
+                    Vec::new()
+                }
+                CheckerSubjectApplication::NarrowSubject => {
+                    eprintln!(
+                        "[floor-phase] phase=checker-input-subject rule=CheckerInputsUnchanged \
+                         checker_inputs={dependency_count} diff_paths={}",
+                        paths.len()
+                    );
+                    Vec::new()
+                }
+            }
+        }
+        None => {
+            eprintln!(
+                "[floor-phase] phase=checker-input-subject state=not-evaluated (no CI diff \
+                 baseline on a local run)"
+            );
+            Vec::new()
+        }
+    };
     let closure_module_seeds: Vec<String> = required_floor_nominal_closure_module_seeds(
         &required_gate_authored_modules,
         &local_repo_wet_schedule_rows,
     )
     .into_iter()
+    .chain(checker_module_seeds)
     .chain(changed_module_seeds.iter().cloned())
     .chain(
         compile_subject
@@ -6885,6 +7293,13 @@ pub fn run_required_floor(
     .chain(reach_consumer_module_seeds.iter().cloned())
     .collect();
     floor_seam("prepare-closure-resolve");
+    // BEFORE THE SUBJECT VERDICT, not only after it: the strict compile below is where a heavy
+    // subject refuses, and a control placed after it never runs on exactly the subjects that
+    // stress it (neat-boar-16's #12761-shape run refused there and printed neither line). The
+    // gate closure has built its edges on the shared index by now, so both controls have their
+    // population; only the index those edges were read from is inspected, so the check builds
+    // nothing itself.
+    floor_index_controls("before-prepare", &[("source-roots", source_roots.to_vec())])?;
     let (mut prepared, prepared_sources) = crate::cli_run::prepare_repository_from_corpus(
         &floor_corpus,
         &floor_prepared_subject_exclusions(),
@@ -7185,6 +7600,13 @@ pub fn run_required_floor(
         warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
     ));
     shared_build_warms.extend(pure_producer_warms);
+    floor_index_controls(
+        "after-shared-build-warms",
+        &[
+            ("source-roots", source_roots.to_vec()),
+            ("witness-layer-roots", witness_layer_roots()),
+        ],
+    )?;
     // The two earlier phases already printed their own lines at the point they ran; only the
     // edge-index entries are reported here, so a phase is reported exactly once and under its own
     // name. Every entry — all three phases — is adjudicated together further down.
@@ -8045,6 +8467,29 @@ pub fn run_required_floor(
                 identity: identity.clone(),
                 agreement: storage_agreement,
             });
+            // A CHANGED `BinWitnessWet` ROW IS DECLINED, NOT PLANNED: the hermetic route refuses
+            // its host effects by construction, and planning it only mints a route gap. The
+            // classification is the gate, read from the typed exclusion rows, never a name match, and the
+            // row must be named in the declared drop's bounded population (review 73267).
+            let bin_wet_pattern = if selected_as_changed_witness {
+                crate::cli_run::witness_gates::witness_exclusion_frontier_rows()
+                    .iter()
+                    .find(|row| {
+                        row.classification == "BinWitnessWet"
+                            && file.path.contains(row.pattern.as_str())
+                            && declared_no_ci_wet_lane_population().contains(&row.pattern)
+                    })
+                    .map(|row| row.pattern.clone())
+            } else {
+                None
+            };
+            if let Some(pattern) = bin_wet_pattern {
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity: identity.clone(),
+                    disposition: RequiredFloorDisposition::DeclinedNoCiWetLane { pattern },
+                });
+                continue;
+            }
             if selected_as_changed_witness {
                 planned_identities.insert(identity.clone());
                 disposition_rows.push(RequiredFloorDispositionRow {
@@ -11161,36 +11606,23 @@ pub fn run_required_floor(
     // unread schedule holds vacuously while `std.witness_admission` goes on claiming the route.
     let wet_execution: LocalRepoWetExecution =
         run_local_repo_wet_lane(&prepared, &local_repo_wet_schedule_rows, published.clone());
-    let wet_lane = finalize_local_repo_wet_lane(
+    // THE WET LANE'S REFUSAL IS RETURNED ONLY AFTER THE CHANGED-WITNESS PROJECTION IS EMITTED,
+    // and that order lives in one function whose control drives it with a planted refusal
+    // (`finalize_wet_lane_after_changed_projection`).
+    let changed_projection_rows = finalize_wet_lane_after_changed_projection(
         &local_repo_wet_schedule_rows,
         wet_execution,
         &prepared.subject_digest,
+        changed_witnesses.as_deref(),
+        &outcome.required_floor_disposition,
+        &terminal_rows,
+        &cost_debt_verdict_only,
+        &cost_debt_observations,
+        &mut |rows| emit_changed_witness_projection(rows),
     )?;
-    let changed_projection_rows = if let Some(changed_witnesses) = changed_witnesses {
-        let rows = changed_witness_projection_rows(
-            &changed_witnesses,
-            &outcome.required_floor_disposition,
-            &terminal_rows,
-            &cost_debt_verdict_only,
-            &cost_debt_observations,
-            &wet_lane,
-            &prepared.subject_digest,
-        );
-        emit_changed_witness_projection(&rows)?;
+    if let Some(rows) = &changed_projection_rows {
         outcome.changed_witness_rows = rows.len();
-        // A BLOCKING ROW WITH NO CAUSE IS THE DEFECT REINTRODUCED, so it refuses here rather
-        // than travelling as an empty string the receipt would print as nothing at all.
-        if let Some(row) = rows.iter().find(|r| r.blocks && r.cause.is_empty()) {
-            return Err(format!(
-                "required-floor: changed witness {} blocks with standing {} and no cause \
-                 (v2.workflow.floor_changed_witness changed_witness_blocking_cause is total)",
-                row.identity, row.standing
-            ));
-        }
-        Some(rows)
-    } else {
-        None
-    };
+    }
     // THE ENROLMENT MARGIN GATE (operator ruling 2026-09-11). Authority:
     // `v2.workflow.floor_enrolment_margin`.
     //
@@ -11209,6 +11641,8 @@ pub fn run_required_floor(
     let mut enrolment_budget_ms: Option<u64> = None;
     if let Some(newly_enrolled) = newly_enrolled_witnesses.as_ref() {
         let budget_ms = floor_enrolment_margin_budget_ms(&prepared)?;
+        let dead_band_envelope_floor_ms =
+            floor_enrolment_dead_band_envelope_floor_ms(&prepared, budget_ms)?;
         let per_subject_line_ms = floor_per_subject_cpu_line_ms(&prepared)?;
         enrolment_budget_ms = Some(budget_ms);
         let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
@@ -11231,6 +11665,7 @@ pub fn run_required_floor(
                 &cost_by_identity,
                 &dispositions,
                 budget_ms,
+                dead_band_envelope_floor_ms,
                 per_subject_line_ms,
                 declared_expensiveness,
             );
@@ -11361,6 +11796,7 @@ pub(crate) fn required_floor_disposition_label(
         RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
             "declined_changed_witness_outside_discovery"
         }
+        RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => "declined_no_ci_wet_lane",
     }
 }
 
@@ -11384,6 +11820,9 @@ pub(crate) fn required_floor_disposition_matched_prefix(
         RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { module_path } => {
             module_path
         }
+        // The BinWitnessWet exclusion pattern that matched the file: the authored text that
+        // placed this identity in the class no CI lane executes.
+        RequiredFloorDisposition::DeclinedNoCiWetLane { pattern } => pattern,
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness
         | RequiredFloorDisposition::PlannedAsReachConsumer
@@ -11405,14 +11844,15 @@ mod pure_producer_share_tests {
     /// scratch paths also pin the memoization defect this path once had.
     #[test]
     fn unimported_bare_provider_roster_edit_is_judged_across_frames() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().to_string())
-            .collect();
-        let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-        let roster = |rows: &str| {
-            std::fs::read_to_string(root.join(UNIMPORTED_BARE_PROVIDER_ROSTER))
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
+            let roster = |rows: &str| {
+                std::fs::read_to_string(root.join(UNIMPORTED_BARE_PROVIDER_ROSTER))
                 .expect("roster source")
                 .split("data unimported_bare_provider_dispositions:")
                 .next()
@@ -11421,56 +11861,58 @@ mod pure_producer_share_tests {
                 + "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n"
                 + rows
                 + "]\n"
-        };
-        let row = |file: &str, name: &str, standing: &str| {
-            format!("  UnimportedBareProviderDisposition {{ file: \"{file}\", name: \"{name}\", standing: {standing} }},\n")
-        };
-        let a_active = row("dag/a.dag", "f", "ActiveDebt");
-        let a_fixed = row("dag/a.dag", "f", "Retired { cause: ImportsFixed }");
-        let a_deleted = row("dag/a.dag", "f", "Retired { cause: FileDeleted }");
-        let b_active = row("dag/b.dag", "g", "ActiveDebt");
-        let read = |src: String| unimported_bare_provider_base_reading(&src).expect("lone roster");
-        let base = read(roster(&a_active));
-        assert_eq!(
-            judge
-                .judge_edit(&base, &read(roster(&a_active)))
-                .expect("verdict"),
-            Vec::<String>::new()
-        );
-        assert_eq!(
-            judge
-                .judge_edit(&base, &read(roster(&format!("{a_active}{b_active}"))))
-                .expect("verdict"),
-            vec!["RosterGainedIdentity dag/b.dag#g".to_string()]
-        );
-        // THE RETIREMENT PATH (never executed before gunbc#12278): ActiveDebt -> Retired { cause }
-        // under either cause is a typed disposition and admits; dropping the row instead refuses.
-        for retired in [&a_fixed, &a_deleted] {
+            };
+            let row = |file: &str, name: &str, standing: &str| {
+                format!("  UnimportedBareProviderDisposition {{ file: \"{file}\", name: \"{name}\", standing: {standing} }},\n")
+            };
+            let a_active = row("dag/a.dag", "f", "ActiveDebt");
+            let a_fixed = row("dag/a.dag", "f", "Retired { cause: ImportsFixed }");
+            let a_deleted = row("dag/a.dag", "f", "Retired { cause: FileDeleted }");
+            let b_active = row("dag/b.dag", "g", "ActiveDebt");
+            let read =
+                |src: String| unimported_bare_provider_base_reading(&src).expect("lone roster");
+            let base = read(roster(&a_active));
             assert_eq!(
                 judge
-                    .judge_edit(&base, &read(roster(retired)))
+                    .judge_edit(&base, &read(roster(&a_active)))
                     .expect("verdict"),
                 Vec::<String>::new()
             );
-        }
-        assert_eq!(
-            judge
-                .judge_edit(
-                    &read(roster(&format!("{a_active}{b_active}"))),
-                    &read(roster(&a_active))
-                )
-                .expect("verdict"),
-            vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
-        );
-        assert_eq!(
-            judge
-                .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
-                .expect("verdict"),
-            vec![
+            assert_eq!(
+                judge
+                    .judge_edit(&base, &read(roster(&format!("{a_active}{b_active}"))))
+                    .expect("verdict"),
+                vec!["RosterGainedIdentity dag/b.dag#g".to_string()]
+            );
+            // THE RETIREMENT PATH (never executed before gunbc#12278): ActiveDebt -> Retired { cause }
+            // under either cause is a typed disposition and admits; dropping the row instead refuses.
+            for retired in [&a_fixed, &a_deleted] {
+                assert_eq!(
+                    judge
+                        .judge_edit(&base, &read(roster(retired)))
+                        .expect("verdict"),
+                    Vec::<String>::new()
+                );
+            }
+            assert_eq!(
+                judge
+                    .judge_edit(
+                        &read(roster(&format!("{a_active}{b_active}"))),
+                        &read(roster(&a_active))
+                    )
+                    .expect("verdict"),
+                vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
+            );
+            assert_eq!(
+                judge
+                    .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
+                    .expect("verdict"),
+                vec![
                 "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> Retired FileDeleted)"
                     .to_string()
             ]
-        );
+            );
+        });
     }
 
     /// THE REAL BASE READ, END TO END: the roster at `HEAD` is read through the `.dag`
@@ -11480,44 +11922,46 @@ mod pure_producer_share_tests {
     /// roster-editing change; the fixture-coproduct control beside it cannot fail for that reason.
     #[test]
     fn a_retirement_against_the_real_base_read_admits_and_a_growth_refuses() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().to_string())
-            .collect();
-        let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-        let base_source = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
-            .expect("the roster exists at HEAD and decodes as BaseRosterShown");
-        let read = |src: &str| unimported_bare_provider_base_reading(src).expect("lone roster");
-        let base = read(&base_source);
-        let active = "standing: ActiveDebt }";
-        assert!(
-            base_source.contains(active),
-            "the base roster carries active debt"
-        );
-        let retired =
-            base_source.replacen(active, "standing: Retired { cause: ImportsFixed } }", 1);
-        assert_eq!(
-            judge.judge_edit(&base, &read(&retired)).expect("verdict"),
-            Vec::<String>::new()
-        );
-        let marker = "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n";
-        assert!(
-            base_source.contains(marker),
-            "the roster's data row opens as expected"
-        );
-        let grown = base_source.replacen(
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
+            let base_source = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
+                .expect("the roster exists at HEAD and decodes as BaseRosterShown");
+            let read = |src: &str| unimported_bare_provider_base_reading(src).expect("lone roster");
+            let base = read(&base_source);
+            let active = "standing: ActiveDebt }";
+            assert!(
+                base_source.contains(active),
+                "the base roster carries active debt"
+            );
+            let retired =
+                base_source.replacen(active, "standing: Retired { cause: ImportsFixed } }", 1);
+            assert_eq!(
+                judge.judge_edit(&base, &read(&retired)).expect("verdict"),
+                Vec::<String>::new()
+            );
+            let marker = "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n";
+            assert!(
+                base_source.contains(marker),
+                "the roster's data row opens as expected"
+            );
+            let grown = base_source.replacen(
             marker,
             &format!("{marker}  UnimportedBareProviderDisposition {{ file: \"dag/zz_new.dag\", name: \"g\", standing: ActiveDebt }},\n"),
             1,
         );
-        let refused = judge.judge_edit(&base, &read(&grown)).expect("verdict");
-        assert!(
-            refused
-                .iter()
-                .any(|r| r.starts_with("RosterGainedIdentity dag/zz_new.dag")),
-            "{refused:?}"
-        );
+            let refused = judge.judge_edit(&base, &read(&grown)).expect("verdict");
+            assert!(
+                refused
+                    .iter()
+                    .any(|r| r.starts_with("RosterGainedIdentity dag/zz_new.dag")),
+                "{refused:?}"
+            );
+        });
     }
 
     /// THE BASE-ROSTER READ DECODES THE COPRODUCT THE `.dag` DECLARES (gunbc#12205 read it as a
@@ -13011,8 +13455,6 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
         // the probe's designed refusal never reaches Strict resolve.
         let root = fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        // ONE cwd guard for both preparations: the mutex is not reentrant.
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let prepared = prepare_repository_closure(
             &roots,
@@ -13021,7 +13463,6 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
         );
         // THE DISCRIMINATOR: without the exclusion rows the same seed list refuses on the probe.
         let refusal = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let (prepared, views) = prepared.expect("the excluded probe must not refuse preparation");
         let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
         assert!(!modules.contains(&"armset.probe"), "{modules:?}");
@@ -13036,6 +13477,56 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
             "{refusal}"
         );
         assert!(rel.contains("target/"), "fixture under target/: {rel}");
+    }
+
+    // ── THE gunbc#12441 SHAPE, EXECUTED END TO END ───────────────────────────────────────────
+    //
+    // A checker edit that newly refuses a module outside the edited closure. `armset.victim` is
+    // in no seed the diff produces, so the narrow subject prepares green without it, which is how
+    // v2.test.claim.type_param_binder_frame reached main. The checker-input rule, evaluated from
+    // `v2.workflow.floor_subject_seed`, seeds every admitted module, and the same preparation then
+    // refuses on the victim. The positive control is the same fixture under a non-checker diff.
+    #[test]
+    fn a_checker_edit_prepares_the_module_its_check_refuses_outside_the_edited_closure() {
+        use crate::cli_run::checker_dependency::{
+            checker_module_seeds, checker_subject_application_when_applied,
+        };
+        const EDITED: &str = "module armset.edited\n\nfn ok() -> Int {\n  1\n}\n";
+        const VICTIM: &str = "module armset.victim\n\nfn wrong() -> String {\n  1\n}\n";
+        let fx = interface_fixture(
+            "checker_edge",
+            "head",
+            &[("edited.dag", EDITED), ("victim.dag", VICTIM)],
+        );
+        let roots = [fx.to_string_lossy().into_owned()];
+        let index = build_multi_entry_index(&roots);
+        let corpus = crate::cli_run::read_source_corpus_once(&roots);
+        let infer = "src/v1/stage0/src/v1_compiler_infer.rs".to_string();
+        let record = Ok(vec![infer.clone()]);
+        let authority_roots = default_source_roots();
+        let subject_under = |changed: &[String]| {
+            let application =
+                checker_subject_application_when_applied(&authority_roots, &record, changed)
+                    .expect("application");
+            let seeds: Vec<String> = std::iter::once("armset.edited".to_string())
+                .chain(checker_module_seeds(&application, &corpus))
+                .collect();
+            crate::cli_run::prepare_repository_from_corpus(
+                &corpus,
+                &[],
+                Some((&index, &[], &seeds)),
+            )
+        };
+        let narrow = subject_under(&["edited.dag".to_string()]);
+        let wide = subject_under(std::slice::from_ref(&infer));
+        let _ = std::fs::remove_dir_all(&fx);
+        let (_, views) = narrow.expect("a non-checker diff prepares the edited closure green");
+        let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
+        assert!(!modules.contains(&"armset.victim"), "{modules:?}");
+        let refusal = wide
+            .err()
+            .expect("a checker edit prepares every admitted module, and the victim refuses");
+        assert!(refusal.contains("victim"), "{refusal}");
     }
 
     // ── THE #11194 SHAPE, EXECUTED END TO END ──────────────────────────────────────────────
@@ -13068,27 +13559,6 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     const REC_HEAD: &str = "module armset.rec\n\ntype Box {\n  width: Int\n  height: Int\n}\n";
     const REC_USER: &str =
         "module armset.rec_user\n\nimport armset.rec { Box }\n\nfn w(b: Box) -> Int {\n  b.width\n}\n";
-
-    /// Preparation resolves the index's workspace-relative entry paths against the PROCESS
-    /// CWD (`entry_source_from_index_or_disk`), which is the workspace root in production and
-    /// the crate directory under `cargo test`. A test enters the workspace root for one
-    /// preparation and leaves again, serialized because the working directory is process-global.
-    /// Free functions rather than a guard type: an `impl Drop` is an uncitable item under
-    /// `gunbc.seed_growth_admission` (`seed_growth_uncitable_item_keys`).
-    static WORKSPACE_CWD: Mutex<()> = Mutex::new(());
-
-    fn enter_workspace_cwd() -> (std::sync::MutexGuard<'static, ()>, PathBuf) {
-        let lock = WORKSPACE_CWD
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let previous = std::env::current_dir().expect("test working directory");
-        std::env::set_current_dir(process_workspace_root()).expect("enter workspace root");
-        (lock, previous)
-    }
-
-    fn leave_workspace_cwd(previous: &Path) {
-        let _ = std::env::set_current_dir(previous);
-    }
 
     /// The fixture root, under the workspace's gitignored `target/`. Removed by the test that
     /// made it; a panicking test leaves it for the next run of the same name to replace.
@@ -13135,13 +13605,59 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
                 && crate::cli_run::declaration_index::index_population(&head_index).modules > 0,
             "PLANT MALFORMED: a side indexed no modules"
         );
-        (
-            crate::cli_run::namespace_baseline::interface_changed_consumers(
+        let selection = crate::cli_run::namespace_baseline::interface_changed_consumers(
+            &base_index,
+            &head_index,
+        );
+        // THE INDEXED SELECTOR SELECTS EXACTLY WHAT THE SCAN SELECTS, on every fixture here: the
+        // leaf index changes the cost of planning and never the planned set.
+        assert_eq!(
+            selection,
+            crate::cli_run::namespace_baseline::interface_changed_consumers_by_scan(
                 &base_index,
                 &head_index,
             ),
-            head_fx,
-        )
+            "the indexed selector diverged from the scan it replaced"
+        );
+        (selection, head_fx)
+    }
+
+    /// THE COST RECEIPT, on the real corpus rather than a fixture: the base index is reconstructed
+    /// over `GUNBC_SELECTION_BASE..HEAD` exactly as the floor does, both selectors run on it, their
+    /// selections must be equal, and both times are printed. Run by hand on a wide interface change
+    /// (`cargo test ... -- --ignored --nocapture`); it is not a merge gate.
+    #[test]
+    #[ignore]
+    fn indexed_selection_equals_the_scan_on_a_real_diff_window() {
+        use crate::cli_run::namespace_baseline::{
+            git_stdout, interface_changed_consumers, interface_changed_consumers_by_scan,
+            reconstruct_base_index, BaselineReconstruction,
+        };
+        let workspace = process_workspace_root();
+        let base = std::env::var("GUNBC_SELECTION_BASE").expect("GUNBC_SELECTION_BASE");
+        let base = git_stdout(&workspace, &["rev-parse", &base]).expect("base rev");
+        let head = git_stdout(&workspace, &["rev-parse", "HEAD"]).expect("head rev");
+        let head_index =
+            crate::cli_run::run_dag_parse_sweep(&workspace, &crate::cli_run::DAG_PARSE_SWEEP_ROOTS)
+                .expect("head sweep")
+                .index;
+        let BaselineReconstruction::Reconstructed { base_index, .. } =
+            reconstruct_base_index(&workspace, &base, &head, &head_index).expect("reconstruct")
+        else {
+            panic!("base side not reconstructed");
+        };
+        let t = std::time::Instant::now();
+        let indexed = interface_changed_consumers(&base_index, &head_index);
+        let indexed_ms = t.elapsed().as_millis();
+        let t = std::time::Instant::now();
+        let scanned = interface_changed_consumers_by_scan(&base_index, &head_index);
+        let scanned_ms = t.elapsed().as_millis();
+        eprintln!(
+            "selection receipt: changes={} consumers={} indexed_ms={indexed_ms} scanned_ms={scanned_ms}",
+            indexed.changes.len(),
+            indexed.consumers.len()
+        );
+        assert_eq!(indexed, scanned);
     }
 
     fn consumers_of(
@@ -13225,13 +13741,11 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         // is empty, exactly as a diff-only seed list would be.
         let root = head_fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.y".to_string()];
         let refusal = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)))
             .err()
             .expect("Strict preparation of the stale consumer must refuse");
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&head_fx);
         assert!(
             refusal.contains("non-exhaustive match") && refusal.contains("Amber"),
@@ -13252,11 +13766,9 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert_eq!(consumers_of(&selection), vec!["armset.w"]);
         let root = head_fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.w".to_string()];
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&head_fx);
         let (prepared, _) = prepared.expect("a wildcard match stays exhaustive under growth");
         assert!(prepared.modules_resolved >= 2, "x and w prepared");
@@ -13368,11 +13880,9 @@ fn twice() -> Int {\n  width_of(w: 2)\n}\n";
     /// Prepare `seeds` over one fixture root under the floor's own Strict path.
     fn prepare_seeds(root: &Path, seeds: &[&str]) -> Result<(), String> {
         let roots = [root.to_string_lossy().into_owned()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds: Vec<String> = seeds.iter().map(|s| s.to_string()).collect();
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         prepared.map(|_| ())
     }
 
@@ -13713,6 +14223,156 @@ fn holder() -> Holder {\n  Holder { gen: 3 }\n}\n";
             selection.changes
         );
         assert!(planned.is_err(), "C must refuse under Strict preparation");
+    }
+
+    /// A REFINEMENT-ONLY CHANGE. `Tag`'s predicate is respelled and nothing else moves. `make`
+    /// mentions `Tag` only as its RESULT, so `rf.z`, which reaches `Tag` only by calling `make`, is
+    /// not a site that admits a value into `Tag`. `Holder.tag` is an INPUT position, so `rf.w`,
+    /// which constructs a `Holder` without ever naming `Tag`, does admit one.
+    const RF_A_BASE: &str = "module rf.a\n\ntype Tag = String where alpha_pred\n";
+    const RF_A_HEAD: &str = "module rf.a\n\ntype Tag = String where beta_pred\n";
+    const RF_A_CARRIER: &str = "module rf.a\n\ntype Tag = Int where alpha_pred\n";
+    const RF_B: &str =
+        "module rf.b\n\nimport rf.a { Tag }\n\nfn make() -> Tag {\n  \"x\" as Tag\n}\n";
+    const RF_Z: &str =
+        "module rf.z\n\nimport rf.b { make }\n\nfn use_it() -> Int {\n  let t = make()\n  1\n}\n";
+    const RF_R: &str = "module rf.r\n\nimport rf.a { Tag }\n\ntype Holder {\n  tag: Tag\n}\n";
+    const RF_W: &str = "module rf.w\n\nimport rf.r { Holder }\n\nfn holder() -> Holder {\n  Holder { tag: \"t\" }\n}\n";
+
+    const RF_K: &str = "module rf.k\n\nimport rf.a { Tag }\n\nfn mk() -> fn(Tag) -> Int {\n  fn(t) {\n    1\n  }\n}\n";
+    const RF_C: &str =
+        "module rf.c\n\nimport rf.k { mk }\n\nfn run() -> Int {\n  let f = mk()\n  1\n}\n";
+
+    fn refinement_selection(
+        name: &str,
+        head_a: &str,
+    ) -> crate::cli_run::namespace_baseline::InterfaceConsumerSelection {
+        let rest = [
+            ("b.dag", RF_B),
+            ("z.dag", RF_Z),
+            ("r.dag", RF_R),
+            ("w.dag", RF_W),
+            ("k.dag", RF_K),
+            ("c.dag", RF_C),
+        ];
+        let mut base = vec![("a.dag", RF_A_BASE)];
+        base.extend(rest);
+        let mut head = vec![("a.dag", head_a)];
+        head.extend(rest);
+        let (selection, head_fx) = interface_selection(name, &base, &head);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        selection
+    }
+
+    #[test]
+    fn a_where_only_change_is_classified_as_a_refinement_change() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let selection = refinement_selection("rf_classify", RF_A_HEAD);
+        assert_eq!(
+            direct_changes_in(&selection, "rf.a")
+                .iter()
+                .map(|c| (c.declaration.as_str(), c.ground.clone()))
+                .collect::<Vec<_>>(),
+            vec![("Tag", InterfaceChangeGround::RefinementPredicatesChanged)]
+        );
+    }
+
+    /// THE RED: `rf.z` reaches `Tag` only through `make`'s result, so it is no longer planned;
+    /// `make`'s own module still is, as a direct reader of `Tag`.
+    #[test]
+    fn a_refinement_change_does_not_propagate_through_an_output_position() {
+        let selection = refinement_selection("rf_output", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            !consumers.contains(&"rf.z"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+        assert!(consumers.contains(&"rf.b"), "{consumers:?}");
+    }
+
+    /// ADMISSION THROUGH B: `rf.w` never names `Tag`, but constructing `Holder` supplies a value
+    /// to an input position typed `Tag`, so it is planned.
+    #[test]
+    fn a_refinement_change_propagates_through_an_input_position() {
+        let selection = refinement_selection("rf_input", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.w"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+        assert!(consumers.contains(&"rf.r"), "{consumers:?}");
+    }
+
+    /// A RETURNED CLOSURE'S PARAMETER IS AN INPUT (review 71772): `rf.c` never names `Tag`, but
+    /// calling the `fn(Tag) -> Int` that `mk` returns admits a value into `Tag`, so it is planned.
+    #[test]
+    fn a_refinement_change_propagates_through_a_returned_function_parameter() {
+        let selection = refinement_selection("rf_closure", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.c"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+    }
+
+    /// BOTH RULES REACH ONE DECLARATION (review 71782). `Pair` has a field typed through a
+    /// where-only change (`Tag`) and one typed through a carrier change (`Other`). The refinement
+    /// reaches `Pair` first -- `rf.a` sorts before `rf.m` -- and must not stop the signature change
+    /// from propagating through `pair_of`'s RESULT to `rf.py`, which only calls it.
+    const RF_M_BASE: &str = "module rf.m\n\ntype Other = Int\n";
+    const RF_M_HEAD: &str = "module rf.m\n\ntype Other = String\n";
+    const RF_P: &str = "module rf.p\n\nimport rf.a { Tag }\nimport rf.m { Other }\n\ntype Pair {\n  t: Tag\n  o: Other\n}\n";
+    const RF_PZ: &str =
+        "module rf.pz\n\nimport rf.p { Pair }\n\nfn pair_of() -> Pair {\n  pair_of()\n}\n";
+    const RF_PY: &str = "module rf.py\n\nimport rf.pz { pair_of }\n\nfn use_pair() -> Int {\n  let p = pair_of()\n  1\n}\n";
+
+    #[test]
+    fn a_signature_change_still_propagates_where_a_refinement_change_arrived_first() {
+        let (selection, head_fx) = interface_selection(
+            "rf_both",
+            &[
+                ("a.dag", RF_A_BASE),
+                ("m.dag", RF_M_BASE),
+                ("p.dag", RF_P),
+                ("pz.dag", RF_PZ),
+                ("py.dag", RF_PY),
+            ],
+            &[
+                ("a.dag", RF_A_HEAD),
+                ("m.dag", RF_M_HEAD),
+                ("p.dag", RF_P),
+                ("pz.dag", RF_PZ),
+                ("py.dag", RF_PY),
+            ],
+        );
+        let _ = std::fs::remove_dir_all(&head_fx);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.py"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+    }
+
+    /// THE CONTROL: a CARRIER change on `Tag` is an ordinary signature change and still
+    /// propagates through `make`'s result to `rf.z`.
+    #[test]
+    fn a_carrier_change_still_propagates_through_every_mention() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let selection = refinement_selection("rf_carrier", RF_A_CARRIER);
+        assert_eq!(
+            direct_changes_in(&selection, "rf.a")
+                .iter()
+                .map(|c| c.ground.clone())
+                .collect::<Vec<_>>(),
+            vec![InterfaceChangeGround::SignatureChanged]
+        );
+        let consumers = consumers_of(&selection);
+        assert!(consumers.contains(&"rf.z"), "{consumers:?}");
+        assert!(consumers.contains(&"rf.w"), "{consumers:?}");
     }
 
     /// WALL 2: an added arm WITH a generic arity change is not pure growth.
@@ -14196,11 +14856,9 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         );
         let root = fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.yz".to_string()];
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&fx);
         let (prepared, views) =
             prepared.expect("yz alone prepares clean: it never reaches the stale match in y");
@@ -14579,6 +15237,72 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         );
     }
 
+    /// A REFUSED WET LANE STILL EMITS THE CHANGED-WITNESS PROJECTION BEFORE ITS REFUSAL
+    /// PROPAGATES (#12499). Driven through the function the floor calls, with a planted refusal
+    /// (a scheduled wet member whose executor produced no terminal) and an emitter that records
+    /// what it was handed. Restoring the old order -- `finalized?` ahead of `emit` -- leaves the
+    /// recorder empty and this reds. The rows keep their standing: the passed one is still
+    /// planned-and-passed and a route gap stays blocking, because a refused lane admits nothing.
+    #[test]
+    fn a_refused_wet_lane_emits_the_changed_projection_before_its_refusal() {
+        let mut emitted: Vec<(String, &'static str, bool)> = Vec::new();
+        let result = finalize_wet_lane_after_changed_projection(
+            &[scheduled_row("test.claim.x.w_holds")],
+            LocalRepoWetExecution::Ran {
+                candidate: TEST_CANDIDATE.to_string(),
+                terminals: Vec::new(),
+            },
+            TEST_CANDIDATE,
+            Some(&["m.passed".to_string(), "m.gap".to_string()]),
+            &[
+                disposition(
+                    "m.passed",
+                    RequiredFloorDisposition::PlannedAsChangedWitness,
+                ),
+                disposition("m.gap", RequiredFloorDisposition::PlannedAsChangedWitness),
+            ],
+            &[
+                terminal("m.passed", ClaimOutcome::Pass),
+                terminal(
+                    "m.gap",
+                    ClaimOutcome::HostEffectRefused {
+                        operation: "Dir".to_string(),
+                        ground: v1_interpreter::HermeticEffectGround::NoMockResponse,
+                    },
+                ),
+            ],
+            &HashSet::new(),
+            &HashMap::new(),
+            &mut |rows| {
+                emitted.extend(
+                    rows.iter()
+                        .map(|r| (r.identity.clone(), r.standing, r.blocks)),
+                );
+                Ok(())
+            },
+        );
+        let Err(refusal) = result else {
+            panic!("the planted wet refusal must still red the floor");
+        };
+        assert!(
+            refusal.contains("WetTerminalMissing"),
+            "the lane's own refusal propagates, got: {refusal}"
+        );
+        assert_eq!(
+            emitted.len(),
+            2,
+            "both changed rows must be emitted before the refusal returns"
+        );
+        assert_eq!(
+            emitted[0],
+            ("m.passed".to_string(), "planned-and-passed", false)
+        );
+        assert!(
+            emitted[1].2,
+            "a refused lane admits nothing, so a route gap stays blocking"
+        );
+    }
+
     /// A cost-debt row planned by the changed override is NOT stale, and an ordinarily planned
     /// one still is — the pair is what keeps the new arm from silencing the refusal.
     #[test]
@@ -14640,6 +15364,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             &cost_owned,
             &dispositions,
             302,
+            182,
             500,
             Some(declared),
         );
@@ -14876,7 +15601,9 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
 
     /// THE DEAD-BAND GROUND IS SELF-STALING (gunbc#11989; mirror of v2.workflow.floor_enrolment_margin
     /// EnrolmentExpensivenessDeadBand). It holds only an exact reading strictly above the margin and at
-    /// or under the line (303, 420 and 500 admit); at the margin it is stale and blocks (302), above
+    /// or under the line (303, 420 and 500 admit); at or under the margin but above the envelope floor
+    /// (302, 250, 183 against a 182 floor) it is within the runner envelope and does not block; at the
+    /// floor it is stale and blocks (182), above
     /// the line it is the wrong ground and blocks (501), and no cost row blocks as NotMeasured.
     #[test]
     fn the_dead_band_ground_holds_only_an_exact_reading_inside_margin_and_line() {
@@ -14903,14 +15630,20 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             let mut cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
                 HashMap::new();
             cost.insert(identity, &row);
-            enrolment_margin_standing_for(identity, &cost, &dispositions, 302, 500, dead_band)
+            enrolment_margin_standing_for(identity, &cost, &dispositions, 302, 182, 500, dead_band)
         };
         for inside in [303, 420, 500] {
             let s = standing_at(inside);
             assert_eq!(s.name(), "expensiveness_declared", "cpu={inside}");
             assert!(!s.blocks(), "cpu={inside}");
         }
-        let stale = standing_at(302);
+        for within in [302, 250, 183] {
+            let s = standing_at(within);
+            assert_eq!(s.name(), "dead_band_within_runner_envelope", "cpu={within}");
+            assert_eq!(s.cause(), "", "cpu={within}");
+            assert!(!s.blocks(), "cpu={within}");
+        }
+        let stale = standing_at(182);
         assert_eq!(stale.name(), "dead_band_stale");
         assert_eq!(stale.cause(), "enrolment_dead_band_stale");
         assert!(stale.blocks());
@@ -14923,6 +15656,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             &HashMap::new(),
             &dispositions,
             302,
+            182,
             500,
             dead_band,
         );
@@ -14964,8 +15698,15 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         let mut over_cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
             HashMap::new();
         over_cost.insert(identity, &over);
-        let admitted =
-            enrolment_margin_standing_for(identity, &over_cost, &dispositions, 302, 500, roster);
+        let admitted = enrolment_margin_standing_for(
+            identity,
+            &over_cost,
+            &dispositions,
+            302,
+            182,
+            500,
+            roster,
+        );
         assert_eq!(admitted.name(), "expensiveness_declared");
         assert!(!admitted.blocks());
 
@@ -14974,7 +15715,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             HashMap::new();
         at_cost.insert(identity, &at_line);
         let stale =
-            enrolment_margin_standing_for(identity, &at_cost, &dispositions, 302, 500, roster);
+            enrolment_margin_standing_for(identity, &at_cost, &dispositions, 302, 182, 500, roster);
         assert_eq!(stale.name(), "roster_ground_stale");
         assert_eq!(stale.cause(), "enrolment_roster_ground_stale");
         assert!(stale.blocks());
@@ -14984,6 +15725,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             &HashMap::new(),
             &dispositions,
             302,
+            182,
             500,
             roster,
         );
@@ -15016,6 +15758,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             &bound_over_cost,
             &dispositions,
             302,
+            182,
             500,
             roster,
         );
@@ -15029,6 +15772,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             &bound_under_cost,
             &dispositions,
             302,
+            182,
             500,
             roster,
         );
@@ -15040,6 +15784,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             &HashMap::new(),
             &dispositions,
             302,
+            182,
             500,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
@@ -15064,6 +15809,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             &cost_owned,
             &dispositions,
             302,
+            182,
             500,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
@@ -15090,8 +15836,15 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         let mut dispositions = HashMap::new();
         dispositions.insert(identity, &declined);
         let cost_owned: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> = HashMap::new();
-        let standing =
-            enrolment_margin_standing_for(identity, &cost_owned, &dispositions, 302, 500, None);
+        let standing = enrolment_margin_standing_for(
+            identity,
+            &cost_owned,
+            &dispositions,
+            302,
+            182,
+            500,
+            None,
+        );
         assert_eq!(standing.name(), "outside_this_runs_execution");
         assert!(!standing.blocks());
         let blockers = required_floor_blockers_for(identity, Some(&standing), None);
@@ -15188,6 +15941,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             &cost_owned,
             &dispositions,
             302,
+            182,
             500,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
@@ -15196,6 +15950,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             &HashMap::new(),
             &dispositions,
             302,
+            182,
             500,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
@@ -15437,7 +16192,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
     #[test]
     fn a_refused_row_that_measured_no_effect_transfers_nothing_through_its_carriers() {
         install(
-            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            &["v2.compiler.target_serialize.grammar_relation_row_for_emitted"],
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "NoMeasuredEffectOverItsConsumers".to_string(),
@@ -15459,7 +16214,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
     #[test]
     fn the_same_overlap_under_a_measured_cost_verdict_still_stops_the_line() {
         install(
-            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            &["v2.compiler.target_serialize.grammar_relation_row_for_emitted"],
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),
@@ -15491,7 +16246,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
     #[test]
     fn a_different_producer_merely_sharing_a_carrier_module_does_not_refuse() {
         install(
-            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            &["v2.compiler.target_serialize.grammar_relation_row_for_emitted"],
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),
@@ -15720,4 +16475,30 @@ mod floor_stall_metric_tests {
         );
         assert!(!line.contains("stall 0"), "{line}");
     }
+}
+
+/// THE DECLARED POPULATION of `gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci`, read
+/// from that row's `..._population` list -- the ONE list that both declares the drop and gates the
+/// `DeclinedNoCiWetLane` decline. A BinWitnessWet row it does not name is not declined.
+fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<String> {
+    static POPULATION: std::sync::OnceLock<std::collections::HashSet<String>> =
+        std::sync::OnceLock::new();
+    POPULATION.get_or_init(|| {
+        const REL: &str = "dag/gunbc/rung_drop/edited_bin_witness_wet_rows_not_executed_by_ci.dag";
+        let path = crate::cli_run::process_workspace_root().join(REL);
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "rung drop population: failed to read {}: {e}",
+                path.display()
+            )
+        });
+        crate::cli_run::string_list_data_from_module_source(
+            REL,
+            &content,
+            "edited_bin_witness_wet_rows_not_executed_by_ci_population",
+            false,
+        )
+        .into_iter()
+        .collect()
+    })
 }

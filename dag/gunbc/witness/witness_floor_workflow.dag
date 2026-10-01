@@ -18,7 +18,7 @@ import gunbc.workflow_capability_closure {
   capability_closure_is_closed,
 }
 import v2.std.algebra { FreeSemigroup, fold_list, list_map, non_empty_to_list, list_head, skip, HeadFound, HeadAbsent }
-import std.algebra { list_append }
+import std.algebra { Cons, list_append }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
@@ -2596,7 +2596,11 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
 // job (gunbc.compiler_gate_workflow compiler_gate_stage0_regen_step), not as a job: that job
 // already checks out and builds claim_executor, and the lane measured 22.5 min on the fleet (run
 // 35890770775), fitting after the floor process exits. The sign-off covers exactly that step on
-// that event; it admits no per-PR run and no new job.
+// that event; it admits no per-PR run and no new job. SUPERSEDED TWICE since: operator ruling
+// 2026-09-27 moved the step onto its own `generated` job beside the floor, and operator ruling
+// 2026-09-28 runs it on every event, pull requests included (gunbc.compiler_gate_workflow
+// compiler_gate_stage0_regen_condition), because a pull request that failed it still entered the
+// queue and failed every group stacked on it.
 //
 // THIS COMMENT IS RATIONALE, NOT A GATE. No `Accepted` program reads it, so it stops nobody --
 // it records WHY the roster is small so the next author meets the reasoning rather than

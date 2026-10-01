@@ -10,12 +10,13 @@ import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, a
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
-import gunbc.fabric_storage_placement { fabric_storage_listen_port, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
+import gunbc.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import v2.std.collection { Present, Absent }
 import gunbc.live_deploy.spec {
+  DeploymentArtifactStep,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_slice_unit_name,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
   gunbc_approval_broker_unit_path, deployment_owns_the_host_approval_broker,
@@ -61,7 +62,6 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var }
-import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
   managed_directory_permissions,
@@ -75,6 +75,7 @@ import gunbc.roadmap_dashboard_instance {
 }
 import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
+  tailscale_serve_route_member_path,
   ScopedRemovalUnobserved,
   tailscale_scoped_removal_capability,
   TailscaleServeEndpoint,
@@ -112,13 +113,13 @@ import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison }
 import gunbc.live_deploy.emit {
+  emit_artifact_upsert,
+  approval_broker_tree_copy_steps,
   ensure_managed_directory_command,
   managed_directory_entry_repair_commands,
-  approval_broker_tree_receipt_path_for,
-  approval_broker_release_dir,
-  approval_broker_release_binary_path,
   approval_broker_dark_install_script,
-  apply_approval_broker_unit_write_steps, approval_broker_lifecycle_steps,
+  apply_approval_broker_unit_write_steps,
+  approval_broker_lifecycle_steps,
   live_deploy_approval_broker_unit_file,
   live_deploy_fabric_storage_unit_file,
   emit_release_member_effects,
@@ -127,7 +128,6 @@ import gunbc.live_deploy.emit {
   deploy_receipt_command,
   install_d_shared_mode,
   path_parent_dir,
-  RevisionBoundAtEmission,
   live_deploy_systemd_unit_for,
   deployment_ensure_dependency_script,
   emit_deploy_teardown_dependency_refusal,
@@ -139,6 +139,12 @@ import gunbc.live_deploy.emit {
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
+}
+import gunbc.live_deploy.release_locus {
+  approval_broker_tree_receipt_path_for,
+  approval_broker_release_dir,
+  approval_broker_release_binary_path,
+  RevisionBoundAtEmission,
 }
 import gunbc.ci_deploy_access {
   DeployAccessJobPrincipalRefusal,
@@ -159,7 +165,7 @@ import gunbc.host_axis_caps {
   runner_slot_service_units_for_host,
   RunnerSlotServiceUnits, ServiceUnitsDerived, ServiceUnitsWidthUnresolved,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
 import v2.std.orchestration { Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
@@ -962,10 +968,26 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
 
 data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint - because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half - the twin carries its own --set-path - would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently - an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value.\\n\\nONE CLAIM BECAME FOUR, ONE PER EMITTED SCRIPT, AND NOTHING WAS DROPPED (2026-08-23). The seven conjuncts below are the seven that were here; only their grouping changed. The regrouping is lossless because NO CONJUNCT EVER COMPARED TWO EMITTED SCRIPTS: disjointness is asserted by pattern negation against a command spelling derived from the OTHER spec, which is a cheap argv join, never that spec's emitted script. A reader who assumes a disjointness claim needs both scripts by construction will re-fuse these and re-cross the line - this row said exactly that in a PR body and it was wrong, caught by two independent readers of the conjuncts.\\n\\nWHY THE GROUPING MATTERED AT ALL, stated so this is not mistaken for tidiness: emitting a script costs about 6,714 interpreter node-evals per emitted shell WORD, so a claim's cost is the number of SCRIPTS it builds. Four scripts in one claim put this row at ~5009ms against the 5000ms CPU safety deadline then standing and it was INTERRUPTED BEFORE VERDICT - not passing, not failing, unknown - which is a strictly worse outcome than either verdict. One script per claim puts each row where the module's ordinary rows already sit, and a red now locates which script and which direction rather than which of seven conjuncts.\\n\\nTHIS IS A LOCAL UNBLOCK AND NOT THE REPAIR, AND CONFLATING THEM IS THE REAL RISK HERE. Sixteen rows in this module sit at 70-96% of the same limit; this regrouping moves the one row that crossed and leaves the population where it was. The cost is systemic - every emit consumer in the corpus pays the same per-word rate - and its measurement, its falsified hypotheses and its next-rung trigger are docs/probes/live_deploy_emit_witness_cost_attribution_2026-08-23.md. The next fleet runner-slot width increase lengthens the emitted script again and the next-highest row crosses.\\n\\nONE THING THIS REGROUPING MAKES HARDER, DECLARED RATHER THAN DISCOVERED LATER. The claim as written is LITERAL: it negates a spelling. The strictly stronger form is RELATIONAL - assert the two emitted endpoint values differ FROM EACH OTHER, which catches a drift that keeps both spellings absent from each other's script while still colliding. That form genuinely needs both scripts in one claim, so adopting it re-fuses two of these rows and re-crosses the line at today's per-word cost. It is therefore gated on the emit-cost lane rather than on anyone's appetite, and it is named here so the stronger claim is a known deferral and not an idea nobody had."
 
+// PRODUCTION'S DASHBOARD MAPPING STAYS ON THE ROOT MOUNT. This used to read the whole assembled apply
+// and forbid any --set-path in it. Since the approval cutover's stage 4 the same deployment also owns
+// the broker's /approve and /approvals mounts (gunbc.live_deploy.spec ApprovalBrokerFrontDoor), which
+// are scoped by design, so "no --set-path anywhere" stopped being the fact -- and subtracting the
+// broker's commands from the full apply cost 98,345 eval steps against the 72,300 budget (floor run
+// 36683351599). The claim is therefore stated at the interface it is about: the dashboard's own
+// TailscaleServeMapping member emits its root enable and scopes no path. The broker's two mounts are
+// pinned byte-for-byte by test.claim.approval_broker_front_door_member_witness.
 test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
-  let live_apply = apply_emitted_steps_text(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
-  string_contains(s: live_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && !string_contains(s: live_apply, pattern: "--set-path")
+  let spec = deployment_spec_srv1()
+  let own = pipeline_steps_text(steps: emit_artifact_upsert(
+    art: DeploymentArtifactStep {
+      kind: TailscaleServeMapping,
+      path: tailscale_serve_route_member_path(endpoint: spec.names.tailscale_serve_endpoint),
+    },
+    spec: spec,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  ))
+  string_contains(s: own, pattern: tailscale_enable_command(endpoint: spec.names.tailscale_serve_endpoint))
+    && !string_contains(s: own, pattern: "--set-path")
 }
 
 test fn twin_apply_serves_its_own_endpoint_and_not_productions() -> Bool {
@@ -1300,11 +1322,12 @@ test fn the_fabric_storage_store_areas_reach_the_srv1_apply_path() -> Bool {
   srv1_ensures_directory(path: files.objects as String) && srv1_ensures_directory(path: files.heads as String)
 }
 
-// THE AREAS ARE WRITABLE BY THE CLAIM PRINCIPAL, READ OFF THE ENSURE THE SRV1 SPEC ACTUALLY LOWERS.
-// Owner the service principal, group the CI job principal's, 2770 with setgid: fleet-converge run
-// 36139624393's host-effect claim refused `object publication refused: permission_denied` against
-// the briansrls:briansrls 0755 areas the previous ensure created. Red if either area goes back to a
-// single-owner ensure, or its admission refuses.
+// THE AREAS ARE THE SERVICE'S ALONE AND THE DOOR IS THE CI PRINCIPAL'S WAY IN, READ OFF THE ENSURE THE
+// SRV1 SPEC ACTUALLY LOWERS. The store areas are briansrls:briansrls 0700: no other account writes
+// the files (gunbc.fabric_storage_placement fabric_storage_directory). The door directory is owned
+// by the service with group ghrunner and group traverse only (2710), so the CI job reaches the
+// socket and nothing else. Red if an area admits the CI principal again, or the door stops admitting
+// it, or either admission refuses.
 fn srv1_fabric_area_ensure(path: String) -> String {
   fold(deployment_spec_srv1().steps, init: "", f: (acc, st) => match st {
     Dependency { step: dep } => match dep.subject {
@@ -1316,19 +1339,19 @@ fn srv1_fabric_area_ensure(path: String) -> String {
   })
 }
 
-test fn the_fabric_storage_areas_are_ensured_writable_by_the_claim_principal() -> Bool {
+test fn the_fabric_storage_areas_are_the_services_and_the_door_admits_the_claim_principal() -> Bool {
   let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
   let objects = srv1_fabric_area_ensure(path: files.objects as String)
   let heads = srv1_fabric_area_ensure(path: files.heads as String)
-  string_contains(s: objects, pattern: "2770") && string_contains(s: objects, pattern: "briansrls") && string_contains(s: objects, pattern: "ghrunner") && !string_contains(s: objects, pattern: "REFUSED")
-    && string_contains(s: heads, pattern: "2770") && string_contains(s: heads, pattern: "ghrunner") && !string_contains(s: heads, pattern: "REFUSED")
+  let door = srv1_fabric_area_ensure(path: fabric_storage_door_directory_path() as String)
+  string_contains(s: objects, pattern: "0700") && string_contains(s: objects, pattern: "briansrls") && !string_contains(s: objects, pattern: "ghrunner") && !string_contains(s: objects, pattern: "REFUSED")
+    && string_contains(s: heads, pattern: "0700") && !string_contains(s: heads, pattern: "ghrunner") && !string_contains(s: heads, pattern: "REFUSED")
+    && string_contains(s: door, pattern: "2710") && string_contains(s: door, pattern: "ghrunner") && !string_contains(s: door, pattern: "REFUSED")
 }
 
-// THE SAME ENSURE REPAIRS THE AREAS' EXISTING ENTRIES, read off the command the srv1 spec lowers:
-// the CI job principal publishes from `umask 077` steps, so every entry it wrote before the store
-// declared its entry mode is 0600 and the service principal cannot read it (srv1 2026-09-26). The
-// ensure adds the derived read bits to the entries the applying principal owns, unprivileged. Red
-// if the areas stop managing their entries, or the derivation refuses.
+// THE ENSURE NO LONGER REPAIRS THE AREAS' ENTRIES, read off the command the srv1 spec lowers: the
+// service is the only writer and publishes at the declared mode itself. Red if a repair reappears,
+// which would mean some other principal is again expected to write the store's files.
 fn srv1_fabric_area_repair(path: String) -> String {
   fold(deployment_spec_srv1().steps, init: "", f: (acc, st) => match st {
     Dependency { step: dep } => match dep.subject {
@@ -1340,21 +1363,18 @@ fn srv1_fabric_area_repair(path: String) -> String {
   })
 }
 
-test fn the_fabric_storage_area_ensure_repairs_the_ci_principals_entries() -> Bool {
+test fn the_fabric_storage_area_ensure_leaves_the_services_own_entries_alone() -> Bool {
   let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
-  let objects = srv1_fabric_area_repair(path: files.objects as String)
-  let heads = srv1_fabric_area_repair(path: files.heads as String)
-  string_contains(s: objects, pattern: "'-user' 'ghrunner' '-exec' '/bin/chmod' 'u+r,g+r,o+r' '{}' '+'") && !string_contains(s: objects, pattern: "REFUSED")
-    && string_contains(s: heads, pattern: "'-user' 'ghrunner' '-exec' '/bin/chmod' 'u+r,g+r,o+r' '{}' '+'") && !string_contains(s: heads, pattern: "REFUSED")
+  srv1_fabric_area_repair(path: files.objects as String) == "" && srv1_fabric_area_repair(path: files.heads as String) == ""
 }
 
-// THE PLACEMENT'S DERIVED ENTRY MODE, from the real store directories: 0444, the other-read being
-// the service principal's only route to an entry the CI principal created. The per-rule cases, and
+// THE PLACEMENT'S DERIVED ENTRY MODE, from the real store directories: 0400, since the service
+// principal is the store's only writer and reader once every writer goes through the door. The per-rule cases, and
 // the refusal when a directory grants o+x, are witnessed on synthetic principals in
 // test.claim.managed_directory_witness.
-test fn the_placed_fabric_store_derives_entry_mode_0444() -> Bool {
+test fn the_placed_fabric_store_derives_entry_mode_0400() -> Bool {
   match fabric_storage_entry_mode() {
-    FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0444"
+    FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0400"
     FabricStorageEntryModeRefused { detail: _ } => false
   }
 }
@@ -1641,14 +1661,32 @@ test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
 // AND THE DARK INSTALL PUTS A TREE THERE, because a unit pointed at an EMPTY directory
 // restart-loops exactly as one pointed at the wrong directory does. Asserting the unit's path
 // alone would not have caught the stage-A failure.
+//
+// AND IT PUTS IT THERE AS THE LOCUS OWNER, NOT AS THE JOB USER. The discriminating RED is the
+// shape fleet-converge run 36347245905 died on: `rsync -a --delete` run by the ci-runner principal
+// into a directory the preceding step had created owned by the service user, which fails chgrp and
+// mkdir (rsync 23). The owner-parameterized `sudo install -o <owner>` per-file mover is the only
+// route that lands bytes there, so reintroducing any rsync, or a copy not owned by the service
+// user, fails this claim.
+//
+// IT READS THE LOCUS INSTALL STEPS, NOT THE WHOLE DARK-INSTALL SCRIPT: the claim's subject is how the
+// tree reaches the locus, and rendering the full script re-executed every other stage of the install
+// (DESIGN §3, a witness discriminates at one interface). The script's composition of these steps is
+// inhabited by test.claim.live_deploy.approval_broker_helper_grant_test
+// the_dark_install_composes_this_releases_grant.
 test fn the_dark_install_populates_the_broker_tree() -> Bool {
-  let script = witness_approval_broker_dark_script_text
+  let script = pipeline_steps_text(steps: approval_broker_tree_copy_steps(
+    spec: deployment_spec_srv1(),
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  ))
   let release_dir = approval_broker_release_dir(
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
+  let owner = deployment_spec_srv1().service.service_user as String
   string_contains(s: script, pattern: release_dir)
-    && string_contains(s: script, pattern: "rsync -a --delete")
+    && string_contains(s: script, pattern: join([" -o ", owner, " -g ", owner, " \"$PWD\"/{} ", release_dir, "/{}"], ""))
+    && !string_contains(s: script, pattern: "rsync")
     && string_contains(s: script, pattern: approval_broker_tree_receipt_path_for(
       root: srv1_gunbc_approval_broker_root as String,
       revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
@@ -1681,7 +1719,10 @@ test fn the_dark_install_populates_the_broker_tree() -> Bool {
 // files on a host, and the stage-A readback is where it is established, by the process answering
 // /livez at all.
 test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
-  let script = witness_approval_broker_dark_script_text
+  let script = pipeline_steps_text(steps: approval_broker_tree_copy_steps(
+    spec: deployment_spec_srv1(),
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  ))
   let unit = serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
@@ -1690,7 +1731,8 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
-  string_contains(s: script, pattern: join(["install -m 0755 \"$PWD\"/target/release/gunbc ", binary], ""))
+  string_contains(s: script, pattern: "target/release/gunbc")
+    && string_contains(s: script, pattern: binary)
     && string_contains(s: unit, pattern: join(["ExecStart=", binary, " serve"], ""))
     && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
     && !string_contains(s: unit, pattern: approval_broker_serve_binary_is_per_release_poison)
@@ -1718,17 +1760,18 @@ test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> 
     && !string_contains(s: script, pattern: "%s\\n' (cd ")
 }
 
-// THE FABRIC DB ENDPOINT IS LOOPBACK-BOUND AND ROUTED ONLY BY TAILSCALE: its unit runs the fabric DB
-// handler on 127.0.0.1 (never 0.0.0.0, which would put the backend's unauthenticated identity header
-// on the network), and its route is tailscale serve's 10000 listener at the root mount, proxying to
-// exactly that port.
-test fn the_fabric_storage_unit_binds_loopback_and_its_route_is_the_only_way_in() -> Bool {
+// THE FABRIC DB ENDPOINT IS ITS DOOR SOCKET AND IS ROUTED BY TAILSCALE: its unit runs the fabric DB
+// handler on the placement's unix socket and binds no TCP listener (never 0.0.0.0, and no loopback
+// port any local account could reach with a forged identity header), and its route is tailscale
+// serve's 10000 listener at the root mount, proxying to exactly that socket.
+test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_it() -> Bool {
   let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
   let route = deployment_fabric_storage_serve_endpoint()
   unit.contains("--function fabric_storage_serve_handle")
-    && unit.contains(join(["--host 127.0.0.1 --port ", to_string(fabric_storage_listen_port)], ""))
-    && !unit.contains("0.0.0.0")
+    && unit.contains(join(["--unix-socket ", fabric_storage_door_socket() as String], ""))
+    && !unit.contains("--host")
+    && !unit.contains("--port")
     && route.https_port == fabric_storage_https_port
-    && (route.backend as String) == to_string(fabric_storage_listen_port)
+    && (route.backend as String) == join(["unix:", fabric_storage_door_socket() as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }

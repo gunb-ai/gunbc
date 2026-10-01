@@ -5,7 +5,7 @@ import gunbc.roadmap_document {
   RoadmapSection,
   project_roadmap_to_markdown,
 }
-import std.types { NonEmptyStr, Set }
+import std.types { FilePath, NonEmptyStr, Set }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model {
@@ -388,7 +388,7 @@ fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
   )
 }
 
-data observation_raw_print_retirement_contract_note: String = "THE DISCRIMINATING BINDING — the half shell_typed_invocation_contract_note deliberately does not supply. That one names an already-green validation and therefore proves only that the Verify path RUNS: admission, argv derivation, receipt production. It cannot distinguish a working verifier from one that returns green unconditionally, because nothing it runs is capable of returning anything else. A pipeline with only that binding is the coverage-by-illusion tier — machinery present, nothing gating on it.\n\nThis contract names a validation that FAILS today. observation_emit_frontier_count() is 8; the witness asserts 0, which is this node's handback stated exactly ('the classified zero-residue progress census'). So Verify has a target that can genuinely go red, the red is the ticket's own acceptance condition rather than a planted fixture, and the transition red -> green IS the work being finished. Together the two bindings pin both directions: one proves the path executes, the other proves it discriminates, and neither claim is available from the other.\n\nThe witness is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots so a deliberately-red acceptance test does not red the corpus — the cadence built for precisely this, where greening is a counted un-quarantine event and not a silent pass."
+data observation_raw_print_retirement_contract_note: String = "THE DISCRIMINATING BINDING — the half shell_typed_invocation_contract_note deliberately does not supply. That one names an already-green validation and therefore proves only that the Verify path RUNS: admission, argv derivation, receipt production. It cannot distinguish a working verifier from one that returns green unconditionally, because nothing it runs is capable of returning anything else. A pipeline with only that binding is the coverage-by-illusion tier — machinery present, nothing gating on it.\n\nThis contract names a validation that FAILS today. observation_emit_frontier_count() is non-zero -- the roster names which families remain, so no count is recited here, because a number written beside a fold is a second naming scheme and THIS ONE HAD ALREADY ROTTED: it read 8 while the typed dispositions summed to 7, and the 2026-09-11 restoration of the floor heartbeat is what made it stale; the witness asserts 0, which is this node's handback stated exactly ('the classified zero-residue progress census'). So Verify has a target that can genuinely go red, the red is the ticket's own acceptance condition rather than a planted fixture, and the transition red -> green IS the work being finished. Together the two bindings pin both directions: one proves the path executes, the other proves it discriminates, and neither claim is available from the other.\n\nThe witness is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots so a deliberately-red acceptance test does not red the corpus — the cadence built for precisely this, where greening is a counted un-quarantine event and not a silent pass."
 
 fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -4133,6 +4133,24 @@ fn withheld_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> W
       WithheldNodeIdsProjected { ids: withheld }
     FrontierSetsProjectionRefused { detail: detail } =>
       WithheldNodeIdsProjectionRefused { detail: detail }
+  }
+}
+
+// The accepted half of the same frontier plan, for consumers that join against the accepted set
+// without rendering the document (the private strategy witness's capability-evidence join). It is
+// the successor of the accepted_roadmap_node_ids_projection deleted by #11310 and differs from it
+// in the one way that deletion was about: it reads frontier_sets_projection, so a revoked,
+// superseded or unreplayable history refuses here exactly as it does for the active frontier.
+type AcceptedNodeIdsProjection
+  = AcceptedNodeIdsProjected { ids: List<RoadmapNodeId> }
+  | AcceptedNodeIdsProjectionRefused { detail: String }
+
+fn accepted_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> AcceptedNodeIdsProjection {
+  match frontier_sets_projection(history: history) {
+    FrontierSetsProjected { accepted: accepted, withheld: _ } =>
+      AcceptedNodeIdsProjected { ids: accepted }
+    FrontierSetsProjectionRefused { detail: detail } =>
+      AcceptedNodeIdsProjectionRefused { detail: detail }
   }
 }
 
