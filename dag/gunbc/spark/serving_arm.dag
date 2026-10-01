@@ -10,6 +10,7 @@ import extdeps.vllm.engine_args {
   VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit,
   VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
   VllmEngramConfigRequest, EngramConfigOmitted, EngramConfigExplicit,
+  VllmModalityRequest, ModalityOmitted, LanguageModelOnly, vllm_hf_override,
 }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
@@ -941,6 +942,7 @@ type ServingLaunchProfile sole_constructor {
   served_alias: NonEmptyStr
   prefix_caching: VllmPrefixCachingRequest
   engram: VllmEngramConfigRequest
+  modality: VllmModalityRequest
 }
 
 // THE PREFIX-CACHING REQUEST IS PART OF THE IDENTITY. Two launches differing only in whether they asked
@@ -959,6 +961,7 @@ type ServingLaunchProfile sole_constructor {
 // draft-token count; "true" names neither. When this arm wants speculation it arrives as the modelled
 // policy that already exists -- extdeps.vllm.engine_args VllmSpeculativePolicy, and the argv shape
 // gunbc.spark.glm_canary_converge renders from SpeculationPolicy -- carrying the basis a Bool drops.
+// THE MODALITY REQUEST ENTERS THE KEY ONLY WHEN IT IS MADE, for the Engram request's reason below.
 // THE ENGRAM REQUEST ENTERS THE KEY ONLY WHEN IT IS MADE. An explicit request changes what the engine
 // allocates, so two profiles differing in it are two subjects; an omitted one spells no flag, and
 // rendering it into the key would re-key every existing subject -- and every receipt recorded against
@@ -980,6 +983,11 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
       EngramConfigOmitted => ""
       EngramConfigExplicit { cpu_offload: c, dp_shared_memory: d } =>
         join([" engram=cpu_offload:", if c { "on" } else { "off" }, ",dp_shared_memory:", if d { "on" } else { "off" }], "")
+    },
+    match p.modality {
+      ModalityOmitted => ""
+      LanguageModelOnly { hf_overrides: os } =>
+        join([" modality=language-only", join(map(os, o => join([",", o.key as String, ":", o.json_value as String], "")), "")], "")
     },
   ], "")
 }
@@ -1095,6 +1103,7 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   served_alias: "glm-5.3-flash" as NonEmptyStr,
   prefix_caching: PrefixCachingExplicit { enabled: true },
   engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
 }
 
 // ── THE CONCURRENT PROFILE IS A DIFFERENT SUBJECT, AND THAT IS THE POINT ──────────────────────
@@ -1151,6 +1160,7 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
   served_alias: glm_native_initial_profile.served_alias,
   prefix_caching: PrefixCachingExplicit { enabled: true },
   engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
 }
 
 // ── THE V4.1 MEASUREMENT PROFILE: WHAT V4.1 DECIDES, OVER WHAT THE MEASUREMENT DECIDES ─────────
@@ -1163,7 +1173,18 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
 //   - the KV cache is requested as fp8_ds_mla, the layout the measurement's startup receipt requires
 //     to resolve (ResolvedFp8DsMla) before it admits a rank;
 //   - the Engram tables are served through the prefetch path -- cpu_offload true, dp_shared_memory
-//     false -- which is what the file-backed overlay requires and refuses at model init without.
+//     false -- which is what the file-backed overlay requires and refuses at model init without;
+//   - THE LAUNCH SERVES TEXT ONLY, AND THE VISION CAPABILITY IS DROPPED ON PURPOSE. The checkpoint is
+//     the vision variant (vision_n_layers > 0), and at the pinned revision that widens every prefill
+//     sliding-window row from sliding_window (128) to sliding_window + vision_max_n_token (1152) for
+//     bidirectional image spans (vllm/v1/attention/backends/mla/sparse_swa.py prefill_index_width,
+//     vllm/models/deepseek_v4_1/attention.py max_image_tokens). FlashInfer's SM120 DSv4 kernel has no
+//     specialization at 1152, and every call with 64 or fewer query tokens must take one, so attempt
+//     13 died in CUDA-graph capture on all four ranks. --language-model-only stubs the tower and
+//     admits no image; overriding vision_n_layers to 0 is what returns the width to 128, because
+//     max_image_tokens is read off the config and not off the modality limit. A launch that wants
+//     images back needs an SM120 kernel at the widened width first; it is a different product, not
+//     this one with a flag flipped.
 // The route's port and served name are the caller's because they belong to the route this launch
 // answers, not to the model.
 fn deepseek_v41_measurement_profile(
@@ -1185,6 +1206,7 @@ fn deepseek_v41_measurement_profile(
     served_alias: served_alias,
     prefix_caching: prefix_caching,
     engram: EngramConfigExplicit { cpu_offload: true, dp_shared_memory: false },
+    modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
   }
 }
 
@@ -1217,6 +1239,7 @@ data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
   served_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
   prefix_caching: PrefixCachingOmitted,
   engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
 }
 
 

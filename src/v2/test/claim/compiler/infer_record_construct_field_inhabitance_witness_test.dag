@@ -6,7 +6,7 @@ import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
   resolution_context,
-  resolve_with_admission_context_policy
+  resolve_in_context
 }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.resolution_policy { default_name_resolution_policy }
@@ -42,7 +42,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE ROUTE IS REAL. Every claim reaches infer from inline source text through the production fold
 // (tokenize, parse, normalize with body lowering, resolve through v2.compiler.name_resolve
-// resolve_with_admission_context_policy), and infer is handed resolve's own ResolvedTree, index
+// resolve_in_context), and infer is handed resolve's own ResolvedTree, index
 // included. No tree here is hand-built, so deleting the record row, or the index read it depends on,
 // turns the refusing claims green-to-red rather than leaving a designed fixture passing. Each
 // subject's resolution is a nullary warm producer (v2.workflow.floor_pure_producer_share) and infer
@@ -117,16 +117,13 @@ fn rcf_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   match rcf_fixture_normalized() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
-      resolve_with_admission_context_policy(
-        context: resolution_context(lm: dag_language_model(), roots: roots),
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
         admission: Admission {
           subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
           imports: Empty
-        },
-        index: source_root_index_empty(),
-        active_roots: Empty,
-        policy: default_name_resolution_policy()
-      )
+        }
+      ).resolved
   }
 }
 

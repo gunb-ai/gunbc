@@ -804,16 +804,45 @@ fn symbol_list_reverse(xs: List<Symbol>) -> List<Symbol> {
 // a disagreement has no producer there; this wall refuses one built anywhere else -- a missing, an
 // extra, or a repeated label. The comparison sorts both sides once and walks them together, so it is
 // O(n log n) rather than a scan per label. The stored domain is NOT assumed sorted: lowering keeps
-// its authored sequence, and only canonicalization sorts. An Arrow with no order edge is well formed;
-// positional binding refuses against it, and never falls back to label order.
+// its authored sequence, and only canonicalization sorts. An Arrow with no order edge is well formed
+// only when its domain binds no name (arrow_domain_binds_a_name); positional binding never falls back
+// to label order.
 fn arrow_signature_order_conforms(children: List<Edge>) -> Bool {
   match arrow_signature_order_read(children: children) {
-    OrderAbsent => true
+    OrderAbsent => !arrow_domain_binds_a_name(children: children)
     OrderUnreadable => false
     OrderLabels { labels: labels } =>
       match arrow_domain_binder_labels(children: children) {
         DomainBinderLabels { labels: binders } => symbols_are_one_distinct_set(a: labels, b: binders)
         DomainBinderLabelsUnreadable => false
+      }
+  }
+}
+
+// A DOMAIN THAT BINDS A NAME OWES ITS DECLARED ORDER (A4, reversing #12361's "an Arrow with no order
+// edge is well formed"). Since Program P (gunbc#12625) there is one Arrow encoding: a Named edge in the
+// domain -- the first POSITIONAL child, a Conj -- IS a parameter binder, and a binder's position is
+// carried only by ^arrow_signature_order_edge (content hashing sorts the Conj, so f(a, b) and f(b, a)
+// would otherwise be one identity). So an Arrow whose domain binds any name and carries no order edge
+// has no admitted meaning and is ill formed here, at Node admission, rather than refused later at
+// binding time. A domain that binds no name -- a positional type, an empty product -- owes no order.
+// THE ONE ANSWER to "does this Arrow's domain bind a name": v2.compiler.resolve scopes an Arrow's
+// parameters exactly when this holds (arrow_domain_has_named_bindings delegates here), so admission and
+// scoping cannot disagree. An Atom domain is a TYPE, not a binder, under the one encoding.
+fn arrow_domain_binds_a_name(children: List<Edge>) -> Bool {
+  match arrow_first_positional_target(children: children) {
+    FirstPositionalAbsent => false
+    FirstPositionalFound { target: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } =>
+          fold(domain.children, init: false, f: fn(acc, e) {
+            acc || match e.label {
+              Authored { name: _ } => true
+              StructuralLabel { label: _ } => false
+              Positional => false
+            }
+          })
+        _ => false
       }
   }
 }

@@ -46,8 +46,8 @@ import v2.compiler.name_resolve {
   ResolutionSubject,
   ResolutionContext,
   resolution_context,
-  resolve_walk_with_admission_context_policy,
-  resolve_with_admission_context_policy,
+  resolve_walk_in_context,
+  resolve_in_context,
   resolve_with_admission
 }
 import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial }
@@ -1293,10 +1293,10 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // test either, and running them here would conflate the modeling door with the execution route
 // and multiply their whole-tree cost by the test population.
 
+// The source-root index and the active roots live on `resolution` (ResolutionContext binds them once
+// per ingest as admission inputs); a second copy here would be two authorities for one fact.
 type NativeTestContext {
   resolution: Outcome<ResolutionContext>
-  index: SourceRootIndex
-  active_roots: FreeMonoid<SourceRootRef>
   file_refusals: FreeMonoid<NativeTestFileRefusal>
 }
 
@@ -1482,9 +1482,13 @@ fn native_test_context_finish(
   ingest: SourceRootIngest
 ) -> NativeTestContext {
   NativeTestContext {
-    resolution: resolution_context(lm: front.lm, roots: state.roots),
-    index: state.index,
-    active_roots: source_root_set_from_ingest(ingest: ingest),
+    resolution: resolution_context(
+      lm: front.lm,
+      roots: state.roots,
+      index: state.index,
+      active_roots: source_root_set_from_ingest(ingest: ingest),
+      policy: v2.std.resolution_policy.default_name_resolution_policy()
+    ),
     file_refusals: state.file_refusals
   }
 }
@@ -1517,20 +1521,41 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
   )
 }
 
+// EVERY PER-MODULE STEP OVER A NativeTestContext RETURNS THE CONTEXT IT ENDED WITH. The context's
+// resolution carries the module namespace provider (v2.compiler.name_resolve ResolutionContext
+// `namespaces`), which produces a module's namespace at most once per ingest -- but only for a
+// caller that binds the context it gets back. A loop over modules threads it; a caller that resolves
+// once projects the value and drops it.
+fn native_test_context_with_resolution(context: NativeTestContext, resolution: Outcome<ResolutionContext>) -> NativeTestContext {
+  NativeTestContext {
+    resolution: resolution,
+    file_refusals: context.file_refusals
+  }
+}
+
+fn native_test_module_admission(module: QualifiedName) -> Admission {
+  Admission { subject: ResolutionSubject { name: module }, imports: Empty }
+}
+
+type NativeTestResolved {
+  resolved: Outcome<ResolvedTree>
+  context: NativeTestContext
+}
+
 fn native_test_resolve_module(
   context: NativeTestContext,
   module: QualifiedName
-) -> Outcome<ResolvedTree> {
-  resolve_with_admission_context_policy(
-    context: context.resolution,
-    admission: Admission {
-      subject: ResolutionSubject { name: module },
-      imports: Empty
-    },
-    index: context.index,
-    active_roots: context.active_roots,
-    policy: v2.std.resolution_policy.default_name_resolution_policy()
-  )
+) -> NativeTestResolved {
+  let step = resolve_in_context(context: context.resolution, admission: native_test_module_admission(module: module))
+  NativeTestResolved {
+    resolved: step.resolved,
+    context: native_test_context_with_resolution(context: context, resolution: step.context)
+  }
+}
+
+type NativeTestWalk {
+  walk: ResolveNodeWalk
+  context: NativeTestContext
 }
 
 // THE SAME RESOLUTION AS native_test_resolve_module, OBSERVED WHOLE: every independent failure
@@ -1538,17 +1563,12 @@ fn native_test_resolve_module(
 fn native_test_resolve_module_walk(
   context: NativeTestContext,
   module: QualifiedName
-) -> ResolveNodeWalk {
-  resolve_walk_with_admission_context_policy(
-    context: context.resolution,
-    admission: Admission {
-      subject: ResolutionSubject { name: module },
-      imports: Empty
-    },
-    index: context.index,
-    active_roots: context.active_roots,
-    policy: v2.std.resolution_policy.default_name_resolution_policy()
-  )
+) -> NativeTestWalk {
+  let step = resolve_walk_in_context(context: context.resolution, admission: native_test_module_admission(module: module))
+  NativeTestWalk {
+    walk: step.walk,
+    context: native_test_context_with_resolution(context: context, resolution: step.context)
+  }
 }
 
 fn native_test_infer_resolved(
@@ -1566,14 +1586,23 @@ fn native_test_infer_resolved(
   )
 }
 
+type NativeTestPrepared {
+  prepared: Outcome<NativeTestPreparedModule>
+  context: NativeTestContext
+}
+
 fn native_test_prepare_module(
   context: NativeTestContext,
   module: QualifiedName
-) -> Outcome<NativeTestPreparedModule> {
-  bind_outcome(
-    o: native_test_resolve_module(context: context, module: module),
-    f: fn(resolved) { native_test_infer_resolved(module: module, resolved: resolved) }
-  )
+) -> NativeTestPrepared {
+  let step = native_test_resolve_module(context: context, module: module)
+  NativeTestPrepared {
+    prepared: bind_outcome(
+      o: step.resolved,
+      f: fn(resolved) { native_test_infer_resolved(module: module, resolved: resolved) }
+    ),
+    context: step.context
+  }
 }
 
 // THE DECLARATION SEARCH IS EXACT: a test identity names a top-level declaration of one prepared
@@ -3179,9 +3208,13 @@ type NativeModuleResolveVerdict
     }
   | NativeModuleResolveAccepted { resolved: ResolvedTree }
 
-// The walk ran under context.resolution's index (resolve_walk_with_admission_context_policy
-// builds the subject namespace over it), so that index is minted beside the root. An
+// The walk ran under context.resolution's index, so that index is minted beside the root. An
 // accepted walk implies an accepted context; the Rejected arm states the refusal it would be.
+type NativeModuleResolveStep {
+  verdict: NativeModuleResolveVerdict
+  context: NativeTestContext
+}
+
 // A MODULE WHOSE IMPORT TARGET WAS REFUSED AT INGEST IS TOLD SO. When a file the context refused
 // declares a module this one imports, none of that module's declarations entered the index, so the
 // resolver finds each imported name unbound. That is true and located, but it names the SYMPTOM:
@@ -3236,73 +3269,87 @@ fn native_module_resolve_verdict(
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   module: String,
   path: Symbol
-) -> NativeModuleResolveVerdict {
+) -> NativeModuleResolveStep {
   match native_lane_file_refusal_for_path(index: refusal_index, path: path) {
-    Present { value: fr } => NativeModuleResolveFileRefused { refusal: fr }
+    Present { value: fr } =>
+      NativeModuleResolveStep { verdict: NativeModuleResolveFileRefused { refusal: fr }, context: context }
     Absent =>
-      match native_test_resolve_module_walk(
+      let step = native_test_resolve_module_walk(
         context: context,
         module: qualified_name_from_dotted_string(dotted: module)
-      ) {
-        ResolveWalkRefused { first: f, rest: r, observation: o } =>
-          match native_import_target_file_refusal(context: context, module: qualified_name_from_dotted_string(dotted: module)) {
-            Present { value: target } =>
-              NativeModuleResolveImportTargetFileRefused { target: target, first: f, rest: r, observation: o }
-            Absent => NativeModuleResolveRefused { first: f, rest: r, observation: o }
-          }
-        ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
-          match context.resolution {
-            Accepted { value: shared, diagnostics: _ } =>
-              NativeModuleResolveAccepted { resolved: resolved_tree_of(root: resolved, symbol_index: shared.symbol_index) }
-            Rejected { diagnostics: r } =>
-              NativeModuleResolveRefused {
-                first: r,
-                rest: [],
-                observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
-              }
-          }
+      )
+      NativeModuleResolveStep {
+        verdict: match step.walk {
+          ResolveWalkRefused { first: f, rest: r, observation: o } =>
+            match native_import_target_file_refusal(context: step.context, module: qualified_name_from_dotted_string(dotted: module)) {
+              Present { value: target } =>
+                NativeModuleResolveImportTargetFileRefused { target: target, first: f, rest: r, observation: o }
+              Absent => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+            }
+          ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
+            match step.context.resolution {
+              Accepted { value: shared, diagnostics: _ } =>
+                NativeModuleResolveAccepted { resolved: resolved_tree_of(root: resolved, symbol_index: shared.symbol_index) }
+              Rejected { diagnostics: r } =>
+                NativeModuleResolveRefused {
+                  first: r,
+                  rest: [],
+                  observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+                }
+            }
+        },
+        context: step.context
       }
   }
+}
+
+type NativeLaneModuleResolutionStep {
+  resolution: NativeLaneModuleResolution
+  context: NativeTestContext
 }
 
 fn native_lane_module_resolution(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   entry: NativeLaneUniverseModule
-) -> NativeLaneModuleResolution {
-  match native_module_resolve_verdict(
+) -> NativeLaneModuleResolutionStep {
+  let step = native_module_resolve_verdict(
     context: context,
     refusal_index: refusal_index,
     module: entry.module,
     path: entry.path
-  ) {
-    NativeModuleResolveFileRefused { refusal: fr } =>
-      NativeLaneModuleContextRowsDecided {
-        rows: native_lane_module_refusal_rows(
-          entry: entry,
-          verdict: native_test_refused_located(
-            stage: NativeTestStageContext,
-            reason: fr.fatal_reason,
-            at: Textual { file: fr.path, extent: WholeFile }
+  )
+  NativeLaneModuleResolutionStep {
+    resolution: match step.verdict {
+      NativeModuleResolveFileRefused { refusal: fr } =>
+        NativeLaneModuleContextRowsDecided {
+          rows: native_lane_module_refusal_rows(
+            entry: entry,
+            verdict: native_test_refused_located(
+              stage: NativeTestStageContext,
+              reason: fr.fatal_reason,
+              at: Textual { file: fr.path, extent: WholeFile }
+            )
           )
-        )
-      }
-    NativeModuleResolveImportTargetFileRefused { target: t, first: d, rest: _, observation: _ } =>
-      NativeLaneModuleResolveRowsDecided {
-        rows: native_lane_module_refusal_rows(
-          entry: entry,
-          verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: native_import_target_refusal_diagnostics(target: t, resolver: d) }
-        )
-      }
-    NativeModuleResolveRefused { first: d, rest: _, observation: _ } =>
-      NativeLaneModuleResolveRowsDecided {
-        rows: native_lane_module_refusal_rows(
-          entry: entry,
-          verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
-        )
-      }
-    NativeModuleResolveAccepted { resolved: resolved } =>
-      NativeLaneModuleResolved { resolved: resolved }
+        }
+      NativeModuleResolveImportTargetFileRefused { target: t, first: d, rest: _, observation: _ } =>
+        NativeLaneModuleResolveRowsDecided {
+          rows: native_lane_module_refusal_rows(
+            entry: entry,
+            verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: native_import_target_refusal_diagnostics(target: t, resolver: d) }
+          )
+        }
+      NativeModuleResolveRefused { first: d, rest: _, observation: _ } =>
+        NativeLaneModuleResolveRowsDecided {
+          rows: native_lane_module_refusal_rows(
+            entry: entry,
+            verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
+          )
+        }
+      NativeModuleResolveAccepted { resolved: resolved } =>
+        NativeLaneModuleResolved { resolved: resolved }
+    },
+    context: step.context
   }
 }
 
@@ -3408,23 +3455,32 @@ type NativeCensusModuleOutcome
     }
   | NativeCensusModuleResolved
 
+type NativeCensusModuleStep {
+  outcome: NativeCensusModuleOutcome
+  context: NativeTestContext
+}
+
 fn native_census_module_resolution(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   entry: NativeCensusModule
-) -> NativeCensusModuleOutcome {
-  match native_module_resolve_verdict(
+) -> NativeCensusModuleStep {
+  let step = native_module_resolve_verdict(
     context: context,
     refusal_index: refusal_index,
     module: entry.module,
     path: entry.path
-  ) {
-    NativeModuleResolveFileRefused { refusal: _ } => NativeCensusModuleFileRefused
-    NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
-      NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
-    NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
-      NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
-    NativeModuleResolveAccepted { resolved: _ } => NativeCensusModuleResolved
+  )
+  NativeCensusModuleStep {
+    outcome: match step.verdict {
+      NativeModuleResolveFileRefused { refusal: _ } => NativeCensusModuleFileRefused
+      NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
+        NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
+        NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveAccepted { resolved: _ } => NativeCensusModuleResolved
+    },
+    context: step.context
   }
 }
 
@@ -3505,7 +3561,7 @@ fn native_lane_controls(context: NativeTestContext) -> NativeLaneControls {
   match native_test_prepare_module(
     context: context,
     module: qualified_name_from_dotted_string(dotted: native_route_live_control_module)
-  ) {
+  ).prepared {
     Rejected { diagnostics: d } =>
       {
         let refused = NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
@@ -4069,6 +4125,10 @@ fn native_demand_prepared(
 // THE THREE PRODUCERS ARE CALLED HERE EXACTLY AS THE DISPLACED LOOP CALLED THEM. Same functions,
 // same arguments, same order. That is what makes "verdicts preserved" a structural claim rather
 // than an empirical hope.
+// A RESOLVE STEP'S RETURNED CONTEXT IS NOT CARRIED INTO THE NEXT DEMAND: on this route each module is
+// resolved exactly once, so its namespace (v2.compiler.name_resolve ResolutionContext namespaces) is
+// demanded once and nothing is lost. The run carries it when PR2 of
+// docs/plans/declaration-body-resolution-provider.md adds a module's cross-module declaration demands.
 fn native_demand_execute(
   run: NativeDemandRun,
   subject: NativeDemandSubject,
@@ -4084,7 +4144,7 @@ fn native_demand_execute(
             context: context,
             refusal_index: refusal_index,
             entry: entry
-          )
+          ).resolution
         }
       }
     NativeInferSubject { entry: entry } =>
