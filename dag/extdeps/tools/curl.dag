@@ -247,6 +247,7 @@ fn curl_sigv4_s3_upload_command(
   netrc_path: FilePath,
   sigv4_region: NonEmptyStr,
   create_only: Bool,
+  payload_digest: S3PayloadDigestDeclaration,
 ) -> ArgvCommand {
   argv_command(
     program: curl_program(),
@@ -260,9 +261,72 @@ fn curl_sigv4_s3_upload_command(
       ],
       concat(
         if create_only { ["-H", curl_if_none_match_any_header] } else { [] },
-        ["-T", local_path, url],
+        concat(
+          s3_payload_digest_header(digest: payload_digest),
+          ["-T", local_path, url],
+        ),
       ),
     ),
+  )
+}
+
+// WHO STATES THE PAYLOAD'S SHA-256 TO THE STORE. S3 SigV4 carries it in x-amz-content-sha256 (AWS
+// "Signature Calculations for the Authorization Header", single chunk): the store recomputes the
+// digest of the body it received and refuses the request when they disagree. Left to the transport,
+// curl --aws-sigv4 computes it from the bytes it sends; DECLARED, the caller's hex is sent and signed
+// instead, which is how a caller makes the store check a digest the caller claims. curl uses a
+// caller-supplied x-amz-content-sha256 header rather than computing its own (curl.se/docs/manpage.html,
+// --aws-sigv4).
+type S3PayloadDigestDeclaration
+  = PayloadDigestComputedByTransport
+  | PayloadDigestDeclared { sha256_hex: NonEmptyStr }
+
+fn s3_payload_digest_header(digest: S3PayloadDigestDeclaration) -> List<String> {
+  match digest {
+    PayloadDigestComputedByTransport => []
+    PayloadDigestDeclared { sha256_hex: h } => ["-H", concat("x-amz-content-sha256: ", h as String)]
+  }
+}
+
+// HEAD OBJECT: the store's answer about whether the key exists, with no body transferred. Status-only
+// stdout, exactly as the upload: 200 present, 404 absent.
+fn curl_sigv4_s3_head_command(
+  url: String,
+  netrc_path: FilePath,
+  sigv4_region: NonEmptyStr,
+) -> ArgvCommand {
+  argv_command(
+    program: curl_program(),
+    arguments: [
+      "-fsS",
+      "--netrc-file", netrc_path as String,
+      "--aws-sigv4", curl_aws_sigv4_s3_provider(region: sigv4_region),
+      "--head",
+      "-o", "/dev/null",
+      "-w", curl_http_code_write_out_format,
+      url,
+    ],
+  )
+}
+
+// DELETE OBJECT. S3 answers 204 whether or not the key existed, so a delete's success says nothing
+// about absence; a caller that needs absence reads it back.
+fn curl_sigv4_s3_delete_command(
+  url: String,
+  netrc_path: FilePath,
+  sigv4_region: NonEmptyStr,
+) -> ArgvCommand {
+  argv_command(
+    program: curl_program(),
+    arguments: [
+      "-fsS",
+      "--netrc-file", netrc_path as String,
+      "--aws-sigv4", curl_aws_sigv4_s3_provider(region: sigv4_region),
+      "-X", "DELETE",
+      "-o", "/dev/null",
+      "-w", curl_http_code_write_out_format,
+      url,
+    ],
   )
 }
 

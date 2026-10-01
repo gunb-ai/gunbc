@@ -9,7 +9,12 @@ import extdeps.shell
 import extdeps.shell.exec { ProcessObservation }
 import extdeps.exec.command { LocalExec }
 import extdeps.transports.rest { mutation_status_is_commit_ambiguous }
-import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command, curl_aws_sigv4_cli_tool }
+import extdeps.tools.curl {
+  curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command, curl_aws_sigv4_cli_tool,
+  curl_sigv4_s3_head_command, curl_sigv4_s3_delete_command,
+  S3PayloadDigestDeclaration, PayloadDigestComputedByTransport,
+}
+import extdeps.exec.command { ArgvCommand }
 import gunbc.host_cli_dependency {
   observe_host_cli_dependency,
   HostCliDependencyPresent,
@@ -315,6 +320,19 @@ fn put_origin_object(
   key: NonEmptyStr,
   token_source: AccessTokenSource,
 ) -> OriginPut {
+  put_origin_object_declaring(local_path: local_path, key: key, token_source: token_source, payload_digest: PayloadDigestComputedByTransport)
+}
+
+// THE SAME WRITE, with the payload's SHA-256 optionally DECLARED to the store rather than computed by
+// the transport, so the store -- not this process -- checks the bytes against a claimed digest
+// (extdeps.tools.curl S3PayloadDigestDeclaration). One write, one bracket; put_origin_object is this
+// with the transport computing.
+fn put_origin_object_declaring(
+  local_path: FilePath,
+  key: NonEmptyStr,
+  token_source: AccessTokenSource,
+  payload_digest: S3PayloadDigestDeclaration,
+) -> OriginPut {
   match origin_transport_present() {
     OriginTransportAbsent { cause: cause } => put_without_credential_exposure(verdict: OriginPutRefused { key: key, cause: cause })
     OriginTransportPresent =>
@@ -338,6 +356,7 @@ fn put_origin_object(
               netrc_path: netrc_binding_path(binding: binding),
               sigv4_region: r2_s3_sigv4_region,
               create_only: create_only,
+              payload_digest: payload_digest,
             ),
             transport: LocalExec,
           )
@@ -442,5 +461,152 @@ fn fetch_origin_object(
       }
     }
   }
+  }
+}
+
+// HEAD AND DELETE: two more signed requests through the same custody bracket -- target resolution,
+// netrc placed, one transfer, netrc shredded -- differing only in the argv. The bracket is one
+// function taking the argv builder, so a third request is a builder, not a third copy of custody.
+type OriginSignedAnswer
+  = OriginSignedAnswered { answer: S3TransferAnswer, stderr: String }
+  | OriginSignedUnavailable { cause: NonEmptyStr }
+
+fn origin_signed_request(
+  direction: OriginDirection,
+  key: NonEmptyStr,
+  token_source: AccessTokenSource,
+  build: fn(String, FilePath) -> ArgvCommand,
+) -> OriginSignedAnswer {
+  match origin_transport_present() {
+    OriginTransportAbsent { cause: cause } => OriginSignedUnavailable { cause: cause }
+    OriginTransportPresent =>
+  match resolve_origin_target(direction: direction, key: key) {
+    OriginTargetRefused { cause: cause } => OriginSignedUnavailable { cause: cause }
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, create_only: _ } =>
+      match place_r2_s3_netrc(
+        host: r2_s3_endpoint_host(endpoint: locator.endpoint) as NonEmptyStr,
+        access_key_id: access_key_id,
+        token_value: token_value,
+        token_source: token_source,
+      ) {
+        R2S3NetrcRefused { cause: cause } => OriginSignedUnavailable { cause: cause }
+        R2S3NetrcRefusedResidueRemains { cause: cause } => OriginSignedUnavailable { cause: cause }
+        R2S3NetrcPlaced { binding: binding, workspace: workspace } => {
+          let observed = run_shell_command_observe(
+            command: build(r2_object_url(locator: locator), netrc_binding_path(binding: binding)),
+            transport: LocalExec,
+          )
+          let shredded = shred_r2_s3_netrc(workspace: workspace)
+          if shredded == false {
+            OriginSignedUnavailable { cause: credential_residue_cause }
+          } else {
+            OriginSignedAnswered { answer: classify_s3_transfer(observation: observed), stderr: observed.stderr }
+          }
+        }
+      }
+  }
+  }
+}
+
+// WHETHER THE ORIGIN HOLDS A KEY, as the store says. Absence is the store's 404, never an
+// unanswered request.
+type OriginPresence
+  = OriginKeyPresent
+  | OriginKeyAbsent
+  | OriginPresenceUnknown { cause: NonEmptyStr }
+
+fn classify_origin_head(answer: S3TransferAnswer, stderr: String) -> OriginPresence {
+  match answer {
+    S3NotAnswered { cause: cause } => OriginPresenceUnknown { cause: cause }
+    S3Answered { status: status } =>
+      if http_status_is_success(status: status) { OriginKeyPresent }
+      else if status == s3_status_not_found { OriginKeyAbsent }
+      else {
+        OriginPresenceUnknown {
+          cause: join(["the origin answered the HEAD with ", to_string(status), ": ", trim(s: stderr)], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn head_origin_object(key: NonEmptyStr, token_source: AccessTokenSource) -> OriginPresence {
+  match origin_signed_request(
+    direction: OriginRead,
+    key: key,
+    token_source: token_source,
+    build: (url, netrc) => curl_sigv4_s3_head_command(url: url, netrc_path: netrc, sigv4_region: r2_s3_sigv4_region),
+  ) {
+    OriginSignedUnavailable { cause: cause } => OriginPresenceUnknown { cause: cause }
+    OriginSignedAnswered { answer: a, stderr: e } => classify_origin_head(answer: a, stderr: e)
+  }
+}
+
+// RESOLVING AN UNCERTAIN ACKNOWLEDGEMENT. A PUT whose outcome is unknown is reconciled by asking the
+// store whether the key exists -- never by putting again. Present means the write landed (for a
+// create-only key, the bytes at it are a fetch's to verify); absent means it did not; an unanswered
+// HEAD leaves it unknown. Stored, present and refused verdicts are already decided and pass through.
+type OriginPutResolution
+  = OriginPutResolvedStored { key: NonEmptyStr }
+  | OriginPutResolvedPresent { key: NonEmptyStr }
+  | OriginPutResolvedRefused { key: NonEmptyStr, cause: NonEmptyStr }
+  | OriginPutResolvedNotStored { key: NonEmptyStr, cause: NonEmptyStr }
+  | OriginPutStillUnknown { key: NonEmptyStr, cause: NonEmptyStr }
+
+fn resolve_origin_put(verdict: OriginPutOutcome, presence: OriginPresence) -> OriginPutResolution {
+  match verdict {
+    OriginObjectStored { key: k } => OriginPutResolvedStored { key: k }
+    OriginObjectAlreadyPresent { key: k } => OriginPutResolvedPresent { key: k }
+    OriginPutRefused { key: k, cause: c } => OriginPutResolvedRefused { key: k, cause: c }
+    OriginPutOutcomeUnknown { key: k, cause: c } =>
+      match presence {
+        OriginKeyPresent => OriginPutResolvedPresent { key: k }
+        OriginKeyAbsent => OriginPutResolvedNotStored { key: k, cause: c }
+        OriginPresenceUnknown { cause: h } =>
+          OriginPutStillUnknown { key: k, cause: join([c as String, "; and the HEAD that would resolve it: ", h as String], "") as NonEmptyStr }
+      }
+  }
+}
+
+// DELETION IS ADMITTED ONLY UNDER THE PROBE NAMESPACE. Every admitted origin population is
+// write-once (see the PUT above), so deleting one of its objects would destroy a durable fact a
+// commit or manifest relies on. The probe's own keys are not such a population; they exist to be
+// written, read and removed. The refusal is located here, at the one delete this module offers.
+data origin_probe_namespace: String = "probe/"
+
+type OriginDeleteOutcome
+  = OriginDeleteAnswered
+  | OriginDeleteRefused { key: NonEmptyStr, cause: NonEmptyStr }
+
+fn classify_origin_delete(key: NonEmptyStr, answer: S3TransferAnswer, stderr: String) -> OriginDeleteOutcome {
+  match answer {
+    S3NotAnswered { cause: cause } => OriginDeleteRefused { key: key, cause: cause }
+    S3Answered { status: status } =>
+      if http_status_is_success(status: status) { OriginDeleteAnswered }
+      else {
+        OriginDeleteRefused {
+          key: key,
+          cause: join(["the origin answered the DELETE with ", to_string(status), ": ", trim(s: stderr)], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn origin_key_is_probe(key: NonEmptyStr) -> Bool {
+  starts_with(s: key as String, prefix: origin_probe_namespace)
+}
+
+fn delete_origin_probe_object(key: NonEmptyStr, token_source: AccessTokenSource) -> OriginDeleteOutcome {
+  if !origin_key_is_probe(key: key) {
+    OriginDeleteRefused { key: key, cause: concat("only keys under ", concat(origin_probe_namespace, " may be deleted from the write-once origin")) as NonEmptyStr }
+  } else {
+    match origin_signed_request(
+      direction: OriginWrite,
+      key: key,
+      token_source: token_source,
+      build: (url, netrc) => curl_sigv4_s3_delete_command(url: url, netrc_path: netrc, sigv4_region: r2_s3_sigv4_region),
+    ) {
+      OriginSignedUnavailable { cause: cause } => OriginDeleteRefused { key: key, cause: cause }
+      OriginSignedAnswered { answer: a, stderr: e } => classify_origin_delete(key: key, answer: a, stderr: e)
+    }
   }
 }

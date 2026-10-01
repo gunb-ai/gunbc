@@ -1,7 +1,7 @@
 module tools.fabric_m0_origin_object_probe
 
 import std.types { Bool, NonEmptyStr, String, FilePath }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
 import gunbc.auth.access_token_source {
   AccessTokenSource, OperatorSuppliedToken,
@@ -56,7 +56,16 @@ import gunbc.cloudflare.r2_origin_object {
   OriginPutOutcomeUnknown,
   put_origin_object,
   fetch_origin_object,
+  put_origin_object_declaring,
+  head_origin_object,
+  OriginPresence, OriginKeyPresent, OriginKeyAbsent, OriginPresenceUnknown,
+  resolve_origin_put,
+  OriginPutResolution, OriginPutResolvedStored, OriginPutResolvedPresent, OriginPutResolvedRefused,
+  OriginPutResolvedNotStored, OriginPutStillUnknown,
+  delete_origin_probe_object, OriginDeleteOutcome, OriginDeleteAnswered, OriginDeleteRefused,
 }
+import extdeps.tools.curl { PayloadDigestComputedByTransport, PayloadDigestDeclared }
+import gunbc.fabric_m0_origin_readback { read_origin_staged_file, OriginReadingTaken, OriginReadingUnavailable }
 
 // THE LIVE ORIGIN, EXERCISED END TO END -- AN INSTRUMENT, NOT A FLOOR WITNESS, for the same reason
 // tools.fabric_m0_origin_readback_probe gives: under the hermetic envelope the transport is a mock,
@@ -176,6 +185,147 @@ fn roundtrip() -> ProcessExit {
         }
       }
     }
+  }
+}
+
+// THE WHOLE OBJECT PROOF IN ONE OPERATOR RUN (storage proof step 1, 2026-10-01). roundtrip above is
+// kept unchanged; this entry is its superset over a CONTENT-NAMED key:
+//   1. the fixture's SHA-256 is read off its bytes and checked against the controlled oracle, and
+//      the key is probe/sha256/<that hex> -- the object is named by its identity;
+//   2. PUT (create-if-absent), then HEAD: resolve_origin_put settles an OutcomeUnknown by the store's
+//      own presence answer and never by a second PUT; a stored, present or HEAD-resolved-present
+//      object is acknowledged, anything else stops the run naming the arm;
+//   3. GET through the self-staging read, digest checked against the oracle (identity verified);
+//   4. a PUT of the same bytes DECLARING another object's digest must be REFUSED by the store -- the
+//      store, not this process, checks bytes against claimed identity. If it is stored instead,
+//      that is reported as the finding, and the object is deleted anyway;
+//   5. DELETE, then HEAD must answer absent and GET must answer absent: removal is read back, not
+//      assumed from a 204.
+// Exit 0 is the receipt that every step held; any other exit names the first step that did not,
+// with the store's answer. Preconditions are roundtrip's: a GCP access token that can read the fleet
+// secrets project, in the file GUNBC_GCP_ACCESS_TOKEN_FILE names.
+data proof_key_prefix: String = "probe/sha256/"
+
+data bad_digest_key_prefix: String = "probe/bad-digest/"
+
+fn presence_word(p: OriginPresence) -> String {
+  match p {
+    OriginKeyPresent => "present"
+    OriginKeyAbsent => "absent"
+    OriginPresenceUnknown { cause: c } => concat("unknown: ", c as String)
+  }
+}
+
+fn resolution_acknowledged(r: OriginPutResolution) -> Bool {
+  match r {
+    OriginPutResolvedStored { key: _ } => true
+    OriginPutResolvedPresent { key: _ } => true
+    OriginPutResolvedRefused { key: _, cause: _ } => false
+    OriginPutResolvedNotStored { key: _, cause: _ } => false
+    OriginPutStillUnknown { key: _, cause: _ } => false
+  }
+}
+
+fn resolution_word(r: OriginPutResolution) -> String {
+  match r {
+    OriginPutResolvedStored { key: _ } => "stored"
+    OriginPutResolvedPresent { key: _ } => "present"
+    OriginPutResolvedRefused { key: _, cause: c } => concat("refused: ", c as String)
+    OriginPutResolvedNotStored { key: _, cause: c } => concat("unknown, HEAD says not stored: ", c as String)
+    OriginPutStillUnknown { key: _, cause: c } => concat("still unknown: ", c as String)
+  }
+}
+
+fn cleanup_word(e: ProcessExit) -> String {
+  match e {
+    ExitSuccess => "deleted and read back absent"
+    ExitFailure { code: _, reason: r } => r
+  }
+}
+
+fn delete_and_read_back(key: NonEmptyStr, source: AccessTokenSource) -> ProcessExit {
+  match delete_origin_probe_object(key: key, token_source: source) {
+    OriginDeleteRefused { key: _, cause: c } => exit_failure(reason: concat("STEP 5 DELETE REFUSED: ", c as String))
+    OriginDeleteAnswered =>
+      match head_origin_object(key: key, token_source: source) {
+        OriginKeyAbsent =>
+          match fetch_origin_object(key: key, token_source: source) {
+            OriginObjectAbsent { key: _ } => ExitSuccess
+            OriginObjectStaged { key: _, reading: _ } => exit_failure(reason: "STEP 5 THE GET STILL RETURNED THE OBJECT AFTER DELETE AND AN ABSENT HEAD")
+            OriginFetchUnavailable { key: _, cause: c } => exit_failure(reason: concat("STEP 5 THE READBACK GET DID NOT REACH A VERDICT: ", c as String))
+          }
+        OriginKeyPresent => exit_failure(reason: "STEP 5 THE HEAD STILL FINDS THE OBJECT AFTER DELETE")
+        OriginPresenceUnknown { cause: c } => exit_failure(reason: concat("STEP 5 THE READBACK HEAD DID NOT REACH A VERDICT: ", c as String))
+      }
+  }
+}
+
+fn bad_digest_step(hex: String, source: AccessTokenSource) -> ProcessExit {
+  let bad_key = concat(bad_digest_key_prefix, hex) as NonEmptyStr
+  let put = put_origin_object_declaring(
+    local_path: probe_fixture_path as FilePath,
+    key: bad_key,
+    token_source: source,
+    payload_digest: PayloadDigestDeclared { sha256_hex: expected_manifest_digest().hex as NonEmptyStr },
+  )
+  if put_is_clean(put: put) == false {
+    exit_failure(reason: concat("STEP 4 ", put_cause(put: put)))
+  } else {
+    match put.verdict {
+      OriginPutRefused { key: _, cause: _ } => ExitSuccess
+      OriginObjectStored { key: _ } =>
+        exit_failure(reason: concat(
+          "STEP 4 FINDING: THE ORIGIN STORED BYTES WHOSE DECLARED SHA-256 IS ANOTHER OBJECT'S; cleanup: ",
+          cleanup_word(e: delete_and_read_back(key: bad_key, source: source))))
+      OriginObjectAlreadyPresent { key: _ } => exit_failure(reason: "STEP 4 FINDING: a bad-digest object is already present at the probe key; delete it and rerun")
+      OriginPutOutcomeUnknown { key: _, cause: c } => exit_failure(reason: concat("STEP 4 THE BAD-DIGEST PUT HAS NO VERDICT: ", c as String))
+    }
+  }
+}
+
+fn full_proof() -> ProcessExit {
+  match probe_token_source() {
+    ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
+    ProbeCredentialReady { source: source } =>
+      match read_origin_staged_file(staged_path: probe_fixture_path) {
+        OriginReadingUnavailable { staged_path: _, cause: c } => exit_failure(reason: concat("STEP 1 THE FIXTURE COULD NOT BE DIGESTED: ", c as String))
+        OriginReadingTaken { reading: local } =>
+          if content_hash_eq_cryptographic(left: origin_reading_digest(reading: local), right: expected_fixture_digest()) == false {
+            exit_failure(reason: "STEP 1 THE FIXTURE'S BYTES DO NOT DIGEST TO THE ORACLE")
+          } else {
+            let hex = expected_fixture_digest().hex as String
+            let key = concat(proof_key_prefix, hex) as NonEmptyStr
+            let put = put_origin_object(local_path: probe_fixture_path as FilePath, key: key, token_source: source)
+            let presence = head_origin_object(key: key, token_source: source)
+            let resolution = resolve_origin_put(verdict: put.verdict, presence: presence)
+            if put_is_clean(put: put) == false {
+              exit_failure(reason: concat("STEP 2 ", put_cause(put: put)))
+            } else if resolution_acknowledged(r: resolution) == false {
+              exit_failure(reason: concat("STEP 2 THE PUT IS NOT ACKNOWLEDGED: ", resolution_word(r: resolution)))
+            } else {
+              match presence {
+                OriginKeyPresent =>
+                  match fetch_origin_object(key: key, token_source: source) {
+                    OriginObjectAbsent { key: _ } => exit_failure(reason: "STEP 3 THE HEAD FOUND THE OBJECT AND THE GET DID NOT")
+                    OriginFetchUnavailable { key: _, cause: c } => exit_failure(reason: concat("STEP 3 THE GET DID NOT REACH A VERDICT: ", c as String))
+                    OriginObjectStaged { key: _, reading: r } =>
+                      if content_hash_eq_cryptographic(left: origin_reading_digest(reading: r), right: expected_fixture_digest()) == false {
+                        exit_failure(reason: concat("STEP 3 THE ORIGIN'S BYTES DIGEST DIFFERENTLY; staged at ", origin_reading_path(reading: r) as String))
+                      } else {
+                        match bad_digest_step(hex: hex, source: source) {
+                          ExitSuccess => delete_and_read_back(key: key, source: source)
+                          ExitFailure { code: _, reason: why } =>
+                            exit_failure(reason: concat(why, concat("; cleanup of the proof key: ",
+                              cleanup_word(e: delete_and_read_back(key: key, source: source)))))
+                        }
+                      }
+                  }
+                OriginKeyAbsent => exit_failure(reason: concat("STEP 2 THE PUT WAS ACKNOWLEDGED AND THE HEAD SAYS ABSENT: ", resolution_word(r: resolution)))
+                OriginPresenceUnknown { cause: c } => exit_failure(reason: concat("STEP 2 THE HEAD DID NOT REACH A VERDICT: ", c as String))
+              }
+            }
+          }
+      }
   }
 }
 

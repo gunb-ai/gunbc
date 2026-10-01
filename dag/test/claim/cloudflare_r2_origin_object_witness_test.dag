@@ -24,6 +24,10 @@ import extdeps.cloudflare.r2 {
 import extdeps.tools.curl {
   curl_sigv4_s3_upload_command,
   curl_sigv4_s3_download_command,
+  curl_sigv4_s3_head_command,
+  curl_sigv4_s3_delete_command,
+  PayloadDigestComputedByTransport,
+  PayloadDigestDeclared,
   curl_aws_sigv4_s3_provider,
   curl_aws_sigv4_cli_tool,
   curl_aws_sigv4_min_version,
@@ -51,6 +55,10 @@ import gunbc.cloudflare.r2_permission_group_observe {
 import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
 import product.supplier.cloudflare_r2 { cloudflare_r2_supplier_frontier_rows }
 import gunbc.cloudflare.r2_origin_object {
+  classify_origin_head, OriginPresence, OriginKeyPresent, OriginKeyAbsent, OriginPresenceUnknown,
+  resolve_origin_put, OriginPutResolution, OriginPutResolvedStored, OriginPutResolvedPresent,
+  OriginPutResolvedRefused, OriginPutResolvedNotStored, OriginPutStillUnknown,
+  classify_origin_delete, OriginDeleteAnswered, OriginDeleteRefused, origin_key_is_probe,
   S3TransferAnswer,
   S3Answered,
   S3NotAnswered,
@@ -146,6 +154,7 @@ fn words_of_upload(create_only: Bool) -> List<String> {
     netrc_path: "/private/netrc" as FilePath,
     sigv4_region: r2_s3_sigv4_region,
     create_only: create_only,
+    payload_digest: PayloadDigestComputedByTransport,
   ))
 }
 
@@ -453,4 +462,57 @@ test fn r2_origin_object_frontier_rows_reflect_the_executed_evidence() -> Bool {
          row: row, ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_write_api_mint")))
     && !any(cloudflare_permission_group_observation_frontier_rows, row => frontier_row_names_decl(
          row: row, ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "cloudflare_r2_bucket_item_write_observed_permission_group_id")))
+}
+
+// THE DECLARED-DIGEST PUT SENDS AND SIGNS THE CALLER'S SHA-256; THE DEFAULT SENDS NONE. Without the
+// first, the bad-digest step of tools.fabric_m0_origin_object_probe full_proof would PUT bytes with a
+// digest curl computed from them, and the store could never refuse.
+test fn curl_sigv4_upload_sends_a_declared_payload_digest_only_when_declared() -> Bool {
+  let declared = argv_words(command: curl_sigv4_s3_upload_command(
+    url: "https://h/b/k", local_path: "/work/obj", netrc_path: "/private/netrc" as FilePath,
+    sigv4_region: r2_s3_sigv4_region, create_only: true,
+    payload_digest: PayloadDigestDeclared { sha256_hex: "47e3f235ff09282e7d5f556dd41b39f95ea05f4f04f643ff65740b7f28cd55ba" },
+  ))
+  has_word(words: declared, word: "x-amz-content-sha256: 47e3f235ff09282e7d5f556dd41b39f95ea05f4f04f643ff65740b7f28cd55ba")
+    && !any(words_of_upload(create_only: true), w => starts_with(s: w, prefix: "x-amz-content-sha256"))
+}
+
+test fn curl_sigv4_head_and_delete_are_status_only_and_name_their_method() -> Bool {
+  let head = argv_words(command: curl_sigv4_s3_head_command(url: "https://h/b/k", netrc_path: "/private/netrc" as FilePath, sigv4_region: r2_s3_sigv4_region))
+  let del = argv_words(command: curl_sigv4_s3_delete_command(url: "https://h/b/k", netrc_path: "/private/netrc" as FilePath, sigv4_region: r2_s3_sigv4_region))
+  has_word(words: head, word: "--head") && !has_word(words: head, word: "DELETE")
+    && has_word(words: del, word: "DELETE") && !has_word(words: del, word: "--head")
+    && has_word(words: head, word: "%\{http_code\}") && has_word(words: del, word: "%\{http_code\}")
+    && !has_word(words: head, word: "-T") && !has_word(words: del, word: "-T")
+    && last_word(words: head) == "https://h/b/k" && last_word(words: del) == "https://h/b/k"
+}
+
+// HEAD: 200 present, 404 absent, and anything else -- a 403, a 500, no status -- is NOT absence.
+test fn origin_head_classifies_present_absent_and_unknown() -> Bool {
+  (match classify_origin_head(answer: S3Answered { status: 200 }, stderr: "") { OriginKeyPresent => true  other => false })
+    && (match classify_origin_head(answer: S3Answered { status: 404 }, stderr: "") { OriginKeyAbsent => true  other => false })
+    && (match classify_origin_head(answer: S3Answered { status: 403 }, stderr: "") { OriginPresenceUnknown { cause: _ } => true  other => false })
+    && (match classify_origin_head(answer: S3Answered { status: 500 }, stderr: "") { OriginPresenceUnknown { cause: _ } => true  other => false })
+    && (match classify_origin_head(answer: S3NotAnswered { cause: "no status" }, stderr: "") { OriginPresenceUnknown { cause: _ } => true  other => false })
+}
+
+// AN UNKNOWN PUT IS SETTLED ONLY BY THE STORE'S PRESENCE ANSWER: present -> acknowledged present,
+// absent -> not stored, unanswered HEAD -> still unknown. The red: an unknown resolved by an
+// unanswered HEAD must not become present or not-stored.
+test fn an_unknown_put_is_resolved_by_head_and_an_unanswered_head_leaves_it_unknown() -> Bool {
+  let unknown = OriginPutOutcomeUnknown { key: "k", cause: "500" }
+  (match resolve_origin_put(verdict: unknown, presence: OriginKeyPresent) { OriginPutResolvedPresent { key: _ } => true  other => false })
+    && (match resolve_origin_put(verdict: unknown, presence: OriginKeyAbsent) { OriginPutResolvedNotStored { key: _, cause: _ } => true  other => false })
+    && (match resolve_origin_put(verdict: unknown, presence: OriginPresenceUnknown { cause: "000" }) { OriginPutStillUnknown { key: _, cause: _ } => true  other => false })
+    && (match resolve_origin_put(verdict: OriginObjectStored { key: "k" }, presence: OriginKeyAbsent) { OriginPutResolvedStored { key: _ } => true  other => false })
+    && (match resolve_origin_put(verdict: OriginPutRefused { key: "k", cause: "403" }, presence: OriginKeyPresent) { OriginPutResolvedRefused { key: _, cause: _ } => true  other => false })
+}
+
+// DELETION IS SCOPED TO probe/: the write-once populations are not deletable through this module.
+test fn origin_delete_is_admitted_only_under_the_probe_namespace() -> Bool {
+  origin_key_is_probe(key: "probe/sha256/abc")
+    && !origin_key_is_probe(key: "fabric-m0/v1/commit/attempt-1")
+    && !origin_key_is_probe(key: "probes/x")
+    && (match classify_origin_delete(key: "probe/x", answer: S3Answered { status: 204 }, stderr: "") { OriginDeleteAnswered => true  other => false })
+    && (match classify_origin_delete(key: "probe/x", answer: S3Answered { status: 403 }, stderr: "") { OriginDeleteRefused { key: _, cause: _ } => true  other => false })
 }
