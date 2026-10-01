@@ -5739,6 +5739,8 @@ struct WarmFrameSlot {
     pass: &'static str,
     seen_in_pass: std::collections::HashSet<String>,
     pass_builds: Vec<(&'static str, usize, usize)>,
+    build_ms: u128,
+    drop_ms: u128,
 }
 
 impl WarmFrameSlot {
@@ -5785,9 +5787,14 @@ impl WarmFrameSlot {
             ));
         }
         // The held frame goes BEFORE the next is built, so two are never resident together.
+        let dropping = std::time::Instant::now();
         self.frame = None;
         self.module = None;
-        match floor_authority_frame(prepared, module) {
+        self.drop_ms += dropping.elapsed().as_millis();
+        let building = std::time::Instant::now();
+        let built = floor_authority_frame(prepared, module);
+        self.build_ms += building.elapsed().as_millis();
+        match built {
             Ok(frame) => {
                 self.builds += 1;
                 self.seen_in_pass.insert(module.to_string());
@@ -6346,8 +6353,17 @@ pub(crate) fn install_pure_producer_share(
     eprintln!(
         "[floor-phase] phase=pure-producer-share-frames state=completed frame_builds={} \
          per_pass={:?} (one frame resident at a time; rows grouped by module, so each pass frames \
-         each module once: builds == distinct modules per pass, a rebuild refuses)",
-        frames.builds, pass_builds
+         each module once: builds == distinct modules per pass, a rebuild refuses) \
+         frame_build_ms={} frame_drop_ms={} last_frame_drop_ms={}",
+        frames.builds,
+        pass_builds,
+        frames.build_ms,
+        frames.drop_ms,
+        {
+            let dropping = std::time::Instant::now();
+            frames.frame = None;
+            dropping.elapsed().as_millis()
+        }
     );
     drop(frames);
     Ok(warm_observations)
