@@ -5,6 +5,7 @@ import v2.compiler.infer { infer }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
+import v2.std.node { Symbol }
 
 // A BINDER'S DEFAULT IS JUDGED AT THE BINDER'S DECLARED TYPE (XL-2 PR2c-ii; v2.compiler.infer
 // infer_binder_default_check, position v2.std.inhabitance PositionBinderDefault): the same relation an
@@ -56,4 +57,48 @@ test fn a_default_that_inhabits_its_binder_type_infers() -> Bool {
 
 test fn a_default_that_does_not_inhabit_its_binder_type_refuses() -> Bool {
   bdj_refused_as_not_inhabiting(o: bdj_not_inhabiting_inferred())
+}
+
+// SCOPE (side-chat review on #12948): a default resolves in the ENCLOSING value scope, with the
+// declaration's type parameters only as its type scope (v2.compiler.resolve resolve_arrow_domain_walk).
+// An outer value is visible; a sibling parameter is not; a type parameter's spelling is not a value.
+// GENERIC: a default under a generic declaration refuses at the default until it is judged with the
+// declaration's type parameters in scope (v2.compiler.infer infer_generic_default_refusal).
+fn bdj_outer_value_inferred() -> Outcome<Bool> {
+  bdj_infers(o: tpb_assemble(src: "module p\n\ndata d: Int = 1\n\nfn f(x: Int = d) -> Int {\n  x\n}\n"))
+}
+
+fn bdj_sibling_param_assembled() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(a: Int, x: Int = a) -> Int {\n  x\n}\n")
+}
+
+fn bdj_type_param_as_default_assembled() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: Int = T) -> Int {\n  x\n}\n")
+}
+
+fn bdj_generic_default_inferred() -> Outcome<Bool> {
+  bdj_infers(o: tpb_assemble(src: "module p\n\nfn f<T>(x: T = 1) -> Int {\n  1\n}\n"))
+}
+
+fn bdj_refused_with(o: Outcome<Bool>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+test fn a_default_sees_an_outer_value_holds() -> Bool {
+  tpb_accepts(o: bdj_outer_value_inferred())
+}
+
+test fn a_default_does_not_see_a_sibling_parameter_holds() -> Bool {
+  !tpb_accepts(o: bdj_sibling_param_assembled())
+}
+
+test fn a_type_parameter_spelling_is_not_a_default_value_holds() -> Bool {
+  !tpb_accepts(o: bdj_type_param_as_default_assembled())
+}
+
+test fn a_generic_default_refuses_until_modeled_holds() -> Bool {
+  bdj_refused_with(o: bdj_generic_default_inferred(), reason: ^infer_binder_default_generic_unmodeled)
 }

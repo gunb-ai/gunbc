@@ -67,6 +67,15 @@ A nullary Arrow, an Atom type, and a payload-free variant keep their hashes.
 - **Emission.** A target with no parameter or field defaults refuses a defaulted binder, located at the default (`^produced_decl_render_param_default_unrealized`, `^target_semantic_decl_field_default_unrealized`), rather than dropping it.
 - **Subtree lenses.** A default is code that runs when its argument is omitted, so the subtree-fold lenses (effect reach, determinism, cost, fn index, mandatory tag, decl-facts skeleton) COUNT it as code of the declaration it sits in. No lens skips it.
 
-## Declared frontier: call-site omission
+## Declared frontier: omission at a call or a construction
 
-A caller may not yet OMIT a defaulted argument or field. The binding plan (`v2.std.arrow_signature` `application_binding_plan`) still requires every formal, so an omitting call refuses at the application, loudly. Its consumer is the binding plan admitting a defaulted formal as optional and eval evaluating the default for the missing slot. **Trigger:** that lands. Until then, a default is lowered, judged and carried, and an omitting caller refuses.
+A caller may not yet OMIT a defaulted argument, and a construction may not yet omit a defaulted field. Both bind through one binding plan, which still requires every formal, so an omitting call or construction refuses at the application or construct, loudly:
+- calls: `v2.std.arrow_signature` `application_binding_plan`, used by infer and eval;
+- record construction: `application_binding_plan_over`, used by `v2.compiler.infer` `infer_record_field_binding`.
+
+**Trigger:** one shared binding plan that reads each formal's binder metadata (via `declared_field_from_edge`) and admits a defaulted formal as optional, together with default materialization, so that eval, and emission where the target admits it, supply the default for the missing slot or field. Until then a default is lowered, judged and carried, and an omitting site refuses.
+
+## Scope and generics (side-chat review on #12948)
+
+- A default resolves in the ENCLOSING value scope, with the declaration's type parameters only as its type scope (`v2.compiler.resolve` `resolve_arrow_domain_walk`). An outer value is visible; a sibling parameter is not; a type parameter's spelling does not resolve as a default value.
+- A default under a generic declaration (an Arrow or type declaration with type parameters) refuses at the default as `^infer_binder_default_generic_unmodeled` (`v2.compiler.infer` `infer_generic_default_refusal`), until a default is judged with its declaring type parameters in scope.

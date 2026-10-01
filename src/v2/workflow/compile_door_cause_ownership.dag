@@ -387,6 +387,12 @@ data known_frontier_causes: List<CauseOwnership> = [
   },
 
   CauseOwnership {
+    cause: ^infer_binder_default_generic_unmodeled,
+    grain: FatalGrain,
+    lane: MigrationOwned,
+    flip_trigger: "a generic declaration -- an Arrow or a type declaration with type parameters -- carries a binder with a default, and a default is judged without its declaration's type parameters in scope (v2.compiler.infer infer_binder_default_check), where a default typed by one would be InhabitanceUndecidable and advisory-accepted; so v2.compiler.infer infer_generic_default_refusal refuses it at the default. Flips when a default is judged with its declaring type parameters in scope (a parent-aware judgment), so a generic default derives or refuses on its own merits"
+  },
+  CauseOwnership {
     cause: ^named_child_not_a_binder,
     grain: FatalGrain,
     lane: MigrationOwned,

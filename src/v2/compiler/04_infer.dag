@@ -4273,7 +4273,64 @@ fn infer_gather_settled_row(
 fn infer_declared_position_check(node: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Outcome<Bool> {
   match binder_node_parts(n: node) {
     Present { value: parts } => infer_binder_default_check(parts: parts, entries: entries, declarations: declarations)
-    Absent => infer_arrow_declared_return_check(node: node, entries: entries, declarations: declarations)
+    Absent =>
+      bind_outcome(o: infer_generic_default_refusal(node: node), f: fn(_) {
+        infer_arrow_declared_return_check(node: node, entries: entries, declarations: declarations)
+      })
+  }
+}
+
+// A DEFAULT UNDER A GENERIC DECLARATION REFUSES, LOCATED AT THE DEFAULT, until it is modeled
+// (^infer_binder_default_generic_unmodeled; side-chat review on #12948). A default's binder node does not
+// see its declaration's type parameters, and judged without them a default typed by one lands in
+// InhabitanceUndecidable, which is an advisory acceptance -- fail-open. So the declaration that owns the
+// type parameters -- a generic Arrow over its domain, a generic type declaration over its member --
+// refuses each defaulted binder it carries. A non-generic declaration owes nothing here, and its
+// defaults are judged at their binder (infer_binder_default_check).
+fn infer_generic_default_refusal(node: Node) -> Outcome<Bool> {
+  match type_param_names(n: node) {
+    Empty => outcome_accepted(true)
+    Cons { head: _, tail: _ } =>
+      match infer_first_binder_default(members: infer_declared_binder_members(node: node)) {
+        Absent => outcome_accepted(true)
+        Present { value: default } => outcome_rejected(infer_binder_default_generic_unmodeled_diagnostic(default: default))
+      }
+  }
+}
+
+fn infer_declared_binder_members(node: Node) -> List<Edge> {
+  match node.kind {
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+        Present { value: domain } => domain.children
+        Absent => []
+      }
+    _ =>
+      match type_decl_view(target: node) {
+        GenericTypeDecl { binders: _, member: m } => m.children
+        _ => []
+      }
+  }
+}
+
+fn infer_first_binder_default(members: List<Edge>) -> Optional<Node> {
+  fold(members, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match binder_node_parts(n: e.target) {
+          Present { value: parts } => parts.default
+          Absent => optional_absent()
+        }
+    }
+  })
+}
+
+fn infer_binder_default_generic_unmodeled_diagnostic(default: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_binder_default_generic_unmodeled,
+    at: node_locus(node: default),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 

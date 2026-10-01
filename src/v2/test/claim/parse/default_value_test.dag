@@ -21,6 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the realization binding, keeps body_lowering_reason_interface_member_unmodeled.
 data param_default_source: String = "module probe.default\n\nfn fetch(version: String = \"latest\") -> String {\n  version\n}\n"
 data field_default_source: String = "module probe.default\n\ntype Config {\n  headless: Bool = false\n}\n"
+data io_default_source: String = "module probe.default\n\nservice S {\n  operation Op {\n    input { n: Int = 1 }\n  }\n}\n"
 data field_key_source: String = "module probe.default\n\ntype Account {\n  unique_id: String from \"uniqueId\"\n}\n"
 
 // Each outcome is computed ONCE as a nullary value, enrolled WARM in
@@ -57,6 +58,13 @@ fn field_default_lowered_onto_its_binder() -> Bool {
   }
 }
 
+fn io_default_lowered_onto_its_binder() -> Bool {
+  match conservation_subject_of_text(path: "probe_io_default.dag", text: io_default_source).normalized {
+    Accepted { value: tree, diagnostics: _ } => tree_holds_a_defaulted_binder(n: tree.root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn field_key_refused_as_interface() -> Bool {
   match conservation_subject_of_text(path: "probe_field_key.dag", text: field_key_source).normalized {
     Accepted { value: _, diagnostics: _ } => false
@@ -69,5 +77,7 @@ test fn a_parameter_default_parses_holds() -> Bool { param_default_parsed() }
 test fn a_parameter_default_lowers_onto_its_binder_holds() -> Bool { param_default_lowered_onto_its_binder() }
 
 test fn a_record_field_default_lowers_onto_its_binder_holds() -> Bool { field_default_lowered_onto_its_binder() }
+
+test fn a_service_io_default_lowers_onto_its_binder_holds() -> Bool { io_default_lowered_onto_its_binder() }
 
 test fn a_record_wire_key_keeps_its_interface_reason_holds() -> Bool { field_key_refused_as_interface() }
