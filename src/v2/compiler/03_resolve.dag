@@ -686,6 +686,42 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
   }
 }
 
+// THE RESOLVE STAGE'S FATAL REFUSAL-REASON VOCABULARY, CLOSED (v2.std.parse_refusal_reason's shape,
+// homed in the stage that refuses). A reason is FATAL when it can stand last in a rejection -- the
+// cause that refused; the advisories that ride in front of one (declared elsewhere, the ambiguity
+// class, the competing declarations) are not members. The type is the roster the frontier
+// ownership join reflects (gunbc.refusal_reason_ownership_join), so a resolve refusal that no
+// variant names is not producible by that join's reckoning. The producers still spell the Symbol
+// directly; each moves onto this vocabulary in the stage's replacement cut, which deletes the
+// literal in the same change.
+type ResolveRefusalReason
+  = ResolveMalformedTree
+  | ResolveUnboundSymbol
+  | ResolveAnonymousParameterReferenced
+  | ResolveTypeParameterInValuePosition
+  | ResolveFloatLiteralNotLowered
+  | ResolveAmbiguousSymbol
+  | ResolveTestCodeReferenced
+  | ResolveKernelTypeSpellingNamesAForeignDeclaration
+  | ResolveObservationIncomplete
+  | ResolveTypeParameterShadowsVisibleName
+
+// The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
+fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
+  match reason {
+    ResolveMalformedTree => ^resolve_reason_malformed_tree
+    ResolveUnboundSymbol => ^resolve_reason_unbound_symbol
+    ResolveAnonymousParameterReferenced => ^resolve_reason_anonymous_parameter_referenced
+    ResolveTypeParameterInValuePosition => ^resolve_reason_type_parameter_in_value_position
+    ResolveFloatLiteralNotLowered => ^float_literal_not_lowered
+    ResolveAmbiguousSymbol => ^resolve_reason_ambiguous_symbol
+    ResolveTestCodeReferenced => ^resolve_reason_test_code_referenced
+    ResolveKernelTypeSpellingNamesAForeignDeclaration => ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration
+    ResolveObservationIncomplete => ^resolve_reason_observation_incomplete
+    ResolveTypeParameterShadowsVisibleName => ^resolve_reason_type_parameter_shadows_visible_name
+  }
+}
+
 fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^resolve_reason_malformed_tree,
