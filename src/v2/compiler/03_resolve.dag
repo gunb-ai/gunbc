@@ -1,7 +1,7 @@
 module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_resource_declarations }
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
 import v2.std.declaration_marker {
   ReachesNoTestCode,
@@ -103,6 +103,7 @@ import v2.std.symbol_index {
   RecordTypePayload,
   VariantArmPayload,
   symbol_index_declared_payload_at,
+  symbol_index_declares_resource_at,
   symbol_index_global_unique_lookup,
   symbol_index_declaring_path_of,
   symbol_index_lexical_lookup,
@@ -144,6 +145,8 @@ import v2.std.node {
   arrow_domain_binds_a_name,
   arrow_first_positional_target,
   arrow_signature_order_label,
+  arrow_resource_requirements_label,
+  arrow_named_edge_is_contract,
   FirstPositionalAbsent,
   FirstPositionalFound,
   edge_label_of,
@@ -462,7 +465,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
-    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty, resource_declarations: Empty),
+    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty, resource_declarations: normalized_tree_resource_declarations(t: tree)),
     module_qn: Empty,
     test_code: test_code_index_add_module(
       index: test_code_index_empty(),
@@ -2955,6 +2958,10 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
         } else if (edge_label_of(e: e) == arrow_signature_order_label) {
           child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
+        } else if (edge_label_of(e: e) == arrow_resource_requirements_label) {
+          child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type), requirements: e.target))
+        } else if arrow_named_edge_is_contract(e: e) {
+          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
         } else {
           child_walk_step(
             w: acc,
@@ -2980,6 +2987,63 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
         )
     }
   }))
+}
+
+// AN ARROW'S CONTRACT EDGES ARE NOT VALUES (v2.std.node arrow_named_edge_is_contract). The effect-claims
+// and execution-mode edges hold self-named atoms of a closed vocabulary that v2.std.arrow_contract has
+// already checked; they are carried unwalked, like the declared order. The resource-requirements edge
+// alone holds REFERENCES (`requires Network`), so it is walked -- in the Arrow's type scope, which sees
+// its type parameters and not its value parameters, because a requirement is a fact about the
+// operation, never about an argument -- and each member must then name a declared resource
+// (v2.std.symbol_index symbol_index_declares_resource_at, marked from the normalize-captured
+// resource declarations), at most once by resolved declaration. A member naming anything else, or a
+// declaration a second spelling already named, refuses at that member.
+fn resolve_arrow_resource_requirements(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
+  match resolve_node_walk(ctx: ctx, n: requirements) {
+    ResolveWalkRefused { first: f, rest: rs, observation: o } => ResolveWalkRefused { first: f, rest: rs, observation: o }
+    ResolveWalkAccepted { value: resolved, diagnostics: d } =>
+      match resolve_requirement_member_refusal_optional(index: ctx.namespace.symbol_index, members: resolved.children) {
+        Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
+        Absent => ResolveWalkAccepted { value: resolved, diagnostics: d }
+      }
+  }
+}
+
+type ResolveRequirementScan {
+  seen: List<QualifiedName>
+  refusal: Optional<Diagnostic>
+}
+
+// THE REQUIREMENT DECISION, over the resolved members and the index alone: it reads nothing else of the
+// resolution context, so it takes nothing else, and its refusals can be exercised at this interface
+// with supplied members (v2.test.claim.normalize.operation_requires_edge) while the full route stays
+// exercised by that module's resolving claims.
+fn resolve_requirement_member_refusal_optional(index: SymbolIndex, members: List<Edge>) -> Optional<Diagnostic> {
+  fold(members, init: ResolveRequirementScan { seen: Empty, refusal: optional_absent() }, f: fn(acc, e) {
+    match acc.refusal {
+      Present { value: _ } => acc
+      Absent =>
+        match declaration_reference_path_optional(node: e.target) {
+          Absent => ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_not_a_resource, n: e.target)) }
+          Present { value: path } =>
+            if !symbol_index_declares_resource_at(index: index, qualified_path: path) {
+              ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_not_a_resource, n: e.target)) }
+            } else if fold(acc.seen, init: false, f: fn(found, p) { found || (p == path) }) {
+              ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_repeated, n: e.target)) }
+            } else {
+              ResolveRequirementScan { seen: list_snoc_item(xs: acc.seen, item: path), refusal: optional_absent() }
+            }
+        }
+    }
+  }).refusal
+}
+
+fn resolve_requirement_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
 }
 
 fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
