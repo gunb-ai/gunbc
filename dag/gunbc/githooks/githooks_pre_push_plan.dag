@@ -88,7 +88,7 @@ fn pre_push_path_hits_globs(path: String, globs: List<String>) -> Bool {
 fn pre_push_path_hits_binding(path: String, binding: PrePushGateBinding) -> Bool {
   match binding.kind {
     CargoFmtCheck => path_is_rust_monolith(path: path)
-    _ => pre_push_path_hits_globs(path: path, globs: binding.trigger_globs)
+    DocWitnessRun { entry: _, function: _ } => pre_push_path_hits_globs(path: path, globs: binding.trigger_globs)
   }
 }
 
