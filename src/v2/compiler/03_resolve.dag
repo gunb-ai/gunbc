@@ -130,6 +130,7 @@ import v2.std.node {
   TypeNode,
   Loop,
   fold_node,
+  LoopCarrierBinder,
   LoopRealizedDeclaration,
   loop_edge_role,
   symbol_intern_lexeme,
@@ -2677,18 +2678,36 @@ fn resolve_node_walk_entered(
   }
 }
 
-// A LOOP RESOLVES ITS EDGES AS ANY NODE DOES, EXCEPT THE ONE THAT CLAIMS A DECLARATION. Every other
-// edge walks through resolve_child_edge, so the carrier binder resolves against the enclosing Bind's
-// frame and the domain and body resolve as ordinary expressions. ^loop_realized_declaration_edge
-// (v2.std.node LoopRealizedDeclaration) is a CLAIM made by a desugaring about which declaration the
-// author's head names. Resolve checks that claim; it does not take it on trust.
+// A LOOP RESOLVES ITS EDGES AS ANY NODE DOES, EXCEPT TWO. The domain and body walk through
+// resolve_child_edge as ordinary expressions. ^loop_realized_declaration_edge (v2.std.node
+// LoopRealizedDeclaration) is a CLAIM made by a desugaring about which declaration the author's head
+// names; resolve checks that claim and does not take it on trust. ^loop_carrier_edge
+// (LoopCarrierBinder) is a BINDER, never a value (v2.compiler.fold_lowering fold_recurrence_encoding):
+// it names the enclosing Bind's binder, which a desugaring wrote as a synthetic atom. It is checked
+// against that frame and kept as the binder atom, exactly as the Bind's own binder is
+// (resolve_bind_binder_target); minting it as a lexical reference would read a binder as a use.
 fn resolve_loop_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     match loop_edge_role(e: e) {
       LoopRealizedDeclaration => child_walk_step(w: acc, e: e, r: resolve_walk_of_outcome(o: resolve_realized_declaration(ctx: ctx, head: e.target)))
+      LoopCarrierBinder => child_walk_step(w: acc, e: e, r: resolve_loop_carrier_binder(ctx: ctx, carrier: e.target))
       _ => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
     }
   }))
+}
+
+// The carrier, bound by a frame, stays the atom it names; any other answer is what resolve_atom
+// gives any name, so an unbound carrier refuses exactly as before.
+fn resolve_loop_carrier_binder(ctx: ResolveContext, carrier: Node) -> ResolveNodeWalk {
+  match carrier.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match lookup_chain(s: ctx.scope, name: id) {
+        Accepted { value: BoundInFrame { canonical: canonical, kind: _ }, diagnostics: pending } =>
+          ResolveWalkAccepted { value: canonical_atom(identity: canonical, occurrence_id: carrier.occurrence_id), diagnostics: pending, lexical: [] }
+        _ => resolve_walk_of_outcome(o: resolve_atom(ctx: ctx, n: carrier, identity: id))
+      }
+    _ => resolve_node_walk(ctx: ctx, n: carrier)
+  }
 }
 
 fn realized_declaration_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
