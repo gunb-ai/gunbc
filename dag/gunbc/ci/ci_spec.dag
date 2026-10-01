@@ -76,6 +76,7 @@ import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_p
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
+import gunbc.machine_intake_mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -1007,6 +1008,11 @@ data gunbc_ci_mtcollins1_census_member_readback_target: GunbcRunStepTarget = Gun
   function: "mtcollins1_census_member_readback_wet",
 }
 
+data gunbc_ci_mtcollins1_census_qemu_host_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_census_qemu_host_observe.dag",
+  function: "mtcollins1_census_qemu_host_observe_wet",
+}
+
 data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/managed_grant_install.dag",
   function: "spark_grant_install_ci_wet",
@@ -1293,6 +1299,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_mtcollins1_fan_observe_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
     gunbc_ci_mtcollins1_census_member_readback_target,
+    gunbc_ci_mtcollins1_census_qemu_host_observe_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_bootstrap_target,
     gunbc_ci_spark_serving_apply_target,
@@ -2666,6 +2673,17 @@ fn gunbc_ci_mtcollins1_census_member_readback_invoke() -> String {
     function: gunbc_ci_mtcollins1_census_member_readback_target.function,
     claim_run: false,
     receipt_rel: census_member_readback_receipt_path
+  )
+}
+
+// The QEMU host observe runs locally on the selected runner and reads only: no fleet key, no prelude.
+fn gunbc_ci_mtcollins1_census_qemu_host_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_census_qemu_host_observe_target.entry,
+    function: gunbc_ci_mtcollins1_census_qemu_host_observe_target.function,
+    claim_run: false,
+    receipt_rel: census_qemu_host_observe_receipt_path
   )
 }
 

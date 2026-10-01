@@ -1,7 +1,7 @@
 module gunbc.rung_drop.shared_index_residency_asserted_after_the_run
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 // THE DECLARED RUNG DROP for where one-pool-per-slot is enforced in the thread's shared index memo
@@ -31,7 +31,7 @@ data shared_index_residency_asserted_after_the_run: RungDrop = RungDrop {
 
   declared: "2026-09-30",
 
-  standing: Standing,
+  standing: Retired { trigger_fired: "2026-09-30 -- every population caller's root set was audited (the table on the retiring PR): each passes the run's own roots except three one-shot readers of a fixture pool (the regen round's dag-artifact identity compile, the XL-1 primary-root tap, the required-lane resolution census builtin), which now own their index; try_process_shared_index_for_pool refuses a second resident pool in a slot at the build site (SharedIndexSecondResidentPool, naming both root sets and the demanding site), and shared_index_residency_control stays as its positive control" as NonEmptyStr },
 
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
