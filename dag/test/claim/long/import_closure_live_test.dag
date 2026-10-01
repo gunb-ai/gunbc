@@ -1,21 +1,36 @@
 module test.claim.long.import_closure_live
 
 import v2.lens.module_graph { no_paths }
+import gunbc.ci_layer_roots { witness_layer_roots }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
+// DERIVED FROM THE DECLARED IMPORT EDGES, not copied from the producer's output (a golden copied from
+// import_closure_live would compare the producer with itself). Each member, with the edge that
+// first reaches it, read off that file's own import declarations (re-derived 2026-10-01, gunbc#12910):
+//   conformance_imports_only            the entry; imports v2.std.node only
+//   src/v2/std/node.dag                 <- entry
+//   dag/std/algebra.dag, src/v2/std/optional.dag, dag/std/occurrence_identity.dag,
+//   dag/std/decl_ref.dag, dag/std/disposition.dag, dag/std/content_hash.dag
+//                                       <- v2.std.node
+//   dag/std/error_primitives.dag        <- std.algebra
+//   dag/std/dissolution.dag, dag/std/types.dag
+//                                       <- std.occurrence_identity
+// The golden this replaces listed an older, wider envelope (std.primitives, v2.std.algebra,
+// collection, diagnostic, logic, node_query, witness) the entry no longer imports. It went stale
+// unseen because this module did not resolve: witness_layer_roots was used bare.
 data expected_conformance_closure: FreeMonoid<String> = [
   "dag/test/claim/module_graph/conformance_imports_only.dag",
-  "dag/std/algebra.dag",
-  "dag/std/error_primitives.dag",
-  "dag/std/primitives.dag",
-  "src/v2/std/algebra.dag",
-  "src/v2/std/collection.dag",
-  "src/v2/std/diagnostic.dag",
-  "src/v2/std/logic.dag",
   "src/v2/std/node.dag",
-  "src/v2/std/node_query.dag",
-  "src/v2/std/witness.dag"
+  "dag/std/algebra.dag",
+  "src/v2/std/optional.dag",
+  "dag/std/occurrence_identity.dag",
+  "dag/std/decl_ref.dag",
+  "dag/std/disposition.dag",
+  "dag/std/content_hash.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/dissolution.dag",
+  "dag/std/types.dag"
 ]
 
 data conformance_entry: String = "dag/test/claim/module_graph/conformance_imports_only.dag"
