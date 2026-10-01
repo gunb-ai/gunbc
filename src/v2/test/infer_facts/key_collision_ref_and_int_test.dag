@@ -12,6 +12,11 @@ import v2.test.claim.type_param_binder_frame { tpb_assemble }
 // childless synthetic Conj that terminates both a qualified-name spine and an int literal's digit
 // list: one Node value carrying two different facts. #12582 was reverted for it; this claim is the
 // control a re-land must keep green, so a re-land that still keys facts on that shared terminator fails.
+// WHAT THIS IS NOT. On the reverted tree it passes THROUGH first-wins: the two terminators still share
+// a key and one fact is silently kept. So it is a REGRESSION GUARD against blanket refusal, not
+// coverage that the facts key is sound. It must stay green after the re-land for the RIGHT reason --
+// the structural terminator recording no facts entry -- and the re-land's own conflict claims are what
+// establish soundness.
 fn kc_infers(src: String) -> Bool {
   match tpb_assemble(src: src) {
     Rejected { diagnostics: _ } => false
