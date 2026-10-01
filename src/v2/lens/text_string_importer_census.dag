@@ -180,6 +180,7 @@ type UnclassifiedCause
   = NotEstablished { cause: SourceAnalysisNotEstablishedCause }
   | NoOperationEvidence
   | UndecidedCrossings
+  | UndecidedAtFixpoint
 
 type ModuleStanding
   = ModuleParsed { imports_text_string: Bool, sites: FreeMonoid<Site> }
@@ -199,7 +200,20 @@ type WalkStanding
 type CrossingVerdict
   = CrossingHost
   | CrossingStructural
-  | CrossingUndecided { reason: String }
+  | CrossingUndecided { cause: UndecidedCrossingCause }
+
+// Why a crossing stays undecided, typed so that the fixpoint and every reader decide on the arm and
+// never on its rendering. The two imported-String arms are the fixpoint's edges: to this module
+// (a local callee) or to another importer.
+type UndecidedCrossingCause
+  = ParameterIsImportedStringHere { at: String }
+  | ParameterIsImportedStringIn { module: String, at: String }
+  | PositionalArgument { callee: String }
+  | CalleeNotImportedByName { callee: String }
+  | CalleeModuleNotInPool { module: String }
+  | CalleeModuleNotParsed { module: String, cause: SourceAnalysisNotEstablishedCause }
+  | NoSuchParameter { at: String }
+  | ParameterSpelledOther { at: String, spelling: String }
 
 type CalleeModule {
   module: String
@@ -659,8 +673,17 @@ fn atoms_reversed(n: Node, acc: FreeMonoid<String>) -> FreeMonoid<String> {
   fold(n.children, init: here, f: fn(a, e) { atoms_reversed(n: e.target, acc: a) })
 }
 
+// The classifier's interface is the pre-order atom stream: the parse tree only supplies it.
+fn walk_atoms(atoms: FreeMonoid<String>, r: Rosters) -> Walk {
+  fold_list(xs: atoms, empty: walk_start(), cons: fn(w, x) { walk_step(w: w, r: r, x: x) })
+}
+
+fn tree_atoms(root: Node) -> FreeMonoid<String> {
+  list_reverse(xs: atoms_reversed(n: root, acc: empty_strings))
+}
+
 fn walk_tree(root: Node, r: Rosters) -> Walk {
-  fold_list(xs: list_reverse(xs: atoms_reversed(n: root, acc: empty_strings)), empty: walk_start(), cons: fn(w, x) { walk_step(w: w, r: r, x: x) })
+  walk_atoms(atoms: tree_atoms(root: root), r: r)
 }
 
 type RawTreeStanding
@@ -674,26 +697,28 @@ fn raw_tree(path: String) -> RawTreeStanding {
   let read = Filesystem.Read(path: path)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadRefused { error: _ } => RawTreeNotEstablished { cause: SourceUnreadable }
-    FilesystemReadSucceeded { content: text } => {
-      let lm = dag_language_model()
-      let at = invariant_port_locus(port: ^text_string_importer_census_port, invariant: ^text_string_importer_census_source_invariant)
-      match lm.grammar {
-        VoidGrammar => RawTreeNotEstablished { cause: LanguageGrammarUnavailable }
-        ModeledGrammar { root: root } =>
-          match grammar_validate_for_parse(root: root, at: at) {
-            Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: LanguageGrammarRejected }
-            Accepted { value: validated, diagnostics: _ } =>
-              match tokenize(text: text, file: ^text_string_importer_census_subject, rules: lm.lex) {
-                Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceTokenizationRejected }
-                Accepted { value: stream, diagnostics: _ } =>
-                  match parse_production(tokens: token_stream_remaining(stream: stream), validated: validated, production_name: validated.root.start) {
-                    Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceParseRejected }
-                    Accepted { value: artifact, diagnostics: _ } => RawTreeEstablished { root: artifact.tree }
-                  }
+    FilesystemReadSucceeded { content: text } => raw_tree_of_text(text: text)
+  }
+}
+
+fn raw_tree_of_text(text: String) -> RawTreeStanding {
+  let lm = dag_language_model()
+  let at = invariant_port_locus(port: ^text_string_importer_census_port, invariant: ^text_string_importer_census_source_invariant)
+  match lm.grammar {
+    VoidGrammar => RawTreeNotEstablished { cause: LanguageGrammarUnavailable }
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: LanguageGrammarRejected }
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: text, file: ^text_string_importer_census_subject, rules: lm.lex) {
+            Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceTokenizationRejected }
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(tokens: token_stream_remaining(stream: stream), validated: validated, production_name: validated.root.start) {
+                Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceParseRejected }
+                Accepted { value: artifact, diagnostics: _ } => RawTreeEstablished { root: artifact.tree }
               }
           }
       }
-    }
   }
 }
 
@@ -712,26 +737,29 @@ fn rosters() -> RostersStanding {
   match raw_tree(path: text_module_source) {
     RawTreeNotEstablished { cause: c } =>
       RostersRefused { reason: concat("v2.std.text itself did not parse, so the structural roster is unknown: ", cause_token(cause: c)) }
-    RawTreeEstablished { root: root } => {
-      let w = walk_tree(root: root, r: empty_rosters())
-      let structural = fold_list(xs: w.return_heads, empty: empty_strings, cons: fn(acc, rh) {
-        if member(xs: acc, x: rh.decl) { acc } else { Cons { head: rh.decl, tail: acc } }
-      })
-      let text_result = fold_list(xs: w.return_heads, empty: empty_strings, cons: fn(acc, rh) {
-        if member(xs: text_carrier_heads, x: rh.head) { Cons { head: rh.decl, tail: acc } } else { acc }
-      })
-      let host = fold_list(xs: host_text_primitive_contracts, empty: empty_strings, cons: fn(acc, c) { Cons { head: c.name, tail: acc } })
-      let overlap = fold_list(xs: host, empty: empty_strings, cons: fn(acc, h) {
-        if member(xs: structural, x: h) { Cons { head: h, tail: acc } } else { acc }
-      })
-      if length(xs: structural) == 0 {
-        RostersRefused { reason: "v2.std.text parsed but no fn declaration was read from it, so every STRUCTURAL verdict would be vacuous" }
-      } else if length(xs: overlap) > 0 {
-        RostersRefused { reason: concat("a name is both a host primitive and a v2.std.text function: ", fold_list(xs: overlap, empty: "", cons: fn(acc, h) { concat(concat(acc, h), " ") })) }
-      } else {
-        RostersEstablished { rosters: Rosters { host: host, structural: structural, structural_text_result: text_result } }
-      }
-    }
+    RawTreeEstablished { root: root } => rosters_of_walk(w: walk_tree(root: root, r: empty_rosters()))
+  }
+}
+
+// The roster derivation over v2.std.text's walk, separated from the read so a supplied walk can
+// exercise it.
+fn rosters_of_walk(w: Walk) -> RostersStanding {
+  let structural = fold_list(xs: w.return_heads, empty: empty_strings, cons: fn(acc, rh) {
+    if member(xs: acc, x: rh.decl) { acc } else { Cons { head: rh.decl, tail: acc } }
+  })
+  let text_result = fold_list(xs: w.return_heads, empty: empty_strings, cons: fn(acc, rh) {
+    if member(xs: text_carrier_heads, x: rh.head) { Cons { head: rh.decl, tail: acc } } else { acc }
+  })
+  let host = fold_list(xs: host_text_primitive_contracts, empty: empty_strings, cons: fn(acc, c) { Cons { head: c.name, tail: acc } })
+  let overlap = fold_list(xs: host, empty: empty_strings, cons: fn(acc, h) {
+    if member(xs: structural, x: h) { Cons { head: h, tail: acc } } else { acc }
+  })
+  if length(xs: structural) == 0 {
+    RostersRefused { reason: "v2.std.text parsed but no fn declaration was read from it, so every STRUCTURAL verdict would be vacuous" }
+  } else if length(xs: overlap) > 0 {
+    RostersRefused { reason: concat("a name is both a host primitive and a v2.std.text function: ", fold_list(xs: overlap, empty: "", cons: fn(acc, h) { concat(concat(acc, h), " ") })) }
+  } else {
+    RostersEstablished { rosters: Rosters { host: host, structural: structural, structural_text_result: text_result } }
   }
 }
 
@@ -752,17 +780,17 @@ fn is_structural_spelling(spelling: String) -> Bool {
   (spelling == "FreeMonoid") || (spelling == "std.algebra.FreeMonoid") || (spelling == "v2.std.text.String")
 }
 
-fn spelling_verdict(spelling: String, declaring_module_imports_text_string: Bool, where_: String) -> CrossingVerdict {
+fn spelling_verdict(spelling: String, declaring_module_imports_text_string: Bool, module: String, at: String) -> CrossingVerdict {
   if spelling == "" {
-    CrossingUndecided { reason: concat(where_, " has no such parameter in its parse") }
+    CrossingUndecided { cause: NoSuchParameter { at: at } }
   } else if is_structural_spelling(spelling: spelling) {
     CrossingStructural
   } else if (spelling == "String") && declaring_module_imports_text_string {
-    CrossingUndecided { reason: concat(where_, " is itself declared with the imported bare String") }
+    CrossingUndecided { cause: if module == "" { ParameterIsImportedStringHere { at: at } } else { ParameterIsImportedStringIn { module: module, at: at } } }
   } else if spelling == "String" {
     CrossingHost
   } else {
-    CrossingUndecided { reason: concat(concat(where_, " is declared "), spelling) }
+    CrossingUndecided { cause: ParameterSpelledOther { at: at, spelling: spelling } }
   }
 }
 
@@ -776,22 +804,22 @@ fn callee_standing(callees: FreeMonoid<CalleeModule>, module: String) -> FreeMon
 }
 
 fn crossing_verdict(own: Walk, callees: FreeMonoid<CalleeModule>, callee: String, param: String, module: String) -> CrossingVerdict {
-  let where_ = concat(concat(concat(concat(if module == "" { "<this module>" } else { module }, "."), callee), "."), param)
+  let at = concat(concat(callee, "."), param)
   if param == "" {
-    CrossingUndecided { reason: concat(concat("positional argument to ", callee), ": no parameter name to read") }
+    CrossingUndecided { cause: PositionalArgument { callee: callee } }
   } else if module == "" {
     let local = param_spelling(walk: own, callee: callee, param: param)
     if local == "" {
-      CrossingUndecided { reason: concat(concat("callee ", callee), " is neither imported by name nor declared here, so its declaration is not read") }
+      CrossingUndecided { cause: CalleeNotImportedByName { callee: callee } }
     } else {
-      spelling_verdict(spelling: local, declaring_module_imports_text_string: own.imports_text_string, where_: where_)
+      spelling_verdict(spelling: local, declaring_module_imports_text_string: own.imports_text_string, module: "", at: at)
     }
   } else {
     match callee_standing(callees: callees, module: module) {
-      Empty => CrossingUndecided { reason: concat(concat("module ", module), " declares no file under the pool roots") }
+      Empty => CrossingUndecided { cause: CalleeModuleNotInPool { module: module } }
       Cons { head: standing, tail: _ } => match standing {
-        WalkNotEstablished { cause: c } => CrossingUndecided { reason: concat(concat(concat("module ", module), " did not parse: "), cause_token(cause: c)) }
-        WalkEstablished { walk: cw } => spelling_verdict(spelling: param_spelling(walk: cw, callee: callee, param: param), declaring_module_imports_text_string: cw.imports_text_string, where_: where_)
+        WalkNotEstablished { cause: c } => CrossingUndecided { cause: CalleeModuleNotParsed { module: module, cause: c } }
+        WalkEstablished { walk: cw } => spelling_verdict(spelling: param_spelling(walk: cw, callee: callee, param: param), declaring_module_imports_text_string: cw.imports_text_string, module: module, at: at)
       }
     }
   }
@@ -915,8 +943,87 @@ fn verdict_token(v: ImporterVerdict) -> String {
       NotEstablished { cause: nc } => concat("UNCLASSIFIED:", cause_token(cause: nc))
       NoOperationEvidence => "UNCLASSIFIED:NoOperationEvidence"
       UndecidedCrossings => "UNCLASSIFIED:UndecidedCrossings"
+      UndecidedAtFixpoint => "UNCLASSIFIED:UndecidedAtFixpoint"
     }
   }
+}
+
+// EVERY TOKEN THIS MODULE RENDERS HAS ITS DECODER HERE, BESIDE IT. The fixpoint reads the census's
+// rows back across process boundaries (one batch per process), so the rendering is a wire format
+// with one authority: a token no decoder accepts is REFUSED by the reader, never skipped. The
+// witness pins decode(render(x)) for every arm.
+type Decoded<T>
+  = DecodedAs { value: T }
+  | Undecodable { token: String }
+
+fn cause_of_token(token: String) -> Decoded<SourceAnalysisNotEstablishedCause> {
+  if token == "LanguageGrammarUnavailable" { DecodedAs { value: LanguageGrammarUnavailable } }
+  else if token == "LanguageGrammarRejected" { DecodedAs { value: LanguageGrammarRejected } }
+  else if token == "SourceUnreadable" { DecodedAs { value: SourceUnreadable } }
+  else if token == "SourceTokenizationRejected" { DecodedAs { value: SourceTokenizationRejected } }
+  else if token == "SourceParseRejected" { DecodedAs { value: SourceParseRejected } }
+  else if token == "SourceNormalizationRejected" { DecodedAs { value: SourceNormalizationRejected } }
+  else { Undecodable { token: token } }
+}
+
+fn verdict_of_token(token: String) -> Decoded<ImporterVerdict> {
+  if token == "HOST" { DecodedAs { value: HostUsing } }
+  else if token == "STRUCTURAL" { DecodedAs { value: StructuralUsing } }
+  else if token == "MIXED" { DecodedAs { value: Mixed } }
+  else if token == "IMPORT_UNUSED" { DecodedAs { value: ImportUnused } }
+  else if token == "UNCLASSIFIED:NoOperationEvidence" { DecodedAs { value: Unclassified { cause: NoOperationEvidence } } }
+  else if token == "UNCLASSIFIED:UndecidedCrossings" { DecodedAs { value: Unclassified { cause: UndecidedCrossings } } }
+  else if token == "UNCLASSIFIED:UndecidedAtFixpoint" { DecodedAs { value: Unclassified { cause: UndecidedAtFixpoint } } }
+  else if starts_with(s: token, prefix: "UNCLASSIFIED:") {
+    match cause_of_token(token: substring(s: token, start: 13, end: string_length(s: token))) {
+      DecodedAs { value: c } => DecodedAs { value: Unclassified { cause: NotEstablished { cause: c } } }
+      Undecodable { token: _ } => Undecodable { token: token }
+    }
+  }
+  else { Undecodable { token: token } }
+}
+
+// A crossing verdict renders as four tab-separated fields: verdict, cause tag, first and second
+// argument (empty where the arm has fewer).
+fn crossing_tokens(v: CrossingVerdict) -> String {
+  match v {
+    CrossingHost => "HOST\t\t\t"
+    CrossingStructural => "STRUCTURAL\t\t\t"
+    CrossingUndecided { cause: c } => concat("UNDECIDED\t", undecided_cause_tokens(c: c))
+  }
+}
+
+fn undecided_cause_tokens(c: UndecidedCrossingCause) -> String {
+  match c {
+    ParameterIsImportedStringHere { at: a } => concat("imported_string_here\t", concat(a, "\t"))
+    ParameterIsImportedStringIn { module: m, at: a } => concat(concat("imported_string_in\t", m), concat("\t", a))
+    PositionalArgument { callee: x } => concat("positional_argument\t", concat(x, "\t"))
+    CalleeNotImportedByName { callee: x } => concat("callee_not_imported_by_name\t", concat(x, "\t"))
+    CalleeModuleNotInPool { module: m } => concat("callee_module_not_in_pool\t", concat(m, "\t"))
+    CalleeModuleNotParsed { module: m, cause: k } => concat(concat("callee_module_not_parsed\t", m), concat("\t", cause_token(cause: k)))
+    NoSuchParameter { at: a } => concat("no_such_parameter\t", concat(a, "\t"))
+    ParameterSpelledOther { at: a, spelling: s } => concat(concat("parameter_spelled_other\t", a), concat("\t", s))
+  }
+}
+
+fn crossing_of_tokens(verdict: String, tag: String, first: String, second: String) -> Decoded<CrossingVerdict> {
+  if verdict == "HOST" { DecodedAs { value: CrossingHost } }
+  else if verdict == "STRUCTURAL" { DecodedAs { value: CrossingStructural } }
+  else if !(verdict == "UNDECIDED") { Undecodable { token: verdict } }
+  else if tag == "imported_string_here" { DecodedAs { value: CrossingUndecided { cause: ParameterIsImportedStringHere { at: first } } } }
+  else if tag == "imported_string_in" { DecodedAs { value: CrossingUndecided { cause: ParameterIsImportedStringIn { module: first, at: second } } } }
+  else if tag == "positional_argument" { DecodedAs { value: CrossingUndecided { cause: PositionalArgument { callee: first } } } }
+  else if tag == "callee_not_imported_by_name" { DecodedAs { value: CrossingUndecided { cause: CalleeNotImportedByName { callee: first } } } }
+  else if tag == "callee_module_not_in_pool" { DecodedAs { value: CrossingUndecided { cause: CalleeModuleNotInPool { module: first } } } }
+  else if tag == "callee_module_not_parsed" {
+    match cause_of_token(token: second) {
+      DecodedAs { value: k } => DecodedAs { value: CrossingUndecided { cause: CalleeModuleNotParsed { module: first, cause: k } } }
+      Undecodable { token: _ } => Undecodable { token: second }
+    }
+  }
+  else if tag == "no_such_parameter" { DecodedAs { value: CrossingUndecided { cause: NoSuchParameter { at: first } } } }
+  else if tag == "parameter_spelled_other" { DecodedAs { value: CrossingUndecided { cause: ParameterSpelledOther { at: first, spelling: second } } } }
+  else { Undecodable { token: tag } }
 }
 
 fn result_token(r: StructuralResultPosition) -> String {
@@ -950,17 +1057,9 @@ fn int_text(n: Int) -> String {
 // its verdict. A module that parses but does not import `String` from v2.std.text is an `N` row: it
 // is in the import-edge population and outside this census's, and it is listed rather than dropped
 // so the join can account for it.
-fn crossing_tokens(v: CrossingVerdict) -> String {
-  match v {
-    CrossingHost => "HOST\t"
-    CrossingStructural => "STRUCTURAL\t"
-    CrossingUndecided { reason: why } => concat("UNDECIDED\t", why)
-  }
-}
-
 fn crossing_is_undecided(c: Crossing) -> Bool {
   match c.verdict {
-    CrossingUndecided { reason: _ } => true
+    CrossingUndecided { cause: _ } => true
     _ => false
   }
 }
@@ -1102,7 +1201,7 @@ fn module_final_verdict(path: String, r: Rosters, roots: List<String>) -> Import
 type FixpointNode {
   path: String
   module: String
-  census_verdict: String
+  census_verdict: ImporterVerdict
   own_host: Bool
   own_structural: Bool
   own_other: Bool
@@ -1110,8 +1209,6 @@ type FixpointNode {
   structural: Bool
   targets: FreeMonoid<String>
 }
-
-data imported_string_parameter_reason: String = "is itself declared with the imported bare String"
 
 fn tsv_fields(line: String) -> List<String> {
   split(s: line, delimiter: "\t")
@@ -1150,39 +1247,74 @@ type FixpointRows {
   edges: FreeMonoid<FixpointEdge>
 }
 
-// ONE pass over the rows collects the `M` nodes and the imported-String `X` edges; the edges are
-// then grouped per node. Counts only matter as "> 0", read as the field not being "0".
-fn fixpoint_rows(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>) -> FixpointRows {
+// Every row is decoded or the whole read refuses, located at the line: a row the reader cannot
+// decode is a wire-format disagreement with the census that wrote it, and skipping it would drop
+// an edge or a node silently.
+type FixpointRowsStanding
+  = FixpointRowsRead { rows: FixpointRows }
+  | FixpointRowsRefused { line: String, reason: String }
+
+fn count_is_positive(token: String) -> Decoded<Bool> {
+  match parse_int(s: token) {
+    Present { value: n } => DecodedAs { value: n > 0 }
+    Absent => Undecodable { token: token }
+  }
+}
+
+fn fixpoint_rows(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>) -> FixpointRowsStanding {
   let modules = module_by_path(decls: decls)
-  fold_list(xs: lines, empty: FixpointRows { nodes: Empty, edges: Empty }, cons: fn(acc, line) {
-    let f = tsv_fields(line: line)
-    let kind = field_at(fields: f, i: 0)
-    if kind == "M" {
-      let path = field_at(fields: f, i: 1)
-      FixpointRows {
-        nodes: Cons { head: FixpointNode {
-          path: path,
-          module: module_of_path(modules: modules, path: path),
-          census_verdict: field_at(fields: f, i: 2),
-          own_host: !(field_at(fields: f, i: 3) == "0"),
-          own_structural: !(field_at(fields: f, i: 4) == "0"),
-          own_other: !(field_at(fields: f, i: 5) == "0"),
-          host: !(field_at(fields: f, i: 3) == "0"),
-          structural: !(field_at(fields: f, i: 4) == "0"),
-          targets: empty_strings
-        }, tail: acc.nodes },
-        edges: acc.edges
-      }
-    } else if (kind == "X") && string_contains(s: field_at(fields: f, i: 8), pattern: imported_string_parameter_reason) {
-      FixpointRows { nodes: acc.nodes, edges: Cons { head: FixpointEdge { path: field_at(fields: f, i: 1), callee_module: field_at(fields: f, i: 6) }, tail: acc.edges } }
-    } else {
-      acc
+  fold_list(xs: lines, empty: FixpointRowsRead { rows: FixpointRows { nodes: Empty, edges: Empty } }, cons: fn(standing, line) {
+    match standing {
+      FixpointRowsRefused { line: _, reason: _ } => standing
+      FixpointRowsRead { rows: acc } => fixpoint_row(acc: acc, line: line, modules: modules)
     }
   })
 }
 
-fn fixpoint_nodes(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>) -> FreeMonoid<FixpointNode> {
-  let rows = fixpoint_rows(lines: lines, decls: decls)
+fn fixpoint_row(acc: FixpointRows, line: String, modules: Map<String, String>) -> FixpointRowsStanding {
+  let f = tsv_fields(line: line)
+  let kind = field_at(fields: f, i: 0)
+  if (line == "") || (kind == "S") || (kind == "N") {
+    FixpointRowsRead { rows: acc }
+  } else if kind == "M" {
+    let path = field_at(fields: f, i: 1)
+    match verdict_of_token(token: field_at(fields: f, i: 2)) {
+      Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable verdict ", tk) }
+      DecodedAs { value: v } =>
+        match count_is_positive(token: field_at(fields: f, i: 3)) {
+          Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable host count ", tk) }
+          DecodedAs { value: h } =>
+            match count_is_positive(token: field_at(fields: f, i: 4)) {
+              Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable structural count ", tk) }
+              DecodedAs { value: s } =>
+                match count_is_positive(token: field_at(fields: f, i: 5)) {
+                  Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable OTHER count ", tk) }
+                  DecodedAs { value: o } =>
+                    FixpointRowsRead { rows: FixpointRows {
+                      nodes: Cons { head: FixpointNode { path: path, module: module_of_path(modules: modules, path: path), census_verdict: v, own_host: h, own_structural: s, own_other: o, host: h, structural: s, targets: empty_strings }, tail: acc.nodes },
+                      edges: acc.edges
+                    } }
+                }
+            }
+        }
+    }
+  } else if kind == "X" {
+    match crossing_of_tokens(verdict: field_at(fields: f, i: 7), tag: field_at(fields: f, i: 8), first: field_at(fields: f, i: 9), second: field_at(fields: f, i: 10)) {
+      Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable crossing ", tk) }
+      DecodedAs { value: cv } => match cv {
+        CrossingUndecided { cause: ParameterIsImportedStringHere { at: _ } } =>
+          FixpointRowsRead { rows: FixpointRows { nodes: acc.nodes, edges: Cons { head: FixpointEdge { path: field_at(fields: f, i: 1), callee_module: "" }, tail: acc.edges } } }
+        CrossingUndecided { cause: ParameterIsImportedStringIn { module: m, at: _ } } =>
+          FixpointRowsRead { rows: FixpointRows { nodes: acc.nodes, edges: Cons { head: FixpointEdge { path: field_at(fields: f, i: 1), callee_module: m }, tail: acc.edges } } }
+        _ => FixpointRowsRead { rows: acc }
+      }
+    }
+  } else {
+    FixpointRowsRefused { line: line, reason: concat("unknown row kind ", kind) }
+  }
+}
+
+fn fixpoint_nodes(rows: FixpointRows) -> FreeMonoid<FixpointNode> {
   fold_list(xs: rows.nodes, empty: Empty, cons: fn(acc, n) {
     let targets = fold_list(xs: rows.edges, empty: empty_strings, cons: fn(ts, e) {
       if e.path == n.path {
@@ -1199,20 +1331,26 @@ type CalleeDisposition
   | CalleeDropsImport
   | CalleeKeepsImport
 
-fn is_parse_refused(census_verdict: String) -> Bool {
-  census_verdict == "UNCLASSIFIED:SourceParseRejected"
+fn is_parse_refused(v: ImporterVerdict) -> Bool {
+  match v {
+    Unclassified { cause: NotEstablished { cause: SourceParseRejected } } => true
+    _ => false
+  }
 }
 
-fn is_census_undecided(census_verdict: String) -> Bool {
-  census_verdict == "UNCLASSIFIED:UndecidedCrossings"
+fn is_census_undecided(v: ImporterVerdict) -> Bool {
+  match v {
+    Unclassified { cause: UndecidedCrossings } => true
+    _ => false
+  }
 }
 
 // A node's disposition in a round. A module the census could not decide is pending until it has
 // decided evidence; a module absent from the rows (not measured) is pending forever.
 fn node_disposition(n: FixpointNode) -> CalleeDisposition {
-  if is_parse_refused(census_verdict: n.census_verdict) {
+  if is_parse_refused(v: n.census_verdict) {
     CalleeKeepsImport
-  } else if !n.host && !n.structural && is_census_undecided(census_verdict: n.census_verdict) {
+  } else if !n.host && !n.structural && is_census_undecided(v: n.census_verdict) {
     CalleePending
   } else if n.own_other || (n.structural && !n.host) {
     CalleeKeepsImport
@@ -1262,34 +1400,74 @@ fn iterate_fixpoint(nodes: FreeMonoid<FixpointNode>, rounds: Int, bound: Int) ->
   }
 }
 
-fn fixpoint_verdict(n: FixpointNode) -> String {
-  if n.host && n.structural { "MIXED" } else if n.host { "HOST" } else if n.structural { "STRUCTURAL" } else if length(xs: n.targets) > 0 { "UNCLASSIFIED:UndecidedAtFixpoint" } else { n.census_verdict }
+fn fixpoint_verdict(n: FixpointNode) -> ImporterVerdict {
+  if n.host && n.structural { Mixed }
+  else if n.host { HostUsing }
+  else if n.structural { StructuralUsing }
+  else if length(xs: n.targets) > 0 { Unclassified { cause: UndecidedAtFixpoint } }
+  else { n.census_verdict }
 }
 
 // The pure half of the fixpoint: rows and module declarations in, outcome out.
-fn fixpoint_over_lines(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>) -> FixpointOutcome {
-  let nodes = fixpoint_nodes(lines: lines, decls: decls)
-  iterate_fixpoint(nodes: nodes, rounds: 0, bound: 2 * length(xs: nodes) + 1)
+type FixpointStanding
+  = FixpointComputed { outcome: FixpointOutcome }
+  | FixpointInputRefused { line: String, reason: String }
+
+fn fixpoint_over_lines(lines: FreeMonoid<String>, decls: List<ModuleDeclarationFact>) -> FixpointStanding {
+  match fixpoint_rows(lines: lines, decls: decls) {
+    FixpointRowsRefused { line: l, reason: why } => FixpointInputRefused { line: l, reason: why }
+    FixpointRowsRead { rows: rows } => {
+      let nodes = fixpoint_nodes(rows: rows)
+      FixpointComputed { outcome: iterate_fixpoint(nodes: nodes, rounds: 0, bound: 2 * length(xs: nodes) + 1) }
+    }
+  }
 }
 
 // Reads the census rows (comma-separated TSV paths), writes one `F` row per module whose verdict
 // the fixpoint could move (it has edges): path, census verdict, fixpoint verdict, targets.
-fn text_string_importer_fixpoint(rows_csv: String, out: String, roots_csv: String) -> ProcessExit {
-  let lines = fold_list(xs: split(s: rows_csv, delimiter: ","), empty: Empty, cons: fn(acc, p) {
-    let read = Filesystem.Read(path: p)
-    fold_list(xs: split(s: read.content, delimiter: "\n"), empty: acc, cons: fn(inner, l) { Cons { head: l, tail: inner } })
-  })
-  let decls = module_declaration_facts_live(pool_roots: split(s: roots_csv, delimiter: ","))
-  match fixpoint_over_lines(lines: list_reverse(xs: lines), decls: decls) {
-    FixpointBoundExceeded { rounds: r } => exit_failure(reason: concat("the fixpoint did not stabilise within its monotone bound of 2n + 1 rounds: ", int_text(n: r)))
-    FixpointReached { nodes: done, rounds: r } => {
-      let rows = fold_list(xs: done, empty: Cons { head: concat(concat("R\trounds\t", int_text(n: r)), "\n"), tail: Empty }, cons: fn(acc, n) {
-        if length(xs: n.targets) == 0 { acc } else {
-          Cons { head: concat(concat(concat(concat(concat(concat(concat(concat("F\t", n.path), "\t"), n.census_verdict), "\t"), fixpoint_verdict(n: n)), "\t"), join(list_reverse(xs: n.targets), ",")), "\n"), tail: acc }
+type RowsRead
+  = RowsReadAll { lines: FreeMonoid<String> }
+  | RowsReadRefused { path: String, error: String }
+
+fn read_row_files(paths: List<String>) -> RowsRead {
+  fold_list(xs: paths, empty: RowsReadAll { lines: Empty }, cons: fn(standing, p) {
+    match standing {
+      RowsReadRefused { path: _, error: _ } => standing
+      RowsReadAll { lines: acc } => {
+        let read = Filesystem.Read(path: p)
+        match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+          FilesystemReadRefused { error: e } => RowsReadRefused { path: p, error: e }
+          FilesystemReadSucceeded { content: text } =>
+            RowsReadAll { lines: fold_list(xs: split(s: text, delimiter: "\n"), empty: acc, cons: fn(inner, l) { Cons { head: l, tail: inner } }) }
         }
-      })
-      let written = Filesystem.Write(path: out, content: join(list_reverse(xs: rows), ""))
-      if written.success { ExitSuccess } else { exit_failure(reason: concat("fixpoint write refused: ", written.error)) }
+      }
+    }
+  })
+}
+
+// Reads the census rows (comma-separated TSV paths), writes one `F` row per module whose verdict
+// the fixpoint could move (it has edges): path, census verdict, fixpoint verdict, targets. An
+// unreadable rows file or an undecodable row refuses the whole run, located.
+fn text_string_importer_fixpoint(rows_csv: String, out: String, roots_csv: String) -> ProcessExit {
+  match read_row_files(paths: split(s: rows_csv, delimiter: ",")) {
+    RowsReadRefused { path: p, error: e } => exit_failure(reason: concat(concat(concat("census rows unreadable: ", p), ": "), e))
+    RowsReadAll { lines: lines } => {
+      let decls = module_declaration_facts_live(pool_roots: split(s: roots_csv, delimiter: ","))
+      match fixpoint_over_lines(lines: list_reverse(xs: lines), decls: decls) {
+        FixpointInputRefused { line: l, reason: why } => exit_failure(reason: concat(concat(concat("census row refused (", why), "): "), l))
+        FixpointComputed { outcome: outcome } => match outcome {
+          FixpointBoundExceeded { rounds: r } => exit_failure(reason: concat("the fixpoint did not stabilise within its bound of 2n + 1 rounds: ", int_text(n: r)))
+          FixpointReached { nodes: done, rounds: r } => {
+            let rows = fold_list(xs: done, empty: Cons { head: concat(concat("R\trounds\t", int_text(n: r)), "\n"), tail: Empty }, cons: fn(acc, n) {
+              if length(xs: n.targets) == 0 { acc } else {
+                Cons { head: concat(concat(concat(concat(concat(concat(concat(concat("F\t", n.path), "\t"), verdict_token(v: n.census_verdict)), "\t"), verdict_token(v: fixpoint_verdict(n: n))), "\t"), join(list_reverse(xs: n.targets), ",")), "\n"), tail: acc }
+              }
+            })
+            let written = Filesystem.Write(path: out, content: join(list_reverse(xs: rows), ""))
+            if written.success { ExitSuccess } else { exit_failure(reason: concat("fixpoint write refused: ", written.error)) }
+          }
+        }
+      }
     }
   }
 }

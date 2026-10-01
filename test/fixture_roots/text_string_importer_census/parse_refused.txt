@@ -1,3 +1,0 @@
-module fixture.text_string_importer_census.parse_refused
-import v2.std.text { String }
-fn broken(s: String) -> {
