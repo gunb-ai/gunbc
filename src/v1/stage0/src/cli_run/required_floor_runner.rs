@@ -5780,6 +5780,7 @@ pub(crate) fn install_pure_producer_share(
     let mut resolution_frames: std::collections::HashMap<String, v1_interpreter::InterpContext> =
         std::collections::HashMap::new();
     let mut outside_subject: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let frame_build_ms = std::cell::Cell::new(0u128);
     // Returns Ok(true) when the module framed, Ok(false) when it is outside this subject but
     // present in the corpus (disposition 2), Err on staleness or any other framing failure.
     let mut frame_rostered_module =
@@ -5794,7 +5795,10 @@ pub(crate) fn install_pure_producer_share(
             if outside_subject.contains(module) {
                 return Ok(false);
             }
-            match floor_authority_frame(prepared, module) {
+            let building = std::time::Instant::now();
+            let built = floor_authority_frame(prepared, module);
+            frame_build_ms.set(frame_build_ms.get() + building.elapsed().as_millis());
+            match built {
                 Ok(frame) => {
                     frames.insert(module.to_string(), frame);
                     Ok(true)
@@ -6166,6 +6170,15 @@ pub(crate) fn install_pure_producer_share(
             .cloned()
             .collect::<Vec<_>>()
             .join(",")
+    );
+    let frame_builds = resolution_frames.len();
+    let dropping = std::time::Instant::now();
+    drop(resolution_frames);
+    eprintln!(
+        "[floor-phase] phase=pure-producer-share-frames state=completed frame_builds={frame_builds} \
+         frame_build_ms={} frame_drop_ms={} (all frames held to here, dropped together)",
+        frame_build_ms.get(),
+        dropping.elapsed().as_millis()
     );
     Ok(warm_observations)
 }
