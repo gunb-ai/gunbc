@@ -8558,6 +8558,20 @@ pub fn compile_entry_emission(
 /// the returned files, renders diagnostics and picks an exit code -- those are boundary
 /// concerns, not a second pipeline.
 pub fn compile_emission(request: &CompileRequest) -> CompileRun {
+    compile_emission_over(request, IndexResidency::SharedProcessPool)
+}
+
+/// WHO HOLDS THE INDEX A COMPILE RESOLVES OVER. The run's own pool lives in the thread's shared
+/// memo, one per precedence slot (`try_process_shared_index_for_pool`, which refuses a second).
+/// A compile over a different pool whose index nothing after it reads -- a fixture root compiled
+/// once by a control -- owns its index for the length of the compile instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexResidency {
+    SharedProcessPool,
+    OwnedByThisCompile,
+}
+
+pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
     let source_roots: &[String] = &request.source_roots;
     let primary_precedence = request.primary_precedence;
     let subject_label = request.subject.label();
@@ -8746,7 +8760,23 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // compiling N entries reconciled the shared prefix N times over closures that overlap almost
     // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
     // rather than a budget fact, and for what is NOT changed by the routing.
-    let index: Rc<MultiEntryIndex> = if primary_precedence {
+    let index: Rc<MultiEntryIndex> = if residency == IndexResidency::OwnedByThisCompile {
+        let built = if primary_precedence {
+            try_build_module_index_primary_precedence(source_roots)
+        } else {
+            try_build_module_index(source_roots)
+        };
+        match built {
+            Ok(module_index) => Rc::new(new_multi_entry_index_shell(
+                module_index,
+                source_roots,
+                None,
+            )),
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "source-discovery", cause)
+            }
+        }
+    } else if primary_precedence {
         match try_process_shared_index_for_pool(source_roots, true) {
             Ok(idx) => idx,
             Err(cause) => {
@@ -10473,41 +10503,34 @@ mod closure_edge_demand_tests {
             .unwrap();
     }
 
-    /// The residency bound refuses a second resident pool per slot and admits one.
+    /// A SECOND POOL REFUSES AT BUILD, naming both root sets and the demanding site, and the
+    /// resident pool survives it: the residency control still reads one pool and the first
+    /// roots are still served from the memo. Red before the build-site refusal (the second
+    /// demand built and returned a second index); green with it.
     #[test]
-    fn a_second_resident_pool_in_one_slot_refuses() {
+    fn a_second_pool_in_one_slot_refuses_at_build() {
         let a = Fixture::new(&[("m.dag", "module res_a\nfn f() -> Int { 1 }\n")]);
         let b = Fixture::new(&[("m.dag", "module res_b\nfn f() -> Int { 1 }\n")]);
-        try_process_shared_index(&[a.0.to_string_lossy().into_owned()]).unwrap();
-        assert_eq!(entry_resolve::shared_index_residency_control(), Ok(1));
-        try_process_shared_index(&[b.0.to_string_lossy().into_owned()]).unwrap();
-        let err = entry_resolve::shared_index_residency_control().unwrap_err();
-        assert!(err.contains("SharedIndexMoreThanOneResidentPool"), "{err}");
-    }
-
-    /// DISTINCT ROOTS ARE KEPT SIDE BY SIDE, NOT EVICTED. Roots A, then roots B, then A again on
-    /// one thread (the regen round's shape): the third demand returns the FIRST index -- the same
-    /// `Rc`, its parse and typed caches intact -- rather than rebuilding A (a one-entry slot) or
-    /// refusing it (the #12765 refusal that broke the regen round).
-    #[test]
-    fn alternating_roots_on_one_thread_reuse_each_index() {
-        let a = Fixture::new(&[("m.dag", "module alt_a\nfn f() -> Int { 1 }\n")]);
-        let b = Fixture::new(&[("m.dag", "module alt_b\nfn f() -> Int { 1 }\n")]);
         let roots_a = vec![a.0.to_string_lossy().into_owned()];
         let roots_b = vec![b.0.to_string_lossy().into_owned()];
         let first_a = try_process_shared_index(&roots_a).unwrap();
-        let first_b = try_process_shared_index(&roots_b).unwrap();
+        assert_eq!(entry_resolve::shared_index_residency_control(), Ok(1));
+        let err = match try_process_shared_index(&roots_b) {
+            Ok(_) => panic!("a second pool in slot 0 was built"),
+            Err(err) => err,
+        };
+        assert!(err.contains("SharedIndexSecondResidentPool"), "{err}");
+        for roots in [&roots_a, &roots_b] {
+            let canonical = entry_resolve::canonical_shared_index_roots(roots);
+            assert!(
+                err.contains(&format!("{canonical:?}")),
+                "names {canonical:?}: {err}"
+            );
+        }
+        assert!(err.contains(file!()), "names the demanding site: {err}");
+        assert_eq!(entry_resolve::shared_index_residency_control(), Ok(1));
         let again_a = try_process_shared_index(&roots_a).unwrap();
-        let again_b = try_process_shared_index(&roots_b).unwrap();
-        assert!(
-            Rc::ptr_eq(&first_a, &again_a),
-            "A is reused after B, not rebuilt"
-        );
-        assert!(Rc::ptr_eq(&first_b, &again_b), "B is reused after A");
-        assert!(
-            !Rc::ptr_eq(&first_a, &first_b),
-            "distinct roots are distinct indexes"
-        );
+        assert!(Rc::ptr_eq(&first_a, &again_a), "the resident pool is kept");
     }
 
     /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
