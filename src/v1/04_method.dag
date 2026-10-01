@@ -350,6 +350,7 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "trace_mark": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: unit_type },
   "observed_peak_resident_bytes": BuiltinSignature { params: [], returns: int_type },
   "observed_monotonic_nanos": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: int_type },
+  "observed_thread_cpu_nanos": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: int_type },
   "string_contains": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "pattern", ty: NamedTemplate { name: "String" } }], returns: bool_type },
   "length": derived_signature_and_return(names: ["xs"], method: "length"),
   "starts_with": derived_signature(names: ["s", "prefix"], method: "starts_with", returns: bool_type),

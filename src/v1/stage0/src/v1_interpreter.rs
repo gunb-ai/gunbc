@@ -6571,20 +6571,39 @@ mod budgeted_cpu_clock_tests {
     }
 }
 
-pub fn thread_cpu_nanos() -> u128 {
+/// The one read of the calling thread's CPU clock (extdeps.posix.clock_gettime
+/// ClockThreadCputimeId), FALLIBLE: POSIX makes the clock an option, so its absence is an error
+/// the caller must decide about, never a number. `thread_cpu_nanos` below is the budget clock's
+/// lenient view of this read; `observed_thread_cpu_nanos` refuses on the error arm.
+pub fn thread_cpu_nanos_checked() -> std::io::Result<u128> {
     #[cfg(unix)]
     {
         let mut ts = libc::timespec {
             tv_sec: 0,
             tv_nsec: 0,
         };
-        // SAFETY: `ts` is a valid, owned timespec; CLOCK_THREAD_CPUTIME_ID is always supported
-        // on linux/macos. rc != 0 (unreachable there) falls through to 0.
+        // SAFETY: `ts` is a valid, owned timespec written once by clock_gettime.
         let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
         if rc == 0 {
-            return (ts.tv_sec as u128) * 1_000_000_000 + (ts.tv_nsec as u128);
+            return Ok((ts.tv_sec as u128) * 1_000_000_000 + (ts.tv_nsec as u128));
         }
-        0
+        Err(std::io::Error::last_os_error())
+    }
+    #[cfg(not(unix))]
+    {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "CLOCK_THREAD_CPUTIME_ID is a POSIX clock",
+        ))
+    }
+}
+
+pub fn thread_cpu_nanos() -> u128 {
+    #[cfg(unix)]
+    {
+        // CLOCK_THREAD_CPUTIME_ID is supported on linux/macos; the error arm (unreachable
+        // there) falls through to 0 for the budget clock.
+        thread_cpu_nanos_checked().unwrap_or(0)
     }
     #[cfg(not(unix))]
     {
@@ -21537,6 +21556,23 @@ macro_rules! v1_builtin_arms {
                 }
                 _ => Err(InterpError::TypeError {
                     msg: "observed_monotonic_nanos takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveThreadCpuAtSubject realization seam: the calling thread's CPU time
+            // (extdeps.posix.clock_gettime ClockThreadCputimeId). An unsupported clock refuses;
+            // the monotonic wall is never substituted for it.
+            arm "free_call.observed_thread_cpu_nanos" { "observed_thread_cpu_nanos" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => match thread_cpu_nanos_checked() {
+                    Ok(nanos) => Ok(Some(Value::Int(nanos.min(i64::MAX as u128) as i64))),
+                    Err(cause) => Err(InterpError::TypeError {
+                        msg: format!(
+                            "observed_thread_cpu_nanos: clock_gettime(CLOCK_THREAD_CPUTIME_ID) unavailable on this host ({cause}); refusing rather than substituting the wall"
+                        ),
+                    }),
+                },
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_thread_cpu_nanos takes exactly one boundary label".to_string(),
                 }),
             },
 

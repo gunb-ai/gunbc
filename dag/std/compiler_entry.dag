@@ -167,9 +167,9 @@ type CompilerEntryDriver
 // BOTH ROWS ARE MEASURED AROUND THE WORK, never derived as parent minus the others -- a row defined
 // as the remainder forces the residual to zero and makes the tolerance arm unfireable, which is the
 // defect this partition exists to catch.
-// THE NATIVE DRIVER'S EXCLUSIVE WALL PARTITION. claim_batch prints `[cost-partition]` over
+// THE NATIVE DRIVER'S EXCLUSIVE CPU PARTITION. claim_batch prints `[cost-partition]` over
 // resolve-span work; SourceRootEvalDriver prints `[native-cost-partition]` over its own
-// single-threaded wall. The grains are the driver's own, not a restatement of the resolve-split
+// single thread's CPU time (the wall is printed beside it as an observation, never judged). The grains are the driver's own, not a restatement of the resolve-split
 // rows, and THIS TYPE IS WHERE THEY ARE NAMED: the row set below is the grain, so prose that
 // re-lists the field names would be a second spelling of it that rots the moment a driver gains
 // a phase. The law is the same exclusive-sum law: exclusive rows must not exceed parent_span,
@@ -337,8 +337,17 @@ type NativeDriverCostAccounting
   | NativeDriverCostOverAttributed { sum_exclusive: Nanosecond, parent_span: Nanosecond }
   | NativeDriverCostRemainderExceedsTolerance { residual: Nanosecond, tolerance: Nanosecond }
 
-// Fifty milliseconds on the host monotonic wall Instant the driver uses. A remainder larger
-// than this is unattributed driver work, not a rounding crumb.
+// Fifty milliseconds of the driver thread's CPU time, the clock every row and the parent span are
+// read on (std.realization_measurement ObserveThreadCpuAtSubject). A remainder larger than this is
+// unattributed driver work, not a rounding crumb.
+//
+// THE CLOCK IS PART OF THE LAW, NOT A DETAIL OF ITS REALIZATION. What this accounting claims is that
+// the rows partition the driver's OWN work. It was once read on the monotonic wall, and a wall span
+// also holds every interval the host descheduled the thread -- work no phase performed and no row
+// could ever name -- so the residual, and therefore the verdict, varied with host contention for one
+// fixed subject (DESIGN section 5: a verdict is determined by its subject). The repair was the
+// measure, not this tolerance: on thread CPU the residual is uninstrumented driver work and only
+// that, so a busy loop outside every span still refuses here while a stall or sleep does not.
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
 
 fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {
