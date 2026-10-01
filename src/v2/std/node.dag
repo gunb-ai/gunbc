@@ -1,7 +1,7 @@
 module v2.std.node
 
 import std.algebra { Cons, Empty, list_snoc_item }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Optional, Present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceAllocatorSnapshot,
@@ -1121,7 +1121,7 @@ fn binder_reference_site_optional(node: Node) -> Optional<BinderSite> {
 }
 
 fn optional_absent_binder_site() -> Optional<BinderSite> {
-  Absent
+  v2.std.optional.optional_absent()
 }
 
 fn resolved_reference_body_kind(target: Node) -> ResolvedReferenceMarking {
@@ -1563,6 +1563,7 @@ fn labeled_core_is<T>(x: T, label_of: fn(T) -> EdgeLabel, wanted: CoreEdgeLabel)
   match label_of(x) {
     StructuralLabel { label: CoreMarker { marker: m } } => m == wanted
     StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => false
+    StructuralLabel { label: BinderReferenceSite { site: _ } } => false
     Authored { name: _ } => false
     Positional => false
   }
