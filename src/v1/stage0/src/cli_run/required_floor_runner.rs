@@ -2534,6 +2534,53 @@ fn unimported_bare_provider_base_reading(
     reading
 }
 
+/// ONE FULL PARSE PER (INDEX, FILE) and ONE INDEX PER MODULE-NAME SET, asserted at `at`. Called
+/// before the subject's strict compile, so a subject that refuses there has still been checked,
+/// and again after the whole-pool warms, which read every pool file. Each named root set's
+/// shared index must already exist: a control does not build what it inspects.
+pub(crate) fn floor_index_controls(
+    at: &str,
+    root_sets: &[(&str, Vec<String>)],
+) -> Result<(), String> {
+    for (which, roots) in root_sets {
+        // Looked up, never built: an absent index is a control with nothing to inspect, and
+        // building one here would report on a population the control made itself.
+        let index =
+            super::entry_resolve::memoized_process_shared_index(roots).ok_or_else(|| {
+                format!(
+                "REQUIRED-FLOOR REFUSAL at={at} roots={which} cause=IndexControlsWithoutIndex -- \
+                 no shared index was built over these roots before the control ran"
+            )
+            })?;
+        let (files, parses) = super::reference_reading_parse_control(&index)
+            .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} roots={which} {e}"))?;
+        eprintln!(
+            "[floor-phase] phase=reference-reading-parses at={at} roots={which} \
+             index_generation={} files={files} full_parses={parses}",
+            index.generation
+        );
+    }
+    // The floor legitimately demands more than one name set (its source roots, the dag-only
+    // environment closure, the v1 attribution roots when src/v1 is touched), so the invariant is
+    // not a count: it is that no set is indexed twice.
+    let builds = super::multi_entry_index_builds();
+    let name_sets = super::multi_entry_index_sharing_control(&builds)
+        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} cause={e}"))?;
+    let resident = super::entry_resolve::shared_index_residency_control()
+        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} cause={e}"))?;
+    eprintln!("[floor-phase] phase=shared-index-residency at={at} resident_pools={resident}");
+    eprintln!(
+        "[floor-phase] phase=multi-entry-index-builds at={at} builds={} name_sets={name_sets} \
+         sites={:?}",
+        builds.len(),
+        builds
+            .iter()
+            .map(|b| format!("{}@{}", b.modules, b.site))
+            .collect::<Vec<_>>(),
+    );
+    Ok(())
+}
+
 /// `v2.workflow.floor_enrolment_margin` `enrolment_dead_band_observed_identities`, decoded
 /// from the frame the same way. Its own authority (`v2.workflow.floor_enrolment_dead_band`),
 /// never a typed cost-debt row.
@@ -7232,6 +7279,13 @@ pub fn run_required_floor(
     .chain(interface_consumer_seeds.iter().cloned())
     .collect();
     floor_seam("prepare-closure-resolve");
+    // BEFORE THE SUBJECT VERDICT, not only after it: the strict compile below is where a heavy
+    // subject refuses, and a control placed after it never runs on exactly the subjects that
+    // stress it (neat-boar-16's #12761-shape run refused there and printed neither line). The
+    // gate closure has built its edges on the shared index by now, so both controls have their
+    // population; only the index those edges were read from is inspected, so the check builds
+    // nothing itself.
+    floor_index_controls("before-prepare", &[("source-roots", source_roots.to_vec())])?;
     let (mut prepared, prepared_sources) = crate::cli_run::prepare_repository_from_corpus(
         &floor_corpus,
         &floor_prepared_subject_exclusions(),
@@ -7532,35 +7586,13 @@ pub fn run_required_floor(
         warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
     ));
     shared_build_warms.extend(pure_producer_warms);
-    // ONE FULL PARSE PER (INDEX, FILE), ASSERTED, and ONE INDEX PER NAME SET, ASSERTED below: the
-    // first bounds a file's reference reading to one parse on each index, the second the total.
-    for (which, roots) in [
-        ("source-roots", source_roots.to_vec()),
-        ("witness-layer-roots", witness_layer_roots()),
-    ] {
-        let index = process_shared_index(&roots);
-        let (files, parses) = super::reference_reading_parse_control(&index)
-            .map_err(|e| format!("REQUIRED-FLOOR REFUSAL roots={which} {e}"))?;
-        eprintln!(
-            "[floor-phase] phase=reference-reading-parses roots={which} index_generation={} \
-             files={files} full_parses={parses}",
-            index.generation
-        );
-    }
-    // ONE INDEX PER MODULE-NAME SET, ASSERTED. The floor legitimately demands more than one name
-    // set (its source roots, the dag-only environment closure, the v1 attribution roots when
-    // src/v1 is touched), so the invariant is not a count: it is that no set is indexed twice.
-    let builds = super::multi_entry_index_builds();
-    let name_sets = super::multi_entry_index_sharing_control(&builds)
-        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL cause={e}"))?;
-    eprintln!(
-        "[floor-phase] phase=multi-entry-index-builds builds={} name_sets={name_sets} sites={:?}",
-        builds.len(),
-        builds
-            .iter()
-            .map(|b| format!("{}@{}", b.modules, b.site))
-            .collect::<Vec<_>>(),
-    );
+    floor_index_controls(
+        "after-shared-build-warms",
+        &[
+            ("source-roots", source_roots.to_vec()),
+            ("witness-layer-roots", witness_layer_roots()),
+        ],
+    )?;
     // The two earlier phases already printed their own lines at the point they ran; only the
     // edge-index entries are reported here, so a phase is reported exactly once and under its own
     // name. Every entry — all three phases — is adjudicated together further down.
