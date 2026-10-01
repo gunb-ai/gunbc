@@ -483,6 +483,13 @@ fn nominal_type_ref(name: String) -> Node {
 // literal's field-inits carry no inferred type at all. Refusing there is a refusal the
 // author cannot discharge. The positional value is returned unchanged from what the
 // seed already returned, so nothing downstream moves; only the count is new.
+// CORRECTED BY MEASUREMENT: "the evidence does not exist" holds at THIS seam, not upstream. At
+// every site the class has fired on, an annotated twin of the same code is clean, so the argument
+// was present in authored facts and an inference dropped it -- and the placeholder returned here
+// for a dropped argument is the base itself, so the element is read as the container
+// (gunbc.recurring_failure_mode unapplied_generic_accumulator_types_element_as_container). The
+// repair is upstream at the dropping link; this seam stays advisory, with its ceiling row in
+// gunbc.compile_clean_diagnostic_policy advisory_class_ceilings.
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> KernelTypeBuild {
   let evidence_diags = if base.connective != NoConnective {
     [make_error_node(
