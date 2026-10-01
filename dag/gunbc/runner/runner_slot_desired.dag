@@ -166,11 +166,13 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 // default: a floor-only slot class, three per host, at 41/40, with every other slot left on the
 // fleet row above. The approval is external to this diff and is recorded on the PR that carries it.
 //
-// WHY THE FLOOR AND ONLY THE FLOOR. The fleet row's 25 GiB line is now BELOW the floor's demand:
+// WHY THE FLOOR AND ONLY THE FLOOR. The floor's cgroup charge now crosses the fleet row's 25 GiB line:
 // gunbc#12799's floors (runs 36787476687 and 36792656867 refused MemoryStallRefusedPageThrash,
-// 36768748506 green) all pin at memory.high from prepared-subject-warm on, because the strict
-// typed graph (type_env about half the held set) fills a 25 GiB leaf at ~2.7k-module subjects --
-// so pass or fail was variance. The generated and unit-test lanes peak far below that line, so
+// 36768748506 green) all pin at memory.high from prepared-subject-warm on at ~2.7k-module subjects,
+// so pass or fail was variance. The overshoot is NOT one mechanism and the trigger below does not
+// name one: the live demand at that subject sits under the line, and what carries the charge over it
+// is the warm phase's freed-but-held allocator arena on top of a typed graph whose type_env is about
+// half the held set. The class retires on the measured capability, whichever reduction delivers it. The generated and unit-test lanes peak far below that line, so
 // raising the fleet row would buy their slots a ceiling nothing asked for at a cost of sixteen
 // GitHub slots fleet-wide; a class costs four.
 //
@@ -187,7 +189,7 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 // including the floor of the change that adds it. Until then the class slots also serve the plain
 // fleet selector, so they take any job and nothing is stranded.
 data gunbc_runner_floor_slot_class_stopgap_2026_10_01: DissolutionCondition = unbound_dissolution(
-  description: "operator-approved stopgap 2026-10-01 (default): the floor slot class (gunbc_runner_floor_slot_desired, 41/40 GiB MemoryMax/MemoryHigh, three per host, routed by the gunbc-floor label) exists only because the floor pins the fleet row's 25 GiB memory.high. Retires when type_env exclusive bytes are reduced so a ~2.7k-module floor subject peaks under the original 25 GiB memory.high (26843545600 bytes), as measured by //gunbc/instruments:typed-graph-exclusive-bytes and confirmed by an unpinned floor receipt at that line; the class, its label and its identities are then deleted and the floor returns to the fleet row. A green floor on the class, or the instrument merely landing, satisfies neither clause" as NonEmptyStr
+  description: "operator-approved stopgap 2026-10-01 (default): the floor slot class (gunbc_runner_floor_slot_desired, 41/40 GiB MemoryMax/MemoryHigh, three per host, routed by the gunbc-floor label) exists only because the floor pins the fleet row's 25 GiB memory.high. Retires on a CAPABILITY, not on a mechanism: a ~2.7k-module floor subject peaks (cgroup charge) under the original 25 GiB memory.high (26843545600 bytes), as measured by //gunbc/instruments:floor-memory-qualification at that subject. Whatever delivers that -- warm-phase demand, the type_env reduction, or both -- retires it; the class, its label and its identities are then deleted and the floor returns to the fleet row. A green floor on the class, or any one reduction landing without that measurement, satisfies nothing" as NonEmptyStr
 )
 
 data gunbc_runner_floor_slot_class_label: String = "gunbc-floor"
