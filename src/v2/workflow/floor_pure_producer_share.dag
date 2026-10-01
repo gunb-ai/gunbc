@@ -492,10 +492,10 @@ import v2.std.collection { List }
 // preparation (the real path, refused there if it cannot run) and read by the rows. Nullary, pure,
 // inline sources; Nodes and located diagnostics, no closure. Re-derive rather than trust: the run's
 // [floor-shared-fill] ledger must show all eight Stored at preparation and the rows serving hits.
-// AND THE TWO ROWS AFTER THOSE ARE THE ENUMERATOR-DIFFERENTIAL FIXTURE, parsed and normalized, for
-// v2.test.claim.namespace_xl0.qualified_site_enumerator_differential: the rows there name the two
-// site WALKS and share the one-module ingest the walks read, exactly as the sibling rows do. Both
-// values are Nodes; no closure.
+// AND THE ROW AFTER THOSE IS THE ENUMERATOR FIXTURE, normalized, for
+// v2.test.claim.namespace_xl0.qualified_site_enumerator_differential: the rows there name the
+// collector's site WALK and share the one-module ingest the walk reads, exactly as the sibling rows
+// do. The value is Nodes; no closure. (The parsed twin left with the retired parse walker.)
 //
 // AND THE FINAL ROW:
 // DAG CANONICAL-SYMBOL MAP EARNS ITS ROW ON THE ENROLMENT-MARGIN CPU THE EVAL-STEP GATE
@@ -1265,7 +1265,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.self_host.closure_emission.ce_emission_member_body_refuses",
   "v2.test.claim.self_host.closure_emission.ce_emission_duplicate_module",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_normalized",
-  "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
   "v2.extdeps.languages.dag.dag_canonical_symbol_map",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_combined_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_alias_spelled_as_emitted_id_assembled",
