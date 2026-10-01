@@ -673,7 +673,7 @@ fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr) 
     "set -e\n",
     // DEV-ONLY (operator ruling 2026-09-30, never merged): wait up to 60 min for the head's front door while the
     // four ranks load the checkpoint; the modeled check asks once, immediately after the ranks join.
-    "for i in $(seq 1 180); do curl -fsS --max-time 30 http://127.0.0.1:", port_text, "/v1/models > ", spark_native_readback_dir, "/models.json 2>/dev/null && break; sleep 20; done\n",
+    "for i in $(seq 1 180); do curl -fsS --max-time 30 http://127.0.0.1:", port_text, "/v1/models > ", spark_native_readback_dir, "/models.json 2>/dev/null && break; if grep -qE 'Engine core initialization failed|EngineCore failed to start' /var/log/gunbc/v41-tp4-head.log 2>/dev/null; then echo DEV-ENGINE-FAILED; grep -nE 'Error|Traceback' /var/log/gunbc/v41-tp4-head.log | grep -v 'File ' | head -n 30; break; fi; sleep 20; done\n",
     "if ! curl -fsS --max-time 30 http://127.0.0.1:", port_text, "/v1/models > ", spark_native_readback_dir, "/models.json; then echo READBACK-REFUSED-front-door-unanswered; exit 1; fi\n",
     "tr -d ' \\n' < ", spark_native_readback_dir, "/models.json > ", spark_native_readback_dir, "/models.compact\n",
     "if ! grep -Fq ", shell_quote(arg: join(["\"id\":\"", served_alias as String, "\""], "")), " ", spark_native_readback_dir, "/models.compact; then echo READBACK-REFUSED-front-door-serves-another-model; exit 1; fi\n",
