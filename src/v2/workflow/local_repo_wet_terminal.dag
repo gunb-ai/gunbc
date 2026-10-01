@@ -2544,7 +2544,18 @@ fn local_repo_wet_identity_passed_on_candidate(
               row: ClaimTerminalRow { identity: t.identity, expectation: ExpectedToHold {}, terminal: a }
             ) {
               Passed => true
-              _ => false
+              Failed => false
+              KnownRedHeld => false
+              KnownRedNowPassing => false
+              BudgetRefusedBeforeVerdict => false
+              PassedOverBudget => false
+              BudgetTerminalWithoutSafetyCause => false
+              HostToolUnresolvedBeforeVerdict => false
+              RouteGapBeforeVerdict => false
+              RuntimeErroredBeforeVerdict => false
+              PanickedBeforeVerdict => false
+              NotAttemptedAfterAbort => false
+              ObservationUnreadableBeforeVerdict => false
             }
         }
     }
