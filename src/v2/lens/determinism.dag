@@ -28,6 +28,7 @@ import v2.std.compilers.body_lowering {
   ApplicationHeadRefused,
   ArrowHead,
   AtomHead,
+  LocalHead,
   NotApplicationHead,
   application_head_read
 }
@@ -127,6 +128,7 @@ fn local_determinism_read(n: Node) -> DeterminismRead {
         AtomHead { identity: sym } =>
           DeterminismRead { axis: determinism_axis_for_primitive_name(sym: sym), unread: determinism_read_nothing_unread }
         ArrowHead => DeterminismRead { axis: std.determinism.Deterministic, unread: determinism_read_nothing_unread }
+        LocalHead { binder: _ } => DeterminismRead { axis: std.determinism.Deterministic, unread: determinism_read_nothing_unread }
       }
   }
 }

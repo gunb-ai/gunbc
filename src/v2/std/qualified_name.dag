@@ -387,6 +387,16 @@ fn binder_reference_symbol_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
+// A RESOLVED LOCAL, OF EITHER KIND, READS AS THE NAME IT IS SPELLED BY: a named fn's parameter
+// reference as its declaring path's leaf, a binder reference as its binder. Every consumer that
+// spells a local (the emitter, the application-head view) asks this one reader.
+fn local_reference_symbol_optional(node: Node) -> Optional<Symbol> {
+  match parameter_reference_path_optional(node: node) {
+    Present { value: path } => qualified_name_last_segment(qn: path)
+    Absent => binder_reference_symbol_optional(node: node)
+  }
+}
+
 fn resolved_reference_path_optional(node: Node, kind: ResolvedReferenceKind) -> Optional<QualifiedName> {
   match resolved_reference_spine_optional(node: node, kind: kind) {
     Present { value: spine } =>

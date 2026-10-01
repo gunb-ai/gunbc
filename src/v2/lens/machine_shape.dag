@@ -39,6 +39,7 @@ import v2.std.compilers.body_lowering {
   ApplicationHeadRefused,
   ArrowHead,
   AtomHead,
+  LocalHead,
   NotApplicationHead,
   application_head_read
 }
@@ -142,6 +143,7 @@ fn constructed_tag(n: Node) -> ConstructedTag {
           match identity {
             AtomHead { identity: sym } => Constructs { tag: sym }
             ArrowHead => NoConstruction
+            LocalHead { binder: _ } => NoConstruction
           }
       }
   }

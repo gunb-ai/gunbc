@@ -20,6 +20,7 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.optional { Optional }
+import v2.std.qualified_name { local_reference_symbol_optional }
 import v2.std.node {
   Bind,
   Branch,
@@ -279,12 +280,15 @@ fn view_atom_identity_optional(n: Node) -> Optional<Symbol> {
 // well formed. Folding the last two together is how a malformed call used to read as "not a call" and drop out of every
 // lens silently, so they are separate arms here and in each view built on this one.
 //
-// The head is an atom (a name, before or after resolution) or an Arrow (a resolved callee). Which
+// The head is an atom (a name, before or after resolution), an Arrow (a resolved callee), or a
+// resolved LOCAL -- a parameter or binder reference (v2.std.qualified_name
+// local_reference_symbol_optional) naming a closure held in a local, never a declared name. Which
 // it is, is carried as a coproduct rather than an optional identity, so a consumer that wants a
 // name must say what it does with an Arrow head.
 type ApplicationHead
   = AtomHead { identity: Symbol }
   | ArrowHead
+  | LocalHead { binder: Symbol }
 
 type ApplicationView {
   head: Node
@@ -303,7 +307,11 @@ fn application_head_optional(n: Node) -> Optional<ApplicationHead> {
     _ =>
       match view_atom_identity_optional(n: n) {
         Present { value: id } => Present { value: AtomHead { identity: id } }
-        Absent => Absent
+        Absent =>
+          match local_reference_symbol_optional(node: n) {
+            Present { value: binder } => Present { value: LocalHead { binder: binder } }
+            Absent => Absent
+          }
       }
   }
 }
@@ -421,6 +429,8 @@ fn application_head_read_transform(site: Node) -> ApplicationHeadRead {
               match application_head_optional(n: head) {
                 Present { value: AtomHead { identity: id } } =>
                   ApplicationHeadFound { head: head, head_identity: AtomHead { identity: id }, operands: rest }
+                Present { value: LocalHead { binder: b } } =>
+                  ApplicationHeadFound { head: head, head_identity: LocalHead { binder: b }, operands: rest }
                 Present { value: ArrowHead } =>
                   match operand_slot_of(n: head) {
                     ResidueOperand { node: _ } => application_head_refused(reason: ^body_view_operand_residue, at: head)
@@ -513,6 +523,7 @@ fn call_read(site: Node, operators: List<Symbol>) -> CallRead {
       match a.head_identity {
         AtomHead { identity: id } => if contains(xs: operators, item: id, eq: symbol_eq) { NotCall } else { call }
         ArrowHead => call
+        LocalHead { binder: _ } => call
       }
   }
 }
@@ -528,6 +539,7 @@ fn operator_read(site: Node, binary_operators: List<Symbol>, prefix_operators: L
     Application { view: a } =>
       match a.head_identity {
         ArrowHead => NotOperator
+        LocalHead { binder: _ } => NotOperator
         AtomHead { identity: id } =>
           let arity = count(a.operands)
           let binary = contains(xs: binary_operators, item: id, eq: symbol_eq)

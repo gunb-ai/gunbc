@@ -23,6 +23,7 @@ import v2.std.compilers.body_lowering {
   ApplicationHeadRefused,
   ArrowHead,
   AtomHead,
+  LocalHead,
   NotApplicationHead,
   application_head_read,
   body_lowering_diagnostic
@@ -295,6 +296,7 @@ fn callee_text_read(node: Node) -> CalleeTextRead {
     ApplicationHeadFound { head: head, head_identity: identity, operands: _ } =>
       match identity {
         AtomHead { identity: sym } => CalleeText { text: symbol_lexeme(sym: sym) }
+        LocalHead { binder: b } => CalleeText { text: symbol_lexeme(sym: b) }
         ArrowHead =>
           CalleeUnreadable {
             diagnostics: diagnostics_singleton(

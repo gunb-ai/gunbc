@@ -179,8 +179,7 @@ import v2.std.qualified_name {
   qualified_name_from_node,
   qualified_name_init,
   qualified_name_last_segment,
-  parameter_reference_path_optional,
-  binder_reference_symbol_optional,
+  local_reference_symbol_optional,
   declaration_reference_path_optional
 }
 import v2.std.logic {
@@ -14580,7 +14579,7 @@ fn target_transform_positional_operand_binding_atom(child: Node) -> Outcome<Symb
   match child.kind {
     TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
     TypeNode { connective: Conj } =>
-      match target_value_expr_local_reference_leaf(node: child) {
+      match local_reference_symbol_optional(node: child) {
         Present { value: leaf } => outcome_accepted(leaf)
         Absent => target_transform_positional_operand_binding_atom_otherwise(child: child)
       }
@@ -14812,20 +14811,13 @@ fn target_value_expr_arrow_body_scope_binding(
 // binder either names was decided once, upstream in v2.compiler.resolve, so the projector spells the
 // leaf as a local and never searches a scope for it. A bare Atom is never a resolved local: it is a
 // literal, a kernel name, or a name resolution did not bind, and it keeps the arrow-scope check.
-fn target_value_expr_local_reference_leaf(node: Node) -> Optional<Symbol> {
-  match parameter_reference_path_optional(node: node) {
-    Present { value: path } => qualified_name_last_segment(qn: path)
-    Absent => binder_reference_symbol_optional(node: node)
-  }
-}
-
 fn target_arrow_scope_operand_binding(
   arrow: Node,
   body: Node,
   operand: Node,
   target: TargetModel
 ) -> Outcome<Symbol> {
-  match target_value_expr_local_reference_leaf(node: operand) {
+  match local_reference_symbol_optional(node: operand) {
     Present { value: leaf } => outcome_accepted(leaf)
     Absent =>
       bind_outcome(
@@ -14956,7 +14948,7 @@ fn target_project_callable_arg_in_arrow_scope(
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
-  match target_value_expr_local_reference_leaf(node: arg) {
+  match local_reference_symbol_optional(node: arg) {
     Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
     Absent =>
   match arg.kind {
@@ -15209,7 +15201,7 @@ fn target_value_expr_project_atom_in_arrow_scope(
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape
 ) -> Outcome<TargetValueExpression> {
-  match target_value_expr_local_reference_leaf(node: node) {
+  match local_reference_symbol_optional(node: node) {
     Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
     Absent =>
   bind_outcome(
@@ -16064,7 +16056,7 @@ fn target_value_expr_project_body_subexpression(
         handle_transform: handle_transform
       )
     TypeNode { connective: Conj } =>
-      match target_value_expr_local_reference_leaf(node: node) {
+      match local_reference_symbol_optional(node: node) {
         Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
         Absent =>
       if target_value_expr_record_construct_gate(node: node) {
@@ -16428,7 +16420,7 @@ fn target_project_arrow_body_by_kind(
           handle_transform: handle_transform
         )
       TypeNode { connective: Conj } =>
-        match target_value_expr_local_reference_leaf(node: body) {
+        match local_reference_symbol_optional(node: body) {
           Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
           Absent =>
         if target_value_expr_record_construct_gate(node: body) {

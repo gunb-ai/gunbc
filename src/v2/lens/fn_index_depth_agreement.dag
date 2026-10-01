@@ -14,6 +14,7 @@ import v2.std.compilers.body_lowering {
   ApplicationRefused,
   ArrowHead,
   AtomHead,
+  LocalHead,
   NotApplication,
   application_read
 }
@@ -159,6 +160,7 @@ fn channel_counts_of(node: Node) -> ChannelCounts {
       match v.head_identity {
         AtomHead { identity: _ } => ChannelCounts { call_nodes: 1, resolved_callees: 1, refused_applications: 0 }
         ArrowHead => ChannelCounts { call_nodes: 1, resolved_callees: 0, refused_applications: 0 }
+        LocalHead { binder: _ } => ChannelCounts { call_nodes: 1, resolved_callees: 1, refused_applications: 0 }
       }
   }
 }

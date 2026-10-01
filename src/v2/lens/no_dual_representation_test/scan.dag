@@ -32,6 +32,7 @@ import v2.std.compilers.body_lowering {
   ApplicationSlotsRefused,
   ArrowHead,
   AtomHead,
+  LocalHead,
   NotApplicationSlots,
   ResidueOperand,
   WholeOperand,
@@ -314,6 +315,7 @@ fn classify_application_lhs(
     ApplicationSlotsFound { slots: v } =>
       match v.head_identity {
         ArrowHead => dual_rep_violation(path: path, fn_name: fn_name, kind: EqOperandUnreadable)
+        LocalHead { binder: _ } => empty_dual_rep_violations
         AtomHead { identity: sym } =>
           match first_call_arg_read(slots: v) {
             NotSingleArgument => empty_dual_rep_violations
