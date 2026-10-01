@@ -173,9 +173,9 @@ pub(crate) use emit_host::*;
 pub use emit_host::{
     builtin_function_registry_keys, compile_dag_call_form_leaf_guard,
     compile_dag_callsite_resolved_call_edges, compile_dag_importer_resolved_call_edges,
-    compile_dag_multi_module_fixture, compile_dag_primitive_call_edges,
-    compile_dag_reference_occurrence_binding_census, emit_module_storage_binding_manifest,
-    emit_source_root_ingest_manifest,
+    compile_dag_multi_module_fixture, compile_dag_operation_requires,
+    compile_dag_primitive_call_edges, compile_dag_reference_occurrence_binding_census,
+    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
 };
 pub use emit_host::{
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
