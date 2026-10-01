@@ -106,6 +106,8 @@ import v2.std.symbol_index {
   symbol_index_renaming_alias_at
 }
 import v2.std.node {
+  MapLiteralEntriesEdge,
+  labeled_core_is,
   named_edges,
   positional_child_count,
   positional_edges,
@@ -177,7 +179,6 @@ import v2.std.map_introduction {
   MapLiteralEntriesNone,
   MapLiteralEntriesPresent,
   map_literal_entries,
-  map_literal_entries_label,
   lower_map_introduction,
   map_introduction_duplicate_key,
   map_introduction_expected_head_is_map
@@ -1953,7 +1954,7 @@ fn resolve_map_first_name_keyed_item(items: List<Edge>) -> Optional<Node> {
   fold(items, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
-      Absent => if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entries_label()) { optional_absent() } else { optional_present(value: e.target) }
+      Absent => if labeled_core_is(x: e, label_of: edge_label_of, wanted: MapLiteralEntriesEdge) { optional_absent() } else { optional_present(value: e.target) }
     }
   })
 }
@@ -2089,12 +2090,13 @@ fn resolve_map_entry_walk(ctx: ResolveContext, entry: Node, value_x: ResolveExpe
       child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
     } else {
       match e.label {
-        Named { name: nm } =>
+        Authored { name: nm } =>
           if symbol_eq(a: nm, b: ^value) {
             child_walk_step(w: acc, e: e, r: resolve_expected_edge(ctx: ctx, e: e, x: value_x))
           } else {
             child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
           }
+        StructuralLabel { label: _ } => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
         Positional => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
       }
     }

@@ -150,6 +150,8 @@ type CoreEdgeLabel
   | FieldProjectionFieldEdge
   | ConstructTagEdge
   | ConstructTagElidedEdge
+  | MapLiteralEntryEdge
+  | MapLiteralEntriesEdge
 
 fn core_edge_label(marker: CoreEdgeLabel) -> EdgeLabel {
   StructuralLabel { label: CoreMarker { marker: marker } }
@@ -204,6 +206,8 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     FieldProjectionFieldEdge,
     ConstructTagEdge,
     ConstructTagElidedEdge,
+    MapLiteralEntryEdge,
+    MapLiteralEntriesEdge,
   ]
 }
 
@@ -229,6 +233,8 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     FieldProjectionFieldEdge => ^core_field_projection_field_edge
     ConstructTagEdge => ^core_construct_tag_edge
     ConstructTagElidedEdge => ^core_construct_tag_elided_edge
+    MapLiteralEntryEdge => ^core_map_literal_entry_edge
+    MapLiteralEntriesEdge => ^core_map_literal_entries_edge
   }
 }
 type Edge {

@@ -83,7 +83,6 @@ import v2.std.compilers.body_lowering {
   lower_unary_prefix
 }
 import v2.std.list_introduction { lower_list_introduction }
-import v2.std.map_introduction { map_literal_entries_label, map_literal_entry_label }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
@@ -113,6 +112,10 @@ import v2.std.symbol_index {
   symbol_index_lookup
 }
 import v2.std.node {
+  MapLiteralEntryEdge,
+  MapLiteralEntriesEdge,
+  core_edge,
+  labeled_core_is,
   StructuralLabel,
   Arrow,
   edge_label_of,
@@ -8366,7 +8369,7 @@ fn parse_production_captured_child_optional_or_self(node: Node) -> Node {
   }
 }
 
-// The entry edge: v2.std.map_introduction map_literal_entry_label, targeting a tag-elided construct
+// The entry edge: v2.std.node CoreEdgeLabel MapLiteralEntryEdge, targeting a tag-elided construct
 // carrying `key` and `value`. Only resolve's map arm reads it.
 fn body_lower_map_literal_entry_edge(key: Node, after_key: Node, item: Node, refuse: Outcome<Edge>) -> Outcome<Edge> {
   match sugar_sequence_pair_optional(node: after_key) {
@@ -8377,11 +8380,11 @@ fn body_lower_map_literal_entry_edge(key: Node, after_key: Node, item: Node, ref
         Accepted { value: value, diagnostics: d } =>
           outcome_with_diagnostics(
             value: Edge {
-              label: Named { name: map_literal_entry_label() },
+              label: core_edge_label(marker: MapLiteralEntryEdge),
               target: construct_node_elided(
                 field_edges: [
-                  Edge { label: Named { name: ^key }, target: key },
-                  Edge { label: Named { name: ^value }, target: value }
+                  Edge { label: Authored { name: ^key }, target: key },
+                  Edge { label: Authored { name: ^value }, target: value }
                 ],
                 source: item
               )
@@ -8397,12 +8400,12 @@ fn body_lower_map_literal_entry_edge(key: Node, after_key: Node, item: Node, ref
 // is returned as it is.
 fn body_lower_map_literal_entries_collapsed(edges: List<Edge>, source: Node) -> List<Edge> {
   let pairs = fold(edges, init: [], f: fn(acc, e) {
-    if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entry_label()) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+    if labeled_core_is(x: e, label_of: edge_label_of, wanted: MapLiteralEntryEdge) { list_snoc_item(xs: acc, item: e.target) } else { acc }
   })
   match pairs {
     Empty => edges
     Cons { head: _, tail: _ } =>
-      [Edge { label: Named { name: map_literal_entries_label() }, target: lower_list_introduction(elements: pairs, source: source) }]
+      [core_edge(marker: MapLiteralEntriesEdge, target: lower_list_introduction(elements: pairs, source: source))]
   }
 }
 
@@ -8419,13 +8422,13 @@ fn body_lower_brace_key_kinds_refusal_optional(reference: Node, edges: List<Edge
   let first_entry = fold(edges, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
-      Absent => if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entry_label()) { optional_present(value: e) } else { optional_absent() }
+      Absent => if labeled_core_is(x: e, label_of: edge_label_of, wanted: MapLiteralEntryEdge) { optional_present(value: e) } else { optional_absent() }
     }
   })
   let first_field = fold(edges, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
-      Absent => if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entry_label()) { optional_absent() } else { optional_present(value: e) }
+      Absent => if labeled_core_is(x: e, label_of: edge_label_of, wanted: MapLiteralEntryEdge) { optional_absent() } else { optional_present(value: e) }
     }
   })
   match first_entry {
@@ -8542,7 +8545,7 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<RecordLite
 // (v2.std.node_query construct_tag_elided_reference), and resolve's construct-tag writer either
 // writes the expected record's reference or refuses located
 // (docs/plans/anonymous-record-literal-design.md). The field set is never consulted to choose. A
-// string-keyed brace (a map literal) carries its pairs on one map_literal_entries edge; resolve's map arm reads
+// string-keyed brace (a map literal) carries its pairs on one MapLiteralEntriesEdge edge; resolve's map arm reads
 // it (docs/plans/map-literal-introduction-design.md).
 fn body_lower_try_headless_record_literal(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_record_brace_items_optional(brace: captured) {
