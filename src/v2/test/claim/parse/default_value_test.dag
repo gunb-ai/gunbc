@@ -45,14 +45,14 @@ fn tree_holds_a_defaulted_binder(n: Node) -> Bool {
 
 fn param_default_lowered_onto_its_binder() -> Bool {
   match conservation_subject_of_text(path: "probe_param_default.dag", text: param_default_source).normalized {
-    Accepted { value: tree, diagnostics: _ } => tree_holds_a_defaulted_binder(n: tree)
+    Accepted { value: tree, diagnostics: _ } => tree_holds_a_defaulted_binder(n: tree.root)
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn field_default_lowered_onto_its_binder() -> Bool {
   match conservation_subject_of_text(path: "probe_field_default.dag", text: field_default_source).normalized {
-    Accepted { value: tree, diagnostics: _ } => tree_holds_a_defaulted_binder(n: tree)
+    Accepted { value: tree, diagnostics: _ } => tree_holds_a_defaulted_binder(n: tree.root)
     Rejected { diagnostics: _ } => false
   }
 }
