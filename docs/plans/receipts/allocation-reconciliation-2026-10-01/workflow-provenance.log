@@ -1,0 +1,25 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-executor-isolated
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=10 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=2492 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=314 scale=tree
+[pre-entry] phase=closure_name_census_build ms=827 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=10 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=30 scale=closure
+[pre-entry] phase=closure_load ms=3803 scale=closure
+[pre-entry] phase=closure_parse ms=2699 scale=closure
+[pre-entry] phase=closure_resolve ms=143 scale=closure
+[pre-entry] phase=closure_normalize ms=528 scale=closure
+[pre-entry] phase=closure_typecheck ms=54390 scale=closure
+[pre-entry] phase=closure_parent_envs ms=4 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=77 scale=closure
+[pre-entry] phase=closure_ownership ms=663 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=73046 scale=closure
+[pre-entry] population pool_modules=394 closure_files=394
+[pre-entry] process_cpu user_ms=71732 sys_ms=1071 max_rss_kib=2068216
+◐ started Filesystem.Write target/workflow-provenance.txt (213 bytes)

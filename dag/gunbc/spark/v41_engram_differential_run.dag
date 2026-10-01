@@ -1,5 +1,7 @@
 module gunbc.spark.v41_engram_differential_run
 
+import gunbc.spark.v41_workflow_artifacts { v41_differential_receipt_path }
+
 import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
 import std.nat { Nat }
 import std.checked_arithmetic { nat_magnitude }
@@ -298,7 +300,6 @@ fn v41_differential_on(ctx: SparkMaterializeContext, claim: NonEmptyStr, image: 
 
 // ── THE FLEET-CONVERGE ENTRY ────────────────────────────────────────────────────────────────────
 data v41_differential_attempt_raw: String = "v41-engram-differential-ci"
-data v41_differential_receipt_path: String = "target/v41-engram-differential-receipt.txt"
 data v41_differential_host_purpose: NonEmptyStr = "the design-B Engram differential, which starts one GPU container that reads sampled rows of the row stores read-only" as NonEmptyStr
 data v41_differential_host_effect_term: Second = second(count: 3600)
 

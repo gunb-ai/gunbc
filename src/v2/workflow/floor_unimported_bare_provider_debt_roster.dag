@@ -19,6 +19,7 @@ module v2.workflow.floor_unimported_bare_provider_debt_roster
 type UnimportedBareProviderRetirementCause =
     ImportsFixed
   | FileDeleted
+  | RelocatedOutOfSourceRoots { to: String }
   | NotAReference
 
 type UnimportedBareProviderStanding =
@@ -45,6 +46,7 @@ fn unimported_bare_provider_standing_label(standing: UnimportedBareProviderStand
     Retired { cause: c } => match c {
       ImportsFixed => "Retired ImportsFixed"
       FileDeleted => "Retired FileDeleted"
+      RelocatedOutOfSourceRoots { to: t } => "Retired RelocatedOutOfSourceRoots " + t
       NotAReference => "Retired NotAReference"
     }
   }
@@ -57,6 +59,7 @@ type UnimportedBareProviderRowView {
   name: String
   identity: String
   label: String
+  standing: UnimportedBareProviderStanding
   active: Bool
   imports_fixed: Bool
   file_deleted: Bool
@@ -69,6 +72,7 @@ fn unimported_bare_provider_row_view(row: UnimportedBareProviderDisposition) -> 
     name: row.name,
     identity: unimported_bare_provider_identity(file: row.file, name: row.name),
     label: unimported_bare_provider_standing_label(standing: row.standing),
+    standing: row.standing,
     active: match row.standing {
       ActiveDebt => true
       Retired { cause: _ } => false
@@ -118,7 +122,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/extdeps/boot/freestanding_witness.dag", name: "static_hello_elf64_ehdr_bytes", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/boot/freestanding_witness.dag", name: "static_hello_first_phdr_bytes", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/bootloader/grub.dag", name: "append", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "dag/extdeps/bootloader/grub.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/extdeps/bootloader/grub.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/browser/browser.dag", name: "Fill", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/cache/materialization.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/cache/types.dag", name: "any", standing: Retired { cause: NotAReference } },
@@ -224,7 +228,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/extdeps/languages/yaml/emit.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/languages/yaml/emit.dag", name: "empty_map", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/languages/yaml/emit.dag", name: "ends_with", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/extdeps/languages/yaml/emit.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/extdeps/languages/yaml/emit.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/languages/yaml/emit.dag", name: "map_insert", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/languages/yaml/gha_workflow.dag", name: "Python", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/languages/yaml/gha_workflow.dag", name: "length", standing: ActiveDebt },
@@ -244,7 +248,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_mountinfo.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_mountinfo.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_net_tcp.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_net_tcp.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_net_tcp.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_net_tcp.dag", name: "length", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_pid_stat.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_self_cgroup.dag", name: "filter", standing: Retired { cause: NotAReference } },
@@ -435,12 +439,12 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/commit_workflow.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/compile_diagnostic_census.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/container/registry_image_config.dag", name: "append", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/container/registry_image_config.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/container/registry_image_config.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/contributor_onboarding_path.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/cross_pr_contradiction.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/cross_pr_contradiction.dag", name: "empty_map", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/cross_pr_contradiction.dag", name: "filter", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/cross_pr_contradiction.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/cross_pr_contradiction.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/cross_pr_contradiction.dag", name: "map_insert", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/dag_grammar_fork_census.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/decoder_execution_identity.dag", name: "ReadsLiveTree", standing: ActiveDebt },
@@ -466,7 +470,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/engram_materialization.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/engram_materialization.dag", name: "length", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_source_snapshot.dag", name: "any", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_source_snapshot.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_source_snapshot.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_source_snapshot.dag", name: "length", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_storage_file_store.dag", name: "skip", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fabric/fabric_storage_wire.dag", name: "length", standing: ActiveDebt },
@@ -604,13 +608,13 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/bmc_firmware_family_discriminator.dag", name: "any", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/host_capture_envelope.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/host_capture_envelope.dag", name: "ends_with", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/host_capture_envelope.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/host_capture_envelope.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/mtcollins1_bmc_sensor_observation.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/mtcollins1_census_medium_readback.dag", name: "get", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/mtcollins1_physical_orientation.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/pre_os_bringup_verdict.dag", name: "append", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/pre_os_bringup_verdict.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/pre_os_bringup_verdict.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/pre_os_observer.dag", name: "ends_with", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/pre_os_replay.dag", name: "record_identity", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/machine_intake/predictive_review_render.dag", name: "append", standing: Retired { cause: ImportsFixed } },
@@ -807,7 +811,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/spark/v41_engram_row_store.dag", name: "any", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/spark/v41_engram_row_store.dag", name: "empty_map", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/spark/v41_engram_row_store.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/spark/v41_engram_row_store.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/spark/v41_engram_row_store.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/spark/v41_engram_row_store.dag", name: "map_get", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/spark/v41_engram_row_store.dag", name: "map_insert", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/spark/v41_runtime_candidate.dag", name: "get", standing: ActiveDebt },
@@ -927,12 +931,12 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/std/realization.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/std/realization.dag", name: "length", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/std/reference_realization.dag", name: "filter", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/std/resources.dag", name: "Capability", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/std/resources.dag", name: "Observation", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/std/resources.dag", name: "Read", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/std/resources.dag", name: "Capability", standing: Retired { cause: ImportsFixed } },
+  UnimportedBareProviderDisposition { file: "dag/std/resources.dag", name: "Observation", standing: Retired { cause: ImportsFixed } },
+  UnimportedBareProviderDisposition { file: "dag/std/resources.dag", name: "Read", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/std/resources.dag", name: "now", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/std/resources.dag", name: "read", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "dag/std/scoped_authorization.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/std/scoped_authorization.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/std/scoped_authorization.dag", name: "is_empty", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/std/scoped_authorization.dag", name: "length", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/std/serialize.dag", name: "q", standing: Retired { cause: NotAReference } },
@@ -1013,7 +1017,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/build_cache_endpoint_observe_test.dag", name: "ObservationCurrent", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/build_cache_endpoint_observe_test.dag", name: "RunnerWidthDerived", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/build_cache_endpoint_observe_test.dag", name: "RunnerWidthUnresolved", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/build_cache_endpoint_observe_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/build_cache_endpoint_observe_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/build_cache_endpoint_observe_test.dag", name: "admit_ensure_build_cache_instance", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/build_cache_endpoint_observe_test.dag", name: "gunbc_runner_committed_width", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/build_cache_ensure_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
@@ -1025,7 +1029,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/capacity_pool_witness_test.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/census_app_acquisition_refusal_probe_witness_test.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/cgroup_v2_memory_hard_limit_witness_test.dag", name: "length", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/ci/ci_budget_tree_witness_test.dag", name: "ReadsLiveTree", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/ci/ci_budget_tree_witness_test.dag", name: "ReadsLiveTree", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/ci/ci_failure_class_witness_test.dag", name: "CommandNotFound", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/ci/ci_failure_class_witness_test.dag", name: "ExitFailure", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/ci/ci_failure_class_witness_test.dag", name: "FloorFailed", standing: ActiveDebt },
@@ -1088,7 +1092,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/cross_file_binding_assembly_witness_test.dag", name: "any", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/cross_pr_contradiction_witness_test.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/cross_pr_contradiction_witness_test.dag", name: "filter", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/cross_pr_contradiction_witness_test.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/cross_pr_contradiction_witness_test.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/cursor_sdk_dispatch_bridge_witness_test.dag", name: "env_var", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/data_class_refusal_probe_witness_test.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/decision_completeness_witness_test.dag", name: "any", standing: Retired { cause: ImportsFixed } },
@@ -1294,7 +1298,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/hand_lens_host_bridge_scaffold_watchdog_test.dag", name: "transport_script_position_scaffold_row", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/hetzner_cost_quote_witness_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/hetzner_listing_witness_test.dag", name: "obligation", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/host/host_allocation_conservation_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/host/host_allocation_conservation_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/host/host_hygiene_liveness_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/host/host_phase_status_witness_test.dag", name: "CiRunnerParticipation", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/host/host_phase_status_witness_test.dag", name: "DeclaredGap", standing: ActiveDebt },
@@ -1698,7 +1702,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/unit_variant_binding_authority_witness_test.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/v1_source_audit_witness_test.dag", name: "map_get", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/vllm/recipe_deepseek_v4_1_flash_witness_test.dag", name: "any", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/vllm/vllm_engram_layout_witness_test.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/vllm/vllm_engram_layout_witness_test.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/vllm/vllm_engram_layout_witness_test.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/vllm/vllm_engram_layout_witness_test.dag", name: "skip", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/vllm_engine_args_render_witness_test.dag", name: "length", standing: ActiveDebt },
@@ -1709,9 +1713,9 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/witness_purpose_taxonomy_witness_test.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/x509_rfc5280_witness_test.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/x509_rfc5280_witness_test.dag", name: "skip", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "SshShell", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "redfish.Http", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "ssh_session_exec", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "SshShell", standing: Retired { cause: RelocatedOutOfSourceRoots { to: "fixtures/health_read_only/mutation_probe.dag" } } },
+  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "redfish.Http", standing: Retired { cause: RelocatedOutOfSourceRoots { to: "fixtures/health_read_only/mutation_probe.dag" } } },
+  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "ssh_session_exec", standing: Retired { cause: RelocatedOutOfSourceRoots { to: "fixtures/health_read_only/mutation_probe.dag" } } },
   UnimportedBareProviderDisposition { file: "dag/test/manual/mercurial_upstream_model_execution_test.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/manual/pijul_upstream_model_execution_test.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/compiler/body_producer_forward.dag", name: "dag_translation_rules_node", standing: Retired { cause: ImportsFixed } },

@@ -1,5 +1,7 @@
 module gunbc.spark.v41_runtime_image_converge
 
+import gunbc.spark.v41_workflow_artifacts { v41_distribution_receipt_path }
+
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
@@ -577,7 +579,6 @@ fn v41_with_host_effect_claim(host: HostIdentity, p: V41ProducedImageHeld, run: 
 }
 
 data v41_distribution_attempt_raw: String = "v41-runtime-image-distribute"
-data v41_distribution_receipt_path: String = "target/v41-runtime-image-distribute-receipt.txt"
 
 fn v41_distribute_to(target_host: HostIdentity, p: V41ProducedImageHeld) -> ProcessExit {
   let now = clock_now_probed_at()
