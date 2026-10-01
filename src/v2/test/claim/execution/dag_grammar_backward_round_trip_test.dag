@@ -11,7 +11,7 @@ import v2.std.fn_index { non_empty_diagnostics_list }
 import v2.std.grammar { GrammarRoot, node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol, content_hash }
+import v2.std.node { Node, Symbol, content_hash, symbol_lexeme }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -176,3 +176,35 @@ test fn the_unmutated_root_emits_the_red_fixture_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+// WHY A ROUND TRIP FAILED, as text: the stage that refused and its reasons, or the emitted text when
+// the trees differ. Not a claim (it returns no verdict); it is what an operator runs beside a red one.
+fn rt_reasons(ds: List<Diagnostic>) -> String {
+  fold(ds, init: "", f: fn(acc, d) { concat(acc, concat(" ", symbol_lexeme(sym: d.reason))) })
+}
+
+fn rt_why(text: String) -> String {
+  match rt_parse(text: text) {
+    Rejected { diagnostics: d } => concat("parse refused:", rt_reasons(ds: non_empty_diagnostics_list(d: d)))
+    Accepted { value: tree, diagnostics: _ } =>
+      match dag_emit_parse_tree(tree: tree) {
+        Rejected { diagnostics: d } => concat("emit refused:", rt_reasons(ds: non_empty_diagnostics_list(d: d)))
+        Accepted { value: emitted, diagnostics: _ } =>
+          match rt_parse(text: emitted) {
+            Rejected { diagnostics: d } => concat("re-ingest refused [", concat(emitted, concat("]:", rt_reasons(ds: non_empty_diagnostics_list(d: d)))))
+            Accepted { value: again, diagnostics: _ } =>
+              if content_hash(n: tree) == content_hash(n: again) { concat("same [", concat(emitted, "]")) } else { concat("trees differ [", concat(emitted, "]")) }
+          }
+      }
+  }
+}
+
+fn rt_why_data_decl() -> String { rt_why(text: rt_data_decl_source) }
+fn rt_why_let() -> String { rt_why(text: rt_let_source) }
+fn rt_why_list() -> String { rt_why(text: rt_list_source) }
+fn rt_why_map_literal() -> String { rt_why(text: rt_map_literal_source) }
+fn rt_why_match() -> String { rt_why(text: rt_match_source) }
+fn rt_why_escaped_key() -> String { rt_why(text: rt_escaped_key_source) }
+fn rt_why_quoted_key() -> String { rt_why(text: rt_quoted_key_source) }
+fn rt_why_string_escapes() -> String { rt_why(text: rt_string_escapes_source) }
+fn rt_why_bare_key() -> String { rt_why(text: rt_bare_key_source) }
