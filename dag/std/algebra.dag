@@ -237,6 +237,30 @@ type FinitelySupportedFunction<K, V> {
   size: fn() -> Int
 }
 
+// THE MAP-LITERAL INTRODUCTION: the declaration a map literal `{ "k": v, .. }` elaborates to, as
+// `FreeMonoid` is the one a list literal elaborates to (v2.std.map_introduction carries its head
+// path and constructor; docs/plans/map-literal-introduction-design.md). It is NOT a second
+// constructor of the carrier: it is the carrier's own insert (the `map_insert` row of
+// `finitely_supported_function_templates`) folded over its own empty (the `empty_map` row), in
+// authored order. It lives HERE, below `std.types`, because `std.types`' own map literals elaborate
+// to it; a home that imports `std.types` (v2.std.collection) would close an import cycle.
+//
+// The fold's last-write-wins is unobservable on every accepted program: the one writer that builds
+// this call (v2.compiler.resolve, the map arm) refuses a repeated key BEFORE it builds it
+// (v2.std.map_introduction map_introduction_duplicate_key). A caller that bypasses that writer and
+// calls this directly with a repeated key gets insert's semantics, which is what it asked for.
+// The result is spelled `Map<K, V>`, the kernel container spelling this module already uses bare
+// (kernel_algebra_profile_value), because the seed types `empty_map()` only under a keyed-collection
+// expectation; it names this carrier (std.types Map = FinitelySupportedFunction).
+type MapIntroductionEntry<K, V> {
+  key: K
+  value: V
+}
+
+fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> Map<K, V> {
+  entries |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.key, entry.value))
+}
+
 // MOVED HERE from `v2.std.collection` by the change that split `PartialFunction`. They are the
 // total corner of the family above, and leaving them in a different module from their own axis is
 // where a fork starts. `TotalPolicy` travels with `TotalMap` rather than staying behind: it is the

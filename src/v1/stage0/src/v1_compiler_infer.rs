@@ -29639,12 +29639,14 @@ pub fn reconcile_with_census_extra(
         let modules =
             rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
-        let emit_info = build_emit_graph_info(modules.clone(), typed.item_registry.clone());
         Rc::new(ResolvedGraph {
             modules: modules.clone(),
             item_registry: typed.item_registry.clone(),
+            item_leaf_owner_modules:
+                crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(
+                    typed.item_registry.clone(),
+                ),
             diagnostics: typed.diagnostics.clone(),
-            emit_graph_info: emit_info.clone(),
         })
     }
 }
