@@ -81,6 +81,10 @@ __pycache__/
 # regenerable from committed source — membership list derived from sibling row files before compile; not a second authored authority
 /dag/gunbc/recurring_failure_mode/roster.dag
 
+# --- Derived rung-drop roster [owner: gunbc.rung_drop] ---
+# regenerable from committed source — membership list derived from sibling RungDrop row files before compile; not a second authored authority
+/dag/gunbc/rung_drop/roster.dag
+
 # --- Generator stamp files [owner: gunbc.generated_artifact] ---
 # regenerable from committed source — producer-centric generator stamps
 .*-stamp

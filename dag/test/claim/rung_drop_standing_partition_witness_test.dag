@@ -8,7 +8,8 @@ import gunbc.rung_drop {
   consolidated_typed_drop_identities,
   every_consolidated_typed_drop_is_rostered_once,
 }
-import gunbc.rung_drop.roster { rung_drop_roster, standing_rung_drops }
+import gunbc.rung_drop.roster { rung_drop_roster }
+import gunbc.rung_drop.standing { standing_rung_drops }
 import gunbc.rung_drop.cited_symbol_census { cited_symbol_census }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 

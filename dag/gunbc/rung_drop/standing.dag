@@ -1,0 +1,22 @@
+module gunbc.rung_drop.standing
+
+// THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. It lives
+// beside the DERIVED roster rather than in it because `gunbc.rung_drop.roster` is written by the
+// compiler's directory fold (v1_compiler.cli_run.derived_row_roster) and carries membership only;
+// a hand-authored function inside a generated file would be overwritten on the next collect.
+//
+// The standing arm is read AT THE ONE SITE THAT CONSUMES IT rather than through a reusable
+// RungDropStanding -> Bool accessor: a named predicate beside a coproduct is a second, weaker
+// spelling of the variant the row already carries, and every later caller reaches for the Bool
+// instead of the arm it came from.
+
+import std.types { List }
+import gunbc.rung_drop { RungDrop, Standing, Retired }
+import gunbc.rung_drop.roster { rung_drop_roster }
+
+fn standing_rung_drops() -> List<RungDrop> {
+  filter(rung_drop_roster, d => match d.standing {
+    Standing => true
+    Retired { trigger_fired: _ } => false
+  })
+}

@@ -33,7 +33,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_boot_ma
 data mtcollins1_boot_matrix_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_boot_matrix_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_boot_matrix_rows; measured by "), m.measured_by))
 
 // THE ONE CAPABILITY that retires both matrix cost drops -- this one and
-// `gunbc.rung_drop.mtcollins1_boot_matrix_enrolment_dead_band_observed_only` -- named once so the two
+// `gunbc.rung_drop.mtcollins1_boot_matrix_enrolment_dead_band_observed_only_drop` -- named once so the two
 // cannot drift apart: the cost of both is the seed interpreter running the real entry.
 data mtcollins1_boot_matrix_native_witness_capability: String = "witnesses emitted to native code with the emitted runtime realizing v2.std.witness_evaluation evaluate_in_witness_frame and its v2.std.operation_realization modeled realization, EXECUTING ON THE MERGE PATH as a phase of a required lane whose red blocks a merge, running the mtcollins1 boot acceptance matrix with the real mtcollins1_boot_wet_on_srv1 entry"
 

@@ -1536,15 +1536,29 @@ pub(crate) fn reconstruct_base_index(
     // and `roster_from_path_listing` answers `None` rather than fabricating a present empty list.
     let base_path_refs: Vec<&str> = base_paths.iter().map(|p| p.as_str()).collect();
     for record in index_records(head_index) {
-        let Some(root) = crate::cli_run::derived_row_roster::roster_root_prefix(&record.rel_path)
-        else {
+        if !crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
             continue;
-        };
-        let Some(content) = crate::cli_run::derived_row_roster::roster_from_path_listing(
+        }
+        // A BASE THAT STILL COMMITS THE ROSTER HAS A REAL BASE SIDE. Before a ledger's hand list
+        // was cut over to the derived fold the base tree carries `roster.dag` as source; the
+        // cutover diff deletes it, so it is read from the base tree with the rest of the diff's
+        // base side, and deriving it here as well would index the module twice.
+        if base_paths.contains(&record.rel_path) {
+            continue;
+        }
+        // Membership is selected by declared type, so the base side reads each listed row file's
+        // content at the base -- the same question the writer asks of the head's files.
+        let content = match crate::cli_run::derived_row_roster::roster_from_path_listing(
+            &record.rel_path,
             base_path_refs.iter().copied(),
-            root,
-        ) else {
-            continue;
+            |rel| {
+                git_stdout(&workspace, &["show", &format!("{base}:{rel}")])
+                    .map_err(|e| format!("reading base row file {rel}: {e}"))
+            },
+        ) {
+            Ok(Some(content)) => content,
+            Ok(None) => continue,
+            Err(reason) => return Ok(BaselineReconstruction::NotEvaluated { reason }),
         };
         // SYNTHESIZED BY THE CURRENT RENDERER, SO PARSED UNDER THE CURRENT GRAMMAR. This content is
         // not bytes read from the base tree; it is new source the head's roster writer produced from
