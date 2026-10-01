@@ -1849,6 +1849,7 @@ fn ct_coercion_tests() -> String {
     ct_unresolved_variant_pattern_refuses_test(),
     ct_diagnostics_carrier_grounding_test(),
     ct_std_nat_realization_agreement_test(),
+    ct_std_nat_operators_refuse_overflow_test(),
     ct_render_rust_applied_type_qualified_base_test(),
     ct_measure_unit_variant_exact_one_test(),
     ct_renderer_hop_identity_keying_test(),
@@ -2249,6 +2250,29 @@ fn ct_std_nat_realization_agreement_test() -> String {
     "        assert!(matches!(&*crate::std_nat::nat_div_rem(seventeen, 0), NatDivision::NatDivisionByZero));\n",
     "        let by_succ = crate::std_nat::nat_div_rem_by_succ(seventeen, 4);\n",
     "        assert_eq!((by_succ.quotient, by_succ.remainder), (3, 2), \"division by a successor has no zero arm and divides\");\n",
+    "    }\n\n")
+}
+
+// THE EMITTED NAT OPERATORS REFUSE OVERFLOW, AS THE INTERPRETER DOES. std.nat Nat is declared
+// inductively and grounded to the kernel integer, so its type reference has no checkpoint of its
+// own; v1.compiler.emit_rust expr_realizes_as_refusing_int must still route its operators through
+// the refusing helpers. The discriminator is the refusal TEXT, not the panic: this crate builds with
+// overflow-checks on, so a raw `*` also panics -- with rustc's text, and in the emitted crate's
+// release profile it wraps instead. Positive control: an in-range product is the integer it denotes.
+fn ct_std_nat_operators_refuse_overflow_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn std_nat_emitted_operators_refuse_overflow_through_the_runtime_helpers() {\n",
+    "        assert_eq!(crate::std_nat::nat_mul(6, 7), 42, \"an in-range product is the integer it denotes\");\n",
+    "        assert_eq!(crate::std_nat::nat_add(40, 2), 42, \"an in-range sum is the integer it denotes\");\n",
+    "        for (label, run) in [\n",
+    "            (\"nat_mul\", Box::new(|| { crate::std_nat::nat_mul(i64::MAX, 2); }) as Box<dyn Fn() + std::panic::RefUnwindSafe>),\n",
+    "            (\"nat_add\", Box::new(|| { crate::std_nat::nat_add(i64::MAX, 1); })),\n",
+    "        ] {\n",
+    "            let refusal = std::panic::catch_unwind(|| run()).expect_err(label);\n",
+    "            let text = refusal.downcast_ref::<String>().cloned().unwrap_or_default();\n",
+    "            assert!(text.starts_with(\"integer overflow:\"), \"{label} must refuse through v1_rt, got {text:?}\");\n",
+    "        }\n",
     "    }\n\n")
 }
 
