@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.interpreter_ignores_match_arm_guards
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data interpreter_ignores_match_arm_guards: RecurringFailureMode = RecurringFailureMode {
@@ -21,10 +22,14 @@ data interpreter_ignores_match_arm_guards: RecurringFailureMode = RecurringFailu
 
     "ADJACENT GAP FOUND BY THE SAME PROBE, NOT REPAIRED HERE: the checker ACCEPTS a guard that is not Bool. `match n { x if 5 => 1  _ => 2 }` resolved and type-checked clean under `claim_batch`, and only the interpreter's `MatchGuardNotBool` refused it at run time (`match guard at <file>:<offset> evaluated to 5 (Int), not a Bool`, cause token type-error). So a non-Bool guard is refused on the interpretation path at rung 1 and is not refused at acceptance at all; the emitted `if 5` would be a rustc refusal. Its next-rung trigger is the checker requiring a guard to inhabit Bool, which makes the interpreter arm unreachable from an Accepted program.",
 
+    "SECOND INDEPENDENT RECEIPT (gunbc#12859, bold-badger-829, folded here from the duplicate row it had filed as `match_guard_ignored_by_the_seed_interpreter`; two rows for one class is a DESIGN section 3 fork): found while building the interpreter-vs-emitted differential for gunbc.recurring_failure_mode nested_pattern_accepted_by_the_interpreter_and_broken_in_emitted_rust -- the authored-guard arm kind `match GP { GP if n > 0 => 1  _ => 2 }` returned 1 for n = 0 on the interpreter, so the differential reported the CORRECT emitted answer as the divergence. That is the harm stated from the differential's side: an interpreter-vs-emitted comparison is only as honest as the interpreter it trusts. Its permanent control is `test.claim.emit.nested_constant_pattern_emission_witness_test` `the_interpreter_honors_an_authored_guard_on_a_nested_arm`, which reds with the eval_match guard reverted.",
+
     "RUNG FOUND AT: outside the ladder (silent). RUNG NOW: 2, mechanically preventable -- `test.claim.interpreter_match_guard_witness_test` pairs each rejecting guard (the discriminating red, measured red before the repair) with an admitting control.",
 
     "ATTAINABLE CEILING: 3, structurally guaranteed. NEXT-RUNG TRIGGER, named as the capability: an executed interpreter-versus-emitted-binary differential over the same source and inputs, reporting disagreement as a located refusal -- the same capability `special_cased_lowering_answers_a_narrower_question_than_its_arms_ask` names, which would have caught this class without anyone knowing to look for guards."
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "test.claim.emit.nested_constant_pattern_emission_witness_test", decl_name: "the_interpreter_honors_an_authored_guard_on_a_nested_arm", field: WholeDeclaration },
+  ],
 }

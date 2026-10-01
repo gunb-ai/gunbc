@@ -1,6 +1,6 @@
 module test.claim.emit.nested_constant_pattern_emission_witness_test
 
-import std.types { Int, Bool }
+import std.types { Int, Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -50,5 +50,134 @@ test fn the_emitter_lowers_a_nested_constant_with_a_wildcard_sibling_as_a_nested
     "src/test_claim_ncp_emit_probe.rs",
     ["NcpOuter::NcpO { ref mid, .. } => { match mid.as_ref() {", "NcpMid::NcpM { inner: NcpInner::NcpB, .. } => 2,", "    _ => 3,"],
     ["else { unreachable!() }"]
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ARMS THAT STAY UNGROUPED: an authored guard, a string literal beside the Rc field, two
+// Rc-bound fields, a string literal INSIDE the Rc field, and a match whose top-level `_` keeps
+// every arm on the guard lowering. Each used to reach the #8570 guard, whose `matches!` named only
+// the middle variant (`NcpMid::NcpM { .. }`) while the prelude destructured the innermost constant
+// under `let ... else { unreachable!() }`: the emitted binary panicked where the interpreter moved
+// on (or, for the two string shapes, rustc refused E0026 / E0425). The guard now renders the
+// field's full selection -- the same pattern the prelude destructures, binds erased, plus the
+// strings inside it -- so the let-else is unreachable by construction
+// (v1.compiler.emit_rust rc_field_selection_test).
+
+type NcpTagged = NcpT { mid: NcpMid, tag: String } | NcpU
+type NcpPair = NcpQ { a: NcpMid, b: NcpMid } | NcpR
+type NcpSMid = NcpSM { inner: NcpInner, label: String } | NcpSN
+type NcpSOuter = NcpSO { mid: NcpSMid } | NcpSP
+
+fn ncp_guarded(x: NcpOuter, flag: Bool) -> Int {
+  match x {
+    NcpP => 4
+    NcpO { mid: NcpM { inner: NcpA } } if flag == true => 1
+    NcpO { mid: NcpM { inner: NcpB } } => 2
+    NcpO { mid: _ } => 3
+  }
+}
+
+fn ncp_tagged(x: NcpTagged) -> Int {
+  match x {
+    NcpU => 4
+    NcpT { mid: NcpM { inner: NcpA }, tag: "k" } => 1
+    NcpT { mid: NcpM { inner: NcpB }, tag: _ } => 2
+    NcpT { mid: _, tag: _ } => 3
+  }
+}
+
+fn ncp_pair(x: NcpPair) -> Int {
+  match x {
+    NcpR => 4
+    NcpQ { a: NcpM { inner: NcpA }, b: NcpN } => 1
+    NcpQ { a: NcpM { inner: NcpB }, b: _ } => 2
+    NcpQ { a: _, b: _ } => 3
+  }
+}
+
+fn ncp_labelled(x: NcpSOuter) -> Int {
+  match x {
+    NcpSP => 4
+    NcpSO { mid: NcpSM { inner: NcpA, label: "k" } } => 1
+    NcpSO { mid: NcpSM { inner: NcpB, label: _ } } => 2
+    NcpSO { mid: _ } => 3
+  }
+}
+
+fn ncp_top_wildcard(x: NcpOuter) -> Int {
+  match x {
+    NcpO { mid: NcpM { inner: NcpA } } => 1
+    NcpO { mid: NcpN } => 5
+    NcpO { mid: NcpM { inner: NcpB } } => 2
+    _ => 3
+  }
+}
+
+// THE INTERPRETER HONORS AN AUTHORED GUARD. It used to ignore every match guard, so `P if g`
+// selected its arm whenever `P` matched; the third assertion was 1, not 3.
+test fn the_interpreter_honors_an_authored_guard_on_a_nested_arm() -> Bool {
+  (ncp_guarded(x: NcpO { mid: NcpM { inner: NcpA } }, flag: true) == 1)
+    && (ncp_guarded(x: NcpO { mid: NcpM { inner: NcpB } }, flag: true) == 2)
+    && (ncp_guarded(x: NcpO { mid: NcpM { inner: NcpA } }, flag: false) == 3)
+    && (ncp_guarded(x: NcpO { mid: NcpN }, flag: true) == 3)
+}
+
+test fn the_interpreter_selects_each_ungrouped_nested_arm() -> Bool {
+  (ncp_tagged(x: NcpT { mid: NcpM { inner: NcpB }, tag: "k" }) == 2)
+    && (ncp_tagged(x: NcpT { mid: NcpM { inner: NcpA }, tag: "z" }) == 3)
+    && (ncp_pair(x: NcpQ { a: NcpM { inner: NcpB }, b: NcpN }) == 2)
+    && (ncp_pair(x: NcpQ { a: NcpM { inner: NcpA }, b: NcpM { inner: NcpA } }) == 3)
+    && (ncp_labelled(x: NcpSO { mid: NcpSM { inner: NcpA, label: "z" } }) == 3)
+    && (ncp_labelled(x: NcpSO { mid: NcpSM { inner: NcpB, label: "k" } }) == 2)
+    && (ncp_top_wildcard(x: NcpO { mid: NcpM { inner: NcpB } }) == 2)
+    && (ncp_top_wildcard(x: NcpO { mid: NcpM { inner: NcpC } }) == 3)
+}
+
+// THE EMITTED GUARD TESTS EVERY REFUTABLE LEVEL. Each claim requires the guard to name the
+// innermost constant and forbids the middle-variant-only guard the prelude's let-else relied on.
+
+test fn the_emitter_guards_every_level_under_an_authored_guard() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.ncp_guarded_probe\nimport std.types { Int, Bool }\ntype NcpInner = NcpA | NcpB | NcpC\ntype NcpMid = NcpM { inner: NcpInner } | NcpN\ntype NcpOuter = NcpO { mid: NcpMid } | NcpP\nfn ncp_g(x: NcpOuter, flag: Bool) -> Int {\n  match x {\n    NcpP => 4\n    NcpO { mid: NcpM { inner: NcpA } } if flag == true => 1\n    NcpO { mid: NcpM { inner: NcpB } } => 2\n    NcpO { mid: _ } => 3\n  }\n}\n",
+    "src/test_claim_ncp_guarded_probe.rs",
+    ["if matches!(mid.as_ref(), NcpMid::NcpM { inner: NcpInner::NcpA, .. }) && (flag.clone() == true)", "if matches!(mid.as_ref(), NcpMid::NcpM { inner: NcpInner::NcpB, .. })"],
+    ["matches!(mid.as_ref(), NcpMid::NcpM { .. })"]
+  )
+}
+
+test fn the_emitter_guards_every_level_under_a_string_literal_beside_the_rc_field() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.ncp_tagged_probe\nimport std.types { Int, String }\ntype NcpInner = NcpA | NcpB | NcpC\ntype NcpMid = NcpM { inner: NcpInner } | NcpN\ntype NcpOuter = NcpO { mid: NcpMid } | NcpP\ntype NcpTagged = NcpT { mid: NcpMid, tag: String } | NcpU\nfn ncp_t(x: NcpTagged) -> Int {\n  match x {\n    NcpU => 4\n    NcpT { mid: NcpM { inner: NcpA }, tag: \"k\" } => 1\n    NcpT { mid: NcpM { inner: NcpB }, tag: _ } => 2\n    NcpT { mid: _, tag: _ } => 3\n  }\n}\n",
+    "src/test_claim_ncp_tagged_probe.rs",
+    ["NcpTagged::NcpT { ref mid, tag: ref __pos_ncp_t_tag_val, .. } if __pos_ncp_t_tag_val == \"k\" && matches!(mid.as_ref(), NcpMid::NcpM { inner: NcpInner::NcpA, .. })"],
+    ["matches!(mid.as_ref(), NcpMid::NcpM { .. })"]
+  )
+}
+
+test fn the_emitter_guards_every_level_under_two_rc_bound_fields() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.ncp_pair_probe\nimport std.types { Int }\ntype NcpInner = NcpA | NcpB | NcpC\ntype NcpMid = NcpM { inner: NcpInner } | NcpN\ntype NcpOuter = NcpO { mid: NcpMid } | NcpP\ntype NcpPair = NcpQ { a: NcpMid, b: NcpMid } | NcpR\nfn ncp_q(x: NcpPair) -> Int {\n  match x {\n    NcpR => 4\n    NcpQ { a: NcpM { inner: NcpA }, b: NcpN } => 1\n    NcpQ { a: NcpM { inner: NcpB }, b: _ } => 2\n    NcpQ { a: _, b: _ } => 3\n  }\n}\n",
+    "src/test_claim_ncp_pair_probe.rs",
+    ["matches!(a.as_ref(), NcpMid::NcpM { inner: NcpInner::NcpA, .. }) && matches!(b.as_ref(), NcpMid::NcpN)", "if matches!(a.as_ref(), NcpMid::NcpM { inner: NcpInner::NcpB, .. })"],
+    ["matches!(a.as_ref(), NcpMid::NcpM { .. })"]
+  )
+}
+
+test fn the_emitter_guards_every_level_under_a_string_literal_inside_the_rc_field() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.ncp_labelled_probe\nimport std.types { Int, String }\ntype NcpInner = NcpA | NcpB | NcpC\ntype NcpMid = NcpM { inner: NcpInner } | NcpN\ntype NcpOuter = NcpO { mid: NcpMid } | NcpP\ntype NcpSMid = NcpSM { inner: NcpInner, label: String } | NcpSN\ntype NcpSOuter = NcpSO { mid: NcpSMid } | NcpSP\nfn ncp_s(x: NcpSOuter) -> Int {\n  match x {\n    NcpSP => 4\n    NcpSO { mid: NcpSM { inner: NcpA, label: \"k\" } } => 1\n    NcpSO { mid: NcpSM { inner: NcpB, label: _ } } => 2\n    NcpSO { mid: _ } => 3\n  }\n}\n",
+    "src/test_claim_ncp_labelled_probe.rs",
+    ["NcpSMid::NcpSM { inner: NcpInner::NcpA, label: ref __pos_ncp_s_o_mid_ncp_s_m_label_val, .. } if __pos_ncp_s_o_mid_ncp_s_m_label_val == \"k\")"],
+    ["matches!(mid.as_ref(), NcpSMid::NcpSM { .. })"]
+  )
+}
+
+test fn the_emitter_guards_every_level_under_a_top_level_wildcard() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.ncp_wild_probe\nimport std.types { Int }\ntype NcpInner = NcpA | NcpB | NcpC\ntype NcpMid = NcpM { inner: NcpInner } | NcpN\ntype NcpOuter = NcpO { mid: NcpMid } | NcpP\nfn ncp_w(x: NcpOuter) -> Int {\n  match x {\n    NcpO { mid: NcpM { inner: NcpA } } => 1\n    NcpO { mid: NcpN } => 5\n    NcpO { mid: NcpM { inner: NcpB } } => 2\n    _ => 3\n  }\n}\n",
+    "src/test_claim_ncp_wild_probe.rs",
+    ["if matches!(mid.as_ref(), NcpMid::NcpM { inner: NcpInner::NcpB, .. })"],
+    ["matches!(mid.as_ref(), NcpMid::NcpM { .. })"]
   )
 }
