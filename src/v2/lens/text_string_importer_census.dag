@@ -30,6 +30,8 @@ import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.optional { Absent, Present }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.types { NonEmptyStr }
 import std.primitives {
   PrimitiveContract,
   char_at_contract,
@@ -163,6 +165,55 @@ type SiteKind
 type Site {
   decl: String
   kind: SiteKind
+}
+
+// WHAT A VERDICT IS WORTH, TYPED (DESIGN 4d, review 73517): the lens infers from spelling and
+// position, so every verdict it mints is a bet and says so. Only a join that holds an executed
+// receipt for the module -- the self-host closure's rustc compile, the deletion PR's per-module v1
+// compile -- may promote a row to corroborated or mark it contradicted, and it names the receipt.
+// This module never mints those arms; it renders and decodes them so a row that carries one
+// survives the round trip.
+type VerdictStanding
+  = LensHypothesis
+  | ExecutionCorroborated { receipt: DeclarationRef }
+  | ExecutionContradicted { receipt: DeclarationRef }
+
+fn standing_token(s: VerdictStanding) -> String {
+  match s {
+    LensHypothesis => "HYPOTHESIS"
+    ExecutionCorroborated { receipt: r } => concat(concat(concat("CORROBORATED:", r.module_path), "#"), r.decl_name)
+    ExecutionContradicted { receipt: r } => concat(concat(concat("CONTRADICTED:", r.module_path), "#"), r.decl_name)
+  }
+}
+
+fn receipt_of_token(body: String) -> Decoded<DeclarationRef> {
+  let parts = split(s: body, delimiter: "#")
+  if !(length(xs: parts) == 2) {
+    Undecodable { token: body }
+  } else {
+    let m = field_at(fields: parts, i: 0)
+    let d = field_at(fields: parts, i: 1)
+    if (m == "") || (d == "") { Undecodable { token: body } } else {
+      DecodedAs { value: decl_ref(module_path: m as NonEmptyStr, decl_name: d as NonEmptyStr) }
+    }
+  }
+}
+
+fn standing_of_token(token: String) -> Decoded<VerdictStanding> {
+  if token == "HYPOTHESIS" { DecodedAs { value: LensHypothesis } }
+  else if starts_with(s: token, prefix: "CORROBORATED:") {
+    match receipt_of_token(body: substring(s: token, start: 13, end: string_length(s: token))) {
+      DecodedAs { value: r } => DecodedAs { value: ExecutionCorroborated { receipt: r } }
+      Undecodable { token: _ } => Undecodable { token: token }
+    }
+  }
+  else if starts_with(s: token, prefix: "CONTRADICTED:") {
+    match receipt_of_token(body: substring(s: token, start: 13, end: string_length(s: token))) {
+      DecodedAs { value: r } => DecodedAs { value: ExecutionContradicted { receipt: r } }
+      Undecodable { token: _ } => Undecodable { token: token }
+    }
+  }
+  else { Undecodable { token: token } }
 }
 
 // The verdict arms. `ImportUnused` is a fifth arm beside the brief's four, stated rather than
@@ -1067,7 +1118,7 @@ fn crossing_is_undecided(c: Crossing) -> Bool {
 fn module_lines(path: String, standing: WalkStanding, callees: FreeMonoid<CalleeModule>) -> FreeMonoid<String> {
   match standing {
     WalkNotEstablished { cause: c } =>
-      Cons { head: concat(concat("M\t", path), concat("\t", concat(verdict_token(v: Unclassified { cause: NotEstablished { cause: c } }), "\t0\t0\t0\t0\t0\n"))), tail: Empty }
+      Cons { head: concat(concat("M\t", path), concat("\t", concat(verdict_token(v: Unclassified { cause: NotEstablished { cause: c } }), concat("\t0\t0\t0\t0\t0\t", concat(standing_token(s: LensHypothesis), "\n"))))), tail: Empty }
     WalkEstablished { walk: w } =>
       if !w.imports_text_string {
         Cons { head: concat(concat("N\t", path), "\n"), tail: Empty }
@@ -1079,7 +1130,7 @@ fn module_lines(path: String, standing: WalkStanding, callees: FreeMonoid<Callee
           concat(concat("\t", int_text(n: count_sites(sites: sites, pred: is_structural_site) + count_crossings(xs: crossings, pred: crossing_is_structural))),
           concat(concat("\t", int_text(n: count_sites(sites: sites, pred: is_other_site))),
           concat(concat("\t", int_text(n: count_sites(sites: sites, pred: is_bare_site))),
-          concat(concat("\t", int_text(n: count_crossings(xs: crossings, pred: crossing_is_undecided))), "\n")))))))
+          concat(concat("\t", int_text(n: count_crossings(xs: crossings, pred: crossing_is_undecided))), concat(concat("\t", standing_token(s: LensHypothesis)), "\n"))))))))
         let site_rows = fold_list(xs: sites, empty: Cons { head: header, tail: Empty }, cons: fn(acc, s) {
           Cons { head: concat(concat(concat(concat("S\t", path), "\t"), concat(concat(s.decl, "\t"), site_tokens(k: s.kind))), "\n"), tail: acc }
         })
@@ -1202,6 +1253,7 @@ type FixpointNode {
   path: String
   module: String
   census_verdict: ImporterVerdict
+  census_standing: VerdictStanding
   own_host: Bool
   own_structural: Bool
   own_other: Bool
@@ -1290,10 +1342,14 @@ fn fixpoint_row(acc: FixpointRows, line: String, modules: Map<String, String>) -
                 match count_is_positive(token: field_at(fields: f, i: 5)) {
                   Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable OTHER count ", tk) }
                   DecodedAs { value: o } =>
-                    FixpointRowsRead { rows: FixpointRows {
-                      nodes: Cons { head: FixpointNode { path: path, module: module_of_path(modules: modules, path: path), census_verdict: v, own_host: h, own_structural: s, own_other: o, host: h, structural: s, targets: empty_strings }, tail: acc.nodes },
-                      edges: acc.edges
-                    } }
+                    match standing_of_token(token: field_at(fields: f, i: 8)) {
+                      Undecodable { token: tk } => FixpointRowsRefused { line: line, reason: concat("undecodable or missing verdict standing ", tk) }
+                      DecodedAs { value: st } =>
+                        FixpointRowsRead { rows: FixpointRows {
+                          nodes: Cons { head: FixpointNode { path: path, module: module_of_path(modules: modules, path: path), census_verdict: v, census_standing: st, own_host: h, own_structural: s, own_other: o, host: h, structural: s, targets: empty_strings }, tail: acc.nodes },
+                          edges: acc.edges
+                        } }
+                    }
                 }
             }
         }
@@ -1322,7 +1378,7 @@ fn fixpoint_nodes(rows: FixpointRows) -> FreeMonoid<FixpointNode> {
         if member(xs: ts, x: target) { ts } else { Cons { head: target, tail: ts } }
       } else { ts }
     })
-    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, own_host: n.own_host, own_structural: n.own_structural, own_other: n.own_other, host: n.host, structural: n.structural, targets: targets }, tail: acc }
+    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, census_standing: n.census_standing, own_host: n.own_host, own_structural: n.own_structural, own_other: n.own_other, host: n.host, structural: n.structural, targets: targets }, tail: acc }
   })
 }
 
@@ -1379,7 +1435,7 @@ fn fixpoint_round(nodes: FreeMonoid<FixpointNode>) -> FreeMonoid<FixpointNode> {
         _ => s
       }
     })
-    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, own_host: n.own_host, own_structural: n.own_structural, own_other: n.own_other, host: host, structural: structural, targets: n.targets }, tail: acc }
+    Cons { head: FixpointNode { path: n.path, module: n.module, census_verdict: n.census_verdict, census_standing: n.census_standing, own_host: n.own_host, own_structural: n.own_structural, own_other: n.own_other, host: host, structural: structural, targets: n.targets }, tail: acc }
   }))
 }
 
@@ -1446,7 +1502,8 @@ fn read_row_files(paths: List<String>) -> RowsRead {
 }
 
 // Reads the census rows (comma-separated TSV paths), writes one `F` row per module whose verdict
-// the fixpoint could move (it has edges): path, census verdict, fixpoint verdict, targets. An
+// the fixpoint could move (it has edges): path, census verdict, fixpoint verdict, targets, and the
+// standing -- always a hypothesis, because it is derived from hypotheses. An
 // unreadable rows file or an undecodable row refuses the whole run, located.
 fn text_string_importer_fixpoint(rows_csv: String, out: String, roots_csv: String) -> ProcessExit {
   match read_row_files(paths: split(s: rows_csv, delimiter: ",")) {
@@ -1460,7 +1517,7 @@ fn text_string_importer_fixpoint(rows_csv: String, out: String, roots_csv: Strin
           FixpointReached { nodes: done, rounds: r } => {
             let rows = fold_list(xs: done, empty: Cons { head: concat(concat("R\trounds\t", int_text(n: r)), "\n"), tail: Empty }, cons: fn(acc, n) {
               if length(xs: n.targets) == 0 { acc } else {
-                Cons { head: concat(concat(concat(concat(concat(concat(concat(concat("F\t", n.path), "\t"), verdict_token(v: n.census_verdict)), "\t"), verdict_token(v: fixpoint_verdict(n: n))), "\t"), join(list_reverse(xs: n.targets), ",")), "\n"), tail: acc }
+                Cons { head: concat(concat(concat(concat(concat(concat(concat(concat("F\t", n.path), "\t"), verdict_token(v: n.census_verdict)), "\t"), verdict_token(v: fixpoint_verdict(n: n))), "\t"), join(list_reverse(xs: n.targets), ",")), concat(concat("\t", standing_token(s: LensHypothesis)), "\n")), tail: acc }
               }
             })
             let written = Filesystem.Write(path: out, content: join(list_reverse(xs: rows), ""))

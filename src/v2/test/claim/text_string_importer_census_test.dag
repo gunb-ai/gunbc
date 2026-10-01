@@ -12,6 +12,8 @@ import v2.lens.text_string_importer_census {
   UndecidedCrossingCause, ParameterIsImportedStringHere, ParameterIsImportedStringIn, PositionalArgument,
   CalleeNotImportedByName, CalleeModuleNotInPool, CalleeModuleNotParsed, NoSuchParameter, ParameterSpelledOther,
   DecodedAs, Undecodable,
+  VerdictStanding, LensHypothesis, ExecutionCorroborated, ExecutionContradicted, standing_token, standing_of_token,
+  HostLiteralArgument, BinderArgument, StructuralLiteralArgument, NoTextResult,
   FixpointComputed, FixpointInputRefused, FixpointReached, FixpointBoundExceeded,
   member, walk_atoms, tree_atoms, raw_tree_of_text, rosters_of_walk, empty_rosters,
   crossings_of, verdict_with_crossings,
@@ -20,6 +22,8 @@ import v2.lens.text_string_importer_census {
 }
 import v2.lens.common.source_analysis_standing { SourceParseRejected, SourceUnreadable }
 import v2.lens.module_graph { ModuleDeclarationFact }
+import std.decl_ref { decl_ref }
+import std.types { NonEmptyStr }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { any, fold_list, list_reverse }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -286,13 +290,13 @@ data fixpoint_decls: List<ModuleDeclarationFact> = [
 ]
 
 data fixpoint_lines: List<String> = [
-  "M\tcaller.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1",
-  "M\thost.dag\tHOST\t1\t0\t0\t1\t0",
-  "M\tloop.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1",
-  "M\tmixed_drops.dag\tMIXED\t1\t1\t0\t1\t0",
-  "M\tmixed_keeps.dag\tMIXED\t1\t1\t1\t1\t0",
-  "M\thost_caller.dag\tHOST\t1\t0\t0\t1\t1",
-  "M\tkeep_caller.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1",
+  "M\tcaller.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1\tHYPOTHESIS",
+  "M\thost.dag\tHOST\t1\t0\t0\t1\t0\tHYPOTHESIS",
+  "M\tloop.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1\tHYPOTHESIS",
+  "M\tmixed_drops.dag\tMIXED\t1\t1\t0\t1\t0\tHYPOTHESIS",
+  "M\tmixed_keeps.dag\tMIXED\t1\t1\t1\t1\t0\tHYPOTHESIS",
+  "M\thost_caller.dag\tHOST\t1\t0\t0\t1\t1\tHYPOTHESIS",
+  "M\tkeep_caller.dag\tUNCLASSIFIED:UndecidedCrossings\t0\t0\t0\t1\t1\tHYPOTHESIS",
   "S\tcaller.dag\tf\tbare_string\t",
   "X\tcaller.dag\tf\tbinder_argument\ttake\tt\tm.host\tUNDECIDED\timported_string_in\tm.host\ttake.t",
   "X\tloop.dag\tping\tbinder_argument\tpong\tt\t\tUNDECIDED\timported_string_here\tpong.t\t",
@@ -332,7 +336,7 @@ test fn tsic_fixpoint_crossing_into_a_keeping_callee_is_structural() -> Bool {
 
 // A row the reader cannot decode REFUSES the fixpoint, located; it is never skipped.
 test fn tsic_fixpoint_refuses_an_unknown_row_kind() -> Bool {
-  match fixpoint_over_lines(lines: ["M\thost.dag\tHOST\t1\t0\t0\t1\t0", "Q\twhat"], decls: fixpoint_decls) {
+  match fixpoint_over_lines(lines: ["M\thost.dag\tHOST\t1\t0\t0\t1\t0\tHYPOTHESIS", "Q\twhat"], decls: fixpoint_decls) {
     FixpointInputRefused { line: l, reason: _ } => l == "Q\twhat"
     FixpointComputed { outcome: _ } => false
   }
@@ -392,6 +396,84 @@ test fn tsic_real_route_subject_is_the_committed_file() -> Bool {
 test fn tsic_real_raw_parse_route_reaches_the_classifier() -> Bool {
   let o = tsic_real_route_outcome()
   o.established && o.imports_text_string && o.host_site_at_the_note && o.verdict_is_host
+}
+
+
+// EVERY VERDICT STANDING round-trips, and an M row without one refuses the fixpoint: the standing
+// is what keeps a hypothesis from being read downstream as a decided classification (DESIGN 4d).
+data every_standing: List<VerdictStanding> = [
+  LensHypothesis,
+  ExecutionCorroborated { receipt: decl_ref(module_path: "gunbc.self_host_compile_phase_frontier" as NonEmptyStr, decl_name: "receipt_4_e0d0e01e_receipt" as NonEmptyStr) },
+  ExecutionContradicted { receipt: decl_ref(module_path: "gunbc.self_host_compile_phase_frontier" as NonEmptyStr, decl_name: "receipt_4_e0d0e01e_receipt" as NonEmptyStr) }
+]
+
+test fn tsic_every_verdict_standing_decodes_to_its_arm() -> Bool {
+  !any(xs: every_standing, predicate: fn(s) {
+    match standing_of_token(token: standing_token(s: s)) {
+      DecodedAs { value: back } => !(standing_token(s: back) == standing_token(s: s))
+      Undecodable { token: _ } => true
+    }
+  })
+}
+
+test fn tsic_fixpoint_refuses_a_row_without_a_standing() -> Bool {
+  match fixpoint_over_lines(lines: ["M\thost.dag\tHOST\t1\t0\t0\t1\t0"], decls: fixpoint_decls) {
+    FixpointInputRefused { line: _, reason: _ } => true
+    FixpointComputed { outcome: _ } => false
+  }
+}
+
+// THE WINDOW DRIFT GUARD (review 73517). Every HOST and STRUCTURAL site is recognised by the
+// production markers adjacent to it in the raw parse's pre-order stream. If the grammar wraps or
+// reorders those productions, a predicate stops matching and its sites vanish, which reads a
+// module STRUCTURAL with no error. This producer raw-parses ONE source exercising every window
+// predicate and the claim requires every site kind to appear, so grammar drift reds the floor
+// instead of thinning the census. This makes the class MECHANICALLY PREVENTABLE (DESIGN 4b rung 2),
+// not structural: the next rung is a classifier that folds over the production structure itself.
+data window_coverage_source: String = "module window_probe\nimport v2.std.text { String, string_join, string_is_empty }\ndata d: String = \"lit\"\nfn f(s: String, xs: List<String>) -> Bool {\n  let t: String = \"x\"\n  let u = s + \"y\"\n  let v = \"z\" + s\n  let w = s + t\n  let n = string_length(s: s)\n  let p = s.split(\",\")\n  let q = g(k: s)\n  let j = string_join(fields: xs, separator: s)\n  let e = string_is_empty(s: \"lit\")\n  string_is_empty(s: string_join(fields: xs, separator: s))\n}\n"
+
+type WindowCoverage {
+  established: Bool
+  text_import_read: Bool
+  literal_at_annotation: Bool
+  plus_concatenation: Bool
+  primitive_call: Bool
+  method_call: Bool
+  literal_argument: Bool
+  binder_argument: Bool
+  structural_other: Bool
+  structural_call_argument: Bool
+  structural_literal_argument: Bool
+}
+
+fn tsic_window_coverage_outcome() -> WindowCoverage {
+  match raw_tree_of_text(text: window_coverage_source) {
+    RawTreeNotEstablished { cause: _ } => WindowCoverage { established: false, text_import_read: false, literal_at_annotation: false, plus_concatenation: false, primitive_call: false, method_call: false, literal_argument: false, binder_argument: false, structural_other: false, structural_call_argument: false, structural_literal_argument: false }
+    RawTreeEstablished { root: root } => {
+      let w = walk_atoms(atoms: tree_atoms(root: root), r: rosters_supplied)
+      let has = fn(pred) { any(xs: w.sites, predicate: pred) }
+      WindowCoverage {
+        established: true,
+        text_import_read: w.imports_text_string,
+        literal_at_annotation: has(fn(s) { match s.kind { HostLiteralAtStringAnnotation => true _ => false } }),
+        plus_concatenation: has(fn(s) { match s.kind { HostPlusConcatenation => true _ => false } }),
+        primitive_call: has(fn(s) { match s.kind { HostPrimitiveCall { name: n } => n == "string_length" _ => false } }),
+        method_call: has(fn(s) { match s.kind { HostMethodCall { name: n } => n == "split" _ => false } }),
+        literal_argument: has(fn(s) { match s.kind { HostLiteralArgument { callee: _ } => true _ => false } }),
+        binder_argument: has(fn(s) { match s.kind { BinderArgument { callee: c, param: p, module: _ } => (c == "g") && (p == "k") _ => false } }),
+        structural_other: has(fn(s) { match s.kind { StructuralCall { name: n, result: ResultAtOtherPosition } => n == "string_join" _ => false } }),
+        structural_call_argument: has(fn(s) { match s.kind { StructuralCall { name: n, result: ResultAtCallArgument } => n == "string_join" _ => false } }),
+        structural_literal_argument: has(fn(s) { match s.kind { StructuralLiteralArgument { callee: c } => c == "string_is_empty" _ => false } })
+      }
+    }
+  }
+}
+
+test fn tsic_every_window_predicate_matches_the_real_parse() -> Bool {
+  let c = tsic_window_coverage_outcome()
+  c.established && c.text_import_read && c.literal_at_annotation && c.plus_concatenation
+    && c.primitive_call && c.method_call && c.literal_argument && c.binder_argument
+    && c.structural_other && c.structural_call_argument && c.structural_literal_argument
 }
 
 
