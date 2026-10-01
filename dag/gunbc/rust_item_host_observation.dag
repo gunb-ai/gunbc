@@ -561,6 +561,41 @@ fn item_key_set(items: List<RustItemIdentity>) -> Set<String> {
 // to an item makes a modification visible; attributing to a file-level line keeps a `use` edit from
 // reading as a capability change. The third answer -- a line the scan cannot place -- is the refusal
 // this carrier exists to produce, asked for every changed line rather than inferred from file shape.
+// THE REFUSAL NAMES WHICH OF ITS TWO CAUSES FIRED. A line inside a macro block the scanner delimited
+// and a line beyond the file are different facts with different remedies -- the first is the named
+// macro-item ceiling of gunbc.rust_item_scan RustMacroRegion, the second an inconsistency between
+// the diff and the content it was read against -- and one sentence for both sent gunbc#12886's
+// census readers hunting for a scanner gap in v1_interpreter.rs when the line was inside a
+// thread_local! block the scanner had delimited exactly.
+fn unattributed_line_detail(
+  side: String,
+  items: List<RustItemIdentity>,
+  macro_regions: List<RustMacroRegion>,
+  line_count: Int,
+  line: Int
+) -> String {
+  match attribute_scanned_line(items: items, macro_regions: macro_regions, line_count: line_count, line: line) {
+    AttributedToUnnamedMacroBlock { macro_name: name, line: _ } =>
+      concat(
+        "changed line at ",
+        concat(
+          side,
+          concat(
+            " lies inside a `",
+            concat(name, "!` block: the scanner delimits the block but can name no item a macro declares, so a change inside it is unattributable rather than file-level")
+          )
+        )
+      )
+    AttributionOutOfRange { line: _, line_count: n } =>
+      concat(
+        "changed line at ",
+        concat(side, concat(" lies beyond the file's ", concat(n as String, " scanned lines")))
+      )
+    AttributedToItem { item_key: _ } => concat("changed line at ", concat(side, " was attributed and then reported unattributed"))
+    AttributedToFileLevel => concat("changed line at ", concat(side, " was attributed and then reported unattributed"))
+  }
+}
+
 fn change_lines_unattributed(
   items: List<RustItemIdentity>,
   macro_regions: List<RustMacroRegion>,
@@ -664,7 +699,13 @@ fn change_fold_hand_file(
                   RustItemChangeUnattributed {
                     repo_path: file_change.repo_path,
                     line: line,
-                    detail: "changed line at HEAD falls outside every scanned item and outside the file's recognized line range"
+                    detail: unattributed_line_detail(
+                      side: "HEAD",
+                      items: head_items,
+                      macro_regions: head_macro_regions,
+                      line_count: head_line_count,
+                      line: line
+                    )
                   }
                 }
               )
@@ -679,7 +720,13 @@ fn change_fold_hand_file(
                   RustItemChangeUnattributed {
                     repo_path: file_change.repo_path,
                     line: line,
-                    detail: "changed line at the merge base falls outside every scanned item and outside the file's recognized line range"
+                    detail: unattributed_line_detail(
+                      side: "the merge base",
+                      items: base_items,
+                      macro_regions: base_macro_regions,
+                      line_count: base_line_count,
+                      line: line
+                    )
                   }
                 }
               )
