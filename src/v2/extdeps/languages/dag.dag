@@ -6927,6 +6927,36 @@ fn namespace_graft_module_body_marker_node() -> Node {
   dag_inhabitant_atom(id: namespace_graft_module_body_identity)
 }
 
+// THE MARK MEANS A NAMESPACE BODY, AND MARKED BODIES MERGE ON GRAFT (XL-2 service spine; ruling
+// 2026-10-01). A module body is one namespace body; so is the body under a shared service-name prefix:
+// `service shell.Find` and `service shell.Env` each lower to `shell -> <namespace body>`
+// (v2.compiler.body_lowering_fold body_lower_service_node), and v2.compiler.namespace_graft merges
+// same-named MARKED bodies into one, so an operation's declaration path is
+// <module>.<service segments...>.<Op>. Only marked bodies merge: two same-named declarations, or a
+// marked body and an unmarked declaration of one name, still refuse at the second. A namespace body
+// grants NO scope: a member of shell.Find does not see shell.Env's names, or the enclosing body's,
+// without qualification or an import; it is a path segment, never a lexical frame. NOTE FOR THE
+// EdgeLabel CUT (gunbc#12473): this mark is a namespace-body classification, so the per-segment
+// marker that cut classifies covers both the module body and a service-prefix body.
+fn namespace_graft_namespace_body_node(edges: List<Edge>, source: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat([dag_named_edge(name: ^grammar_production_identity_node_projection, target: namespace_graft_module_body_marker_node())], edges),
+    occurrence_id: source.occurrence_id
+  }
+}
+
+// A marked body's members: its children without the mark.
+fn namespace_graft_namespace_body_members(body: Node) -> List<Edge> {
+  fold(body.children, init: [], f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } =>
+        if sym == ^grammar_production_identity_node_projection { acc } else { list_snoc_item(xs: acc, item: e) }
+      Positional => list_snoc_item(xs: acc, item: e)
+    }
+  })
+}
+
 fn namespace_graft_node_is_module_body(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } => id == namespace_graft_module_body_identity

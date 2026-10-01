@@ -3,7 +3,7 @@ module v2.compiler.namespace_graft
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.std.algebra { fold_list, fold_list_right }
-import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -13,6 +13,7 @@ import v2.std.diagnostic {
   Unavailable,
   UserInputBoundary,
   node_locus,
+  bind_outcome,
   outcome_accepted,
   outcome_rejected
 }
@@ -30,7 +31,6 @@ import v2.std.node {
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.compiler.parse { parse_tree_projection_edge }
-import v2.std.node_query { repeated_name_edges }
 import v2.std.grammar {
   GrammarExpr,
   GrammarExprFold,
@@ -46,6 +46,8 @@ import v2.extdeps.languages.dag {
   namespace_graft_already_grafted,
   namespace_graft_has_module_header,
   namespace_graft_module_body_marker_node,
+  namespace_graft_namespace_body_members,
+  namespace_graft_namespace_body_node,
   namespace_graft_node_is_module_body,
   namespace_graft_spine_body_optional,
   namespace_graft_unwrap_module_working_root,
@@ -587,19 +589,7 @@ fn namespace_graft_subtree_count_emitted(n: Node, sym: Symbol) -> Int {
 // would attribute a compiler-internal node to a span the author wrote, which is the plausible guess
 // DESIGN section 5 forbids rather than a preserved fact.
 fn namespace_graft_build_body_conj(edges: List<Edge>, source: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: concat(
-      [
-        dag_named_edge(
-          name: ^grammar_production_identity_node_projection,
-          target: namespace_graft_module_body_marker_node()
-        )
-      ],
-      edges
-    ),
-    occurrence_id: source.occurrence_id
-  }
+  namespace_graft_namespace_body_node(edges: edges, source: source)
 }
 
 fn namespace_graft_wrap_segment(segment: Symbol, inner: Node, source: Node) -> Node {
@@ -704,6 +694,73 @@ fn namespace_graft_dual_position_refused(root: Node) -> Bool {
 // all_names_distinct holds; the locus is the member node of the first name seen a second time,
 // which carries its declaration's occurrence. The refusal is a match on that edge, so it has no
 // locus fallback to reach.
+// SAME-NAMED NAMESPACE BODIES MERGE; ANY OTHER REPEATED NAME REFUSES (XL-2 service spine; ruling
+// 2026-10-01). Two services under one prefix (`shell.Find`, `shell.Env`) each lower to
+// `shell -> <namespace body>` (v2.extdeps.languages.dag namespace_graft_namespace_body_node); those two
+// bodies are one namespace, so their members are merged into one body -- recursively, so a deeper shared
+// prefix merges too. Only MARKED bodies merge: two same-named declarations, or a marked body and an
+// unmarked declaration, are a repeated name and refuse at the second, exactly as before; and a member
+// repeated inside a merged body (two `shell.Find`) refuses the same way. Merging grants no scope: a body
+// is a path segment, not a lexical frame (v2.compiler.resolve never opens one).
+fn namespace_graft_merge_namespace_bodies(edges: List<Edge>) -> Outcome<List<Edge>> {
+  fold(edges, init: outcome_accepted(value: []), f: fn(acc, e) {
+    bind_outcome(o: acc, f: fn(merged) { namespace_graft_merge_one(merged: merged, e: e) })
+  })
+}
+
+fn namespace_graft_merge_one(merged: List<Edge>, e: Edge) -> Outcome<List<Edge>> {
+  match e.label {
+    Positional => outcome_accepted(value: list_snoc_item(xs: merged, item: e))
+    Named { name: sym } =>
+      match namespace_graft_named_edge_in(edges: merged, name: sym) {
+        Absent => outcome_accepted(value: list_snoc_item(xs: merged, item: e))
+        Present { value: earlier } =>
+          if namespace_graft_node_is_module_body(node: earlier.target) && namespace_graft_node_is_module_body(node: e.target) {
+            bind_outcome(
+              o: namespace_graft_merge_namespace_bodies(
+                edges: concat(namespace_graft_namespace_body_members(body: earlier.target), namespace_graft_namespace_body_members(body: e.target))
+              ),
+              f: fn(members) {
+                outcome_accepted(value: namespace_graft_replace_named_edge(
+                  edges: merged,
+                  name: sym,
+                  with: Edge { label: Named { name: sym }, target: namespace_graft_namespace_body_node(edges: members, source: earlier.target) }
+                ))
+              }
+            )
+          } else {
+            outcome_rejected(Diagnostic {
+              reason: ^namespace_graft_declaration_name_repeated,
+              at: node_locus(node: e.target),
+              correction: Unavailable { reason: UserInputBoundary }
+            })
+          }
+      }
+  }
+}
+
+fn namespace_graft_named_edge_in(edges: List<Edge>, name: Symbol) -> Optional<Edge> {
+  fold(edges, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Named { name: sym } => if sym == name { optional_present(value: e) } else { optional_absent() }
+          Positional => optional_absent()
+        }
+    }
+  })
+}
+
+fn namespace_graft_replace_named_edge(edges: List<Edge>, name: Symbol, with: Edge) -> List<Edge> {
+  fold(edges, init: [], f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } => if sym == name { list_snoc_item(xs: acc, item: with) } else { list_snoc_item(xs: acc, item: e) }
+      Positional => list_snoc_item(xs: acc, item: e)
+    }
+  })
+}
+
 fn module_header_containment_graft(root: Node) -> Outcome<Node> {
   if namespace_graft_already_grafted(root: root) {
     outcome_accepted(value: root)
@@ -735,19 +792,11 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
             } else {
-              match first(repeated_name_edges(children: graft_body.edges)) {
-                Present { value: repeated } =>
-                  outcome_rejected(Diagnostic {
-                    reason: ^namespace_graft_declaration_name_repeated,
-                    at: node_locus(node: repeated.target),
-                    correction: Unavailable { reason: UserInputBoundary }
-                  })
-                Absent => {
-                  let body = namespace_graft_build_body_conj(edges: graft_body.edges, source: root)
-                  let spine = namespace_graft_fold_spine(qn: qn, body: body, source: root)
-                  outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine, source: root))
-                }
-              }
+              bind_outcome(o: namespace_graft_merge_namespace_bodies(edges: graft_body.edges), f: fn(members) {
+                let body = namespace_graft_build_body_conj(edges: members, source: root)
+                let spine = namespace_graft_fold_spine(qn: qn, body: body, source: root)
+                outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine, source: root))
+              })
             }
           }
         }
