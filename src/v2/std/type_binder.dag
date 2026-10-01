@@ -5,8 +5,12 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.arrow_contract { arrow_contract_conforms }
+import v2.std.node_query { binder_node_parts }
 import v2.std.node {
   arrow_named_edge_is_non_binder,
+  arrow_first_positional_target,
+  FirstPositionalFound,
+  FirstPositionalAbsent,
   NotMarkedReference,
   resolved_reference_body_kind,
   Arrow,
@@ -395,7 +399,7 @@ fn type_binder_node_conforms(n: Node) -> Bool {
   })
   let params_ok = (params == 0) || ((params == 1) && marker_targets_conform(n: n))
   match n.kind {
-    TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n) && arrow_contract_conforms(children: n.children)
+    TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n) && arrow_contract_conforms(children: n.children) && arrow_domain_members_are_binders(n: n)
     ComputationNode { behavior: Transform } => (params == 0) && (bodies == 0) && transform_named_labels_conform(n: n)
     ComputationNode { behavior: Bind } => (params == 0) && (bodies == 0) && bind_named_labels_conform(n: n)
     _ =>
@@ -412,6 +416,30 @@ fn marker_targets_conform(n: Node) -> Bool {
   fold(n.children, init: true, f: fn(acc, e) {
     acc && (!edge_is_type_params(e: e) || type_binder_conj_conforms(t: e.target))
   })
+}
+
+// THE BINDER WALL (XL-2 PR2b-3): every Named member of an Arrow's domain is a binder node (v2.std.node_query
+// binder_node_parts), built by binder_edge, binder_edge_with_default or binder_relabelled. A hand-built
+// name-to-type edge refuses here, at the Arrow, rather than being read as a parameter typed by its raw
+// target. The binder readers refuse such a member too (declared_field_from_edge answers Absent), so a
+// record payload this wall does not reach still fails closed at its first reader.
+fn arrow_domain_members_are_binders(n: Node) -> Bool {
+  match arrow_first_positional_target(children: n.children) {
+    FirstPositionalFound { target: domain } =>
+      fold(domain.children, init: true, f: fn(acc, e) { acc && arrow_domain_member_is_binder(e: e) })
+    FirstPositionalAbsent => true
+  }
+}
+
+fn arrow_domain_member_is_binder(e: Edge) -> Bool {
+  match e.label {
+    Positional => true
+    Named { name: _ } =>
+      match binder_node_parts(n: e.target) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
 }
 
 fn arrow_named_labels_conform(n: Node) -> Bool {
