@@ -242,28 +242,46 @@ names, and the direct-selected overlay applies last.
   as well as the subject digest and every claim outcome. Equal claim outcomes alone would not catch a
   thinned ledger.
 
-**Predicted floor peak after PR-2 at ~2.7k modules (deep-ferret-305's retirement trigger for the 41G
-floor slot class), stated before any build so the A/B can falsify it.**
-- **BEFORE is censored.** Every ~2.7k-module floor so far was pinned at the 25 GiB `memory.high` line
-  and stalling, so its true demand is unmeasured. The bound is derived as follows:
-  - Main's ~2.25k-module floor sits at the same line with pages already in swap.
-  - Leave-one-out puts the typed graph at ~2.25k modules near 8 GB, scaling with exponent about 1.2.
-  - So BEFORE at ~2.7k is expected around 29-31 GB uncensored.
-- **The saving** is `type_env`'s exclusive bytes at ~2.7k (about 4.2 GB by the measured exponent),
-  minus what the shared re-export memo itself holds (assumed 10-20% of it). That gives about
-  3.3-3.8 GB.
-- **AFTER is therefore expected around 25.5-27.5 GB, straddling the 25 GiB (26.84 GB) line.** The
-  honest prediction is that PR-2 alone brings ~2.7k-module floors to the line, NOT clearly under it.
-  It retires the 41G class only if the measured BEFORE comes in at the low end.
-- **Falsifiers.**
-  - An uncensored BEFORE (floor-memory-qualification under MemoryMax=96G at the #12799 subject)
-    outside 29-31 GB re-bases the prediction before the surgery is judged.
-  - An AFTER saving under 2.5 GB falsifies the claim that the ancestry unions are the bytes PR-2
-    removes, meaning the memo holds more than assumed.
-- **What would clear the line:** the shared remainder of the typed graph (the leave-one-out readings'
-  `shared_or_unlisted`), whose breakdown is not yet done.
+**Re-based after gunbc#12850's prediction 2 (the joint class at two sizes). The shape premise did not hold.**
+Earlier versions of this note argued PR-2's case from a SUPERLINEAR shape: deeper modules carry
+larger import closures, so the union's bytes grow faster than the module count. The measurement
+falsifies that premise for bytes.
+- The ancestry ENTRY count is still superlinear (exponent about 1.30 between the two sizes).
+- The joint holder's BYTES (`type_env`+`type_env_cache`+`interface`, read jointly by
+  //gunbc/instruments:typed-graph-exclusive-bytes and its -floor-subject row) scale with exponent
+  about 1.09, close to linear. Bytes per entry FALL as the closure grows, so the extra entries a
+  deeper module adds are increasingly shared spine.
+- So the case no longer rests on shape. It rests on SIZE: the joint holder is 62-66% of the typed
+  graph at both sizes, about 2.7-3.0 MB per module, and it grows with the corpus about linearly.
+  The operator's 2026-10-01 re-ruling of the one-level-read invariant was argued from the
+  superlinear shape, so it is returned for re-confirmation on this basis before any PR-2 code.
 
-**What PR-2 does NOT do, and what is left.** By the prediction above, PR-2 alone probably does NOT
+**Predicted saving, re-based, stated before any build. These are inferences from the two-size
+reading at exponent 1.09 and are labelled as such.**
+- The joint figure extrapolates to about 7.3 GB at a ~2.7k-module subject and about 21 GB at the
+  whole tree (measured at 7,090 modules).
+- The walk's memo is assumed to hold 10-20% of that. The assumption is not measured, and an AFTER
+  saving under 75% of the joint figure falsifies it.
+- So the saving is about 5.9-6.6 GB at ~2.7k modules, and about 17-19 GB at the whole tree.
+- **At the floor's peak, the relevant figure is smaller and conditional.** The leave-one-out reading is
+  taken at the compile peak, where `TypeEnvCache` is still present. gunbc#12774 drops the cache
+  before evaluation, so at the evaluation-time peak the saving is the ancestry map's share, about
+  the joint figure less the cache's and interface's single exclusives: about 5.7-6.4 GB at ~2.7k.
+  That figure lands at the run peak only IF the prepared typed graph is live at the seam where
+  the peak now sits. After gunbc#12890 that seam is claim evaluation or discovery authority. Whether
+  the graph is live there is NOT yet read from the chain. It is the first thing PR-2's chain read
+  establishes.
+- **Predicted AFTER at the gunbc#12381 subject** (about 2.7k modules; peak measured at
+  //gunbc/instruments:floor-memory-qualification after gunbc#12890): the measured peak less
+  5.7-6.4 GB IF the graph is live at that seam, and unchanged otherwise.
+- **Falsifiers.**
+  - An AFTER peak saving under 4 GB at that subject, with the graph shown live at the seam, falsifies
+    the claim that the union is what PR-2 removes.
+  - A graph not live at the peak seam means PR-2 does not move the floor's peak at all. Its case
+    would then be the compile-time peak only, which re-opens whether the work is warranted.
+
+**What PR-2 does NOT do, and what is left. (Written against the earlier prediction; the re-based
+figures above supersede its arithmetic, and this list is kept as the candidate set only.)** By the earlier prediction, PR-2 alone probably did NOT
 retire the 41G floor slot class. So the stopgap's trigger is not met by the planned work alone.
 Closing the remaining ~1-3 GB at ~2.7k modules has these candidates, each needing its own chain read
 before it is proposed:
