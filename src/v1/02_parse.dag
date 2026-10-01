@@ -4135,20 +4135,27 @@ fn parse_exit_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node
 // (idempotent, readonly, hermetic, response_, exit_, mock_), so no other v1 behaviour reads it. At least
 // one member is required; a member that is not a type expression refuses at parse.
 // THE THREE DECLARED FORMS (D13 ruling B). `requires none` and `requires opaque` are whole clauses:
-// each is carried as one marker property (`requires_none` / `requires_opaque`) and a member after it
-// refuses, so a clause cannot both declare nothing and name a resource. Anything else is the member
+// each is carried as the ONE `requires` property its members would use, whose value is the word as a
+// string literal -- a member is always a parsed type expression and never a string literal, so the
+// reader tells the forms apart by the value's shape. (A property's name is read back from the source
+// at its name span (v1.std.core authored_name_at), so a differently named marker spanned on the
+// `requires` token would read back as `requires`; one name, one span, is the honest carrier.) A member
+// after either word refuses, so a clause cannot both declare nothing and name a resource. Anything else is the member
 // list below. The word is matched by its TEXT, whatever shape the lexer gave it (`none` is a v1 keyword
 // literal, `opaque` an identifier).
 fn parse_op_requires_clause(tokens: TokenStream, ctx: ParseContext, span: SourceSpan) -> ModsResult {
   let tok = token_stream_first(stream: tokens)
   let word = match tok { Present { value: t } => t.text  Absent => "" }
   if word == "none" || word == "opaque" {
-    let minted = mint_parsed_bool_property(ctx: ctx, name: concat("requires_", word), span: span)
+    let value_mint = mint_parsed_node_identity(ctx: ctx)
+    let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
+    let word_value = make_expr_node(occurrence_identity: value_mint.identity, expr_data: ExprLiteral { value: LitStr { value: word } }, children: [], inferred: none, span: span)
+    let property = make_field_init_node(occurrence_identity: property_mint.identity, name: "requires", value: word_value, span: span, name_span: span)
     let rest = token_stream_advance(stream: tokens, n: 1)
     if tok_is_comma(tok: token_stream_first(stream: rest)) {
-      ModsResult { properties: [], tokens: rest, ctx: minted.ctx, err: Present { value: parse_error(msg: concat("`requires ", concat(word, "` is a whole clause and takes no member")), span: span) } }
+      ModsResult { properties: [], tokens: rest, ctx: property_mint.ctx, err: Present { value: parse_error(msg: concat("`requires ", concat(word, "` is a whole clause and takes no member")), span: span) } }
     } else {
-      ModsResult { properties: [minted.property], tokens: rest, ctx: minted.ctx, err: none }
+      ModsResult { properties: [property], tokens: rest, ctx: property_mint.ctx, err: none }
     }
   } else {
     parse_op_requires_members(tokens: tokens, ctx: ctx, span: span, acc: [])
@@ -4182,19 +4189,27 @@ type OperationRequiresDeclaration
   | RequiresResources { members: List<Node> }
 
 fn operation_requires_declaration(op: Node, source_indices: Map<String, NewlineIndex>) -> OperationRequiresDeclaration {
-  let names = op.properties |> map(p => field_init_node_name_at(n: p, source_indices: source_indices))
-  let none_marks = names |> filter(n => n == "requires_none") |> count
-  let opaque_marks = names |> filter(n => n == "requires_opaque") |> count
-  if none_marks > 0 {
+  let members = op.properties
+    |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "requires")
+    |> flat_map(p => p.children)
+  let none_words = members |> filter(m => requires_word_is(member: m, word: "none")) |> count
+  let opaque_words = members |> filter(m => requires_word_is(member: m, word: "opaque")) |> count
+  let member_count = members |> count
+  if none_words > 0 {
     RequiresNone
-  } else if opaque_marks > 0 {
+  } else if opaque_words > 0 {
     RequiresOpaque
+  } else if member_count == 0 {
+    RequiresUndeclared
   } else {
-    let members = op.properties
-      |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "requires")
-      |> flat_map(p => p.children)
-    let member_count = members |> count
-    if member_count == 0 { RequiresUndeclared } else { RequiresResources { members: members } }
+    RequiresResources { members: members }
+  }
+}
+
+fn requires_word_is(member: Node, word: String) -> Bool {
+  match member.expr_data {
+    ExprLiteral { value: LitStr { value: s } } => s == word
+    _ => false
   }
 }
 
