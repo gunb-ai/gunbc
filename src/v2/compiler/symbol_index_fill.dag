@@ -9,6 +9,7 @@ import v2.std.collection {
   empty_map,
   map_insert
 }
+import v2.std.node_query { binder_node_parts }
 import v2.std.optional {
   Absent,
   Optional,
@@ -103,6 +104,18 @@ fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
   }
 }
 
+// A BINDER IS INDEXED AT ITS TYPE (XL-2 PR2b-3). A parameter's or field's edge targets a binder node
+// (v2.std.node_query binder_node_parts), which identifies itself by its own labels; the path binds the
+// binder's declared type, and an inline record type's fields are indexed under it as before. The binder
+// node is never itself indexed as a record, so <binder-type> and <binder-default> never become path
+// segments. Any other target is indexed as it is.
+fn symbol_index_binder_type_or_target(target: Node) -> Node {
+  match binder_node_parts(n: target) {
+    Present { value: parts } => parts.type_node
+    Absent => target
+  }
+}
+
 fn symbol_index_fill_containment_edge(
   index: SymbolIndex,
   path: QualifiedName,
@@ -124,7 +137,7 @@ fn symbol_index_fill_containment_edge(
         )
       } else {
         let child_path = qualified_name_snoc(qn: path, segment: sym)
-        let declared = symbol_index_declared(target: edge.target)
+        let declared = symbol_index_declared(target: symbol_index_binder_type_or_target(target: edge.target))
         let with_binding = symbol_index_mark_declared_type_params(
           index: symbol_index_insert(
             index: index,
