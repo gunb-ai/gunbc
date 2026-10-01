@@ -10,7 +10,7 @@ import std.measure { Second, second }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 import extdeps.exec.command { argv_words }
-import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_6_18_post1_wheel_url }
+import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_7_1rc1_wheel_url }
 import extdeps.posix.sh_invocation { posix_sh_script_command }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
@@ -131,7 +131,7 @@ fn v41_wheel_verify_script(wheels: List<FlashInferWheel>) -> String {
     "set -e\n",
     fold(wheels, init: "", f: (acc, w) => join([
       acc,
-      "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_6_18_post1_wheel_url(w: w) as String, "\n",
+      "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_7_1rc1_wheel_url(w: w) as String, "\n",
       "echo '", w.sha256.hex as String, "  ", dir, "/", w.filename as String, "' | sha256sum -c -\n",
     ], "")),
   ], "")
