@@ -74,7 +74,7 @@ data witness_v4_evaluator_semantics_fail_closed: Bool = match v2_eval_call_primi
   env: v2_eval_empty_environment()
 ) {
   Rejected { diagnostics: _ } => true
-  _ => false
+  Accepted { value: _, diagnostics: _ } => false
 }
 
 data witness_v4_evaluator_transfer_fail_closed: Bool = match v2_eval_transfer(
@@ -82,7 +82,7 @@ data witness_v4_evaluator_transfer_fail_closed: Bool = match v2_eval_transfer(
   frame: v2_eval_empty_frame()
 ) {
   Rejected { diagnostics: _ } => true
-  _ => false
+  Accepted { value: _, diagnostics: _ } => false
 }
 
 fn v2_evaluator_witness_fail_node() -> Node {

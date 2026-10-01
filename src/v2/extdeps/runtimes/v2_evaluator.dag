@@ -247,7 +247,8 @@ fn v2_eval_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome
         } else {
           outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
         }
-      _ => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+      TypeNode { connective: _ } => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+      ComputationNode { behavior: _ } => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
     }
   }
 }

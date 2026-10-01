@@ -2132,6 +2132,10 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         "required-floor: compile_dag_diagnostic_census_memo hits={census_hits} \
          misses={census_misses}"
     );
+    // The eval-frame call memo, process-wide: the subject of a whole-floor before/after
+    // comparison when its keying changes. Its own line for the same reason as the two above.
+    let (eval_hits, eval_misses) = v1_compiler::v1_interpreter::eval_call_memo_process_counts();
+    eprintln!("required-floor: eval_call_memo hits={eval_hits} misses={eval_misses}");
     for failure in &outcome.failures {
         eprintln!("required-floor: FAIL {failure}");
     }
