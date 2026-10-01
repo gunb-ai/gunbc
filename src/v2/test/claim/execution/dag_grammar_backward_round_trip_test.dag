@@ -7,6 +7,7 @@ import v2.extdeps.languages.dag { dag_emit_parse_tree, dag_emit_parse_tree_with_
 import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, bind_outcome, node_locus, outcome_accepted }
+import v2.std.fn_index { non_empty_diagnostics_list }
 import v2.std.grammar { GrammarRoot, node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -161,7 +162,7 @@ test fn a_production_missing_its_row_refuses_located_at_its_capture_holds() -> B
         Present { value: capture } =>
           match dag_emit_parse_tree_with_root(root: rt_root_without(production: ^dag_production_data_decl), tree: tree) {
             Accepted { value: _, diagnostics: _ } => false
-            Rejected { diagnostics: ds } => rt_refused_at(ds: ds, reason: ^grammar_emit_production_unknown, at: capture)
+            Rejected { diagnostics: ds } => rt_refused_at(ds: non_empty_diagnostics_list(d: ds), reason: ^grammar_emit_production_unknown, at: capture)
           }
       }
   }
