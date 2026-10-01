@@ -2684,6 +2684,20 @@ mod tests {
             ),
             "attribution reads the rendered diagnostics the JSON stream carries"
         );
+        // An EMITTED build script is emitted code: rustc's warning compiling it (target kind
+        // custom-build, the emitted manifest) counts. A running script's `cargo:warning=` reaches
+        // cargo's stderr as text, not a compiler-message, so it does not.
+        let build_rs = r#"{"reason":"compiler-message","manifest_path":"/run/probe/crate/Cargo.toml","target":{"kind":["custom-build"]},"message":{"level":"warning","rendered":"warning: unused variable: `y`\n --> build.rs:1:5\n"}}"#;
+        let reading = read_cargo_json(
+            &format!("{build_rs}\n"),
+            "warning: probe@0.1.0: printed by cargo:warning=\n",
+            crate_dir,
+        );
+        assert_eq!(
+            reading.emitted_warning_headers,
+            vec!["warning: unused variable: `y`".to_string()],
+            "an emitted build.rs's rustc warning counts; its cargo:warning= output does not"
+        );
         let reading = read_cargo_json("not json\n", "", crate_dir);
         assert_eq!(
             reading.emitted_warning_headers.len(),
