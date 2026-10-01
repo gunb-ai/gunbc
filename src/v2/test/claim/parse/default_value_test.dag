@@ -33,14 +33,21 @@ fn param_default_parsed() -> Bool {
   }
 }
 
+// A binder with a default answers true; anything else -- a binder without one included, whose TYPE may
+// hold defaulted binders (a service operation's ^operation_input binder is typed by the io payload whose
+// fields carry the defaults) -- is searched through its children.
 fn tree_holds_a_defaulted_binder(n: Node) -> Bool {
+  node_is_a_defaulted_binder(n: n) || fold(n.children, init: false, f: fn(found, e) { found || tree_holds_a_defaulted_binder(n: e.target) })
+}
+
+fn node_is_a_defaulted_binder(n: Node) -> Bool {
   match binder_node_parts(n: n) {
     Present { value: parts } =>
       match parts.default {
         Present { value: _ } => true
         Absent => false
       }
-    Absent => fold(n.children, init: false, f: fn(found, e) { found || tree_holds_a_defaulted_binder(n: e.target) })
+    Absent => false
   }
 }
 
