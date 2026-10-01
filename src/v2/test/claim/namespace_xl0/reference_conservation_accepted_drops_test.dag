@@ -73,6 +73,11 @@ test fn a_call_argument_beside_a_match_valued_argument_is_conserved_holds() -> B
 // A primary expression the primary readers do not recognize lowers to its first atom: a map literal
 // to its opening brace, a module-qualified constructor literal to its head path segment. Rostered as
 // gunbc.recurring_failure_mode unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering.
+// A MAP LITERAL STILL REFUSES, NOW AT ITS ENTRY. Since gunbc#12740 the grammar gives a string-keyed
+// entry the identity ^dag_surface_field_init_string_key and `{ "k": v }` reaches the record-literal
+// reader, which refuses that entry as field_init_unlowered (body_lowering_fold
+// body_lower_field_init_edge) rather than reading "k" as a field -- still a located refusal, never a
+// drop. It flips to a conserved control when the map arm lowers the literal (gunbc#12758).
 data map_literal_value_source: String = "module v2.test.reference_conservation_map\n\nimport v2.std.logic { Bool }\nimport v2.std.text { String }\nimport v2.std.collection { Map }\n\ndata rc_value: Bool = true\n\ndata rc_map: Map<String, Bool> = { \"k\": rc_value }\n"
 
 fn map_literal_value_subject() -> ReferenceConservationSubject {
@@ -82,7 +87,7 @@ fn map_literal_value_subject() -> ReferenceConservationSubject {
 test fn a_map_literal_value_refuses_at_the_literal_holds() -> Bool {
   match map_literal_value_subject().normalized {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_unsupported_form
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_field_init_unlowered
   }
 }
 
@@ -92,11 +97,12 @@ fn qualified_constructor_value_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "qualified_constructor_value", source: qualified_constructor_value_source)
 }
 
-test fn a_qualified_constructor_literal_value_refuses_at_the_literal_holds() -> Bool {
-  match qualified_constructor_value_subject().normalized {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_unsupported_form
-  }
+// FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as "refuses at the literal", it went red when
+// gunbc#12714 made the construct tag a declaration reference, so a module-qualified construction
+// lowers whole. Permanent control: the module normalizes and the field value is conserved.
+test fn a_qualified_constructor_literal_value_is_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: qualified_constructor_value_subject())
+  reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_value) == 0)
 }
 
 // A match-arm body that is a statement sequence -- `let t = v` then an expression -- lowers to `v`:
