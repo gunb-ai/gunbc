@@ -47212,3 +47212,29 @@ mod multi_entry_index_sharing_control_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod pr2_whole_tree_differential_probe {
+    /// PR-2's whole-tree differential: strict-prepare every module under the source roots, then
+    /// print the per-module ancestry digest (fork rows are printed by the assembly loop on the way).
+    /// Armed by GUNBC_ANCESTRY_DIGEST; run with --ignored on a host with a bound memory leaf.
+    #[test]
+    #[ignore]
+    fn whole_tree_ancestry_digest() {
+        let root = super::workspace_root();
+        let roots = vec![
+            root.join("dag").to_string_lossy().into_owned(),
+            root.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let (prepared, _) = super::prepare_repository_once(
+            &roots,
+            &super::required_floor_runner::floor_prepared_subject_exclusions(),
+        )
+        .expect("whole tree prepares");
+        super::ancestry_digest_census(&prepared.graph.modules);
+        eprintln!(
+            "[ancestry-digest-done] modules={}",
+            prepared.graph.modules.len()
+        );
+    }
+}
