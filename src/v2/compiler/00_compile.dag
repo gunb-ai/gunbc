@@ -48,7 +48,8 @@ import v2.compiler.name_resolve {
   resolution_context,
   resolve_walk_in_context,
   resolve_in_context,
-  resolve_with_admission
+  resolve_with_admission,
+  resolved_tree_in_context
 }
 import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial }
 import v2.std.dependency { DataDependsOn, DependencyRelation }
@@ -131,7 +132,6 @@ import v2.compiler.resolve {
   ResolveWalkAccepted,
   ResolveWalkRefused,
   resolve,
-  resolved_tree_of,
   ResolvedTree
 }
 import v2.compiler.tokenize { tokenize }
@@ -3277,27 +3277,37 @@ fn native_module_resolve_verdict(
         context: context,
         module: qualified_name_from_dotted_string(dotted: module)
       )
-      NativeModuleResolveStep {
-        verdict: match step.walk {
-          ResolveWalkRefused { first: f, rest: r, observation: o } =>
-            match native_import_target_file_refusal(context: step.context, module: qualified_name_from_dotted_string(dotted: module)) {
+      match step.walk {
+        ResolveWalkRefused { first: f, rest: r, observation: o } =>
+          NativeModuleResolveStep {
+            verdict: match native_import_target_file_refusal(context: step.context, module: qualified_name_from_dotted_string(dotted: module)) {
               Present { value: target } =>
                 NativeModuleResolveImportTargetFileRefused { target: target, first: f, rest: r, observation: o }
               Absent => NativeModuleResolveRefused { first: f, rest: r, observation: o }
-            }
-          ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
-            match step.context.resolution {
-              Accepted { value: shared, diagnostics: _ } =>
-                NativeModuleResolveAccepted { resolved: resolved_tree_of(root: resolved, symbol_index: shared.symbol_index) }
-              Rejected { diagnostics: r } =>
-                NativeModuleResolveRefused {
+            },
+            context: step.context
+          }
+        ResolveWalkAccepted { value: root, diagnostics: d } =>
+          match step.context.resolution {
+            Accepted { value: shared, diagnostics: validate_diag } =>
+              let resolved = resolved_tree_in_context(shared: shared, validate_diag: validate_diag, root: root, diagnostics: d)
+              NativeModuleResolveStep {
+                verdict: match resolved.resolved {
+                  Accepted { value: tree, diagnostics: _ } => NativeModuleResolveAccepted { resolved: tree }
+                  Rejected { diagnostics: r } => NativeModuleResolveRefused { first: r, rest: [], observation: ObservationComplete }
+                },
+                context: native_test_context_with_resolution(context: step.context, resolution: resolved.context)
+              }
+            Rejected { diagnostics: r } =>
+              NativeModuleResolveStep {
+                verdict: NativeModuleResolveRefused {
                   first: r,
                   rest: [],
                   observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
-                }
-            }
-        },
-        context: step.context
+                },
+                context: step.context
+              }
+          }
       }
   }
 }
@@ -4124,56 +4134,79 @@ fn native_demand_prepared(
 // THE THREE PRODUCERS ARE CALLED HERE EXACTLY AS THE DISPLACED LOOP CALLED THEM. Same functions,
 // same arguments, same order. That is what makes "verdicts preserved" a structural claim rather
 // than an empirical hope.
-// A RESOLVE STEP'S RETURNED CONTEXT IS NOT CARRIED INTO THE NEXT DEMAND: on this route each module is
-// resolved exactly once, so its namespace (v2.compiler.name_resolve ResolutionContext namespaces) is
-// demanded once and nothing is lost. The run carries it when PR2 of
-// docs/plans/declaration-body-resolution-provider.md adds a module's cross-module declaration demands.
+// A RESOLVE STEP'S RETURNED CONTEXT IS CARRIED INTO THE NEXT DEMAND. A module's resolve demands the
+// declarations of every module its tree reaches (v2.compiler.name_resolve declaration_closure), so a
+// module reached before its own turn has its namespace and declarations produced already; dropping
+// the returned context would produce them again (docs/plans/declaration-body-resolution-provider.md).
+// Only a resolve demand changes the context; infer and eval read what resolve settled.
+type NativeDemandExecuted {
+  state: DemandState<NativeDemandValue>
+  context: NativeTestContext
+}
+
 fn native_demand_execute(
   run: NativeDemandRun,
   subject: NativeDemandSubject,
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   compiler: DeclaredInput
-) -> DemandState<NativeDemandValue> {
+) -> NativeDemandExecuted {
   match subject {
     NativeResolveSubject { entry: entry } =>
-      DemandAvailable {
-        value: NativeResolveValue {
-          resolution: native_lane_module_resolution(
-            context: context,
-            refusal_index: refusal_index,
-            entry: entry
-          ).resolution
-        }
+      let step = native_lane_module_resolution(
+        context: context,
+        refusal_index: refusal_index,
+        entry: entry
+      )
+      NativeDemandExecuted {
+        state: DemandAvailable { value: NativeResolveValue { resolution: step.resolution } },
+        context: step.context
       }
     NativeInferSubject { entry: entry } =>
-      match native_demand_resolved_tree(engine: run.engine, module: entry.module, compiler: compiler) {
-        Absent => DemandRefused
-        Present { value: resolution } =>
-          match resolution {
-            NativeLaneModuleResolved { resolved: resolved } =>
-              DemandAvailable {
-                value: NativeInferValue {
-                  preparation: native_lane_module_inference(entry: entry, resolved: resolved)
-                }
-              }
-            NativeLaneModuleContextRowsDecided { rows: _ } => DemandRefused
-            NativeLaneModuleResolveRowsDecided { rows: _ } => DemandRefused
-          }
-      }
+      NativeDemandExecuted { state: native_demand_execute_infer(run: run, entry: entry, compiler: compiler), context: context }
     NativeEvalSubject { module: module, declaration: declaration } =>
-      match native_demand_prepared(engine: run.engine, module: module, compiler: compiler) {
-        Absent => DemandRefused
-        Present { value: prepared } =>
+      NativeDemandExecuted { state: native_demand_execute_eval(run: run, module: module, declaration: declaration, compiler: compiler), context: context }
+  }
+}
+
+fn native_demand_execute_infer(
+  run: NativeDemandRun,
+  entry: NativeLaneUniverseModule,
+  compiler: DeclaredInput
+) -> DemandState<NativeDemandValue> {
+  match native_demand_resolved_tree(engine: run.engine, module: entry.module, compiler: compiler) {
+    Absent => DemandRefused
+    Present { value: resolution } =>
+      match resolution {
+        NativeLaneModuleResolved { resolved: resolved } =>
           DemandAvailable {
-            value: NativeEvalValue {
-              row: native_lane_identity_row(
-                prepared: prepared,
-                module: module,
-                declaration: declaration
-              )
+            value: NativeInferValue {
+              preparation: native_lane_module_inference(entry: entry, resolved: resolved)
             }
           }
+        NativeLaneModuleContextRowsDecided { rows: _ } => DemandRefused
+        NativeLaneModuleResolveRowsDecided { rows: _ } => DemandRefused
+      }
+  }
+}
+
+fn native_demand_execute_eval(
+  run: NativeDemandRun,
+  module: String,
+  declaration: String,
+  compiler: DeclaredInput
+) -> DemandState<NativeDemandValue> {
+  match native_demand_prepared(engine: run.engine, module: module, compiler: compiler) {
+    Absent => DemandRefused
+    Present { value: prepared } =>
+      DemandAvailable {
+        value: NativeEvalValue {
+          row: native_lane_identity_row(
+            prepared: prepared,
+            module: module,
+            declaration: declaration
+          )
+        }
       }
   }
 }
@@ -4246,6 +4279,11 @@ fn elapsed_is_valid(e: ElapsedObservation) -> Bool {
   }
 }
 
+type NativeDemandStepped {
+  run: NativeDemandRun
+  context: NativeTestContext
+}
+
 fn native_demand_step(
   run: NativeDemandRun,
   plan: NativeDemandPlan,
@@ -4253,39 +4291,43 @@ fn native_demand_step(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   compiler: DeclaredInput
-) -> NativeDemandRun {
+) -> NativeDemandStepped {
   let lookup_started = observed_monotonic_nanos("native-demand-binding-lookup-start")
   match native_demand_binding(plan: plan, id: identity) {
-    Absent => run
+    Absent => NativeDemandStepped { run: run, context: context }
     Present { value: subject } =>
       let lookup_finished = observed_monotonic_nanos("native-demand-binding-lookup-finish")
       let started = observed_monotonic_nanos("native-demand-step-start")
-      let settled = native_demand_execute(
+      let executed = native_demand_execute(
         run: run,
         subject: subject,
         context: context,
         refusal_index: refusal_index,
         compiler: compiler
       )
+      let settled = executed.state
       let finished = observed_monotonic_nanos("native-demand-step-finish")
       let elapsed = elapsed_observation(start: started, finish: finished)
       let settle_started = observed_monotonic_nanos("native-demand-settle-start")
       let settled_engine = demand_engine_settle(e: run.engine, id: identity, state: settled)
       let collected_rows = native_demand_collect_rows(rows: run.rows, settled: settled)
       let settle_finished = observed_monotonic_nanos("native-demand-settle-finish")
-      NativeDemandRun {
-        engine: settled_engine,
-        transitions: list_snoc_item(
-          xs: run.transitions,
-          item: NativeDemandTransition {
-            identity: identity,
-            elapsed: elapsed
-          }
-        ),
-        rows: collected_rows,
-        scheduling_nanos: run.scheduling_nanos
-          + native_demand_bookkeeping_nanos(start: lookup_started, finish: lookup_finished)
-          + native_demand_bookkeeping_nanos(start: settle_started, finish: settle_finished)
+      NativeDemandStepped {
+        run: NativeDemandRun {
+          engine: settled_engine,
+          transitions: list_snoc_item(
+            xs: run.transitions,
+            item: NativeDemandTransition {
+              identity: identity,
+              elapsed: elapsed
+            }
+          ),
+          rows: collected_rows,
+          scheduling_nanos: run.scheduling_nanos
+            + native_demand_bookkeeping_nanos(start: lookup_started, finish: lookup_finished)
+            + native_demand_bookkeeping_nanos(start: settle_started, finish: settle_finished)
+        },
+        context: executed.context
       }
   }
 }
@@ -4318,17 +4360,18 @@ fn native_demand_drain(
     match admission {
       DemandNotAdmitted { cause: _ } => selected
       DemandAdmitted { identity: identity } =>
-        native_demand_drain(
-          run: native_demand_step(
-            run: selected,
-            plan: plan,
-            identity: identity,
-            context: context,
-            refusal_index: refusal_index,
-            compiler: compiler
-          ),
+        let stepped = native_demand_step(
+          run: selected,
           plan: plan,
+          identity: identity,
           context: context,
+          refusal_index: refusal_index,
+          compiler: compiler
+        )
+        native_demand_drain(
+          run: stepped.run,
+          plan: plan,
+          context: stepped.context,
           refusal_index: refusal_index,
           compiler: compiler,
           fuel: fuel - 1

@@ -318,7 +318,7 @@ fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> I
 // refused, and only for the carrier the refinement's declaration states -- one step, never walked:
 // a produced Pos2 (`type Pos2 = Pos where ..`) inhabits Pos and not Int, and a sibling refinement of
 // the same carrier (Neg at Pos) refuses. The carrier is SUPPLIED by the producer of the obligation
-// (v2.compiler.infer refinement_declared_carrier over ResolvedTree.resolved_declarations), because
+// (v2.compiler.infer refinement_declared_carrier over ResolvedTree.declarations), because
 // reading a declaration is resolution's fact, not this relation's; Absent -- not a refinement, or a
 // lookup miss -- leaves the exact refusal standing, never admits. No predicate is evaluated: widening
 // forgets the predicate, it does not check one. The optional-at-required refusal is decided before

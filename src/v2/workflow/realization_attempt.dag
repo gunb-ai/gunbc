@@ -284,7 +284,7 @@ fn attempt_joined(program: ResolvedTree, fn_name: Symbol, entry: String) -> Entr
     match list_at_optional(xs: joined, index: 0) {
       Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
       Present { value: decl } =>
-        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations }) {
+        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, declarations: program.declarations }) {
           Rejected { diagnostics: ds } =>
             attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>

@@ -140,7 +140,7 @@ fn ingested_resolved_module_from_source(source: String) -> Outcome<ResolvedTree>
 
 // THE ARROW, ROOTED IN ITS MODULE'S RESOLVED DECLARATIONS. Its parameter references are path-keyed
 // (v2.std.qualified_name parameter_reference_node, e.g. p.classical_not.x) and infer grounds them
-// through ResolvedTree.resolved_declarations, so an arrow lifted out of its module without those
+// through ResolvedTree.declarations, so an arrow lifted out of its module without those
 // declarations would ask an empty index and refuse. The module's own resolved declarations travel
 // with it; the corpus-wide symbol_index does not, because no stage after resolve reads it.
 fn ingested_arrow_from_source(source: String) -> Outcome<ResolvedTree> {
@@ -149,7 +149,7 @@ fn ingested_arrow_from_source(source: String) -> Outcome<ResolvedTree> {
     f: fn(resolved) {
       match ingested_find_arrow_in_module(root: resolved.root) {
         Present { value: arrow } =>
-          outcome_accepted(value: ResolvedTree { root: arrow, symbol_index: empty_symbol_index(), resolved_declarations: resolved.resolved_declarations })
+          outcome_accepted(value: ResolvedTree { root: arrow, symbol_index: empty_symbol_index(), declarations: resolved.declarations })
         Absent =>
           outcome_rejected(
             d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arrow_miss, node: resolved.root)

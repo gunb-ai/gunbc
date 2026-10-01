@@ -17,7 +17,9 @@ import v2.compiler.resolve {
   ScopeFrame,
   empty_canonical_symbol_set,
   resolve_node,
-  scope_from_namespace
+  scope_from_namespace,
+  WholeModule,
+  resolved_declaration_lookup
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.eval {
@@ -52,7 +54,7 @@ import v2.std.qualified_name {
   qualified_name_from_dotted_string
 }
 import v2.std.resolution_policy { NamespaceOnlyY }
-import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
+import v2.std.symbol_index { empty_symbol_index }
 import v2.std.text { String }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 
@@ -178,7 +180,9 @@ fn pr_ctx(kind: FrameKind) -> ResolveContext {
     position: pr_qn(dotted: "m"),
     lm: dag_language_model(),
     under_module_root: false,
-    declaring: NotDeclaring
+    declaring: NotDeclaring,
+    selection: WholeModule,
+    provided: empty_map()
   }
 }
 
@@ -285,8 +289,8 @@ fn pr_program_grounding() -> PrGrounding {
           PrGrounding {
             f_grounded: pr_grounded_in(inferred: inferred, path: pr_qn(dotted: "p.f.x")),
             g_grounded: pr_grounded_in(inferred: inferred, path: pr_qn(dotted: "p.g.x")),
-            f_declared: symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: pr_qn(dotted: "p.f.x")),
-            g_declared: symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: pr_qn(dotted: "p.g.x"))
+            f_declared: resolved_declaration_lookup(declarations: resolved.declarations, path: pr_qn(dotted: "p.f.x")),
+            g_declared: resolved_declaration_lookup(declarations: resolved.declarations, path: pr_qn(dotted: "p.g.x"))
           }
       }
   }

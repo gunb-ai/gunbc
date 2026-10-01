@@ -8,7 +8,8 @@ import v2.compiler.resolve {
   ResolveContext,
   empty_canonical_symbol_set,
   resolve_node,
-  scope_from_namespace
+  scope_from_namespace,
+  WholeModule
 }
 import v2.compiler.normalized_tree { no_record_declarations, no_resource_declarations }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
@@ -118,7 +119,9 @@ test fn witness_qualified_name_node_resolves_holds() -> Bool {
       position: qualified_name_snoc(qn: qmpr_consumer_qn, segment: ^LocalAlias),
       lm: dag_language_model(),
       under_module_root: false,
-      declaring: NotDeclaring
+      declaring: NotDeclaring,
+      selection: WholeModule,
+      provided: empty_map()
     },
     n: qmpr_qualified_ref
   ) {
@@ -138,7 +141,9 @@ test fn witness_qualified_name_node_miss_red_holds() -> Bool {
       position: qmpr_consumer_qn,
       lm: dag_language_model(),
       under_module_root: false,
-      declaring: NotDeclaring
+      declaring: NotDeclaring,
+      selection: WholeModule,
+      provided: empty_map()
     },
     n: qmpr_qualified_ref
   ) {

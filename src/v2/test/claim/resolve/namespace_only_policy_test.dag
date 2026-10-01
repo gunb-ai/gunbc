@@ -8,7 +8,8 @@ import v2.compiler.resolve {
   Namespace,
   empty_canonical_symbol_set,
   resolve_atom,
-  scope_from_namespace
+  scope_from_namespace,
+  WholeModule
 }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { empty_map }
@@ -81,7 +82,9 @@ fn policy_pilot_resolve(
       position: position,
       lm: dag_language_model(),
       under_module_root: true,
-      declaring: NotDeclaring
+      declaring: NotDeclaring,
+      selection: WholeModule,
+      provided: empty_map()
     },
     n: policy_pilot_atom(identity: identity),
     identity: identity
@@ -125,7 +128,9 @@ fn policy_pilot_resolve_rejects_with_reason(
       position: position,
       lm: dag_language_model(),
       under_module_root: true,
-      declaring: NotDeclaring
+      declaring: NotDeclaring,
+      selection: WholeModule,
+      provided: empty_map()
     },
     n: policy_pilot_atom(identity: identity),
     identity: identity

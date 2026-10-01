@@ -14,7 +14,7 @@ import v2.std.compilers.target_model {
   canonical_operation_wire_matches_operation,
   target_model_canonical_operation_member_declared_type
 }
-import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.resolve { ResolvedDeclarations, ResolvedTree, resolved_declaration_lookup }
 import v2.compiler.inferred_tree {
   DerivedGrounding,
   GroundingNotDerived,
@@ -850,16 +850,16 @@ fn infer_product_facts_from_entries(
 // resolver that minted it: refused, located, never left underived.
 fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree) -> Outcome<InferredFacts> {
   match parameter_reference_path_optional(node: n) {
-    Present { value: path } => infer_parameter_reference_facts(n: n, path: path, index: resolved.resolved_declarations)
+    Present { value: path } => infer_parameter_reference_facts(n: n, path: path, index: resolved.declarations)
     Absent => infer_term_node_facts(n: n, partials: partials, kinds: kinds, resolved: resolved)
   }
 }
 
-fn infer_parameter_reference_facts(n: Node, path: QualifiedName, index: SymbolIndex) -> Outcome<InferredFacts> {
+fn infer_parameter_reference_facts(n: Node, path: QualifiedName, index: ResolvedDeclarations) -> Outcome<InferredFacts> {
   match infer_descent_witness_for_node(n: n) {
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
     Holds { value: descent_proof } =>
-      match symbol_index_lookup(index: index, qualified_path: path) {
+      match resolved_declaration_lookup(declarations: index, path: path) {
         Present { value: declared } =>
           inferred_facts_from_derived_type(node: n, derived_type: declared, descent: Holds { value: descent_proof })
         Absent =>
@@ -1211,7 +1211,7 @@ fn infer_parameter_type_in_scope(tree: Node, reference: Node, binding: Symbol) -
 // resolved reference carries its declaration's qualified path (v2.std.qualified_name
 // declaration_reference_path_optional); the declaration is what v2.std.symbol_index
 // symbol_index_lookup answers for that path in the DECLARATIONS WITH RESOLVED BODIES
-// (v2.compiler.resolve ResolvedTree resolved_declarations, gunbc#12629) -- never symbol_index, which
+// (v2.compiler.resolve ResolvedTree declarations, the declaration-body provider's snapshot) -- never symbol_index, which
 // holds declarations as authored -- so the carrier is the identity resolve bound: `Int` is the kernel
 // binding, `Pos` (as Pos2's carrier) is its declaration reference. No tree is walked and no second
 // reference->declaration route exists. `type Pos = Int where positive` is stored as its member `Conj { <type-expr>: Int,
@@ -1235,11 +1235,11 @@ type RefinementDeclaration {
   where_clause: Node
 }
 
-fn refinement_declaration(index: SymbolIndex, reference: Node) -> Optional<RefinementDeclaration> {
+fn refinement_declaration(index: ResolvedDeclarations, reference: Node) -> Optional<RefinementDeclaration> {
   match declaration_reference_path_optional(node: reference) {
     Absent => Absent
     Present { value: path } =>
-      match symbol_index_lookup(index: index, qualified_path: path) {
+      match resolved_declaration_lookup(declarations: index, path: path) {
         Absent => Absent
         Present { value: decl } =>
           match find_named_child(root: decl, name: ^dag_surface_where_refinement_clause) {
@@ -1255,7 +1255,7 @@ fn refinement_declaration(index: SymbolIndex, reference: Node) -> Optional<Refin
   }
 }
 
-fn refinement_declared_carrier(index: SymbolIndex, source_type: Node) -> Optional<Node> {
+fn refinement_declared_carrier(index: ResolvedDeclarations, source_type: Node) -> Optional<Node> {
   match refinement_declaration(index: index, reference: source_type) {
     Present { value: d } => Present { value: d.carrier }
     Absent => Absent
@@ -2134,7 +2134,7 @@ fn infer_judge_declared_position(
   position: DeclaredTypePosition,
   application: Node,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex,
+  declarations: ResolvedDeclarations,
   formal: InhabitanceFormal,
   produced_at: Node,
   type_params: List<Symbol>
@@ -2204,7 +2204,7 @@ fn infer_judge_application_argument_instantiating(
   position: DeclaredTypePosition,
   application: Node,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex,
+  declarations: ResolvedDeclarations,
   formal: InhabitanceFormal,
   arg: Node,
   type_params: List<Symbol>,
@@ -2259,7 +2259,7 @@ fn infer_judge_application_argument_instantiating(
 fn infer_application_argument_inhabitance(
   node: Node,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex
+  declarations: ResolvedDeclarations
 ) -> Outcome<Bool> {
   match infer_application_formals(node: node) {
     FormalsUnresolved =>
@@ -2310,7 +2310,7 @@ fn infer_judge_formal_args(
   position: DeclaredTypePosition,
   site: InferJudgedSite,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex,
+  declarations: ResolvedDeclarations,
   pairs: List<InhabitanceFormalArg>,
   type_params: List<Symbol>
 ) -> Outcome<List<TypeVariableInstance>> {
@@ -2914,7 +2914,7 @@ fn infer_gather_application_row_on_entries(
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
-  match infer_application_argument_inhabitance(node: node, entries: entries, declarations: resolved.resolved_declarations) {
+  match infer_application_argument_inhabitance(node: node, entries: entries, declarations: resolved.declarations) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -3008,7 +3008,7 @@ fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, re
             position: position_let_annotation(bound: bound),
             application: annotation,
             entries: entries,
-            declarations: resolved.resolved_declarations,
+            declarations: resolved.declarations,
             formal: InhabitanceFormal { parameter_identity: ^let_annotation, declared: annotation },
             produced_at: bound,
             type_params: []
@@ -3147,7 +3147,7 @@ fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>, 
                       o: coercion_cast_crossing(
                         source: g,
                         source_type: g.witness.structural.evidence,
-                        source_declared_carrier: refinement_declared_carrier(index: resolved.resolved_declarations, source_type: g.witness.structural.evidence),
+                        source_declared_carrier: refinement_declared_carrier(index: resolved.declarations, source_type: g.witness.structural.evidence),
                         target: target
                       ),
                       f: fn(crossed) {
@@ -3808,14 +3808,15 @@ fn infer_gather_fold_step_merged(
 // TWO READINGS OF ONE DECLARATION, EACH FROM THE INDEX THAT OWNS IT (v2.compiler.resolve
 // ResolvedTree). symbol_index, the index resolution consulted, holds a declaration AS AUTHORED: it
 // says which paths are records, which fields each declares and which binders it has -- facts about
-// NAMES, so the field set is checked for every record a tag can resolve to. resolved_declarations
-// holds the subject module's declarations WITH RESOLVED BODIES, and the judge compares resolved
-// types, so a record found there is judged field by field. A record declared in another module has
-// no resolved body this stage can read: each of its field values is a counted
-// UndecidableFormalUnresolved obligation and the construct stays on the frontier -- never compared
-// against the authored spelling, which would refuse for the wrong reason. That population and its
-// trigger are rostered in gunbc.recurring_failure_mode
-// construct_field_value_not_typed_against_the_record_declaration.
+// NAMES, so the field set is checked for every record a tag can resolve to. ResolvedTree.declarations
+// holds the declarations WITH RESOLVED BODIES of every module the resolved tree reaches -- the
+// record's own module included, wherever it is declared -- and the judge compares resolved types, so
+// a record found there is judged field by field. A record outside that snapshot -- reachable only
+// from a resolution with no ingest context, which carries its own module alone -- has no resolved
+// body this stage can read: each of its field values is a counted UndecidableFormalUnresolved
+// obligation and the construct stays on the frontier, never compared against the authored spelling,
+// which would refuse for the wrong reason (gunbc.recurring_failure_mode
+// construct_field_value_not_typed_against_the_record_declaration).
 //
 // ONLY A DECLARED RECORD IS READ HERE. The index says which kind of payload a path denotes
 // (symbol_index_declared_payload_at); a variant arm's construct, a tag the guarded reader does not
@@ -3837,7 +3838,7 @@ type InferConstructRead
   | ConstructNotARecord
 
 fn infer_record_formals(resolved: ResolvedTree, path: QualifiedName, authored: Node) -> InferRecordFormals {
-  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
+  match resolved_declaration_lookup(declarations: resolved.declarations, path: path) {
     Present { value: resolved } => RecordFormalsResolved { payload: resolved }
     Absent => RecordFormalsAuthored { payload: authored }
   }
@@ -4094,7 +4095,7 @@ fn infer_record_construct_facts(
   node: Node,
   construct: InferRecordConstruct,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex,
+  declarations: ResolvedDeclarations,
   partials: List<Node>,
 ) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -4169,7 +4170,7 @@ fn infer_gather_record_construct_row_on_entries(
   node: Node,
   construct: InferRecordConstruct,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex,
+  declarations: ResolvedDeclarations,
   pending: Diagnostics,
   partials: List<Node>,
 ) -> InferGatherFoldAcc {
@@ -4203,7 +4204,7 @@ fn infer_gather_settled_row(
         resolved: resolved
       )
     Absent =>
-      match infer_arrow_declared_return_check(node: acc.node, entries: merged_entries, declarations: resolved.resolved_declarations) {
+      match infer_arrow_declared_return_check(node: acc.node, entries: merged_entries, declarations: resolved.declarations) {
         Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
             node: acc.node,
@@ -4235,7 +4236,7 @@ fn infer_gather_settled_row(
 // UndecidableGenericFormal, counted. An Arrow with no body is a signature (a fn type, a census-grade
 // declaration) and owes nothing here; one with two bodies, or a body but no declared return, is a
 // malformed Arrow and refuses.
-fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Outcome<Bool> {
+fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntry>, declarations: ResolvedDeclarations) -> Outcome<Bool> {
   match node.kind {
     TypeNode { connective: Arrow } =>
       match arrow_body_target_lookup(children: node.children) {
@@ -4282,7 +4283,7 @@ fn infer_gather_settled_unannotated_row(
               node: acc.node,
               construct: construct,
               entries: merged_entries,
-              declarations: resolved.resolved_declarations,
+              declarations: resolved.declarations,
               pending: merged_pending,
               partials: partials
             )

@@ -370,7 +370,7 @@ fn coercion_fold_exact_structural(
 // v2.std.refinement_widening_predicate: that rule answers value-set containment between two domains;
 // this one judges nothing but structural equality, which find_witness already owns, so no
 // preservation rule is added. ONE STEP: the carrier is read from the declaration as RESOLVED
-// (v2.compiler.resolve ResolvedTree resolved_declarations), so `type Pos2 = Pos where ..` states its
+// (v2.compiler.resolve ResolvedTree declarations), so `type Pos2 = Pos where ..` states its
 // carrier as the declaration reference to Pos -- `x as Pos` from `x: Pos2` is Widened, and `x as Int`
 // from `x: Pos2` REFUSES: the carrier edge is not walked to a fixed point (a walk owes its own
 // termination argument over the declaration graph, and one step is all the declaration states).

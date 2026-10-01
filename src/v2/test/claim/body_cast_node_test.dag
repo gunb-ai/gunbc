@@ -145,7 +145,7 @@ fn bcn_crossing_quality(o: Outcome<ResolvedTree>, reference_path: QualifiedName)
     Accepted { value: root, diagnostics: _ } =>
       match bcn_cast_targets(n: root.root) {
         Cons { head: target, tail: Empty } =>
-          match refinement_declaration(index: root.resolved_declarations, reference: declaration_reference_node(qn: reference_path, occurrence_id: OccurrenceSynthetic)) {
+          match refinement_declaration(index: root.declarations, reference: declaration_reference_node(qn: reference_path, occurrence_id: OccurrenceSynthetic)) {
             Absent => Absent
             Present { value: decl } =>
               match coercion_cast_crossing(
@@ -563,7 +563,7 @@ fn bcn_supplied_quality(o: Outcome<CoercionResult>) -> Optional<CoercionQuality>
 }
 
 // (15b) ONE STEP, AND ONLY THE DECLARED CARRIER. `x as Bool` from x: Pos (carrier Int) refuses. For
-// `type Pos2 = Pos where ..` the carrier read from resolved_declarations is the RESOLVED declaration
+// `type Pos2 = Pos where ..` the carrier read from the declaration snapshot is the RESOLVED declaration
 // reference to Pos (row 15c2 reads it on the production route), so `x as Pos` from x: Pos2 is Widened
 // and `x as Int` from x: Pos2 REFUSES: the carrier edge is not walked to a fixed point. Supplied values
 // at coercion's interface, in the shape the production route emits. RED if the widening arm admitted a
@@ -576,7 +576,7 @@ test fn bcn_cast_out_of_a_refinement_to_a_non_carrier_refuses() -> Bool {
 
 // (15c2) A REFINEMENT OF A REFINEMENT WIDENS ONE STEP ON THE PRODUCTION ROUTE. `x as Pos` from
 // `x: Pos2` (`type Pos2 = Pos where positive`): the crossing's quality is Widened, read through the
-// production assembly's resolved_declarations, where Pos2's carrier is the resolved reference to Pos,
+// production assembly's declaration snapshot, where Pos2's carrier is the resolved reference to Pos,
 // against that tree's own cast target. infer's admission of a Widened cast end to end is row (15)'s
 // subject; this row's is the resolved carrier, so infer is not re-run here (DESIGN section 3). The
 // assembly is a producer rostered warm in v2.workflow.floor_pure_producer_share. RED BEFORE

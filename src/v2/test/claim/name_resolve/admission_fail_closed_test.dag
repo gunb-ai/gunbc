@@ -521,18 +521,21 @@ fn fc_namespaces_built(context: Outcome<ResolutionContext>) -> Int {
   }
 }
 
-// AT MOST ONCE: subject a, then a again, then b, over one threaded context, builds two namespaces --
-// the second demand for a is served the stored value. RED if a demand for a module already in the
-// provider builds again (three), which is the rebuild this provider exists to remove; and the served
-// resolution is the same tree the first one produced.
+// AT MOST ONCE: subject a, then a again, then b, over one threaded context. a's resolve builds a's
+// namespace and -- because a's resolved tree references import_a's export, and the tree's declaration
+// snapshot reaches that declaration -- import_a's (two). The second demand for a is served the stored
+// value (still two), and b, which references the same export, builds only its own (three): import_a's
+// was produced for a and is read back for b. RED if a demand for a module already in the provider
+// builds again, which is the rebuild this provider exists to remove; and the served resolution is the
+// same tree the first one produced.
 test fn namespace_provider_builds_each_module_at_most_once_per_context() -> Bool {
   fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
     let first = resolve_in_context(context: fc_provider_context(roots: roots), admission: fc_provider_admission(seg: ^fc_subject_a_seg))
     let again = resolve_in_context(context: first.context, admission: fc_provider_admission(seg: ^fc_subject_a_seg))
     let other = resolve_in_context(context: again.context, admission: fc_provider_admission(seg: ^fc_subject_b_seg))
-    (fc_namespaces_built(context: first.context) == 1)
-      && (fc_namespaces_built(context: again.context) == 1)
-      && (fc_namespaces_built(context: other.context) == 2)
+    (fc_namespaces_built(context: first.context) == 2)
+      && (fc_namespaces_built(context: again.context) == 2)
+      && (fc_namespaces_built(context: other.context) == 3)
       && match first.resolved {
         Rejected { diagnostics: _ } => false
         Accepted { value: a1, diagnostics: _ } =>
@@ -546,7 +549,9 @@ test fn namespace_provider_builds_each_module_at_most_once_per_context() -> Bool
 
 // A DEMAND UNDER A DIFFERENT ADMISSION REFUSES, located at the subject, and neither serves nor
 // overwrites the stored namespace: the same subject asked with no imports after being produced with
-// one import is a different input, so the provider's key would be incomplete if it answered.
+// one import is a different input, so the provider's key would be incomplete if it answered. The
+// first resolve built a's namespace and import_a's (its snapshot reaches import_a's export); the
+// conflicting demand builds nothing.
 test fn namespace_provider_refuses_a_demand_whose_admission_differs() -> Bool {
   fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
     let first = resolve_in_context(context: fc_provider_context(roots: roots), admission: fc_provider_admission(seg: ^fc_subject_a_seg))
@@ -554,7 +559,7 @@ test fn namespace_provider_refuses_a_demand_whose_admission_differs() -> Bool {
       context: first.context,
       admission: Admission { subject: ResolutionSubject { name: fc_qn(seg: ^fc_subject_a_seg) }, imports: Empty }
     )
-    (fc_namespaces_built(context: conflicting.context) == 1)
+    (fc_namespaces_built(context: conflicting.context) == 2)
       && match conflicting.resolved {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: d } => d.head.reason == ^resolve_reason_namespace_provider_admission_conflict

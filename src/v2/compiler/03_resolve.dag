@@ -182,42 +182,96 @@ import v2.std.map_introduction {
   map_introduction_expected_head_is_map
 }
 
-// RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
-// stage that needs a reference's declaration asks the SAME authority resolution asked
-// (v2.std.symbol_index symbol_index_lookup) instead of reconstructing it from the tree: the index is
-// the Namespace.symbol_index the walk ran under, minted beside the root on the Accepted arm only, so
-// a refusal carries no index and no stage can read one for a tree that did not resolve.
-// CONSUMERS: .root is read by every stage after resolve (infer's gather reads it at its entry).
-// .symbol_index is the table resolve resolves against; no later stage reads it. A later stage that needs
-// a declaration reads .resolved_declarations below: v2.compiler.infer infer_parameter_reference_facts
-// grounds a named fn's parameter reference (minted by resolve_frame_bound_reference) by
-// symbol_index_lookup there at its path, and refinement_declaration (gunbc#12407) asks it for the
-// refinement declaration a cast operand's type references.
-// TWO INDEXES OVER THE SAME DECLARATIONS AT DIFFERENT PHASES, NEVER ONE QUESTION TWICE.
-// symbol_index is THE INDEX RESOLUTION CONSULTED: declarations as authored, before resolve, the table
-// resolve looks references up in. resolved_declarations is DECLARATIONS WITH RESOLVED BODIES: the same
-// module fold (v2.compiler.symbol_index_fill symbol_index_fill_module_declarations) run over the
-// RESOLVED root, so a declaration's body carries the identities resolve bound in it -- a where-refined
-// carrier `Int` is the kernel binding, a carrier naming a corpus type is its declaration reference. A
-// reader that needs a body's resolved type reads resolved_declarations; nothing reads symbol_index for
-// a body type (neat-boar-16 ruling), so the two never answer the same question.
+// RESOLVE'S OUTPUT IS THE RESOLVED ROOT, THE INDEX IT WAS RESOLVED AGAINST, AND THE RESOLVED
+// DECLARATIONS IT REACHES, one record.
+// .root is read by every stage after resolve. .symbol_index is THE INDEX RESOLUTION CONSULTED --
+// declarations as authored, the table resolve looks references up in -- and no later stage reads it
+// for a declaration's type (neat-boar-16 ruling).
+// .declarations IS INFER'S SNAPSHOT OF THE DECLARATION-BODY PROVIDER
+// (docs/plans/declaration-body-resolution-provider.md, P2): for every module the resolved tree
+// reaches through a declaration reference, transitively through the declarations it reaches, that
+// module's declarations with every type position resolved in ITS OWN namespace -- a record field
+// typed ParseTree carries ParseTree's declaration reference, wherever the record is declared. A
+// later stage that needs a declaration's resolved type -- a field, a variant payload, a refinement
+// carrier, a parameter, a callee's Arrow -- reads it here and nowhere else, and a path no module of
+// the snapshot owns answers Absent: the reader refuses, it never widens to .symbol_index. The
+// snapshot is a projection of the provider's stored values, never re-resolved
+// (v2.compiler.name_resolve resolve_in_context).
 type ResolvedTree {
   root: Node
   symbol_index: SymbolIndex
-  resolved_declarations: SymbolIndex
+  declarations: ResolvedDeclarations
 }
 
-// The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
-// qualified name is read from the root's own header, so a declaration is keyed at its full path (p.Pos).
+// One module's resolved declarations per module the closure reached, keyed by module.
+type ResolvedDeclarations {
+  by_module: Map<QualifiedName, SymbolIndex>
+}
+
+fn resolved_declarations_empty() -> ResolvedDeclarations {
+  ResolvedDeclarations { by_module: empty_map() }
+}
+
+fn resolved_declarations_with_module(d: ResolvedDeclarations, module: QualifiedName, index: SymbolIndex) -> ResolvedDeclarations {
+  ResolvedDeclarations { by_module: map_insert(m: d.by_module, key: module, value: index) }
+}
+
+fn resolved_declarations_has_module(d: ResolvedDeclarations, module: QualifiedName) -> Bool {
+  match map_lookup(m: d.by_module, key: module) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE ONE READ OF A RESOLVED DECLARATION: the owning module's resolved index, asked at the full path.
+// The owner is the longest prefix of the path the snapshot holds a module for -- found by shortening
+// the path, a lookup per segment, never a scan of the snapshot.
+fn resolved_declaration_lookup(declarations: ResolvedDeclarations, path: QualifiedName) -> Optional<Node> {
+  match qualified_name_longest_keyed_prefix(keys: declarations.by_module, path: path) {
+    Absent => optional_absent()
+    Present { value: owner } =>
+      match map_lookup(m: declarations.by_module, key: owner) {
+        Present { value: index } => symbol_index_lookup(index: index, qualified_path: path)
+        Absent => optional_absent()
+      }
+  }
+}
+
+// The longest prefix of `path` that `keys` holds -- the owning module of a declaration path, when
+// the keys are modules. Terminates: every step drops one segment, and the empty path answers Absent.
+fn qualified_name_longest_keyed_prefix<V>(keys: Map<QualifiedName, V>, path: QualifiedName) -> Optional<QualifiedName> {
+  match path {
+    Empty => optional_absent()
+    Cons { head: _, tail: _ } =>
+      match map_lookup(m: keys, key: path) {
+        Present { value: _ } => optional_present(value: path)
+        Absent => qualified_name_longest_keyed_prefix(keys: keys, path: qualified_name_init(qn: path))
+      }
+  }
+}
+
+// A module's declarations as resolved, read off a resolved root by the same module fold the
+// pre-resolve index uses (v2.compiler.symbol_index_fill symbol_index_fill_module_declarations): the
+// module's name is read from the root's header, so a declaration is keyed at its full path (p.Pos).
 // A root whose module name cannot be read yields the empty index -- every lookup through it refuses.
-fn resolved_declarations_of(root: Node) -> SymbolIndex {
+fn resolved_declaration_index_of(root: Node) -> SymbolIndex {
   symbol_index_fill_module_declarations(index: empty_symbol_index(), root: root, record_declarations: Empty, resource_declarations: Empty)
 }
 
-// THE ONE CONSTRUCTOR of an accepted resolution's carrier: the root, the index it was resolved
-// against, and its declarations as resolved.
+// A RESOLUTION WITH NO INGEST CONTEXT reaches no provider, so its snapshot is its own module's
+// declarations read off the root this walk resolved -- the same values the provider would hold for
+// it, because the provider's walk resolves those positions identically (WalkSelection). Its
+// cross-module declarations are outside the snapshot and every read of one answers Absent.
 fn resolved_tree_of(root: Node, symbol_index: SymbolIndex) -> ResolvedTree {
-  ResolvedTree { root: root, symbol_index: symbol_index, resolved_declarations: resolved_declarations_of(root: root) }
+  ResolvedTree {
+    root: root,
+    symbol_index: symbol_index,
+    declarations: match qualified_name_from_module_node(root: root) {
+      Accepted { value: module_qn, diagnostics: _ } =>
+        resolved_declarations_with_module(d: resolved_declarations_empty(), module: module_qn, index: resolved_declaration_index_of(root: root))
+      Rejected { diagnostics: _ } => resolved_declarations_empty()
+    }
+  }
 }
 
 // `test_code`, `declared_in` and `imported_origins` exist for one decision: whether a reference binds
@@ -271,7 +325,25 @@ type ResolveContext {
   lm: LanguageModel
   under_module_root: Bool
   declaring: DeclaringPosition
+  selection: WalkSelection
+  provided: Map<QualifiedName, Node>
 }
+
+// WHICH POSITIONS ONE WALK RESOLVES (docs/plans/declaration-body-resolution-provider.md, P2).
+// DeclarationTypesOnly is the walk the declaration-body provider runs over a module: every type
+// position is walked exactly as WholeModule walks it -- same scope, same position, same declaring
+// path, because it IS the same walk -- and an Arrow's ^arrow_body_edge, the only value body a
+// declaration carries (a `data` initializer lowers to the same edge), is carried unwalked. Nothing
+// else differs, so a declaration's resolved type is identical under both selections by construction.
+//
+// `provided` is the GRAFT: the declarations of THIS module that the provider already resolved,
+// keyed by declaring path (v2.compiler.name_resolve resolution_context_declaration_bodies). The walk
+// returns a provided declaration instead of descending into it, and takes a provided Arrow's
+// non-body children instead of walking them, so no type position is resolved twice in one ingest.
+// It is read-only and empty for every walk that is not a module's own resolve.
+type WalkSelection
+  = WholeModule
+  | DeclarationTypesOnly
 
 // WHERE THE WALK STANDS IN THE CONTAINMENT TREE, IN THE PATH v2.compiler.symbol_index_fill KEYS
 // DECLARATIONS BY. It is not `position`, which is a LOOKUP position and counts every named edge; the
@@ -475,7 +547,24 @@ fn resolve_ctx_init(
     position: namespace.module_qn,
     lm: lm,
     under_module_root: false,
-    declaring: resolve_declaring_root(namespace: namespace)
+    declaring: resolve_declaring_root(namespace: namespace),
+    selection: WholeModule,
+    provided: empty_map()
+  }
+}
+
+fn resolve_ctx_selected(ctx: ResolveContext, selection: WalkSelection, provided: Map<QualifiedName, Node>) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    type_scope: ctx.type_scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root,
+    declaring: ctx.declaring,
+    selection: selection,
+    provided: provided
   }
 }
 
@@ -488,7 +577,9 @@ fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    selection: ctx.selection,
+    provided: ctx.provided
   }
 }
 
@@ -501,7 +592,9 @@ fn resolve_ctx_with_type_scope(ctx: ResolveContext, type_scope: Scope) -> Resolv
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    selection: ctx.selection,
+    provided: ctx.provided
   }
 }
 
@@ -522,7 +615,9 @@ fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveCon
     position: qualified_name_snoc(qn: ctx.position, segment: segment),
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    selection: ctx.selection,
+    provided: ctx.provided
   }
 }
 
@@ -535,7 +630,9 @@ fn resolve_ctx_leaving_containment(ctx: ResolveContext) -> ResolveContext {
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: NotDeclaring
+    declaring: NotDeclaring,
+    selection: ctx.selection,
+    provided: ctx.provided
   }
 }
 
@@ -560,7 +657,9 @@ fn resolve_ctx_with_declaring(ctx: ResolveContext, declaring: DeclaringPosition)
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: declaring
+    declaring: declaring,
+    selection: ctx.selection,
+    provided: ctx.provided
   }
 }
 
@@ -608,7 +707,9 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    selection: ctx.selection,
+    provided: ctx.provided
   }
 }
 
@@ -2664,10 +2765,15 @@ fn resolve_child_edge(
         } else {
           ctx
         }
-        resolve_node_walk(
-          ctx: resolve_ctx_with_declaring(ctx: child_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, name: sym)),
-          n: e.target
-        )
+        let declaring = resolve_declaring_across_named_edge(declaring: ctx.declaring, name: sym)
+        match resolve_provided_declaration_optional(ctx: ctx, declaring: declaring, target: e.target) {
+          Present { value: provided } => ResolveWalkAccepted { value: provided, diagnostics: None }
+          Absent =>
+            resolve_node_walk(
+              ctx: resolve_ctx_with_declaring(ctx: child_ctx, declaring: declaring),
+              n: e.target
+            )
+        }
       }
     Positional =>
       if ctx.under_module_root
@@ -2895,38 +3001,150 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
   let scope_codomain = ScopeFrame { locals: value_params, outer: scope_type, kind: frame_kind }
   let scope_body = ScopeFrame { locals: value_params, outer: ctx.scope, kind: frame_kind }
   let inner_ctx = resolve_ctx_leaving_containment(ctx: ctx)
+  let provided_arrow = resolve_provided_arrow_optional(ctx: ctx)
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
-    match e.label {
-      Named { name: _ } =>
-        if edge_is_type_params(e: e) {
-          child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
-        } else if (edge_label_of(e: e) == arrow_signature_order_label) {
-          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
-        } else {
-          child_walk_step(
-            w: acc,
-            e: e,
-            r: resolve_arrow_body_or_named_edge(
-              ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_body),
-              arrow: n,
-              e: e
-            )
-          )
-        }
-      Positional =>
-        child_walk_step(
-          w: acc,
-          e: e,
-          r: resolve_node_walk(
-            ctx: resolve_ctx_with_scope(
-              ctx: inner_ctx,
-              scope: if acc.ordinal == 0 { scope_type } else { scope_codomain }
-            ),
-            n: e.target
-          )
-        )
+    if resolve_edge_is_arrow_body(e: e) && resolve_selection_skips_bodies(selection: ctx.selection) {
+      child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
+    } else {
+      match resolve_provided_arrow_child_optional(provided: provided_arrow, e: e, ordinal: acc.ordinal) {
+        Present { value: child } => child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: child, diagnostics: None })
+        Absent => child_walk_step(w: acc, e: e, r: resolve_arrow_child_walk(outer_ctx: outer_ctx, inner_ctx: inner_ctx, n: n, e: e, ordinal: acc.ordinal, scope_type: scope_type, scope_codomain: scope_codomain, scope_body: scope_body))
+      }
     }
   }))
+}
+
+fn resolve_selection_skips_bodies(selection: WalkSelection) -> Bool {
+  match selection {
+    WholeModule => false
+    DeclarationTypesOnly => true
+  }
+}
+
+// A provided declaration stands in for the node a named edge reaches at a top-level declaring path.
+// An Arrow is never provided whole -- its body is the module's own to walk -- so it is grafted child
+// by child in resolve_arrow_node_in.
+fn resolve_provided_declaration_optional(ctx: ResolveContext, declaring: DeclaringPosition, target: Node) -> Optional<Node> {
+  match target.kind {
+    TypeNode { connective: Arrow } => optional_absent()
+    _ =>
+      match declaring {
+        DeclaringAt { path: path } => map_lookup(m: ctx.provided, key: path)
+        DeclaringInSpine { path: _, body: _ } => optional_absent()
+        NotDeclaring => optional_absent()
+      }
+  }
+}
+
+// A MODULE'S TOP-LEVEL DECLARATIONS BY DECLARING PATH, read off a walked root. The descent steps
+// through resolve_declaring_entering and resolve_declaring_across_named_edge -- the functions the
+// walk itself steps with -- so a declaration is keyed here at exactly the path the walk stands at
+// when it reaches it, and the graft cannot miss or misplace one. Nothing below an Arrow is a
+// declaration. This is the provider's storage grain; the walk that produced the root is its
+// production grain.
+fn resolve_declaration_targets(root: Node, module_qn: QualifiedName) -> Map<QualifiedName, Node> {
+  resolve_declaration_targets_in(acc: empty_map(), declaring: DeclaringAt { path: module_qn }, module_qn: module_qn, n: root)
+}
+
+fn resolve_declaration_targets_in(
+  acc: Map<QualifiedName, Node>,
+  declaring: DeclaringPosition,
+  module_qn: QualifiedName,
+  n: Node
+) -> Map<QualifiedName, Node> {
+  let here = resolve_declaring_entering(declaring: declaring, n: n)
+  match n.kind {
+    TypeNode { connective: Arrow } => acc
+    _ =>
+      fold(n.children, init: acc, f: fn(found, e) {
+        match e.label {
+          Named { name: sym } =>
+            let stepped = resolve_declaring_across_named_edge(declaring: here, name: sym)
+            if resolve_steps_onto_top_level_declaration(here: here, stepped: stepped, module_qn: module_qn, name: sym) {
+              map_insert(m: found, key: qualified_name_snoc(qn: module_qn, segment: sym), value: e.target)
+            } else {
+              resolve_declaration_targets_in(acc: found, declaring: stepped, module_qn: module_qn, n: e.target)
+            }
+          Positional => resolve_declaration_targets_in(acc: found, declaring: here, module_qn: module_qn, n: e.target)
+        }
+      })
+  }
+}
+
+fn resolve_steps_onto_top_level_declaration(here: DeclaringPosition, stepped: DeclaringPosition, module_qn: QualifiedName, name: Symbol) -> Bool {
+  match here {
+    DeclaringAt { path: at } =>
+      if at == module_qn {
+        match stepped {
+          DeclaringAt { path: next } => next == qualified_name_snoc(qn: module_qn, segment: name)
+          DeclaringInSpine { path: _, body: _ } => false
+          NotDeclaring => false
+        }
+      } else {
+        false
+      }
+    DeclaringInSpine { path: _, body: _ } => false
+    NotDeclaring => false
+  }
+}
+
+fn resolve_provided_arrow_optional(ctx: ResolveContext) -> Optional<Node> {
+  match ctx.declaring {
+    DeclaringAt { path: path } => map_lookup(m: ctx.provided, key: path)
+    DeclaringInSpine { path: _, body: _ } => optional_absent()
+    NotDeclaring => optional_absent()
+  }
+}
+
+// The provided Arrow is the same Arrow walked under DeclarationTypesOnly, so its children are in the
+// same order; every child but the body is taken from it.
+fn resolve_provided_arrow_child_optional(provided: Optional<Node>, e: Edge, ordinal: Int) -> Optional<Node> {
+  if resolve_edge_is_arrow_body(e: e) {
+    optional_absent()
+  } else {
+    match provided {
+      Absent => optional_absent()
+      Present { value: arrow } =>
+        match list_at_optional(xs: arrow.children, index: ordinal) {
+          Present { value: edge } => optional_present(value: edge.target)
+          Absent => optional_absent()
+        }
+    }
+  }
+}
+
+fn resolve_arrow_child_walk(
+  outer_ctx: ResolveContext,
+  inner_ctx: ResolveContext,
+  n: Node,
+  e: Edge,
+  ordinal: Int,
+  scope_type: Scope,
+  scope_codomain: Scope,
+  scope_body: Scope
+) -> ResolveNodeWalk {
+  match e.label {
+    Named { name: _ } =>
+      if edge_is_type_params(e: e) {
+        resolve_type_params_conj(ctx: outer_ctx, conj: e.target)
+      } else if (edge_label_of(e: e) == arrow_signature_order_label) {
+        ResolveWalkAccepted { value: e.target, diagnostics: None }
+      } else {
+        resolve_arrow_body_or_named_edge(
+          ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_body),
+          arrow: n,
+          e: e
+        )
+      }
+    Positional =>
+      resolve_node_walk(
+        ctx: resolve_ctx_with_scope(
+          ctx: inner_ctx,
+          scope: if ordinal == 0 { scope_type } else { scope_codomain }
+        ),
+        n: e.target
+      )
+  }
 }
 
 fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
@@ -3067,9 +3285,22 @@ fn resolve_walk_with_namespace_policy(
   lm: LanguageModel,
   policy: NameResolutionPolicy
 ) -> ResolveNodeWalk {
+  resolve_walk_selected(tree: tree, namespace: namespace, lm: lm, policy: policy, selection: WholeModule, provided: empty_map())
+}
+
+// The walk over a module root under a selection and a graft (WalkSelection). WholeModule with an
+// empty graft is the ordinary walk.
+fn resolve_walk_selected(
+  tree: NormalizedTree,
+  namespace: Namespace,
+  lm: LanguageModel,
+  policy: NameResolutionPolicy,
+  selection: WalkSelection,
+  provided: Map<QualifiedName, Node>
+) -> ResolveNodeWalk {
   if well_formed(n: tree.root) && type_binder_labels_conform(root: tree.root) {
     resolve_node_walk(
-      ctx: resolve_ctx_init(namespace: namespace, lm: lm, policy: policy),
+      ctx: resolve_ctx_selected(ctx: resolve_ctx_init(namespace: namespace, lm: lm, policy: policy), selection: selection, provided: provided),
       n: tree.root
     )
   } else {

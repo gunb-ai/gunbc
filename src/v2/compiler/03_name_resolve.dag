@@ -14,6 +14,18 @@ import v2.compiler.resolve {
   ResolveNodeWalk,
   ResolveWalkRefused,
   ResolvedTree,
+  ResolveWalkAccepted,
+  ResolvedDeclarations,
+  DeclarationTypesOnly,
+  WholeModule,
+  qualified_name_longest_keyed_prefix,
+  resolve_declaration_targets,
+  resolve_walk_outcome,
+  resolve_walk_selected,
+  resolved_declaration_index_of,
+  resolved_declarations_empty,
+  resolved_declarations_has_module,
+  resolved_declarations_with_module,
   resolved_tree_outcome,
   resolve_walk_prefix_pending,
   resolve_walk_with_namespace_policy,
@@ -33,7 +45,7 @@ import v2.compiler.namespace_graft {
   namespace_graft_module_body_root
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.std.algebra { fold_list }
 import v2.std.collection { Absent, Map, Present, List, PointwisePower, empty_map, map_get, map_lookup, map_insert, optional_absent, optional_present }
 import v2.std.diagnostic {
@@ -49,6 +61,7 @@ import v2.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton,
   invariant_port_locus,
+  node_locus,
   rejected_with_pending,
   textual_whole_file_diagnostic
 }
@@ -83,7 +96,7 @@ import v2.std.cross_tree.resolution {
   cross_tree_edge_decision,
   source_root_index_empty
 }
-import v2.std.qualified_name { QualifiedName }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, parameter_reference_path_optional }
 
 type ImportVisibility
   = ImportVisible
@@ -134,6 +147,12 @@ type ValidatedModuleRoots {
 // (v2.test.name_resolve.admission_fail_closed
 // namespace_provider_builds_each_module_at_most_once_per_context).
 //
+// `declaration_bodies` IS THE DECLARATION-BODY PROVIDER (the same plan, P2), threaded the same way:
+// a module's declarations with every type position resolved in its own namespace, produced AT MOST
+// ONCE PER INGEST by resolution_context_declaration_bodies on first demand -- from the module's own
+// resolve, or from another module's resolve that reaches one of its declarations -- and
+// `declaration_bodies_built` counts the misses exactly as `namespaces_built` does.
+//
 // SCOPE: the modules this ingest read. A demand for a module outside `roots` refuses at the provider
 // (resolve_module_not_found, located at the requested name), is recorded like any other outcome, and
 // is never rebuilt from anywhere else.
@@ -146,6 +165,8 @@ type ResolutionContext {
   policy: NameResolutionPolicy
   namespaces: Map<QualifiedName, NamespaceProviderEntry>
   namespaces_built: Int
+  declaration_bodies: Map<QualifiedName, Outcome<DeclarationBodies>>
+  declaration_bodies_built: Int
 }
 
 // One stored production: the admission it was produced under, and its outcome -- a refusal is
@@ -199,7 +220,9 @@ fn resolution_context_of_validated(
     active_roots: active_roots,
     policy: policy,
     namespaces: empty_map(),
-    namespaces_built: 0
+    namespaces_built: 0,
+    declaration_bodies: empty_map(),
+    declaration_bodies_built: 0
   }
 }
 
@@ -727,7 +750,9 @@ fn resolution_context_namespace(
             key: admission.subject.name,
             value: NamespaceProviderEntry { admission: admission, admitted: admitted }
           ),
-          namespaces_built: shared.namespaces_built + 1
+          namespaces_built: shared.namespaces_built + 1,
+          declaration_bodies: shared.declaration_bodies,
+          declaration_bodies_built: shared.declaration_bodies_built
         }
       }
   }
@@ -740,6 +765,208 @@ fn namespace_provider_admission_conflict_diagnostic(name: QualifiedName) -> NonE
       module_file: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: name)),
       correction: Unavailable { reason: ExternalContractUnknown }
     )
+  )
+}
+
+// ONE MODULE'S DECLARATIONS WITH EVERY TYPE POSITION RESOLVED IN ITS OWN NAMESPACE: the root the
+// provider's DeclarationTypesOnly walk produced (its value bodies carried unwalked, so every
+// declaration reference in it sits in a type position), the top-level declarations cut from it by
+// declaring path (the module's own resolve grafts these), and the index readers ask by full path.
+// All three are read off ONE walk; none is resolved again.
+type DeclarationBodies {
+  root: Node
+  declarations: Map<QualifiedName, Node>
+  index: SymbolIndex
+}
+
+type DeclarationBodiesDemand {
+  bodies: Outcome<DeclarationBodies>
+  context: ResolutionContext
+}
+
+// The admission a module is resolved under in this ingest: the one its namespace is stored with, or
+// -- before any demand -- the import-free admission every production driver admits a member with
+// (v2.compiler.compile native_test_module_admission; a member's imports are read off its own root).
+// So a module first reached through another module's declaration is admitted exactly as its own
+// resolve will admit it, and its namespace is not produced twice under two admissions.
+fn resolution_context_module_admission(shared: ResolutionContext, module: QualifiedName) -> Admission {
+  match map_lookup(m: shared.namespaces, key: module) {
+    Present { value: entry } => entry.admission
+    Absent => Admission { subject: ResolutionSubject { name: module }, imports: Empty }
+  }
+}
+
+// THE DECLARATION-BODY PROVIDER'S ONE DOOR. Stored, or produced once on the first demand and stored
+// before it is returned. A refusal is stored too, so a module whose declarations refused is not
+// re-walked by the next demand. A module outside the ingest refuses at P1 (resolve_module_not_found,
+// located at its name) and that refusal is what is stored.
+fn resolution_context_declaration_bodies(
+  shared: ResolutionContext,
+  validate_diag: Diagnostics,
+  module: QualifiedName
+) -> DeclarationBodiesDemand {
+  match map_lookup(m: shared.declaration_bodies, key: module) {
+    Present { value: stored } => DeclarationBodiesDemand { bodies: stored, context: shared }
+    Absent =>
+      let demand = resolution_context_namespace(
+        shared: shared,
+        validate_diag: validate_diag,
+        admission: resolution_context_module_admission(shared: shared, module: module)
+      )
+      let produced = declaration_bodies_produced(context: demand.context, admitted: demand.admitted, module: module)
+      DeclarationBodiesDemand {
+        bodies: produced,
+        context: resolution_context_with_declaration_bodies(shared: demand.context, module: module, bodies: produced)
+      }
+  }
+}
+
+fn resolution_context_with_declaration_bodies(
+  shared: ResolutionContext,
+  module: QualifiedName,
+  bodies: Outcome<DeclarationBodies>
+) -> ResolutionContext {
+  ResolutionContext {
+    lm: shared.lm,
+    roots: shared.roots,
+    symbol_index: shared.symbol_index,
+    index: shared.index,
+    active_roots: shared.active_roots,
+    policy: shared.policy,
+    namespaces: shared.namespaces,
+    namespaces_built: shared.namespaces_built,
+    declaration_bodies: map_insert(m: shared.declaration_bodies, key: module, value: bodies),
+    declaration_bodies_built: shared.declaration_bodies_built + 1
+  }
+}
+
+// The provider's miss arm: ONE WALK of the module in its own namespace, selecting declaration types.
+fn declaration_bodies_produced(
+  context: ResolutionContext,
+  admitted: Outcome<AdmittedSubject>,
+  module: QualifiedName
+) -> Outcome<DeclarationBodies> {
+  match admitted {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: a, diagnostics: namespace_diag } =>
+      match resolve_walk_outcome(w: resolve_walk_prefix_pending(
+        pending: namespace_diag,
+        w: resolve_walk_selected(
+          tree: a.subject_root,
+          namespace: a.namespace,
+          lm: context.lm,
+          policy: context.policy,
+          selection: DeclarationTypesOnly,
+          provided: empty_map()
+        )
+      )) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: root, diagnostics: d } =>
+          Accepted {
+            value: DeclarationBodies {
+              root: root,
+              declarations: resolve_declaration_targets(root: root, module_qn: module),
+              index: resolved_declaration_index_of(root: root)
+            },
+            diagnostics: d
+          }
+      }
+  }
+}
+
+// THE SNAPSHOT A RESOLVED MODULE CARRIES TO INFER: every module its resolved root reaches through a
+// declaration reference, and every module THOSE modules' resolved declarations reach, to a fixpoint
+// -- each one's provided index, never re-resolved. A reference whose declaring path no ingested
+// module owns refuses, located at the reference (resolve_reason_declaration_outside_ingest); a module
+// whose declarations refused refuses the snapshot with its own diagnostics. Nothing widens.
+type DeclarationClosureDemand {
+  snapshot: Outcome<ResolvedDeclarations>
+  context: ResolutionContext
+}
+
+type DeclarationOwners
+  = DeclarationOwnersRead { modules: FreeMonoid<QualifiedName>, seen: Map<QualifiedName, Bool> }
+  | DeclarationOwnerOutsideIngest { at: Node }
+
+fn declaration_closure(shared: ResolutionContext, validate_diag: Diagnostics, root: Node) -> DeclarationClosureDemand {
+  match declaration_owners(by_name: shared.roots.by_name, n: root, acc: DeclarationOwnersRead { modules: Empty, seen: empty_map() }) {
+    DeclarationOwnerOutsideIngest { at: at } =>
+      DeclarationClosureDemand { snapshot: Rejected { diagnostics: declaration_outside_ingest_diagnostic(at: at) }, context: shared }
+    DeclarationOwnersRead { modules: modules, seen: _ } =>
+      declaration_closure_walk(shared: shared, validate_diag: validate_diag, queue: modules, snapshot: resolved_declarations_empty())
+  }
+}
+
+// Terminates: a module is demanded only while the snapshot lacks it and is added once demanded, every
+// queued module is the owner of a path in a finite ingest, and each step consumes one queue entry.
+fn declaration_closure_walk(
+  shared: ResolutionContext,
+  validate_diag: Diagnostics,
+  queue: FreeMonoid<QualifiedName>,
+  snapshot: ResolvedDeclarations
+) -> DeclarationClosureDemand {
+  match queue {
+    Empty => DeclarationClosureDemand { snapshot: Accepted { value: snapshot, diagnostics: None }, context: shared }
+    Cons { head: module, tail: rest } =>
+      if resolved_declarations_has_module(d: snapshot, module: module) {
+        declaration_closure_walk(shared: shared, validate_diag: validate_diag, queue: rest, snapshot: snapshot)
+      } else {
+        let demand = resolution_context_declaration_bodies(shared: shared, validate_diag: validate_diag, module: module)
+        match demand.bodies {
+          Rejected { diagnostics: r } => DeclarationClosureDemand { snapshot: Rejected { diagnostics: r }, context: demand.context }
+          Accepted { value: bodies, diagnostics: _ } =>
+            match declaration_owners(by_name: shared.roots.by_name, n: bodies.root, acc: DeclarationOwnersRead { modules: Empty, seen: empty_map() }) {
+              DeclarationOwnerOutsideIngest { at: at } =>
+                DeclarationClosureDemand { snapshot: Rejected { diagnostics: declaration_outside_ingest_diagnostic(at: at) }, context: demand.context }
+              DeclarationOwnersRead { modules: reached, seen: _ } =>
+                declaration_closure_walk(
+                  shared: demand.context,
+                  validate_diag: validate_diag,
+                  queue: list_append(left: rest, right: reached),
+                  snapshot: resolved_declarations_with_module(d: snapshot, module: module, index: bodies.index)
+                )
+            }
+        }
+      }
+  }
+}
+
+// The owning modules of every declaration reference under `n`, each once, in walk order. A reference
+// is read whole and not descended into (its spine's tails are spine-shaped too); a parameter
+// reference names a binder of its own declaration and pulls no module.
+fn declaration_owners(by_name: Map<QualifiedName, NormalizedTree>, n: Node, acc: DeclarationOwners) -> DeclarationOwners {
+  match acc {
+    DeclarationOwnerOutsideIngest { at: _ } => acc
+    DeclarationOwnersRead { modules: modules, seen: seen } =>
+      match declaration_reference_path_optional(node: n) {
+        Present { value: path } =>
+          match qualified_name_longest_keyed_prefix(keys: by_name, path: path) {
+            Absent => DeclarationOwnerOutsideIngest { at: n }
+            Present { value: owner } =>
+              match map_lookup(m: seen, key: owner) {
+                Present { value: _ } => acc
+                Absent => DeclarationOwnersRead { modules: list_snoc_item(xs: modules, item: owner), seen: map_insert(m: seen, key: owner, value: true) }
+              }
+          }
+        Absent =>
+          match parameter_reference_path_optional(node: n) {
+            Present { value: _ } => acc
+            Absent =>
+              fold(n.children, init: acc, f: fn(a, e) {
+                declaration_owners(by_name: by_name, n: e.target, acc: a)
+              })
+          }
+      }
+  }
+}
+
+fn declaration_outside_ingest_diagnostic(at: Node) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: Diagnostic {
+      reason: ^resolve_reason_declaration_outside_ingest,
+      at: node_locus(node: at),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
   )
 }
 
@@ -872,16 +1099,39 @@ type ContextWalk {
 }
 
 // The admitted namespace is built over the context's own index, so that index is the one this
-// resolution consulted. A refused context resolved nothing.
+// resolution consulted. An accepted walk's tree carries the declaration snapshot
+// (declaration_closure); a refused context resolved nothing.
 fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission) -> ContextResolved {
   let walked = resolve_walk_in_context(context: context, admission: admission)
   match walked.context {
     Rejected { diagnostics: r } => ContextResolved { resolved: Rejected { diagnostics: r }, context: walked.context }
-    Accepted { value: shared, diagnostics: _ } =>
-      ContextResolved {
-        resolved: resolved_tree_outcome(w: walked.walk, symbol_index: shared.symbol_index),
-        context: walked.context
+    Accepted { value: shared, diagnostics: validate_diag } =>
+      match walked.walk {
+        ResolveWalkRefused { first: f, rest: _, observation: _ } =>
+          ContextResolved { resolved: Rejected { diagnostics: f }, context: walked.context }
+        ResolveWalkAccepted { value: root, diagnostics: d } =>
+          resolved_tree_in_context(shared: shared, validate_diag: validate_diag, root: root, diagnostics: d)
       }
+  }
+}
+
+// AN ACCEPTED WALK'S ROOT AS THE STAGE'S OUTPUT: the tree with its declaration snapshot, and the
+// context the snapshot's demands ended with. Every route that resolves over a held context ends here,
+// so no resolved tree leaves a context without the declarations it reaches.
+fn resolved_tree_in_context(
+  shared: ResolutionContext,
+  validate_diag: Diagnostics,
+  root: Node,
+  diagnostics: Diagnostics
+) -> ContextResolved {
+  let closure = declaration_closure(shared: shared, validate_diag: validate_diag, root: root)
+  ContextResolved {
+    resolved: match closure.snapshot {
+      Rejected { diagnostics: r } => Rejected { diagnostics: rejected_with_pending(pending: diagnostics, rejected: r) }
+      Accepted { value: snapshot, diagnostics: _ } =>
+        Accepted { value: ResolvedTree { root: root, symbol_index: shared.symbol_index, declarations: snapshot }, diagnostics: diagnostics }
+    },
+    context: Accepted { value: closure.context, diagnostics: validate_diag }
   }
 }
 
@@ -889,6 +1139,12 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
 // resolve_in_context is its projection. A context or namespace refusal means the walk was never
 // entered, so none of the subject's sites were observed: that is recorded as ObservationIncomplete,
 // never as a complete observation holding one refusal.
+//
+// THE SUBJECT GRAFTS ITS OWN PROVIDED DECLARATIONS. Before walking, it demands its own declaration
+// bodies from the provider and walks with them as the graft (v2.compiler.resolve WalkSelection), so
+// its declarations' type positions are the provider's values, resolved once. If its own declarations
+// refused, the graft is empty and the walk observes those same refusals at their own sites -- the
+// same positions resolved the same way -- so the population stays the subject's whole observation.
 fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admission) -> ContextWalk {
   match context {
     Rejected { diagnostics: r } =>
@@ -902,20 +1158,25 @@ fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admis
       }
     Accepted { value: shared, diagnostics: validate_diag } =>
       let demand = resolution_context_namespace(shared: shared, validate_diag: validate_diag, admission: admission)
-      let threaded = Accepted { value: demand.context, diagnostics: validate_diag }
       match demand.admitted {
         Accepted { value: admitted, diagnostics: namespace_diag } =>
+          let own = resolution_context_declaration_bodies(shared: demand.context, validate_diag: validate_diag, module: admission.subject.name)
           ContextWalk {
             walk: resolve_walk_prefix_pending(
               pending: namespace_diag,
-              w: resolve_walk_with_namespace_policy(
+              w: resolve_walk_selected(
                 tree: admitted.subject_root,
                 namespace: admitted.namespace,
                 lm: shared.lm,
-                policy: shared.policy
+                policy: shared.policy,
+                selection: WholeModule,
+                provided: match own.bodies {
+                  Accepted { value: bodies, diagnostics: _ } => bodies.declarations
+                  Rejected { diagnostics: _ } => empty_map()
+                }
               )
             ),
-            context: threaded
+            context: Accepted { value: own.context, diagnostics: validate_diag }
           }
         Rejected { diagnostics: r } =>
           ContextWalk {
@@ -924,7 +1185,7 @@ fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admis
               rest: [],
               observation: ObservationIncomplete { reason: ^resolve_observation_namespace_refused }
             },
-            context: threaded
+            context: Accepted { value: demand.context, diagnostics: validate_diag }
           }
       }
   }

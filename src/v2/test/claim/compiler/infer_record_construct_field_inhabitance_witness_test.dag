@@ -54,7 +54,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // nothing: the accepted module is also asserted DECIDED (no counted obligation at its constructs).
 //
 // WHAT IS NOT CLAIMED. A record declared in ANOTHER module has its field SET checked and its field
-// VALUES counted, not judged: v2.compiler.resolve ResolvedTree resolved_declarations holds the
+// VALUES counted, not judged: v2.compiler.resolve ResolvedTree declarations holds the
 // subject module's declarations with resolved bodies, and no other module's. rcf_far_value pins that state as it is -- accepted, with
 // a counted UndecidableFormalUnresolved at the value -- so it flips when infer can read a resolved
 // declaration across modules (the row's trigger), and is then rewritten as a refusal.
@@ -297,7 +297,7 @@ fn rcf_member_accepted_and_decided(resolved: Outcome<ResolvedTree>, member: Symb
       match rcf_member_arrow(root: tree.root, name: member) {
         Absent => false
         Present { value: arrow } =>
-          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations }) {
+          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, declarations: tree.declarations }) {
             Rejected { diagnostics: _ } => false
             Accepted { value: _, diagnostics: ds } =>
               !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)

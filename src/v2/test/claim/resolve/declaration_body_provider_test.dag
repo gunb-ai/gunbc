@@ -1,0 +1,204 @@
+module v2.test.claim.resolve.declaration_body_provider
+
+import v2.compiler.resolve { ResolvedTree, resolve_declaration_targets, resolved_declaration_lookup }
+import v2.compiler.name_resolve {
+  Admission,
+  ContextResolved,
+  ResolutionContext,
+  ResolutionSubject,
+  resolution_context,
+  resolution_context_declaration_bodies,
+  resolve_in_context
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_dotted_string }
+import v2.std.algebra { any }
+import v2.std.text { String }
+import v2.std.collection { map_lookup }
+import std.algebra { Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+// THE DECLARATION-BODY PROVIDER (docs/plans/declaration-body-resolution-provider.md, P2): one
+// module's declarations with every type position resolved in ITS OWN namespace, produced at most
+// once per ingest on first demand, and carried to infer as ResolvedTree.declarations.
+//
+// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL: inline sources through tokenize, parse, normalize
+// and resolve_in_context over one held ResolutionContext, the route v2.compiler.compile drives.
+//
+// Three modules chain a type through two imports: dbp_c's parameter is typed DbpMid, declared in
+// dbp_b, whose field `leaf` is typed DbpLeaf, declared in dbp_a. dbp_c imports nothing from dbp_a,
+// so `leaf`'s type is resolvable only in dbp_b's namespace. dbp_a also declares a function whose
+// BODY refuses (an unbound name): its declarations' types are sound, so a module that needs only
+// its types must not inherit that refusal.
+data dbp_a_source: String = "module v2.test.dbp_a\n\nimport v2.std.logic { Bool }\n\ntype DbpLeaf {\n  n: Bool\n}\n\nfn dbp_broken() -> Bool { dbp_nowhere }\n"
+
+data dbp_b_source: String = "module v2.test.dbp_b\n\nimport v2.test.dbp_a { DbpLeaf }\n\ntype DbpMid {\n  leaf: DbpLeaf\n}\n"
+
+data dbp_c_source: String = "module v2.test.dbp_c\n\nimport v2.std.logic { Bool }\nimport v2.test.dbp_b { DbpMid }\n\nfn dbp_use(m: DbpMid) -> Bool { true }\n"
+
+data dbp_undeclared_source: String = "module v2.test.dbp_undeclared\n\ntype DbpBad {\n  leaf: DbpNowhereType\n}\n"
+
+fn dbp_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data dbp_ingest: SourceRootIngest = [
+  dbp_read(source: dbp_a_source, id: ^dbp_a_read, unit: ^dbp_a_cu, path: "src/v2/test/fixture/declaration_body_provider/a.dag"),
+  dbp_read(source: dbp_b_source, id: ^dbp_b_read, unit: ^dbp_b_cu, path: "src/v2/test/fixture/declaration_body_provider/b.dag"),
+  dbp_read(source: dbp_c_source, id: ^dbp_c_read, unit: ^dbp_c_cu, path: "src/v2/test/fixture/declaration_body_provider/c.dag"),
+  dbp_read(source: dbp_undeclared_source, id: ^dbp_undeclared_read, unit: ^dbp_undeclared_cu, path: "src/v2/test/fixture/declaration_body_provider/undeclared.dag")
+]
+
+fn dbp_qn(dotted: String) -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: dotted)
+}
+
+fn dbp_admission(dotted: String) -> Admission {
+  Admission { subject: ResolutionSubject { name: dbp_qn(dotted: dotted) }, imports: Empty }
+}
+
+// One context for the whole ingest, as the native driver holds one.
+fn dbp_context() -> Outcome<ResolutionContext> {
+  match module_roots_from_source_root_ingest(ingest: dbp_ingest, lm: dag_language_model()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy())
+  }
+}
+
+fn dbp_resolve(context: Outcome<ResolutionContext>, dotted: String) -> ContextResolved {
+  resolve_in_context(context: context, admission: dbp_admission(dotted: dotted))
+}
+
+// dbp_c resolved first in a fresh context, so every other module is reached through it.
+fn dbp_c_resolved() -> ContextResolved {
+  dbp_resolve(context: dbp_context(), dotted: "v2.test.dbp_c")
+}
+
+fn dbp_names_declaration(n: Node, dotted: String) -> Bool {
+  any(xs: node_subtree_nodes(root: n), predicate: fn(m) {
+    match declaration_reference_path_optional(node: m) {
+      Present { value: path } => path == dbp_qn(dotted: dotted)
+      Absent => false
+    }
+  })
+}
+
+fn dbp_mid_leaf(tree: ResolvedTree) -> Optional<Node> {
+  resolved_declaration_lookup(declarations: tree.declarations, path: dbp_qn(dotted: "v2.test.dbp_b.DbpMid.leaf"))
+}
+
+// C2. A FIELD DECLARED IN ANOTHER MODULE, READ FROM THE SNAPSHOT, CARRIES THE TYPE ITS DECLARING
+// MODULE RESOLVED: DbpMid.leaf is the declaration reference v2.test.dbp_a.DbpLeaf. RED BEFORE: a
+// resolved tree carried its own module's declarations only, so the lookup answered Absent.
+test fn dbp_cross_module_field_type_is_resolved_in_its_declaring_module_holds() -> Bool {
+  match dbp_c_resolved().resolved {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match dbp_mid_leaf(tree: tree) {
+        Absent => false
+        Present { value: leaf } => dbp_names_declaration(n: leaf, dotted: "v2.test.dbp_a.DbpLeaf")
+      }
+  }
+}
+
+// THE PROVIDER RESOLVES DECLARATION TYPES, NOT VALUE BODIES. dbp_a refuses when resolved whole (its
+// function body names nothing), yet dbp_c -- which needs only dbp_a's DbpLeaf, through dbp_b --
+// resolves. RED if the provider resolved whole modules: dbp_c would inherit dbp_a's body refusal.
+test fn dbp_declaration_types_do_not_wait_on_a_value_body_holds() -> Bool {
+  let a_whole = match dbp_resolve(context: dbp_context(), dotted: "v2.test.dbp_a").resolved {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+    Accepted { value: _, diagnostics: _ } => false
+  }
+  let c_resolves = match dbp_c_resolved().resolved {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+  a_whole && c_resolves
+}
+
+// C3. A FIELD WHOSE TYPE NAMES NOTHING REFUSES AT RESOLVE, as unbound.
+test fn dbp_undeclared_field_type_refuses_holds() -> Bool {
+  match dbp_resolve(context: dbp_context(), dotted: "v2.test.dbp_undeclared").resolved {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// C4. A DEMAND FOR A MODULE OUTSIDE THE INGEST REFUSES AT THE PROVIDER, typed, and nothing is
+// produced from anywhere else.
+test fn dbp_module_outside_the_ingest_refuses_at_the_provider_holds() -> Bool {
+  match dbp_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: shared, diagnostics: _ } =>
+      match resolution_context_declaration_bodies(shared: shared, validate_diag: None, module: dbp_qn(dotted: "v2.test.dbp_absent")).bodies {
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_module_not_found
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+// C5. AT MOST ONCE PER INGEST. dbp_c's resolve produces dbp_c's, dbp_b's and dbp_a's declarations;
+// resolving dbp_b and then dbp_a over the context it returned reads them back, so three modules are
+// produced three times in all -- and three namespaces built, because the provider's walk of a module
+// and the module's own resolve share its one namespace. RED if any module's declarations or
+// namespace were produced again.
+test fn dbp_each_module_is_produced_once_per_context_holds() -> Bool {
+  let after_c = dbp_c_resolved()
+  let after_b = dbp_resolve(context: after_c.context, dotted: "v2.test.dbp_b")
+  let after_a = dbp_resolve(context: after_b.context, dotted: "v2.test.dbp_a")
+  match after_a.context {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: shared, diagnostics: _ } =>
+      shared.declaration_bodies_built == 3 && shared.namespaces_built == 3
+  }
+}
+
+// C6 AND C10. ONE VALUE, NOT TWO PRODUCTIONS. dbp_b resolved after dbp_c reads DbpMid.leaf from its
+// own snapshot as the identical node dbp_c's snapshot holds, and dbp_b's own resolved root carries,
+// at DbpMid, exactly the provider's stored declaration: the module grafted it rather than resolving
+// it again.
+test fn dbp_snapshot_and_graft_are_the_provider_entry_holds() -> Bool {
+  let after_c = dbp_c_resolved()
+  let after_b = dbp_resolve(context: after_c.context, dotted: "v2.test.dbp_b")
+  match after_c.resolved {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c_tree, diagnostics: _ } =>
+      match after_b.resolved {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: b_tree, diagnostics: _ } =>
+          match after_b.context {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: shared, diagnostics: _ } =>
+              match map_lookup(m: shared.declaration_bodies, key: dbp_qn(dotted: "v2.test.dbp_b")) {
+                Absent => false
+                Present { value: stored } =>
+                  match stored {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: bodies, diagnostics: _ } =>
+                      let mid = dbp_qn(dotted: "v2.test.dbp_b.DbpMid")
+                      dbp_mid_leaf(tree: b_tree) == dbp_mid_leaf(tree: c_tree)
+                        && map_lookup(m: resolve_declaration_targets(root: b_tree.root, module_qn: dbp_qn(dotted: "v2.test.dbp_b")), key: mid)
+                          == map_lookup(m: bodies.declarations, key: mid)
+                  }
+              }
+          }
+      }
+  }
+}
