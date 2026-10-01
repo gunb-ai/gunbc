@@ -3,7 +3,7 @@ module v2.test.claim.namespace_xl0.reference_conservation_accepted_drops
 import v2.test.claim.namespace_xl0.reference_conservation { conservation_report_of, conservation_subject, report_drop_count }
 import v2.compiler.reference_conservation { ReferenceConservationSubject, reference_conservation_accepted }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -79,11 +79,12 @@ fn map_literal_value_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "map_literal_value", source: map_literal_value_source)
 }
 
-test fn a_map_literal_value_refuses_at_the_literal_holds() -> Bool {
-  match map_literal_value_subject().normalized {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_unsupported_form
-  }
+// FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as "refuses at the literal", it went red when
+// gunbc#12758 elaborated map literals from the declared Map type, so the literal lowers whole and its
+// module normalizes. Permanent control: the module is accepted and the entry's value is conserved.
+test fn a_map_literal_value_is_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: map_literal_value_subject())
+  reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_value) == 0)
 }
 
 data qualified_constructor_value_source: String = "module v2.test.reference_conservation_qualified\n\ntype RcR { k: Bool }\n\ndata rc_value: Bool = true\n\ndata rc_q: RcR = v2.test.reference_conservation_qualified.RcR { k: rc_value }\n"
@@ -92,11 +93,12 @@ fn qualified_constructor_value_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "qualified_constructor_value", source: qualified_constructor_value_source)
 }
 
-test fn a_qualified_constructor_literal_value_refuses_at_the_literal_holds() -> Bool {
-  match qualified_constructor_value_subject().normalized {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_unsupported_form
-  }
+// FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as "refuses at the literal", it went red when
+// gunbc#12714 made the construct tag a declaration reference, so a module-qualified construction
+// lowers whole. Permanent control: the module normalizes and the field value is conserved.
+test fn a_qualified_constructor_literal_value_is_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: qualified_constructor_value_subject())
+  reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_value) == 0)
 }
 
 // A match-arm body that is a statement sequence -- `let t = v` then an expression -- lowers to `v`:

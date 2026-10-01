@@ -38,6 +38,7 @@ import gunbc.spark.v41_group_a_launch {
   v41_group_a_launch_admission, v41_group_a_dry_run_report,
   v41_group_a_container_name, v41_engram_manifest_env_name, v41_engram_touch_receipt_env_name,
   v41_engram_manifest_dir, v41_engram_touch_receipt_dir,
+  v41_sm120_selftest_argv, v41_sm120_selftest_module, v41_engine_model_path,
 }
 
 // ── THE FIXTURES ARE SUPPLIED AT THE LAUNCH'S OWN INTERFACE ────────────────────────────────────
@@ -152,6 +153,41 @@ test fn w_the_plan_is_four_mp_ranks_with_the_v41_engine_flags() -> Bool {
           && (l.image_reference as String) == join(["sha256:", w_config_hex], ""))
       && any(ls, l => l.node.node_rank == 0 && !argv_has(argv: l.engine_argv, word: "--headless"))
       && length(filter(ls, l => argv_has(argv: l.engine_argv, word: "--headless"))) == 3
+  })
+}
+
+// THE LAUNCH SERVES TEXT ONLY ON EVERY RANK. The vision variant widens prefill sliding-window rows to
+// 1152, for which FlashInfer's SM120 DSv4 kernel has no specialization; --language-model-only alone
+// leaves that width, and the vision_n_layers override is what returns it to 128.
+test fn w_every_rank_serves_text_only_with_the_vision_layers_overridden_away() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    let ls = planned_lines(p: p)
+    length(ls) == 4
+      && all(ls, l =>
+        argv_has(argv: l.engine_argv, word: "--language-model-only")
+          && argv_pair_is(argv: l.engine_argv, flag: "--hf-overrides.vision_n_layers", value: "0"))
+  })
+}
+
+// THE SM120 GATE RUNS THE RANK'S OWN ARGV IN THE RANK'S OWN IMAGE. The self-test parses exactly the words
+// the container will hand `vllm serve`, so the gate's argv must end with that rank's engine argv
+// unchanged, run the overlay's module in the planned image, and mount the checkpoint read-only where
+// the engine argv's model path names it.
+test fn w_the_sm120_gate_runs_each_ranks_engine_argv_in_its_image() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    let ls = planned_lines(p: p)
+    length(ls) == 4
+      && all(ls, l => match v41_engine_model_path(l: l) {
+        Absent => false
+        Present { value: model_path } => {
+          let argv = v41_sm120_selftest_argv(l: l, model_path: model_path)
+          argv_pair_is(argv: argv, flag: "-v", value: join([l.host_model_path as String, ":", model_path, ":ro"], ""))
+            && argv_pair_is(argv: argv, flag: "-m", value: v41_sm120_selftest_module)
+            && argv_has(argv: argv, word: l.image_reference as String)
+            && argv_has(argv: argv, word: "--rm")
+            && join(argv, argv_frame).ends_with(suffix: join(concat([v41_sm120_selftest_module], l.engine_argv), argv_frame))
+        }
+      })
   })
 }
 

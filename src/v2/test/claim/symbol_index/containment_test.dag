@@ -77,7 +77,7 @@ data si_module_root_node: Node = si_module_root(
 data si_index: SymbolIndex = symbol_index_fill_module_root(
   index: empty_symbol_index(),
   root: si_module_root_node,
-  record_declarations: no_record_declarations()
+  record_declarations: no_record_declarations(), resource_declarations: no_resource_declarations()
 )
 
 data si_unique_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
@@ -94,7 +94,7 @@ data si_unique_module_root_node: Node = si_module_root(
 data si_unique_index: SymbolIndex = symbol_index_fill_module_root(
   index: empty_symbol_index(),
   root: si_unique_module_root_node,
-  record_declarations: no_record_declarations()
+  record_declarations: no_record_declarations(), resource_declarations: no_resource_declarations()
 )
 
 data si_unique_index_containment_only: SymbolIndex = symbol_index_fill_containment_node(
@@ -503,7 +503,7 @@ data si_alias_module_root_node: Node = si_module_root(
 data si_alias_index: SymbolIndex = symbol_index_fill_module_root(
   index: empty_symbol_index(),
   root: si_alias_module_root_node,
-  record_declarations: no_record_declarations()
+  record_declarations: no_record_declarations(), resource_declarations: no_resource_declarations()
 )
 
 test fn symbol_index_alias_binding_lexical_lookup_holds() -> Bool {
@@ -537,7 +537,7 @@ test fn symbol_index_alias_unresolved_target_red_control_holds() -> Bool {
   let idx = symbol_index_fill_module_root(
     index: empty_symbol_index(),
     root: root,
-    record_declarations: no_record_declarations()
+    record_declarations: no_record_declarations(), resource_declarations: no_resource_declarations()
   )
   match symbol_index_lexical_lookup(
     index: idx,
