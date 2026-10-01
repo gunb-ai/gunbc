@@ -1848,6 +1848,9 @@ type UnresolvedLiteralCause
   | FieldOwnerNotRead { owner: String }
   | FieldNotDeclared { owner: String, field: String }
   | SpelledOtherThanText { spelling: String }
+  | AliasChaseExhausted { spelling: String }
+  | QualifiedSpellingNotChased { spelling: String }
+  | SpellingDeclarerNotLoaded { spelling: String, module: String }
 
 fn is_population_string(spelling: String, population_module: String, declarer_imports: Bool) -> Bool {
   (spelling == concat(population_module, ".String")) || ((spelling == "String") && declarer_imports) || (spelling == "FreeMonoid") || (spelling == "std.algebra.FreeMonoid")
@@ -1890,8 +1893,10 @@ fn spelling_position(cx: LiteralContext, spelling: String, declarer: Walk, fuel:
     StructuralPosition { spelling: spelling }
   } else if spelling == "String" {
     HostPosition
-  } else if (fuel == 0) || string_contains(s: spelling, pattern: ".") {
-    UnresolvedPosition { cause: SpelledOtherThanText { spelling: spelling } }
+  } else if fuel == 0 {
+    UnresolvedPosition { cause: AliasChaseExhausted { spelling: spelling } }
+  } else if string_contains(s: spelling, pattern: ".") {
+    UnresolvedPosition { cause: QualifiedSpellingNotChased { spelling: spelling } }
   } else {
     let local = alias_target(walk: declarer, name: spelling)
     if !(local == "") {
@@ -1900,7 +1905,7 @@ fn spelling_position(cx: LiteralContext, spelling: String, declarer: Walk, fuel:
       let m = imported_module_of(imported: declarer.imported, name: spelling)
       let source = if m == "" { kernel_types_module } else { m }
       match loaded_walk(cx: cx, module: source) {
-        Empty => UnresolvedPosition { cause: SpelledOtherThanText { spelling: spelling } }
+        Empty => UnresolvedPosition { cause: SpellingDeclarerNotLoaded { spelling: spelling, module: source } }
         Cons { head: dw, tail: _ } => {
           let target = alias_target(walk: dw, name: spelling)
           if target == "" { UnresolvedPosition { cause: SpelledOtherThanText { spelling: spelling } } } else { spelling_position(cx: cx, spelling: target, declarer: dw, fuel: fuel - 1) }
@@ -2022,9 +2027,29 @@ type OctetScan {
   found: FreeMonoid<Int>
 }
 
+// Where a site sits in its source. A site with no position on the production route is a typed
+// arm and is COUNTED in its module's C row, never rendered as a plausible place.
+type SitePlace
+  = AtLineCol { line: Int, column: Int }
+  | Unpositioned
+
 type PlacedSite {
   site: LiteralSite
-  place: String
+  place: SitePlace
+}
+
+fn place_token(p: SitePlace) -> String {
+  match p {
+    AtLineCol { line: l, column: c } => concat(concat(int_text(n: l), ":"), int_text(n: c))
+    Unpositioned => "UNPOSITIONED"
+  }
+}
+
+fn is_unpositioned(p: PlacedSite) -> Bool {
+  match p.place {
+    Unpositioned => true
+    _ => false
+  }
 }
 
 // The sweep is a FOLD over the newline offsets; the only recursion places the pending sites that
@@ -2039,14 +2064,14 @@ type PlacingSweep {
 }
 
 fn place_at(s: LiteralSite, line: Int, line_start: Int, off: Int) -> PlacedSite {
-  PlacedSite { site: s, place: concat(concat(int_text(n: line), ":"), int_text(n: off - line_start + 1)) }
+  PlacedSite { site: s, place: AtLineCol { line: line, column: off - line_start + 1 } }
 }
 
 fn place_before(sweep: PlacingSweep, limit: Int) -> PlacingSweep {
   match sweep.pending {
     Empty => sweep
     Cons { head: s, tail: rest } => match s.at {
-      Absent => place_before(sweep: PlacingSweep { line: sweep.line, line_start: sweep.line_start, pending: rest, placed: Cons { head: PlacedSite { site: s, place: "unpositioned" }, tail: sweep.placed } }, limit: limit)
+      Absent => place_before(sweep: PlacingSweep { line: sweep.line, line_start: sweep.line_start, pending: rest, placed: Cons { head: PlacedSite { site: s, place: Unpositioned }, tail: sweep.placed } }, limit: limit)
       Present { value: off } =>
         if (limit < 0) || (off < limit) {
           place_before(sweep: PlacingSweep { line: sweep.line, line_start: sweep.line_start, pending: rest, placed: Cons { head: place_at(s: s, line: sweep.line, line_start: sweep.line_start, off: off), tail: sweep.placed } }, limit: limit)
@@ -2084,6 +2109,9 @@ fn unresolved_cause_token(c: UnresolvedLiteralCause) -> String {
     FieldOwnerNotRead { owner: o } => concat("field_owner_not_read:", o)
     FieldNotDeclared { owner: o, field: f } => concat(concat(concat("field_not_declared:", o), "."), f)
     SpelledOtherThanText { spelling: s } => concat("spelled_other_than_text:", s)
+    AliasChaseExhausted { spelling: s } => concat("alias_chase_exhausted:", s)
+    QualifiedSpellingNotChased { spelling: s } => concat("qualified_spelling_not_chased:", s)
+    SpellingDeclarerNotLoaded { spelling: s, module: m } => concat(concat(concat("spelling_declarer_not_loaded:", s), ":"), m)
   }
 }
 
@@ -2121,7 +2149,8 @@ fn position_is_unresolved(p: LiteralPosition) -> Bool {
 }
 
 // One module's rows: `C` with the counts (structural, unresolved, host -- the host count is the
-// decided remainder, so the three partition the module's literal positions), then one `L` row per
+// decided remainder, so the three partition the module's literal positions -- then how many LISTED
+// sites carry no position, which a pairing by position cannot use), then one `L` row per
 // STRUCTURAL or UNRESOLVED site: path, declaration, line:col, kind (and its operand), position.
 fn literal_lines(path: String, standing: RawTreeStanding, r: Rosters, callees: FreeMonoid<CalleeModule>) -> FreeMonoid<String> {
   let cx = LiteralContext { population_module: r.population_module, kernel: r.kernel, modules: callees }
@@ -2130,10 +2159,12 @@ fn literal_lines(path: String, standing: RawTreeStanding, r: Rosters, callees: F
     RawTreeEstablished { root: root, spans: spans, text: text } => {
       let w = walk_tree(root: root, spans: spans, r: r)
       let sites = literal_sites_of(own: w, cx: cx)
-      let header = concat(concat("C\t", path), concat(concat(concat(concat(concat(concat("\t", int_text(n: count_positions(sites: sites, pred: position_is_structural))), "\t"), int_text(n: count_positions(sites: sites, pred: position_is_unresolved))), "\t"), int_text(n: length(xs: sites) - count_positions(sites: sites, pred: is_listed_position))), "\n"))
-      list_reverse(xs: fold_list(xs: placed_sites(sites: sites, text: text), empty: Cons { head: header, tail: Empty }, cons: fn(acc, ps) {
+      let placed = placed_sites(sites: sites, text: text)
+      let unpositioned = fold_list(xs: placed, empty: 0, cons: fn(acc, ps) { if is_listed_position(p: ps.site.position) && is_unpositioned(p: ps) { acc + 1 } else { acc } })
+      let header = concat(concat("C\t", path), concat(concat(concat(concat(concat(concat(concat(concat("\t", int_text(n: count_positions(sites: sites, pred: position_is_structural))), "\t"), int_text(n: count_positions(sites: sites, pred: position_is_unresolved))), "\t"), int_text(n: length(xs: sites) - count_positions(sites: sites, pred: is_listed_position))), "\t"), int_text(n: unpositioned)), "\n"))
+      list_reverse(xs: fold_list(xs: placed, empty: Cons { head: header, tail: Empty }, cons: fn(acc, ps) {
         if !is_listed_position(p: ps.site.position) { acc } else {
-          Cons { head: concat(concat(concat(concat(concat(concat(concat(concat(concat("L\t", path), "\t"), ps.site.decl), "\t"), ps.place), "\t"), literal_kind_token(k: ps.site.kind)), "\t"), concat(position_token(p: ps.site.position), "\n")), tail: acc }
+          Cons { head: concat(concat(concat(concat(concat(concat(concat(concat(concat("L\t", path), "\t"), ps.site.decl), "\t"), place_token(p: ps.place)), "\t"), literal_kind_token(k: ps.site.kind)), "\t"), concat(position_token(p: ps.site.position), "\n")), tail: acc }
         }
       }))
     }

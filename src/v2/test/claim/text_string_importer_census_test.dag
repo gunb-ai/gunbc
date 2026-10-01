@@ -518,7 +518,7 @@ test fn tsil_literal_subjects_are_the_committed_files() -> Bool {
 
 // The module's count row partitions its literal positions: 8 structural, 1 unresolved, 2 host.
 test fn tsil_counts_partition_the_literal_positions() -> Bool {
-  has_row(rows: tsil_literal_rows_outcome(), row: "C\tlit_module.dag\t8\t1\t2")
+  has_row(rows: tsil_literal_rows_outcome(), row: "C\tlit_module.dag\t8\t1\t2\t0")
 }
 
 test fn tsil_annotation_literals_bare_and_qualified_are_structural() -> Bool {
@@ -595,13 +595,13 @@ test fn tsil_alias_subjects_are_the_committed_files() -> Bool {
 test fn tsil_aliases_are_chased_to_their_declaring_module() -> Bool {
   let rows = tsil_alias_rows_outcome()
   has_row(rows: rows, row: "L\tlit_alias.dag\ta\t9:16\targument\ttake_name.n\tSTRUCTURAL:String")
-    && has_row(rows: rows, row: "C\tlit_alias.dag\t1\t0\t3")
+    && has_row(rows: rows, row: "C\tlit_alias.dag\t1\t0\t3\t0")
 }
 
 test fn tsil_population_module_decides_the_bare_string() -> Bool {
   let o = tsil_population_outcome()
   has_row(rows: o.under_string_type, row: "L\tst.dag\ts\t3:18\tannotation\tSTRUCTURAL:String")
-    && has_row(rows: o.under_text, row: "C\tst.dag\t0\t0\t1")
+    && has_row(rows: o.under_text, row: "C\tst.dag\t0\t0\t1\t0")
 }
 
 
