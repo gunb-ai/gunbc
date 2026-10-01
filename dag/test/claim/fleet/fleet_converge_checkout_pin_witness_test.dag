@@ -17,13 +17,13 @@ import gunbc.fleet_converge_workflow { fleet_converge_checkout_ref }
 // generated workflow's expected_*_yml calls the admission and refuses emission, and the generated lane
 // executes that on every run (DESIGN s3, a witness discriminates at one interface).
 fn github(path: List<String>) -> Expression { ContextAccess { context: Github, path: path } }
-fn input(name: String) -> Expression { ContextAccess { context: Inputs, path: [name] } }
-fn or(l: Expression, r: Expression) -> Expression { LogicalOr { left: l, right: r } }
+fn dispatch_input(name: String) -> Expression { ContextAccess { context: Inputs, path: [name] } }
+fn either(l: Expression, r: Expression) -> Expression { LogicalOr { left: l, right: r } }
 fn mode_is(m: String) -> Expression { Equals { left: github(path: ["event", "inputs", "mode"]), right: StringLiteral { value: m } } }
 
 // The fleet-converge tree with a chosen tail: github.sha now, github.ref before this change.
 fn fleet_shape(tail: Expression) -> Expression {
-  or(l: or(l: LogicalAnd { left: or(l: or(l: mode_is(m: "mtcollins1_boot"), r: mode_is(m: "gcp_iam_converge")), r: mode_is(m: "namecheap_observe")), right: github(path: ["sha"]) },
+  either(l: either(l: LogicalAnd { left: either(l: either(l: mode_is(m: "mtcollins1_boot"), r: mode_is(m: "gcp_iam_converge")), r: mode_is(m: "namecheap_observe")), right: github(path: ["sha"]) },
            r: github(path: ["event", "inputs", "expected_revision"])),
      r: tail)
 }
@@ -40,9 +40,9 @@ test fn red_the_pre_fix_branch_fallback_is_refused() -> Bool {
 // RED: A BRANCH-VALUED OPERAND IN FRONT OF A SHA TAIL. `||` takes the first non-empty operand, so the
 // sha tail is never reached when the branch operand is set.
 test fn red_a_branch_term_before_the_sha_tail_is_refused() -> Bool {
-  !checkout_ref_admitted(ref_expression: or(l: github(path: ["head_ref"]), r: github(path: ["sha"])))
-    && !checkout_ref_admitted(ref_expression: or(l: github(path: ["event", "pull_request", "head", "ref"]), r: github(path: ["sha"])))
-    && !checkout_ref_admitted(ref_expression: or(l: input(name: "branch"), r: github(path: ["sha"])))
+  !checkout_ref_admitted(ref_expression: either(l: github(path: ["head_ref"]), r: github(path: ["sha"])))
+    && !checkout_ref_admitted(ref_expression: either(l: github(path: ["event", "pull_request", "head", "ref"]), r: github(path: ["sha"])))
+    && !checkout_ref_admitted(ref_expression: either(l: dispatch_input(name: "branch"), r: github(path: ["sha"])))
 }
 
 // RED: A CONDITION WITH NO FALLBACK. `cond && github.sha` alone yields `false` when cond is false.
@@ -54,8 +54,8 @@ test fn red_a_condition_with_no_fallback_is_refused() -> Bool {
 test fn commit_valued_checkout_refs_are_admitted() -> Bool {
   checkout_ref_admitted(ref_expression: github(path: ["sha"]))
     && checkout_ref_admitted(ref_expression: github(path: ["event", "pull_request", "head", "sha"]))
-    && checkout_ref_admitted(ref_expression: input(name: "head_sha"))
-    && checkout_ref_admitted(ref_expression: or(l: input(name: "expected_healed_sha"), r: github(path: ["sha"])))
+    && checkout_ref_admitted(ref_expression: dispatch_input(name: "head_sha"))
+    && checkout_ref_admitted(ref_expression: either(l: dispatch_input(name: "expected_healed_sha"), r: github(path: ["sha"])))
     && checkout_ref_admitted(ref_expression: fleet_shape(tail: github(path: ["sha"])))
 }
 
