@@ -18,10 +18,9 @@ import v2.compiler.resolve {
   ResolveWalkAccepted,
   ResolveWalkRefused,
   resolve_node_walk,
-  resolve_loop_carrier_binder,
 }
 import v2.std.resolution_policy { default_name_resolution_policy }
-import v2.compiler.fold_lowering { fold_carrier_binder_atom, fold_iteration_measure_atom }
+import v2.compiler.fold_lowering { fold_carrier_binder_atom }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import std.algebra { Cons, Empty }
 import v2.std.language_model { void_language_model }
@@ -67,8 +66,7 @@ fn cbs_carrier_loop(body: Node, carrier: Symbol) -> Node {
     kind: ComputationNode { behavior: Loop },
     children: [
       Edge { label: Positional, target: body },
-      Edge { label: Named { name: ^loop_carrier_edge }, target: fold_carrier_binder_atom(binder: carrier) },
-      Edge { label: Named { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() }
+      Edge { label: Named { name: ^loop_carrier_edge }, target: fold_carrier_binder_atom(binder: carrier) }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -226,14 +224,19 @@ test fn cbs_a_binder_spelled_like_a_root_declaration_is_admitted_holds() -> Bool
 // producer in question. Until that runs green the rows above are readings of a boundary, and this
 // comment is where that debt is recorded rather than in a green row that would imply otherwise.
 
-// (8) THE WALK BINDS THE CARRIER -- the repair, exercised at resolve's own interface with a supplied Loop
-// and a supplied context. Before it, a Loop fell to resolve_children_homogeneous_scope, opened no frame,
-// and the iterated body's use of the carrier reached the bare-name census.
-// THE CONTEXT CARRIES A VOID LANGUAGE MODEL, not the dag one. The Loop walk consults the scope chain and
-// nothing else, so building the real grammar would be paid by every row here for no discrimination -- and
-// this file exists partly because that reach is what refused this lane's other claim sets at the
-// enrolment margin. If a future arm of this walk does consult the model, these rows must carry the real
-// one and say so.
+// (8) AND A LOOP DOES NOT BIND ITS CARRIER -- THE ENCLOSING Bind DOES. These two rows asserted the
+// opposite until gunbc#12550 landed, and the reversal is the honest record of a repair that dissolved
+// rather than a test that was wrong. The pre-#12550 fold seam built a BARE Loop with no enclosing Bind, so
+// its carrier was bound by nothing and a step body's use of it reached the bare-name census; a frame
+// opened at the Loop repaired that, and these rows were its evidence. #12550 replaced the seam with
+// Bind { carrier := init, Loop { ... } }, where v2.std.node's role model always said the binder lived --
+// "the carried state's initial value lives on an enclosing Bind" -- and the frame became redundant AND
+// harmful, because the Loop re-admitted a name the Bind had bound and this file's own admission refused it
+// as hiding a visible binding.
+//
+// So the rows now assert the model that is true: a BARE Loop's carrier binds nothing, and a body that uses
+// it is unbound. A reader who expects the old behaviour is reading evidence for a seam that no longer
+// exists (DESIGN section 4b(4): the production handling goes, the evidence stays and flips).
 fn cbs_ctx(scope: Scope) -> ResolveContext {
   ResolveContext {
     scope: scope,
@@ -253,22 +256,28 @@ fn cbs_walk_accepts(n: Node) -> Bool {
   }
 }
 
-test fn cbs_a_loop_body_use_of_the_carrier_resolves_holds() -> Bool {
-  cbs_walk_accepts(n: cbs_carrier_loop(body: cbs_atom(id: ^found), carrier: ^found))
+test fn cbs_a_bare_loop_does_not_bind_its_carrier_holds() -> Bool {
+  !cbs_walk_accepts(n: cbs_carrier_loop(body: cbs_atom(id: ^found), carrier: ^found))
 }
 
-// (9) THE DISCRIMINATING NEGATIVE. The same Loop whose body uses a name the carrier does NOT introduce
-// still refuses, so row (8) is not a frame that answers for everything.
-test fn cbs_a_loop_body_use_of_an_unrelated_name_still_refuses_holds() -> Bool {
-  !cbs_walk_accepts(n: cbs_carrier_loop(body: cbs_atom(id: ^unrelated_name), carrier: ^found))
-}
+// NEITHER ROW CARRIES A BOUND MEASURE, AND THAT IS NOT TIDYING -- IT CLOSES A VACUITY. The measure the
+// fold encoding uses is ^dag_surface_fold_iteration_measure, a symbol the CORPUS declares (it is
+// registered in v2.std.cardinality measure_descent_fact_registry); the supplied namespace these rows walk
+// under is empty, so it cannot bind that symbol and a Loop carrying it refuses for THAT reason. Row (8)
+// passed with a measure present, which means it would have passed even if the carrier HAD been bound --
+// the measure was answering for it. Measured: the measure atom alone refuses under this context, and the
+// same carrier Loop without it resolves once the name is bound above.
 
-// (10) THE CARRIER IS FOUND BY ITS ROLE. Row (8) would also pass if the reader found the carrier by edge
-// position; this asserts the role reader answers, which is what keeps this walk from being a second place
-// that knows the edge's spelling.
-test fn cbs_the_carrier_is_read_by_its_role_holds() -> Bool {
-  match resolve_loop_carrier_binder(n: cbs_carrier_loop(body: cbs_atom(id: ^found), carrier: ^found)) {
-    Present { value: c } => c.name == ^found
-    Absent => false
+// (9) AND THE SAME BARE LOOP UNDER A SCOPE THAT DOES BIND THE NAME RESOLVES -- so row (8) reports "the
+// Loop opens no frame" rather than "this Loop never resolves". That is the discriminating pair: the only
+// variable between them is whether something ABOVE the Loop binds the carrier, which is exactly what the
+// fold encoding's Bind now does.
+test fn cbs_a_loop_carrier_bound_above_resolves_holds() -> Bool {
+  match resolve_node_walk(
+    ctx: cbs_ctx(scope: cbs_frame_binding(name: ^found)),
+    n: cbs_carrier_loop(body: cbs_atom(id: ^found), carrier: ^found)
+  ) {
+    ResolveWalkAccepted { value: _, diagnostics: _ } => true
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => false
   }
 }

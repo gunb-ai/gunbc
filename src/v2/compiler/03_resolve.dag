@@ -471,59 +471,6 @@ fn gate_value_binders(names: List<Symbol>, outer: Scope, at: Node) -> BinderGate
 // The carrier edge is carried UNWALKED for the same reason the Arrow's declared-order edge is
 // (resolve_arrow_node_in): its target names a binder, not a reference, so resolving it would ask the
 // scope to answer for a name the scope is being opened to introduce.
-// THE CARRIER IS FOUND BY ITS ROLE, not by a named-edge lookup: v2.std.node loop_edge_role is the one
-// reader of what each of a Loop's edges means, and asking it here keeps this walk from being a second
-// place that knows the edge's spelling. (The named-edge lookup would also drag NamedEdgeTargetLookup's
-// own `Absent` into this module, where it collides with Optional's.)
-type ResolveLoopCarrier {
-  name: Symbol
-  node: Node
-}
-
-fn resolve_loop_carrier_binder(n: Node) -> Optional<ResolveLoopCarrier> {
-  fold(n.children, init: Absent, f: fn(acc, e) {
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent =>
-        match loop_edge_role(e: e) {
-          LoopCarrierBinder =>
-            match e.target.kind {
-              TypeNode { connective: Atom { identity: id } } =>
-                Present { value: ResolveLoopCarrier { name: id, node: e.target } }
-              _ => Absent
-            }
-          _ => Absent
-        }
-    }
-  })
-}
-
-// A LOOP'S BINDER AND ITS MEASURE ARE CARRIED UNWALKED; ITS BODY AND ITS DOMAIN ARE RESOLVED. This is
-// v2.std.node's own role model read back: the carrier "targets the loop-carried state's BINDER, never a
-// value", and the bound edge targets "the termination measure". Neither is a value reference, so asking
-// the scope to answer for them is the same category error the Arrow's declared-order edge avoids
-// (resolve_arrow_node_in carries it unwalked for exactly this reason). The fold seam's measure is the
-// marker ^dag_surface_fold_iteration_measure, which names no value and resolved to nothing -- that
-// refusal, not the carrier, is what a Loop walk hit first once the carrier's frame existed.
-//
-// DECLARED FRONTIER: a measure that is a real expression rather than a marker would need resolving, and
-// this walk does not do it. No producer emits one today (v2.compiler.fold_lowering
-// fold_iteration_measure_atom is the only measure in the corpus), and the trigger is the first producer
-// that emits a computed measure -- at which point the measure gets a role-specific walk rather than
-// being carried.
-fn resolve_loop_children(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
-  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
-    match loop_edge_role(e: e) {
-      LoopCarrierBinder =>
-        child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
-      LoopBoundMeasure =>
-        child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
-      LoopRealizedDeclaration =>
-        child_walk_step(w: acc, e: e, r: resolve_walk_of_outcome(o: resolve_realized_declaration(ctx: ctx, head: e.target)))
-      _ => child_walk_step(w: acc, e: e, r: resolve_node_walk(ctx: ctx, n: e.target))
-    }
-  }))
-}
 
 fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   match root.kind {
@@ -2464,36 +2411,28 @@ fn resolve_node_walk(
 // frame and the domain and body resolve as ordinary expressions. ^loop_realized_declaration_edge
 // (v2.std.node LoopRealizedDeclaration) is a CLAIM made by a desugaring about which declaration the
 // author's head names. Resolve checks that claim; it does not take it on trust.
-// ONE LOOP WALK, CARRYING TWO FACTS THAT ARRIVED FROM DIFFERENT DIRECTIONS. gunbc#12550 gave a Loop a
-// realized-declaration head and made the fold encoding bind its carrier on an enclosing Bind; this lane
-// gave the carrier edge and the bound measure the treatment v2.std.node's role model already describes --
-// the carrier "targets the loop-carried state's BINDER, never a value", the bound edge targets "the
-// termination measure", and neither is a reference the scope should be asked to answer for. Both walks
-// existed as separate `resolve_loop_node` declarations after the merge, which the namespace refused as a
-// duplicate; that refusal is the only reason this consolidation is one edit rather than two.
+// THIS LANE'S CARRIER FRAME IS DISSOLVED, AND THE REASON BELONGS HERE. The pre-#12550 fold seam built a
+// BARE Loop with no enclosing Bind, so the carrier was bound by nothing and the step body's use of it
+// reached the bare-name census; opening a frame at the Loop repaired that, and the native eight moved off
+// their `found` refusal because of it. #12550 then replaced the seam with
+// Bind { carrier := init, Loop { step, domain, carrier, bound, realized } }, which binds the carrier where
+// the role model always said it lived -- the annotation above states it: the carrier resolves against the
+// ENCLOSING Bind's frame.
 //
-// THE CARRIER FRAME IS KEPT EVEN THOUGH THE ENCODING'S Bind NOW BINDS THE SAME NAME, because the two are
-// not the same scope: the Bind's frame covers the encoding's body, while a Loop reached by any other
-// producer carries its binder with no Bind above it. Keeping it here is what makes the carrier a binder
-// for every producer of a Loop rather than for the fold encoding alone. Where both bind one name the
-// admission answers BinderHidesVisibleValue, and that is a real question about the encoding rather than
-// an artifact of this walk -- see the receipt on the integration candidate.
+// The frame then became redundant and harmful at once: the Loop re-admitted a name the Bind above it had
+// already bound, and this lane's own value-binder admission refused it as hiding a visible binding. That is
+// what the native eight reported at a synthetic occurrence, and what reds five of #12550's own claims.
+// So the repair was correct for a structure that no longer exists and is DELETED rather than guarded -- a
+// guard would have been this walk encoding a fact about which producer built the Loop (DESIGN section 6b),
+// and the dissolution-on-climb rule asks for the obsolete production handling to go while the evidence
+// stays (section 4b(4)).
 fn resolve_loop_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
-  match resolve_loop_carrier_binder(n: n) {
-    Absent => resolve_loop_children(ctx: ctx, n: n)
-    Present { value: carrier } =>
-      match admit_value_binders(names: [carrier.name], outer: ctx.scope) {
-        BinderDuplicateInFrame { binder: b } =>
-          resolve_walk_refused_one(chain: diagnostics_singleton(d: binder_duplicate_in_frame_diagnostic(binder: b, at: carrier.node)))
-        BinderHidesVisibleValue { binder: b } =>
-          resolve_walk_refused_one(chain: diagnostics_singleton(d: binder_hides_visible_value_diagnostic(binder: b, at: carrier.node)))
-        BindersAdmitted { locals: locals } =>
-          resolve_loop_children(
-            ctx: resolve_ctx_with_scope(ctx: ctx, scope: ScopeFrame { locals: locals, outer: ctx.scope }),
-            n: n
-          )
-      }
-  }
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    match loop_edge_role(e: e) {
+      LoopRealizedDeclaration => child_walk_step(w: acc, e: e, r: resolve_walk_of_outcome(o: resolve_realized_declaration(ctx: ctx, head: e.target)))
+      _ => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
+    }
+  }))
 }
 
 fn realized_declaration_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
