@@ -344,14 +344,6 @@ type TypeEnvCache {
 // reads are one-level: local str_bindings/ancestry_str_bindings, or a fold over parent.str_bindings
 // only (see collect_unit_variant_phantom_matches). Dissolve-on: namespace-as-sole-authority ruling
 // — env maps become a derived projection of namespace reachability.
-//
-// RE-RULED (operator, 2026-10-01; recorded on gunbc#12869, docs/plans/type-env-single-authority-design.md
-// §5.2): a memoized re-export walk MAY REPLACE the materialized per-module ancestry_str_bindings union
-// as the SINGLE representation (PR-2 of that plan). What the 2026-07-06 ruling forbade still stands: a
-// walk standing BESIDE the map as a fallback. So the map is deleted in the same change that adds the walk,
-// with no fallback. The walk's memo is keyed (pool, module path plus source, name), retained for one
-// resolve, never shared across pools (a control asserts it), and must reproduce every union winner and the
-// binding_forks ledger by identity.
 
 fn empty_type_env_cache() -> TypeEnvCache {
   TypeEnvCache {
