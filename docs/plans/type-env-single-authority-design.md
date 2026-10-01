@@ -583,3 +583,32 @@ representation, so the comparison covers exactly what the program reads, not a s
   total beyond noise, the representation fails the gate as stated. The remedy is then a per-module
   table for MULTI-EXPORTER names only (homonyms plus kernel names, a fraction of the union), named as
   its own decision, never added silently.
+
+### Conditions of confirmation (neat-boar-16 via the lane manager, 2026-10-01)
+1. **One authority for "who exports n".** The exporter index is derived from own entries in ONE
+   function, built with the pool and rebuilt only when the pool is rebuilt. Every other reader (the
+   fast path, presence, fork detection, the deps and cycle indexes) consumes it and never re-derives it.
+2. **The winner reuses the fold's rule.** Kernel and local shadowing, re-export, is_all selection and
+   the rewire overlay are evaluated by functions shared with today's construction:
+   `overlay_skips_kernel_name`, the direct-selection predicate (extracted from
+   `overlay_direct_import_exports`), `binding_same_authority`, `type_env_for_import`'s std.types
+   filter, and the rewire's overlay. The PR cites each one. Only the ITERATION changes, from folding
+   whole maps to descending for one name. Wherever a rule cannot be shared, the PR says why beside it.
+3. **Ambiguity refuses exactly as today.** The replay differential compares winners AND refusals at
+   identity grain, including the `listed_import_required_bare_call_blocked` refusal and the
+   ambiguous-bare cases.
+4. **Fork-row order: one canonical order.** Rows sort by their content fields compared
+   byte-lexicographically: name, import_path, existing_site, incoming_site, then the span. That is the
+   order #12895's `portable_value_cmp` gives a record of those fields (strings by bytes, fields in
+   declared order). A third ordering is not introduced. If the map-rendering fix adopts a different
+   comparator, both are reconciled to one before PR-2 lands.
+5. **Reachability size.** One bit per (module, module) pair: about 7.1k² bits, about 6.3 MB, at the
+   whole tree, and about 0.65 MB at a 2.3k-module subject. It is built in ONE pass over the closure in
+   topological order (R(M) = the union over j of ({I_j} plus R(I_j))). If `.dag` lacks a dense bitset,
+   the per-module set of module indices is the fallback, and its size is measured and reported, not
+   assumed.
+6. **The falsifier gets a control in the A/B.** A synthetic pool whose shape maximizes descent:
+   - a deep chain of re-exports with a homonym exported at every level;
+   - k imports per module, all of them reaching it;
+   - the lookup count and membership-test count measured at two depths.
+   Membership tests that grow faster than D x k x X between the two depths red the control.
