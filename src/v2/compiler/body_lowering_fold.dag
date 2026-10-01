@@ -107,7 +107,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -9557,6 +9557,7 @@ type IoAcc {
 type BodyLowerOperationAcc {
   input: Optional<Node>,
   output: Optional<Node>,
+  requires: Optional<Node>,
   set_aside: List<ServiceSetAside>,
 }
 
@@ -9572,19 +9573,28 @@ fn body_lower_operation_member(acc: Outcome<BodyLowerOperationAcc>, member: Node
                 Present { value: _ } =>
                   outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_io_block_repeated, n: member))
                 Absent =>
-                  outcome_accepted(value: BodyLowerOperationAcc { input: Present { value: io.payload }, output: a.output, set_aside: list_append(left: a.set_aside, right: io.set_aside) })
+                  outcome_accepted(value: BodyLowerOperationAcc { input: Present { value: io.payload }, output: a.output, requires: a.requires, set_aside: list_append(left: a.set_aside, right: io.set_aside) })
               }
             } else {
               match a.output {
                 Present { value: _ } =>
                   outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_io_block_repeated, n: member))
                 Absent =>
-                  outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: Present { value: io.payload }, set_aside: list_append(left: a.set_aside, right: io.set_aside) })
+                  outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: Present { value: io.payload }, requires: a.requires, set_aside: list_append(left: a.set_aside, right: io.set_aside) })
               }
             }
           })
         } else if id == ^dag_surface_op_modifier {
           body_lower_operation_acc_set_aside(a: a, kind: InterfaceMemberUnmodeled, n: member)
+        } else if id == ^dag_surface_op_requires {
+          match a.requires {
+            Present { value: _ } =>
+              outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_requires_repeated, n: member))
+            Absent =>
+              bind_outcome(o: body_lower_operation_requires(shell: member), f: fn(target) {
+                outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: a.output, requires: Present { value: target }, set_aside: a.set_aside })
+              })
+          }
         } else if (id == ^dag_surface_transport)
           || (id == ^dag_surface_exit_block)
           || (id == ^dag_surface_response_block)
@@ -9597,11 +9607,91 @@ fn body_lower_operation_member(acc: Outcome<BodyLowerOperationAcc>, member: Node
   })
 }
 
+// `requires R, ..` (v2.extdeps.languages.dag dag_grammar_op_requires_expr) lowers to the target of the
+// operation Arrow's ^arrow_resource_requirements_edge: a Conj with one Named edge per member, labelled
+// by the member's spelling as written and targeting its type reference, lowered by the one type-position
+// reader (body_lower_type_expr_lowered_optional) a parameter's type goes through. The label is only the
+// Conj's discipline (v2.std.node LabeledEdges: named, distinct), so a spelling written twice is
+// ill-formed here; a member's IDENTITY is its resolved declaration, which v2.compiler.resolve checks is
+// a declared resource and is not repeated under another spelling. A member that is not a readable type
+// expression refuses at the member.
+fn body_lower_operation_requires(shell: Node) -> Outcome<Node> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_requires_unread, n: shell))
+    Present { value: captured } =>
+      bind_outcome(
+        o: fold(body_lower_service_member_shells(root: captured), init: outcome_accepted(value: Empty), f: fn(acc, member) {
+          bind_outcome(o: acc, f: fn(edges) {
+            match body_lower_type_expr_lowered_optional(node: member) {
+              Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_requires_unread, n: member))
+              Present { value: type_node } =>
+                match body_lower_operation_requires_member_label_optional(member: member, type_node: type_node) {
+                  Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_requires_unread, n: member))
+                  Present { value: label } =>
+                    if body_lower_edges_carry_name(edges: edges, name: label) {
+                      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_requirement_repeated, n: member))
+                    } else {
+                      outcome_accepted(value: list_snoc_item(xs: edges, item: Edge { label: Named { name: label }, target: type_node }))
+                    }
+                }
+            }
+          })
+        }),
+        f: fn(edges) {
+          match edges {
+            Empty => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_requires_unread, n: shell))
+            Cons { head: _, tail: _ } =>
+              outcome_accepted(value: node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: edges, occurrence_id: shell.occurrence_id))
+          }
+        }
+      )
+  }
+}
+
+// A member's spelling as written, read off the LOWERED type node rather than re-searched in the
+// parse: a single-segment name lowers to an Atom whose identity IS that spelling, and a dotted one to
+// the qualified-name spine (body_lower_qualified_name_spine_node), read back as its dotted string. A
+// member that is neither (a generic application, an anonymous record) has no requirement spelling and
+// refuses at the member.
+fn body_lower_operation_requires_member_label_optional(member: Node, type_node: Node) -> Optional<Symbol> {
+  match node_atom_identity_optional(node: type_node) {
+    Present { value: id } => optional_present(value: id)
+    Absent =>
+      if qualified_name_spine_shape_present(root: type_node) {
+        match qualified_name_from_node(root: type_node) {
+          Accepted { value: qn, diagnostics: _ } => optional_present(value: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: qn)))
+          Rejected { diagnostics: _ } => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn body_lower_edges_carry_name(edges: List<Edge>, name: Symbol) -> Bool {
+  fold(edges, init: false, f: fn(seen, e) {
+    match e.label {
+      Named { name: n } => seen || (n == name)
+      Positional => seen
+    }
+  })
+}
+
+// The requirements edge rides on the Arrow beside its signature edges, present only when declared: an
+// operation with no `requires` carries no edge, so its Arrow -- and its identity -- is unchanged.
+fn body_lower_operation_arrow_children(signature_edges: List<Edge>, requires: Optional<Node>) -> List<Edge> {
+  match requires {
+    Absent => signature_edges
+    Present { value: target } => list_snoc_item(xs: signature_edges, item: Edge { label: Named { name: ^arrow_resource_requirements_edge }, target: target })
+  }
+}
+
 fn body_lower_operation_acc_set_aside(a: BodyLowerOperationAcc, kind: ServiceSetAsideKind, n: Node) -> Outcome<BodyLowerOperationAcc> {
   outcome_accepted(
     value: BodyLowerOperationAcc {
       input: a.input,
       output: a.output,
+      requires: a.requires,
       set_aside: list_snoc_item(xs: a.set_aside, item: ServiceSetAside { kind: kind, member: n })
     }
   )
@@ -9651,7 +9741,7 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
           bind_outcome(
             o: fold(
               body_lower_service_member_shells(root: captured),
-              init: outcome_accepted(value: BodyLowerOperationAcc { input: Absent, output: Absent, set_aside: Empty }),
+              init: outcome_accepted(value: BodyLowerOperationAcc { input: Absent, output: Absent, requires: Absent, set_aside: Empty }),
               f: fn(acc, member) { body_lower_operation_member(acc: acc, member: member) }
             ),
             f: fn(a) {
@@ -9662,11 +9752,14 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
                     label: Named { name: op_name },
                     target: node_with_occurrence_id(
                       kind: TypeNode { connective: Arrow },
-                      children: [
-                        signature.domain,
-                        Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.output, source: shell) },
-                        signature.order
-                      ],
+                      children: body_lower_operation_arrow_children(
+                        signature_edges: [
+                          signature.domain,
+                          Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.output, source: shell) },
+                          signature.order
+                        ],
+                        requires: a.requires
+                      ),
                       occurrence_id: shell.occurrence_id
                     )
                   },
@@ -10057,13 +10150,19 @@ fn body_lower_resource_decl(shell: Node) -> Outcome<BodyLowering> {
   })
 }
 
-// The captured kind of a resource declaration, read by the same reader the lowering uses, so a
-// declaration is captured exactly when the lowering admits it. A declaration that refuses
-// carries no kind; its lowering refuses the module on its own.
+// The captured kind of a resource declaration is its NAME, read by the same kw-then-ident decoder the
+// lowering uses, and nothing else: re-running the entry reader here would validate every entry a
+// second time for a result the lowering already decided. The capture never needs that verdict, because
+// a declaration the lowering refuses refuses its whole module, so no captured name outlives a refused
+// declaration on any route that reads the capture.
 fn body_lower_resource_decl_declared_kind_optional(shell: Node) -> Optional<DeclaredTypeKind> {
-  match body_lower_resource_read(shell: shell) {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: r, diagnostics: _ } => Present { value: DeclaredResource { name: r.name } }
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match dag_surface_kw_then_ident_from_captured(captured: captured) {
+        Absent => optional_absent()
+        Present { value: name } => optional_present(value: DeclaredResource { name: name })
+      }
   }
 }
 
