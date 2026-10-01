@@ -375,20 +375,67 @@ type StepPositionScan {
   found: Int?
 }
 
-// The position of a template's step -- its first callable parameter -- in the free-call signature
-// the row declares. Absent when the row takes no callable.
-fn template_step_position(t: AlgebraFieldTemplate) -> Int? {
+// The position of the first parameter the predicate admits, in the free-call signature the row
+// declares. Absent when no parameter is admitted. Every slot position below is this one scan.
+fn template_param_position(t: AlgebraFieldTemplate, admits: fn(AlgebraTypeTemplate) -> Bool) -> Int? {
   let scan = fold(t.param_types, init: StepPositionScan { next: 0, found: none }, f: fn(acc, p) {
     match acc.found {
       Present { value: _ } => acc
       Absent =>
-        match p {
-          CallableOf { params: _, return_type: _ } => StepPositionScan { next: acc.next + 1, found: Present { value: acc.next } }
-          _ => StepPositionScan { next: acc.next + 1, found: none }
+        if admits(p) {
+          StepPositionScan { next: acc.next + 1, found: Present { value: acc.next } }
+        } else {
+          StepPositionScan { next: acc.next + 1, found: none }
         }
     }
   })
   scan.found
+}
+
+// The position of a template's step -- its first callable parameter -- in the free-call signature
+// the row declares. Absent when the row takes no callable.
+fn template_step_position(t: AlgebraFieldTemplate) -> Int? {
+  template_param_position(t: t, admits: fn(p) {
+    match p {
+      CallableOf { params: _, return_type: _ } => true
+      _ => false
+    }
+  })
+}
+
+// The position of the collection a template iterates: its receiver slot.
+fn template_receiver_position(t: AlgebraFieldTemplate) -> Int? {
+  template_param_position(t: t, admits: fn(p) { p == ReceiverSelf })
+}
+
+// The position of a recurrence's initial accumulator: the plain (non-callable) parameter whose type
+// is the type the step returns. A row whose step returns the receiver, or that has no step, has no
+// accumulator slot and answers Absent.
+fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
+  let step_return = fold(t.param_types, init: none, f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match p {
+          CallableOf { params: _, return_type: r } => Present { value: r }
+          _ => none
+        }
+    }
+  })
+  match step_return {
+    Absent => none
+    Present { value: acc_type } =>
+      if acc_type == ReceiverSelf {
+        none
+      } else {
+        template_param_position(t: t, admits: fn(p) {
+          match p {
+            CallableOf { params: _, return_type: _ } => false
+            _ => p == acc_type
+          }
+        })
+      }
+  }
 }
 
 fn is_collection_filter_template(t: AlgebraFieldTemplate) -> Bool {

@@ -862,27 +862,18 @@ fn acceptance_history_integrity_verdict(
     match replay_acceptance_history(events: history) {
       Absent => AcceptanceHistoryIntegrityRefusedReplay
       Present { value: state } =>
-        if !all(
-          state.ever_recorded,
-          r => ever_recorded_receipt_accounted_for(
-            receipt: r,
-            live: state.live,
-            revoked: state.revoked,
+        match first(
+          state.ever_recorded |> filter(r =>
+            !ever_recorded_receipt_accounted_for(
+              receipt: r,
+              live: state.live,
+              revoked: state.revoked,
+            )
           ),
         ) {
-          AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation {
-            receipt: first(
-              state.ever_recorded |> filter(r =>
-                !ever_recorded_receipt_accounted_for(
-                  receipt: r,
-                  live: state.live,
-                  revoked: state.revoked,
-                )
-              ),
-            ),
-          }
-        } else {
-          AcceptanceHistoryIntegrityHolds
+          Present { value: vanished } =>
+            AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: vanished }
+          Absent => AcceptanceHistoryIntegrityHolds
         }
     }
   }

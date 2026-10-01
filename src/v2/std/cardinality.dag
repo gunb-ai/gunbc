@@ -217,13 +217,19 @@ fn multiplicity_termination_witness(n: Node, m: Multiplicity) -> Witness<Termina
   }
 }
 
+// Every connective is Bounded. A type node is never evaluated, so the only descent it owes is the
+// structural fold over its own finite subtree (structural_node_size_termination_proof). Cardinality
+// is the type connective for how many VALUES inhabit a position (T?, collections); that is a fact
+// about data, not a repetition of evaluation, so it carries no termination obligation. Repetition
+// enters a program only through the Loop behavior (recursion is sugar over Loop, DESIGN §4), and
+// loop_multiplicity remains the one subject that can answer RequiresTerminationProof.
 fn connective_multiplicity(c: Connective) -> Multiplicity {
   match c {
     Atom { identity: _ } => Bounded
     Conj => Bounded
     Disj => Bounded
     Arrow => Bounded
-    Cardinality => RequiresTerminationProof
+    Cardinality => Bounded
     Instantiation => Bounded
   }
 }

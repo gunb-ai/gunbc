@@ -244,56 +244,72 @@ data emit_summary_map_consumers: List<SummaryMapConsumer> = [
 fn consumer_holds_node_at_ask(c: SummaryMapConsumer) -> Bool {
   match c.ask {
     NodeHeldAtAsk { holder_expression: _ } => true
-    _ => false
+    CompositeOfTwoSpellings { parts: _, second_part_source: _ } => false
+    SpellingOnlyFromMapValue { severed_at: _, map_field: _ } => false
+    NoKeyWholeMapScan { what_is_scanned: _ } => false
   }
 }
 
 fn consumer_ask_is_spelling_only(c: SummaryMapConsumer) -> Bool {
   match c.ask {
     SpellingOnlyFromMapValue { severed_at: _, map_field: _ } => true
-    _ => false
+    NodeHeldAtAsk { holder_expression: _ } => false
+    CompositeOfTwoSpellings { parts: _, second_part_source: _ } => false
+    NoKeyWholeMapScan { what_is_scanned: _ } => false
   }
 }
 
 fn consumer_ask_is_composite(c: SummaryMapConsumer) -> Bool {
   match c.ask {
     CompositeOfTwoSpellings { parts: _, second_part_source: _ } => true
-    _ => false
+    NodeHeldAtAsk { holder_expression: _ } => false
+    SpellingOnlyFromMapValue { severed_at: _, map_field: _ } => false
+    NoKeyWholeMapScan { what_is_scanned: _ } => false
   }
 }
 
 fn consumer_ask_is_scan(c: SummaryMapConsumer) -> Bool {
   match c.ask {
     NoKeyWholeMapScan { what_is_scanned: _ } => true
-    _ => false
+    NodeHeldAtAsk { holder_expression: _ } => false
+    CompositeOfTwoSpellings { parts: _, second_part_source: _ } => false
+    SpellingOnlyFromMapValue { severed_at: _, map_field: _ } => false
   }
 }
 
 fn consumer_use_is_terminal(c: SummaryMapConsumer) -> Bool {
   match c.use {
     TerminalAtSite { what_is_decided: _ } => true
-    _ => false
+    ReKeyedIntoSameMap { second_key_source: _, second_lookup_decides: _ } => false
+    SpellingEscapesToCaller { escapes_as: _, consumed_by: _ } => false
+    ReKeyedIntoForeignNameTable { table: _, why_a_rekey_cannot_reach_it: _ } => false
   }
 }
 
 fn consumer_use_rekeys(c: SummaryMapConsumer) -> Bool {
   match c.use {
     ReKeyedIntoSameMap { second_key_source: _, second_lookup_decides: _ } => true
-    _ => false
+    TerminalAtSite { what_is_decided: _ } => false
+    SpellingEscapesToCaller { escapes_as: _, consumed_by: _ } => false
+    ReKeyedIntoForeignNameTable { table: _, why_a_rekey_cannot_reach_it: _ } => false
   }
 }
 
 fn consumer_use_escapes(c: SummaryMapConsumer) -> Bool {
   match c.use {
     SpellingEscapesToCaller { escapes_as: _, consumed_by: _ } => true
-    _ => false
+    TerminalAtSite { what_is_decided: _ } => false
+    ReKeyedIntoSameMap { second_key_source: _, second_lookup_decides: _ } => false
+    ReKeyedIntoForeignNameTable { table: _, why_a_rekey_cannot_reach_it: _ } => false
   }
 }
 
 fn consumer_use_leaves_the_map(c: SummaryMapConsumer) -> Bool {
   match c.use {
     ReKeyedIntoForeignNameTable { table: _, why_a_rekey_cannot_reach_it: _ } => true
-    _ => false
+    TerminalAtSite { what_is_decided: _ } => false
+    ReKeyedIntoSameMap { second_key_source: _, second_lookup_decides: _ } => false
+    SpellingEscapesToCaller { escapes_as: _, consumed_by: _ } => false
   }
 }
 
@@ -438,7 +454,9 @@ fn consumer_severance_is_rostered(c: SummaryMapConsumer) -> Bool {
   match c.ask {
     SpellingOnlyFromMapValue { severed_at: sa, map_field: _ } =>
       emit_summary_map_severance_points |> any(s => s.fold.decl_name == sa.decl_name && s.fold.module_path == sa.module_path)
-    _ => true
+    NodeHeldAtAsk { holder_expression: _ } => true
+    CompositeOfTwoSpellings { parts: _, second_part_source: _ } => true
+    NoKeyWholeMapScan { what_is_scanned: _ } => true
   }
 }
 
@@ -837,14 +855,16 @@ data emit_summary_map_guard_rows: List<GuardRow> = [
 fn guard_fails_trigger_preservation(g: GuardRow) -> Bool {
   match g.trigger_preservation {
     FailsHere { what_merged_the_input: _, what_is_lost: _ } => true
-    _ => false
+    HoldsHere { how: _ } => false
+    NotAGuard { what_it_does_instead: _ } => false
   }
 }
 
 fn guard_refuses(g: GuardRow) -> Bool {
   match g.refusal {
     HoldsHere { how: _ } => true
-    _ => false
+    FailsHere { what_merged_the_input: _, what_is_lost: _ } => false
+    NotAGuard { what_it_does_instead: _ } => false
   }
 }
 

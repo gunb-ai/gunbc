@@ -52,7 +52,6 @@ use crate::cli_run::value_to_wire_json;
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
-use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::RcStr;
@@ -2800,7 +2799,6 @@ mod cross_claim_demand_census_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{make_expr_node, ExprData, SourceSpan};
 
@@ -2814,8 +2812,8 @@ mod cross_claim_demand_census_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -3100,7 +3098,6 @@ mod typed_module_index_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{ExecutionMode, InterpContext};
@@ -3109,8 +3106,8 @@ mod typed_module_index_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -3144,7 +3141,6 @@ mod cross_claim_memo_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{make_expr_node, no_span, ExprData};
 
@@ -3157,8 +3153,8 @@ mod cross_claim_memo_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -4797,7 +4793,6 @@ pub struct PreparedScopeIndexes {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    pub emit_graph_info: Rc<EmitGraphInfo>,
     fn_nodes: HashMap<String, Rc<Node>>,
     // Alias lookup uses the first authored declaration in graph order, independently of
     // function precedence. Derived from the same module fragments and shared with the scope;
@@ -5031,7 +5026,6 @@ pub struct InterpContext {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    pub emit_graph_info: Rc<EmitGraphInfo>,
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
@@ -5468,7 +5462,6 @@ impl InterpContext {
             modules: graph.modules.clone(),
             item_registry: bare_item_registry,
             source_indices,
-            emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
             type_items,
             ambiguous_bare_function_names,
@@ -5495,7 +5488,6 @@ impl InterpContext {
             modules: indexes.modules.clone(),
             item_registry: indexes.item_registry.clone(),
             source_indices: indexes.source_indices.clone(),
-            emit_graph_info: indexes.emit_graph_info.clone(),
             indexes,
             execution_mode,
             fixture_store,
@@ -5811,8 +5803,11 @@ impl InterpContext {
         ResolvedGraph {
             modules: self.modules.clone(),
             item_registry: self.item_registry.clone(),
+            item_leaf_owner_modules:
+                crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(
+                    self.item_registry.clone(),
+                ),
             diagnostics: Rc::new(im::Vector::new()),
-            emit_graph_info: self.emit_graph_info.clone(),
         }
     }
 
@@ -7389,7 +7384,6 @@ mod argv_representation_ambiguity_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{
@@ -7401,8 +7395,8 @@ mod argv_representation_ambiguity_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -11721,7 +11715,6 @@ mod cast_identity_empty_kernel_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{make_expr_error_node, no_span, ExprErrorKind};
 
@@ -11731,8 +11724,8 @@ mod cast_identity_empty_kernel_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -21226,6 +21219,14 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
             },
 
+            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (std.primitives
+            // sha256_hex_of_text_contract).
+            arm "free_call.sha256_hex_of_text" { "sha256_hex_of_text" } => {
+                Ok(Some(str_value(sha256_hex_of_text_digest(
+                    expect_value_str($positional.first().copied(), "sha256_hex_of_text text")?.as_str(),
+                ))))
+            },
+
             // ISSUANCE, THE KEY HOLDER'S OWN OPERATION, and a second primitive rather than a
             // widening of verify: the verify arm above deliberately yields one bit, so a verifier
             // is never handed a computed tag to compare in variable time. Minting is the only
@@ -23631,7 +23632,6 @@ mod chars_receiver_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{
@@ -23643,8 +23643,8 @@ mod chars_receiver_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -23981,6 +23981,14 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
             msg: format!("{} expects a string, got {}", context, val.type_label()),
         }),
     }
+}
+
+// SHA-256 of the text's UTF-8 bytes, lowercase hex: the host realization of the builtin
+// sha256_hex_of_text (std.primitives sha256_hex_of_text_contract), the same RustCrypto sha2 the HMAC
+// seam below uses. The pure fold extdeps.crypto.sha2 sha256_hex shares its known answers.
+fn sha256_hex_of_text_digest(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(text.as_bytes()))
 }
 
 /// The `hmac_sha256_hex` builtin's computation: the lowercase hex HMAC-SHA256 tag of `message`
@@ -25252,7 +25260,6 @@ mod map_shell_outputs_optional_stream_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{
         make_field_init_node, make_field_node, make_text_part_node, no_span, Cardinality,
@@ -25266,8 +25273,8 @@ mod map_shell_outputs_optional_stream_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -25458,7 +25465,6 @@ mod wall_deadline_kill_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{
@@ -25471,8 +25477,8 @@ mod wall_deadline_kill_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
     }
@@ -25782,7 +25788,6 @@ mod emit_host_admission_flip_test {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{require_permitted_transport, ExecutionMode, InterpContext, Value};
@@ -25791,8 +25796,8 @@ mod emit_host_admission_flip_test {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), mode)
     }
@@ -25861,7 +25866,6 @@ mod argv_arg_limit_test {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{make_text_part_node, no_span, shell_transport_node, Node};
 
@@ -25874,8 +25878,8 @@ mod argv_arg_limit_test {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
     }
@@ -27283,15 +27287,14 @@ mod push_hash_extension_tests {
     use im::{vector as im_vec, HashMap};
 
     use super::*;
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     fn test_ctx() -> InterpContext {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
