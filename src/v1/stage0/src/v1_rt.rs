@@ -652,7 +652,11 @@ pub fn lookup<K: std::cmp::Eq + std::hash::Hash, V: Clone>(m: &HashMap<K, V>, ke
 }
 
 pub fn list_get_optional<T: Clone>(items: &Vec<T>, index: i64) -> Option<T> {
-    if index < 0 { None } else { items.get(index as usize).cloned() }
+    if index < 0 {
+        None
+    } else {
+        items.get(index as usize).cloned()
+    }
 }
 
 pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashMap<String, V> {
