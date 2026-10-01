@@ -2,6 +2,8 @@ module test.claim.roadmap_gate
 
 import test.claim.roadmap.roadmap_node_fixture { fx_derivable, fx_sign, fx_signed }
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn mini_doc(node: RoadmapNode) -> RoadmapDocument {
