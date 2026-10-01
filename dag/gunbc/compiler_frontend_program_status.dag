@@ -297,7 +297,7 @@ fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
     WildcardMatchArmResolution => "a wildcard match arm `_` is a pattern form resolve does not look up, so a correct match is not refused as an unbound name"
     QualifiedFieldTypeVisibility => "a QUALIFIED field-position type name reaches the census, so field position is established as a whole, not only for bare names"
     LoweringOccurrenceProjection => "every lowered node built from an authored atom keeps that atom's minted occurrence, so a census row locates back to one source occurrence"
-    UsesClauseCarrier => "a fn declaring a `uses name: Type` clause lowers with each entry's resource requirement on its lowered signature, so its module reaches the census instead of refusing at the clause"
+    UsesClauseCarrier => "a fn declaring a `uses` clause reaches the census instead of refusing its module at lowering"
     MatchEveryArmLowered => "a match lowers every arm, the third and later arms included, in source order"
     EnclosingExpressionLoweredWhole => "an expression that contains a match or if (an operator, call or record around the block) lowers to itself with the block as one part, not to the block alone or its scrutinee"
     DataInitializerMatchScrutineeLowering => "a match in a data initializer reads its scrutinee from the scrutinee position, not from an arm"
@@ -428,7 +428,7 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     }
     UsesClauseCarrier => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.uses_clause_has_no_carrier", decl_name: "uses_clause_has_no_carrier"),
-      why: "a fn declaration's `uses` clause (`uses fs: Filesystem`) states the resources the fn requires, and v2 has no carrier for that requirement on the lowered signature. The grammar parses the clause (gunbc#12816, c95f906f0f) and v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional refuses every fn carrying one, on the full and census arms, located at the clause as body_lowering_reason_uses_clause_unmodeled, so the module refuses at normalize and none of its references reach the XL-2 census. Mitigated, not silent: no such fn lowers without its requirement. Delivered only when the row's own trigger holds: a v2 effect-requirement carrier on the lowered fn signature that body lowering reads each `uses` entry onto (name, resource type, config), so that body_lowering_reason_uses_clause_unmodeled has no producer." as NonEmptyStr,
+      why: "fns with a `uses` clause refuse at lowering: v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional refuses each one on the full and census arms, located at the clause, as body_lowering_reason_uses_clause_unmodeled (gunbc#12816, c95f906f0f), so the module refuses at normalize and its references miss the XL-2 census. Tracked by gunbc.recurring_failure_mode.uses_clause_has_no_carrier; this arm states the refusal only and claims no resolution." as NonEmptyStr,
     }
   }
 }
