@@ -27,6 +27,7 @@ data typed_graph_class_reading_primitive_boundary: DissolutionCondition = floor_
 
 type TypedGraphClassReading {
   class: NonEmptyStr
+  members: Int
   modules: Int
   in_use_all: Int
   in_use_after_class: Int
@@ -37,6 +38,7 @@ type TypedGraphClassReading {
 
 type ClassExclusiveBytes {
   class: NonEmptyStr
+  members: Int
   modules: Int
   exclusive: ByteSize
   graph_total: ByteSize
@@ -44,6 +46,9 @@ type ClassExclusiveBytes {
   own_entries: Int
 }
 
+// THE SUM IS OVER A PARTITION. A joint set (members > 1) is reported beside the singles and never
+// added into sum_of_exclusives: its bytes include its members' exclusives, so adding both counts them
+// twice and drives shared_or_unlisted below zero (gunbc#12850, PREDICTION 2's scoring).
 // THE SHARED RESIDUAL IS A TYPED SUBTRACTION, NOT A CLAMP: each class comes from its own fresh
 // resolve, so the exclusives can sum past the first run's total by run-to-run variation, and a
 // zero there would read as "the classes share nothing". MeasureSubtrahendExceedsMinuend says so.
@@ -62,13 +67,13 @@ type ClassFold
   | ClassFoldTorn { class: NonEmptyStr, cause: String }
 
 fn reading_is_negative(r: TypedGraphClassReading) -> Bool {
-  r.modules < 0 || r.in_use_all < 0 || r.in_use_after_class < 0 || r.in_use_end < 0
+  r.members < 1 || r.modules < 0 || r.in_use_all < 0 || r.in_use_after_class < 0 || r.in_use_end < 0
     || r.ancestry_entries < 0 || r.own_entries < 0
 }
 
 fn class_exclusive_of(r: TypedGraphClassReading) -> ClassFold {
   if reading_is_negative(r: r) {
-    ClassFoldTorn { class: r.class, cause: "a negative reading: the allocator and the entry counts report non-negative values, so this read is malformed" }
+    ClassFoldTorn { class: r.class, cause: "a negative reading or a class of no members: the allocator and the entry counts report non-negative values and every reading drops at least one class, so this read is malformed" }
   } else {
     let all = byte_size(count: nat_magnitude(a: r.in_use_all))
     match measure_sub(a: all, b: byte_size(count: nat_magnitude(a: r.in_use_after_class))) {
@@ -78,11 +83,11 @@ fn class_exclusive_of(r: TypedGraphClassReading) -> ClassFold {
           MeasureSubtrahendExceedsMinuend => ClassFoldTorn { class: r.class, cause: "live bytes ROSE when the graph was dropped: the reading is not of a drop" }
           MeasureDifference { value: total } => ClassFoldRunning {
             classes: [ClassExclusiveBytes {
-              class: r.class, modules: r.modules, exclusive: exclusive, graph_total: total,
+              class: r.class, members: r.members, modules: r.modules, exclusive: exclusive, graph_total: total,
               ancestry_entries: r.ancestry_entries, own_entries: r.own_entries,
             }],
             first_total: Present { value: total },
-            sum: byte_size_count(b: exclusive),
+            sum: if r.members == 1 { byte_size_count(b: exclusive) } else { 0 },
           }
         }
     }
