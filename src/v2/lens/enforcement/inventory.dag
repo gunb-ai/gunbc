@@ -640,15 +640,42 @@ fn find_witness_admission_row_for_pattern(
 }
 
 fn cadence_row_is_pr_floor_discovery(row: CadenceSchedulingRow) -> Bool {
-  match row.cadence { PrFloorDiscovery => true _ => false }
+  match row.cadence {
+    PrFloorDiscovery => true
+    MainPushFloor => false
+    ScheduledFalsifier => false
+    SubstrateLongLane => false
+    WetFalsifier => false
+    PrePushHook => false
+    OfflineLocalRecipe => false
+    KnownRedQuarantine => false
+  }
 }
 
 fn cadence_row_is_main_push_floor(row: CadenceSchedulingRow) -> Bool {
-  match row.cadence { MainPushFloor => true _ => false }
+  match row.cadence {
+    MainPushFloor => true
+    PrFloorDiscovery => false
+    ScheduledFalsifier => false
+    SubstrateLongLane => false
+    WetFalsifier => false
+    PrePushHook => false
+    OfflineLocalRecipe => false
+    KnownRedQuarantine => false
+  }
 }
 
 fn cadence_row_is_offline_local_recipe(row: CadenceSchedulingRow) -> Bool {
-  match row.cadence { OfflineLocalRecipe => true _ => false }
+  match row.cadence {
+    OfflineLocalRecipe => true
+    PrFloorDiscovery => false
+    MainPushFloor => false
+    ScheduledFalsifier => false
+    SubstrateLongLane => false
+    WetFalsifier => false
+    PrePushHook => false
+    KnownRedQuarantine => false
+  }
 }
 
 fn scheduling_disposition_is_enrolled(disposition: SchedulingDisposition) -> Bool {

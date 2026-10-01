@@ -5,7 +5,6 @@ import extdeps.bmc.ipmi
 import extdeps.bmc.megarac
 import extdeps.tools.sha256sum
 import extdeps.tools.gzip
-import gunbc.rust_item_scan { ends_with }
 import std.algebra { trim }
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
