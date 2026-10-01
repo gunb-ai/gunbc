@@ -807,10 +807,9 @@ fn required_gate_prefixes() -> List<String> {
 // THE FLOOR'S OWN MODEL WITNESSES (adhoc-3feba7c4-ac9, gunbc#12858; parent ruling from
 // deep-ferret-305). gunbc#11791 withdrew `v2.test.` and the discovery-census prefix for
 // preparation cost, and afterwards nothing executed the claims over the floor's own census and
-// effect-demand join. 12 of them went red on main and no lane saw it (repaired by gunbc#12857).
-// Priced on the required floor at current main: gate closure 2278 -> 2280 (only the two modules;
-// their imports were already in the gate), with preparation wall and runner peak inside
-// run-to-run noise. The census module declares SubstrateInputsOnly; the join test declares no
+// effect-demand join. Their reds reached main and no lane saw them (repaired by gunbc#12857).
+// Priced on the required floor: admission adds only the two modules to the gate closure (their
+// imports were already in it), with preparation wall and runner peak inside run-to-run noise. The census module declares SubstrateInputsOnly; the join test declares no
 // disposition and supplies its nodes, edges and rows. The instrument is this floor's own
 // gate-closure and floor-cgroup lines.
 fn required_gate_authored_modules() -> List<String> {
