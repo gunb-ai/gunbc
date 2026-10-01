@@ -1,0 +1,16 @@
+module v2.test.claim.zz_probe.p3
+
+import v2.test.emit.rust_variant_construct_emit { rust_variant_construct_emit_inferred_tree }
+import v2.extdeps.languages.rust_test { rust_variant_construct_target_model_staging, rust_variant_construct_source_text }
+import v2.compiler.emit { emit }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme }
+import std.process { ProcessExit, exit_failure }
+
+fn p3_report() -> ProcessExit {
+  let em = match emit(tree: rust_variant_construct_emit_inferred_tree, target: rust_variant_construct_target_model_staging()) {
+    Rejected { diagnostics: d } => "REJECTED " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: src, diagnostics: _ } => "TEXT[" + src.carried + "] want[" + rust_variant_construct_source_text + "]"
+  }
+  exit_failure(reason: "P3 " + em)
+}
