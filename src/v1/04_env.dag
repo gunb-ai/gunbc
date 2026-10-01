@@ -12,7 +12,6 @@ import std.operator_realization { OperandDeclaration }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 import std.algebra { FreeMonoid, Empty, Cons }
-import std.bitwise { bitwise_pow2, word32_or }
 
 import v1.compiler.infer_occurrence_binding {
   module_path_owner_binding_decide,
@@ -105,10 +104,37 @@ fn is_type_variable_name(name: String) -> Bool {
 }
 
 // Reachability is a dense bitset of 32-bit words held in Int: bit (o % 32) of word (o / 32) is set
-// when the module with ordinal o is in the closure. Membership is arithmetic; union is word32_or.
+// when the module with ordinal o is in the closure. Membership and union are plain arithmetic over the
+// word (division and remainder by powers of two), so the seed takes no bitwise module for one OR.
+data reach_bit_values: List<Int> = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768,
+  65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608, 16777216, 33554432, 67108864, 134217728,
+  268435456, 536870912, 1073741824, 2147483648]
+
+fn reach_bit(n: Int) -> Int {
+  match get(reach_bit_values, n) {
+    Present { value: v } => v
+    Absent => 0
+  }
+}
+
+fn reach_word_has(word: Int, bit: Int) -> Bool {
+  (word / reach_bit(n: bit)) % 2 == 1
+}
+
+fn reach_word_or(a: Int, b: Int) -> Int {
+  if b == 0 || a == b {
+    a
+  } else if a == 0 {
+    b
+  } else {
+    fold(enumerate(reach_bit_values), init: a, f: (acc, pair) =>
+      if reach_word_has(word: b, bit: pair.first) && reach_word_has(word: acc, bit: pair.first) == false { acc + pair.second } else { acc }
+    )
+  }
+}
 fn reach_has(reach: List<Int>, ordinal: Int) -> Bool {
   match get(reach, ordinal / 32) {
-    Present { value: word } => (word / bitwise_pow2(n: ordinal % 32)) % 2 == 1
+    Present { value: word } => reach_word_has(word: word, bit: ordinal % 32)
     Absent => false
   }
 }
@@ -118,7 +144,7 @@ fn reach_union(a: List<Int>, b: List<Int>) -> List<Int> {
   let shorter = if count(a) >= count(b) { b } else { a }
   fold(enumerate(longer), init: [], f: (acc, pair) =>
     match get(shorter, pair.first) {
-      Present { value: w } => acc |> list_push(word32_or(a: pair.second, b: w))
+      Present { value: w } => acc |> list_push(reach_word_or(a: pair.second, b: w))
       Absent => acc |> list_push(pair.second)
     }
   )
@@ -131,7 +157,7 @@ fn reach_with(reach: List<Int>, ordinal: Int) -> List<Int> {
     let index = ordinal / 32
     let padded = fold(repeat_zero_words(n: index + 1 - count(reach)), init: reach, f: (acc, w) => acc |> list_push(w))
     fold(enumerate(padded), init: [], f: (acc, pair) =>
-      if pair.first == index { acc |> list_push(pair.second + bitwise_pow2(n: ordinal % 32)) } else { acc |> list_push(pair.second) }
+      if pair.first == index { acc |> list_push(pair.second + reach_bit(n: ordinal % 32)) } else { acc |> list_push(pair.second) }
     )
   }
 }
@@ -343,7 +369,7 @@ fn reach_word_ordinals(word: Int, base: Int) -> List<Int> {
     []
   } else {
     fold([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31],
-      init: [], f: (acc, bit) => if (word / bitwise_pow2(n: bit)) % 2 == 1 { acc |> list_push(base + bit) } else { acc })
+      init: [], f: (acc, bit) => if reach_word_has(word: word, bit: bit) { acc |> list_push(base + bit) } else { acc })
   }
 }
 
