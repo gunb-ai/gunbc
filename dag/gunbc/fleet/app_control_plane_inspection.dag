@@ -129,7 +129,14 @@ fn json_member_string(v: JsonValue, key: String) -> NonEmptyStr? {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: JsonString { value } } =>
       if value == "" { none } else { Present { value: value as NonEmptyStr } }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -161,11 +168,19 @@ fn decode_hook_url(raw: NonEmptyStr) -> HookUrlDecode {
     Present { value: url } => match url.scheme {
       Https => HookUrlDecoded { url: url }
       Http => HookUrlDecoded { url: url }
-      _ => HookUrlRefused {
-        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
-      }
+      Tftp => hook_url_scheme_refused(raw: raw)
+      File => hook_url_scheme_refused(raw: raw)
+      Ftp => hook_url_scheme_refused(raw: raw)
+      Javascript => hook_url_scheme_refused(raw: raw)
+      Data => hook_url_scheme_refused(raw: raw)
+      Vbscript => hook_url_scheme_refused(raw: raw)
+      Mailto => hook_url_scheme_refused(raw: raw)
     }
   }
+}
+
+fn hook_url_scheme_refused(raw: NonEmptyStr) -> HookUrlDecode {
+  HookUrlRefused { reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -276,7 +291,14 @@ fn render_registration_read_refusal(cause: RegistrationReadRefusal) -> String {
 fn json_member_int(v: JsonValue, key: String) -> Int? {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: JsonNumber { lexeme } } => parse_int(s: lexeme as String)
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -319,7 +341,13 @@ fn decode_registration_permissions(doc: JsonValue) -> List<ObservedGitHubPermiss
         }) }
       }
     }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 

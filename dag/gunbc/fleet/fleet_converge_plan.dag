@@ -2000,14 +2000,18 @@ type FleetConvergePlanArtifact {
 fn fleet_converge_plan_body_structural_hash(plan_body: String) -> Fnv1a64Structural? {
   match content_hash_of_value(value: plan_body as NonEmptyStr) {
     Fnv1a64(structural) => Present { value: structural }
-    _ => Absent
+    Sha256Hash(_) => Absent
+    Sha1Hash(_) => Absent
+    Sha512Hash(_) => Absent
   }
 }
 
 fn fleet_converge_plan_apply_shell_structural_hash(apply_shell: String) -> Fnv1a64Structural? {
   match content_hash_of_value(value: apply_shell as NonEmptyStr) {
     Fnv1a64(structural) => Present { value: structural }
-    _ => Absent
+    Sha256Hash(_) => Absent
+    Sha1Hash(_) => Absent
+    Sha512Hash(_) => Absent
   }
 }
 
@@ -2872,7 +2876,9 @@ fn fleet_converge_allocation_store_plan_artifact(
           plan_body: body,
           apply_shell: apply_shell,
         } }
-        _ => Absent
+        Sha256Hash(_) => Absent
+        Sha1Hash(_) => Absent
+        Sha512Hash(_) => Absent
       }
     }
   }
@@ -2904,6 +2910,8 @@ fn fleet_converge_observed_baseline_matches(
   let baseline = observed_baseline_text(request: observed)
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) => structural.digest == observed_baseline_hex
-    _ => false
+    Sha256Hash(_) => false
+    Sha1Hash(_) => false
+    Sha512Hash(_) => false
   }
 }

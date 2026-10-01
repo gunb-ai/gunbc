@@ -104,21 +104,42 @@ type RepositoryListDecode
 fn json_member_string(v: JsonValue, key: String) -> NonEmptyStr? {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: JsonString { value } } => if value == "" { none } else { Present { value: value as NonEmptyStr } }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
 fn json_member_int(v: JsonValue, key: String) -> Int? {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: JsonNumber { lexeme } } => parse_int(s: lexeme as String)
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
 fn json_member_bool(v: JsonValue, key: String) -> Bool? {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: JsonBool { value } } => Present { value: value }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
