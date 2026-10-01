@@ -20,6 +20,11 @@ import gunbc.host_axis_caps {
   cap_member_parent_dir, deploy_cap_parent_dir_stmts,
 }
 import gunbc.runner_unit { runner_unit_dropin_dir }
+import gunbc.runner_browser_toolchain {
+  FloorClassLabelsPlan, FloorClassLabelsPlanned, FloorClassLabelsUnrenderable,
+  floor_class_labels_grant_plan, floor_class_labels_revoke_plan, floor_class_labels_outcome_holds,
+  FloorClassLabelsGranted, FloorClassLabelsRevoked, FloorClassLabelsFailed,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -76,7 +81,7 @@ test fn the_slice_cap_charges_the_first_three_at_the_class_row() -> Bool {
     && byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 5)) == 3 * class + 2 * fleet
 }
 
-// THE CLASS MEMBERS ARE INSTANCE DROP-INS, THREE PER CLASS SLOT, AND OWNED. A host whose width does
+// THE CLASS MEMBERS ARE INSTANCE DROP-INS, TWO PER CLASS SLOT (THE LEAF), AND OWNED. A host whose width does
 // not resolve (srv2) carries none, which is the unresolved-is-not-zero rule one step out: it has no
 // class slots to name, and its cap decision is withheld upstream.
 fn member_paths(ms: List<CapMember>) -> List<String> {
@@ -85,7 +90,7 @@ fn member_paths(ms: List<CapMember>) -> List<String> {
 
 test fn class_members_sit_in_instance_directories_and_are_owned() -> Bool {
   let ms = slot_class_cap_members(host: operator_host_srv3)
-  list_length(items: ms) == 9
+  list_length(items: ms) == 6
     && list_length(items: host_floor_class_slots(host: operator_host_srv3)) == 3
     && all(ms, m => cap_member_parent_dir(m: m) != (runner_unit_dropin_dir as String))
     && all(ms, m => cap_is_managed_path(p: m.dropin_path))
@@ -107,11 +112,46 @@ test fn class_members_ride_the_authorized_cap_decision() -> Bool {
   match cap_converge_decision(host: operator_host_srv3, required_retiring: [], observation: SurplusSlotsObserved { retired: [], still_present: [] }) {
     CapConvergeWithheld { cause: _ } => false
     CapConvergeAuthorized { host: _, authorized_retiring: _, target_units: _, desired: ds } =>
-      list_length(items: ds) == list_length(items: derived_runner_memory_cap_members()) + 9
+      list_length(items: ds) == list_length(items: derived_runner_memory_cap_members()) + 6
         && any(member_paths(ms: ds), p => p == "/etc/systemd/system/actions-runner@srv3-03.service.d/81-slot-class-high.conf")
   }
 }
 
-test fn the_class_labels_drop_in_carries_the_class_label() -> Bool {
-  any(slot_class_cap_members(host: operator_host_srv1), m => string_contains(s: m.content, pattern: "gunbc-floor") && string_contains(s: m.content, pattern: "LABELS_JSON"))
+
+// ── FLOOR READINESS: the class label is granted only by a READY browser-toolchain converge ──────
+//
+// The label drop-in is not a cap member: the cap converge carries the class LEAF only, so it can
+// never make a slot floor-selectable on a host whose toolchain was never converged.
+test fn the_cap_converge_never_writes_the_class_label() -> Bool {
+  all(slot_class_cap_members(host: operator_host_srv3), m => !string_contains(s: m.content, pattern: "LABELS_JSON"))
+    && list_length(items: slot_class_cap_members(host: operator_host_srv3)) == 6
+}
+
+fn plan_script(p: FloorClassLabelsPlan) -> String {
+  match p {
+    FloorClassLabelsPlanned { script: s } => s
+    FloorClassLabelsUnrenderable { slot: _, cause: _ } => ""
+  }
+}
+
+// GRANT writes each class slot's labels drop-in carrying gunbc-floor and reloads; REVOKE removes the
+// same paths. Discriminating: a grant that wrote no label, or a revoke that left one, reds here.
+test fn grant_writes_the_label_and_revoke_removes_it() -> Bool {
+  let slots = host_floor_class_slots(host: operator_host_srv3)
+  let grant = plan_script(p: floor_class_labels_grant_plan(slots: slots))
+  let revoke = plan_script(p: floor_class_labels_revoke_plan(slots: slots))
+  string_contains(s: grant, pattern: "actions-runner@srv3-02.service.d/82-slot-class-labels.conf")
+    && string_contains(s: grant, pattern: "gunbc-floor")
+    && string_contains(s: grant, pattern: "daemon-reload")
+    && string_contains(s: revoke, pattern: "actions-runner@srv3-02.service.d/82-slot-class-labels.conf")
+    && !string_contains(s: revoke, pattern: "gunbc-floor")
+}
+
+// THE CONVERGE VERDICT: only a granted label on a ready toolchain leaves the host floor-ready; a
+// revoke is the right label action and still a failed converge, because the toolchain is not ready.
+test fn only_a_ready_grant_leaves_the_host_floor_ready() -> Bool {
+  floor_class_labels_outcome_holds(o: FloorClassLabelsGranted { slots: [] }, ready: true)
+    && !floor_class_labels_outcome_holds(o: FloorClassLabelsGranted { slots: [] }, ready: false)
+    && floor_class_labels_outcome_holds(o: FloorClassLabelsRevoked { slots: [] }, ready: false)
+    && !floor_class_labels_outcome_holds(o: FloorClassLabelsFailed { cause: "x" }, ready: true)
 }

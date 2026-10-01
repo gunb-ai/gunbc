@@ -24,7 +24,6 @@ import gunbc.host_converge {
 }
 import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text, host_floor_class_slots, gunbc_runner_slot_desired_for }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.runner_unit_file { runner_slot_class_labels_dropin_text, RunnerUnitText, RunnerUnitTextRefused }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit { runner_slot_unit_name, runner_slot_instance_dropin_path, runner_slot_instance_dropin_dir, runner_unit_dropin_dir }
@@ -258,7 +257,7 @@ fn derived_runner_memory_cap_members() -> List<CapMember> {
 //
 // The template drop-ins above carry the FLEET row for every instance. A floor class slot
 // (gunbc.runner_slot_allocation slot_is_floor_class) carries its class row's MemoryMax and
-// MemoryHigh and its class labels in its OWN drop-in directory, which systemd reads after the
+// MemoryHigh in its OWN drop-in directory, which systemd reads after the
 // template's, so the class overrides exactly that instance. Swap and tasks are the fleet row's on
 // both, so the template's stand. The class and its retirement trigger are
 // gunbc.runner_slot_desired gunbc_runner_floor_slot_class_stopgap_2026_10_01.
@@ -271,13 +270,10 @@ data slot_class_memory_max_dropin_file: NonEmptyStr = "80-slot-class-width.conf"
 
 data slot_class_memory_high_dropin_file: NonEmptyStr = "81-slot-class-high.conf"
 
-data slot_class_labels_dropin_file: NonEmptyStr = "82-slot-class-labels.conf"
-
 fn slot_class_dropin_paths_for_slot(slot: RunnerSlotIdentity) -> List<NonEmptyStr> {
   [
     runner_slot_instance_dropin_path(slot: slot, file_name: slot_class_memory_max_dropin_file),
     runner_slot_instance_dropin_path(slot: slot, file_name: slot_class_memory_high_dropin_file),
-    runner_slot_instance_dropin_path(slot: slot, file_name: slot_class_labels_dropin_file),
   ]
 }
 
@@ -293,20 +289,10 @@ fn fleet_slot_class_managed_dropin_paths() -> List<NonEmptyStr> {
   )
 }
 
-// A LABELS DROP-IN THAT CANNOT RENDER IS NOT OMITTED. Leaving it out would register the slot under
-// the fleet labels at a 41 GiB leaf -- a floor-sized slot the floor cannot select. The refusal is
-// carried as the member's content, which is not a valid drop-in and so cannot be mistaken for one by
-// the reconcile; the decision upstream carries the members verbatim to the writer.
-fn slot_class_labels_cap_member(slot: RunnerSlotIdentity) -> CapMember {
-  CapMember {
-    dropin_path: runner_slot_instance_dropin_path(slot: slot, file_name: slot_class_labels_dropin_file),
-    content: match runner_slot_class_labels_dropin_text(slot: slot) {
-      RunnerUnitText { text: t } => t
-      RunnerUnitTextRefused { reason: r } => join(["__GUNBC_SLOT_CLASS_LABELS_REFUSED__ ", r as String, "\n"], "")
-    },
-  }
-}
-
+// THE CLASS LABEL IS NOT A CAP MEMBER. It is written by the browser-toolchain converge
+// (gunbc.runner_browser_toolchain floor_class_labels_converge_wet), and only once that converge's
+// readback holds, because a floor class slot must not be selectable by the floor until the
+// toolchain the floor's real-Chromium claims need is on the host. This axis carries the leaf only.
 fn slot_class_cap_members_for_slot(slot: RunnerSlotIdentity) -> List<CapMember> {
   let desired = gunbc_runner_slot_desired_for(slot: slot)
   [
@@ -320,7 +306,6 @@ fn slot_class_cap_members_for_slot(slot: RunnerSlotIdentity) -> List<CapMember> 
       property: systemd_memory_high_property as NonEmptyStr,
       bytes_value: to_string(byte_size_count(b: desired.memory_high)) as NonEmptyStr,
     ),
-    slot_class_labels_cap_member(slot: slot),
   ]
 }
 

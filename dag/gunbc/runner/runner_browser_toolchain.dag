@@ -71,6 +71,16 @@ import gunbc.runner_microvm_host_ready {
   microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text,
 }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.runner_slot_allocation { host_floor_class_slots }
+import v2.std.node { Node }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_unit { runner_slot_instance_dropin_path, runner_slot_instance_dropin_dir, runner_slot_unit_name }
+import gunbc.runner_unit_file { runner_slot_class_labels_dropin_text, RunnerUnitText, RunnerUnitTextRefused }
+import gunbc.shell_command_text { shell_command_intent, shell_privileged_command_intent, shell_command_text_of_stmts }
+import gunbc.retained_shell_script { retained_srvn }
+import gunbc.host_effect_realize { run_shell_transport, ShellExecObserved }
+import extdeps.systemd.systemctl { systemctl_daemon_reload_argv }
+import v2.extdeps.languages.bash_build { bash_build_pipe, bash_build_with_redir_to_file, bash_build_word_lit }
 
 // THE DECLARED HEADLESS-BROWSER TOOLCHAIN OF A FLEET RUNNER, ITS CONVERGE, AND THE ONE PLACE A
 // CONSUMER READS IT FROM. gunbc.machine_intake_mtcollins1_kvm_still drives the MegaRAC KVM viewer
@@ -1341,6 +1351,135 @@ fn superseded_trees_text(r: SupersededTrees) -> String {
   }
 }
 
+// ── FLOOR READINESS: THE CLASS LABEL IS GRANTED BY THIS CONVERGE AND BY NOTHING ELSE ─────────────
+//
+// A floor class slot (gunbc.runner_slot_allocation slot_is_floor_class, the operator-approved
+// stopgap gunbc.runner_slot_desired gunbc_runner_floor_slot_class_stopgap_2026_10_01) carries the
+// class leaf from the cap converge, but it carries the gunbc-floor LABEL only from here: the label
+// drop-in is written when this converge's readback holds and removed when it does not. The floor
+// selects by that label, so a runner on a host whose browser toolchain is absent or broken cannot
+// take the floor -- the state that refused five real-Chromium wet claims on a never-converged host
+// is unwritable on the selection path rather than discovered by the claim. A class slot without the
+// label registers with the fleet set, and the per-slot label check
+// (gunbc.runner_registration_labels runner_slot_registration_labels) reports it as diverged, not
+// healthy, so the gap is loud on the connectivity read too.
+data floor_class_labels_dropin_file: NonEmptyStr = "82-slot-class-labels.conf"
+
+fn floor_class_labels_dropin_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  runner_slot_instance_dropin_path(slot: slot, file_name: floor_class_labels_dropin_file)
+}
+
+type FloorClassLabelsPlan
+  = FloorClassLabelsPlanned { script: String }
+  | FloorClassLabelsUnrenderable { slot: NonEmptyStr, cause: String }
+
+// GRANT: write each class slot's labels drop-in (the instance directory first), then one reload.
+// REVOKE: remove them, then one reload. Both are one modeled program per host, under set -e, so a
+// failed write stops the program and the verdict below sees it.
+fn floor_class_labels_first_unrenderable(slots: List<RunnerSlotIdentity>) -> FloorClassLabelsPlan {
+  fold(slots, init: FloorClassLabelsPlanned { script: "" }, f: (acc, slot) =>
+    match acc {
+      FloorClassLabelsUnrenderable { slot: _, cause: _ } => acc
+      FloorClassLabelsPlanned { script: _ } =>
+        match runner_slot_class_labels_dropin_text(slot: slot) {
+          RunnerUnitTextRefused { reason: r } =>
+            FloorClassLabelsUnrenderable { slot: runner_slot_unit_name(slot: slot), cause: r as String }
+          RunnerUnitText { text: _ } => acc
+        }
+    }
+  )
+}
+
+fn floor_class_labels_grant_plan(slots: List<RunnerSlotIdentity>) -> FloorClassLabelsPlan {
+  match floor_class_labels_first_unrenderable(slots: slots) {
+    FloorClassLabelsUnrenderable { slot: sl, cause: c } => FloorClassLabelsUnrenderable { slot: sl, cause: c }
+    FloorClassLabelsPlanned { script: _ } =>
+      FloorClassLabelsPlanned {
+        script: shell_command_text_of_stmts(stmts: concat(
+          concat([shell_command_intent(words: ["set", "-e"])], fold(slots, init: [], f: (acc, slot) => concat(acc, floor_class_labels_write_stmts(slot: slot)))),
+          [shell_privileged_command_intent(argv: systemctl_daemon_reload_argv())],
+        )),
+      }
+  }
+}
+
+fn floor_class_labels_write_stmts(slot: RunnerSlotIdentity) -> List<Node> {
+  let content = match runner_slot_class_labels_dropin_text(slot: slot) {
+    RunnerUnitText { text: t } => t
+    RunnerUnitTextRefused { reason: r } => r as String
+  }
+  [
+    shell_privileged_command_intent(argv: ["install", "-d", "-m", "0755", runner_slot_instance_dropin_dir(slot: slot) as String]),
+    bash_build_pipe(
+      left: shell_command_intent(words: ["printf", "%s", content]),
+      right: bash_build_with_redir_to_file(
+        inner: shell_privileged_command_intent(argv: ["tee", floor_class_labels_dropin_path(slot: slot) as String]),
+        path: bash_build_word_lit(text: "/dev/null"),
+      ),
+    ),
+  ]
+}
+
+fn floor_class_labels_revoke_plan(slots: List<RunnerSlotIdentity>) -> FloorClassLabelsPlan {
+  FloorClassLabelsPlanned {
+    script: shell_command_text_of_stmts(stmts: concat(
+      concat([shell_command_intent(words: ["set", "-e"])], map(slots, slot => shell_privileged_command_intent(argv: ["rm", "-f", floor_class_labels_dropin_path(slot: slot) as String]))),
+      [shell_privileged_command_intent(argv: systemctl_daemon_reload_argv())],
+    )),
+  }
+}
+
+type FloorClassLabelsOutcome
+  = FloorClassLabelsGranted { slots: List<NonEmptyStr> }
+  | FloorClassLabelsRevoked { slots: List<NonEmptyStr> }
+  | FloorClassLabelsNoClassSlots
+  | FloorClassLabelsFailed { cause: String }
+
+fn floor_class_labels_outcome_text(o: FloorClassLabelsOutcome) -> String {
+  match o {
+    FloorClassLabelsGranted { slots: ss } => concat("floor_class_labels=granted slots=", join(map(ss, x => x as String), ","))
+    FloorClassLabelsRevoked { slots: ss } => concat("floor_class_labels=revoked slots=", join(map(ss, x => x as String), ","))
+    FloorClassLabelsNoClassSlots => "floor_class_labels=no-class-slots"
+    FloorClassLabelsFailed { cause: c } => concat("floor_class_labels=failed cause=", c)
+  }
+}
+
+// A REVOKE IS A SUCCESSFUL OUTCOME OF THE LABEL STEP AND STILL A FAILED CONVERGE: the toolchain did
+// not become ready, which the converge's own verdict already reports. Granted is the only arm that
+// leaves the host floor-ready.
+fn floor_class_labels_outcome_holds(o: FloorClassLabelsOutcome, ready: Bool) -> Bool {
+  match o {
+    FloorClassLabelsGranted { slots: _ } => ready
+    FloorClassLabelsNoClassSlots => true
+    FloorClassLabelsRevoked { slots: _ } => !ready
+    FloorClassLabelsFailed { cause: _ } => false
+  }
+}
+
+fn floor_class_labels_converge_wet(host: NonEmptyStr, ready: Bool, transport: HostEffectTransport) -> FloorClassLabelsOutcome {
+  let slots = host_floor_class_slots(host: (host as String) as HostIdentity)
+  let names = map(slots, slot => runner_slot_unit_name(slot: slot))
+  if list_length(items: slots) == 0 {
+    FloorClassLabelsNoClassSlots
+  } else {
+    match if ready { floor_class_labels_grant_plan(slots: slots) } else { floor_class_labels_revoke_plan(slots: slots) } {
+      FloorClassLabelsUnrenderable { slot: s, cause: c } =>
+        FloorClassLabelsFailed { cause: join(["the labels drop-in for ", s as String, " does not render: ", c], "") }
+      FloorClassLabelsPlanned { script: body } => {
+        let observed = run_shell_transport(
+          script: retained_srvn(body: body, reason: "floor class label grant/revoke: drop-in write and daemon-reload over the administrator edge" as NonEmptyStr),
+          transport: transport,
+        )
+        if observed.success {
+          if ready { FloorClassLabelsGranted { slots: names } } else { FloorClassLabelsRevoked { slots: names } }
+        } else {
+          FloorClassLabelsFailed { cause: join(["exit=", to_string(observed.exit_code), " ", observed.stderr], "") }
+        }
+      }
+    }
+  }
+}
+
 data runner_browser_toolchain_converge_attempt_raw: String = "runner-browser-toolchain-converge-ci"
 
 data runner_browser_toolchain_converge_receipt_path: String = "target/runner-browser-toolchain-converge-receipt.txt"
@@ -1386,6 +1525,7 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 none
               }
               let ready = match standing { Present { value: st } => runner_browser_toolchain_ready(s: st)  Absent => false }
+              let labels = floor_class_labels_converge_wet(host: host, ready: ready, transport: browser_toolchain_admin_transport(host: host, context: context))
               let retirement_text = superseded_trees_text(r: observe_superseded_trees_wet(location: location))
               let readback_text = match standing {
                 Present { value: st } => runner_browser_toolchain_standing_text(s: st)
@@ -1400,11 +1540,12 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 toolchain_placement_text(p: placement), "\n",
                 readback_text, "\n",
                 retirement_text, "\n",
+                floor_class_labels_outcome_text(o: labels), "\n",
               ], "")
               let w = Filesystem.Write(path: runner_browser_toolchain_converge_receipt_path, content: body)
               if w.success == false {
                 exit_failure(reason: join(["runner_browser_toolchain_converge: receipt write failed: ", w.error, "\n", body], ""))
-              } else if apt_ok && toolchain_placement_holds(p: placement) && ready {
+              } else if apt_ok && toolchain_placement_holds(p: placement) && ready && floor_class_labels_outcome_holds(o: labels, ready: ready) {
                 ExitSuccess
               } else {
                 exit_failure(reason: body)
