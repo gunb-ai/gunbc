@@ -1,0 +1,67 @@
+module extdeps.bmc.ipmitool_observed_output
+
+import std.types { Int, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ipmitool/ipmitool"
+  }
+}
+
+// WHAT ipmitool PRINTS, AS OBSERVED ON THE MT. COLLINS AMI MEGARAC BUILD. Each row is the client's
+// output format for one operation, taken verbatim from a retained capture and cited by that capture's
+// path and SHA-256, so a modeled realization renders exactly what the production decoder was built to
+// read. These are client-format facts about the upstream tool on one controller build, not
+// facts about any scenario; a row whose value is not in a retained capture says so in its standing.
+
+// `ipmitool chassis bootparam get 5` with no override pending. Source: run 36335369059
+// mtcollins1-boot-diagnostics.txt (sha256 eda19cde2e60d90d3d04946273e615eb5bf774496b9907e03d3bc15dbedc2c1c),
+// "boot parameter 5 before", verbatim including the trailing space after "legacy) boot".
+data ipmitool_bootparam5_no_override: String = "Boot parameter version: 1\nBoot parameter 5 is valid/unlocked\nBoot parameter data: 0000000000\n Boot Flags :\n   - Boot Flag Invalid\n   - Options apply to only next boot\n   - BIOS PC Compatible (legacy) boot \n   - Boot Device Selector : No override\n   - BIOS verbosity : System Default\n   - Console Redirection control : Console redirection occurs per BIOS configuration setting (default)\n   - BIOS Mux Control Override : BIOS uses recommended setting of the mux at the end of POST\n"
+
+// The same read after `chassis bootdev cdrom options=efiboot`. Source: artifacts/bmc/mtcollins1-32dimm/30-bootdev.txt
+// (sha256 6488554239e12f033203c9589285bd6ce27dfb5716658be931e2422ea238c4ba), the readback block.
+data ipmitool_bootparam5_cdrom_efi_next_boot: String = "Boot parameter version: 1\nBoot parameter 5 is valid/unlocked\nBoot parameter data: a014000000\n Boot Flags :\n   - Boot Flag Valid\n   - Options apply to only next boot\n   - BIOS EFI boot \n   - Boot Device Selector : Force Boot from CD/DVD\n   - BIOS verbosity : System Default\n   - Console Redirection control : Console redirection occurs per BIOS configuration setting (default)\n   - BIOS Mux Control Override : BIOS uses recommended setting of the mux at the end of POST\n"
+
+// `ipmitool chassis bootdev cdrom options=efiboot`. Same capture, line 2.
+data ipmitool_bootdev_cdrom_reply: String = "Set Boot Device to cdrom\n"
+
+// What `ipmitool sol activate` prints first when its stdin is not a terminal. Source:
+// artifacts/bmc/mtcollins1-32dimm/22-sol-probe.log (sha256 e24f9ed8d9cedff87e6d11327c602c31fd7c3d9e2ba16e7e1ab0f8a91cdfe41e),
+// lines 1-2.
+data ipmitool_sol_activate_preamble: String = "tcgetattr: Inappropriate ioctl for device\n[SOL Session operational.  Use ~? for help]\n"
+
+// One `ipmitool sel elist` line: the record id in lowercase hex right-aligned in four columns, then
+// date, time, sensor, event and state separated by ` | `. Source: artifacts/bmc/mtcollins1-32dimm/50-sel-final.txt
+// (sha256 14e84cd9cbd2d89d6be46caff42c3d5ab0a19079fa4546d6e6ec449f759c7ba5) and the diagnostics capture above
+// (ids `   1` and ` b5a`).
+fn ipmitool_sel_elist_line(record_id_hex: String, date: String, time: String, sensor: String, event: String, state: String) -> String {
+  let pad = if string_length(s: record_id_hex) >= 4 { "" } else if string_length(s: record_id_hex) == 3 { " " } else if string_length(s: record_id_hex) == 2 { "  " } else { "   " }
+  join([pad, record_id_hex, " | ", date, " | ", time, " | ", sensor, " | ", event, " | ", state, "\n"], "")
+}
+
+// `ipmitool raw 0x06 0x52 ...` (Master Write-Read) answering two bytes. NO SMpro exchange with this
+// controller is retained in the corpus (gunbc.machine_intake_mtcollins1_smpro_observation witness
+// notes), so the spacing is ipmitool's raw-response print as the production decoder's own supplied
+// samples spell it, and is carried with that standing.
+data ipmitool_raw_two_bytes_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "a retained stdout of `ipmitool raw 0x06 0x52 <bus> <addr> 2 <reg-lo> <reg-hi>` against the Mt. Collins BMC, cited by digest" as NonEmptyStr
+}
+
+fn ipmitool_raw_two_bytes(first_hex: String, second_hex: String) -> String {
+  join([" ", first_hex, " ", second_hex, "\n"], "")
+}
+
+// `ipmitool mc info` against the Mt. Collins BMC: the two fields the corpus has read from this
+// controller -- Firmware Revision 0.32 and IPMI Version 2.0 (gunbc.machine_intake_mtcollins1_access_observation)
+// in ipmitool's `<name> : <value>` field layout. No verbatim stdout is retained, so the layout, and
+// the absence of the other fields ipmitool prints, carry this standing. The boot's reachability read
+// consumes only the exit and stderr.
+data ipmitool_mc_info_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "a retained stdout of `ipmitool mc info` against the Mt. Collins BMC, cited by digest" as NonEmptyStr
+}
+
+data ipmitool_mc_info_mt_collins: String = "Firmware Revision         : 0.32\nIPMI Version              : 2.0\n"

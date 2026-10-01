@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.dag_target_emits_only_its_fixture_row
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data dag_target_emits_only_its_fixture_row: RecurringFailureMode = RecurringFailureMode {
+  identity: "dag_target_emits_only_its_fixture_row" as NonEmptyStr,
+
+  receipts: [
+    "**the dag target cannot emit ordinary .dag source, so \"one grammar, read in both directions\" (DESIGN 4) holds for .dag only at its one fixture** (INVALID STATE: the dag TargetModel's emit side carries one relation row while its ingest side reads the whole grammar.) `v2.extdeps.languages.dag` `dag_translation_rules_node` enrolls exactly one row, the `fn add` fixture (`dag_add_grammar_relation_row_node`). No data-decl, brace, string-literal or `^dag_production_field_init_string_key` row is enrolled, and `dag_target_model`'s `token_class_emit_transforms` is empty. The `emit_row_*` functions (`emit_row_data_decl` and its siblings) have no consumer outside the module, and none exists for a brace or a string-keyed entry. On the value-expression route, `TargetValueExpressionKind` has no map or string-keyed-entry kind, and the dag projection's `int_literal_form` is `IntLiteralUnwired`.",
+    "RECEIPTS, EXECUTED at main cc2fefacac (tidy-lark-233, a scratch probe run by `gunbc run --function` on a 48 GB runner; the probe was not landed). Specimen 1: `v2.compiler.ingest` `parse_tree_to_emitted_node` under `dag_target_model()` refuses `parse_tree_atom_token_class_not_recoverable` for `module v2.test.mlrt` / `data m: Int = 1`, and identically for a plain and an escaped-key map literal, so the refusal is not specific to maps. Specimen 2: `emit_row_data_decl` whose expr is a `^dag_surface_field_init_string_key` node refuses `translate_grammar_relation_row_not_found`, both through `v2.compiler.target_serialize` `target_serialize_source_from_model` and through `target_serialize_source_from_selected_row` with the row supplied.",
+    "THE TELL, AND THE WRONG REPAIR. The only declaration round trip that runs, `dag_type_decl_structural_target_model`, does so over a hand-authored formal-production fragment (`dag_type_decl_structural_formal_productions`, fixed two-field shapes) rather than the grammar ingest reads. That is a second grammar. Copying that fragment for map literals would make the round trip green while forking the authority it exists to prove single, so it is the refused repair.",
+    "OWED EVIDENCE WAITING ON THIS ROW: the quoted-key ROUND TRIP for map literals required at #12740 and #12758 (an escaped key and a key spelled as a bare identifier emit through the string-key production and re-ingest to a content-equal node; emitting the raw lexeme or the bare-key form reds). It cannot be written until emission exists, and the decoded-versus-raw-lexeme key spelling it must discriminate is undecided while `token_class_emit_transforms` is empty.",
+    "RUNG FOUND AT: mitigatable. Emission refuses with a typed, located diagnostic; nothing is emitted wrong, but the capability is absent. CEILING: structurally guaranteed. Emit selects backward from the same productions ingest selects forward, so an Accepted program re-ingests to its own node. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: dag_grammar_root productions are enrolled as the dag target emit rows, with a string-literal emit transform that re-escapes decoded text. Owner: neat-boar-16, routed by gentle-koi-724 (MQ lane) 2026-10-01; the round-trip claims are written by that lane against the real route, red then green under the raw-lexeme mutation, not landed expected-red before it (a red with no route cannot distinguish \"no route\" from \"wrong round trip\").",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_translation_rules_node", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "emit_row_data_decl", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.emit.int_literal_form_unwired_located", decl_name: "dag_refuses_an_integer_literal_at_the_authored_literal_holds", field: WholeDeclaration },
+  ],
+}
