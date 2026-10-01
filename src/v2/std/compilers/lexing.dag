@@ -215,7 +215,7 @@ fn stream_layout_with_break(layout: StreamLayout, token_start: Int, gap_start: I
 }
 
 // Whether a lexeme (trivia or annotation text between tokens) holds a line feed, U+000A.
-fn lexeme_has_line_feed(lexeme: String) -> Bool {
+fn lexeme_has_line_feed(lexeme: v2.std.text.String) -> Bool {
   fold_list(xs: lexeme, empty: false, cons: fn(acc, c) { acc || (unicode_char_code_point(c: c) == 10) })
 }
 
