@@ -55,5 +55,18 @@ What moves with it:
 
 A nullary Arrow, an Atom type, and a payload-free variant keep their hashes.
 
-## Out of scope (2c and later)
-- **Defaults.** Lowering a default, judging that it inhabits its binder's type, choosing its resolution scope (the outer scope, never the binder's own parameters), and each subtree lens's count-or-skip decision all land with the first producer of a default.
+## Defaults (XL-2 PR2c-ii)
+
+- **Lowering.** Every default lowers onto its binder through `v2.compiler.body_lowering_fold` `body_lower_binder_edge_read` (`binder_edge_with_default`):
+  - a fn or pattern parameter's from its own tail (`body_lower_typed_param_after_colon_optional`);
+  - a record field's and a service io field's from the field tail (`body_lower_io_field_default_optional`).
+
+  The value lowers through the one value reader (`body_lower_value_read`) and refuses at the value under that reader's cause. `body_lowering_reason_default_value_unmodeled` has no producer and is deleted. A field's **wire key** is a realization fact and still refuses (records) or is set aside (io blocks) until the realization binding (XL-2 PR3).
+- **Judgment.** `v2.compiler.infer` `infer_binder_default_check` judges the default at the binder's declared type through `infer_judge_declared_position`, at a fifth position, `v2.std.inhabitance` `PositionBinderDefault`. That is the same relation an argument meets at its formal. A non-inhabiting default refuses as `^infer_reason_default_does_not_inhabit_binder_type`, located at the default. `^infer_binder_default_unjudged` is retired.
+- **Scope.** A default sits under the Arrow's domain, which resolve walks in the type-parameter frame over the OUTER scope, never the Arrow's own value parameters. So a default cannot read a sibling parameter.
+- **Emission.** A target with no parameter or field defaults refuses a defaulted binder, located at the default (`^produced_decl_render_param_default_unrealized`, `^target_semantic_decl_field_default_unrealized`), rather than dropping it.
+- **Subtree lenses.** A default is code that runs when its argument is omitted, so the subtree-fold lenses (effect reach, determinism, cost, fn index, mandatory tag, decl-facts skeleton) COUNT it as code of the declaration it sits in. No lens skips it.
+
+## Declared frontier: call-site omission
+
+A caller may not yet OMIT a defaulted argument or field. The binding plan (`v2.std.arrow_signature` `application_binding_plan`) still requires every formal, so an omitting call refuses at the application, loudly. Its consumer is the binding plan admitting a defaulted formal as optional and eval evaluating the default for the missing slot. **Trigger:** that lands. Until then, a default is lowered, judged and carried, and an omitting caller refuses.

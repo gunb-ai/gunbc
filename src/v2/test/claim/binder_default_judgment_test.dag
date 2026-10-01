@@ -1,0 +1,47 @@
+module v2.test.claim.binder_default_judgment
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.logic { Bool }
+
+// A BINDER'S DEFAULT IS JUDGED AT THE BINDER'S DECLARED TYPE (XL-2 PR2c-ii; v2.compiler.infer
+// infer_binder_default_check, position v2.std.inhabitance PositionBinderDefault): the same relation an
+// argument meets at its formal. A default that inhabits its parameter's type infers; one that does not
+// refuses, located at the default, as ^infer_reason_default_does_not_inhabit_binder_type. Both sources
+// lower and resolve, so the refusal is infer's judgment and not a lowering or resolution refusal.
+
+fn bdj_inhabiting() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int = 1) -> Int {\n  x\n}\n")
+}
+
+fn bdj_not_inhabiting() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int = true) -> Int {\n  x\n}\n")
+}
+
+fn bdj_infers(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
+  match o {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+fn bdj_refused_as_not_inhabiting(o: Outcome<Bool>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_default_does_not_inhabit_binder_type
+  }
+}
+
+test fn a_default_that_inhabits_its_binder_type_infers() -> Bool {
+  tpb_accepts(o: bdj_inhabiting()) && tpb_accepts(o: bdj_infers(o: bdj_inhabiting()))
+}
+
+test fn a_default_that_does_not_inhabit_its_binder_type_refuses() -> Bool {
+  tpb_accepts(o: bdj_not_inhabiting()) && bdj_refused_as_not_inhabiting(o: bdj_infers(o: bdj_not_inhabiting()))
+}
