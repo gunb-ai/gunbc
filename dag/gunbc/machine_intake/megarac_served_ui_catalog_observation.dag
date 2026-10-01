@@ -11,3 +11,9 @@ import std.types { NonEmptyStr }
 data megarac_spx_ui_surface_path: NonEmptyStr = "artifacts/bmc/mtcollins1-megarac-api-surface.txt" as NonEmptyStr
 
 data megarac_spx_ui_surface_sha256: NonEmptyStr = "4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd" as NonEmptyStr
+
+// THE 2026-09-27 READ OF THE BUNDLE ITSELF, as its digest. extdeps.bmc.megarac cites this read for the
+// screen-capture surfaces and the KVM wire; the bytes were not committed, so the digest is what a later
+// read is compared with. gunbc.machine_intake_megarac_ui_features reads the viewer feature list only
+// out of bytes that digest to it.
+data megarac_source_min_js_sha256_2026_09_27: NonEmptyStr = "5029fae278f7fc8f4dd4ad5eb8e4457e49fa25d4d0158d4bf9fbab09f57d4bf3" as NonEmptyStr
