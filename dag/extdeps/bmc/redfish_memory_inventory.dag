@@ -293,7 +293,11 @@ fn redfish_collection_page_of(body: String) -> ObservationAttempt<RedfishCollect
                           ObservationEstablished { observed: RedfishCollectionPage { member_links: ls, member_count: total, next_link: optional_text(s: next) } }
                       }
                     }
-                    _ => ObservationRefused { cause: "Members is not an array" }
+                    JsonNull => ObservationRefused { cause: "Members is not an array" }
+                    JsonBool { value: _ } => ObservationRefused { cause: "Members is not an array" }
+                    JsonNumber { lexeme: _ } => ObservationRefused { cause: "Members is not an array" }
+                    JsonString { value: _ } => ObservationRefused { cause: "Members is not an array" }
+                    JsonObject { members: _ } => ObservationRefused { cause: "Members is not an array" }
                   }
               }
           }
