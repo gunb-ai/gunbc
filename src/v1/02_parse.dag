@@ -3987,6 +3987,10 @@ fn parse_op_body_entries(
           let r = parse_optional_response_block(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: r.ctx, err: r.err } }
           parse_op_body_entries(tokens: r.tokens, ctx: r.ctx, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: r.responses, mock_props: mock_props)
+        } else if id == "requires" {
+          let r = parse_op_requires_members(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, span: span, acc: [])
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          parse_op_body_entries(tokens: r.tokens, ctx: r.ctx, inputs: inputs, outputs: outputs, modifier_props: concat(modifier_props, r.properties), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if id == "mock_response" {
           let r = parse_optional_mock_response_block(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -4119,6 +4123,27 @@ fn parse_exit_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node
     let e = eat(tokens: desc_tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => desc_tokens })
     parse_exit_entries_acc(tokens: tokens, ctx: minted.ctx, acc: list_push(acc, entry))
+  }
+}
+
+// `requires R, ..` IN AN OPERATION BODY (D13 step b0). The v2 grammar admits it
+// (v2.extdeps.languages.dag dag_grammar_op_requires_expr) and lowers it onto the operation Arrow's
+// ^arrow_resource_requirements_edge; the seed compiles the corpus, so it must parse the same member
+// before any operation can author one. It is CARRIED and nothing more: each member becomes one
+// `requires` property whose value is the member's parsed type expression, beside the modifier
+// properties, and every v1 consumer of an operation's properties selects them by name or prefix
+// (idempotent, readonly, hermetic, response_, exit_, mock_), so no other v1 behaviour reads it. At least
+// one member is required; a member that is not a type expression refuses at parse.
+fn parse_op_requires_members(tokens: TokenStream, ctx: ParseContext, span: SourceSpan, acc: List<Node>) -> ModsResult {
+  let r = parse_type_expr(tokens: tokens, ctx: ctx)
+  if has_err(err: r.err) { return ModsResult { properties: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+  let minted = mint_parsed_node_identity(ctx: r.ctx)
+  let property = make_field_init_node(occurrence_identity: minted.identity, name: "requires", value: r.type_expr, span: span, name_span: span)
+  let next = list_push(acc, property)
+  if tok_is_comma(tok: token_stream_first(stream: r.tokens)) {
+    parse_op_requires_members(tokens: token_stream_advance(stream: r.tokens, n: 1), ctx: minted.ctx, span: span, acc: next)
+  } else {
+    ModsResult { properties: next, tokens: r.tokens, ctx: minted.ctx, err: none }
   }
 }
 
