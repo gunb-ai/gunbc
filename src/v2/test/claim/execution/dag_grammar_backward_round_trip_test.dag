@@ -63,15 +63,16 @@ data rt_data_decl_source: String = "module rt.data_decl\ndata m: Int = 1\n"
 data rt_fn_decl_source: String = "module rt.fn_decl\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 data rt_record_type_source: String = "module rt.record_type\ntype Point { x: Int, y: Int }\n"
 data rt_coproduct_source: String = "module rt.coproduct\ntype Shape = Circle { r: Int } | Square\n"
-// THE `let .. in` AND COMMA-SEPARATED `match` SPELLINGS ARE A NAMED FRONTIER, not dropped: at main
-// c2ab4458, ingest itself refuses `fn one() -> Int { let x = 1 in x }` and
-// `fn pick(a: Bool) -> Int { match a { true => 1, false => 2 } }` with
-// parse_grammar_choice_overlap_residue (docs/plans/parse-grammar-choice-overlap-residue-finding.md),
-// so there is no tree to emit. They return as fixtures when that residue is repaired. The spellings
-// below are the forms the native route accepts today (v2.test.claim.parse pattern_and_let_sugar and
-// v2.test.claim.body_lowering single_arm_match).
-data rt_match_source: String = "module rt.match\ntype T = A | B\nfn f(t: T) -> Int {\n  match t {\n    A => 1\n    _ => 2\n  }\n}\n"
-data rt_let_source: String = "module rt.let\nfn pick(n: Int) -> Int {\n  let x = n\n  x\n}\n"
+// A NAMED FRONTIER, NOT A DROPPED FIXTURE. At main c2ab4458 the first ingest itself refuses these
+// spellings with parse_grammar_choice_overlap_residue
+// (docs/plans/parse-grammar-choice-overlap-residue-finding.md), so there is no tree to emit:
+//   `fn one() -> Int { let x = 1 in x }`               (a `let .. in` in a fn body)
+//   `data v: Int = let x = 1 in x`                     (a `let .. in` as a data value)
+//   `fn pick(a: Bool) -> Int { match a { true => 1, false => 2 } }`   (Bool-literal arms in a fn body)
+// They return as fixtures when that residue is repaired. The spellings below are ones the first
+// ingest admits on this route (probed at gunbc#12878 f306b14297b).
+data rt_match_source: String = "module rt.match\ntype T = A | B\nfn f(t: T) -> Int { match t { A => 1, _ => 2 } }\n"
+data rt_let_source: String = "module rt.let\nfn f(from: Int, input: Int) -> Int { let transport = from\n transport + input }\n"
 data rt_list_source: String = "module rt.list\nimport std.types { List }\ndata xs: List<Int> = [1, 2, 3]\n"
 data rt_map_literal_source: String = "module rt.map_literal\nimport std.types { Map }\ndata m: Map<String, Bool> = { \"a\": true, \"b\": false }\n"
 data rt_quoted_key_source: String = "module rt.quoted_key\ndata r: R = { \"Node\": true }\n"
@@ -248,12 +249,3 @@ fn rt_terminals(text: String) -> String {
 
 fn rt_terminals_data_decl() -> String { rt_terminals(text: rt_data_decl_source) }
 fn rt_terminals_quoted_key() -> String { rt_terminals(text: rt_quoted_key_source) }
-
-// Candidate spellings, probed through the same first ingest, to find the let/match forms main admits.
-fn rt_why_match_single_arm() -> String { rt_why(text: "module rt.m1\ntype T = A | B\nfn f(t: T) -> Int { match t { _ => 1 } }\n") }
-fn rt_why_match_infix() -> String { rt_why(text: "module rt.m2\nfn f() -> Bool { true || match 1 { 1 => false } }\n") }
-fn rt_why_match_comma_arms() -> String { rt_why(text: "module rt.m3\ntype T = A | B\nfn f(t: T) -> Int { match t { A => 1, _ => 2 } }\n") }
-fn rt_why_match_in_data() -> String { rt_why(text: "module rt.m4\ndata v: Int = match true { true => 1, false => 2 }\n") }
-fn rt_why_let_g0_fixture() -> String { rt_why(text: "module m\nfn f(from: Int, input: Int) -> Int { let transport = from\n transport + input }\n") }
-fn rt_why_let_one_line() -> String { rt_why(text: "module rt.l2\nfn pick(n: Int) -> Int { let x = n x }\n") }
-fn rt_why_let_in_data() -> String { rt_why(text: "module rt.l3\ndata v: Int = let x = 1 in x\n") }
