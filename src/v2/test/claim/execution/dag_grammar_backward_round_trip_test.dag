@@ -63,16 +63,19 @@ data rt_data_decl_source: String = "module rt.data_decl\ndata m: Int = 1\n"
 data rt_fn_decl_source: String = "module rt.fn_decl\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 data rt_record_type_source: String = "module rt.record_type\ntype Point { x: Int, y: Int }\n"
 data rt_coproduct_source: String = "module rt.coproduct\ntype Shape = Circle { r: Int } | Square\n"
-// A NAMED FRONTIER, NOT A DROPPED FIXTURE. At main c2ab4458 the first ingest itself refuses these
-// spellings with parse_grammar_choice_overlap_residue
-// (docs/plans/parse-grammar-choice-overlap-residue-finding.md), so there is no tree to emit:
-//   `fn one() -> Int { let x = 1 in x }`               (a `let .. in` in a fn body)
-//   `data v: Int = let x = 1 in x`                     (a `let .. in` as a data value)
-//   `fn pick(a: Bool) -> Int { match a { true => 1, false => 2 } }`   (Bool-literal arms in a fn body)
-// They return as fixtures when that residue is repaired. The spellings below are ones the first
-// ingest admits on this route (probed at gunbc#12878 f306b14297b).
-data rt_match_source: String = "module rt.match\ntype T = A | B\nfn f(t: T) -> Int { match t { A => 1, _ => 2 } }\n"
-data rt_let_source: String = "module rt.let\nfn f(from: Int, input: Int) -> Int { let transport = from\n transport + input }\n"
+// A NAMED FRONTIER, NOT A DROPPED FIXTURE. At gunbc#12878 f306b14297b the first ingest refuses a
+// `let .. in` in data-value position, `data v: Int = let x = 1 in x`, with
+// parse_grammar_choice_overlap_residue and parse_data_value_missing_after_eq
+// (docs/plans/parse-grammar-choice-overlap-residue-finding.md). There is no tree to emit, so it returns
+// as a fixture when that residue is repaired.
+//
+// MODULE PATHS AVOID KEYWORDS. `module rt.let` refuses at the first ingest (overlap residue, then
+// parse_g0_tokens_remain), because `let` is a keyword and not a path segment; the same body under
+// `rt.let_stmt` ingests. That refusal is not this module's subject.
+data rt_match_source: String = "module rt.match_arms\ntype T = A | B\nfn f(t: T) -> Int { match t { A => 1, _ => 2 } }\n"
+data rt_match_bool_arms_source: String = "module rt.match_bool_arms\nfn pick(a: Bool) -> Int { match a { true => 1, false => 2 } }\n"
+data rt_let_source: String = "module rt.let_stmt\nfn f(from: Int, input: Int) -> Int { let transport = from\n transport + input }\n"
+data rt_let_in_source: String = "module rt.let_in\nfn one() -> Int { let x = 1 in x }\n"
 data rt_list_source: String = "module rt.list\nimport std.types { List }\ndata xs: List<Int> = [1, 2, 3]\n"
 data rt_map_literal_source: String = "module rt.map_literal\nimport std.types { Map }\ndata m: Map<String, Bool> = { \"a\": true, \"b\": false }\n"
 data rt_quoted_key_source: String = "module rt.quoted_key\ndata r: R = { \"Node\": true }\n"
@@ -87,6 +90,8 @@ test fn a_record_type_round_trips_holds() -> Bool { rt_round_trips(text: rt_reco
 test fn a_coproduct_round_trips_holds() -> Bool { rt_round_trips(text: rt_coproduct_source) }
 test fn a_match_round_trips_holds() -> Bool { rt_round_trips(text: rt_match_source) }
 test fn a_let_round_trips_holds() -> Bool { rt_round_trips(text: rt_let_source) }
+test fn a_let_in_round_trips_holds() -> Bool { rt_round_trips(text: rt_let_in_source) }
+test fn a_match_over_bool_literal_arms_round_trips_holds() -> Bool { rt_round_trips(text: rt_match_bool_arms_source) }
 test fn a_list_literal_round_trips_holds() -> Bool { rt_round_trips(text: rt_list_source) }
 
 // The SURFACE map literal, before resolve elaborates it to map_from_entries (gunbc#12758).
@@ -212,6 +217,8 @@ fn rt_why_let() -> String { rt_why(text: rt_let_source) }
 fn rt_why_list() -> String { rt_why(text: rt_list_source) }
 fn rt_why_map_literal() -> String { rt_why(text: rt_map_literal_source) }
 fn rt_why_match() -> String { rt_why(text: rt_match_source) }
+fn rt_why_let_in() -> String { rt_why(text: rt_let_in_source) }
+fn rt_why_match_bool_arms() -> String { rt_why(text: rt_match_bool_arms_source) }
 fn rt_why_escaped_key() -> String { rt_why(text: rt_escaped_key_source) }
 fn rt_why_quoted_key() -> String { rt_why(text: rt_quoted_key_source) }
 fn rt_why_string_escapes() -> String { rt_why(text: rt_string_escapes_source) }
