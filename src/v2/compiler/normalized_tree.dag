@@ -4,6 +4,7 @@ import v2.compiler.body_lowering_fold {
   BodyLoweredTree,
   DeclaredTypeKind,
   declared_record_names,
+  declared_resource_names,
   wrapper_retention_diagnostic
 }
 import v2.std.diagnostic {
@@ -137,6 +138,15 @@ fn normalized_tree_record_declarations(t: NormalizedTree) -> FreeMonoid<Symbol> 
   declared_record_names(kinds: t.type_declaration_kinds)
 }
 
+fn normalized_tree_resource_declarations(t: NormalizedTree) -> FreeMonoid<Symbol> {
+  declared_resource_names(kinds: t.type_declaration_kinds)
+}
+
+// A hand-built root declares no resources this carrier can see, as it declares no records.
+fn no_resource_declarations() -> FreeMonoid<Symbol> {
+  Empty
+}
+
 // A MODULE OUTSIDE THE COMPILED CLOSURE, AT CENSUS GRADE (v2.compiler.normalize normalize_census):
 // every declaration, no fn body. It is a separate sealed carrier rather than a NormalizedTree with a
 // flag because what distinguishes it is what may consume it: resolution reads a non-member's
@@ -157,6 +167,7 @@ type CensusTree sole_constructor {
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,
   record_declarations: FreeMonoid<Symbol>,
+  resource_declarations: FreeMonoid<Symbol>,
 }
 
 // The census route refuses retention through admit_retention_free exactly as the full route does
@@ -169,13 +180,15 @@ fn admit_census_tree(
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,
   record_declarations: FreeMonoid<Symbol>,
+  resource_declarations: FreeMonoid<Symbol>,
   diagnostics: Diagnostics
 ) -> Outcome<CensusTree> {
   Accepted {
     value: CensusTree {
       root: root,
       import_bindings: import_bindings,
-      record_declarations: record_declarations
+      record_declarations: record_declarations,
+      resource_declarations: resource_declarations
     },
     diagnostics: diagnostics
   }
@@ -187,7 +200,8 @@ fn census_tree_binding_source(t: CensusTree) -> ModuleBindingSource {
   ModuleBindingSource {
     root: t.root,
     import_bindings: t.import_bindings,
-    record_declarations: t.record_declarations
+    record_declarations: t.record_declarations,
+    resource_declarations: t.resource_declarations
   }
 }
 
@@ -213,7 +227,8 @@ fn normalized_tree_roots_to_binding_sources(
         item: ModuleBindingSource {
           root: tree.root,
           import_bindings: tree.import_bindings,
-          record_declarations: normalized_tree_record_declarations(t: tree)
+          record_declarations: normalized_tree_record_declarations(t: tree),
+          resource_declarations: normalized_tree_resource_declarations(t: tree)
         }
       )
     }

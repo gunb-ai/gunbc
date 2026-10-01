@@ -760,6 +760,14 @@ import v2.std.collection { List }
 // the two nullary producers over it. The values are an Optional list of QualifiedNames and a record of
 // four Optional<Node> -- portable, no closure, no resolution context -- and both are WARM for the
 // ceiling arithmetic above: one front end is more than one claim's budget.
+// THE NEWLINE-REFUSAL MUTATION'S TWO GRAMMAR FACTS ARE SUPPLIED, NOT RE-DERIVED PER CLAIM.
+// v2.test.parse.newline_dual_role_operator_mutation discriminates the newline-`-` refusal by parsing
+// three one-line sources under the live grammar and under a mutant with every RefuseOnMatch arm
+// stripped. Preparing that mutant is a whole grammar preparation, past one claim's new-witness budget
+// (gunbc#12881's floor: 183k and 229k steps when each claim prepared its own), so the mutant's
+// PreparedGrammar is one nullary producer, and the refusal-arm counts over the live grammar are
+// another. A PreparedGrammar is the value dag_prepared_grammar already serves; the census is a record
+// of two Ints. Both WARM: one grammar preparation is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
@@ -1084,6 +1092,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
+  "v2.test.parse.newline_dual_role_operator_mutation.nlm_mutant_prepared",
+  "v2.test.parse.newline_dual_role_operator_mutation.nlm_refusal_arm_census",
   "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_parsed",
   "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized",
   "v2.test.claim.namespace_xl0.body_shape_contract.body_shape_normalized_root",
