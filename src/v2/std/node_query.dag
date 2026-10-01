@@ -296,7 +296,7 @@ fn binder_node_parts(n: Node) -> Optional<BinderParts> {
   match n.kind {
     TypeNode { connective: Conj } =>
       binder_node_parts_of_edges(edges: n.children)
-    _ => Absent
+    _ => optional_absent()
   }
 }
 
@@ -307,15 +307,15 @@ type BinderPartsRead {
 }
 
 fn binder_node_parts_of_edges(edges: List<Edge>) -> Optional<BinderParts> {
-  let read = fold(edges, init: BinderPartsRead { type_node: Absent, default: Absent, foreign: false }, f: fn(acc, e) {
+  let read = fold(edges, init: BinderPartsRead { type_node: optional_absent(), default: optional_absent(), foreign: false }, f: fn(acc, e) {
     binder_parts_read_step(acc: acc, e: e)
   })
   if read.foreign {
-    Absent
+    optional_absent()
   } else {
     match read.type_node {
-      Present { value: t } => Present { value: BinderParts { type_node: t, default: read.default } }
-      Absent => Absent
+      Present { value: t } => optional_present(value: BinderParts { type_node: t, default: read.default })
+      Absent => optional_absent()
     }
   }
 }
@@ -327,12 +327,12 @@ fn binder_parts_read_step(acc: BinderPartsRead, e: Edge) -> BinderPartsRead {
       if sym == binder_type_label() {
         match acc.type_node {
           Present { value: _ } => BinderPartsRead { type_node: acc.type_node, default: acc.default, foreign: true }
-          Absent => BinderPartsRead { type_node: Present { value: e.target }, default: acc.default, foreign: acc.foreign }
+          Absent => BinderPartsRead { type_node: optional_present(value: e.target), default: acc.default, foreign: acc.foreign }
         }
       } else if sym == binder_default_label() {
         match acc.default {
           Present { value: _ } => BinderPartsRead { type_node: acc.type_node, default: acc.default, foreign: true }
-          Absent => BinderPartsRead { type_node: acc.type_node, default: Present { value: e.target }, foreign: acc.foreign }
+          Absent => BinderPartsRead { type_node: acc.type_node, default: optional_present(value: e.target), foreign: acc.foreign }
         }
       } else {
         BinderPartsRead { type_node: acc.type_node, default: acc.default, foreign: true }
@@ -343,7 +343,7 @@ fn binder_parts_read_step(acc: BinderPartsRead, e: Edge) -> BinderPartsRead {
 // THE BINDER BUILDER: the named member of an Arrow domain, an io payload or a record payload, declaring
 // `name` of type `type_node` with no default. Every binder producer builds through it,
 // binder_edge_with_default or binder_relabelled; a hand-built name-to-type edge is refused by the
-// binder wall (v2.std.type_binder binder_members_conform).
+// binder wall (v2.std.type_binder arrow_domain_members_are_binders) and by every binder reader.
 fn binder_edge(name: Symbol, type_node: Node) -> Edge {
   Edge { label: Named { name: name }, target: binder_node(type_node: type_node, default: Absent) }
 }
@@ -374,9 +374,9 @@ fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
               default: parts.default
             }
           }
-        Absent => Absent
+        Absent => optional_absent()
       }
-    Positional => Absent
+    Positional => optional_absent()
   }
 }
 
@@ -386,11 +386,11 @@ fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
 // than read as if it were well formed.
 fn member_edge_type_node(e: Edge) -> Optional<Node> {
   match e.label {
-    Positional => Present { value: e.target }
+    Positional => optional_present(value: e.target)
     Named { name: _ } =>
       match declared_field_from_edge(e: e) {
-        Present { value: binder } => Present { value: binder.type_node }
-        Absent => Absent
+        Present { value: binder } => optional_present(value: binder.type_node)
+        Absent => optional_absent()
       }
   }
 }
