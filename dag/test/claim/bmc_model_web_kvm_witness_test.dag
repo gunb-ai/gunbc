@@ -6,7 +6,7 @@ import v2.std.optional { Present, Absent }
 import std.measure { second }
 import gunbc.bmc_model {
   BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, bmc_web_world_untouched, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle, BmcKvmStreaming, BmcKvmClosedByController,
-  BmcWebLoginAccepted, BmcWebLoginRefused,
+  BmcWebLoginAccepted, BmcWebLoginRefused, bmc_world, bmc_with_web, bmc_with_pending, bmc_with_sol_session,
   bmc_web_login, bmc_kvm_viewer_count, bmc_kvm_connect, bmc_web_logout, bmc_advance,
 }
 import gunbc.bmc_megarac_web_adapter {
@@ -28,18 +28,17 @@ fn web(other_viewers: Int, canvas_readable: Bool) -> BmcWebWorld {
 }
 
 fn world(other_viewers: Int, close_at: Int, canvas_readable: Bool) -> BmcWorld {
-  BmcWorld {
-    power: BmcPowerOn,
+  bmc_with_pending(
+    world: bmc_with_web(world: bmc_world(power: BmcPowerOn), web: web(other_viewers: other_viewers, canvas_readable: canvas_readable)),
     pending: if close_at < 0 { [] } else { [BmcScheduledEvent { at: second(count: close_at), event: BmcKvmStreamClosed {} }] },
     fired: [],
-    web: web(other_viewers: other_viewers, canvas_readable: canvas_readable),
-  }
+  )
 }
 
 // A WORLD WITH NO ACCOUNT REFUSES EVERY LOGIN, empty credentials included: absence is a constructor,
 // not a sentinel a guard has to catch.
 test fn a_world_without_an_account_refuses_every_login() -> Bool {
-  let untouched = BmcWorld { power: BmcPowerOn, pending: [], fired: [], web: bmc_web_world_untouched }
+  let untouched = bmc_world(power: BmcPowerOn)
   let empty = bmc_web_login(world: untouched, username: "", password: "")
   let named = bmc_web_login(world: untouched, username: "admin", password: "pw")
   match empty.reply { BmcWebLoginRefused {} => true  _ => false } && match named.reply { BmcWebLoginRefused {} => true  _ => false }
@@ -118,10 +117,9 @@ test fn another_viewer_holding_the_seat_refuses_the_connect() -> Bool {
 // FIELD BOUNDARIES SURVIVE: two credential pairs whose space-joined forms are equal are different
 // requests, and each keeps its own row answered by the model.
 test fn credentials_that_join_alike_stay_distinct_requests() -> Bool {
-  let w0 = BmcWorld {
-    power: BmcPowerOn, pending: [], fired: [],
+  let w0 = bmc_with_web(world: bmc_world(power: BmcPowerOn),
     web: BmcWebWorld { account: Present { value: BmcWebAccount { username: "admin", password: "pw secret", privilege: 4 } }, sessions: [], next_session_id: 7, other_kvm_viewers: 0, kvm: BmcKvmIdle {}, canvas_readable: true },
-  }
+  )
   let table = megarac_web_transition_table(
     initial: w0,
     credentials: [MegaRacWebLogin { username: "admin", password: "pw secret" }, MegaRacWebLogin { username: "admin pw", password: "secret" }],
@@ -133,7 +131,7 @@ test fn credentials_that_join_alike_stay_distinct_requests() -> Bool {
 }
 
 // A WORLD'S TABLE KEY IS COMPLETE: two worlds that differ only in their pending schedule, or only in
-// which events have fired, are different table states.
+// which events have fired, or only in the controller's SOL session, are different table states.
 test fn world_keys_distinguish_pending_and_fired_events() -> Bool {
   let a = world(other_viewers: 0, close_at: 3, canvas_readable: true)
   let b = world(other_viewers: 0, close_at: 5, canvas_readable: true)
@@ -142,6 +140,7 @@ test fn world_keys_distinguish_pending_and_fired_events() -> Bool {
   megarac_web_world_text(world: a) != megarac_web_world_text(world: b)
     && megarac_web_world_text(world: a) != megarac_web_world_text(world: c)
     && megarac_web_world_text(world: fired) != megarac_web_world_text(world: c)
+    && megarac_web_world_text(world: c) != megarac_web_world_text(world: bmc_with_sol_session(world: c, open: true))
 }
 
 // THE TABLE CARRIES THE ABSOLUTE INSTANT: the only advance row is at the event's own second, and at

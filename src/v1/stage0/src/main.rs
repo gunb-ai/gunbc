@@ -1347,6 +1347,21 @@ fn report_pre_entry_phases(
     ] {
         record(name, PhaseScale::Closure, ns(nanos));
     }
+    // Three reconcile sub-rows whose INPUT is the pool, not the closure: the whole-pool
+    // qualified fill, and per source root the same-tree bare underlay and its variant base.
+    // They sit inside reconcile but outside every closure row above, so without these lines a
+    // small-closure run reported seconds of tree-scale work as an unexplained gap between the
+    // phase sum and `resolve_entry_graph_inclusive`.
+    for (name, nanos) in [
+        ("reconcile_pool_qualified_fill", st.assembly_pool_fill),
+        (
+            "reconcile_root_bare_underlay",
+            st.assembly_root_symbol_index,
+        ),
+        ("reconcile_root_variant_base", st.assembly_root_variant_base),
+    ] {
+        record(name, PhaseScale::Tree, ns(nanos));
+    }
     record(
         "resolve_entry_graph_inclusive",
         PhaseScale::Closure,

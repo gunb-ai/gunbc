@@ -195,6 +195,8 @@ test fn zero_decode_duration_refuses_rather_than_fabricating() -> Bool {
   }
 }
 
+// The fraction is declared at TokenThroughput (FieldOfFractions<Nat>), the type the projection
+// reads; a bare construct at the call argument infers its own instantiation from the literals.
 data zero_denominator_throughput: TokenThroughput = FieldOfFractions { num: 1000, denom: 0 }
 
 test fn zero_denominator_floor_projection_returns_none() -> Bool {
