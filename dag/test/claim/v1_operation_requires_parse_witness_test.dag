@@ -35,9 +35,21 @@ test fn a_requires_member_that_is_not_a_type_refuses() -> Bool {
   )
 }
 
+// AN EMPTY `requires` REFUSES AS EMPTY. It is the LAST entry, directly before the operation's closing
+// brace, so the member reader meets `}` where a type expression must start and refuses there -- it
+// cannot read the next entry as a member, which is how an earlier revision of this control refused for
+// an incidental reason. Paired with the identical operation without the line, which compiles clean, so
+// the refusal is the empty `requires` and nothing else in the source.
 test fn a_requires_with_no_member_refuses() -> Bool {
   !compiles(
-    "module requires_empty\nservice requires_empty.S {\n  operation Op {\n    requires\n    output { ok: Bool }\n    transport shell { argv: [\"true\"] }\n  }\n}\n",
+    "module requires_empty\nservice requires_empty.S {\n  operation Op {\n    output { ok: Bool }\n    transport shell { argv: [\"true\"] }\n    requires\n  }\n}\n",
     "src/requires_empty.rs"
+  )
+}
+
+test fn the_same_operation_without_requires_compiles() -> Bool {
+  compiles(
+    "module requires_empty_control\nservice requires_empty_control.S {\n  operation Op {\n    output { ok: Bool }\n    transport shell { argv: [\"true\"] }\n  }\n}\n",
+    "src/requires_empty_control.rs"
   )
 }
