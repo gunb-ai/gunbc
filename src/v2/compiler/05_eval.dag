@@ -1263,6 +1263,11 @@ fn eval_binding_key_from_atom(node: Node) -> Optional<EnvironmentBindingKey> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
       optional_present(value: environment_binding_key_for_symbol(sym: sym))
+    TypeNode { connective: Conj } =>
+      match binder_reference_symbol_optional(node: node) {
+        Present { value: sym } => optional_present(value: environment_binding_key_for_symbol(sym: sym))
+        Absent => optional_absent()
+      }
     _ => optional_absent()
   }
 }

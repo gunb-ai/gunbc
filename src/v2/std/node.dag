@@ -1099,6 +1099,36 @@ fn declaration_reference_body_marked(target: Node) -> Bool {
   }
 }
 
+// THE BINDER SITE A LET DECLARES: its key, which v2.compiler.resolve stamps as a binder reference
+// over the let's own site (resolve_bind_binder_target), so it is the same BinderSite every reference
+// to the let carries. Absent for anything that is not a three-child Bind with a stamped key.
+fn bind_binder_site_optional(n: Node) -> BinderSite? {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      match bind_key_target_optional(n: n) {
+        Present { value: key } => binder_reference_site_optional(node: key)
+        _ => optional_absent_binder_site()
+      }
+    _ => optional_absent_binder_site()
+  }
+}
+
+// A Bind's key: its FIRST positional child, and only that one -- a later positional is the value or
+// the tail, whose binder references name other sites.
+fn bind_key_target_optional(n: Node) -> Node? {
+  fold(n.children, init: v2.std.optional.optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      _ =>
+        match e.label {
+          Positional => Present { value: e.target }
+          StructuralLabel { label: _ } => acc
+          Authored { name: _ } => acc
+        }
+    }
+  })
+}
+
 // THE BINDER SITE A REFERENCE NAMES, read from its label alone; Absent for anything that is not a
 // binder reference.
 fn binder_reference_site_optional(node: Node) -> BinderSite? {

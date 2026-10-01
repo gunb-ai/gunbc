@@ -7,10 +7,13 @@ import v2.test.claim.emit.module_member_emission { MemberClosureRefused, MemberE
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node { Atom, Authored, BinderSite, Hash, Node, Positional, StructuralLabel, Symbol, TypeNode, binder_reference_site_optional, content_hash, node_subtree_nodes }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.optional { Absent, Optional, Present }
-import v2.std.qualified_name { binder_reference_symbol_optional, declaration_reference_path_optional, qualified_name_last_segment }
+import v2.std.collection { List }
+import v2.std.qualified_name { binder_reference_node, binder_reference_symbol_optional, declaration_reference_path_optional, qualified_name_last_segment }
+import std.algebra { list_snoc_item }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -142,4 +145,67 @@ test fn a_closure_parameter_is_typed_as_before_the_binder_carrier_holds() -> Boo
   (br_infer_verdict(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a) { a + x }\n  g(x)\n}\n") == ^infer_transform_operand_type_mismatch)
     && (br_infer_verdict(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a) { a }\n  g(x)\n}\n") == ^br_infer_accepted)
     && (br_infer_verdict(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a) -> Int { a }\n  x\n}\n") == ^br_infer_accepted)
+}
+
+// ---- binder sites: ordinals, reset, stability (S-prime, neat-boar-16 ruling) -------------------
+
+fn br_sites_named(o: Outcome<ResolvedTree>, name: Symbol) -> List<Int> {
+  match o {
+    Rejected { diagnostics: _ } => [0 - 1]
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: [], f: fn(acc, m) {
+        match binder_reference_site_optional(node: m) {
+          Present { value: site } => if site.name == name { list_snoc_item(xs: acc, item: site.ordinal) } else { acc }
+          Absent => acc
+        }
+      })
+  }
+}
+
+// (7) NESTED LETS OF ONE NAME TAKE ORDINALS 0 AND 1 in pre-order, and each reference names the
+// binder in scope: the inner let's VALUE resolves in the outer scope (ordinal 0) and the tail in the
+// inner one (ordinal 1). Sites in pre-order: outer key, inner value, inner key, tail.
+test fn nested_lets_of_one_name_take_ordinals_zero_and_one_holds() -> Bool {
+  br_sites_named(o: tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x\n  let y = y\n  y\n}\n"), name: ^y) == [0, 0, 1, 1]
+}
+
+// (8) THE KEY SCOPE IS ONE NAMED DECLARATION: two fns that each let y both number it from 0, so the
+// counts reset at a declaration and do not leak to its sibling.
+test fn two_declarations_each_number_their_binders_from_zero_holds() -> Bool {
+  br_sites_named(o: tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x\n  y\n}\n\nfn g(x: Int) -> Int {\n  let y = x\n  y\n}\n"), name: ^y) == [0, 0, 0, 0]
+}
+
+// (9) STABILITY: the site is derived within its declaration, so an unrelated edit OUTSIDE it leaves
+// the declaration's resolved subtree -- and so its content_hash, which v2.compiler.eval
+// inferred_tree_digest folds into the claim-cache key -- unchanged; a same-named binder added INSIDE
+// changes it. (The whole-tree digest moves with any edit by construction; the declaration's own hash
+// is the grain the key relation promises.)
+fn br_member_hash(o: Outcome<ResolvedTree>, name: Symbol) -> Hash? {
+  match o {
+    Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: v2.std.optional.optional_absent(), f: fn(acc, m) {
+        fold(m.children, init: acc, f: fn(a, e) {
+          match e.label {
+            Authored { name: n } => if n == name { Present { value: content_hash(n: e.target) } } else { a }
+            StructuralLabel { label: _ } => a
+            Positional => a
+          }
+        })
+      })
+  }
+}
+
+test fn an_edit_outside_a_declaration_leaves_its_hash_and_one_inside_moves_it_holds() -> Bool {
+  let before = br_member_hash(o: tpb_assemble(src: "module p\n\nfn g(x: Int) -> Int {\n  let y = x\n  y\n}\n"), name: ^g)
+  let outside = br_member_hash(o: tpb_assemble(src: "module p\n\nfn h(z: Int) -> Int {\n  let y = z\n  y\n}\n\nfn g(x: Int) -> Int {\n  let y = x\n  y\n}\n"), name: ^g)
+  let inside = br_member_hash(o: tpb_assemble(src: "module p\n\nfn g(x: Int) -> Int {\n  let w = fn(y) { y }\n  let y = x\n  y\n}\n"), name: ^g)
+  (before != v2.std.optional.optional_absent()) && (before == outside) && (before != inside)
+}
+
+// (10) THE ORDINAL IS IN THE HASH, and so in the claim-cache key preimage (inferred_tree_digest folds
+// content_hash of the root): two binder references differing only in ordinal hash differently.
+test fn two_ordinals_of_one_name_hash_differently_holds() -> Bool {
+  content_hash(n: binder_reference_node(site: BinderSite { name: ^y, ordinal: 0 }, occurrence_id: OccurrenceSynthetic))
+    != content_hash(n: binder_reference_node(site: BinderSite { name: ^y, ordinal: 1 }, occurrence_id: OccurrenceSynthetic))
 }

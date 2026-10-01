@@ -3057,10 +3057,18 @@ fn resolve_walk_with_binder_counts(w: ResolveNodeWalk, counts: Map<Symbol, Int>)
   }
 }
 
+// A LET'S KEY IS ITS BINDER'S DECLARING SITE, stamped with the same BinderSite every reference to it
+// carries (v2.std.node bind_binder_site_optional reads it), so a consumer joins a reference to its
+// let without recounting. The counts here already include this binder (open_lexical_frame ran
+// before the edges), so its own ordinal is one less.
 fn resolve_bind_binder_target(t: Node, counts: Map<Symbol, Int>) -> ResolveNodeWalk {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None, binder_counts: counts }
+      ResolveWalkAccepted {
+        value: binder_reference_node(site: BinderSite { name: id, ordinal: binder_count(counts: counts, name: id) - 1 }, occurrence_id: t.occurrence_id),
+        diagnostics: None,
+        binder_counts: counts
+      }
     _ =>
       resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
   }
