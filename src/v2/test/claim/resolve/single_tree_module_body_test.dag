@@ -13,6 +13,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_spine_node }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -40,7 +41,7 @@ fn stmb_named(name: Symbol, target: Node) -> Edge {
 fn stmb_record_t() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [stmb_named(name: ^leaked, target: stmb_atom(id: ^Int))],
+    children: [binder_edge(name: ^leaked, type_node: stmb_atom(id: ^Int))],
     occurrence_id: OccurrenceSynthetic
   }
 }

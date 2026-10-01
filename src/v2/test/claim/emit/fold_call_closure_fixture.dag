@@ -2,6 +2,7 @@ module v2.test.emit.fold_call_closure_fixture
 
 import v2.std.arrow_signature { declared_signature }
 import v2.std.node { Symbol, ArrowBodyEdge, core_edge, Authored }
+import v2.std.node_query { binder_edge }
 
 fn fold_fixture_atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
@@ -17,13 +18,13 @@ fn fold_fixture_named_edge(name: Symbol, target: Node) -> Edge {
 
 fn fold_fixture_param_domain_params() -> List<Edge> {
   [
-    fold_fixture_named_edge(
+    binder_edge(
       name: ^dag_binding_mvp1_fold_xs,
-      target: fold_fixture_atom(id: ^dag_binding_type_int)
+      type_node: fold_fixture_atom(id: ^dag_binding_type_int)
     ),
-    fold_fixture_named_edge(
+    binder_edge(
       name: ^dag_binding_mvp1_fold_z,
-      target: fold_fixture_atom(id: ^dag_binding_type_int)
+      type_node: fold_fixture_atom(id: ^dag_binding_type_int)
     )
   ]
 }
@@ -35,8 +36,8 @@ fn fold_fixture_empty_domain_params() -> List<Edge> {
 fn fold_fixture_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node {
   let signature = declared_signature(
     params: [
-      fold_fixture_named_edge(name: ^dag_binding_mvp1_fold_acc, target: fold_fixture_atom(id: ^dag_binding_type_int)),
-      fold_fixture_named_edge(name: ^dag_binding_mvp1_fold_h, target: fold_fixture_atom(id: ^dag_binding_type_int))
+      binder_edge(name: ^dag_binding_mvp1_fold_acc, type_node: fold_fixture_atom(id: ^dag_binding_type_int)),
+      binder_edge(name: ^dag_binding_mvp1_fold_h, type_node: fold_fixture_atom(id: ^dag_binding_type_int))
     ],
     source: fold_fixture_atom(id: ^dag_binding_type_int)
   )
@@ -63,8 +64,8 @@ fn fold_fixture_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> No
 fn fold_fixture_closure_arrow_sub(left_operand: Symbol, right_operand: Symbol) -> Node {
   let signature = declared_signature(
     params: [
-      fold_fixture_named_edge(name: ^dag_binding_mvp1_fold_acc, target: fold_fixture_atom(id: ^dag_binding_type_int)),
-      fold_fixture_named_edge(name: ^dag_binding_mvp1_fold_h, target: fold_fixture_atom(id: ^dag_binding_type_int))
+      binder_edge(name: ^dag_binding_mvp1_fold_acc, type_node: fold_fixture_atom(id: ^dag_binding_type_int)),
+      binder_edge(name: ^dag_binding_mvp1_fold_h, type_node: fold_fixture_atom(id: ^dag_binding_type_int))
     ],
     source: fold_fixture_atom(id: ^dag_binding_type_int)
   )

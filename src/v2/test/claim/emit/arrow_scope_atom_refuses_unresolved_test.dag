@@ -38,6 +38,7 @@ import v2.std.compilers.target_model {
 import v2.std.compilers.lexing { ModeledLexRules }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -63,7 +64,7 @@ fn probe_positional(target: Node) -> Edge {
 
 fn probe_closure(body: Node) -> Node {
   let signature = declared_signature(
-    params: [probe_named(name: ^fold_call_closure_acc, target: probe_atom(id: ^fold_call_type_int))],
+    params: [binder_edge(name: ^fold_call_closure_acc, type_node: probe_atom(id: ^fold_call_type_int))],
     source: probe_atom(id: ^fold_call_type_int)
   )
   node_synthetic(
@@ -79,7 +80,7 @@ fn probe_closure(body: Node) -> Node {
 
 fn probe_arrow(closure_body: Node) -> Node {
   let signature = declared_signature(
-    params: [probe_named(name: ^fold_call_param_xs, target: probe_atom(id: ^fold_call_type_int))],
+    params: [binder_edge(name: ^fold_call_param_xs, type_node: probe_atom(id: ^fold_call_type_int))],
     source: probe_atom(id: ^fold_call_type_int)
   )
   node_synthetic(

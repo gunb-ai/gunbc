@@ -63,6 +63,7 @@ import v2.test.lens_common.infer_fixture {
 }
 import v2.std.text { String, string_is_empty }
 import v2.std.witness { Holds, Witness }
+import v2.std.node_query { binder_edge }
 
 // COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY (DESIGN section 5, verbatim). The check
 // these replace was `length(rows) == length(roster())`, and both sides derive from the same fold
@@ -323,10 +324,10 @@ data coverage_join_field_target: Node = Node {
 data coverage_join_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Authored { name: ^ram_bytes },
-      target: coverage_join_field_target
-    }
+    binder_edge(
+      name: ^ram_bytes,
+      type_node: coverage_join_field_target
+    )
   ],
   occurrence_id: OccurrenceSynthetic
 }

@@ -22,7 +22,7 @@ import v2.compiler.translate { translate_type_expression_project }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.communication.medium { Medium }
-import v2.std.node_query { coproduct_arm_list_from_node, declared_field_list }
+import v2.std.node_query { coproduct_arm_list_from_node, declared_field_list, binder_edge }
 import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary }
 import v2.compiler.trait_derive_completeness { repr_grounding_derive_elem_shape }
 import std.trait_derive_shape { ReprDeriveElemNullaryEnumCopy }
@@ -274,7 +274,7 @@ fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
 }
 
 fn tpb_formal(name: Symbol, declared: Symbol) -> Edge {
-  Edge { label: Authored { name: name }, target: dag_type_atom_node(identity: declared) }
+  binder_edge(name: name, type_node: dag_type_atom_node(identity: declared))
 }
 
 fn tpb_apply(arrow: Node, args: List<Node>) -> Node {

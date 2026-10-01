@@ -254,6 +254,24 @@ fn declared_field_cardinality_of_target(target: Node) -> Cardinality {
   }
 }
 
+// THE BINDER BUILDER: the named member of an Arrow domain, an io payload or a record payload, declaring
+// `name` of type `type_node`. Every binder producer the XL-2 census found builds through it (or through
+// binder_relabelled), as declared_field_from_edge reads every binder. RUNG, STATED HONESTLY: this is a
+// convention today -- an `Edge { label: Authored .. }` literal is still writable, so nothing yet refuses a
+// hand-built binder. The wall arrives with the representation switch (XL-2 PR2b-3): once a binder's
+// target is a binder node, a hand-built name-to-type edge no longer conforms and refuses, located.
+fn binder_edge(name: Symbol, type_node: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: type_node }
+}
+
+// THE ONE RELABEL OF A BINDER: the same binder under another name (an anonymous slot's minted label,
+// v2.std.anonymous_binder anonymous_binder_mint_parameter_list). It keeps everything the binder
+// carries rather than rebuilding it from a type, so whatever the representation holds besides the
+// type survives the rename.
+fn binder_relabelled(binder: Edge, name: Symbol) -> Edge {
+  Edge { label: Authored { name: name }, target: binder.target }
+}
+
 fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
   match e.label {
     Authored { name: field_name } =>

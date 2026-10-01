@@ -6,6 +6,7 @@ import v2.std.compilers.target_model { ProducedDeclSignatureSubject, arrow_domai
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.node_query { binder_edge }
 import v2.std.node {
   Arrow,
   Atom,
@@ -49,8 +50,8 @@ fn ipo_atom(id: Symbol) -> Node {
 fn ipo_item() -> Node {
   let sig = declared_signature(
     params: [
-      Edge { label: Authored { name: ^ipo_z }, target: ipo_atom(id: ^ipo_int) },
-      Edge { label: Authored { name: ^ipo_a }, target: ipo_atom(id: ^ipo_bool) }
+      binder_edge(name: ^ipo_z, type_node: ipo_atom(id: ^ipo_int)),
+      binder_edge(name: ^ipo_a, type_node: ipo_atom(id: ^ipo_bool))
     ],
     source: ipo_atom(id: ^ipo_source)
   )

@@ -30,6 +30,7 @@ import v2.std.logic { Bool }
 import std.algebra { list_snoc_item }
 import v2.std.type_binder { type_params_edge }
 import v2.std.optional { Absent, Optional, Present }
+import v2.std.node_query { binder_edge }
 import v2.std.node {
   ComputationNode,
   Conj,
@@ -49,10 +50,10 @@ fn inhabitance_named_conj_domain(parameter: Symbol, declared: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Authored { name: parameter },
-        target: declared
-      }
+      binder_edge(
+        name: parameter,
+        type_node: declared
+      )
     ]
   )
 }
@@ -327,10 +328,10 @@ fn inhabitance_nominal_product_type_node() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Authored { name: ^inhabitance_field_a },
-        target: dag_type_atom_node(identity: ^dag_binding_type_int)
-      }
+      binder_edge(
+        name: ^inhabitance_field_a,
+        type_node: dag_type_atom_node(identity: ^dag_binding_type_int)
+      )
     ]
   )
 }

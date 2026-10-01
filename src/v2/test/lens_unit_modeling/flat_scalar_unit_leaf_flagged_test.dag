@@ -14,6 +14,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -26,10 +27,10 @@ data int_leaf_target: Node = Node {
 data flat_scalar_unit_leaf_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Authored { name: ^ram_bytes },
-      target: int_leaf_target
-    }
+    binder_edge(
+      name: ^ram_bytes,
+      type_node: int_leaf_target
+    )
   ],
   occurrence_id: OccurrenceSynthetic
 }

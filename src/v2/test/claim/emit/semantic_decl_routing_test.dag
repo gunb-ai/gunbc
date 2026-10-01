@@ -12,6 +12,7 @@ import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, Symbol,
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -64,7 +65,7 @@ fn sdr_atom_type(name: Symbol) -> Node {
 }
 
 fn sdr_field_edge(name: Symbol, type_name: Symbol) -> Edge {
-  Edge { label: Authored { name: name }, target: sdr_atom_type(name: type_name) }
+  binder_edge(name: name, type_node: sdr_atom_type(name: type_name))
 }
 
 fn semantic_record_type() -> Node {

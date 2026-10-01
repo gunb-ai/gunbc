@@ -51,6 +51,7 @@ import v2.std.node {
   node_synthetic,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -74,10 +75,10 @@ fn witness_point_struct_conj_body() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Authored { name: ^x },
-        target: witness_type_atom(sym: witness_type_int),
-      }
+      binder_edge(
+        name: ^x,
+        type_node: witness_type_atom(sym: witness_type_int)
+      )
     ]
   )
 }

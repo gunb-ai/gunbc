@@ -48,6 +48,7 @@ import v2.std.node {
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.witness { Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -73,13 +74,13 @@ fn rust_call_positional(target: Node) -> Edge {
 fn rust_call_add_signature() -> DeclaredSignatureEdges {
   declared_signature(
     params: [
-      rust_call_named_edge(
+      binder_edge(
         name: ^dag_binding_param_x,
-        target: rust_call_type_atom(id: ^dag_binding_type_int)
+        type_node: rust_call_type_atom(id: ^dag_binding_type_int)
       ),
-      rust_call_named_edge(
+      binder_edge(
         name: ^dag_binding_param_y,
-        target: rust_call_type_atom(id: ^dag_binding_type_int)
+        type_node: rust_call_type_atom(id: ^dag_binding_type_int)
       )
     ],
     source: rust_call_type_atom(id: ^dag_binding_type_int)
@@ -89,13 +90,13 @@ fn rust_call_add_signature() -> DeclaredSignatureEdges {
 fn rust_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node {
   let signature = declared_signature(
     params: [
-      rust_call_named_edge(
+      binder_edge(
         name: ^rust_call_closure_acc,
-        target: rust_call_type_atom(id: ^dag_binding_type_int)
+        type_node: rust_call_type_atom(id: ^dag_binding_type_int)
       ),
-      rust_call_named_edge(
+      binder_edge(
         name: ^rust_call_closure_h,
-        target: rust_call_type_atom(id: ^dag_binding_type_int)
+        type_node: rust_call_type_atom(id: ^dag_binding_type_int)
       )
     ],
     source: rust_call_type_atom(id: ^dag_binding_type_int)
