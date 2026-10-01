@@ -25,7 +25,10 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmStillGap, KvmGapOverCadence, KvmClockStepBack, KvmFinalGapUnclosed,
   KvmStillHashed, KvmStillUnhashed, KvmInstant,
   KvmJournalText, KvmJournalAbsent, KvmJournalUnread, kvm_journal_events_of,
-  kvm_journal_event, kvm_journal_events, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
+  kvm_journal_event, kvm_journal_events, kvm_journal_line, KvmJournalRender, KvmJournalRendered, KvmJournalRenderRefused,
+  KvmJournalEstablished, KvmJournalConnectionRequested, KvmJournalConnectionRefused, KvmJournalConnectionOpen, KvmJournalConnectionError,
+  KvmJournalRefused, KvmJournalFailed, KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped, KvmJournalTriggerScanFailed, KvmJournalNavigated, KvmJournalPageConsole, KvmJournalPageError,
+  KvmLoginRefused, KvmNoKvmService, KvmNoFrame, KvmToolchainUnavailable, KvmCredentialUnreadable, KvmRefusedOther, KvmAcquisitionOther, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
   mtcollins1_kvm_observer_start, mtcollins1_bmc_firmware, mtcollins1_kvm_observer_dir, kvm_observer_trigger,
   KvmJournalWord, kvm_journal_event_words, kvm_journal_cause_words, mtcollins1_kvm_observer_script,
 }
@@ -242,4 +245,113 @@ test fn the_journal_vocabulary_is_declared_once_and_read_back_by_the_parser() ->
   let parsed = !any(kvm_journal_event_words, w => !(match kvm_journal_event(line: kvm_word_line(w: w.word)) { KvmJournalUnparsed { line: _ } => false  _ => true }))
   let control = match kvm_journal_event(line: kvm_word_line(w: "undeclared-word")) { KvmJournalUnparsed { line: _ } => true  _ => false }
   events_rendered && causes_rendered && parsed && control && string_contains(s: script, pattern: "const EV=\{") && !string_contains(s: script, pattern: "j('")
+}
+
+// ── THE JOURNAL, WRITTEN: kvm_journal_line is kvm_journal_event read the other way ─────────────────
+fn kvm_at(ms: Nat) -> KvmInstant {
+  KvmInstant { since_epoch: millisecond(count: ms), iso: "2026-09-30T10:00:00.000Z" }
+}
+
+// One event of every arm, and every refusal and acquisition cause, with the field values in the form
+// the parser returns them (a JSON-quoted host and detail stay quoted).
+fn kvm_event_sample() -> List<KvmJournalEvent> {
+  [
+    KvmJournalEstablished { at: kvm_at(ms: 1790000000001), host: "\"bmc.example\"", session: "7", attempt: "4242", gen: "1" },
+    KvmJournalConnectionRequested { at: kvm_at(ms: 1790000000002) },
+    KvmJournalConnectionRefused { at: kvm_at(ms: 1790000000003) },
+    KvmJournalConnectionOpen { at: kvm_at(ms: 1790000000004), gen: "1" },
+    KvmJournalConnectionLost { at: kvm_at(ms: 1790000000005), gen: "1" },
+    KvmJournalConnectionError { at: kvm_at(ms: 1790000000006), gen: "1", detail: "\"socket hang up\"" },
+    KvmJournalStill { at: kvm_at(ms: 1790000000007), seq: "3", reason: "periodic", file: "still-3.jpg", gen: "1" },
+    KvmJournalAcquisitionFailed { at: kvm_at(ms: 1790000000008), seq: "4", reason: "periodic", cause: KvmNotConnected, gen: "1" },
+    KvmJournalAcquisitionFailed { at: kvm_at(ms: 1790000000009), seq: "5", reason: "periodic", cause: KvmConnectionChangedDuringAcquisition, gen: "2" },
+    KvmJournalAcquisitionFailed { at: kvm_at(ms: 1790000000010), seq: "6", reason: "periodic", cause: KvmCanvasUnreadable { detail: "\"SecurityError: tainted\"" }, gen: "2" },
+    KvmJournalAcquisitionFailed { at: kvm_at(ms: 1790000000011), seq: "7", reason: "periodic", cause: KvmAcquisitionOther { cause: "timeout", detail: "\"x\"" }, gen: "2" },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000012), refusal: KvmSeatBusy { viewer_count: "1" } },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000013), refusal: KvmLoginRefused { detail: "http 401" } },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000014), refusal: KvmNoKvmService },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000015), refusal: KvmNoFrame { detail: "\"no frame in 30000ms\"" } },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000016), refusal: KvmToolchainUnavailable { detail: "\"no chromium\"" } },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000017), refusal: KvmCredentialUnreadable { detail: "\"ENOENT\"" } },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000018), refusal: KvmRefusedOther { cause: "unforeseen", detail: "\"y\"" } },
+    KvmJournalFailed { at: kvm_at(ms: 1790000000019), detail: "\"crash\"" },
+    KvmJournalStopRequested { at: kvm_at(ms: 1790000000020), by: "boot" },
+    KvmJournalSessionRelease { at: kvm_at(ms: 1790000000021), result: "released" },
+    KvmJournalBrowserClose { at: kvm_at(ms: 1790000000022), result: "closed" },
+    KvmJournalStopped { at: kvm_at(ms: 1790000000023), session: "released", browser: "closed" },
+    KvmJournalTriggerScanFailed { at: kvm_at(ms: 1790000000024), detail: "\"EACCES\"" },
+    KvmJournalNavigated { at: kvm_at(ms: 1790000000025), seq: "2", phase: "held", url: "\"https://192.168.1.30/#login\"" },
+    KvmJournalPageConsole { at: kvm_at(ms: 1790000000026), phase: "viewer", level: "error", detail: "\"WebSocket connection to wss://192.168.1.30/kvm failed\"" },
+    KvmJournalPageError { at: kvm_at(ms: 1790000000027), phase: "viewer", detail: "\"TypeError: Cannot read properties of null (reading 'garc')\"" },
+  ]
+}
+
+// ROUND TRIP: every rendered line parses back to EXACTLY the event it was rendered from (structural
+// equality, every field). Comparing re-rendered text instead would be symmetric in a renderer that drops
+// a field -- both renderings drop it -- and was measured to stay green when gen was dropped.
+fn rendered(r: KvmJournalRender) -> String {
+  match r { KvmJournalRendered { line: l } => l  KvmJournalRenderRefused { event_word: _, would_write: _ } => "" }
+}
+
+fn refused(r: KvmJournalRender) -> Bool {
+  match r { KvmJournalRendered { line: _ } => false  KvmJournalRenderRefused { event_word: _, would_write: _ } => true }
+}
+
+test fn every_rendered_journal_line_parses_back_to_its_event() -> Bool {
+  all(kvm_event_sample(), e => !refused(r: kvm_journal_line(event: e)) && kvm_journal_event(line: rendered(r: kvm_journal_line(event: e))) == e)
+}
+
+// FIDELITY TO THE OBSERVER: lines as the observer script writes them re-render byte for byte where the
+// script writes only keys the parser reads, and differ only by the unread keys where it writes more.
+test fn a_written_line_renders_as_the_observer_writes_it() -> Bool {
+  let established = "1790577698700 2026-09-28T06:41:38.700Z established host=\"192.168.1.30\" session=12 attempt=4242 gen=1"
+  let lost = "1790577710007 2026-09-28T06:41:50.007Z connection-lost gen=1"
+  let refused = "1790577710008 2026-09-28T06:41:50.008Z refused cause=seat-busy viewer_count=1"
+  let still = "1790577710009 2026-09-28T06:41:50.009Z still seq=3 reason=periodic gen=1 started_ms=1790577710000 file=still-3.jpg bytes=4096"
+  rendered(r: kvm_journal_line(event: kvm_journal_event(line: established))) == established
+    && rendered(r: kvm_journal_line(event: kvm_journal_event(line: lost))) == lost
+    && rendered(r: kvm_journal_line(event: kvm_journal_event(line: refused))) == refused
+    && rendered(r: kvm_journal_line(event: kvm_journal_event(line: still))) == "1790577710009 2026-09-28T06:41:50.009Z still seq=3 reason=periodic gen=1 file=still-3.jpg"
+}
+
+// A NAVIGATION AS THE OBSERVER WRITES IT (framenavigated on the main frame): seq, phase, then the URL
+// JSON-quoted and last, since a URL is the free-text key the parser reads to the end of the line. A
+// hash route and a query survive the round trip whole, so the journal records exactly where the page
+// went rather than a prefix of it.
+test fn a_navigation_line_reads_back_its_phase_and_whole_url() -> Bool {
+  let line = "1790577698650 2026-09-28T06:41:38.650Z navigated seq=2 phase=held url=\"https://192.168.1.30/viewer.html?next=%2Fkvm#login\""
+  match kvm_journal_event(line: line) {
+    KvmJournalNavigated { at: _, seq: n, phase: p, url: u } =>
+      n == "2" && p == "held" && u == "\"https://192.168.1.30/viewer.html?next=%2Fkvm#login\""
+        && rendered(r: kvm_journal_line(event: kvm_journal_event(line: line))) == line
+    _ => false
+  }
+}
+
+// THE RED: a line that is not a journal line (no epoch-milliseconds word) is Unparsed and renders as
+// the line it carried, never as a fabricated event.
+test fn a_malformed_journal_line_is_unparsed_and_renders_verbatim() -> Bool {
+  let bad = "2026-09-30T10:00:00.000Z established host=x session=1 attempt=a gen=1"
+  match kvm_journal_event(line: bad) {
+    KvmJournalUnparsed { line: l } => l == bad && rendered(r: kvm_journal_line(event: kvm_journal_event(line: bad))) == bad
+    _ => false
+  }
+}
+
+// THE RENDERER REFUSES AN EVENT NO LINE CAN CARRY (review 73156): each of these is constructible from
+// the event's String fields, and each would otherwise be written as a plausible line that parses back
+// as a DIFFERENT event. Refused, never written.
+test fn an_event_no_line_can_carry_is_refused_not_written() -> Bool {
+  refused(r: kvm_journal_line(event: KvmJournalRefused { at: kvm_at(ms: 1790000000100), refusal: KvmLoginRefused { detail: "denied" } }))
+    && refused(r: kvm_journal_line(event: KvmJournalRefused { at: kvm_at(ms: 1790000000101), refusal: KvmNoFrame { detail: "" } }))
+    && refused(r: kvm_journal_line(event: KvmJournalRefused { at: kvm_at(ms: 1790000000102), refusal: KvmRefusedOther { cause: "seat-busy", detail: "\"x\"" } }))
+    && refused(r: kvm_journal_line(event: KvmJournalEstablished { at: kvm_at(ms: 1790000000103), host: "two words", session: "7", attempt: "4242", gen: "1" }))
+    && refused(r: kvm_journal_line(event: KvmJournalStill { at: kvm_at(ms: 1790000000104), seq: "3", reason: "periodic gen=9", file: "still-3.jpg", gen: "1" }))
+}
+
+// NOT OVER-BROAD: free text is carried where the grammar can carry it. A detail is always the last
+// field, so one holding " gen=" still parses back to its own event -- it renders, it is not refused.
+test fn free_text_the_grammar_can_carry_is_rendered() -> Bool {
+  let e = KvmJournalConnectionError { at: kvm_at(ms: 1790000000105), gen: "1", detail: "a gen=9 b" }
+  !refused(r: kvm_journal_line(event: e)) && kvm_journal_event(line: rendered(r: kvm_journal_line(event: e))) == e
 }

@@ -13,7 +13,8 @@ import v2.workflow.floor_terminal_ledger {
 import v2.workflow.wet_evidence {
   WetEvidenceRequirement, LocalRepoCoResidentRequirement,
   WetEvidenceBinding, CoResidentPreparedSubject, TransportedReceiptSubject,
-  WetScheduledClaim, WetTerminalRow,
+  WetScheduledClaim, WetTerminalRow, WetClaimAttempted, WetPremiseUnmetBeforeAttempt,
+  WetPremisedClaim, RunnerBrowserToolchainReadyForJobUser,
   WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused,
   WetEvidenceRefusal, wet_evidence_validate
 }
@@ -2019,6 +2020,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_tag_dispatch_entry_is_present" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_tag_dispatch_entry_is_present",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_other_tag_entry_is_absence" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_other_tag_entry_is_absence",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_count_without_rows_refuses" },
       entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
       function: "release_bins_RED_lookup_count_without_rows_refuses",
@@ -2223,6 +2236,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_root_page_that_navigates_cannot_destroy_the_login" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
+      function: "a_root_page_that_navigates_cannot_destroy_the_login",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_viewer_without_its_feature_list_never_opens_kvm" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
+      function: "a_viewer_without_its_feature_list_never_opens_kvm",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_busy_viewer_slot_refuses_the_observer_and_the_handoff" },
       entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
       function: "a_busy_viewer_slot_refuses_the_observer_and_the_handoff",
@@ -2363,6 +2388,43 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   ]
 }
 
+// THE DECLARED HOST PREMISES OF THIS LANE, keyed by identity. The executor reads each named premise
+// once, BEFORE invoking any claim that declares it, and a claim whose premise reads unmet is not
+// invoked: its terminal is `WetPremiseUnmetBeforeAttempt` and the join refuses it as
+// `WetTerminalHostPremiseUnmet` -- the runner, not the subject. Every row here must also be a
+// scheduled identity; the executor refuses a premise row it cannot join to the schedule.
+//
+// These five are the real-Chromium inhabitance claims of the KVM observer: each reaches
+// `gunbc.runner_browser_toolchain runner_browser_toolchain_here_wet` and is RED without a converged
+// toolchain (see that module's header). The claims stay unchanged; what this roster changes is
+// only which refusal a missing toolchain is reported as. Its restoration trigger is the floor slot
+// class that makes toolchain convergence a floor-pool READINESS property, after which a runner
+// without it is never handed this lane (docs/plans/wet-witness-host-premise-census.md).
+fn local_repo_wet_premise_roster() -> List<WetPremisedClaim> {
+  [
+    WetPremisedClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound" },
+      premise: RunnerBrowserToolchainReadyForJobUser {}
+    },
+    WetPremisedClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_busy_viewer_slot_refuses_the_observer_and_the_handoff" },
+      premise: RunnerBrowserToolchainReadyForJobUser {}
+    },
+    WetPremisedClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it" },
+      premise: RunnerBrowserToolchainReadyForJobUser {}
+    },
+    WetPremisedClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words" },
+      premise: RunnerBrowserToolchainReadyForJobUser {}
+    },
+    WetPremisedClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_relative_observer_directory_is_resolved_once" },
+      premise: RunnerBrowserToolchainReadyForJobUser {}
+    }
+  ]
+}
+
 // The identity projection the executor and the changed-witness gate both read, so neither authors a
 // second list beside this one.
 fn local_repo_wet_scheduled_identities() -> List<String> {
@@ -2475,15 +2537,15 @@ fn local_repo_wet_identity_passed_on_candidate(
     match first(hits) {
       Absent => false
       Present { value: t } =>
-        match claim_disposition(
-          row: ClaimTerminalRow {
-            identity: t.identity,
-            expectation: ExpectedToHold {},
-            terminal: t.terminal
-          }
-        ) {
-          Passed => true
-          _ => false
+        match t.terminal {
+          WetPremiseUnmetBeforeAttempt { premise: _, words: _ } => false
+          WetClaimAttempted { attempt: a } =>
+            match claim_disposition(
+              row: ClaimTerminalRow { identity: t.identity, expectation: ExpectedToHold {}, terminal: a }
+            ) {
+              Passed => true
+              _ => false
+            }
         }
     }
   }

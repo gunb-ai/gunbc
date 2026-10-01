@@ -107,7 +107,7 @@ fn expect_pool_roots(
     let mut out = Vec::new();
     for item in items {
         match item {
-            Value::Str(s) => out.push(s.to_string()),
+            Value::Str(ref s) => out.push(s.to_string()),
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!("{what} expects `{param}: List<String>`, got element {other:?}"),
@@ -1216,17 +1216,19 @@ fn hoist_call_arg_string_literal_edges(
     node: &Rc<Node>,
     edges: &mut Vec<Value>,
 ) {
-    if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
-        edges.push(literal_edge);
-        return;
-    }
-    if let Some(child0) = node.children.first() {
-        if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+    crate::v1_interpreter::value_depth_guarded(|| {
+        if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
             edges.push(literal_edge);
-        } else {
-            hoist_call_arg_string_literal_edges(ctx, child0, edges);
+            return;
         }
-    }
+        if let Some(child0) = node.children.first() {
+            if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+                edges.push(literal_edge);
+            } else {
+                hoist_call_arg_string_literal_edges(ctx, child0, edges);
+            }
+        }
+    })
 }
 
 fn should_emit_nullary_variant_value_atom(binding_kind: Option<&Rc<VarBindingKind>>) -> bool {
@@ -1922,14 +1924,25 @@ fn marshal_fn_export_signature_node(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     item: &Rc<Node>,
 ) -> InterpResult<Value> {
-    let mut edges = Vec::new();
+    // THE DOMAIN IS NAMED BINDERS, NEVER POSITIONAL TYPES (Program P, one Arrow encoding): one
+    // Named edge per value parameter, labelled with its authored name (`_` stays `_`), in authored
+    // order. The host mints no order edge and no anonymous binder: the substrate half,
+    // `v2.std.decl_index` `export_signature_declared_facts`, passes these edges through
+    // `v2.std.arrow_signature` `declared_signature`, the one constructor of a domain and its order.
+    let mut binders = Vec::new();
     for p in item.params.iter() {
         if param_is_type_param(p, si) {
             continue;
         }
+        let name = param_node_name_at(p.clone(), si.clone());
         let ty = param_node_type_expr(p.clone());
-        edges.push(edge_positional(ctx, marshal_type_expr_ref(ctx, si, &ty)?));
+        binders.push(edge_named(ctx, &name, marshal_type_expr_ref(ctx, si, &ty)?));
     }
+    let domain = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        binders,
+    );
     let ret_val = item
         .inferred
         .as_ref()
@@ -1937,11 +1950,10 @@ fn marshal_fn_export_signature_node(
         .map(|ret| marshal_type_expr_ref(ctx, si, &ret))
         .transpose()?
         .unwrap_or_else(|| unit_type_node(ctx));
-    edges.push(edge_positional(ctx, ret_val));
     Ok(node_record(
         ctx,
         node_kind_type_node(ctx, nullary_connective_variant(ctx, "Arrow")),
-        edges,
+        vec![edge_positional(ctx, domain), edge_positional(ctx, ret_val)],
     ))
 }
 
@@ -2451,7 +2463,6 @@ mod parse_only_uppercase_variant_regression_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
     use crate::v1_std_core::{
@@ -2464,8 +2475,8 @@ mod parse_only_uppercase_variant_regression_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -2659,7 +2670,7 @@ mod parse_only_uppercase_variant_regression_tests {
 
     fn first_child_target(ctx: &InterpContext, skel: &Value) -> Option<Value> {
         match field(ctx, skel, "children") {
-            Some(Value::List(items)) => items
+            Some(Value::List(ref items)) => items
                 .iter()
                 .next()
                 .and_then(|edge| field(ctx, edge, "target")),

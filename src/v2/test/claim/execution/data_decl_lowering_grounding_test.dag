@@ -5,6 +5,7 @@ import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarati
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.compiler.infer {
   DerivedGrounding,
   GroundingNotDerived,
@@ -366,14 +367,7 @@ test fn accepted_literal_payload_is_typed_by_the_integer_authority_holds() -> Bo
 // The empty-domain rule is positional. The same childless Conj as an Arrow's CODOMAIN is not the
 // product of any parameters and stays frontier.
 fn ddl_arrow_with(domain: Node, codomain: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: domain },
-      Edge { label: Positional, target: codomain }
-    ],
-    occurrence_id: OccurrenceSynthetic
-  }
+  anonymous_signature_arrow(domain_types: [domain], codomain: codomain, source: domain)
 }
 
 test fn childless_conj_in_codomain_stays_on_the_frontier_holds() -> Bool {

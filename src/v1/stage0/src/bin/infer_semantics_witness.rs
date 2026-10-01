@@ -741,6 +741,7 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -762,6 +763,7 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -780,6 +782,7 @@ fn optional_pattern_lookup_rejects_some_variant() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -799,6 +802,7 @@ fn optional_pattern_lookup_resolves_present_variant() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Present".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -899,6 +903,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Present".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         1,
@@ -929,6 +934,7 @@ fn optional_present_absent_patterns_keep_canonical_names() {
             field_bindings: Rc::new(vec![]),
         }),
         subject.clone(),
+        zero_span(),
         scope.clone(),
     );
     let absent = v1_compiler::v1_compiler_infer::annotate_pattern_parent_enums(
@@ -938,6 +944,7 @@ fn optional_present_absent_patterns_keep_canonical_names() {
             field_bindings: Rc::new(vec![]),
         }),
         subject,
+        zero_span(),
         scope,
     );
 
@@ -988,6 +995,7 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
     let present_lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject.clone(),
         "Present".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         1,
@@ -1002,6 +1010,7 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
     let absent_lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Absent".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -1024,6 +1033,7 @@ fn optional_applied_generic_lookup_rejects_wrong_variant_name() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -1047,6 +1057,7 @@ fn non_optional_applied_generic_missing_variant_still_fails() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Present".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -1081,6 +1092,7 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
             field_bindings: Rc::new(vec![]),
         }),
         subject,
+        zero_span(),
         scope,
     );
 
@@ -1295,6 +1307,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         name: "User".to_string(),
         resolved: leaf_node("User".to_string()),
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        alias_rhs: None,
     });
     let env = Rc::new(TypeEnv {
         module_path: "".to_string(),
@@ -2035,6 +2048,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         name: "Box".to_string(),
         resolved: box_decl.clone(),
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        alias_rhs: None,
     });
     let env = Rc::new(TypeEnv {
         module_path: "".to_string(),
@@ -2131,6 +2145,7 @@ fn call_target_agreeing_scope_maps_are_locally_bound() {
             name: "real_callee".to_string(),
             resolved: leaf_node("Int".to_string()),
             provenance: Rc::new(v1_compiler::std_induction::SubValueRelation::PreservedValue),
+            alias_rhs: None,
         }),
     );
     let scope = Rc::new(InferScope {
