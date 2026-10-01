@@ -21,10 +21,11 @@ import std.algebra { Cons, Empty, FreeMonoid }
 // service module; the full normalize route, whose product reaches resolution, eval and emission,
 // refuses it, so no consumer can act on a set-aside realization. The fixture is the smallest service
 // carrying one member of each kind in dag/extdeps/access/posix_effective_principal_read_op.dag, the
-// first gen-two census wall: that file itself is admitted by the census run over the real tree, not
+// first gen-two census wall (its transport kind is one of the closed literal terminals rest | shell |
+// file | local since gunbc#12757, so the fixture names `shell`): that file itself is admitted by the census run over the real tree, not
 // here, where parsing all of it would cost the claim its enrolment budget (DESIGN section 3).
 
-data posix_service_source: String = "module m\nservice a.P {\n  operation R {\n    output { o: Int = 1 }\n    readonly\n    transport t {}\n  }\n}\n"
+data posix_service_source: String = "module m\nservice a.P {\n  operation R {\n    output { o: Int = 1 }\n    readonly\n    transport shell {}\n  }\n}\n"
 
 // Two services sharing a prefix in one module, the dag/extdeps/shell.dag shape: each is
 // ONE label spelled as declared, so they stay distinct at the module.
@@ -150,11 +151,11 @@ fn posix_service_stream() -> TokenStream {
     Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 63, end: 64 },
     Token { class: ^dag_token_ident, lexeme: "readonly", file: ^service_lowering_probe, start: 69, end: 77 },
     Token { class: ^dag_token_ident, lexeme: "transport", file: ^service_lowering_probe, start: 82, end: 91 },
-    Token { class: ^dag_token_ident, lexeme: "t", file: ^service_lowering_probe, start: 92, end: 93 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 94, end: 95 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 95, end: 96 },
+    Token { class: ^dag_token_ident, lexeme: "shell", file: ^service_lowering_probe, start: 92, end: 97 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 98, end: 99 },
     Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 99, end: 100 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 101, end: 102 }
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 103, end: 104 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 105, end: 106 }
   ])
 }
 
