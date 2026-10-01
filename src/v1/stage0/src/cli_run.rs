@@ -8559,6 +8559,20 @@ pub fn compile_entry_emission(
 /// the returned files, renders diagnostics and picks an exit code -- those are boundary
 /// concerns, not a second pipeline.
 pub fn compile_emission(request: &CompileRequest) -> CompileRun {
+    compile_emission_over(request, IndexResidency::SharedProcessPool)
+}
+
+/// WHO HOLDS THE INDEX A COMPILE RESOLVES OVER. The run's own pool lives in the thread's shared
+/// memo, one per precedence slot (`try_process_shared_index_for_pool`, which refuses a second).
+/// A compile over a different pool whose index nothing after it reads -- a fixture root compiled
+/// once by a control -- owns its index for the length of the compile instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexResidency {
+    SharedProcessPool,
+    OwnedByThisCompile,
+}
+
+pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
     let source_roots: &[String] = &request.source_roots;
     let primary_precedence = request.primary_precedence;
     let subject_label = request.subject.label();
@@ -8747,7 +8761,23 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // compiling N entries reconciled the shared prefix N times over closures that overlap almost
     // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
     // rather than a budget fact, and for what is NOT changed by the routing.
-    let index: Rc<MultiEntryIndex> = if primary_precedence {
+    let index: Rc<MultiEntryIndex> = if residency == IndexResidency::OwnedByThisCompile {
+        let built = if primary_precedence {
+            try_build_module_index_primary_precedence(source_roots)
+        } else {
+            try_build_module_index(source_roots)
+        };
+        match built {
+            Ok(module_index) => Rc::new(new_multi_entry_index_shell(
+                module_index,
+                source_roots,
+                None,
+            )),
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "source-discovery", cause)
+            }
+        }
+    } else if primary_precedence {
         match try_process_shared_index_for_pool(source_roots, true) {
             Ok(idx) => idx,
             Err(cause) => {
@@ -10474,27 +10504,34 @@ mod closure_edge_demand_tests {
             .unwrap();
     }
 
-    /// AN EVICTED SHARED INDEX IS NOT REBUILT. Roots A, then roots B (which evicts A from the
-    /// thread's slot), then A again: the third demand refuses where it happens, naming both root
-    /// sets, instead of indexing A a second time. The positive control: asking for A twice with
-    /// nothing in between returns the same index.
+    /// A SECOND POOL REFUSES AT BUILD, naming both root sets and the demanding site, and the
+    /// resident pool survives it: the residency control still reads one pool and the first
+    /// roots are still served from the memo. Red before the build-site refusal (the second
+    /// demand built and returned a second index); green with it.
     #[test]
-    fn a_shared_index_evicted_by_other_roots_refuses_to_rebuild() {
-        let a = Fixture::new(&[("m.dag", "module evict_a\nfn f() -> Int { 1 }\n")]);
-        let b = Fixture::new(&[("m.dag", "module evict_b\nfn f() -> Int { 1 }\n")]);
+    fn a_second_pool_in_one_slot_refuses_at_build() {
+        let a = Fixture::new(&[("m.dag", "module res_a\nfn f() -> Int { 1 }\n")]);
+        let b = Fixture::new(&[("m.dag", "module res_b\nfn f() -> Int { 1 }\n")]);
         let roots_a = vec![a.0.to_string_lossy().into_owned()];
         let roots_b = vec![b.0.to_string_lossy().into_owned()];
-        let first = try_process_shared_index(&roots_a).unwrap();
-        let again = try_process_shared_index(&roots_a).unwrap();
-        assert!(
-            Rc::ptr_eq(&first, &again),
-            "same roots, nothing between: one index"
-        );
-        try_process_shared_index(&roots_b).unwrap();
-        let Err(err) = try_process_shared_index(&roots_a) else {
-            panic!("rebuilding evicted roots must refuse");
+        let first_a = try_process_shared_index(&roots_a).unwrap();
+        assert_eq!(entry_resolve::shared_index_residency_control(), Ok(1));
+        let err = match try_process_shared_index(&roots_b) {
+            Ok(_) => panic!("a second pool in slot 0 was built"),
+            Err(err) => err,
         };
-        assert!(err.contains("SharedIndexRebuiltAfterEviction"), "{err}");
+        assert!(err.contains("SharedIndexSecondResidentPool"), "{err}");
+        for roots in [&roots_a, &roots_b] {
+            let canonical = entry_resolve::canonical_shared_index_roots(roots);
+            assert!(
+                err.contains(&format!("{canonical:?}")),
+                "names {canonical:?}: {err}"
+            );
+        }
+        assert!(err.contains(file!()), "names the demanding site: {err}");
+        assert_eq!(entry_resolve::shared_index_residency_control(), Ok(1));
+        let again_a = try_process_shared_index(&roots_a).unwrap();
+        assert!(Rc::ptr_eq(&first_a, &again_a), "the resident pool is kept");
     }
 
     /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
@@ -12362,7 +12399,7 @@ where
 #[cfg(test)]
 pub(crate) fn reset_process_shared_index_for_test() {
     PROCESS_RESOLVE_INDEX.with(|s| {
-        *s.borrow_mut() = [None, None];
+        *s.borrow_mut() = Default::default();
     });
     PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
 }
@@ -42800,6 +42837,7 @@ pub fn prepare_repository_from_corpus(
     } = subject;
     let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
     let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
+    let graph = prepared_graph_without_typecheck_caches(&graph);
     Ok((
         PreparedRepository {
             graph,
@@ -42812,6 +42850,46 @@ pub fn prepare_repository_from_corpus(
         },
         inventory,
     ))
+}
+
+/// THE PREPARED GRAPH KEEPS WHAT EVALUATION READS, NOT WHAT TYPECHECKING NEEDED ON THE WAY.
+///
+/// `TypedModule.type_env_cache` is a typecheck-time carrier: `union_parent_type_env_caches` builds
+/// each module's cache as the union of its imports' caches, so its one consumer is the typecheck
+/// of a LATER importer, and every module materializes the union of its ancestry -- size grows as
+/// modules x visible names. The strict resolve that produced this graph has typechecked every
+/// importer it will ever have (the prepared subject is closed and never re-resolved), and no
+/// reader of a `PreparedRepository` touches the cache: the claim scopes, the interpreter, the
+/// declarer index and discovery read `module`, `items`, `item_registry`, `type_env` and
+/// `func_env`. So every module's cache is kept past its demanded lifetime (DESIGN §2). Its SIZE is
+/// small, because the maps are persistent HAMTs whose merge shares nodes; the leave-one-out reading
+/// (//gunbc/instruments:typed-graph-exclusive-bytes, `type_env_cache`) re-derives what it holds. It
+/// is fixed because it is a lifetime defect (DESIGN §6, bare minimum), not because it is the floor's
+/// dominant term.
+///
+/// So the repository holds a projection with the cache emptied. The resolve is a fresh compile
+/// with no process-level memo, so the original modules drop here and their caches with them.
+/// Every other field is the same `Rc`, so no evaluated value changes.
+fn prepared_graph_without_typecheck_caches(
+    graph: &Rc<v1_compiler_compile::ResolvedGraph>,
+) -> Rc<v1_compiler_compile::ResolvedGraph> {
+    let empty = crate::v1_compiler_infer_env::empty_type_env_cache();
+    let modules: Vec<Rc<crate::v1_compiler_infer_items::TypedModule>> = graph
+        .modules
+        .iter()
+        .map(|m| {
+            Rc::new(crate::v1_compiler_infer_items::TypedModule {
+                type_env_cache: empty.clone(),
+                ..(**m).clone()
+            })
+        })
+        .collect();
+    Rc::new(v1_compiler_compile::ResolvedGraph {
+        modules: Rc::new(modules.into()),
+        item_registry: graph.item_registry.clone(),
+        diagnostics: graph.diagnostics.clone(),
+        item_leaf_owner_modules: graph.item_leaf_owner_modules.clone(),
+    })
 }
 
 /// THE EXACT SCOPE ONE CLAIM EVALUATES IN — a projection of the one preparation, never a
@@ -46226,12 +46304,15 @@ pub fn run_regen_round_cost(
     source_roots: &[String],
     affected_scope: bool,
 ) -> Result<RegenRoundCostOutcome, String> {
-    required_regen_host::run_regen_round_cost(
+    let outcome = required_regen_host::run_regen_round_cost(
         candidate_dir_rel,
         receipt_rel,
         source_roots,
         affected_scope,
-    )
+    )?;
+    entry_resolve::shared_index_residency_control()
+        .map_err(|e| format!("regen-round-cost refused: {e}"))?;
+    Ok(outcome)
 }
 
 /// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`
