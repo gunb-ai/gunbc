@@ -1,7 +1,7 @@
 module v2.std.node
 
 import std.algebra { Cons, Empty, list_snoc_item }
-import v2.std.optional { Present }
+import v2.std.optional { Absent, Optional, Present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceAllocatorSnapshot,
@@ -130,6 +130,18 @@ type EdgeLabel
 type StructuralEdgeLabel
   = CoreMarker { marker: CoreEdgeLabel }
   | ProductionEdge { language: Symbol, edge: Symbol }
+  | BinderReferenceSite { site: BinderSite }
+
+// A VALUE BINDER'S SITE WITHIN ITS NAMED DECLARATION: the authored name and its ordinal among the
+// binders of that name inside the declaration, in pre-order source position, shadowing included --
+// the keying relation docs/plans/keying-relation-design.md declares (binder site within a named
+// declaration). v2.compiler.resolve mints it; nothing parses it out of a Symbol, and a target spells
+// the binder by `name` alone. It is stable under any edit OUTSIDE the declaration, which a
+// parse-order occurrence id is not, so it may reach content_hash and the claim-cache key.
+type BinderSite {
+  name: Symbol
+  ordinal: Int
+}
 
 type CoreEdgeLabel
   = ArrowBodyEdge
@@ -151,7 +163,6 @@ type CoreEdgeLabel
   | ConstructTagEdge
   | ConstructTagElidedEdge
   | ParameterReferenceEdge
-  | BinderReferenceEdge
   | ArrowEffectClaimsEdge
   | ArrowExecutionModeClaimEdge
   | MapLiteralEntryEdge
@@ -175,6 +186,7 @@ fn edge_is_core(e: Edge, marker: CoreEdgeLabel) -> Bool {
   match e.label {
     StructuralLabel { label: CoreMarker { marker: m } } => m == marker
     StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => false
+    StructuralLabel { label: BinderReferenceSite { site: _ } } => false
     Authored { name: _ } => false
     Positional => false
   }
@@ -184,6 +196,7 @@ fn edge_is_production(e: Edge, language: Symbol, edge: Symbol) -> Bool {
   match e.label {
     StructuralLabel { label: ProductionEdge { language: l, edge: p } } => (l == language) && (p == edge)
     StructuralLabel { label: CoreMarker { marker: _ } } => false
+    StructuralLabel { label: BinderReferenceSite { site: _ } } => false
     Authored { name: _ } => false
     Positional => false
   }
@@ -211,7 +224,6 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     ConstructTagEdge,
     ConstructTagElidedEdge,
     ParameterReferenceEdge,
-    BinderReferenceEdge,
     ArrowEffectClaimsEdge,
     ArrowExecutionModeClaimEdge,
     MapLiteralEntryEdge,
@@ -242,7 +254,6 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ConstructTagEdge => ^core_construct_tag_edge
     ConstructTagElidedEdge => ^core_construct_tag_elided_edge
     ParameterReferenceEdge => ^core_parameter_reference_edge
-    BinderReferenceEdge => ^core_binder_reference_edge
     ArrowEffectClaimsEdge => ^core_arrow_effect_claims_edge
     ArrowExecutionModeClaimEdge => ^core_arrow_execution_mode_claim_edge
     MapLiteralEntryEdge => ^core_map_literal_entry_edge
@@ -1020,11 +1031,11 @@ fn symbol_lexeme(sym: Symbol) -> String {
 // target spells its leaf as a local rather than a module-scoped name. A distinct core arm keeps the
 // two apart without a shape test, and no authored name can carry either.
 
-// A REFERENCE TO A LOCAL VALUE BINDER IS THE THIRD CARRIER, under the core marker
-// BinderReferenceEdge: a let binder, a match-arm pattern binder or a closure parameter -- every name
-// v2.compiler.resolve finds in a LexicalFrame (resolve_frame_bound_reference). Its spine is the one
-// segment of the binder's canonical symbol, the identity resolve already gives the binder; the kind,
-// not the spine, is what stops a reader taking it for a declaration path. Before this arm resolve
+// A REFERENCE TO A LOCAL VALUE BINDER IS THE THIRD CARRIER, a one-edge Conj whose label is the
+// structural arm BinderReferenceSite { site } and whose target is the childless synthetic Conj -- a
+// let binder, a match-arm pattern binder or a closure parameter, every name v2.compiler.resolve finds
+// in a LexicalFrame (resolve_frame_bound_reference). The BinderSite is the binder's only identity:
+// the target carries no name, so no reader has two sources to disagree. Before this arm resolve
 // returned the bare canonical atom, which no later stage could tell from any other atom, so each
 // re-derived local scope by its own rule (the emitter only knew the arrow's parameters).
 
@@ -1035,14 +1046,6 @@ type ResolvedReferenceKind
   | ParameterReferenceKind
   | BinderReferenceKind
 
-fn resolved_reference_kind_marker(kind: ResolvedReferenceKind) -> CoreEdgeLabel {
-  match kind {
-    DeclarationReferenceKind => DeclarationReferenceEdge
-    ParameterReferenceKind => ParameterReferenceEdge
-    BinderReferenceKind => BinderReferenceEdge
-  }
-}
-
 type ResolvedReferenceMarking
   = MarkedReference { kind: ResolvedReferenceKind }
   | NotMarkedReference
@@ -1051,7 +1054,7 @@ fn resolved_reference_kind_of_label(label: EdgeLabel) -> ResolvedReferenceMarkin
   match label {
     StructuralLabel { label: CoreMarker { marker: DeclarationReferenceEdge } } => MarkedReference { kind: DeclarationReferenceKind }
     StructuralLabel { label: CoreMarker { marker: ParameterReferenceEdge } } => MarkedReference { kind: ParameterReferenceKind }
-    StructuralLabel { label: CoreMarker { marker: BinderReferenceEdge } } => MarkedReference { kind: BinderReferenceKind }
+    StructuralLabel { label: BinderReferenceSite { site: _ } } => MarkedReference { kind: BinderReferenceKind }
     StructuralLabel { label: _ } => NotMarkedReference
     Authored { name: _ } => NotMarkedReference
     Positional => NotMarkedReference
@@ -1094,6 +1097,31 @@ fn declaration_reference_body_marked(target: Node) -> Bool {
     MarkedReference { kind: DeclarationReferenceKind } => true
     _ => false
   }
+}
+
+// THE BINDER SITE A REFERENCE NAMES, read from its label alone; Absent for anything that is not a
+// binder reference.
+fn binder_reference_site_optional(node: Node) -> Optional<BinderSite> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if count(node.children) == 1 {
+        fold(node.children, init: optional_absent_binder_site(), f: fn(acc, e) {
+          match e.label {
+            StructuralLabel { label: BinderReferenceSite { site: site } } => Present { value: site }
+            StructuralLabel { label: _ } => acc
+            Authored { name: _ } => acc
+            Positional => acc
+          }
+        })
+      } else {
+        optional_absent_binder_site()
+      }
+    _ => optional_absent_binder_site()
+  }
+}
+
+fn optional_absent_binder_site() -> Optional<BinderSite> {
+  Absent
 }
 
 fn resolved_reference_body_kind(target: Node) -> ResolvedReferenceMarking {
@@ -1498,6 +1526,7 @@ fn label_sort_key(label: EdgeLabel) -> Symbol {
     Authored { name: sym } => sym
     StructuralLabel { label: CoreMarker { marker: m } } => core_edge_label_canonical_symbol(marker: m)
     StructuralLabel { label: ProductionEdge { language: _, edge: p } } => p
+    StructuralLabel { label: BinderReferenceSite { site: _ } } => ^canonical_tag_binder_reference_site_edge
     Positional => ^canonical_tag_positional_edge
   }
 }
@@ -1735,7 +1764,22 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Fnv1a64Structural {
         left: content_hash_atom(value: ^canonical_tag_production_edge),
         right: content_hash_combine_structural(left: content_hash_atom(value: l), right: content_hash_atom(value: p))
       )
+    StructuralLabel { label: BinderReferenceSite { site: site } } =>
+      content_hash_combine_structural(
+        left: content_hash_atom(value: ^canonical_tag_binder_reference_site_edge),
+        right: content_hash_combine_structural(left: content_hash_atom(value: site.name), right: binder_site_ordinal_hash(ordinal: site.ordinal))
+      )
     Positional => content_hash_atom(value: ^canonical_tag_positional_edge)
+  }
+}
+
+// An ordinal hashed as a chain of that many combines over one tag: injective in the ordinal and free
+// of any text rendering (v2.std.integer, which owns the decimal rendering, imports this module).
+fn binder_site_ordinal_hash(ordinal: Int) -> Fnv1a64Structural {
+  if ordinal <= 0 {
+    content_hash_atom(value: ^canonical_tag_binder_site_ordinal)
+  } else {
+    content_hash_combine_structural(left: content_hash_atom(value: ^canonical_tag_binder_site_ordinal), right: binder_site_ordinal_hash(ordinal: ordinal - 1))
   }
 }
 

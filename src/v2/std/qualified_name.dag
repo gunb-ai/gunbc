@@ -27,7 +27,7 @@ import v2.std.optional {
 }
 import v2.std.logic { Bool }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Authored, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, BinderReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, core_edge_label, StructuralLabel }
+import v2.std.node { Atom, Conj, Edge, EdgeLabel, Authored, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, BinderReferenceKind, BinderReferenceSite, BinderSite, CoreEdgeLabel, DeclarationReferenceEdge, ParameterReferenceEdge, binder_reference_site_optional, ResolvedReferenceKind, fold_node, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, core_edge_label, StructuralLabel }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -323,28 +323,37 @@ fn qualified_name_spine_of_atoms(atoms: FreeMonoid<Node>, occurrence_id: NodeOcc
 // The occurrence stays on the marker node alone, which is the node that stands where the reference
 // stood; the spine under it is synthetic, so one source occurrence is carried by exactly one node.
 fn declaration_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
-  resolved_reference_node_of_kind(kind: DeclarationReferenceKind, qn: qn, occurrence_id: occurrence_id)
+  resolved_reference_node_of_kind(marker: DeclarationReferenceEdge, qn: qn, occurrence_id: occurrence_id)
 }
 
 // THE ONE PRODUCER OF A PARAMETER REFERENCE (consumed by v2.compiler.resolve
 // resolve_frame_bound_reference, which verifies the path against the symbol index first).
 fn parameter_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
-  resolved_reference_node_of_kind(kind: ParameterReferenceKind, qn: qn, occurrence_id: occurrence_id)
+  resolved_reference_node_of_kind(marker: ParameterReferenceEdge, qn: qn, occurrence_id: occurrence_id)
 }
 
 // THE ONE PRODUCER OF A LOCAL BINDER REFERENCE (consumed by v2.compiler.resolve
-// resolve_frame_bound_reference for a LexicalFrame hit): the binder's canonical symbol as a
-// one-segment spine under BinderReferenceEdge.
-fn binder_reference_node(binder: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Node {
-  resolved_reference_node_of_kind(kind: BinderReferenceKind, qn: Cons { head: binder, tail: Empty }, occurrence_id: occurrence_id)
-}
-
-fn resolved_reference_node_of_kind(kind: ResolvedReferenceKind, qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
+// resolve_frame_bound_reference for a LexicalFrame hit): the site under the BinderReferenceSite label,
+// over the childless synthetic Conj, so the site is the binder's only identity.
+fn binder_reference_node(site: BinderSite, occurrence_id: NodeOccurrenceIdentity) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: core_edge_label(marker: resolved_reference_kind_marker(kind: kind)),
+        label: StructuralLabel { label: BinderReferenceSite { site: site } },
+        target: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+      },
+    ],
+    occurrence_id: occurrence_id
+  )
+}
+
+fn resolved_reference_node_of_kind(marker: CoreEdgeLabel, qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: core_edge_label(marker: marker),
         target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic)
       },
     ],
@@ -378,11 +387,11 @@ fn parameter_reference_path_optional(node: Node) -> Optional<QualifiedName> {
   resolved_reference_path_optional(node: node, kind: ParameterReferenceKind)
 }
 
-// A BINDER REFERENCE READS AS ITS BINDER SYMBOL OR AS NOTHING; a declaration or parameter reference
-// answers Absent here, and a binder reference answers Absent to both of their readers.
+// A BINDER REFERENCE READS AS ITS SITE (v2.std.node binder_reference_site_optional) or as nothing;
+// the symbol it is spelled by is the site's authored name, never parsed out of anything.
 fn binder_reference_symbol_optional(node: Node) -> Optional<Symbol> {
-  match resolved_reference_path_optional(node: node, kind: BinderReferenceKind) {
-    Present { value: qn } => qualified_name_last_segment(qn: qn)
+  match binder_reference_site_optional(node: node) {
+    Present { value: site } => Present { value: site.name }
     Absent => optional_absent()
   }
 }

@@ -210,7 +210,7 @@ import extdeps.languages.json.parse {
 }
 import v2.std.node {
   EdgeLabel,
-  Authored, StructuralLabel, CoreMarker, ProductionEdge, core_edge_label_canonical_symbol,
+  Authored, StructuralLabel, CoreMarker, ProductionEdge, BinderReferenceSite, BinderSite, core_edge_label_canonical_symbol,
   Positional,
   NodeKind,
   TypeNode,
@@ -268,6 +268,7 @@ type NodeEntryMemberContext
   | NodeEntryNamedEdgeMembers
   | NodeEntryCoreMarkerEdgeMembers
   | NodeEntryProductionEdgeMembers
+  | NodeEntryBinderSiteEdgeMembers
   | NodeEntryPositionalEdgeMembers
 
 type NodeEntryDecodeRefusal
@@ -555,6 +556,12 @@ fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
         json_kv(key: "label", value: json_string(s: "structural_production")),
         json_kv(key: "language", value: json_string(s: symbol_lexeme(sym: lang))),
         json_kv(key: "edge", value: json_string(s: symbol_lexeme(sym: p))),
+      ]
+    StructuralLabel { label: BinderReferenceSite { site: site } } =>
+      [
+        json_kv(key: "label", value: json_string(s: "structural_binder_site")),
+        json_kv(key: "name", value: json_string(s: symbol_lexeme(sym: site.name))),
+        json_kv(key: "ordinal", value: json_string(s: json_int_lexeme(n: site.ordinal) as String)),
       ]
     Positional => [json_kv(key: "label", value: json_string(s: "positional"))]
   }
@@ -1042,6 +1049,40 @@ fn decode_production_label(edge_value: JsonValue) -> LabelDecode {
   }
 }
 
+// A binder site travels as its authored name and its ordinal (a decimal string, as positions are);
+// an ordinal that does not read as a non-negative Int refuses, never defaults.
+fn decode_binder_site_label(edge_value: JsonValue) -> LabelDecode {
+  match node_entry_member_set_refusal(
+    v: edge_value,
+    allowed: ["label", "name", "ordinal", "target"],
+    context: NodeEntryBinderSiteEdgeMembers
+  ) {
+    Present { value: c } => LabelDecodeFailed { cause: c }
+    Absent =>
+      match read_string_member(v: edge_value, key: "name") {
+        MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
+        MemberString { value: name } =>
+          match read_string_member(v: edge_value, key: "ordinal") {
+            MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
+            MemberString { value: ordinal_text } =>
+              match parse_int(s: ordinal_text) {
+                Present { value: ordinal } =>
+                  if ordinal < 0 {
+                    LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "ordinal" } } }
+                  } else {
+                    LabelDecoded {
+                      label: StructuralLabel { label: BinderReferenceSite { site: BinderSite { name: symbol_intern_lexeme(lexeme: name), ordinal: ordinal } } }
+                    }
+                  }
+                Absent => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "ordinal" } } }
+              }
+            _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "ordinal" } } }
+          }
+        _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
+      }
+  }
+}
+
 fn decode_positional_label(edge_value: JsonValue) -> LabelDecode {
   match node_entry_member_set_refusal(
     v: edge_value,
@@ -1063,6 +1104,8 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
         decode_core_marker_label(edge_value: edge_value)
       } else if tag == "structural_production" {
         decode_production_label(edge_value: edge_value)
+      } else if tag == "structural_binder_site" {
+        decode_binder_site_label(edge_value: edge_value)
       } else if tag == "positional" {
         decode_positional_label(edge_value: edge_value)
       } else {
