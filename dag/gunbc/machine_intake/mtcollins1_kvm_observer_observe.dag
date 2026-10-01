@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.string_type { String }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
-import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.process { ExitSuccess, ExitFailure, ProcessExit, exit_failure }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.actions_environment { github_run_id_variable_name }
@@ -24,7 +24,8 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverRecord, KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted,
   KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission,
   KvmStillHashed, KvmTeardownRecorded, KvmTeardownNotNeeded, KvmTerminalStillAnswered,
-  KvmSessionReleased, KvmBrowserClosed, kvm_session_release_of, kvm_browser_close_of,
+  KvmSessionRelease, KvmSessionReleased, KvmSessionNoSession, KvmBrowserClose, KvmBrowserClosed, KvmBrowserNotLaunched, kvm_session_release_of, kvm_browser_close_of,
+  KvmJournalRead, KvmJournalText, KvmJournalAbsent, KvmJournalUnread, kvm_journal_read_at, kvm_journal_events_of, kvm_last_result,
   mtcollins1_kvm_observer_start, mtcollins1_kvm_observer_finish, mtcollins1_kvm_observer_dir,
   mtcollins1_bmc_firmware, mtcollins1_kvm_still_allowance,
   kvm_observer_record_text,
@@ -134,7 +135,13 @@ fn kvm_probe_conclude(rec: KvmObserverRecord, verdict: KvmProbeVerdict) -> Proce
   }
 }
 
-fn mtcollins1_kvm_observer_observe_held(username: NonEmptyStr, password_file: NonEmptyStr, run_id: NonEmptyStr) -> ProcessExit {
+// WHAT THE HELD PROBE LEAVES: its exit, and the record its seat decision is read from.
+type KvmProbeHeldRun {
+  outcome: ProcessExit
+  record: KvmObserverRecord
+}
+
+fn mtcollins1_kvm_observer_observe_held(username: NonEmptyStr, password_file: NonEmptyStr, run_id: NonEmptyStr) -> KvmProbeHeldRun {
   let attempt = mtcollins1_kvm_observer_probe_attempt(run_id: run_id)
   let start = mtcollins1_kvm_observer_start(
     firmware: mtcollins1_bmc_firmware,
@@ -148,7 +155,7 @@ fn mtcollins1_kvm_observer_observe_held(username: NonEmptyStr, password_file: No
   let established = match admission { KvmHandoffAdmitted { session: _ } => true  KvmHandoffRefused { cause: _ } => false }
   let admission_text = match admission { KvmHandoffAdmitted { session: s } => concat("established, web session ", s)  KvmHandoffRefused { cause: c } => c }
   let rec = mtcollins1_kvm_observer_finish(start: start, attempt: attempt, terminal_order: 1)
-  kvm_probe_conclude(rec: rec, verdict: kvm_probe_verdict(admission: admission_text, established: established, rec: rec))
+  KvmProbeHeldRun { outcome: kvm_probe_conclude(rec: rec, verdict: kvm_probe_verdict(admission: admission_text, established: established, rec: rec)), record: rec }
 }
 
 // REFUSALS BEFORE THE FIRST REQUEST, EACH NAMING WHAT IS MISSING: off srv1 (the hold store's host),
@@ -175,22 +182,67 @@ fn mtcollins1_kvm_observer_observe_wet() -> ProcessExit
         FanCredentialPathReady { path: p } =>
           match mtcollins1_kvm_observer_acquire_unit_hold(run_id: run_id as NonEmptyStr) {
             UnitHoldRefused { reason: r } => exit_failure(reason: concat("mtcollins1 kvm observer: ", r as String))
-            UnitHeld { proof: proof } => unit_hold_release(proof: proof, outcome: mtcollins1_kvm_observer_observe_held(username: username, password_file: p, run_id: run_id as NonEmptyStr))
+            UnitHeld { proof: proof } => {
+              let run = mtcollins1_kvm_observer_observe_held(username: username, password_file: p, run_id: run_id as NonEmptyStr)
+              match kvm_probe_seat_hold_gap(rec: run.record) {
+                Absent => unit_hold_release(proof: proof, outcome: run.outcome)
+                Present { value: gap } => exit_failure(reason: kvm_probe_hold_kept_text(gap: gap, outcome: run.outcome))
+              }
+            }
           }
       }
   }
 }
 
-// WHETHER THE OBSERVER PROCESS THIS RUN STARTED IS GONE, by the release's arm: released or already
-// exited; no record at all (the probe stopped before launching); or a recorded pid now naming another
-// process's start time (ours exited and the pid was reused). A failed or unresolved release, or a record
-// that cannot be read or parsed, is not let go.
-fn kvm_probe_process_let_go(process: OwnedRelease) -> Bool {
-  match process {
+// THE UNIT HOLD IS FREED ONLY OVER A SEAT OBSERVED LET GO (side-chat review, blocker 4a). The hold is
+// what keeps a boot from starting while the probe may still own the BMC's one KVM viewer seat, so it is
+// released only when every part of that ownership is observed ended, by its typed word:
+//   - the web session reads `released`, or `no-session` (no login was ever accepted, so none exists);
+//   - the browser reads `closed`, or `no-browser` (none was launched);
+//   - the observer process is observed exited (released, already gone, or its pid now names another
+//     process), or was never recorded because the observer never launched.
+// `login-unobserved` (a login may have been accepted), any failed, http- or unrecognised word, an
+// unresolved process or an unreadable journal KEEPS the hold and says why; the BMC's own session
+// timeout frees the seat, and the hold is then cleared by the operator or, once it lands, by
+// observed-dead recovery. Absent is "let go"; Present names the first part not observed ended.
+fn kvm_probe_seat_parts_gap(session: KvmSessionRelease, browser: KvmBrowserClose, process: OwnedRelease, launched: Bool) -> NonEmptyStr? {
+  let session_ended = match session { KvmSessionReleased => true  KvmSessionNoSession => true  _ => false }
+  let browser_ended = match browser { KvmBrowserClosed => true  KvmBrowserNotLaunched => true  _ => false }
+  let process_ended = match process {
     OwnedReleased { pid: _ } => true
     OwnedAlreadyGone { pid: _ } => true
-    OwnedReleaseNotOwned { standing: s } => match s { OwnedNotRecorded { detail: _ } => true  OwnedForeign { pid: _, observed_start: _ } => true  _ => false }
+    OwnedReleaseNotOwned { standing: s } => match s { OwnedForeign { pid: _, observed_start: _ } => true  OwnedNotRecorded { detail: _ } => !launched  _ => false }
     _ => false
+  }
+  if !session_ended { Present { value: "the web session was not observed released" as NonEmptyStr } }
+  else if !browser_ended { Present { value: "the browser was not observed closed" as NonEmptyStr } }
+  else if !process_ended { Present { value: concat("the observer process was not observed exited: ", owned_release_text(r: process)) as NonEmptyStr } }
+  else { none }
+}
+
+fn kvm_probe_seat_hold_gap(rec: KvmObserverRecord) -> NonEmptyStr? {
+  match rec.teardown {
+    KvmTeardownNotNeeded { reason: _ } => none
+    KvmTeardownRecorded { terminal: _, snapshot: _, requested_at: _, stopped_seen: _, session_release: sr, browser_close: bc, process: p } =>
+      kvm_probe_seat_parts_gap(session: kvm_session_release_of(result: sr), browser: kvm_browser_close_of(result: bc), process: p, launched: true)
+  }
+}
+
+fn kvm_probe_hold_kept_text(gap: NonEmptyStr, outcome: ProcessExit) -> String {
+  join(["mtcollins1 kvm observer: unit hold KEPT, because ", gap as String, "; the probe's own outcome was: ", match outcome { ExitSuccess => "success"  ExitFailure { code: _, reason: r } => r }], "")
+}
+
+// THE SAME RULE FROM THE ARTIFACTS ALONE, for the always() step: the journal's last session-release and
+// browser-close words and the owned release it just performed. A journal that cannot be read keeps the
+// hold; no journal and no pid record means the observer never launched.
+fn kvm_probe_seat_gap_from_journal(journal: KvmJournalRead, process: OwnedRelease) -> NonEmptyStr? {
+  match journal {
+    KvmJournalUnread { cause: c } => Present { value: concat("the observer journal could not be read: ", c) as NonEmptyStr }
+    KvmJournalAbsent => kvm_probe_seat_parts_gap(session: KvmSessionNoSession, browser: KvmBrowserNotLaunched, process: process, launched: false)
+    KvmJournalText { text: _ } => {
+      let events = kvm_journal_events_of(read: journal)
+      kvm_probe_seat_parts_gap(session: kvm_session_release_of(result: kvm_last_result(events: events, session: true)), browser: kvm_browser_close_of(result: kvm_last_result(events: events, session: false)), process: process, launched: true)
+    }
   }
 }
 
@@ -209,13 +261,16 @@ fn mtcollins1_kvm_observer_release_wet() -> ProcessExit
   if run_id == "" {
     return exit_failure(reason: concat(concat("mtcollins1 kvm observer release: ", github_run_id_variable_name as String), " is unset or empty, so this run cannot name the hold it may release"))
   }
-  let pid_path = concat(mtcollins1_kvm_observer_dir(attempt: mtcollins1_kvm_observer_probe_attempt(run_id: run_id as NonEmptyStr)), "/observer.pid")
-  let process = owned_process_release(pid_path: pid_path)
+  let dir = mtcollins1_kvm_observer_dir(attempt: mtcollins1_kvm_observer_probe_attempt(run_id: run_id as NonEmptyStr))
+  let process = owned_process_release(pid_path: concat(dir, "/observer.pid"))
+  match kvm_probe_seat_gap_from_journal(journal: kvm_journal_read_at(dir: dir), process: process) {
+    Present { value: gap } => return exit_failure(reason: join(["mtcollins1 kvm observer release: process ", owned_release_text(r: process), "; unit hold KEPT, because ", gap as String], ""))
+    Absent => {}
+  }
   let hold = mtcollins1_kvm_observer_release_unit_hold(run_id: run_id as NonEmptyStr)
   let line = join(["mtcollins1 kvm observer release: process ", owned_release_text(r: process), "; unit hold ", probe_hold_release_outcome_text(o: hold)], "")
-  let process_let_go = kvm_probe_process_let_go(process: process)
   match hold {
     ProbeHoldUnreleased { cause: _ } => exit_failure(reason: line)
-    _ => if process_let_go { ExitSuccess } else { exit_failure(reason: line) }
+    _ => ExitSuccess
   }
 }
