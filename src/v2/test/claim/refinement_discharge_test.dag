@@ -39,7 +39,7 @@ fn rdt_application(body: Node) -> Node {
             kind: TypeNode { connective: Conj },
             children: [Edge { label: Named { name: ^rdt_param_x }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }]
           ),
-          return_type_binding: ^dag_binding_type_bool,
+          return_type_binding: ^bool_node_symbol,
           body: body
         )
       },
