@@ -144,6 +144,13 @@ constructors inventoried in §2. The following are outside this note:
 
    Step 2 starts only after eager-newt-412's facts work lands its last stage, because both rewrite
    infer's copying paths.
+   **Residue admitted to step 2** (quiet-gull-780, 2026-10-01, via clever-newt-773): a generic
+   variant literal with no expected type, such as `Cons { head, tail }` at
+   `gunbc.spark.host_commitment`, is typed as its parent's *unapplied* declaration in
+   `v1.compiler.infer` `infer_record_lit_structural` (`raw_resolved`). Instantiating it from its
+   field values needs an applied-type constructor that carries identity, which is this model's
+   `ParameterBinding` origin. It is left to step 2 rather than added as another spelling-keyed
+   instantiation site.
 3. **Then:** re-key the substitution map by the `TypeParameter` declaration
    `(owner, declaration, name)`, so two owners' parameters spelled alike cannot share a key. This
    is a separate PR, and the first production reader of #12690's field for this population.
