@@ -24,6 +24,7 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   ensured_subject_identity,
   deployment_fabric_storage_steps,
+  deployment_approval_broker_front_door_steps,
   deployment_fabric_storage_serve_endpoint,
   EnsuredPackage,
   EnsuredManagedHostDirectory,
@@ -86,7 +87,8 @@ import extdeps.tailscale.serve {
 }
 import extdeps.exec.command { shell_quote }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
+import gunbc.shell_command_text { shell_privileged_command_text_of_argv, shell_command_text_of_node }
+import gunbc.ci_deploy_sudoers { deploy_sudoers_elevated }
 import gunbc.live_deploy.operations {
   install_directory_command,
   rm_force_command,
@@ -151,7 +153,7 @@ import gunbc.ci_deploy_access {
   deploy_access_job_principal_refused_emit_poison,
   ci_deploy_srv1_access_or_refusal, DeployAccessReady, DeployAccessJobPrincipalRefused,
 }
-import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
+import gunbc.fleet_posix_accounts { DeployRunnerPrincipal, ci_runner_sudo_binary_path, SudoVisudo }
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_shadow_revert_script,
@@ -347,14 +349,31 @@ test fn witness_dependency_ensure_is_idempotent() -> Bool {
     && string_contains(s: tmux, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tmux)))
 }
 
+// THE STAGED-FILE VALIDATION, AS THE INSTALL ITSELF BUILDS IT. The install step is a bash command
+// node built by gunbc.ci_deploy_sudoers deploy_sudoers_elevated over the sudo elevation argv and the
+// fleet's visudo row; this is that same node with the same argv, rendered by the same serializer, so
+// the needle is the producer's own words rather than a hand spelling of them. The hand spelling
+// `sudo -n /usr/sbin/visudo -cf` went stale twice without the step changing meaning: #12602 spelled
+// sudo by its absolute path (extdeps.sudo sudo_program), and #12525 moved the install onto the bash
+// builder, which quotes every literal word. The stage path is a variable word the claim does not name.
+fn witness_sudoers_stage_visudo_check_text() -> String {
+  shell_command_text_of_node(stmt: deploy_sudoers_elevated(command: [ci_runner_sudo_binary_path(b: SudoVisudo) as String, "-cf"], tail: []))
+}
+
+// THE TWO PROBE NEGATIVES THIS CLAIM CARRIED ARE DELETED, NOT RE-SPELLED. They banned
+// `sudo -n /usr/sbin/visudo -V` and `sudo -n -l /usr/bin/tailscale` -- the bootstrap preflight's
+// probes. Under the quoting serializer neither spelling can occur, so both were permanently true and
+// carried nothing. Re-spelling them in the quoted form would be WRONG rather than merely redundant:
+// since #12168 those exact probes are emitted on purpose AFTER the drop-in lands
+// (gunbc.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_stmts). Their ORDER is the
+// safety fact, and test.claim.deploy_mutation_gate_witness owns it; what this claim keeps is that
+// no embedded preflight block exists, by its markers.
 test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
   let sh = witness_apply_script()
   !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
     && !string_contains(s: sh, pattern: "whoami")
-    && !string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
-    && !string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -V >/dev/null")
     && !string_contains(s: sh, pattern: "deploy-access-preflight: PASS")
-    && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -cf")
+    && string_contains(s: sh, pattern: witness_sudoers_stage_visudo_check_text())
     && string_contains(s: sh, pattern: "/etc/sudoers.d/gunbc-deploy")
     && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
 }
@@ -366,18 +385,19 @@ test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
 // per-claim ceiling of 72,300 (required floor run 34927164902), and the program carries nothing else
 // this claim names.
 //
-// THE PREAMBLE IS LITERALLY SHARED, which is what makes the two absence conjuncts hold at this grain
+// THE PREAMBLE IS LITERALLY SHARED, which is what makes the absence conjunct hold at this grain
 // rather than merely cost less: `live_deploy_retract_intent` concatenates
-// `deploy_apply_preamble_steps` -- the same steps the apply fold uses -- so a bootstrap preflight or
-// a tailscale sudo probe creeping back in would appear in exactly the text read here. The retract's
-// own remaining steps are artifact teardowns, which carry neither.
+// `deploy_apply_preamble_steps` -- the same steps the apply fold uses -- so a bootstrap preflight
+// creeping back in would appear in exactly the text read here. The retract's own remaining steps are
+// artifact teardowns, which carry none. (The tailscale sudo-probe negative is gone for the reason
+// witness_apply_emits_no_embedded_preflight_and_only_sudoers states: that probe is now emitted on
+// purpose after the install.)
 test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
   let frame = pipeline_steps_text(steps: deploy_retract_frame_comments(spec: deployment_spec_srv1()))
   let preamble = witness_apply_preamble_text()
   string_contains(s: frame, pattern: "first retract-after-flip may be the dropin install")
     && !string_contains(s: preamble, pattern: "deploy-access-bootstrap-preflight")
-    && !string_contains(s: preamble, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
-    && string_contains(s: preamble, pattern: "sudo -n /usr/sbin/visudo -cf")
+    && string_contains(s: preamble, pattern: witness_sudoers_stage_visudo_check_text())
 }
 
 // THE PREAMBLE, READ SEPARATELY, SO AN ABSENCE CLAIM DOES NOT LOSE HALF ITS SUBJECT.
@@ -816,19 +836,38 @@ fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
 }
 
 
+// THE TWIN MIRRORS PRODUCTION AS AN IDENTITY JOIN ON ARTIFACT KIND, NOT A COUNT. The host-singleton
+// members -- the fabric storage placement's two and, since #12747, the approval broker's front door --
+// are named by the functions that decide them and subtracted from production by path; every other
+// production member must have a twin member of the same kind and vice versa, and the twin must own
+// no host singleton at all. The count form this replaces (`twin + fabric == live`) went red the day
+// #12747 added a second host-scoped member, though nothing about the twin was wrong.
+fn live_host_singleton_paths(live: DeploymentSpec) -> List<String> {
+  concat(
+    deployment_fabric_storage_steps(instance: srv1_live_dashboard_instance(), names: live.names),
+    deployment_approval_broker_front_door_steps(instance: srv1_live_dashboard_instance()),
+  ) |> map(s => s.path as String)
+}
+
 test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
   let live = deployment_spec_srv1()
   let twin = srv1_twin_spec()
   let live_paths = spec_owned_paths(spec: live)
   let twin_paths = spec_owned_paths(spec: twin)
+  let singletons = live_host_singleton_paths(live: live)
+  let live_instance_scoped = filter(deployment_owned_steps_retract_order(spec: live), l => !any(singletons, h => h == (l.path as String)))
+  let twin_steps = deployment_owned_steps_retract_order(spec: twin)
   deployment_plan_host_identity(spec: live) == deployment_plan_host_identity(spec: twin)
     && !(deployment_plan_listen_port(spec: live) == deployment_plan_listen_port(spec: twin))
     && !(live.service.unit_name == twin.service.unit_name)
     && !(live.service.repo_root == twin.service.repo_root)
     && !(live.service.serve_binary == twin.service.serve_binary)
-    && count(live_paths) > 0
-    && count(twin_paths) + count(deployment_fabric_storage_steps(instance: srv1_live_dashboard_instance(), names: live.names)) == count(live_paths)
+    && count(live_instance_scoped) > 0
+    && all(singletons, h => any(live_paths, l => l == h))
+    && all(live_instance_scoped, l => any(twin_steps, t => t.kind == l.kind))
+    && all(twin_steps, t => any(live_instance_scoped, l => l.kind == t.kind))
     && count(deployment_fabric_storage_steps(instance: srv1_lab_dashboard_instance(), names: twin.names)) == 0
+    && count(deployment_approval_broker_front_door_steps(instance: srv1_lab_dashboard_instance())) == 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
@@ -1775,3 +1814,4 @@ test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_i
     && (route.backend as String) == join(["unix:", fabric_storage_door_socket() as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }
+
