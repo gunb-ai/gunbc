@@ -3886,8 +3886,8 @@ fn admit_candidate_generation_from_model(
     })
     .map_err(|e| format!("refusal: candidate generation admission label failed: {e}"))?;
     match label {
-        Value::Str(label) if label.as_ref() == "Admitted" => Ok(()),
-        Value::Str(label) => Err(format!("candidate generation admission {label}")),
+        Value::Str(ref label) if label.as_ref() == "Admitted" => Ok(()),
+        Value::Str(ref label) => Err(format!("candidate generation admission {label}")),
         other => Err(format!(
             "refusal: candidate generation admission label returned {}",
             other.type_label_public()
@@ -4427,7 +4427,7 @@ fn render_round_cost_receipt(
     })
     .map_err(|e| format!("refusal: regen_round_cost_render did not render: {e}"))?;
     match rendered {
-        Value::Str(s) => Ok(s.to_string()),
+        Value::Str(ref s) => Ok(s.to_string()),
         other => Err(format!(
             "refusal: regen_round_cost_render returned {} where a String was expected",
             other.type_label_public()
@@ -4540,7 +4540,7 @@ fn partition_rebuild_actuation(
         "stage0_partition_rebuild_excluded_today",
     )?;
     let decision_line = match call("stage0_partition_rebuild_decision_line_today")? {
-        ModelValue::Str(value) => value.to_string(),
+        ModelValue::Str(ref value) => value.to_string(),
         other => {
             return Err(format!(
             "refusal: stage0_partition_rebuild_decision_line_today returned {} instead of String",
@@ -4885,8 +4885,8 @@ fn convergence_plan_from_model(
     })
     .map_err(|e| format!("refusal: generation progress projection failed: {e}"))?;
     match progress_label {
-        Value::Str(label) if label.as_ref() == "Admitted" => {}
-        Value::Str(label) => return Err(format!("generation progress {label}")),
+        Value::Str(ref label) if label.as_ref() == "Admitted" => {}
+        Value::Str(ref label) => return Err(format!("generation progress {label}")),
         other => {
             return Err(format!(
                 "refusal: generation progress projection returned {}",
@@ -4975,7 +4975,7 @@ fn convergence_plan_from_model(
             })
             .map_err(|e| format!("dependency closure projection did not answer: {e}"))?;
             let dependency_closure_id = match closure_ids {
-                Value::List(ids) if ids.len() == 1 => match &ids[0] {
+                Value::List(ref ids) if ids.len() == 1 => match &ids[0] {
                     Value::Str(id) => id.to_string(),
                     other => {
                         return Err(format!(
@@ -4984,7 +4984,7 @@ fn convergence_plan_from_model(
                         ))
                     }
                 },
-                Value::List(ids) => {
+                Value::List(ref ids) => {
                     return Err(format!(
                         "StageDependencyClosureIncomplete: model returned {} closure identities for {basename}",
                         ids.len()
@@ -5105,8 +5105,8 @@ fn convergence_plan_from_model(
     })
     .map_err(|e| format!("refusal: affected bound admission projection failed: {e}"))?;
     match bound_label {
-        Value::Str(label) if label.as_ref() == "Admitted" => {}
-        Value::Str(label) => {
+        Value::Str(ref label) if label.as_ref() == "Admitted" => {}
+        Value::Str(ref label) => {
             return Err(format!(
                 "affected-set bound and convergence stage population disagree: {label}"
             ))
@@ -5157,16 +5157,16 @@ fn convergence_plan_from_model(
     })
     .map_err(|e| format!("refusal: convergence kind projection failed: {e}"))?
     {
-        Value::Str(value) if value.as_ref() == "PromoteGenerationInputs" => {
+        Value::Str(ref value) if value.as_ref() == "PromoteGenerationInputs" => {
             RegenConvergenceStageKindReceipt::PromoteGenerationInputs
         }
-        Value::Str(value) if value.as_ref() == "InstallSeedCompatibilityCut" => {
+        Value::Str(ref value) if value.as_ref() == "InstallSeedCompatibilityCut" => {
             RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut
         }
-        Value::Str(value) if value.as_ref() == "PublishNonSeedOutputs" => {
+        Value::Str(ref value) if value.as_ref() == "PublishNonSeedOutputs" => {
             RegenConvergenceStageKindReceipt::PublishNonSeedOutputs
         }
-        Value::Str(value) => {
+        Value::Str(ref value) => {
             return Err(format!(
                 "refusal: convergence kind projection returned unknown closed variant {value}"
             ))
@@ -5188,7 +5188,7 @@ fn convergence_plan_from_model(
     })
     .map_err(|e| format!("refusal: convergence surface projection failed: {e}"))?
     {
-        Value::List(values) => values
+        Value::List(ref values) => values
             .iter()
             .map(|value| match value {
                 Value::Str(path) => Ok(path.to_string()),
@@ -5215,7 +5215,7 @@ fn convergence_plan_from_model(
     })
     .map_err(|e| format!("refusal: convergence closure projection failed: {e}"))?
     {
-        Value::List(ids) if ids.len() == 1 => match &ids[0] {
+        Value::List(ref ids) if ids.len() == 1 => match &ids[0] {
             Value::Str(id) => id.to_string(),
             other => {
                 return Err(format!(
@@ -5224,7 +5224,7 @@ fn convergence_plan_from_model(
                 ))
             }
         },
-        Value::List(ids) => {
+        Value::List(ref ids) => {
             return Err(format!(
                 "refusal: planned convergence stage has {} admitted closure identities",
                 ids.len()
@@ -5626,8 +5626,8 @@ fn population_admission_verdict(
     })
     .map_err(|e| format!("refusal: population admission label failed: {e}"))?;
     match label {
-        Value::Str(label) if label.as_ref() == "Admitted" => Ok(()),
-        Value::Str(label) => {
+        Value::Str(ref label) if label.as_ref() == "Admitted" => Ok(()),
+        Value::Str(ref label) => {
             let detail = match v1_interpreter::with_active_context(&ctx, || {
                 v1_interpreter::run_in_context_with_args(
                     &ctx,
@@ -5636,7 +5636,7 @@ fn population_admission_verdict(
                     false,
                 )
             }) {
-                Ok(Value::Str(detail)) => detail.to_string(),
+                Ok(Value::Str(ref detail)) => detail.to_string(),
                 Ok(other) => format!("<detail returned {}>", other.type_label_public()),
                 Err(e) => format!("<detail refused: {e}>"),
             };
@@ -5886,8 +5886,8 @@ fn admit_stage_execution_from_model(
     })
     .map_err(|e| format!("refusal: stage execution admission label failed: {e}"))?;
     match label {
-        Value::Str(label) if label.as_ref() == "Admitted" => Ok(()),
-        Value::Str(label) => {
+        Value::Str(ref label) if label.as_ref() == "Admitted" => Ok(()),
+        Value::Str(ref label) => {
             // The label NAMES the arm; the detail LOCATES it. Rendering only the name collapsed
             // every unlabelled arm to one word and discarded the populations that caused a
             // population verdict -- which is what a reader needs and what §5 asks a typed
@@ -5901,7 +5901,7 @@ fn admit_stage_execution_from_model(
                     false,
                 )
             }) {
-                Ok(Value::Str(detail)) => detail.to_string(),
+                Ok(Value::Str(ref detail)) => detail.to_string(),
                 Ok(other) => format!("<detail returned {}>", other.type_label_public()),
                 Err(e) => format!("<detail refused: {e}>"),
             };
@@ -6360,7 +6360,7 @@ mod regen_round_cost_tests {
                     )
                 })
                 .unwrap();
-                let Value::Str(line) = value else {
+                let Value::Str(ref line) = value else {
                     panic!("decision was not a String")
                 };
                 line.to_string()
@@ -8064,7 +8064,7 @@ pub fn regen_generation_role_population(
         })
         .map_err(|e| format!("refusal: {function} did not answer: {e}"))?
         {
-            Value::List(items) => items
+            Value::List(ref items) => items
                 .iter()
                 .map(|item| match item {
                     Value::Str(s) => Ok(s.to_string()),
@@ -8218,7 +8218,7 @@ pub fn render_affected_set_bound(
     })
     .map_err(|e| format!("refusal: regen_affected_set_bound_line did not render: {e}"))?
     {
-        Value::Str(s) => s.to_string(),
+        Value::Str(ref s) => s.to_string(),
         other => {
             return Err(format!(
                 "refusal: regen_affected_set_bound_line returned {} where a String was expected",
@@ -8236,7 +8236,7 @@ pub fn render_affected_set_bound(
     })
     .map_err(|e| format!("refusal: regen_affected_set_members did not answer: {e}"))?
     {
-        Value::List(items) => items
+        Value::List(ref items) => items
             .iter()
             .map(|item| match item {
                 Value::Str(s) => Ok(s.to_string()),
@@ -8361,7 +8361,7 @@ pub fn render_scope_selection(
     })
     .map_err(|e| format!("refusal: regen_scope_selection_members did not answer: {e}"))?
     {
-        Value::List(items) => items
+        Value::List(ref items) => items
             .iter()
             .map(|item| match item {
                 Value::Str(s) => Ok(s.to_string()),
@@ -9052,13 +9052,18 @@ fn emit_dag_artifact_text(root_rel: &str) -> Result<String, String> {
     // repository, so it is addressed as one.
     let root = workspace_root().join(root_rel);
     let entry = root.join(DAG_ARTIFACT_IDENTITY_SPECIMEN_BASENAME);
-    let run = super::compile_emission(&super::CompileRequest {
-        subject: super::CompileSubject::Entry(entry.to_string_lossy().to_string()),
-        root_demand: super::RootDemandDeclaration::default(),
-        source_roots: vec![root.to_string_lossy().to_string()],
-        primary_precedence: false,
-        render_targets: vec![RenderTarget::Dag],
-    });
+    // A FIXTURE POOL, COMPILED ONCE AND READ BY NOTHING AFTER: it owns its index, so the
+    // subject and the perturbed root never sit beside the run's pool in the shared memo.
+    let run = super::compile_emission_over(
+        &super::CompileRequest {
+            subject: super::CompileSubject::Entry(entry.to_string_lossy().to_string()),
+            root_demand: super::RootDemandDeclaration::default(),
+            source_roots: vec![root.to_string_lossy().to_string()],
+            primary_precedence: false,
+            render_targets: vec![RenderTarget::Dag],
+        },
+        super::IndexResidency::OwnedByThisCompile,
+    );
     match &run.disposition {
         super::CompileDisposition::Completed { .. } => {}
         super::CompileDisposition::Refused { phase, cause } => {

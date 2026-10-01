@@ -162,7 +162,7 @@ fn rc_closure_of(entry: String) -> Outcome<FreeMonoid<QualifiedName>> {
             o: rc_resolved_of(dotted: qualified_name_to_dotted_string(qn: member_module)),
             f: fn(resolved) {
               outcome_accepted(value: ReferenceClosureMember {
-                resolved: resolved,
+                resolved: resolved.root,
                 import_targets: rc_import_targets(roots: roots, member_module: member_module),
                 payload: true
               })

@@ -49,10 +49,13 @@ import v2.compiler.body_lowering_fold {
   wrapper_retentions_concat,
   body_lower_fn_decl_to_census_arrow,
   body_lower_service_decl,
+  body_lower_resource_decl,
+  body_lower_resource_decl_declared_kind_optional,
   body_lower_is_deferred_lower_at_normalize,
   DeclaredTypeKind,
   body_lower_type_decl_declared_kind_optional,
-  declared_record_names
+  declared_record_names,
+  declared_resource_names
 }
 import v2.compiler.normalized_tree {
   CensusTree,
@@ -373,13 +376,18 @@ fn type_declaration_kind_capture(nodes: List<Node>) -> FreeMonoid<DeclaredTypeKi
       match parse_production_emitted_identity_optional(node: n) {
         Absent => acc
         Present { value: id } =>
-          if id != ^dag_surface_type_decl {
-            acc
-          } else {
+          if id == ^dag_surface_type_decl {
             match body_lower_type_decl_declared_kind_optional(shell: n) {
               Absent => acc
               Present { value: kind } => list_snoc_item(xs: acc, item: kind)
             }
+          } else if id == ^dag_surface_resource_decl {
+            match body_lower_resource_decl_declared_kind_optional(shell: n) {
+              Absent => acc
+              Present { value: kind } => list_snoc_item(xs: acc, item: kind)
+            }
+          } else {
+            acc
           }
       }
     }
@@ -472,6 +480,11 @@ fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTre
           t: body_lowered_tree_over(node: n, retained: no_wrapper_retentions()),
           f: fn(shell) { body_lower_service_decl(shell: shell, admit_set_aside: true) }
         )
+      } else if emitted == ^dag_surface_resource_decl {
+        body_lowered_tree_then(
+          t: body_lowered_tree_over(node: n, retained: no_wrapper_retentions()),
+          f: fn(shell) { body_lower_resource_decl(shell: shell) }
+        )
       } else if emitted == ^dag_surface_fn_decl {
         match normalize_census_fold_children(n: n, under_fn_decl: true) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -533,10 +546,12 @@ fn normalize_census(parse_tree: ParseTree) -> Outcome<CensusTree> {
               Rejected { diagnostics: r } =>
                 Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
               Accepted { value: bindings, diagnostics: _ } =>
+                let kinds = type_declaration_kind_capture(nodes: parse_nodes)
                 admit_census_tree(
                   root: grafted,
                   import_bindings: bindings,
-                  record_declarations: record_declaration_capture(nodes: parse_nodes),
+                  record_declarations: declared_record_names(kinds: kinds),
+                  resource_declarations: declared_resource_names(kinds: kinds),
                   diagnostics: d1
                 )
             }

@@ -18,6 +18,7 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold { unit_hold_acquire }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_drive_handoff, mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
+import gunbc.runner_browser_toolchain { RunnerBrowserToolchainResolution, BrowserToolchainUnresolved }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { MediaAttachNotAttempted }
 import gunbc.machine_intake_oob_boot_handoff { oob_boot_handoff, oob_power_action_after_confirmed_selection, oob_power_actuate_and_read_back, OobPowerUp }
 import gunbc.machine_intake_megarac_media_attach { MegaRacObserve, megarac_attach_remote_image }
@@ -95,13 +96,19 @@ fn attach_through_the_generic_megarac_route_from_outside() -> String {
   ""
 }
 
+// A toolchain resolution for the forged calls below: they are refused at admission, before any of it
+// is consulted, so its value only has to be well-formed.
+fn forged_toolchain() -> RunnerBrowserToolchainResolution {
+  BrowserToolchainUnresolved { cause: "forged" }
+}
+
 fn boot_the_hold_owning_path_from_outside() -> String {
-  let _x = mtcollins1_boot_under_live_unit_hold(run_id: "forged", subject: mtcollins1_boot_subject(execution_revision: "0000000000000000000000000000000000000000"), password_file: "/tmp/pw", sol_pid_path: "/tmp/pid", sol_capture_path: "/tmp/cap")
+  let _x = mtcollins1_boot_under_live_unit_hold(run_id: "forged", subject: mtcollins1_boot_subject(execution_revision: "0000000000000000000000000000000000000000"), password_file: "/tmp/pw", sol_pid_path: "/tmp/pid", sol_capture_path: "/tmp/cap", resolve_toolchain: fn() { forged_toolchain() })
   ""
 }
 
 fn actuate_with_a_forged_proof_from_outside() -> String {
-  let _x = mtcollins1_boot_actuate(proof: forged_proof(), subject: mtcollins1_boot_subject(execution_revision: "0000000000000000000000000000000000000000"), password_file: "/tmp/pw", attempt: "forged", sol_pid_path: "/tmp/pid", sol_capture_path: "/tmp/cap")
+  let _x = mtcollins1_boot_actuate(proof: forged_proof(), subject: mtcollins1_boot_subject(execution_revision: "0000000000000000000000000000000000000000"), password_file: "/tmp/pw", attempt: "forged", sol_pid_path: "/tmp/pid", sol_capture_path: "/tmp/cap", resolve_toolchain: fn() { forged_toolchain() })
   ""
 }
 

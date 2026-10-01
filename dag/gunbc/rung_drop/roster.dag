@@ -81,6 +81,7 @@ import gunbc.rung_drop.heal_healed_head_executed_verdict_without_human { heal_he
 import gunbc.rung_drop.runner_host_file_apply_route_hermetic { runner_host_file_apply_route_hermetic }
 import gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps { floor_cost_cpu_regression_at_constant_eval_steps }
 import gunbc.rung_drop.accumulator_copy_positive_controls_off_every_lane { accumulator_copy_positive_controls_off_every_lane }
+import gunbc.rung_drop.infer_facts_key_conflict_reverted_to_first_wins { infer_facts_key_conflict_reverted_to_first_wins }
 import gunbc.rung_drop.slot_row_pinned_below_demonstrated_demand_unrefused { slot_row_pinned_below_demonstrated_demand_unrefused }
 import gunbc.rung_drop.microvm_shakedown_slot_row_above_fleet_row { microvm_shakedown_slot_row_above_fleet_row }
 import gunbc.rung_drop.seed_whole_corpus_demand_population_blind { seed_whole_corpus_demand_population_blind }
@@ -91,9 +92,14 @@ import gunbc.rung_drop.live_deploy_apply_render_new_witness_eval_step_cost { liv
 import gunbc.rung_drop.live_deploy_dark_install_render_new_witness_eval_step_cost { live_deploy_dark_install_render_new_witness_eval_step_cost }
 import gunbc.rung_drop.roadmap_live_forecast_new_witness_eval_step_cost { roadmap_live_forecast_new_witness_eval_step_cost }
 import gunbc.rung_drop.roadmap_page_style_new_witness_eval_step_cost { roadmap_page_style_new_witness_eval_step_cost }
+import gunbc.rung_drop.dag_emit_round_trip_new_witness_eval_step_cost { dag_emit_round_trip_new_witness_eval_step_cost }
+import gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor { dag_emit_real_grammar_round_trips_off_floor }
 import gunbc.rung_drop.app_attest_interpreted_crypto_new_witness_eval_step_cost { app_attest_interpreted_crypto_new_witness_eval_step_cost }
+import gunbc.rung_drop.mtcollins1_boot_matrix_new_witness_eval_step_cost { mtcollins1_boot_matrix_new_witness_eval_step_cost }
+import gunbc.rung_drop.fleet_build_job_membership_new_witness_eval_step_cost { fleet_build_job_membership_new_witness_eval_step_cost }
 import gunbc.rung_drop.app_attest_verifier_new_witness_eval_step_cost { app_attest_verifier_new_witness_eval_step_cost }
 import gunbc.rung_drop.app_attest_verifier_enrolment_dead_band_observed_only { app_attest_verifier_enrolment_dead_band_observed_only }
+import gunbc.rung_drop.mtcollins1_boot_matrix_enrolment_dead_band_observed_only { mtcollins1_boot_matrix_enrolment_dead_band_observed_only_drop }
 import gunbc.rung_drop.sha256_span_program_serialize_new_witness_eval_step_cost { sha256_span_program_serialize_new_witness_eval_step_cost }
 import gunbc.rung_drop.v41_row_store_host_realized_by_sample { v41_row_store_host_realized_by_sample }
 import gunbc.rung_drop.seam_monolith_control_unmeasured_derived_root { seam_monolith_control_unmeasured_derived_root }
@@ -177,6 +183,7 @@ data rung_drop_roster: List<RungDrop> = [
   runner_host_file_apply_route_hermetic,
   floor_cost_cpu_regression_at_constant_eval_steps,
   accumulator_copy_positive_controls_off_every_lane,
+  infer_facts_key_conflict_reverted_to_first_wins,
   slot_row_pinned_below_demonstrated_demand_unrefused,
   microvm_shakedown_slot_row_above_fleet_row,
   seed_whole_corpus_demand_population_blind,
@@ -188,8 +195,11 @@ data rung_drop_roster: List<RungDrop> = [
   roadmap_live_forecast_new_witness_eval_step_cost,
   roadmap_page_style_new_witness_eval_step_cost,
   app_attest_interpreted_crypto_new_witness_eval_step_cost,
+  mtcollins1_boot_matrix_new_witness_eval_step_cost,
+  fleet_build_job_membership_new_witness_eval_step_cost,
   app_attest_verifier_new_witness_eval_step_cost,
   app_attest_verifier_enrolment_dead_band_observed_only,
+  mtcollins1_boot_matrix_enrolment_dead_band_observed_only_drop,
   sha256_span_program_serialize_new_witness_eval_step_cost,
   v41_row_store_host_realized_by_sample,
   seam_monolith_control_unmeasured_derived_root,
@@ -213,6 +223,8 @@ data rung_drop_roster: List<RungDrop> = [
   python_to_typescript_compile_inhabitance_off_the_required_gate,
   edited_bin_witness_wet_rows_not_executed_by_ci,
   shared_index_residency_asserted_after_the_run,
+  dag_emit_round_trip_new_witness_eval_step_cost,
+  dag_emit_real_grammar_round_trips_off_floor,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
