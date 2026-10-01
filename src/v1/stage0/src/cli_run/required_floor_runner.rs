@@ -9131,6 +9131,39 @@ pub fn run_required_floor(
     // projection actually marked for changed execution. A missing, foreign, or duplicated row
     // cannot be repaired by the aggregate counts coincidentally agreeing.
     changed_witness_sublane_join(&changed_witness_expected, &disposition_rows)?;
+    // A DECLINED CHANGED WITNESS DOES NOT EXECUTE, so the reverse roster joins must not expect it
+    // to. `suppress_withheld` keeps every changed witness in the expected-red, route-gap and
+    // non-verdict rosters on the premise that the changed sublane runs it; a `DeclinedNoCiWetLane`
+    // decline falsifies that premise for its identity, and left in a roster it reads as "renamed,
+    // deleted, or declined -- delete the row" against a row that is only dormant for this run. It
+    // is removed with its own suppression ground, so the expected-red report still names it.
+    let declined_no_ci_wet_lane: HashSet<String> = disposition_rows
+        .iter()
+        .filter(|row| suppresses_a_changed_witness_enrollment(&row.disposition))
+        .map(|row| row.identity.clone())
+        .collect();
+    let suppress_declined_no_ci_wet_lane =
+        |roster: &mut HashSet<String>, name: &str| -> Vec<(String, SuppressionGround)> {
+            let mut removed: Vec<String> = roster
+                .iter()
+                .filter(|identity| declined_no_ci_wet_lane.contains(*identity))
+                .cloned()
+                .collect();
+            removed.sort();
+            roster.retain(|identity| !declined_no_ci_wet_lane.contains(identity));
+            if !removed.is_empty() {
+                eprintln!(
+                    "[floor-changed-witness] {name}: {} enrolled identity(ies) suppressed because \
+                     the changed-witness sublane declined them as declared BinWitnessWet rows; \
+                     their enrollment is dormant, not deleted",
+                    removed.len()
+                );
+            }
+            removed
+                .into_iter()
+                .map(|identity| (identity, SuppressionGround::DeclinedNoCiWetLane))
+                .collect()
+        };
     // ONE PRODUCER FOR THE COUNTS: the joined row population, folded once per arm.
     let disposition_count = |select: fn(&RequiredFloorDisposition) -> bool| {
         disposition_rows
@@ -9346,7 +9379,12 @@ pub fn run_required_floor(
         out
     };
     let mut expected_red_roster = expected_red_roster;
-    let expected_red_suppressed = suppress_withheld(&mut expected_red_roster, "floor_expected_red");
+    let mut expected_red_suppressed =
+        suppress_withheld(&mut expected_red_roster, "floor_expected_red");
+    expected_red_suppressed.extend(suppress_declined_no_ci_wet_lane(
+        &mut expected_red_roster,
+        "floor_expected_red",
+    ));
     eprintln!(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
@@ -9401,6 +9439,7 @@ pub fn run_required_floor(
     };
     let mut route_gap_roster = route_gap_roster;
     let _ = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
+    let _ = suppress_declined_no_ci_wet_lane(&mut route_gap_roster, "floor_route_gap");
     eprintln!(
         "[floor-route-gap] roster carries {} enrolled identity(ies)",
         route_gap_roster.len()
@@ -9598,6 +9637,7 @@ pub fn run_required_floor(
     };
     let mut non_verdict_roster = non_verdict_roster;
     let _ = suppress_withheld(&mut non_verdict_roster, "floor_non_verdict");
+    let _ = suppress_declined_no_ci_wet_lane(&mut non_verdict_roster, "floor_non_verdict");
     eprintln!(
         "[floor-non-verdict] roster carries {} enrolled identity(ies)",
         non_verdict_roster.len()
@@ -16810,6 +16850,27 @@ fn decides_a_changed_selection(disposition: &RequiredFloorDisposition) -> bool {
         RequiredFloorDisposition::PlannedAsChangedWitness
         | RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
         RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::DeclinedLongModule { .. }
+        | RequiredFloorDisposition::DeclinedFixtureMember { .. }
+        | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+        | RequiredFloorDisposition::DeclinedCostDebt
+        | RequiredFloorDisposition::DeclinedOutsideGateClosure
+        | RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+        | RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => false,
+    }
+}
+
+/// WHICH DISPOSITIONS SUPPRESS A CHANGED WITNESS'S ROSTER ENROLLMENT for this run, as an EXHAUSTIVE
+/// match for the same reason as `decides_a_changed_selection`: a new arm states whether the reverse
+/// roster joins may still expect its identity to execute. `DeclinedNoCiWetLane` is the one decline of
+/// a discovered, selected identity; `DeclinedChangedWitnessOutsideDiscovery` names an identity no
+/// site discovered, which no roster enrollment can reach through the fold, and every other arm
+/// either executes or is suppressed earlier by `suppress_withheld`.
+fn suppresses_a_changed_witness_enrollment(disposition: &RequiredFloorDisposition) -> bool {
+    match disposition {
+        RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
+        RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::PlannedAsChangedWitness
         | RequiredFloorDisposition::DeclinedLongModule { .. }
         | RequiredFloorDisposition::DeclinedFixtureMember { .. }
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
