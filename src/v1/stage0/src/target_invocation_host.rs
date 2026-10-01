@@ -1977,9 +1977,7 @@ fn typed_graph_exclusive_bytes_over(
         C::FuncEnv,
         C::OccurrenceTransport,
     ];
-    let mut lines = Vec::new();
-    let mut sum_exclusive: u64 = 0;
-    let mut graph_total: Option<u64> = None;
+    let mut raw = Vec::new();
     for class in classes {
         let graph = match subject() {
             Ok(g) => g,
@@ -1991,14 +1989,7 @@ fn typed_graph_exclusive_bytes_over(
             }
         };
         match cli_run::typed_module_class_exclusive_bytes(graph, class) {
-            Ok(r) => {
-                sum_exclusive += r.exclusive;
-                graph_total.get_or_insert(r.graph_total);
-                lines.push(format!(
-                    "{label} class={} exclusive={} graph_total={} in_use_all={} modules={} ancestry_entries={} own_entries={}",
-                    class.name(), r.exclusive, r.graph_total, r.in_use_all, r.modules, r.ancestry_entries, r.own_entries
-                ));
-            }
+            Ok(r) => raw.push((class, r)),
             Err(cause) => {
                 return InvocationOutcome {
                     termination: Termination::Refused,
@@ -2007,10 +1998,144 @@ fn typed_graph_exclusive_bytes_over(
             }
         }
     }
-    let total = graph_total.unwrap_or(0);
+    // THE HOST TRANSCRIBES, THE .dag FOLD DECIDES (gunbc.typed_graph_exclusive_bytes). Every
+    // reading crosses as primitives; a count past i64 refuses rather than clamping.
+    const ENTRY: &str = "dag/gunbc/floor/typed_graph_exclusive_bytes.dag";
+    let roots = vec!["dag".to_string(), "src/v2".to_string()];
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label}: resolve failed for {ENTRY}: {cause}"),
+            }
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    use crate::v1_interpreter::Value;
+    let int = |v: u64| i64::try_from(v).map(Value::Int);
+    let mut readings = Vec::new();
+    for (class, r) in &raw {
+        let counts = [
+            r.modules as u64,
+            r.in_use_all,
+            r.in_use_after_class,
+            r.in_use_end,
+            r.ancestry_entries,
+            r.own_entries,
+        ];
+        let Ok(vals) = counts
+            .iter()
+            .map(|v| int(*v))
+            .collect::<Result<Vec<_>, _>>()
+        else {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "{label}: class {} carries a count past the i64 the fold reads",
+                    class.name()
+                ),
+            };
+        };
+        let names = [
+            "modules",
+            "in_use_all",
+            "in_use_after_class",
+            "in_use_end",
+            "ancestry_entries",
+            "own_entries",
+        ];
+        let mut fields = vec![(
+            ctx.sym("class"),
+            crate::v1_interpreter::str_value(class.name()),
+        )];
+        for (n, v) in names.iter().zip(vals) {
+            fields.push((ctx.sym(n), v));
+        }
+        readings.push(Value::Record {
+            type_name: ctx.sym("TypedGraphClassReading"),
+            fields: std::rc::Rc::new(fields),
+        });
+    }
+    let args = vec![(
+        Some("readings".to_string()),
+        crate::v1_interpreter::list_value(readings),
+    )];
+    let report = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "typed_graph_exclusive_report",
+        &args,
+        true,
+    ) {
+        Ok(v) => v,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label}: the report could not be reached: {cause}"),
+            }
+        }
+    };
+    let bytes = |v: Option<&Value>| -> String {
+        match v {
+            Some(Value::Record { fields, .. }) => match ctx.field(fields, "count") {
+                Some(Value::Int(n)) => n.to_string(),
+                other => format!("{other:?}"),
+            },
+            Some(other) => ctx.format_value(other),
+            None => "<absent>".to_string(),
+        }
+    };
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &report
+    else {
+        return InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!("{label}: unrecognised report {}", ctx.format_value(&report)),
+        };
+    };
+    if !ctx.sym_eq(*variant_name, "ExclusiveBytesReported") {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label}: {}", ctx.format_value(&report)),
+        };
+    }
+    let mut lines = Vec::new();
+    if let Some(Value::List(cs)) = ctx.field(fields, "classes") {
+        for c in cs.iter() {
+            if let Value::Record { fields: cf, .. } = c {
+                let f = |n: &str| {
+                    ctx.field(cf, n)
+                        .map(|v| ctx.format_value(v))
+                        .unwrap_or_default()
+                };
+                lines.push(format!(
+                    "{label} class={} exclusive={} graph_total={} modules={} ancestry_entries={} own_entries={}",
+                    f("class"), bytes(ctx.field(cf, "exclusive")), bytes(ctx.field(cf, "graph_total")),
+                    f("modules"), f("ancestry_entries"), f("own_entries")
+                ));
+            }
+        }
+    }
+    let residual = match ctx.field(fields, "shared_or_unlisted") {
+        Some(Value::Variant {
+            variant_name,
+            fields: rf,
+            ..
+        }) if ctx.sym_eq(*variant_name, "MeasureDifference") => bytes(ctx.field(rf, "value")),
+        Some(other) => ctx.format_value(other),
+        None => "<absent>".to_string(),
+    };
     lines.push(format!(
-        "{label} graph_total={total} sum_of_exclusives={sum_exclusive} shared_or_unlisted={} (graph_total from the first run; every class read from its own fresh resolve)",
-        total.saturating_sub(sum_exclusive)
+        "{label} graph_total={} sum_of_exclusives={} shared_or_unlisted={residual} (gunbc.typed_graph_exclusive_bytes; graph_total from the first run, every class from its own fresh resolve)",
+        bytes(ctx.field(fields, "graph_total")),
+        bytes(ctx.field(fields, "sum_of_exclusives")),
     ));
     InvocationOutcome {
         termination: Termination::ObservationHeld,

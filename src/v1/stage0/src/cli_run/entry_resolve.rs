@@ -4052,20 +4052,16 @@ impl TypedModuleClass {
     }
 }
 
-/// One leave-one-out reading: the graph's live bytes with every class held, and the bytes freed by
-/// dropping ONE class first while every other class is still held -- that class's EXCLUSIVE bytes,
-/// what removing it from the graph would save. A graph or module list another owner keeps refuses,
-/// because dropping it would free nothing and a zero would read as a class that costs nothing.
+/// One leave-one-out drop, as raw readings: the allocator's live bytes with every class held,
+/// after dropping ONE class first, and after dropping the rest. What they mean -- the class's
+/// exclusive bytes, the graph's total, what the classes share -- is decided by
+/// `gunbc.typed_graph_exclusive_bytes` `typed_graph_exclusive_report`; this reader only reads. A
+/// graph or module list another owner keeps refuses, because dropping it would free nothing.
 pub(crate) struct ExclusiveBytesReading {
     pub modules: usize,
     pub in_use_all: u64,
-    pub exclusive: u64,
-    /// Every class and the graph-level registry and diagnostics dropped: the graph's whole live
-    /// bytes, so `graph_total` less the sum of the classes' exclusives is what they SHARE.
-    pub graph_total: u64,
-    /// Σ over modules of `type_env.ancestry_str_bindings` and `type_env.str_bindings` entries,
-    /// counted before anything is dropped: the structural quantity the ancestry-union model
-    /// predicts `type_env`'s bytes scale with, read beside the bytes so the model can be falsified.
+    pub in_use_after_class: u64,
+    pub in_use_end: u64,
     pub ancestry_entries: u64,
     pub own_entries: u64,
 }
@@ -4140,8 +4136,8 @@ pub(crate) fn typed_module_class_exclusive_bytes(
     Ok(ExclusiveBytesReading {
         modules: module_count,
         in_use_all,
-        exclusive: in_use_all.saturating_sub(after),
-        graph_total: in_use_all.saturating_sub(end),
+        in_use_after_class: after,
+        in_use_end: end,
         ancestry_entries,
         own_entries,
     })
