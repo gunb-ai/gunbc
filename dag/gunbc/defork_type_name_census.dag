@@ -112,6 +112,7 @@ type ForkResolution
   = ResolvedByRenamingV2 { renamed_to: String, citation: String }
   | ResolvedByDeletingV2 { reason: String }
   | ResolvedByRenamingDag { renamed_to: String, citation: String }
+  | ResolvedByRehomingBothToExtdeps { authority: String, citation: String }
 
 type ResolvedSharedTypeName {
   names: List<String>
@@ -188,15 +189,6 @@ data defork_census_rows: List<SharedTypeNameRow> = [
       class: "MEANING FORK"
     },
     disposition: ForkOpen { reason: "next PR of the de-fork wave (the v2 side has ~40 consumer sites across `v2.extdeps.formatters.*`)" }
-  },
-  SharedTypeNameRow {
-    names: ["Float"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`= Float64` → `std.float` `Float64`",
-      v2_side: "`= Binary64` → `v2.std.float` `Binary64` (was `= Float64`, byte-identical text, different referent)",
-      class: "resolution-divergent (text was identical)"
-    },
-    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
   },
   SharedTypeNameRow {
     names: ["String"],
@@ -288,6 +280,11 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
     change: 12846
   },
   ResolvedSharedTypeName {
+    names: ["Float"],
+    resolution: ResolvedByRehomingBothToExtdeps { authority: "extdeps.standards.ieee_754_2019 binary64", citation: "IEEE 754-2019 §3.6 (operator ruling relayed 2026-09-28): `std.float` (Float = Float64, uncited) and `v2.std.float` (Float = Binary64) both deleted; kernel Float's meaning is the `std.kernel_type_denotation` row, not a std alias" },
+    change: 12547
+  },
+  ResolvedSharedTypeName {
     names: ["ProjectionKind"],
     resolution: ResolvedByDeletingV2 { reason: "`v2.std.projection` (compiler lens kinds) had zero importers; `std.planar_projection` keeps the name for drawing views" },
     change: 12252
@@ -344,6 +341,7 @@ fn census_resolution_text(r: ForkResolution) -> String {
     ResolvedByRenamingV2 { renamed_to, citation } => concat(concat(concat("v2 side renamed `", renamed_to), "` — "), citation)
     ResolvedByDeletingV2 { reason } => concat("v2 side deleted — ", reason)
     ResolvedByRenamingDag { renamed_to, citation } => concat(concat(concat("dag side renamed `", renamed_to), "` — "), citation)
+    ResolvedByRehomingBothToExtdeps { authority, citation } => concat(concat(concat("both sides deleted; the concept is homed at `", authority), "` — "), citation)
   }
 }
 

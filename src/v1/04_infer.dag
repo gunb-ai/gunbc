@@ -742,6 +742,79 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
   }
 }
 
+// THE EXPECTED COPRODUCT ELECTS A BARE VARIANT SPELLING FIRST (neat-boar-16 ruling, 2026-10-01). A
+// value-position spelling S checked against a Required expected type whose expansion is a coproduct
+// declaring an arm S is THAT coproduct's arm: the expected type's declaration decides, over every
+// table the module builds by spelling. Before this, election read scope.locals first, so `Absent`
+// at a position declared ConvergeVerdict elected whichever owner the spelling table held -- the
+// kernel Optional when the closure saw two user coproducts declaring Absent -- and the declared
+// type could only confirm that choice, never correct it (variant_reference_inferred_node). A lexical
+// value binding of the same spelling (a let or parameter) still binds lexically: only a name the
+// scope does not bind as a value is elected here. An Optional-cardinality expected type does not
+// decide: its own level is Optional, whose arms are Absent and Present.
+fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expected: Node?, scope: InferScope) -> InferResult {
+  let decided_name = authored_name_at(source_indices: scope.type_env.source_indices, node: decided)
+  InferResult {
+    typed: make_named_expr_node(
+      occurrence_identity: texpr.occurrence_identity,
+      name: name,
+      expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: decided_name } } },
+      children: [],
+      inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided) } },
+      span: texpr.span,
+      name_span: texpr.span
+    ),
+    diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: texpr.span, owner: Present { value: decided })
+  }
+}
+
+fn kernel_spelling_ambiguous_and_unbound(name: String, scope: InferScope) -> Bool {
+  (map_get(scope.locals, name) == none) && ((kernel_variant_owner_candidates(env: scope.type_env, name: name) |> count) > 1)
+}
+
+// A COPRODUCT ARM REACHED ONLY THROUGH THE GLOBAL BINDING LOOKUP IS REFUSED, NEVER TYPED AS A VALUE.
+// The arm is not in the module's variant scope (no own declaration, direct import, or deciding expected
+// type elected it), so the reference has no elected owner; typing it as a plain variable stamps no
+// VariantValueBinding and the interpreter answers NoSuchVariable at run time for a program the checker
+// accepted -- the silent wrong answer this refusal replaces, located at the reference.
+fn binding_names_a_coproduct_arm(binding: TypeBinding, name: String, scope: InferScope) -> Bool {
+  match lookup_type_for(env: scope.type_env, node: binding.resolved) {
+    Present { value: owner } =>
+      (owner.connective == Disj) && has_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices)
+    Absent => false
+  }
+}
+
+fn variant_outside_declared_scope_refusal(name: String, span: SourceSpan, scope: InferScope) -> InferResult {
+  InferResult {
+    typed: semantic_expr_error_node(message: concat("variant '", name, "' has no owner in this module's scope"), span: span),
+    diagnostics: [inference_error(
+      message: concat("variant '", name, "' is not in this module's declared scope: no own coproduct, direct import, or expected coproduct declares it"),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+}
+
+fn name_binds_a_lexical_value(name: String, scope: InferScope) -> Bool {
+  match map_get(scope.locals, name) {
+    Present { value: _ } => lookup_variant_parent_enum(scope: scope, name: name) == none
+    Absent => false
+  }
+}
+
+fn expected_deciding_variant_owner(expected: Node?, name: String, scope: InferScope) -> Node? {
+  if !name_binds_a_lexical_value(name: name, scope: scope) {
+    match expected {
+      Present { value: exp } =>
+        if (exp.return_cardinality == Required) {
+          expected_variant_owner_instantiation(expected: expected, name: name, scope: scope)
+        } else { kernel_optional_owner_declaring(env: scope.type_env, name: name) }
+      Absent => none
+    }
+  } else { none }
+}
+
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
   if contains(name, ".") {
     match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
@@ -4197,21 +4270,6 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // Required and non-generic: a type variable may be instantiated at an Optional, and an unresolved
 // or erased declared identity is not a Required fact, so those stay with their own arms.
 //
-// A PRODUCED TYPE THAT IS OPTIONAL BY NAME ONLY IS NOT EVIDENCE WHEN THE DECLARED COPRODUCT OWNS THE
-// ARM NAME. std.upsert_decision ObservationVerdict and gunbc.host.host_converge ConvergeVerdict each
-// declare their own `Absent` arm, and a bare `Absent` at a position declared as one of them is typed
-// as the kernel Optional coproduct: the reference is elected to the kernel owner without consulting
-// the declared one. The value is the declared coproduct's arm and the program is correct, so
-// refusing it here is a fabricated refusal. Measured by the whole-root compile differential on the
-// change that wired the record-field and declared-return producers: sixteen such sites newly
-// refused (gunbc.fleet.fleet_converge_cli, gunbc.file_access), and six more already stood refused
-// on main at the direct-call argument (test.claim.fleet.fleet_converge_cli_witness_test). The
-// exclusion is keyed on the two facts that make the evidence unsound and nothing wider: the
-// produced side carries NO CardOptional (so optionality is asserted by the name alone), and the
-// declared coproduct declares `Absent` or `Present` at its own level. A CardOptional produced value
-// at such a coproduct is still refused. The defect it stands in for is upstream and is not repaired
-// here: variant-reference election should consult the declared coproduct before the kernel one, at
-// which point the produced type is the declared type and this exclusion has no subject.
 fn optional_produced_at_required_declared(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
@@ -4227,17 +4285,7 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
     || declared_peeled.return_cardinality == CardOptional
     || qualified_last_segment(name: declared_name) == "Optional"
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared_peeled)) == "Optional"
-  let declared_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: declared)) {
-    Present { value: resolved } => resolved
-    Absent => with_required_cardinality(n: declared)
-  }
-  let declared_expanded = expand_scrut_type_for_variant_lookup(scrut_node: declared_required, env: scope.type_env)
-  let declared_owns_an_optional_arm_name = declared_expanded.connective == Disj
-    && (has_child_named(n: declared_expanded, name: "Absent", source_indices: source_indices)
-      || has_child_named(n: declared_expanded, name: "Present", source_indices: source_indices))
-  let produced_optional_by_name_only = produced.return_cardinality != CardOptional
   produced_carries_optional
-    && !(produced_optional_by_name_only && declared_owns_an_optional_arm_name)
     && !declared_carries_optional
     && !declared_is_generic
     && declared_name != ""
@@ -7120,6 +7168,21 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
   }
 }
 
+// AN UNAPPLIED GENERIC ACCUMULATOR IS UNDER-RESOLVED, THOUGH is_fully_resolved SAYS OTHERWISE. A
+// nullary constructor of a generic declaration -- `Empty` of `FreeMonoid<T>` -- types as the
+// declaration's expansion: a Disj (or Conj) whose children are its variants (or fields), not its
+// type arguments, still carrying its declared params. That shape reads as fully resolved, so
+// `fold(xs, init: Empty, f: ..)` kept the bare `FreeMonoid` as its accumulator although the step's
+// return names `FreeMonoid<Item>`, and every later read of an element fell back to the algebra
+// placeholder that types the element as the container itself (gunbc.recurring_failure_mode
+// unapplied_generic_accumulator_types_element_as_container). The refinement from the step's return
+// already exists at the fold call; this is the fact it was missing. STRUCTURAL ONLY -- declared
+// params on an expansion -- so it adds no spelling-keyed identity decision beside those
+// gunbc.recurring_failure_mode generic_identity_decided_by_spelling rosters.
+fn fold_accumulator_is_unapplied_generic(n: Node) -> Bool {
+  (n.params |> count) > 0 && (n.connective == Disj || n.connective == Conj)
+}
+
 fn method_name_is(opt: String?, expected: String) -> Bool {
   if opt == none { false } else { opt.value == expected }
 }
@@ -7760,6 +7823,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       match constructor_reference_admission_unshadowed(callee_name: name, span: span, scope: scope) {
         Present { value: refusal } => refusal
         Absent =>
+      match expected_deciding_variant_owner(expected: expected, name: name, scope: scope) {
+        Present { value: decided } =>
+          expected_decided_variant_value(texpr: texpr, name: name, decided: decided, expected: expected, scope: scope)
+        Absent =>
+      if kernel_spelling_ambiguous_and_unbound(name: name, scope: scope) {
+        ambiguous_reference_refusal(name: name, candidates: kernel_variant_owner_candidates(env: scope.type_env, name: name), span: span, scope: scope)
+      } else {
       match map_get(scope.locals, name) {
         Present { value: binding } =>
           let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
@@ -7873,6 +7943,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               ),
                               diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)]
                             }
+                          } else if binding_names_a_coproduct_arm(binding: gbinding, name: name, scope: scope) {
+                            variant_outside_declared_scope_refusal(name: name, span: span, scope: scope)
                           } else {
                           let binding_kind = infer_var_binding_kind(scope: scope, name: name)
                           InferResult {
@@ -7930,6 +8002,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
+      }
+      }
       }
       }
 
@@ -8257,6 +8331,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Absent => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
         let call_acc_is_under_resolved = !is_fully_resolved(n: call_fold_acc_type, source_indices: scope.type_env.source_indices)
+          || fold_accumulator_is_unapplied_generic(n: call_fold_acc_type)
         let refined_call_fold_acc_type = if call_fold_info != none && call_acc_is_under_resolved {
           match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
             Present { value: lambda_arg } => resolved_type(n: arg_value(n: lambda_arg))
@@ -10465,7 +10540,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
     let owner_from_locals = local_coproduct_owner_from_locals(scope: scope, name: type_name.value)
     let owner_from_variant_node = variant_owner_node(scope: scope, name: type_name.value)
-    let local_variant_parent = match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
+    let expected_decided_owner = expected_deciding_variant_owner(expected: expected, name: type_name.value, scope: scope)
+    let local_variant_parent = match expected_decided_owner {
+      Present { value: decided } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: decided) }
+      Absent =>
+    match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
       Present { value: p } => Present { value: p }
       Absent =>
         match owner_from_variant_node {
@@ -10473,7 +10552,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           Absent => record_lit_parent_enum_from_expected(type_name: type_name.value, expected: expected, scope: scope)
         }
     }
-    let effective_lookup = match type_lookup {
+    }
+    let effective_lookup = match expected_decided_owner {
+      Present { value: decided } => Present { value: decided }
+      Absent =>
+    match type_lookup {
       Present { value: _ } => type_lookup
       Absent =>
         let local_lookup = lookup_in_scope(locals: scope.locals, name: type_name.value)
@@ -10486,6 +10569,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
               Absent => Absent
             }
         }
+    }
     }
     let variant_lookup_resolved = match effective_lookup {
       Present { value: tn } => tn
@@ -13390,28 +13474,89 @@ fn union_parent_type_env_caches(
   }
 }
 
+// THE KERNEL TIER ELECTS ONLY AN UNAMBIGUOUS SPELLING. Each kernel coproduct arm binds to its owner
+// where no other kernel coproduct declares the same spelling; a spelling two kernel coproducts declare
+// binds to NEITHER (no first-wins by name order), and a reference to it refuses AmbiguousReference
+// naming both (kernel_variant_owner_candidates, read at the reference).
 fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
   match env.parents |> last {
     Present { value: kernel } =>
-      fold(
-        kernel.bindings |> map_values |> sort_by(b => b.name),
-        init: empty_map(),
-        f: (acc, binding) =>
-          let is_coproduct = binding.resolved.connective == Disj
-          if is_coproduct {
-            fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-              let child_name = authored_name_at(source_indices: env.source_indices, node: child)
-              match map_get(vacc, child_name) {
-                Present { value: _prev } => vacc
-                Absent => map_insert(vacc, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown, alias_rhs: none })
+      let owners = kernel_arm_owner_bindings(env: env, bindings: kernel.bindings |> map_values |> sort_by(b => b.name))
+      fold(owners |> map_keys, init: empty_map(), f: (acc, arm) =>
+        match map_get(owners, arm) {
+          Present { value: bindings } =>
+            if (bindings |> count) == 1 {
+              match bindings |> first {
+                Present { value: b } => map_insert(acc, arm, TypeBinding { name: arm, resolved: b.resolved, provenance: SubValueUnknown, alias_rhs: none })
+                Absent => acc
               }
-            )
-          } else { acc }
+            } else { acc }
+          Absent => acc
+        }
       )
     Absent => empty_map()
   }
 }
 
+// Every kernel coproduct arm spelling, with the distinct kernel coproduct bindings that declare it.
+fn kernel_arm_owner_bindings(env: TypeEnv, bindings: List<TypeBinding>) -> Map<String, List<TypeBinding>> {
+  fold(bindings, init: empty_map(), f: (acc, binding) =>
+    if (binding.resolved.connective == Disj) {
+      fold(binding.resolved.children, init: acc, f: (vacc, child) =>
+        kernel_arm_owner_add(owners: vacc, arm: authored_name_at(source_indices: env.source_indices, node: child), binding: binding)
+      )
+    } else { acc }
+  )
+}
+
+fn kernel_arm_owner_add(owners: Map<String, List<TypeBinding>>, arm: String, binding: TypeBinding) -> Map<String, List<TypeBinding>> {
+  match map_get(owners, arm) {
+    Present { value: seen } =>
+      if (seen |> any(b => b.resolved == binding.resolved)) { owners } else { map_insert(owners, arm, concat(seen, [binding])) }
+    Absent => map_insert(owners, arm, [binding])
+  }
+}
+
+// AN OPTIONAL-CARDINALITY EXPECTED TYPE DECIDES THE OPTIONAL'S OWN ARMS. At a `T?` position the
+// expected type's own level is the kernel Optional coproduct, so a bare Absent or Present there is
+// Optional's arm -- whatever user coproducts the closure also declares with that spelling. Any other
+// spelling at a `T?` position is not decided here (it is the inner T's arm, reached by coercion).
+fn kernel_optional_owner_declaring(env: TypeEnv, name: String) -> Node? {
+  match env.parents |> last {
+    Present { value: kernel } =>
+      match map_get(kernel.str_bindings, "Optional") {
+        Present { value: binding } =>
+          if (binding.resolved.connective == Disj)
+            && has_child_named(n: binding.resolved, name: name, source_indices: env.source_indices) {
+            Present { value: binding.resolved }
+          } else { none }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+// The distinct kernel coproducts declaring an arm spelled `name`, by authored owner name.
+fn kernel_variant_owner_candidates(env: TypeEnv, name: String) -> List<String> {
+  match env.parents |> last {
+    Present { value: kernel } =>
+      fold(kernel.bindings |> map_values |> sort_by(b => b.name), init: [], f: (acc, binding) =>
+        if (binding.resolved.connective == Disj)
+          && has_child_named(n: binding.resolved, name: name, source_indices: env.source_indices) {
+          let owner = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
+          if (acc |> any(o => o == owner)) { acc } else { concat(acc, [owner]) }
+        } else { acc }
+      )
+    Absent => []
+  }
+}
+
+// THE KERNEL ARM NEVER FILLS A SPELLING THE CLOSURE FINDS AMBIGUOUS. The closure-wide tier drops a
+// spelling two corpus declarations claim (GlobalBareAmbiguousBinding), and the kernel used to fill
+// that hole -- so `Absent`, declared by two user coproducts, elected the kernel Optional's Absent
+// with no diagnostic. Now that spelling stays unbound here; a reference to it is decided by its
+// expected type (expected_deciding_variant_owner) or refuses AmbiguousReference naming the
+// candidates (the ExprVar unbound arm, global_bare_strict_ambiguity_candidates).
 fn merge_kernel_variant_locals_low_priority(
   env: TypeEnv,
   locals: Map<String, TypeBinding>
@@ -13421,9 +13566,11 @@ fn merge_kernel_variant_locals_low_priority(
     match map_get(acc, variant_name) {
       Present { value: _ } => acc
       Absent =>
+        if ((global_bare_strict_ambiguity_candidates(env: env, name: variant_name) |> count) > 0) { acc } else {
         match map_get(kernel_locals, variant_name) {
           Present { value: binding } => map_insert(acc, variant_name, binding)
           Absent => acc
+        }
         }
     }
   )
@@ -15158,6 +15305,16 @@ fn build_local_variants(items: List<Node>, source_indices: Map<String, NewlineIn
 // (kernel spans compute the same name in both arms; non-kernel misses fall back to node.name in
 // both), and the census owners all live in closure files, so eligibility is unchanged.
 
+// THE CLOSURE-WIDE TIER IS THE STAND-IN FOR THE MODULE'S DECLARED SCOPE, NOT A SECOND SCOPE (neat-boar-16
+// ruling B, 2026-10-01). A bare variant elects first by its expected coproduct
+// (expected_deciding_variant_owner), then from own coproducts and direct imports, then from this
+// closure-unique tier, then the kernel where nothing above declares the spelling and the closure does
+// not find it ambiguous (merge_kernel_variant_locals_low_priority). This tier lets a module bind an arm
+// it never imported, which the ruled declared scope (own module plus explicit imports) does not admit;
+// it stands until quiet-hawk-702's Node.declaration cut installs that scope as
+// v1.compiler.infer build_ancestry_precedence, and that cut DELETES this tier and its threading
+// outright rather than keeping it beside the new scope. The election site above is a named consumer of
+// that definition.
 fn merge_global_bare_variant_locals(
   state: VariantFoldState,
   global_variant_base: Map<String, TypeBinding>

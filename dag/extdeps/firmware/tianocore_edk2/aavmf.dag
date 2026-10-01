@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, FilePath }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage }
 import extdeps.firmware.tianocore_edk2.subject { TianoCoreEdk2, tianocore_edk2_implementation }
 
 // AAVMF: EDK II's ArmVirtPkg built for QEMU's `virt` machine (ArmVirtQemu), as Debian and Ubuntu
@@ -41,6 +42,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [],
 }
 
+// A file's path is its path inside the package; a root-extracting consumer reads <root><path>.
 type AavmfFirmwareFile {
   path: FilePath
   sha256: NonEmptyStr
@@ -49,10 +51,7 @@ type AavmfFirmwareFile {
 type AavmfDistributionBuild {
   implementation: TianoCoreEdk2
   upstream_version: NonEmptyStr
-  package: NonEmptyStr
-  package_version: NonEmptyStr
-  archive_filename: NonEmptyStr
-  archive_sha256: NonEmptyStr
+  archive: UbuntuArchiveBinaryPackage
   code: AavmfFirmwareFile
   vars_template: AavmfFirmwareFile
 }
@@ -60,10 +59,13 @@ type AavmfDistributionBuild {
 data aavmf_2024_02_ubuntu_noble: AavmfDistributionBuild = AavmfDistributionBuild {
   implementation: tianocore_edk2_implementation,
   upstream_version: "edk2-stable202402",
-  package: "qemu-efi-aarch64",
-  package_version: "2024.02-2ubuntu0.9",
-  archive_filename: "pool/main/e/edk2/qemu-efi-aarch64_2024.02-2ubuntu0.9_all.deb",
-  archive_sha256: "50d7c5f780f215db81677e08d21e681b61295ffe9040429cff9d9c2a0d03fe3d",
+  archive: UbuntuArchiveBinaryPackage {
+    package: "qemu-efi-aarch64",
+    version: "2024.02-2ubuntu0.9",
+    architecture: "all",
+    filename: "pool/main/e/edk2/qemu-efi-aarch64_2024.02-2ubuntu0.9_all.deb",
+    sha256: "50d7c5f780f215db81677e08d21e681b61295ffe9040429cff9d9c2a0d03fe3d",
+  },
   code: AavmfFirmwareFile {
     path: "/usr/share/AAVMF/AAVMF_CODE.fd",
     sha256: "4a4cb7f6d8106bb2a7dd8c763fab14b1810152136fc4304e5b728f0043e84f12",
