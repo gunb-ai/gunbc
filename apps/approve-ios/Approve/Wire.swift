@@ -435,8 +435,8 @@ enum Route {
 
 // ── Transport ────────────────────────────────────────────────────────────────────────────────
 struct ServerConfig {
-    /// APPROVE_SERVER_HOST from Config/Team.xcconfig via Info.plist. Plain URLSession over the
-    /// tailnet: no new network path.
+    /// ApproveServerHost from Info.plist, projected from gunbc.auth.approval_broker_endpoint. Plain
+    /// URLSession over the tailnet: no new network path.
     let host: String
     /// apns_environment_wire: "development" | "production".
     let apnsEnvironment: String
@@ -445,14 +445,14 @@ struct ServerConfig {
 
     static func fromBundle() throws -> ServerConfig {
         let info = Bundle.main.infoDictionary ?? [:]
-        guard let host = info["ApproveServerHost"] as? String, !host.isEmpty else { throw WireError.configMissing("APPROVE_SERVER_HOST is empty in Config/Team.xcconfig") }
+        guard let host = info["ApproveServerHost"] as? String, !host.isEmpty else { throw WireError.configMissing("ApproveServerHost is empty in Info.plist; regenerate the project from project.yml") }
         guard let env = info["ApproveApnsEnvironment"] as? String, env == "development" || env == "production" else { throw WireError.configMissing("APNS_ENVIRONMENT must be development or production in Config/Team.xcconfig") }
         guard let topic = Bundle.main.bundleIdentifier, !topic.isEmpty else { throw WireError.configMissing("CFBundleIdentifier is missing; the APNs topic cannot be derived") }
         // A configured host is a host: refuse anything URLComponents will not carry as one.
         var probe = URLComponents()
         probe.scheme = "https"
         probe.host = host
-        guard probe.url != nil, probe.host == host, !host.contains("/"), !host.contains("?"), !host.contains("#") else { throw WireError.configMissing("APPROVE_SERVER_HOST is not a bare host: \(host)") }
+        guard probe.url != nil, probe.host == host, !host.contains("/"), !host.contains("?"), !host.contains("#") else { throw WireError.configMissing("ApproveServerHost is not a bare host: \(host)") }
         return ServerConfig(host: host, apnsEnvironment: env, apnsTopic: topic)
     }
 

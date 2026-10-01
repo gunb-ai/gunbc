@@ -21,7 +21,7 @@ pub use crate::std_import::{
     ImportStatementParseCause, ParsedImportStatement, ParsedImportStatements,
 };
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
-    OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
+    OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
 };
 use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence,
@@ -2823,7 +2823,6 @@ pub fn occurrence_allocator_after_identity(
                 alloc
             }
         }
-        NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => alloc,
         NodeOccurrenceIdentity::OccurrenceSynthetic => alloc,
     }
 }
@@ -3403,17 +3402,6 @@ pub fn stamp_parsed_node(
                     ctx: ctx.clone(),
                     err: Some(parse_error(
                         "projected occurrence identity is invalid at the authored parser boundary"
-                            .to_string(),
-                        node.span.clone(),
-                    )),
-                })
-            }
-            NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => {
-                return Rc::new(ParsedNodeStampResult {
-                    node: node.clone(),
-                    ctx: ctx.clone(),
-                    err: Some(parse_error(
-                        "pending occurrence identity is invalid at the authored parser boundary"
                             .to_string(),
                         node.span.clone(),
                     )),
@@ -10717,23 +10705,12 @@ pub fn parse_exit_entries_acc(
                 _ => r3.tokens.clone(),
             };
             let code_str = status_expr_to_str(code.clone(), ctx.source_indices.clone());
-            let type_name = node_to_name_str(r3.type_expr.clone(), ctx.source_indices.clone());
             let prop_name = v1_rt::concat("exit_".to_string(), code_str.clone());
             let minted = mint_parsed_node_identity(r3.ctx.clone());
             let entry = crate::v1_std_core::make_field_init_node(
                 minted.identity.clone(),
                 prop_name.clone(),
-                crate::v1_std_core::make_named_expr_node(
-                    r3.type_expr.clone().occurrence_identity.clone(),
-                    type_name.clone(),
-                    Rc::new(ExprData::ExprVar {
-                        binding_kind: std::option::Option::None,
-                    }),
-                    Rc::new(vec![]),
-                    std::option::Option::None,
-                    r3.type_expr.clone().span.clone(),
-                    r3.type_expr.clone().span.clone(),
-                ),
+                r3.type_expr.clone(),
                 r3.type_expr.clone().span.clone(),
                 crate::v1_std_core::no_span(),
             );

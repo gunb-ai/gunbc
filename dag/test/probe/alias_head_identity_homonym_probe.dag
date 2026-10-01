@@ -1,0 +1,14 @@
+module test.probe.alias_head_identity_homonym_probe
+
+// THIS MODULE MUST NOT RESOLVE. The alias WrHomAlias names alias_head_identity_hom_a's WrHomRec; this
+// module declares its OWN WrHomRec with the same leaf and fields and hands it to the alias. Agreement
+// keyed on the leaf would admit it; agreement keyed on the declaration refuses it
+// (test.claim.alias_head_identity_probe_witness_test).
+import test.probe.alias_head_identity_hom_alias { hx }
+import std.integer { Int }
+
+type WrHomRec { x: Int }
+
+fn wrong_homonym_into_alias() -> Int {
+  hx(p: WrHomRec { x: 1 })
+}
