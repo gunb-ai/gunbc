@@ -158,6 +158,7 @@ import gunbc.host_axis_caps {
   deploy_memory_cap_script_author_precedes_shadow_revert,
   deploy_memory_cap_apply_script_from_authorization,
   derived_runner_memory_cap_members,
+  derived_runner_memory_cap_members_for,
   cap_converge_decision,
   CapConvergeDecision,
   CapConvergeAuthorized,
@@ -502,7 +503,7 @@ fn emit_test_service_units_of(host: HostIdentity) -> List<NonEmptyStr> {
 test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
   let target = deployment_srv1_target()
   let units = emit_test_service_units_of(host: target.host.identity)
-  let members = derived_runner_memory_cap_members()
+  let members = derived_runner_memory_cap_members_for(host: target.host.identity)
   let cap_block = deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
   let steps = pipeline_steps_text(
     steps: deploy_memory_cap_apply_steps(spec: deployment_spec_srv1(), authorization: srv1_authorization())
