@@ -617,3 +617,25 @@ representation, so the comparison covers exactly what the program reads, not a s
    - k imports per module, all of them reaching it;
    - the lookup count and membership-test count measured at two depths.
    Membership tests that grow faster than D x k x X between the two depths red the control.
+
+### Scope added by the lane manager (2026-10-01): one declarer pool, two namespaces
+The runtime interpreter needs the same relation PR-2 builds: which modules declare a name. Its scope
+indexes (`v1_interpreter` `PreparedScopeIndexes`) are materialized over a frame's whole closure,
+and a pure-producer warm reads a small share of them (the frame-demand reading on gunbc#12890). So
+PR-2's pool is keyed by (name, NAMESPACE) and admitted in ONE place, `surface_pool_admit`, with two
+namespaces:
+- **type bindings:** each module's own `str_bindings`, as above;
+- **runtime items:** each module's authored items, the population `derive_module_scope_fragment`
+  walks (services, data and transports included; parameters never).
+The interpreter's scope then resolves each DEMANDED name from that pool: filtered by scope membership,
+ordered by the scope's precedence, and memoized per frame at the size of demand. It never
+materializes a whole-closure index.
+- That retires the frontier row `gunbc.resolver_cost_frontier` (path `required_floor_runner.rs`),
+  the CPU residual gunbc#12890 accepted as a stated trade.
+- `bare_item_registry`'s host-ordered last-write-wins leaf projection becomes the declared scope
+  precedence. That is a semantic change fixing nondeterminism, so it joins the population of
+  `gunbc.recurring_failure_mode` `portable_value_map_order_is_process_random`. Every leaf with more
+  than one in-scope declarer is reported as a differential row, and any differing claim verdict
+  stops the change and is reported by name.
+- The A/B for this part is paired thread CPU (two runs per arm), plus a differential at identity
+  grain of every name the BEFORE arm looked up.
