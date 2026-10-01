@@ -3,19 +3,31 @@ module test.claim.long.reference_closure_equivalence
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.lens.module_graph { no_paths, module_graph_exclude_substrings }
+import gunbc.ci_layer_roots { witness_layer_roots }
 
+// The entry imports only v2.std.node, so its closure is v2.std.node's import closure. Re-derived
+// 2026-10-01 from v2.lens.module_graph dependency_closure_live_excluding (import facts plus
+// collector-derived edges) at gunbc#12910. The previous golden listed an older, wider import envelope
+// (std.primitives, v2.std.algebra, collection, diagnostic, logic, node_query, witness) that the entry no
+// longer imports; it went stale unseen because this module did not resolve (witness_layer_roots was
+// used bare). Each member below is reached by a declared import edge:
+//   v2.std.node                        <- the entry
+//   std.algebra, v2.std.optional, std.occurrence_identity, std.decl_ref, std.disposition,
+//   std.content_hash                   <- v2.std.node
+//   std.error_primitives, std.dissolution, std.types
+//                                      <- reached transitively from v2.std.node's imports
 data expected_conformance_closure: FreeMonoid<String> = [
   "dag/test/claim/module_graph/conformance_imports_only.dag",
-  "dag/std/algebra.dag",
-  "dag/std/error_primitives.dag",
-  "dag/std/primitives.dag",
-  "src/v2/std/algebra.dag",
-  "src/v2/std/collection.dag",
-  "src/v2/std/diagnostic.dag",
-  "src/v2/std/logic.dag",
   "src/v2/std/node.dag",
-  "src/v2/std/node_query.dag",
-  "src/v2/std/witness.dag"
+  "dag/std/algebra.dag",
+  "src/v2/std/optional.dag",
+  "dag/std/occurrence_identity.dag",
+  "dag/std/decl_ref.dag",
+  "dag/std/disposition.dag",
+  "dag/std/content_hash.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/dissolution.dag",
+  "dag/std/types.dag"
 ]
 
 data conformance_entry: String = "dag/test/claim/module_graph/conformance_imports_only.dag"
