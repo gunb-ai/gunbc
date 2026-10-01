@@ -1,0 +1,58 @@
+module test.claim.alias_head_identity_probe_witness_test
+
+import v2.std.algebra { filter }
+import std.types { String, Bool, Int }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE TRANSPARENT-ALIAS HEAD RELATION, ENROLLED AS EXECUTED EVIDENCE (gunbc.recurring_failure_mode
+// transparent_alias_relation_read_the_brand_keeping_peel; review 73656 on gunbc#12896). Each probe
+// source is handed to the compiler through the diagnostic-census harness, and each claim joins the
+// refusal by CLASS and SUBJECT, where a TypeMismatch's subject is the type it got. A probe refusing
+// for any other reason therefore measures another wall. The accepted control and the refusals are
+// separate modules, so the control's census carries no refusal this witness authored.
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_census(name: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(filesystem_read(path: probe_dir + name + ".dag").content)
+}
+
+// -1 when the census could not run, so neither a ">= 1" nor an "== 0" claim reads could-not-measure
+// as its answer.
+fn blocking_count(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+// THE ACCEPTED CONTROL. A transparent alias of a record receives its own body's literal: no head
+// mismatch on the record it got. This was the red before the head identity reached v1 infer.
+test fn a_record_alias_receives_its_own_body_literal() -> Bool {
+  blocking_count(c: probe_census(name: "alias_head_identity_accepts_probe"), wanted: "TypeMismatch", subject: "Product(WrScratchRec)") == 0
+}
+
+// A DIFFERENT RECORD INTO EITHER ALIAS REFUSES AT THE HEAD.
+test fn a_different_record_into_either_alias_is_refused() -> Bool {
+  let c = probe_census(name: "alias_head_identity_refuses_probe")
+  blocking_count(c: c, wanted: "TypeMismatch", subject: "Product(WrScratchOtherRec)") >= 1
+    && blocking_count(c: c, wanted: "TypeMismatch", subject: "Product(WrScratchOtherFrac)") >= 1
+}
+
+// A LITERAL WHOSE HEAD AGREES IS STILL JUDGED PER FIELD.
+test fn a_wrong_field_through_a_record_alias_is_refused_per_field() -> Bool {
+  blocking_count(c: probe_census(name: "alias_head_identity_refuses_probe"), wanted: "TypeMismatch", subject: "Primitive(String)") >= 1
+}
+
+// A SAME-LEAF RECORD FROM ANOTHER MODULE IS NOT THE ALIAS'S DECLARATION.
+test fn a_same_leaf_record_from_another_module_is_refused() -> Bool {
+  blocking_count(c: probe_census(name: "alias_head_identity_homonym_probe"), wanted: "TypeMismatch", subject: "Product(WrHomRec)") >= 1
+}
