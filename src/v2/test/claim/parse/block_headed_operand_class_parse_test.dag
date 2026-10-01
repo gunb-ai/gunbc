@@ -1,13 +1,8 @@
 module v2.test.parse.block_headed_operand_class_parse
 
-import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -19,22 +14,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // bare forms and their lowered shape (so an `if` heading a chain is held there); these claims hold the
 // remaining operator classes, one each, with a `match` as the LEFT operand. They are what fails if a block-form alternative returns ahead of
 // binary_expr in dag_grammar_expr_expr, or if an operator class stops admitting a primary block. One
-// `data` declaration each, parsed against the floor-shared prepared grammar.
-
-fn bc_parses(text: String, file: Symbol) -> Bool {
-  match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: prepared, diagnostics: residue } =>
-      match tokenize(text: text, file: file, rules: dag_lex()) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: stream, diagnostics: _ } =>
-          match parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-      }
-  }
-}
+// `data` declaration each, classified by the census's own route (v2.compiler.parse_acceptance_census
+// parse_acceptance_of_text), so a census run and these claims cannot disagree on the same text.
 
 // multiplicative `*`
 data bc_mul_source: String = "module probe.bc_mul\n\ndata d: Int = match w {\n  _ => 1\n} * 2\n"
@@ -58,30 +39,30 @@ data bc_or_source: String = "module probe.bc_or\n\ndata d: Int = match w {\n  _ 
 data bc_pipe_source: String = "module probe.bc_pipe\n\ndata d: Int = match w {\n  _ => 1\n} |> g\n"
 
 test fn a_block_headed_left_operand_of_mul_parses_holds() -> Bool {
-  bc_parses(text: bc_mul_source, file: ^probe_bc_mul)
+  parse_acceptance_of_text(text: bc_mul_source, path: "probe/bc_mul.dag") == "accepted"
 }
 
 test fn a_block_headed_left_operand_of_add_parses_holds() -> Bool {
-  bc_parses(text: bc_add_source, file: ^probe_bc_add)
+  parse_acceptance_of_text(text: bc_add_source, path: "probe/bc_add.dag") == "accepted"
 }
 
 test fn a_block_headed_left_operand_of_sub_parses_holds() -> Bool {
-  bc_parses(text: bc_sub_source, file: ^probe_bc_sub)
+  parse_acceptance_of_text(text: bc_sub_source, path: "probe/bc_sub.dag") == "accepted"
 }
 
 test fn a_block_headed_left_operand_of_cmp_parses_holds() -> Bool {
-  bc_parses(text: bc_cmp_source, file: ^probe_bc_cmp)
+  parse_acceptance_of_text(text: bc_cmp_source, path: "probe/bc_cmp.dag") == "accepted"
 }
 
 test fn a_block_headed_left_operand_of_eq_parses_holds() -> Bool {
-  bc_parses(text: bc_eq_source, file: ^probe_bc_eq)
+  parse_acceptance_of_text(text: bc_eq_source, path: "probe/bc_eq.dag") == "accepted"
 }
 
 test fn a_block_headed_left_operand_of_or_parses_holds() -> Bool {
-  bc_parses(text: bc_or_source, file: ^probe_bc_or)
+  parse_acceptance_of_text(text: bc_or_source, path: "probe/bc_or.dag") == "accepted"
 }
 
 test fn a_block_headed_left_operand_of_pipe_parses_holds() -> Bool {
-  bc_parses(text: bc_pipe_source, file: ^probe_bc_pipe)
+  parse_acceptance_of_text(text: bc_pipe_source, path: "probe/bc_pipe.dag") == "accepted"
 }
 
