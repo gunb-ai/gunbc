@@ -1519,22 +1519,14 @@ fn node_edge_discipline(n: Node) -> EdgeDiscipline {
 // caller obligation this dissolves. An Edge-shaped ordering with a second hash-shaped copy beside it
 // would be two authorities for one identity rule (DESIGN section 3) -- agreeing exactly until one is
 // edited, and disagreeing as objects unreachable by the identity they were stored under.
-// Within one arm. sort_labeled orders structural labels before authored ones, so an authored name
-// never interleaves with a structural label whose key spells the same.
+// The key within one sort class (labeled_sort_classes); also the segment a labeled edge contributes
+// to a path.
 fn label_sort_key(label: EdgeLabel) -> Symbol {
   match label {
     Authored { name: sym } => sym
     StructuralLabel { label: CoreMarker { marker: m } } => core_edge_label_canonical_symbol(marker: m)
     StructuralLabel { label: ProductionEdge { language: _, edge: p } } => p
     Positional => ^canonical_tag_positional_edge
-  }
-}
-
-fn label_is_structural(label: EdgeLabel) -> Bool {
-  match label {
-    StructuralLabel { label: _ } => true
-    Authored { name: _ } => false
-    Positional => false
   }
 }
 
@@ -1571,10 +1563,29 @@ fn labeled_named_is_not_core<T>(x: T, label_of: fn(T) -> EdgeLabel, excluded: Co
   !labeled_is_positional(x: x, label_of: label_of) && !labeled_core_is(x: x, label_of: label_of, wanted: excluded)
 }
 
+// THE TWO SORT CLASSES, partitioned by the label's arm in one match: structural labels sort as one
+// class ahead of every other label, so no authored name can interleave with a structural label whose
+// key spells the same. Within a class the order is label_sort_key.
+type LabeledSortClasses<T> {
+  structural: List<T>
+  other: List<T>
+}
+
+fn labeled_sort_classes<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> LabeledSortClasses<T> {
+  fold(items, init: LabeledSortClasses { structural: [], other: [] }, f: fn(acc, x) {
+    match label_of(x) {
+      StructuralLabel { label: _ } => LabeledSortClasses { structural: list_snoc_item(xs: acc.structural, item: x), other: acc.other }
+      Authored { name: _ } => LabeledSortClasses { structural: acc.structural, other: list_snoc_item(xs: acc.other, item: x) }
+      Positional => LabeledSortClasses { structural: acc.structural, other: list_snoc_item(xs: acc.other, item: x) }
+    }
+  })
+}
+
 fn sort_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
+  let classes = labeled_sort_classes(items: items, label_of: label_of)
   concat(
-    sort_by(filter(items, fn(x) { label_is_structural(label: label_of(x)) }), fn(x) { label_sort_key(label: label_of(x)) }),
-    sort_by(filter(items, fn(x) { !label_is_structural(label: label_of(x)) }), fn(x) { label_sort_key(label: label_of(x)) })
+    sort_by(classes.structural, fn(x) { label_sort_key(label: label_of(x)) }),
+    sort_by(classes.other, fn(x) { label_sort_key(label: label_of(x)) })
   )
 }
 
