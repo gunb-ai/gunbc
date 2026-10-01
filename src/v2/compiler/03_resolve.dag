@@ -1499,30 +1499,34 @@ fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbo
             path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
             pending: pending
           ))
-        ScopeUnbound => resolved_atom_plain(o:
-          match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
-            SymbolIndexAtomHit { path: path } =>
-              resolve_atom_declared(ctx: ctx, n: n, identity: identity, path: path, pending: pending)
-            SymbolIndexAtomAmbiguous { class: class } =>
-              match resolve_kernel_type_ambiguity_optional(ctx: ctx, n: n, identity: identity, class: class) {
-                Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
-                Absent =>
-                  Rejected {
-                    diagnostics: rejected_with_pending(
-                      pending: pending,
-                      rejected: ambiguous_symbol_diagnostics(n: n, class: class)
-                    )
-                  }
-              }
-            SymbolIndexAtomUnbound =>
-              match resolve_kernel_type_atom_optional(n: n, identity: identity) {
-                Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
-                Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
-              }
-          })
+        ScopeUnbound => resolved_atom_plain(o: resolve_atom_unscoped(ctx: ctx, n: n, identity: identity, pending: pending))
       }
       Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     }
+  }
+}
+
+// A NAME NO FRAME AND NO ROOT BINDING ANSWERS: the symbol index, then the kernel types, then unbound.
+fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
+  match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
+    SymbolIndexAtomHit { path: path } =>
+      resolve_atom_declared(ctx: ctx, n: n, identity: identity, path: path, pending: pending)
+    SymbolIndexAtomAmbiguous { class: class } =>
+      match resolve_kernel_type_ambiguity_optional(ctx: ctx, n: n, identity: identity, class: class) {
+        Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
+        Absent =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: pending,
+              rejected: ambiguous_symbol_diagnostics(n: n, class: class)
+            )
+          }
+      }
+    SymbolIndexAtomUnbound =>
+      match resolve_kernel_type_atom_optional(n: n, identity: identity) {
+        Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
+        Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+      }
   }
 }
 

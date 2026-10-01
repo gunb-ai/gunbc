@@ -14,7 +14,7 @@ import v2.std.compilers.target_model {
   canonical_operation_wire_matches_operation,
   target_model_canonical_operation_member_declared_type
 }
-import v2.compiler.resolve { LexicalBinding, ResolvedTree, resolved_tree_lexical_binding }
+import v2.compiler.resolve { ResolvedTree, resolved_tree_lexical_binding }
 import v2.compiler.inferred_tree {
   DerivedGrounding,
   GroundingNotDerived,
@@ -1216,8 +1216,12 @@ fn infer_branch_operand_resolved_type_in_tree(
       infer_binding_value_type_witness(binding: infer_literal_type_binding(literal: literal), at: node)
     Rejected { diagnostics: _ } =>
       match resolved_tree_lexical_binding(tree: resolved, reference: node) {
-        Present { value: LexicalBinding { binder_site: _, declared: Present { value: declared } } } => Holds { value: declared }
-        _ => inferred_facts_resolved_type(facts: facts)
+        Present { value: binding } =>
+          match binding.declared {
+            Present { value: declared } => Holds { value: declared }
+            Absent => inferred_facts_resolved_type(facts: facts)
+          }
+        Absent => inferred_facts_resolved_type(facts: facts)
       }
   }
 }
