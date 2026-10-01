@@ -24,6 +24,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
 import v2.std.text { String }
+import v2.std.qualified_name { binder_reference_symbol_optional }
+import v2.std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -198,9 +200,11 @@ test fn mab_nested_braced_and_shorthand_binders_bind() -> Bool {
 // (v2.compiler.resolve resolve_pattern_atom_names_constructor) now reads the declared-payload fact
 // the symbol index holds instead of the node's shape. These rows are the census that repair was
 // measured against, kept enrolled as regression controls. Both readings of `A(W) => W` ACCEPT, so
-// acceptance cannot discriminate; what does is the resolved tree: a frame binder stays the Atom it
-// was spelled as, while a declaration reference resolves to its qualified spine
-// (resolved_reference_node). An Atom surviving is the arm having bound it.
+// acceptance cannot discriminate; what does is the resolved tree: a frame binder resolves to a
+// binder reference (v2.std.qualified_name binder_reference_node, over its BinderSite), while a
+// declaration reference resolves to its qualified spine (resolved_reference_node). A binder reference
+// named by the binder is the arm having bound it. (Re-stated 2026-10-01 from "the binder's Atom
+// survives": resolve now marks every value binder it finds in a LexicalFrame.)
 //
 // WHAT THIS CENSUS FOUND, stated because a reader will otherwise assume these rows are the red for
 // the repair: THEY ARE NOT. On #12033's head, with the old shape predicate, every row below already
@@ -209,15 +213,12 @@ test fn mab_nested_braced_and_shorthand_binders_bind() -> Bool {
 // spine segments without inserting a path), so the module-name specimen this package was filed on
 // does not reach the classifier by lexical ascent. No shape was found that the old predicate admits
 // and the index rejects, so the repair is construction with no behavioural delta on this corpus.
-fn mab_has_atom(o: Outcome<ResolvedTree>, id: Symbol) -> Bool {
+fn mab_has_binder_reference(o: Outcome<ResolvedTree>, id: Symbol) -> Bool {
   match o {
     Rejected { diagnostics: _ } => false
     Accepted { value: n, diagnostics: _ } =>
       fold(node_subtree_nodes(root: n.root), init: false, f: fn(found, m) {
-        found || (match m.kind {
-          TypeNode { connective: Atom { identity: i } } => i == id
-          _ => false
-        })
+        found || (binder_reference_symbol_optional(node: m) == Present { value: id })
       })
   }
 }
@@ -234,18 +235,18 @@ fn mab_resolved_record_data_binder() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype Rec { f: Int }\ndata d: Rec = Rec { f: 1 }\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(d) => 0\n    B => 0\n  }\n}\n")
 }
 
-// The instrument is live: with no outer W, the binder's Atom survives.
-test fn mab_unshadowed_binder_atom_survives() -> Bool {
-  mab_has_atom(o: mab_resolved_unshadowed_binder(), id: ^W)
+// The instrument is live: with no outer W, the arm's W is a binder reference.
+test fn mab_unshadowed_binder_is_a_binder_reference_holds() -> Bool {
+  mab_has_binder_reference(o: mab_resolved_unshadowed_binder(), id: ^W)
 }
 
 test fn mab_binder_spelling_a_where_alias_binds() -> Bool {
   mab_outcome_accepts(o: mab_resolved_where_alias_binder())
-    && mab_has_atom(o: mab_resolved_where_alias_binder(), id: ^W)
+    && mab_has_binder_reference(o: mab_resolved_where_alias_binder(), id: ^W)
 }
 
 test fn mab_binder_spelling_a_record_data_row_binds() -> Bool {
-  mab_has_atom(o: mab_resolved_record_data_binder(), id: ^d)
+  mab_has_binder_reference(o: mab_resolved_record_data_binder(), id: ^d)
 }
 
 // A BINDER SPELLED LIKE A NON-PAYLOAD DECLARED IN TWO MODULES BINDS. `n` is off the arm's lexical
@@ -286,7 +287,7 @@ fn mab_resolved_ambiguous_binder() -> Outcome<ResolvedTree> {
 
 test fn mab_binder_spelling_a_non_payload_declared_in_two_modules_binds() -> Bool {
   mab_outcome_accepts(o: mab_resolved_ambiguous_binder())
-    && mab_has_atom(o: mab_resolved_ambiguous_binder(), id: ^n)
+    && mab_has_binder_reference(o: mab_resolved_ambiguous_binder(), id: ^n)
 }
 
 // THE FAIL-CLOSED PARTNER: a pattern atom spelled like a VARIANT declared in two modules, imported
@@ -390,7 +391,7 @@ fn mab_resolved_module_named_binder() -> Outcome<ResolvedTree> {
 
 test fn mab_binder_spelling_a_sibling_module_binds_the_arm() -> Bool {
   mab_outcome_accepts(o: mab_resolved_module_named_binder())
-    && mab_has_atom(o: mab_resolved_module_named_binder(), id: ^node)
+    && mab_has_binder_reference(o: mab_resolved_module_named_binder(), id: ^node)
 }
 
 // AN UNIMPORTED CONSTRUCTOR IN A PATTERN REFUSES RATHER THAN BINDING. `None` is declared only in

@@ -41,7 +41,7 @@ import v2.std.declaration_marker { test_code_index_empty }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node { Atom, BinderSite, Node, Symbol, TypeNode, binder_reference_site_optional, node_subtree_nodes }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.qualified_name {
   QualifiedName,
@@ -191,7 +191,7 @@ test fn pr_unindexed_parameter_path_refuses_at_resolve_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
   }
   let lexical_accepts = match resolve_node(ctx: pr_ctx(kind: LexicalFrame { base: empty_map() }), n: pr_x_atom) {
-    Accepted { value: v, diagnostics: _ } => v == pr_x_atom
+    Accepted { value: v, diagnostics: _ } => binder_reference_site_optional(node: v) == Present { value: BinderSite { name: ^pr_x, ordinal: 0 } }
     Rejected { diagnostics: _ } => false
   }
   refused && lexical_accepts
