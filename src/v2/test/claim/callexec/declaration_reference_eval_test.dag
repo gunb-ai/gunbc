@@ -255,25 +255,14 @@ fn cref_executes(o: Outcome<ResolvedTree>) -> Bool {
   }
 }
 
-fn cref_runtime_int_equals(value: RuntimeValue, n: Int) -> Bool {
-  match value {
-    RuntimePrimitive { value: p } =>
-      match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
-        Accepted { value: magnitude, diagnostics: _ } => magnitude == n
-        Rejected { diagnostics: _ } => false
-      }
-    _ => false
-  }
-}
-
+// ONE READER FOR "WHAT INT DID THIS CALL PRODUCE". cref_executes_to asks it a question and the exact
+// rows below ask it for the magnitude, so a second decoder beside it would be one fact with two
+// authorities (DESIGN section 3) -- and the decoding rule, that only a four-byte signed primitive
+// counts, is exactly the sort that drifts between two copies.
 fn cref_executes_to(o: Outcome<ResolvedTree>, n: Int) -> Bool {
-  match cref_eval_of(o: o) {
+  match cref_result_int_optional(o: o) {
     Absent => false
-    Present { value: outcome } =>
-      match outcome {
-        Accepted { value: v, diagnostics: _ } => cref_runtime_int_equals(value: v, n: n)
-        Rejected { diagnostics: _ } => false
-      }
+    Present { value: magnitude } => magnitude == n
   }
 }
 
@@ -380,7 +369,33 @@ fn cref_identity_source(lex: String) -> Outcome<ResolvedTree> {
   cref_assemble(src: "module p\n\nfn identity(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer() -> Int {\n  identity(only_arg: " + lex + ")\n}\n")
 }
 
-fn cref_identity_executes_to(lex: String, n: Int) -> Bool {
+// THE CALL'S RESULT AS AN INT, OR NOTHING. The two identity rows below each assert an EXACT result for
+// ONE argument, so each pays one front-end run where the pair previously paid two apiece: the two
+// SOURCES ("3" and "8") are distinct text, which no memo collapses, and a row that asked about both
+// carried the other's whole pipeline against its own enrolment budget. Exactness is what lets one row
+// per argument keep what the conjunctions had -- a callee answering any constant fails the row whose
+// argument it does not equal -- so this reader returns the magnitude rather than a Bool against an
+// expectation.
+fn cref_result_int_optional(o: Outcome<ResolvedTree>) -> Optional<Int> {
+  match cref_eval_of(o: o) {
+    Absent => optional_absent()
+    Present { value: outcome } =>
+      match outcome {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: v, diagnostics: _ } =>
+          match v {
+            RuntimePrimitive { value: p } =>
+              match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
+                Accepted { value: magnitude, diagnostics: _ } => optional_present(value: magnitude)
+                Rejected { diagnostics: _ } => optional_absent()
+              }
+            _ => optional_absent()
+          }
+      }
+  }
+}
+
+fn cref_identity_result_is_exactly(lex: String, n: Int) -> Bool {
   cref_executes_to(o: cref_identity_source(lex: lex), n: n)
 }
 
@@ -397,19 +412,30 @@ fn cref_identity_executes_to(lex: String, n: Int) -> Bool {
 // 3 in yields 3 out and 8 in yields 8 out. The refusal it used to count was NOT the shared facts key
 // the old annotation blamed -- the synthetic-key collision is real and still enrolled separately, but
 // it was not what held this row red. The boundary was the two disagreeing readers of a callee's arrow.
+//
+// ONE ARGUMENT PER ROW, AND THE RESULT READ EXACTLY. The pair "3 in yields 3 out" and "8 in yields 8
+// out" is two independent cases over two different sources, so forcing both through one row paid two
+// full front-end runs against one enrolment budget for no coverage the split does not keep. The row
+// below owns the "3" case and the row after it owns the "8" case; argument dependence is established
+// by the two together, exactly as it was by the two conjuncts, because neither result is admissible
+// for the other's argument. Asserting the EXACT magnitude is what makes each row carry that on its
+// own: a callee answering any constant fails the row whose argument it does not equal.
 test fn cref_argument_dependent_execution_reaches_the_callee_holds() -> Bool {
-  cref_identity_executes_to(lex: "3", n: 3)
-    && cref_identity_executes_to(lex: "8", n: 8)
+  cref_identity_result_is_exactly(lex: "3", n: 3)
 }
 
-// AND THE SAME CALLEE MUST NOT ANSWER A DIFFERENT ARGUMENT'S VALUE once it executes. THIS CLAIM IS
-// VACUOUS TODAY and is recorded as such: nothing executes, so both conjuncts hold for the wrong
-// reason. It is enrolled anyway because it is exactly the check that stops the repair being credited
-// by a callee that consumes its argument and returns the WRONG one, and it becomes discriminating the
-// moment the claim above inverts. A reader must not count it as present coverage until then.
+// AND THE SAME CALLEE MUST NOT ANSWER A DIFFERENT ARGUMENT'S VALUE once it executes. THE VACUITY THIS
+// ANNOTATION USED TO CONFESS IS GONE AND THE CONFESSION WAS STALE: it said nothing executes, so both
+// negated conjuncts held for the wrong reason, and that stopped being true when the row above flipped.
+// A reader who trusted the annotation would have discounted coverage that was already live, which is
+// the same defect as claiming coverage that is not -- a stale honesty note misreports the rung either
+// way (DESIGN section 4b(1)).
+//
+// IT IS NOW THE "8" CASE, READ EXACTLY, so it answers both halves of its own name from one front-end
+// run: the callee executes to 8 and therefore does not answer 3. The negation is carried by the
+// exactness rather than by a second run against the other magnitude.
 test fn cref_the_identity_callee_never_answers_the_other_argument_holds() -> Bool {
-  !cref_identity_executes_to(lex: "3", n: 8)
-    && !cref_identity_executes_to(lex: "8", n: 3)
+  cref_identity_result_is_exactly(lex: "8", n: 8)
 }
 
 // THE BOOL PAIR'S DISTINCT OUTCOMES, the same shape one type further on. A true-returning and a
@@ -425,10 +451,19 @@ fn cref_bool_false_source() -> Outcome<ResolvedTree> {
 // refusals are also unequal and would satisfy inequality alone. The values are not compared against a
 // magnitude: this module is not the authority on how v2.std.logic represents its arms, and asserting a
 // byte image here would be a second such authority (DESIGN section 3).
+//
+// EXECUTION IS NOT ASSERTED BY A SEPARATE CONJUNCT, AND THAT IS A STRENGTHENING, NOT A SAVING. The two
+// leading cref_executes conjuncts established strictly LESS than cref_results_differ already must:
+// that reader answers Absent for a refusal and ALSO for an accepted value that is not a primitive,
+// where cref_executes answered true for the second. Removing them removes the weaker check.
+//
+// IT BOUGHT NO COST, AND SAYING SO IS THE POINT. The claim-local call memo already collapsed the
+// repeated nullary source and eval calls, so claim_batch measures this row at the same cost with the
+// conjuncts and without them -- the duplication was apparent in the text and absent in the run. That
+// is worth recording because the reverse inference is the tempting one: a row that LOOKS like it calls
+// the front end four times is not evidence that it does, and only the instrument decides.
 test fn cref_the_bool_pair_separates_holds() -> Bool {
-  cref_executes(o: cref_bool_pair_source())
-    && cref_executes(o: cref_bool_false_source())
-    && cref_results_differ(a: cref_bool_pair_source(), b: cref_bool_false_source())
+  cref_results_differ(a: cref_bool_pair_source(), b: cref_bool_false_source())
 }
 
 // THE PRIMITIVE BYTES OF A CALL'S RESULT, for the one claim whose property is that two calls produce

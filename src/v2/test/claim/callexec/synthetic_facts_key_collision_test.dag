@@ -55,6 +55,29 @@ import v2.std.runtime { runtime_value_conj_node }
 // demand site in v2.compiler.eval its own reason symbol; that instrument is not retained, and its
 // result is recorded in this change's commit message rather than asserted here, because asserting it
 // would require keeping the instrumentation in the evaluator.
+// WHY EVERY ROW HERE EXECUTES THE WHOLE FRONT END, AND WHY THAT IS NOT CONVERTED AWAY. DESIGN
+// section 3's witness rule says a claim's inputs belong at the boundary it discriminates, as supplied
+// values, and the rows below supply none: each assembles authored text, resolves it and infers over it.
+// That was interrogated row by row against the rule rather than defended by habit, and the reason it
+// stands is the one DESIGN section 4b states for the top rung -- ASK WHETHER THE CHECK'S RED IS
+// AUTHORABLE BEFORE WRITING THE CHECK.
+//
+// THE SUBJECT OF THESE ROWS IS THE ENTRY POPULATION INFER ACTUALLY EMITS, not what one downstream
+// function answers for a shape. The claims count how many entries of one real compilation share one
+// key and whether they agree -- and a supplied entry list would let this file CHOOSE that count, which
+// is the whole question. There is no red to author against a fixture here: the collision would be
+// asserted by construction. So the entries stay the real producer's, and the cost stays.
+//
+// SO THESE ROWS ARE THE EXECUTION OF THE REAL PATH -- the second half of the same rule, which forbids
+// supplying inputs anywhere if it removes the last execution of the producer. Deleting resolve's
+// projection lowering, or infer's declared-field read, must make a control here fail, and does.
+//
+// WHAT WOULD ACTUALLY MOVE THEIR COST is not a narrower claim but a provider for the demand: their
+// nullary source producers are pure functions of module-constant text, which is the shape
+// v2.workflow.floor_pure_producer_share already serves across claims for hundreds of peer fixtures,
+// including the per-fixture assembled and resolved trees rostered there. Enrolment is NOT asserted or
+// proposed here, because that roster's own admission criterion is a measured serve-below-recompute on
+// a required-floor receipt, which this file cannot produce; naming the route is the honest half.
 fn sfk_entries(o: Outcome<ResolvedTree>) -> Optional<List<InferredFactsEntry>> {
   match o {
     Rejected { diagnostics: _ } => optional_absent()

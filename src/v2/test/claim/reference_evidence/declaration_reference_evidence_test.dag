@@ -41,6 +41,32 @@ import v2.std.qualified_name { QualifiedName, declaration_reference_path_optiona
 // occurrence, not to a declaring path, so `infer_parameter_scope_search` answers a different question
 // and is not replaced here. The refinement rows in v2.test.claim.body_cast_node are its standing
 // control and they pass on this base.
+// WHY EVERY ROW HERE EXECUTES THE WHOLE FRONT END, AND WHY THAT IS NOT CONVERTED AWAY. DESIGN
+// section 3's witness rule says a claim's inputs belong at the boundary it discriminates, as supplied
+// values, and the rows below supply none: each assembles authored text, resolves it and infers over it.
+// That was interrogated row by row against the rule rather than defended by habit, and the reason it
+// stands is the one DESIGN section 4b states for the top rung -- ASK WHETHER THE CHECK'S RED IS
+// AUTHORABLE BEFORE WRITING THE CHECK.
+//
+// THE SUBJECT OF THESE ROWS IS WHAT RESOLVE AND INFER PRODUCE FOR AUTHORED TEXT, not what one
+// downstream function answers for a shape. Every row asks whether a reference or a call GROUNDS, and
+// what it grounds to -- facts about the resolved-declaration index the front end mints and about the
+// declared-return spelling lowering leaves behind. Against a supplied index and supplied facts each of
+// those answers is a restatement of the fixture, so the row's red would not be authorable: it would
+// become a decoration, which DESIGN says is worse than an absent check because it will be cited as
+// coverage. The two same-leaf rows make this sharpest -- a hand-built index picks the declaration the
+// author intended, which is exactly the selection under test.
+//
+// SO THESE ROWS ARE THE EXECUTION OF THE REAL PATH -- the second half of the same rule, which forbids
+// supplying inputs anywhere if it removes the last execution of the producer. Deleting resolve's
+// projection lowering, or infer's declared-field read, must make a control here fail, and does.
+//
+// WHAT WOULD ACTUALLY MOVE THEIR COST is not a narrower claim but a provider for the demand: their
+// nullary source producers are pure functions of module-constant text, which is the shape
+// v2.workflow.floor_pure_producer_share already serves across claims for hundreds of peer fixtures,
+// including the per-fixture assembled and resolved trees rostered there. Enrolment is NOT asserted or
+// proposed here, because that roster's own admission criterion is a measured serve-below-recompute on
+// a required-floor receipt, which this file cannot produce; naming the route is the honest half.
 data dre_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^declaration_reference_evidence_artifact,

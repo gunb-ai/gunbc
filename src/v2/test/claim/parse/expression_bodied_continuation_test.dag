@@ -17,7 +17,7 @@ import v2.std.diagnostic {
   outcome_diagnostics
 }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol, TypeNode, Atom }
+import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.text { String }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -173,7 +173,18 @@ test fn cont_empty_eq_fn_decl_refuses_holds() -> Bool {
   }
 }
 
-// THE THREE NORMALIZE ROWS.
+// THE THREE NORMALIZE ROWS. THEY STAY ON THE REAL CHAIN AND THEY STAY OVER THE NEW-WITNESS MARGIN, and
+// that is reported rather than engineered away. Where their cost sits was decided by measurement rather
+// than by reasoning: claim_batch over this entry, run against a transient row asserting only that
+// normalize ACCEPTS the braced control, puts effectively all of the expense in the parse and in
+// normalize itself and effectively none in the recursive arrow-body search -- so there is no cheap half
+// to remove. Both halves ARE this row's subject, which is "the declaration this parser produces still
+// carries its arrow body after normalize", so there is nothing here to supply that would not sever the
+// link being claimed. A hand-built parse tree handed to normalize would reach the same verdict through
+// a shape this file designed rather than the one the parser emits, which is the failure DESIGN
+// section 3 names as a fixture passing after the world it was built against moved. The isolating row is
+// not retained, because it answered its question once and would otherwise stand as one more
+// over-margin witness for a split that is now known.
 test fn cont_braced_fn_decl_survives_normalize_holds() -> Bool {
   cont_normalize_has_arrow_body(parsed: cont_braced_parsed())
 }
@@ -204,15 +215,41 @@ test fn cont_the_arrow_body_search_answers_false_for_a_leaf_holds() -> Bool {
 }
 
 // AND ITS POSITIVE CONTROL AT THE SAME BOUNDARY: the search must find a body that IS there, reached
-// by RECURSION rather than at the root. The braced control's normalized tree carries its arrow below
-// the module root, so a search that only inspected the root answers false here.
-test fn cont_the_arrow_body_search_recurses_to_find_a_body_holds() -> Bool {
-  match cont_normalized_tree(parsed: cont_braced_parsed()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      cont_tree_has_arrow_body(root: root)
-        && !cont_root_itself_has_arrow_body(root: root)
+// by RECURSION rather than at the root. The tree is SUPPLIED, and that is the rule rather than a
+// saving: this claim's subject is one interface -- what cont_tree_has_arrow_body answers for a tree
+// whose arrow body sits below the root -- and it used to obtain that tree by running
+// dag_prepared_grammar, tokenize, parse_module_prepared and normalize, re-executing four stages whose
+// results it never inspected (DESIGN section 3, a witness discriminates at one interface). The
+// diagnostic was exact: the row's cost did not move when its assertions changed, because the
+// assertions were never the expense.
+//
+// THE PAIRING OBLIGATION IS DISCHARGED BY cont_braced_fn_decl_survives_normalize_holds, which runs the
+// real chain over the real source and finds the same body through the same search -- so the shape
+// supplied here is one the real producer emits, asserted over the production route and not assumed.
+// Deleting normalize from that chain makes it fail; this row would not notice, which is exactly why it
+// is not the one that may stand alone.
+fn cont_arrow_with_body(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+    ],
+    occurrence_id: OccurrenceSynthetic
   }
+}
+
+fn cont_root_over(child: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Positional, target: child }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn cont_the_arrow_body_search_recurses_to_find_a_body_holds() -> Bool {
+  let root = cont_root_over(child: cont_arrow_with_body(body: cont_leaf_atom()))
+  cont_tree_has_arrow_body(root: root)
+    && !cont_root_itself_has_arrow_body(root: root)
 }
 
 fn cont_root_itself_has_arrow_body(root: Node) -> Bool {
@@ -245,19 +282,29 @@ fn cont_agrees_with_subject(mine: Outcome<Node>, theirs: Outcome<Node>) -> Bool 
   }
 }
 
+//
+// ONE SOURCE PER ROW. The three agreements are independent cases over three different texts, so
+// folding them into one row forced six parses through one enrolment budget and lost no coverage when
+// split -- which is the conjunction tell DESIGN section 3 names beside the reach it is a symptom of.
 test fn cont_the_continuation_parses_the_same_tree_as_the_subject_holds() -> Bool {
   cont_agrees_with_subject(
     mine: cont_expression_bodied_parsed(),
     theirs: g_tokenize_parse(text: expression_bodied_fn_source, file: ^probe_expr_fn)
   )
-    && cont_agrees_with_subject(
-         mine: cont_expression_bodied_literal_parsed(),
-         theirs: g_tokenize_parse(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
-       )
-    && cont_agrees_with_subject(
-         mine: cont_braced_parsed(),
-         theirs: g_tokenize_parse(text: braced_fn_control_source, file: ^probe_braced_fn)
-       )
+}
+
+test fn cont_the_continuation_parses_the_literal_form_as_the_subject_does_holds() -> Bool {
+  cont_agrees_with_subject(
+    mine: cont_expression_bodied_literal_parsed(),
+    theirs: g_tokenize_parse(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
+  )
+}
+
+test fn cont_the_continuation_parses_the_braced_control_as_the_subject_does_holds() -> Bool {
+  cont_agrees_with_subject(
+    mine: cont_braced_parsed(),
+    theirs: g_tokenize_parse(text: braced_fn_control_source, file: ^probe_braced_fn)
+  )
 }
 
 // AND IT AGREES ON THE REFUSAL TOO, so the empty-`=` row is the subject's refusal and not merely a
