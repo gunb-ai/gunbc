@@ -673,7 +673,10 @@ test fn w_live_wet_registrations_own_their_declared_modules() -> Bool {
 // conjuncts below true.
 test fn w_live_wet_population_carries_both_declaration_routes() -> Bool {
   let rows = stage0_live_wet_lib_module_registrations()
-  (length(xs: rows) == 3)
+  // Keyed by name, never by a count literal: a count copied from the tree went red when gunbc#12183
+  // registered a fourth PlainPubMod row (DESIGN section 5). One cited member per admitted route, and
+  // the PathIncluded member, which this population must exclude.
+  !any(xs: rows, predicate: fn(r) { r.basename == "bootstrap_stage0_crate_layout_generated" })
     && any(xs: rows, predicate: fn(r) { (r.basename == "v1_interpreter_dispatch_generated") && (probe_route_name(route: r.declaration_route) == probe_route_name(route: MacroUsePubModSpliced)) })
     && any(xs: rows, predicate: fn(r) { (r.basename == "evaluation_budget_consequence_generated") && (probe_route_name(route: r.declaration_route) == probe_route_name(route: PlainPubMod)) })
     && any(xs: rows, predicate: fn(r) { (r.basename == "gunbc_file_transport_generated") && (probe_route_name(route: r.declaration_route) == probe_route_name(route: PlainPubMod)) })

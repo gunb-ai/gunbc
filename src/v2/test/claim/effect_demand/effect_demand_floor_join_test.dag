@@ -15,7 +15,7 @@ import v2.compiler.effect_demand_floor_join {
 import v2.compiler.effect_demand { effect_demand_seam_roster }
 import v2.lens.module_graph { ModuleDeclarationFact, ModuleDependencyEdge }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.algebra { Cons, Empty, any, length }
+import v2.std.algebra { Cons, Empty, any, filter, length }
 import v2.std.collection { List }
 import v2.std.live_tree { SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -198,11 +198,15 @@ test fn floor_join_witness_digest_is_a_function_of_identity_and_standing() -> Bo
   same && (probe_digest(join: moved) != probe_digest(join: probe_join())) && (probe_digest(join: probe_join()) != "")
 }
 
-test fn floor_join_witness_live_seam_modules_are_the_fourteen_seams_homes() -> Bool {
+// The relation, not a roster transcription: every seam row's home is a live seam module, each home
+// appears once, and no row contributes an empty home. A home literal pinned here went stale when
+// gunbc#12377 moved the lexeme rows to v2.std.node.
+test fn floor_join_witness_live_seam_modules_are_exactly_the_roster_seams_distinct_homes() -> Bool {
   let homes = floor_join_seam_modules(roster: effect_demand_seam_roster)
-  any(xs: homes, predicate: fn(m) { m == "v2.std.decl_index" })
-    && any(xs: homes, predicate: fn(m) { m == "v2.std.compilers.lexing" })
+  !any(xs: effect_demand_seam_roster, predicate: fn(seam) { !any(xs: homes, predicate: fn(m) { m == seam.seam_module }) })
+    && !any(xs: homes, predicate: fn(m) { length(xs: filter(xs: homes, predicate: fn(n) { n == m })) != 1 })
     && !any(xs: homes, predicate: fn(m) { m == "" })
+    && !any(xs: homes, predicate: fn(m) { !any(xs: effect_demand_seam_roster, predicate: fn(seam) { seam.seam_module == m }) })
 }
 
 test fn floor_join_witness_the_dotted_identity_is_derived_from_the_declaration_ref() -> Bool {
