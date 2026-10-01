@@ -13,7 +13,7 @@ import v2.lens.text_string_importer_census {
   CalleeNotImportedByName, CalleeModuleNotInPool, CalleeModuleNotParsed, NoSuchParameter, ParameterSpelledOther,
   DecodedAs, Undecodable,
   FixpointComputed, FixpointInputRefused, FixpointReached, FixpointBoundExceeded,
-  member, walk_atoms, tree_atoms, raw_tree_of_text, rosters_of_walk, empty_rosters,
+  member, walk_atoms, tree_atoms, raw_tree, rosters_of_walk, empty_rosters,
   crossings_of, verdict_with_crossings,
   verdict_token, verdict_of_token, crossing_tokens, crossing_of_tokens,
   fixpoint_over_lines, fixpoint_verdict
@@ -24,19 +24,20 @@ import v2.std.algebra { any, fold_list, list_reverse }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE CLASSIFIER'S INTERFACE IS THE PRE-ORDER ATOM STREAM, AND THESE ROWS SUPPLY IT (DESIGN 3: a
 // witness discriminates at one interface). Each `atoms_*` row is the stream the real raw parse
 // produced for the same-named file under test/fixture_roots/text_string_importer_census, captured
 // once; the rosters are supplied too. Parsing a module or v2.std.text per row cost more than a
 // whole row's floor budget, and re-ran production these rows are not about. THE PAIRING
-// OBLIGATION is kept by v2.test.claim.long.text_string_importer_census_real_route: one raw parse
-// of a small source that must reach a HOST verdict through tree_atoms, and one parse refusal --
-// about 1M eval steps each (grammar validation), so they run on the substrate long lane, admitted
-// by gunbc.explicit_witness_admission.
+// OBLIGATION is kept by tsic_real_raw_parse_route_reaches_the_classifier at the bottom: the real
+// raw parse of one small real importer, through tree_atoms, into the classifier. The parse is
+// paid once by a warm pure producer (v2.workflow.floor_pure_producer_share
+// floor_cross_claim_pure_producers_warm): grammar validation alone measured about 1M eval steps,
+// a fixed product independent of the module read.
 //
 // Each row asserts the EXACT arm its input exists for, never "not" another arm.
 
@@ -61,14 +62,24 @@ type Classified {
   sites: FreeMonoid<Site>
 }
 
-fn classified(atoms: List<String>) -> Classified {
+// Only the crossing rows supply callee modules: building them walks two more streams, which every
+// other row would pay for nothing.
+fn classified_with(atoms: List<String>, callees: FreeMonoid<CalleeModule>) -> Classified {
   let w = walk_of(atoms: atoms)
   let sites = list_reverse(xs: w.sites)
-  Classified { verdict: verdict_with_crossings(sites: sites, crossings: crossings_of(own: w, callees: callee_modules_supplied())), sites: sites }
+  Classified { verdict: verdict_with_crossings(sites: sites, crossings: crossings_of(own: w, callees: callees)), sites: sites }
+}
+
+fn classified(atoms: List<String>) -> Classified {
+  classified_with(atoms: atoms, callees: Empty)
 }
 
 fn verdict_of_atoms(atoms: List<String>) -> ImporterVerdict {
   classified(atoms: atoms).verdict
+}
+
+fn crossing_verdict_of_atoms(atoms: List<String>) -> ImporterVerdict {
+  classified_with(atoms: atoms, callees: callee_modules_supplied()).verdict
 }
 
 fn is_host(v: ImporterVerdict) -> Bool {
@@ -182,18 +193,18 @@ test fn tsic_import_without_string_member_is_outside_the_population() -> Bool {
 // CROSSINGS: one call shape, three callee declarations, so each row can only be green through the
 // declared-parameter read.
 test fn tsic_crossing_into_a_kernel_string_parameter_is_host() -> Bool {
-  is_host(v: verdict_of_atoms(atoms: atoms_crossing_host))
+  is_host(v: crossing_verdict_of_atoms(atoms: atoms_crossing_host))
 }
 
 test fn tsic_crossing_into_a_free_monoid_parameter_is_structural() -> Bool {
-  match verdict_of_atoms(atoms: atoms_crossing_structural) {
+  match crossing_verdict_of_atoms(atoms: atoms_crossing_structural) {
     StructuralUsing => true
     _ => false
   }
 }
 
 test fn tsic_crossing_into_an_imported_string_parameter_stays_undecided() -> Bool {
-  match verdict_of_atoms(atoms: atoms_crossing_ambiguous) {
+  match crossing_verdict_of_atoms(atoms: atoms_crossing_ambiguous) {
     Unclassified { cause: UndecidedCrossings } => true
     _ => false
   }
@@ -332,6 +343,46 @@ test fn tsic_fixpoint_refuses_an_undecodable_verdict() -> Bool {
     FixpointComputed { outcome: _ } => false
   }
 }
+
+// THE REAL ROUTE: one small REAL importer (5 lines; the census classified it HOST through one
+// literal at a bare-`String` annotation) read and raw-parsed by the census's own route. The claim
+// asserts the ROUTE, not only the verdict: the parse saw the `String` import, the host site is the
+// literal at that declaration, and the verdict follows. Deleting the parse integration reds it.
+data real_route_subject: String = "src/v2/compiler/self_host/direct_rust_door_ingest_fixture.dag"
+
+type TsicRealRoute {
+  established: Bool
+  imports_text_string: Bool
+  host_site_at_the_note: Bool
+  verdict_is_host: Bool
+}
+
+fn tsic_real_route_outcome() -> TsicRealRoute {
+  match raw_tree(path: real_route_subject) {
+    RawTreeNotEstablished { cause: _ } => TsicRealRoute { established: false, imports_text_string: false, host_site_at_the_note: false, verdict_is_host: false }
+    RawTreeEstablished { root: root } => {
+      let w = walk_atoms(atoms: tree_atoms(root: root), r: rosters_supplied)
+      let sites = list_reverse(xs: w.sites)
+      TsicRealRoute {
+        established: true,
+        imports_text_string: w.imports_text_string,
+        host_site_at_the_note: any(xs: sites, predicate: fn(s) {
+          match s.kind {
+            HostLiteralAtStringAnnotation => s.decl == "direct_rust_door_ingest_fixture_note"
+            _ => false
+          }
+        }),
+        verdict_is_host: is_host(v: verdict_with_crossings(sites: sites, crossings: Empty))
+      }
+    }
+  }
+}
+
+test fn tsic_real_raw_parse_route_reaches_the_classifier() -> Bool {
+  let o = tsic_real_route_outcome()
+  o.established && o.imports_text_string && o.host_site_at_the_note && o.verdict_is_host
+}
+
 
 data atoms_host_literal: List<String> = [
   "dag_surface_module",

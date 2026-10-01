@@ -492,30 +492,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     expected: ExpectWitnessHolds,
     reason: "First Transform derivation discriminating receipt (#8395): one normalize→resolve→infer pass over add_probe asserts Transform body DerivedGrounding while Arrow stays GroundingNotDerived. Measured ~12274ms thread-CPU locally vs 5001ms fast-lane abort on PR CI discovery (BudgetExceeded) — cost is the production frontend+infer crossing. Fast per-PR control: infer_transform_non_add_remains_frontier_holds (subtract dispatch gate). Owner: v2-inferred-tree-completeness.",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery; row deletes with the long-lane file")
-  },
-  ExplicitWitnessAdmission {
-    witness: ScheduleWitnessEntry {
-      entry: "src/v2/test/claim/long/text_string_importer_census_real_route_test.dag",
-      function: "tsic_real_raw_parse_route_reaches_the_classifier",
-      kind: CorpusWitnessKind
-    },
-    cadence: FalsifierSubstrateLongLane,
-    budget: SubstrateLongLaneEvalBudget,
-    expected: ExpectWitnessHolds,
-    reason: "Real-route row for the v2.std.text String importer census (gunbc#12840): a small source parsed through raw_tree_of_text and tree_atoms reaches the census classifier and a HOST verdict. The census's floor rows supply the atom stream; this row is the pairing obligation that the real raw parse still produces it. Measured on PR CI at about 1M eval steps against the 72300-step new-witness floor budget; the cost is grammar validation on every parse. Owner: royal-lark-857 / carrier_by_spelling.",
-    dissolution: unbound_dissolution(description: "a raw parse of a small source lands under the new-witness floor budget on a measured cold run (grammar validation shared or prepared once), then this row re-enrolls on per-PR discovery and deletes with the long-lane file")
-  },
-  ExplicitWitnessAdmission {
-    witness: ScheduleWitnessEntry {
-      entry: "src/v2/test/claim/long/text_string_importer_census_real_route_test.dag",
-      function: "tsic_parse_refusal_is_listed_with_its_cause",
-      kind: CorpusWitnessKind
-    },
-    cadence: FalsifierSubstrateLongLane,
-    budget: SubstrateLongLaneEvalBudget,
-    expected: ExpectWitnessHolds,
-    reason: "Real-route row for the v2.std.text String importer census (gunbc#12840): an unparseable source is refused by the raw parse with SourceParseRejected. The census's floor rows supply the atom stream; this row is the pairing obligation that the real raw parse still produces it. Measured on PR CI at about 1M eval steps against the 72300-step new-witness floor budget; the cost is grammar validation on every parse. Owner: royal-lark-857 / carrier_by_spelling.",
-    dissolution: unbound_dissolution(description: "a raw parse of a small source lands under the new-witness floor budget on a measured cold run (grammar validation shared or prepared once), then this row re-enrolls on per-PR discovery and deletes with the long-lane file")
   }
 ]
 

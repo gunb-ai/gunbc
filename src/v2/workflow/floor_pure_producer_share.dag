@@ -746,6 +746,7 @@ import v2.std.collection { List }
 // re-ingesting, so with this row served they fit the new-witness budget; gunbc#12639's floor runs
 // measure present against absent.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.claim.text_string_importer_census.tsic_real_route_outcome",
   "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_loaded_roots",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_located_roots",
