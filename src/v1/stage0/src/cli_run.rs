@@ -11576,6 +11576,8 @@ pub enum WitnessRuntimeCause {
     ShellOutputLimitExceeded,
     ShellSpawnRefused,
     CallContractMismatch,
+    /// A host filesystem effect (create, write) failed. Not a type error: the world refused.
+    HostIoFailed,
     /// An admitted cross-claim producer was the active subject when the unchanged CPU safety
     /// ceiling fired. The token makes the prospective-fill population countable without
     /// treating first-touch order as intrinsic claim cost.
@@ -11614,6 +11616,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::ShellOutputLimitExceeded => "shell-output-limit-exceeded",
             WitnessRuntimeCause::ShellSpawnRefused => "shell-spawn-refused",
             WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
+            WitnessRuntimeCause::HostIoFailed => "host-io-failed",
             WitnessRuntimeCause::FillBudgetExceeded => "fill-budget-exceeded",
             WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
         }
@@ -11653,6 +11656,7 @@ impl WitnessRuntimeCause {
             E::ShellOutputLimitExceeded { .. } => WitnessRuntimeCause::ShellOutputLimitExceeded,
             E::ShellSpawnRefused { .. } => WitnessRuntimeCause::ShellSpawnRefused,
             E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
+            E::HostIoFailed { .. } => WitnessRuntimeCause::HostIoFailed,
             E::FillBudgetExceeded { .. } => WitnessRuntimeCause::FillBudgetExceeded,
             // The five that should never arrive. See the type comment.
             E::HostToolUnresolved { .. }
@@ -11696,6 +11700,11 @@ pub enum ClaimOutcome {
     RuntimeError {
         cause: WitnessRuntimeCause,
         message: String,
+        /// WHERE it was raised: the innermost `.dag` declaration being evaluated, then the call
+        /// path out to the claim. A third fact beside the other two — the message says what went
+        /// wrong, this says which declaration was running — and the one every arm can carry,
+        /// because most `InterpError` arms have no source position at their raise site.
+        raised_in: v1_interpreter::RaisePath,
     },
     /// A budget refusal, with the pair that explains it kept as data.
     ///
@@ -18611,6 +18620,234 @@ pub fn render_witness_claim_result_text_mirror(
     )
 }
 
+/// Mirror of `gunbc.observation_ci_render` `ci_witness_runtime_error_detail_text`: the line that
+/// LOCATES a runtime-error row. The ERROR row keeps its bytes and its `cause=` key; this line
+/// repeats the target label and carries `raised_in=` (innermost declaration being evaluated),
+/// `call_path=` (out to the claim) and `message=` (last, newlines escaped). Each frame is the
+/// declaration's own span, not the raise site's: most interpreter error arms have no position.
+pub fn render_witness_runtime_error_detail_text_mirror(
+    subject: &str,
+    function: &str,
+    raised_in: &v1_interpreter::RaisePath,
+    message: &str,
+) -> String {
+    let label = witness_bazel_target_label(subject, function);
+    let frames: Vec<String> = raised_in
+        .frames
+        .iter()
+        .map(|f| format!("{}@{}:{}", f.decl, f.file, f.start))
+        .collect();
+    let (innermost, call_path) = if frames.is_empty() {
+        ("unrecorded".to_string(), "unrecorded".to_string())
+    } else {
+        (frames[0].clone(), frames.join("<-"))
+    };
+    let elided = if raised_in.elided == 0 {
+        String::new()
+    } else {
+        format!(" elided={}", raised_in.elided)
+    };
+    format!(
+        "{label} error-at raised_in={innermost} call_path={call_path}{elided} message={}",
+        message.replace('\n', "\\n")
+    )
+}
+
+#[cfg(test)]
+mod runtime_error_location_tests {
+    use super::{
+        render_witness_claim_result_text_mirror, render_witness_runtime_error_detail_text_mirror,
+        run_claim, CiWitnessVerdict, ClaimOutcome, WitnessRuntimeCause,
+    };
+    use crate::v1_compiler_compile::SourceFile;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, RaiseFrame, RaisePath};
+    use std::rc::Rc;
+
+    fn claim_outcome(content: &str, function: &str) -> ClaimOutcome {
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
+                SourceFile {
+                    path: "fixture/raise.dag".to_string(),
+                    content: content.to_string(),
+                }
+            )]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
+        run_claim(&ctx, function)
+    }
+
+    // THE DISCRIMINATING CONTROL. One program, two claims, the same throw raised in two different
+    // declarations: `raised_in` must name the declaration that was running at the raise, and the
+    // call path must run out to the claim. A renderer or recorder that named the claim, the first
+    // declaration in the module, or a constant would fail one of the two.
+    #[test]
+    fn a_runtime_error_is_located_at_the_declaration_that_raised_it() {
+        let src = "module fixture.raise\n\
+                   fn divide(d: Int) -> Int { 10 / d }\n\
+                   fn via_helper(d: Int) -> Int { divide(d: d) + 1 }\n\
+                   fn other(d: Int) -> Int { 7 / d }\n\
+                   fn w_deep() -> Bool { via_helper(d: 0) == 11 }\n\
+                   fn w_other() -> Bool { other(d: 0) == 1 }\n";
+        let deep = claim_outcome(src, "fixture.raise.w_deep");
+        let ClaimOutcome::RuntimeError {
+            cause, raised_in, ..
+        } = &deep
+        else {
+            panic!("expected a runtime error, got {deep:?}");
+        };
+        assert_eq!(*cause, WitnessRuntimeCause::DivisionByZero);
+        let decls: Vec<&str> = raised_in.frames.iter().map(|f| f.decl.as_str()).collect();
+        assert_eq!(decls.first().copied(), Some("divide"), "{decls:?}");
+        assert!(
+            decls.contains(&"via_helper") && decls.last().copied() == Some("w_deep"),
+            "{decls:?}"
+        );
+        assert!(raised_in.frames[0].file.ends_with("fixture/raise.dag"));
+
+        let other = claim_outcome(src, "fixture.raise.w_other");
+        let ClaimOutcome::RuntimeError { raised_in, .. } = &other else {
+            panic!("expected a runtime error, got {other:?}");
+        };
+        assert_eq!(
+            raised_in.frames.first().map(|f| f.decl.as_str()),
+            Some("other")
+        );
+    }
+
+    // A HOST WRITE FAILURE IS A TYPED IO REFUSAL CARRYING ITS PATH, never a TypeError. A directory
+    // standing where `Cargo.toml` should be written makes the host refuse the write on every
+    // platform and as every user (a permission-denied control would pass vacuously as root).
+    #[test]
+    fn a_host_write_failure_renders_as_the_io_cause_with_its_path() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-host-io-control-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Cargo.toml")).unwrap();
+        let err = crate::v1_interpreter::emit_host_materialize_workspace_files_for_test(
+            &dir,
+            &[("Cargo.toml".to_string(), "[package]".to_string())],
+        )
+        .expect_err("the write must fail");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            matches!(&err, crate::v1_interpreter::InterpError::HostIoFailed { operation, .. }
+                if operation.ends_with(": write")),
+            "{err}"
+        );
+        let cause = WitnessRuntimeCause::of_interp_error(&err);
+        assert_eq!(cause, WitnessRuntimeCause::HostIoFailed);
+        assert_ne!(cause.token(), WitnessRuntimeCause::TypeError.token());
+        assert_eq!(cause.token(), "host-io-failed");
+        let message = format!("{err}");
+        assert!(
+            message.contains("gunbc-host-io-control-") && message.contains("/Cargo.toml"),
+            "{message}"
+        );
+        let row = render_witness_claim_result_text_mirror(
+            "test.claim.foo",
+            "w_bar",
+            9_000_000,
+            CiWitnessVerdict::RuntimeError(cause),
+        );
+        assert!(row.ends_with("ERROR in 9ms cause=host-io-failed"), "{row}");
+    }
+
+    // A HOST READ FAILURE IS THE SAME TYPED REFUSAL. A directory standing where the Cargo
+    // configuration file is probed makes the read fail with something other than NotFound (which
+    // is the ordinary absent-config case and is not an error).
+    #[test]
+    fn a_host_read_failure_renders_as_the_io_cause_with_its_path() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-host-read-control-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".cargo/config")).unwrap();
+        let err = crate::v1_interpreter::emit_host_cargo_configuration_digest_for_test(&dir)
+            .expect_err("the read must fail");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            matches!(&err, crate::v1_interpreter::InterpError::HostIoFailed { operation, .. }
+                if operation.ends_with(": read Cargo configuration")),
+            "{err}"
+        );
+        assert_eq!(
+            WitnessRuntimeCause::of_interp_error(&err).token(),
+            "host-io-failed"
+        );
+        let message = format!("{err}");
+        assert!(
+            message.contains("gunbc-host-read-control-") && message.contains("/.cargo/config"),
+            "{message}"
+        );
+    }
+
+    // Byte-equal to `test.claim.observation_ci_render_witness_test`
+    // `w_runtime_error_detail_names_the_raising_declaration`: the mirror and its authority agree.
+    #[test]
+    fn detail_mirror_matches_the_dag_authority_literal() {
+        let path = RaisePath {
+            frames: vec![
+                RaiseFrame {
+                    decl: "inner".into(),
+                    file: "dag/test/claim/foo.dag".into(),
+                    start: 120,
+                },
+                RaiseFrame {
+                    decl: "w_bar".into(),
+                    file: "dag/test/claim/foo.dag".into(),
+                    start: 40,
+                },
+            ],
+            elided: 0,
+        };
+        assert_eq!(
+            render_witness_runtime_error_detail_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                &path,
+                "type error: expected Int\ngot Str"
+            ),
+            "//test/claim/foo:w_bar error-at raised_in=inner@dag/test/claim/foo.dag:120 call_path=inner@dag/test/claim/foo.dag:120<-w_bar@dag/test/claim/foo.dag:40 message=type error: expected Int\\ngot Str"
+        );
+        assert_eq!(
+            render_witness_runtime_error_detail_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                &RaisePath { frames: vec![], elided: 3 },
+                "m"
+            ),
+            "//test/claim/foo:w_bar error-at raised_in=unrecorded call_path=unrecorded elided=3 message=m"
+        );
+    }
+
+    // THE ERROR ROW ITSELF IS BYTE-STABLE: the location rides on its own line, so the row a reader
+    // already greps (`cause=` keyed, trailing) is unchanged, and non-error rows are untouched.
+    #[test]
+    fn claim_rows_are_byte_stable() {
+        assert_eq!(
+            render_witness_claim_result_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                230_000_000,
+                CiWitnessVerdict::Passed
+            ),
+            "//test/claim/foo:w_bar                                      PASSED in 230ms"
+        );
+        assert_eq!(
+            render_witness_claim_result_text_mirror(
+                "test.claim.foo",
+                "w_bar",
+                230_000_000,
+                CiWitnessVerdict::RuntimeError(WitnessRuntimeCause::TypeError)
+            ),
+            "//test/claim/foo:w_bar                                      ERROR in 230ms cause=type-error"
+        );
+    }
+}
+
 /// Render one per-witness claim-result line through the `.dag` authority. Every choice about
 /// how the line READS lives in `gunbc.observation_ci_render ci_witness_claim_result_text`; the
 /// seed transports subject, function, verdict and wall time only.
@@ -19916,6 +20153,8 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
     // pre-push drift --wet gate runs through claim_batch -> run_claim; without this mapping
     // ExitSuccess -> exit 1 false-blocks push (receipt: claim_batch rebuilt on reverted seed
     // reproduced the false-block).
+    // A path left by an error some earlier evaluation absorbed must not be read as this one's.
+    let _ = v1_interpreter::take_raise_path();
     let evaluated = match run_claim_evaluation(ctx, function) {
         Ok(result) => result,
         Err(payload) => return ClaimOutcome::Panicked { payload },
@@ -19976,6 +20215,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             other => ClaimOutcome::RuntimeError {
                 cause: WitnessRuntimeCause::of_interp_error(&other),
                 message: format!("{other}"),
+                raised_in: v1_interpreter::take_raise_path(),
             },
         },
     }
@@ -28530,6 +28770,7 @@ impl ShardStyle {
         _execution_leg: &str,
         wall_nanos: u128,
         verdict: CiWitnessVerdict,
+        outcome: &ClaimOutcome,
     ) {
         if !self.stream {
             return;
@@ -28554,6 +28795,22 @@ impl ShardStyle {
                     eprintln!("\x1b[2m{ts}\x1b[0m {tag}{line}");
                 } else {
                     eprintln!("{ts} {tag}{line}");
+                }
+                // THE THROW'S LOCATION, beside the row rather than inside it. The verdict carries
+                // only the cause (it is `Copy` and keyed on class); the message and the raising
+                // declaration are on the outcome, which is where they were being dropped.
+                if let ClaimOutcome::RuntimeError {
+                    message, raised_in, ..
+                } = outcome
+                {
+                    let detail = render_witness_runtime_error_detail_text_mirror(
+                        subject, function, raised_in, message,
+                    );
+                    if self.color {
+                        eprintln!("\x1b[2m{ts}\x1b[0m {tag}{detail}");
+                    } else {
+                        eprintln!("{ts} {tag}{detail}");
+                    }
                 }
             }
             // Fail-closed: routine lines may already be folded, so a silent return would read as
@@ -46738,6 +46995,7 @@ mod terminal_ledger_completeness_law {
                 ClaimOutcome::RuntimeError {
                     cause: WitnessRuntimeCause::TypeError,
                     message: "boom".into(),
+                    raised_in: Default::default(),
                 },
                 false,
                 RuntimeErroredBeforeVerdict,

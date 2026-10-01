@@ -1404,6 +1404,32 @@ pub enum InterpError {
         operation: String,
         ground: HermeticEffectGround,
     },
+    /// A HOST FILESYSTEM EFFECT FAILED: the realization asked the host to create or write a path
+    /// and the host refused. Its own variant, never a `TypeError`: nothing about the program's
+    /// values was ill-typed, the WORLD said no, and the remedy (permissions, an occupied path, a
+    /// full disk) lives outside the corpus. Reported as `type-error`, a permission-denied cache
+    /// write sent every reader looking for a type defect that did not exist (the
+    /// `emit_host_identity_cast_native` floor rows). `operation` names the effect site, `path` the
+    /// path the host refused, `kind` the host's own classification, `detail` its text.
+    HostIoFailed {
+        operation: &'static str,
+        path: String,
+        kind: std::io::ErrorKind,
+        detail: String,
+    },
+}
+
+impl InterpError {
+    /// The one constructor for `HostIoFailed`, so every effect site maps the host error the same
+    /// way.
+    pub fn host_io(operation: &'static str, path: &std::path::Path, e: &std::io::Error) -> Self {
+        InterpError::HostIoFailed {
+            operation,
+            path: path.display().to_string(),
+            kind: e.kind(),
+            detail: e.to_string(),
+        }
+    }
 }
 
 /// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION. Closed, and each arm names a
@@ -1425,6 +1451,15 @@ pub enum HermeticEffectGround {
 impl fmt::Display for InterpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            InterpError::HostIoFailed {
+                operation,
+                path,
+                kind,
+                detail,
+            } => write!(
+                f,
+                "host filesystem effect failed: {operation} {path} ({kind:?}): {detail}"
+            ),
             InterpError::NoSuchFunction { name } => write!(
                 f,
                 "no declaration named '{}' in this execution's loaded index \
@@ -6128,6 +6163,97 @@ thread_local! {
     static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
+/// One `.dag` declaration frame an error unwound through: the declaration's name and the span
+/// of its node. `file` + `start` is the declaration's own position, not the raise site's.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RaiseFrame {
+    pub decl: String,
+    pub file: String,
+    pub start: i64,
+}
+
+/// WHERE A RUNTIME ERROR WAS RAISED, as declarations rather than prose. Most `InterpError` arms
+/// carry no source position at their raise site (only field-access `TypeError`s were ever
+/// located, and only those got a call chain appended), so the location every arm CAN carry is the
+/// innermost `.dag` declaration being evaluated when the error was raised, plus the call path
+/// that reached it. `frames[0]` is that innermost declaration; the last frame is the outermost
+/// one recorded (for a claim, the claim function itself, unless `elided` > 0).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RaisePath {
+    pub frames: Vec<RaiseFrame>,
+    pub elided: usize,
+}
+
+/// Frames kept per error. The innermost frames locate the raise; beyond this a deep chain only
+/// grows the line.
+const RAISE_PATH_FRAME_LIMIT: usize = 12;
+
+thread_local! {
+    /// The unwind path of the error currently propagating, each entry tagged with its call depth.
+    /// Written only by `call_function`; read and cleared by `take_raise_path`.
+    static RAISE_PATH: std::cell::RefCell<(Vec<(u32, RaiseFrame)>, usize)> =
+        const { std::cell::RefCell::new((Vec::new(), 0)) };
+}
+
+/// Record `fn_node` as a frame of the propagating error, or forget a path that is no longer
+/// propagating.
+///
+/// The interpreter DOES recover from some errors (an `Err(_)` arm that retries another access
+/// style, for one), so a recorded path can outlive its error. Two rules keep a stale path from
+/// being attributed to a later error: any frame that returns `Ok` clears it (the error it held
+/// was absorbed below that frame), and a frame is appended only when it is the direct caller of
+/// the last recorded one (depth exactly one less); otherwise the new error starts a fresh path.
+fn record_raise_frame(result: &InterpResult<Value>, fn_node: &Rc<Node>, depth: u32) {
+    match result {
+        Ok(_) => RAISE_PATH.with(|p| {
+            let mut p = p.borrow_mut();
+            if !p.0.is_empty() || p.1 != 0 {
+                p.0.clear();
+                p.1 = 0;
+            }
+        }),
+        // Control flow, not a failure: `return` unwinds to its own function frame.
+        Err(InterpError::EarlyReturn { .. }) => {}
+        Err(_) => RAISE_PATH.with(|p| {
+            let mut p = p.borrow_mut();
+            let continues = p.0.last().map(|(d, _)| *d == depth + 1).unwrap_or(false);
+            if !continues {
+                p.0.clear();
+                p.1 = 0;
+            }
+            if p.0.len() < RAISE_PATH_FRAME_LIMIT {
+                p.0.push((
+                    depth,
+                    RaiseFrame {
+                        decl: fn_node.name.to_string(),
+                        file: fn_node.span.file.to_string(),
+                        start: fn_node.span.start,
+                    },
+                ));
+            } else {
+                // Keep tagging the depth so the contiguity check still sees the unwind
+                // continuing; only the frame itself is dropped.
+                if let Some(last) = p.0.last_mut() {
+                    last.0 = depth;
+                }
+                p.1 += 1;
+            }
+        }),
+    }
+}
+
+/// Take the raise path of the error that just escaped `run_in_context`, leaving none behind.
+/// Call it immediately after the evaluation returns `Err`, on the same thread.
+pub fn take_raise_path() -> RaisePath {
+    RAISE_PATH.with(|p| {
+        let (frames, elided) = std::mem::take(&mut *p.borrow_mut());
+        RaisePath {
+            frames: frames.into_iter().map(|(_, f)| f).collect(),
+            elided,
+        }
+    })
+}
+
 /// Bounded execution (§4): a call chain deeper than this is a typed, located refusal naming
 /// the frontier function — never a host stack overflow, which aborts the process and every
 /// later witness's measurement (measured: a cycle in live_deploy script assembly under
@@ -6148,6 +6274,7 @@ fn call_function(
     });
     let result = call_function_guarded(ctx, fn_node, args, env, depth);
     CALL_DEPTH.with(|d| d.set(d.get() - 1));
+    record_raise_frame(&result, fn_node, depth);
     // A located TypeError carries its raise site but no route back up the call chain, which made
     // a production-path defect (harness_probe_cli, 2026-09-18) expensive to attribute. Append each
     // frame as the error unwinds, bounded so a deep chain cannot grow the message without limit.
@@ -20291,8 +20418,8 @@ fn eval_emit_host_run_transport_builtin(
         std::process::id(),
         EMIT_HOST_WORKSPACE_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
-    std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport: workspace create failed: {e}"),
+    std::fs::create_dir_all(&workspace).map_err(|e| {
+        InterpError::host_io("emit_host_run_transport: workspace create", &workspace, &e)
     })?;
 
     let result = emit_host_run_transport_in_workspace(
@@ -20483,9 +20610,11 @@ fn eval_emit_host_native_cache_evict_builtin(
     match std::fs::remove_dir_all(&workspace_dir) {
         Ok(()) => Ok(Value::Bool(true)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Bool(true)),
-        Err(e) => Err(InterpError::TypeError {
-            msg: format!("emit_host_native_cache_evict: {workspace_dir}: {e}"),
-        }),
+        Err(e) => Err(InterpError::host_io(
+            "emit_host_native_cache_evict: remove",
+            std::path::Path::new(&workspace_dir),
+            &e,
+        )),
     }
 }
 
@@ -20676,8 +20805,12 @@ fn run_cached_process_spec(
 ) -> InterpResult<Value> {
     let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir)?;
     let realization_workspace = std::path::PathBuf::from(&workspace_dir);
-    std::fs::create_dir_all(&realization_workspace).map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    std::fs::create_dir_all(&realization_workspace).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: workspace create",
+            &realization_workspace,
+            &e,
+        )
     })?;
     // ONE WRITER PER CONTENT-KEYED WORKSPACE. Two runs that share a cache root (two same-user runs
     // outside CI share ~/.cache) would otherwise materialize, build and mark one directory at once:
@@ -20706,8 +20839,12 @@ fn run_cached_process_spec(
         &build_environment,
     )?;
     let workspace = realization_workspace.join(resolved_build_context_identity);
-    std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    std::fs::create_dir_all(&workspace).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: workspace create",
+            &workspace,
+            &e,
+        )
     })?;
 
     emit_host_run_transport_cached_in_workspace(
@@ -20919,12 +21056,11 @@ fn emit_host_cargo_configuration_digest(
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
-                return Err(InterpError::TypeError {
-                    msg: format!(
-                        "emit_host_run_transport_cached: read Cargo configuration {} failed: {e}",
-                        path.display()
-                    ),
-                })
+                return Err(InterpError::host_io(
+                    "emit_host_run_transport_cached: read Cargo configuration",
+                    &path,
+                    &e,
+                ))
             }
         }
     }
@@ -20953,23 +21089,25 @@ fn observe_tool_identity(
     environment: &EmitHostBuildEnvironment,
 ) -> InterpResult<ObservedToolIdentity> {
     let resolved = resolve_host_tool_program(requested)?;
-    let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
-        msg: format!(
-            "emit_host_run_transport_cached: resolve build tool {requested:?} \
-                 ({resolved:?}) failed: {e}"
-        ),
+    let canonical = std::fs::canonicalize(&resolved).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: canonicalize build tool",
+            std::path::Path::new(&resolved),
+            &e,
+        )
     })?;
-    let executable = std::fs::read(&canonical).map_err(|e| InterpError::TypeError {
-        msg: format!(
-            "emit_host_run_transport_cached: read resolved build tool {} failed: {e}",
-            canonical.display()
-        ),
+    let executable = std::fs::read(&canonical).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: read resolved build tool",
+            &canonical,
+            &e,
+        )
     })?;
     let mut command = std::process::Command::new(&resolved);
     command.args(version_args).current_dir(probe_workspace);
     emit_host_apply_build_environment(&mut command, environment);
-    let output = command.output().map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"),
+    let output = command.output().map_err(|e| {
+        host_tool_spawn_failure("emit_host_run_transport_cached", requested, &resolved, &e)
     })?;
     if !output.status.success() {
         return Err(InterpError::TypeError {
@@ -21057,6 +21195,25 @@ fn emit_host_resolved_build_context_identity(
     ]))
 }
 
+#[cfg(test)]
+pub(crate) fn emit_host_cargo_configuration_digest_for_test(
+    probe_workspace: &std::path::Path,
+) -> InterpResult<String> {
+    let environment = EmitHostBuildEnvironment {
+        entries: Vec::new(),
+        digest: String::new(),
+    };
+    emit_host_cargo_configuration_digest(&environment, probe_workspace)
+}
+
+#[cfg(test)]
+pub(crate) fn emit_host_materialize_workspace_files_for_test(
+    workspace: &std::path::Path,
+    files: &[(String, String)],
+) -> InterpResult<()> {
+    emit_host_materialize_workspace_files(workspace, files)
+}
+
 fn emit_host_materialize_workspace_files(
     workspace: &std::path::Path,
     files: &[(String, String)],
@@ -21074,18 +21231,12 @@ fn emit_host_materialize_workspace_files(
         }
         let full = workspace.join(p);
         if let Some(parent) = full.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport_cached: mkdir {} failed: {e}",
-                    parent.display()
-                ),
+            std::fs::create_dir_all(parent).map_err(|e| {
+                InterpError::host_io("emit_host_run_transport_cached: mkdir", parent, &e)
             })?;
         }
-        std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport_cached: write {} failed: {e}",
-                full.display()
-            ),
+        std::fs::write(&full, text).map_err(|e| {
+            InterpError::host_io("emit_host_run_transport_cached: write", &full, &e)
         })?;
     }
     Ok(())
@@ -21109,10 +21260,19 @@ fn emit_host_run_transport_cached_in_workspace(
     let cold_control = std::env::var("GUNBC_CI_NATIVE_CACHE_COLD_CONTROL")
         .map(|v| v == "1")
         .unwrap_or(false);
-    let recorded_cold_compile_nanos = std::fs::read_to_string(&cold_compile_receipt)
-        .ok()
-        .and_then(|s| s.trim().parse::<u128>().ok())
-        .filter(|n| *n > 0);
+    // An ABSENT receipt is the ordinary warm miss. Any other read failure is the host refusing,
+    // and is refused as such rather than absorbed into a rebuild that hides it.
+    let recorded_cold_compile_nanos = match std::fs::read_to_string(&cold_compile_receipt) {
+        Ok(s) => s.trim().parse::<u128>().ok().filter(|n| *n > 0),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return Err(InterpError::host_io(
+                "emit_host_run_transport_cached: read cold compile receipt",
+                &cold_compile_receipt,
+                &e,
+            ))
+        }
+    };
     // The timing receipt is part of readiness for the production transition: an old marker
     // without its measured cold wall is a warm miss and widens to a rebuild, never a zero.
     let compile_skipped = !cold_control
@@ -21231,15 +21391,19 @@ fn emit_host_run_transport_cached_in_workspace(
             process_termination_label(&out.status)
         )));
         if out.status.success() {
-            std::fs::write(&ready_marker, b"1").map_err(|e| InterpError::TypeError {
-                msg: format!("emit_host_run_transport_cached: ready marker write failed: {e}"),
+            std::fs::write(&ready_marker, b"1").map_err(|e| {
+                InterpError::host_io(
+                    "emit_host_run_transport_cached: ready marker write",
+                    &ready_marker,
+                    &e,
+                )
             })?;
             std::fs::write(&cold_compile_receipt, cold_compile_nanos.to_string()).map_err(|e| {
-                InterpError::TypeError {
-                    msg: format!(
-                        "emit_host_run_transport_cached: cold compile receipt write failed: {e}"
-                    ),
-                }
+                InterpError::host_io(
+                    "emit_host_run_transport_cached: cold compile receipt write",
+                    &cold_compile_receipt,
+                    &e,
+                )
             })?;
         }
         return Ok(transport_result(
@@ -21294,19 +21458,11 @@ fn emit_host_run_transport_in_workspace(
         }
         let full = workspace.join(p);
         if let Some(parent) = full.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport: mkdir {} failed: {e}",
-                    parent.display()
-                ),
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| InterpError::host_io("emit_host_run_transport: mkdir", parent, &e))?;
         }
-        std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport: write {} failed: {e}",
-                full.display()
-            ),
-        })?;
+        std::fs::write(&full, text)
+            .map_err(|e| InterpError::host_io("emit_host_run_transport: write", &full, &e))?;
     }
 
     let target_dir = workspace.join("target");
