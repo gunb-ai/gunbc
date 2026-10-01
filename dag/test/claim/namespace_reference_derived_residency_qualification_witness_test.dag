@@ -12,6 +12,7 @@ import gunbc.namespace_reference_derived_residency_qualification {
   WholeCorpusSyntaxAtConstructionPeak,
   WholeCorpusSyntaxRetainedAtReturn,
   CarrierReadingUndecidable,
+  CarrierMemberUnreadable,
   CarrierTypeRecognized,
   CarrierTypeUnrecognized,
   LifecycleReadingAbsent,
@@ -111,6 +112,7 @@ test fn a_whole_pool_build_that_releases_before_returning_still_refuses() -> Boo
         WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => true
         WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => false
         CarrierReadingUndecidable { carrier: _, spelling: _ } => false
+        CarrierMemberUnreadable { carrier: _, member: _ } => false
         LifecycleReadingAbsent => false
       }
   }
@@ -131,6 +133,7 @@ test fn retention_moved_into_the_symbol_index_still_refuses() -> Bool {
         WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => true
         WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => false
         CarrierReadingUndecidable { carrier: _, spelling: _ } => false
+        CarrierMemberUnreadable { carrier: _, member: _ } => false
         LifecycleReadingAbsent => false
       }
   }
@@ -151,6 +154,7 @@ test fn a_bounded_build_handing_back_a_whole_corpus_index_refuses_at_return() ->
         WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => false
         WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => true
         CarrierReadingUndecidable { carrier: _, spelling: _ } => false
+        CarrierMemberUnreadable { carrier: _, member: _ } => false
         LifecycleReadingAbsent => false
       }
   }
@@ -166,6 +170,7 @@ test fn an_empty_lifecycle_reading_refuses_rather_than_qualifying() -> Bool {
         WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => false
         WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => false
         CarrierReadingUndecidable { carrier: _, spelling: _ } => false
+        CarrierMemberUnreadable { carrier: _, member: _ } => false
         LifecycleReadingAbsent => true
       }
   }
