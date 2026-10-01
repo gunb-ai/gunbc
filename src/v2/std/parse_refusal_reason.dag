@@ -14,10 +14,14 @@ import v2.std.node { Symbol }
 //                                     AfterLineBreak) was reached on a token stream that carries no
 //                                     source, so whether a line break precedes the match has no
 //                                     answer; the parse refuses rather than assume one line.
+//   KeywordAsPathSegment           -- a declared module or import path continues with `.` and a
+//                                     keyword the path-segment rule does not admit
+//                                     (`module rt.match`); located at the keyword.
 type ParseRefusalReason =
     FnExpressionBodyMissingAfterEq
   | DataValueMissingAfterEq
   | LayoutUnknownWithoutSource
+  | KeywordAsPathSegment
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn parse_refusal_reason_symbol(reason: ParseRefusalReason) -> Symbol {
@@ -25,5 +29,6 @@ fn parse_refusal_reason_symbol(reason: ParseRefusalReason) -> Symbol {
     FnExpressionBodyMissingAfterEq => ^parse_fn_expression_body_missing_after_eq
     DataValueMissingAfterEq => ^parse_data_value_missing_after_eq
     LayoutUnknownWithoutSource => ^parse_layout_unknown_without_source
+    KeywordAsPathSegment => ^parse_keyword_as_path_segment
   }
 }

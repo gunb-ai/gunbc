@@ -20,7 +20,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, ParseRefusalReason }
+import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, KeywordAsPathSegment, ParseRefusalReason }
 import v2.std.grammar {
   GrammarEmitClassTerminal,
   GrammarEmitLexemeTerminal,
@@ -62,6 +62,8 @@ import v2.std.grammar {
   grammar_relation_tokens_node,
   grammar_empty_sync_tokens,
   grammar_expr_expect,
+  grammar_expr_not_predicate,
+  grammar_expr_refuse_on_match,
   derive_grammar_relation_row,
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
@@ -785,7 +787,43 @@ fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
 fn dag_grammar_module_header_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_module),
-    right: dag_grammar_nonterminal(production: ^dag_production_qualified_name)
+    right: dag_grammar_declared_path_expr()
+  )
+}
+
+// A DECLARED PATH ENDS AT ITS LAST ADMITTED SEGMENT, AND A KEYWORD AFTER IT REFUSES BY NAME. A path
+// segment is an identifier or a type-declaration modifier (dag_grammar_ident_or_type_decl_modifier_name);
+// a keyword is not one, so `module rt.match` is not a module path. Without this row the path ended at
+// `rt` and the refusal was the generic leftover of `.match`. The guard is a not-predicate, so it
+// captures nothing and the path's tree is the qualified name's. It sits on the declaring positions
+// (module header, import) and NOT inside qualified_name: an expression admits a keyword after a dot
+// (dag_grammar_postfix_dot_suffix_expr, `node.type`), and a pattern -- which reads qualified_name and
+// is probed ahead of every match-arm statement -- must not refuse where that expression parses.
+fn dag_grammar_declared_path_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_nonterminal(production: ^dag_production_qualified_name),
+    right: grammar_expr_not_predicate(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_dot),
+        right: grammar_expr_refuse_on_match(element: dag_grammar_keyword_terminal(), reason: KeywordAsPathSegment)
+      )
+    )
+  )
+}
+
+// Every keyword a path segment does not admit: the keyword roster less the two modifiers
+// dag_grammar_ident_or_type_decl_modifier_name admits (and less `module`, the fold's seed).
+fn dag_grammar_keyword_terminal() -> GrammarExpr {
+  fold_list(
+    xs: dag_binding_name_keyword_tokens(),
+    empty: dag_grammar_terminal(token_class: ^dag_token_kw_module),
+    cons: fn(acc, tok) {
+      if (tok == ^dag_token_kw_module) || (tok == ^dag_token_kw_nominal_opaque) || (tok == ^dag_token_kw_sole_constructor) {
+        acc
+      } else {
+        dag_grammar_choice(left: acc, right: dag_grammar_terminal(token_class: tok))
+      }
+    }
   )
 }
 
@@ -1712,10 +1750,28 @@ fn dag_grammar_match_expr_expr() -> GrammarExpr {
   )
 }
 
+// A STATEMENT BODY ENDS WHERE THE NEXT ARM BEGINS. Arms need no separator (dag_grammar_comma_list_expr
+// makes the comma optional), and an arm head such as `Foo =>` begins with something that also parses
+// as an expression statement, so under ordered repetition a bare `stmt*` reads the next arm's
+// pattern as one more statement of this body. Each statement is therefore guarded by the PEG
+// not-predicate over the arm head: `(!(pattern =>) stmt) (!(pattern =>) stmt)*`. The predicate
+// captures nothing, so the parsed body is the same statement spine `stmt stmt*` derives.
+fn dag_grammar_match_arm_stmt_body_statement() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: grammar_expr_not_predicate(
+      element: dag_grammar_sequence(
+        left: dag_grammar_nonterminal(production: ^dag_production_pattern),
+        right: dag_grammar_terminal(token_class: ^dag_token_fat_arrow)
+      )
+    ),
+    right: dag_grammar_nonterminal(production: ^dag_production_stmt)
+  )
+}
+
 fn dag_grammar_match_arm_stmt_body_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_nonterminal(production: ^dag_production_stmt),
-    right: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_stmt))
+    left: dag_grammar_match_arm_stmt_body_statement(),
+    right: dag_grammar_repeat(element: dag_grammar_match_arm_stmt_body_statement())
   )
 }
 
@@ -1919,7 +1975,7 @@ fn dag_grammar_import_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_import),
     right: dag_grammar_sequence(
-      left: dag_grammar_nonterminal(production: ^dag_production_qualified_name),
+      left: dag_grammar_declared_path_expr(),
       right: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_import_block))
     )
   )
