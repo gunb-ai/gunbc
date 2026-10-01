@@ -451,11 +451,11 @@ fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_
       _ => none
     }
   } else { none }
-  if tv_slot != none { return tv_slot.value }
+  if tv_slot != none { return preserve_outer_optional_cardinality(outer: n, inner: tv_slot.value) }
   let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
   if is_slot {
     match map_get(slot_bindings, authored_name_at(source_indices: source_indices, node: n)) {
-      Present { value: concrete } => concrete
+      Present { value: concrete } => preserve_outer_optional_cardinality(outer: n, inner: concrete)
       Absent => n
     }
   } else {
