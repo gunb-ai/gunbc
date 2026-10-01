@@ -27,13 +27,9 @@ import extdeps.linux.usb_gadget {
   usb_gadget_dir,
 }
 import extdeps.tools.gnu_coreutils {
-  coreutils_ln_binary_name,
-  coreutils_rm_binary_name,
-  coreutils_rmdir_binary_name,
   coreutils_ln_symbolic_force_into_directory_flags,
   coreutils_rm_force_flag,
 }
-import extdeps.tools.mkdir { mkdir_path_resolved_program }
 import gunbc.bmc_virtual_media {
   srv4_vm_gadget,
   srv4_vm_gadget_setup_ops,
@@ -101,7 +97,7 @@ fn is_argv_cmd(cmd: ConfigfsOpCommand) -> Bool {
 // into an argv position.
 fn argv_program(cmd: ConfigfsOpCommand) -> String {
   match cmd {
-    ConfigfsOpRunsArgv { command: c } => c.program
+    ConfigfsOpRunsArgv { command: c } => c.program.invocation as String
     ConfigfsOpWritesAttr { path: _, value: _ } => ""
   }
 }
@@ -207,8 +203,9 @@ test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool {
 
 // THE SETUP'S REALIZATION (review on a28daf4844, recommended next slice): each prepared op lowers
 // to its builder's command, and the lowered argv is asserted FIELD BY FIELD against the builder's
-// own declared rows -- the mkdir program against mkdir_path_resolved_program, the ln program and
-// flags against the coreutils rows, the link TARGET the derived functions endpoint, the link
+// own declared rows -- the program word against the minted invocation ('mkdir' / 'ln' / 'rm' /
+// 'rmdir'; ProgramIdentity carries the invocation since argv_command moved to ProgramIdentity),
+// the ln flags against the coreutils row, the link TARGET the derived functions endpoint, the link
 // DESTINATION the derived configuration directory in its directory-spelled form (exactly one
 // argument ends with "/", and it is that directory). The old probe matched the rendered spelling
 // `"'ln' '-sf' '/dev/nbd0'"` -- a rendered-string search that also blessed a target (`/dev/nbd0`)
@@ -220,17 +217,17 @@ test fn srv4_gadget_setup_realization_lowers_prepared_ops_to_builder_commands() 
   let realized = realized_commands(ops: staging_ready_ops(staging: srv4_vm_gadget_setup_staging()))
   let argvs = filter(realized, cmd => is_argv_cmd(cmd: cmd))
   let writes = filter(realized, cmd => is_write_cmd(cmd: cmd))
-  let mkdirs = filter(argvs, c => argv_program(cmd: c) == mkdir_path_resolved_program)
-  let lns = filter(argvs, c => argv_program(cmd: c) == coreutils_ln_binary_name)
+  let mkdirs = filter(argvs, c => argv_program(cmd: c) == "mkdir")
+  let lns = filter(argvs, c => argv_program(cmd: c) == "ln")
   list_length(items: realized) == 16
     && list_length(items: writes) == 11
     && all(writes, cmd => string_contains(s: write_path(cmd: cmd), pattern: gd))
     && list_length(items: argvs) == 5
     && all(argvs, c =>
-      argv_program(cmd: c) == mkdir_path_resolved_program
-        || argv_program(cmd: c) == coreutils_ln_binary_name
-        || argv_program(cmd: c) == coreutils_rm_binary_name
-        || argv_program(cmd: c) == coreutils_rmdir_binary_name)
+      argv_program(cmd: c) == "mkdir"
+        || argv_program(cmd: c) == "ln"
+        || argv_program(cmd: c) == "rm"
+        || argv_program(cmd: c) == "rmdir")
     && list_length(items: mkdirs) == 4
     && all(mkdirs, c => any(argv_arguments(cmd: c), w => w == "-p"))
     && count(filter(mkdirs, c => any(argv_arguments(cmd: c), w => w == gd))) == 1
@@ -243,8 +240,8 @@ test fn srv4_gadget_setup_realization_lowers_prepared_ops_to_builder_commands() 
         && any(argv_arguments(cmd: c), w => w == join([gd, "/functions/mass_storage.0"], ""))
         && count(filter(argv_arguments(cmd: c), w => ends_with(s: w, suffix: "/"))) == 1
         && any(argv_arguments(cmd: c), w => w == join([gd, "/configs/c.1/"], "")))
-    && count(filter(argvs, c => argv_program(cmd: c) == coreutils_rm_binary_name)) == 0
-    && count(filter(argvs, c => argv_program(cmd: c) == coreutils_rmdir_binary_name)) == 0
+    && count(filter(argvs, c => argv_program(cmd: c) == "rm")) == 0
+    && count(filter(argvs, c => argv_program(cmd: c) == "rmdir")) == 0
 }
 
 // THE TEARDOWN'S REALIZATION (review 38602, findings 1 and 3; carried through the rework): seven
@@ -260,8 +257,8 @@ test fn srv4_gadget_teardown_realization_detaches_first_then_unlinks_and_rmdirs(
   let realized = realized_commands(ops: staging_ready_ops(staging: srv4_vm_gadget_teardown_staging()))
   let argvs = filter(realized, cmd => is_argv_cmd(cmd: cmd))
   let writes = filter(realized, cmd => is_write_cmd(cmd: cmd))
-  let rms = filter(argvs, c => argv_program(cmd: c) == coreutils_rm_binary_name)
-  let rmdirs = filter(argvs, c => argv_program(cmd: c) == coreutils_rmdir_binary_name)
+  let rms = filter(argvs, c => argv_program(cmd: c) == "rm")
+  let rmdirs = filter(argvs, c => argv_program(cmd: c) == "rmdir")
   list_length(items: realized) == 7
     && index_of_first_write(cmds: realized) == 0
     && list_length(items: writes) == 1

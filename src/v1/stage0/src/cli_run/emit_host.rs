@@ -642,7 +642,7 @@ fn resolved_call_edges_from_graph(
     for callees in build_module_callees(graph.modules.clone()).iter() {
         for item in callees.items.iter() {
             for edge in item.called.iter() {
-                if let CalleeEdge::ResolvedCallee { identity } = &**edge {
+                if let CalleeEdge::ResolvedCallee { identity, .. } = &**edge {
                     edges.push(ResolvedCallEdgeRow {
                         caller_module: item.item_identity.owner_module_path.clone(),
                         caller_decl: item.item_identity.decl_name.clone(),
@@ -2448,7 +2448,7 @@ pub(crate) fn compile_xl1_primary_root_tap(
             ),
         };
     }
-    let index = match try_process_shared_index(source_roots) {
+    let index = match super::entry_resolve::try_index_for_run_or_owned_pool(source_roots) {
         Ok(idx) => idx,
         Err(cause) => {
             return Xl1PrimaryRootTap::Refused {

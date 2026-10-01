@@ -152,6 +152,8 @@ fn host_effect_codex_supervised_turn_apply(
         }
       }
     }
-    _ => host_effect_codex_supervised_turn_apply_refused(transport: transport)
+    SshShell { ssh_host: _ } => host_effect_codex_supervised_turn_apply_refused(transport: transport)
+    FleetSsh { target: _, context: _ } => host_effect_codex_supervised_turn_apply_refused(transport: transport)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => host_effect_codex_supervised_turn_apply_refused(transport: transport)
   }
 }

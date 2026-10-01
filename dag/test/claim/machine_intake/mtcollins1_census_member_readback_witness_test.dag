@@ -10,13 +10,16 @@ import gunbc.machine_intake_mtcollins1_census_member_readback {
   BootChainIsoNotPinned, BootChainUnread, BootChainMediumNotCensus,
   CasperKernel, CasperInitrd, GrubConfig, StockSide, CensusSide,
   census_pin_gate, PinsAdmitted, PinsRefused, CensusPinGate, CensusMemberReadings,
-  RemoteLeg, remote_leg_of, census_member_attempt_of,
-  WorkspaceOutcome, CreationNotRequested, CreationNotDispatched, CreationFailed, CreationUnconfirmed,
-  Removed, RemovalFailed, RemovalUnconfirmed, RemovalNotDispatched,
+  census_member_attempt_of,
   CensusMemberReadbackAttempt, census_member_attempt_holds, render_census_member_attempt,
   member_reading_after_extract, member_reading_of_measure, BootChainWorkspaceUnavailable,
 }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.host_command_binding {
+  HostLeg, host_leg_of_typed_argv, FleetSshTransport,
+  CreationNotRequested, CreationNotDispatched, CreationFailed, CreationUnconfirmed,
+  Removed, RemovalFailed, RemovalUnconfirmed, RemovalNotDispatched,
+}
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.machine_intake_mtcollins1_census_medium_readback { RemoteAnswer }
 
@@ -144,11 +147,11 @@ test fn a_failed_extraction_is_unread_without_a_measure() -> Bool {
 
 // ---- the attempt consumer: every workspace outcome, composed as the producer composes it ----
 
-fn ran(code: Int, stdout: String, stderr: String) -> RemoteLeg {
-  remote_leg_of(outcome: TypedArgvExecConverged { result: SshSessionExecResult { exit_code: code, success: code == 0, stdout: stdout, stderr: stderr } })
+fn ran(code: Int, stdout: String, stderr: String) -> HostLeg {
+  host_leg_of_typed_argv(outcome: TypedArgvExecConverged { result: SshSessionExecResult { exit_code: code, success: code == 0, stdout: stdout, stderr: stderr } })
 }
 
-fn not_dispatched(reason: String) -> RemoteLeg { remote_leg_of(outcome: TypedArgvExecRefused { reason: reason }) }
+fn not_dispatched(reason: String) -> HostLeg { host_leg_of_typed_argv(outcome: TypedArgvExecRefused { reason: reason }) }
 
 data admitted: CensusPinGate = PinsAdmitted { stock_iso: stock_iso, census_iso: census_iso }
 
@@ -164,8 +167,8 @@ fn identical_readings(dir: NonEmptyStr) -> CensusMemberReadings {
   }
 }
 
-fn attempt(gate: CensusPinGate, creation: RemoteLeg, cleanup: RemoteLeg) -> CensusMemberReadbackAttempt {
-  census_member_attempt_of(gate: gate, creation: creation, readings: d => identical_readings(dir: d), cleanup: d => cleanup)
+fn attempt(gate: CensusPinGate, creation: HostLeg, cleanup: HostLeg) -> CensusMemberReadbackAttempt {
+  census_member_attempt_of(kind: FleetSshTransport, gate: gate, creation: creation, readings: d => identical_readings(dir: d), cleanup: d => cleanup)
 }
 
 fn says(a: CensusMemberReadbackAttempt, pattern: String) -> Bool { string_contains(s: render_census_member_attempt(attempt: a), pattern: pattern) }
@@ -206,7 +209,7 @@ test fn an_unacknowledged_creation_with_a_partial_path_keeps_the_text_and_admits
   !census_member_attempt_holds(attempt: a)
     && match a.workspace { CreationUnconfirmed { exit_code: _, stdout: o, stderr: _ } => o == "/tmp/gunbc-mtcollins1-census-mem" _ => false }
     && says(a: a, pattern: "returned stdout=\"/tmp/gunbc-mtcollins1-census-mem\"")
-    && says(a: a, pattern: "not removed, nothing extracted")
+    && says(a: a, pattern: "not removed, nothing written into it")
     && !says(a: a, pattern: "workspace=/tmp")
 }
 

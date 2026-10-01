@@ -19,6 +19,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected, Unavailable }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_present }
@@ -183,7 +184,7 @@ fn nfbcp_atom_identity_deep(node: Node) -> Optional<Symbol> {
 test fn nfbcp_hazard_return_type_is_positional_holds() -> Bool {
   match nfbcp_return_atom(text: nfbcp_fn_type_param_source) {
     Absent => false
-    Present { value: id } => id == ^bool_node_symbol
+    Present { value: id } => id == ^Bool
   }
 }
 
@@ -209,11 +210,14 @@ test fn nfbcp_hazard_no_return_type_retains_wrapper_holds() -> Bool {
 }
 
 // POSITIVE CONTROL for the repair: an ordinary fn with a declared return type and no
-// fn-typed parameter still lowers, so the positional read is not a blanket refusal.
+// fn-typed parameter still lowers, so the positional read is not a blanket refusal. Lowering
+// carries the AUTHORED spelling: v2.compiler.resolve maps an unshadowed kernel spelling to its
+// canonical binding, so these rows read `Int` and `Bool` as written, as the generic row reads `T`
+// (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
 test fn nfbcp_control_ordinary_fn_return_type_holds() -> Bool {
   match nfbcp_return_atom(text: nfbcp_ordinary_fn_source) {
     Absent => false
-    Present { value: id } => id == ^dag_binding_type_int
+    Present { value: id } => id == ^Int
   }
 }
 
@@ -231,7 +235,7 @@ test fn nfbcp_falsifier_generic_fn_return_type_holds() -> Bool {
 test fn nfbcp_falsifier_eq_body_fn_return_type_holds() -> Bool {
   match nfbcp_return_atom(text: nfbcp_eq_body_fn_source) {
     Absent => false
-    Present { value: id } => id == ^dag_binding_type_int
+    Present { value: id } => id == ^Int
   }
 }
 

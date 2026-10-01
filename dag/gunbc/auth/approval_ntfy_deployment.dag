@@ -51,7 +51,28 @@ data approval_ntfy_config_file_name: NonEmptyStr = "server.yml"
 data approval_ntfy_config_path: NonEmptyStr = join([approval_ntfy_config_dir as String, "/", approval_ntfy_config_file_name as String], "") as NonEmptyStr
 // The server's auth database, under its state root. Declared so the config's auth-file is checked
 // against it and so the one elevated stat of it is an exact sudoers argv rather than a pattern.
-data approval_ntfy_auth_file_path: NonEmptyStr = join([approval_ntfy_state_root as String, "/user.db"], "") as NonEmptyStr
+//
+// IT STAYS A DECLARATION, NOT A VALUE READ FROM THE CONFIG, because both of its consumers need a path
+// fixed before the read. The stat runs through `sudo -n` at an exact argv that an operator-installed
+// sudoers line must name, and a path taken from the config at runtime could only be covered by a
+// pattern grant. The readback then refuses unless the running config names exactly this path, so the
+// config is checked rather than trusted.
+//
+// THE FILE NAME WAS A GUESS, AND srv1 FALSIFIED IT. It read `user.db`. The server srv1 runs was
+// installed with `auth-file: /var/lib/gunbc-ntfy/auth.db` in /etc/gunbc-ntfy/server.yml, and that file
+// exists while user.db does not. proud-deer-538 read this on 2026-09-29 running
+// issue_device_enrolment_code by hand against release 02568b3046, and the readback refused before
+// minting. The name is now the observed one, and it changes the exact stat argv that this module's
+// human step asks the operator to grant.
+//
+// THAT GRANT DOES NOT EXIST ON srv1 TODAY, and the stat still runs. proud-deer-538 read srv1 on
+// 2026-09-29: sudoers.d holds only the broker-helpers grant, and the stat of auth.db succeeds under
+// the operator account's own broader sudo. The narrow, exact-argv grant this module asks for is
+// therefore an unmet posture, not a failing read. The earlier refusal was the missing user.db, not a
+// missing grant. Nothing installs this server or that grant from the model yet
+// (gunbc.auth.approval_ntfy_converge names the server as outside its roster). This row becomes that
+// installer's destination when one exists, and the grant becomes its sudoers member.
+data approval_ntfy_auth_file_path: NonEmptyStr = join([approval_ntfy_state_root as String, "/auth.db"], "") as NonEmptyStr
 data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 
 // THE TWO ntfy USERS THE ACCESS LIST MAY NAME, declared so the ACL readback
@@ -60,11 +81,33 @@ data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 // only WRITE the topic; the operator is the phone's sign-in and may only READ it. A server whose
 // users carry other names reads back as a deviation and enrolment-code issuance refuses -- loudly,
 // never by guessing which user is which.
-data approval_ntfy_publisher_user: NonEmptyStr = "gunbc-approval-publisher"
-data approval_ntfy_operator_user: NonEmptyStr = "gunbc-approval-operator"
-// The packaged server's CLI (the upstream .deb installs /usr/bin/ntfy). Absolute because it runs
-// under sudo as the server's principal; an absent binary is a failed readback, which refuses.
-data approval_ntfy_binary_path: NonEmptyStr = "/usr/bin/ntfy"
+//
+// THE NAMES ARE THE ONES srv1's SERVER CARRIES, AND THE PREVIOUS ONES WERE NEVER CREATED. They read
+// gunbc-approval-publisher and gunbc-approval-operator, names chosen here that no step on the host
+// used. The live `ntfy access` that proud-deer-538 read on srv1 on 2026-09-29, running
+// issue_device_enrolment_code by hand, lists publisher `gunbc-broker` (write-only on the topic) and
+// operator `briansrls` (read-only), with anonymous access denied. Those accounts already carry the
+// broker's publisher token and the operator's phone subscription, so the declaration follows them
+// rather than asking for both credentials to be minted again. These stay declarations: the readback
+// compares the live list against them and refuses any other shape. Nothing creates these users from
+// the model yet. The ntfy installation vertical owns that, and these rows become its contract.
+data approval_ntfy_publisher_user: NonEmptyStr = "gunbc-broker"
+data approval_ntfy_operator_user: NonEmptyStr = "briansrls"
+// THE SERVER BINARY THE HOST ACTUALLY RUNS. Absolute because it runs under sudo as the server's
+// principal; an absent binary is a failed readback, which refuses. The readback compares the running
+// process's executable against THIS row, and that comparison is only a check because the row is not
+// read from the host it checks: deriving it from the unit's ExecStart would admit a swapped unit.
+//
+// THE PREVIOUS VALUE WAS A BET ABOUT THE PACKAGING, and the host falsified it. It read "/usr/bin/ntfy"
+// on the ground that the upstream .deb installs there. But no model member installs this binary
+// (gunbc.auth.approval_ntfy_converge names it as outside its roster), and srv1's server was installed
+// 2026-09-07 at /usr/local/bin/ntfy. gunbc-ntfy.service ExecStart names that path, as read on the host
+// by proud-deer-538 on 2026-09-28 while running issue_device_enrolment_code by hand. The readback then
+// refused before minting by stat-ing a path the server does not run. So the row is the observed install,
+// and it stays a declaration: an install moved elsewhere refuses loudly here until the row moves with
+// it, which is the intended wall. Its dissolution is an installer member that places the binary, at
+// which point this row is that member's destination rather than a transcription of the host.
+data approval_ntfy_binary_path: NonEmptyStr = "/usr/local/bin/ntfy"
 
 // LOOPBACK, AND THAT IS THE SECURITY BOUNDARY RATHER THAN A DEFAULT. The server binds 127.0.0.1
 // and reaches the tailnet only through tailscale serve, which is what makes the tailnet identity
@@ -401,17 +444,26 @@ fn approval_ntfy_human_burden() -> ProvisioningHumanBurden {
 // because that is the only fact that differs between the ntfy address and the roadmap server's
 // (which the approval links point at, gunbc.auth.approval_request_submission). Absent means the
 // default TLS port and no `:port` suffix, which is how tailscale serve renders the 443 listener.
+// THE HOST IS ITS OWN FACT, read by a client that composes the URL itself: the approvals app sets
+// scheme, host and path on URLComponents separately (gunbc.approve_ios_swift_wire ServerConfig), so
+// it needs the bare host and not the base URL. The base URL below is built FROM this, so the two
+// cannot disagree.
+fn srv1_tailnet_host_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  match domain {
+    Present { value: d } => join([operator_host_srv1 as String, ".", d as String], "") as NonEmptyStr
+    Absent => "tailnet-domain-undeclared.invalid" as NonEmptyStr
+  }
+}
+
 fn srv1_tailnet_base_url_from(domain: NonEmptyStr?, port: Port?) -> NonEmptyStr {
   match domain {
-    Present { value: d } =>
+    Present { value: _ } =>
       join([
         "https://",
-        operator_host_srv1 as String,
-        ".",
-        d as String,
+        srv1_tailnet_host_from(domain: domain) as String,
         match port { Present { value: p } => concat(":", to_string(p))  Absent => "" },
       ], "") as NonEmptyStr
-    Absent => "https://tailnet-domain-undeclared.invalid" as NonEmptyStr
+    Absent => join(["https://", srv1_tailnet_host_from(domain: domain) as String], "") as NonEmptyStr
   }
 }
 

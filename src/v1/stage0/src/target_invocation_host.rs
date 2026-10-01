@@ -258,6 +258,8 @@ pub enum TargetProducer {
     CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
     FloorMemoryQualification,
+    TypedGraphExclusiveBytes,
+    TypedGraphExclusiveBytesFloorSubject,
     PrimitiveEgressCensus,
     PrimitiveEgressCensusV2,
     PrimitiveEgressCensusDag,
@@ -350,12 +352,26 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("dag-emit-real-grammar-round-trips"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/dag_emit_real_grammar_round_trips.dag",
+            },
+        ),
+        (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
         ),
         (
             instrument_label("floor-memory-qualification"),
             TargetProducer::FloorMemoryQualification,
+        ),
+        (
+            instrument_label("typed-graph-exclusive-bytes"),
+            TargetProducer::TypedGraphExclusiveBytes,
+        ),
+        (
+            instrument_label("typed-graph-exclusive-bytes-floor-subject"),
+            TargetProducer::TypedGraphExclusiveBytesFloorSubject,
         ),
         (
             instrument_label("primitive-egress-census"),
@@ -514,9 +530,10 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
         };
     }
     let mut message = format!(
-        "heads-reading-differential: compared={} divergent={} narrowed={} regressed={} both_refused={}",
+        "heads-reading-differential: compared={} divergent={} occurrence_identity_only={} narrowed={} regressed={} both_refused={}",
         d.modules_compared,
         d.divergent.len(),
+        d.occurrence_identity_only.len(),
         d.narrowed.len(),
         d.regressed.len(),
         d.both_refused.len(),
@@ -771,6 +788,10 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             run_evaluation_store_address_exact_head()
         }
         TargetProducer::FloorMemoryQualification => run_floor_memory_qualification(),
+        TargetProducer::TypedGraphExclusiveBytes => run_typed_graph_exclusive_bytes(),
+        TargetProducer::TypedGraphExclusiveBytesFloorSubject => {
+            run_typed_graph_exclusive_bytes_floor_subject()
+        }
         TargetProducer::PrimitiveEgressCensus => {
             run_primitive_egress_census("primitive-egress-census", "primitive_egress_census_exit")
         }
@@ -1027,13 +1048,21 @@ fn exact_head_standing_outcome(
 /// broken compiler.
 fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_self_host(source_roots) {
-        Ok(held) => InvocationOutcome {
-            termination: if held.exit_status == 0 && held.warning_count == 0 {
+        Ok(held) => {
+            // THE TERMINATION IS DERIVED FROM THE CAUSE, so a did-not-hold cannot exit 1 without
+            // printing why: the cause IS the discriminator (DESIGN §5).
+            let not_clean = cli_run::emitted_build_not_clean_cause(
+                "SELF-HOST",
+                held.exit_status,
+                held.warning_count,
+                &held.warning_headers,
+            );
+            let termination = if not_clean.is_none() {
                 Termination::ObservationHeld
             } else {
                 Termination::ObservationDidNotHold
-            },
-            message: format!(
+            };
+            let counters = format!(
                 "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={} \
                  door_refusal_reason=\"{}\"",
                 held.closure_identity,
@@ -1042,8 +1071,15 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
                 held.exit_status,
                 held.warning_count,
                 held.door_refusal_reason,
-            ),
-        },
+            );
+            InvocationOutcome {
+                termination,
+                message: match not_clean {
+                    Some(cause) => format!("{cause}\n{counters}"),
+                    None => counters,
+                },
+            }
+        }
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
@@ -1123,13 +1159,21 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
 /// never opened.
 fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_cli(source_roots) {
-        Ok(held) => InvocationOutcome {
-            termination: if held.exit_status == 0 && held.warning_count == 0 {
+        Ok(held) => {
+            // THE TERMINATION IS DERIVED FROM THE CAUSE, so a did-not-hold cannot exit 1 without
+            // printing why: the cause IS the discriminator (DESIGN §5).
+            let not_clean = cli_run::emitted_build_not_clean_cause(
+                "V2-NATIVE-CLI",
+                held.exit_status,
+                held.warning_count,
+                &held.warning_headers,
+            );
+            let termination = if not_clean.is_none() {
                 Termination::ObservationHeld
             } else {
                 Termination::ObservationDidNotHold
-            },
-            message: format!(
+            };
+            let counters = format!(
                 "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={} \
                  door_exit_status={} door_emitted_bytes={} door_refusal_exit_status={} \
                  generation_one_executable={}",
@@ -1142,8 +1186,15 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
                 held.door_emitted_bytes,
                 held.door_refusal_exit_status,
                 held.generation_one_executable,
-            ),
-        },
+            );
+            InvocationOutcome {
+                termination,
+                message: match not_clean {
+                    Some(cause) => format!("{cause}\n{counters}"),
+                    None => counters,
+                },
+            }
+        }
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
@@ -1692,6 +1743,428 @@ fn floor_memory_qualification_lane() -> String {
 /// number. An unbounded run and a bounded one are indistinguishable in everything the workload
 /// itself emits, which is the class
 /// `gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained`.
+/// THE MEASURED RUN BY PHASE: the child's seam beats, transcribed by the supervisor and folded by
+/// `gunbc.floor_demand` `floor_phase_attribution`, one line per phase in the order the run entered
+/// them. `entry` is the held set the phase inherited, `peak` the largest over its own beats, and
+/// `left` what it left resident -- the next phase's entry, read from that row, so this renderer
+/// does no arithmetic of its own. A phase whose held set could not be represented prints the arm.
+///
+/// This is a reading beside the verdict, never a verdict: a run with no beats (a lane that owns no
+/// floor phase) or a transcription refusal says so here and leaves the qualification unchanged.
+fn floor_phase_attribution_rendered(
+    ctx: &crate::v1_interpreter::InterpContext,
+    beat_lines: &[String],
+) -> String {
+    use crate::v1_interpreter::Value;
+    use cli_run::floor_memory_supervisor as sup;
+    let beats = match sup::transcribe_floor_beats(beat_lines) {
+        Ok(beats) if beats.is_empty() => {
+            return "floor-phase-attribution: no seam beats were printed by the measured child"
+                .to_string();
+        }
+        Ok(beats) => beats,
+        Err(refusal) => return format!("floor-phase-attribution: refused: {refusal}"),
+    };
+    // A COUNTER PAST i64 REFUSES rather than clamping: a clamp would hand the fold a value nobody
+    // read. None of these can reach it on a real host, which is why a refusal costs nothing.
+    if let Some(b) = beats.iter().find(|b| {
+        std::iter::once(b.charge)
+            .chain(b.stall_per_min)
+            .chain(b.swap_bytes)
+            .chain(b.stat.iter().copied())
+            .any(|v| i64::try_from(v).is_err())
+    }) {
+        return format!(
+            "floor-phase-attribution: refused: beat {} carries a counter past the i64 the fold reads",
+            b.beat
+        );
+    }
+    let int = |v: u64| Value::Int(v as i64);
+    // AN UNREAD COUNTER CROSSES AS `Absent`, the fold's own optional, never as a zero beside a flag.
+    let optional = |v: Option<u64>| -> Value {
+        match v {
+            Some(n) => Value::Variant {
+                type_name: ctx.sym("Optional"),
+                variant_name: ctx.sym("Present"),
+                fields: std::rc::Rc::new(vec![(ctx.sym("value"), int(n))]),
+            },
+            None => Value::Variant {
+                type_name: ctx.sym("Optional"),
+                variant_name: ctx.sym("Absent"),
+                fields: std::rc::Rc::new(vec![]),
+            },
+        }
+    };
+    let readings: Vec<Value> = beats
+        .iter()
+        .map(|b| {
+            let mut fields = vec![
+                (ctx.sym("beat"), Value::Int(b.beat as i64)),
+                (ctx.sym("opens_phase"), Value::Bool(b.opens_phase)),
+                (
+                    ctx.sym("seam_before"),
+                    crate::v1_interpreter::str_value(&b.seam_before),
+                ),
+                (
+                    ctx.sym("seam_after"),
+                    crate::v1_interpreter::str_value(&b.seam_after),
+                ),
+                (ctx.sym("stall_per_min"), optional(b.stall_per_min)),
+                (ctx.sym("swap_bytes"), optional(b.swap_bytes)),
+                (ctx.sym("charge"), int(b.charge)),
+            ];
+            for (key, value) in sup::FLOOR_BEAT_STAT_KEYS.iter().zip(b.stat.iter()) {
+                fields.push((ctx.sym(key), int(*value)));
+            }
+            Value::Record {
+                type_name: ctx.sym("FloorBeatReading"),
+                fields: std::rc::Rc::new(fields),
+            }
+        })
+        .collect();
+    let args = vec![(
+        Some("readings".to_string()),
+        crate::v1_interpreter::list_value(readings),
+    )];
+    let attributed = match crate::v1_interpreter::run_in_context_with_args(
+        ctx,
+        "floor_phase_attribution_from_readings",
+        &args,
+        true,
+    ) {
+        Ok(v) => v,
+        Err(cause) => return format!("floor-phase-attribution: not reached: {cause}"),
+    };
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &attributed
+    else {
+        return format!(
+            "floor-phase-attribution: unrecognised result {}",
+            ctx.format_value(&attributed)
+        );
+    };
+    if !ctx.sym_eq(*variant_name, "FloorPhasesAttributed") {
+        return format!("floor-phase-attribution: {}", ctx.format_value(&attributed));
+    }
+    let Some(Value::List(rows)) = ctx.field(fields, "phases") else {
+        return format!(
+            "floor-phase-attribution: unrecognised result {}",
+            ctx.format_value(&attributed)
+        );
+    };
+    let held = |v: Option<&Value>| -> String {
+        match v {
+            Some(Value::Variant {
+                variant_name,
+                fields,
+                ..
+            }) if ctx.sym_eq(*variant_name, "HeldSetPeakAt") => match ctx.field(fields, "bytes") {
+                Some(Value::Record { fields, .. }) => match ctx.field(fields, "count") {
+                    Some(Value::Int(n)) => n.to_string(),
+                    other => format!("{other:?}"),
+                },
+                other => format!("{other:?}"),
+            },
+            Some(other) => ctx.format_value(other),
+            None => "<absent>".to_string(),
+        }
+    };
+    let rows: Vec<&Value> = rows.iter().collect();
+    let mut out = vec![format!(
+        "floor-phase-attribution: phases={} beats={} (held set per gunbc.floor_demand beat_held_set, bytes)",
+        rows.len(),
+        beats.len()
+    )];
+    for (i, row) in rows.iter().enumerate() {
+        let Value::Record { fields, .. } = row else {
+            out.push(format!("  unrecognised row {}", ctx.format_value(row)));
+            continue;
+        };
+        let left = match rows.get(i + 1) {
+            Some(Value::Record { fields: next, .. }) => held(ctx.field(next, "entry")),
+            _ => "end-of-run".to_string(),
+        };
+        out.push(format!(
+            "  phase={} opened_at_beat={} entry={} peak={} left={}",
+            ctx.field(fields, "seam")
+                .map(|v| ctx.format_value(v))
+                .unwrap_or_default(),
+            ctx.field(fields, "opened_at")
+                .map(|v| ctx.format_value(v))
+                .unwrap_or_default(),
+            held(ctx.field(fields, "entry")),
+            held(ctx.field(fields, "peak")),
+            left,
+        ));
+    }
+    out.join("\n")
+}
+
+/// THE TYPED GRAPH'S BYTES BY CLASS, READ LEAVE-ONE-OUT. The floor's sequential byte attribution
+/// (`cli_run::typed_graph_byte_attribution`) credits a class dropped late with every node it shared
+/// with classes dropped before it, so its figures are an order-dependent upper bound -- read as a
+/// saving, its `emit_graph_info` share predicted a peak cut that measured -0.07 GB (gunbc#12832).
+/// What a removal SAVES is the bytes freed by dropping that class alone while every other class is
+/// still held, and that needs a fresh graph per class: a dropped class cannot be restored and a
+/// deep clone would double the heap under measurement.
+///
+/// THE SUBJECT IS THE WHOLE-TREE STRICT CLOSURE over `dag` and `src/v2`, the floor's own
+/// exclusions applied: at roughly five thousand modules it is the size at which the floor's
+/// superlinear growth is the question, and it needs no diff to reproduce. The graph is taken
+/// whether or not the typecheck refuses, since a refused graph is the same allocation a refusing
+/// floor holds. Six classes, the ones carrying the bytes; the rest are inside the shared residual.
+fn run_typed_graph_exclusive_bytes() -> InvocationOutcome {
+    let roots = vec!["dag".to_string(), "src/v2".to_string()];
+    let excludes = cli_run::floor_prepared_subject_exclusions();
+    typed_graph_exclusive_bytes_over("typed-graph-exclusive-bytes", || {
+        let picked = cli_run::whole_tree_strict_sources(&roots, &excludes)?;
+        let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(
+            picked.sources.into(),
+        ));
+        std::rc::Rc::try_unwrap(result)
+            .ok()
+            .and_then(|r| r.graph)
+            .ok_or_else(|| {
+                "the strict resolve produced no graph, or its result has another owner".to_string()
+            })
+    })
+}
+
+/// THE SAME READING OVER THE FLOOR'S OWN PREPARED SUBJECT AT THIS CHECKOUT: the nominal closure
+/// (gate prefixes, gate-authored modules, the local-repo wet schedule) the required floor prepares
+/// when no diff adds seeds, through the floor's own `prepare_repository_from_corpus`. A second
+/// SIZE of the same observation, so `type_env`'s exclusive bytes are read at two closure sizes and
+/// the scaling the floor's peak shows is measured on the class rather than inferred from the phase.
+fn run_typed_graph_exclusive_bytes_floor_subject() -> InvocationOutcome {
+    let roots = vec!["dag".to_string(), "src/v2".to_string()];
+    typed_graph_exclusive_bytes_over("typed-graph-exclusive-bytes-floor-subject", || {
+        let corpus = cli_run::read_source_corpus_once(&roots);
+        let gate_entry_index = cli_run::build_multi_entry_index(&roots);
+        let seeds =
+            cli_run::required_floor_nominal_subject_seeds_from_corpus(&corpus, &gate_entry_index)?;
+        let module_seeds = cli_run::required_floor_nominal_closure_module_seeds(
+            &seeds.required_gate_authored_modules,
+            &seeds.local_repo_wet_schedule_rows,
+        );
+        // THE FLOOR'S OWN SUBJECT, COMPILED AS ITS STRICT PREPARE COMPILES IT -- before the prepared
+        // repository drops the typecheck caches -- because the floor's peak is inside that compile,
+        // where the caches the import union rides on are still alive.
+        let subject = cli_run::assemble_prepared_subject_from_corpus(
+            &corpus,
+            &cli_run::floor_prepared_subject_exclusions(),
+            Some((
+                &gate_entry_index,
+                &seeds.required_gate_prefixes,
+                &module_seeds,
+            )),
+        )?;
+        drop(gate_entry_index);
+        let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(
+            subject.sources.into(),
+        ));
+        std::rc::Rc::try_unwrap(result)
+            .ok()
+            .and_then(|r| r.graph)
+            .ok_or_else(|| {
+                "the strict resolve produced no graph, or its result has another owner".to_string()
+            })
+    })
+}
+
+/// The leave-one-out loop, over whichever subject `subject` resolves -- once per class, from a
+/// fresh graph each time, since a dropped class cannot be restored.
+fn typed_graph_exclusive_bytes_over(
+    label: &str,
+    subject: impl Fn() -> Result<std::rc::Rc<crate::v1_compiler_compile::ResolvedGraph>, String>,
+) -> InvocationOutcome {
+    use cli_run::TypedModuleClass as C;
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    // Every single class, then the union's carriers JOINTLY: the per-module import union is
+    // materialized both as TypeEnv.ancestry_str_bindings and as the TypeEnvCache the module's
+    // interface hands its importers, and those share spine, so neither alone reads what removing
+    // the union would save.
+    let sets: Vec<Vec<C>> = vec![
+        vec![C::TypeEnv],
+        vec![C::TypeEnvCache],
+        vec![C::Interface],
+        vec![C::Items],
+        vec![C::ModuleNodes],
+        vec![C::FuncEnv],
+        vec![C::OccurrenceTransport],
+        vec![C::TypeEnv, C::TypeEnvCache, C::Interface],
+    ];
+    let mut raw = Vec::new();
+    for set in &sets {
+        let class_name = set.iter().map(|c| c.name()).collect::<Vec<_>>().join("+");
+        let graph = match subject() {
+            Ok(g) => g,
+            Err(e) => {
+                return InvocationOutcome {
+                    termination: Termination::SubjectUnreached,
+                    message: format!("{label}: subject unreached: {e}"),
+                }
+            }
+        };
+        match cli_run::typed_module_class_exclusive_bytes(graph, set) {
+            Ok(r) => raw.push((class_name, r)),
+            Err(cause) => {
+                return InvocationOutcome {
+                    termination: Termination::Refused,
+                    message: format!("{label}: class {class_name} unattributable: {cause}"),
+                }
+            }
+        }
+    }
+    // THE HOST TRANSCRIBES, THE .dag FOLD DECIDES (gunbc.typed_graph_exclusive_bytes). Every
+    // reading crosses as primitives; a count past i64 refuses rather than clamping.
+    const ENTRY: &str = "dag/gunbc/floor/typed_graph_exclusive_bytes.dag";
+    let roots = vec!["dag".to_string(), "src/v2".to_string()];
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label}: resolve failed for {ENTRY}: {cause}"),
+            }
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    use crate::v1_interpreter::Value;
+    let int = |v: u64| i64::try_from(v).map(Value::Int);
+    let mut readings = Vec::new();
+    for (class, r) in &raw {
+        let counts = [
+            r.modules as u64,
+            r.in_use_all,
+            r.in_use_after_class,
+            r.in_use_end,
+            r.ancestry_entries,
+            r.own_entries,
+        ];
+        let Ok(vals) = counts
+            .iter()
+            .map(|v| int(*v))
+            .collect::<Result<Vec<_>, _>>()
+        else {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "{label}: class {} carries a count past the i64 the fold reads",
+                    class
+                ),
+            };
+        };
+        let names = [
+            "modules",
+            "in_use_all",
+            "in_use_after_class",
+            "in_use_end",
+            "ancestry_entries",
+            "own_entries",
+        ];
+        let mut fields = vec![(ctx.sym("class"), crate::v1_interpreter::str_value(class))];
+        for (n, v) in names.iter().zip(vals) {
+            fields.push((ctx.sym(n), v));
+        }
+        readings.push(Value::Record {
+            type_name: ctx.sym("TypedGraphClassReading"),
+            fields: std::rc::Rc::new(fields),
+        });
+    }
+    let args = vec![(
+        Some("readings".to_string()),
+        crate::v1_interpreter::list_value(readings),
+    )];
+    let report = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "typed_graph_exclusive_report",
+        &args,
+        true,
+    ) {
+        Ok(v) => v,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label}: the report could not be reached: {cause}"),
+            }
+        }
+    };
+    let bytes = |v: Option<&Value>| -> String {
+        match v {
+            Some(Value::Record { fields, .. }) => match ctx.field(fields, "count") {
+                Some(Value::Int(n)) => n.to_string(),
+                other => format!("{other:?}"),
+            },
+            Some(other) => ctx.format_value(other),
+            None => "<absent>".to_string(),
+        }
+    };
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &report
+    else {
+        return InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!("{label}: unrecognised report {}", ctx.format_value(&report)),
+        };
+    };
+    if !ctx.sym_eq(*variant_name, "ExclusiveBytesReported") {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label}: {}", ctx.format_value(&report)),
+        };
+    }
+    let mut lines = Vec::new();
+    if let Some(Value::List(cs)) = ctx.field(fields, "classes") {
+        for c in cs.iter() {
+            if let Value::Record { fields: cf, .. } = c {
+                let f = |n: &str| {
+                    ctx.field(cf, n)
+                        .map(|v| ctx.format_value(v))
+                        .unwrap_or_default()
+                };
+                lines.push(format!(
+                    "{label} class={} exclusive={} graph_total={} modules={} ancestry_entries={} own_entries={}",
+                    f("class"), bytes(ctx.field(cf, "exclusive")), bytes(ctx.field(cf, "graph_total")),
+                    f("modules"), f("ancestry_entries"), f("own_entries")
+                ));
+            }
+        }
+    }
+    let residual = match ctx.field(fields, "shared_or_unlisted") {
+        Some(Value::Variant {
+            variant_name,
+            fields: rf,
+            ..
+        }) if ctx.sym_eq(*variant_name, "MeasureDifference") => bytes(ctx.field(rf, "value")),
+        Some(other) => ctx.format_value(other),
+        None => "<absent>".to_string(),
+    };
+    lines.push(format!(
+        "{label} graph_total={} sum_of_exclusives={} shared_or_unlisted={residual} (gunbc.typed_graph_exclusive_bytes; graph_total from the first run, every class from its own fresh resolve)",
+        bytes(ctx.field(fields, "graph_total")),
+        bytes(ctx.field(fields, "sum_of_exclusives")),
+    ));
+    InvocationOutcome {
+        termination: Termination::ObservationHeld,
+        message: lines.join("\n"),
+    }
+}
+
 fn run_floor_memory_qualification() -> InvocationOutcome {
     use cli_run::floor_memory_supervisor as sup;
 
@@ -1798,15 +2271,16 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
         args.push(root);
     }
 
-    let termination = match sup::run_child_in_own_cgroup(&exe.to_string_lossy(), &args) {
-        Ok(t) => t,
-        Err(refusal) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
-            };
-        }
-    };
+    let (termination, beat_lines) =
+        match sup::run_child_in_own_cgroup(&exe.to_string_lossy(), &args) {
+            Ok(t) => t,
+            Err(refusal) => {
+                return InvocationOutcome {
+                    termination: Termination::Refused,
+                    message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+                };
+            }
+        };
 
     let read = match sup::read_cgroup_memory(&cgroup) {
         Ok(r) => r,
@@ -1920,6 +2394,8 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
         }
     };
 
+    let phases = floor_phase_attribution_rendered(&ctx, &beat_lines);
+
     // The supervisor shares the cgroup with the child, so its own few MiB are inside this peak.
     // Stated rather than netted out: subtracting an estimate would replace a measured number with
     // an adjusted one.
@@ -1927,7 +2403,7 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
         "floor-memory-qualification: cgroup={} peak={} memory.max={} memory.high={} \
          events=[high {} / max {} / oom_kill {}] termination={} lane={} \
          (the supervisor shares this cgroup with the measured child, so its own footprint — a few \
-         MiB — is included in the peak rather than subtracted)",
+         MiB — is included in the peak rather than subtracted)\n{phases}",
         read.dir,
         read.peak,
         read.limit_max,

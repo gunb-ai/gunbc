@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_derivation_key_that_does_not_pin_bytes_across_build_hosts
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_derivation_key_that_does_not_pin_bytes_across_build_hosts: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_derivation_key_that_does_not_pin_bytes_across_build_hosts" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: extdeps.provisioning.ubuntu_seeded_install_media seeded_install_media_build_key names a derivation by its inputs, and the pinned-dates replay (extdeps.provisioning.ubuntu_seeded_install_media_remaster) is written as though one key determines one output -- but the same key built on two hosts gives two different images. The key pins the INPUTS it hashes and not an input the bytes also depend on.",
+
+    "SPECIMEN, 2026-09-28 (session zesty-newt-134): the mtcollins1 census derivation with build key 8d357a525f078cb4 was published from srv2 as output sha256 30ca88d43f8913995078f6c2c917d5049842f927f3fc886a103f460dd146a706 (gunbc.machine_intake_mtcollins1_boot_authorization mtcollins1_boot_medium). The same derivation built through UNCHANGED main code (0372e8fa23) in a session container, over the same pinned stock ISO (2ee2163c...) with xorriso 1.5.6 on both, produced fb94412100f516681e70ca931f6d1abe87f12bfcd60229128247a3fc1ce0c6bf. The divergence is therefore not a code change.",
+
+    "SECOND SPECIMEN, srv2 (fleet-converge run 36519408507, 2026-09-29): the first dispatch of the fleet-SSH census publish rebuilt key 8d357a525f078cb4 on srv2 AS ubuntu and got d27d584dc8d2c64ad92026cf8a3defb0f8b3ca26199a940dc1ec9cc8c9ee2c18 -- neither 30ca88d4... (srv2 as gunbc-fleet) nor fb944121... (a container as uid 1000). Its regression gate refused and nothing was published.",
+
+    "CAUSE, ESTABLISHED LOCALLY (session zesty-newt-134, 2026-09-29): xorriso -map records each mapped source file's owner and group in Rock Ridge. One replay over identical inputs, run as uid 1000 and under fakeroot as uid 0, gave fb944121... and eb23f174... -- 96 differing bytes, with xorriso -lsl showing the mapped members 1000:1000 against 0:0. With -chown_r/-chgrp_r 0 on the mapped paths the two runs were BYTE-IDENTICAL (eb23f174...). Mode is the other host input (umask), pinned with the same mechanism. Still to read: the owner recorded in the published 30ca88d4... itself, which the member readback now lists (census_mapped_attributes).",
+
+    "THE REPAIR (the change that files this update): extdeps.provisioning.ubuntu_seeded_install_media_remaster install_media_remaster_attribute_pins sets owner 0, group 0 and explicit modes (0755 directories, 0644 files) on every mapped member through the typed extdeps.tools.xorriso XorrisoPathListCommand, and gunbc.seeded_install_media_policy seeded_install_media_builder_revision is bumped to xorriso-replay-pinned-dates-and-attributes/2. Under it the pinned-input key bf916c060d072e72 built as uid 1000 gives eb23f174..., the value a srv2 rebuild must reproduce before anything is published.",
+
+    "HARM: mitigated, not silent. Publication measures the digest it builds and names the image by it, and the boot reads the served bytes back against the pinned digest, so no consumer trusts a predicted digest. What is lost is the ability to reproduce a published image anywhere but its build host -- a rebuild elsewhere cannot answer whether the fold still builds what it built -- which is why the census publish's first act is to rebuild the pinned-input derivation ON srv2 and require both the hermetic receipt built elsewhere and the stock boot chain (gunbc.machine_intake_mtcollins1_census_image_publish census_srv2_regression) before publishing anything.",
+
+    "RUNG FOUND AT: mitigatable. RUNG AFTER THE REPAIR, AT ITS HONEST GRAIN: mitigatable still for the class, mechanically checked per publication -- the owner/group/mode inputs are pinned, and the srv2 regression requires the hermetic receipt, but nothing yet proves the builder has NO OTHER host-dependent input: the claim rests on the byte-identity of builds on two hosts as two users, which is evidence for the inputs exercised and not a proof over all of them. ATTAINABLE CEILING: structurally guaranteed -- a replay whose every attribute source is a declared input of the key. NEXT-RUNG TRIGGER: the builder's inputs enumerated as a closed set the key is computed from, so an undeclared host input has no path into the argv.",
+  ],
+
+  evidence: [],
+}

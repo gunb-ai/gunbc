@@ -58,12 +58,14 @@ jobs:
           echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+        if: hashFiles('heal-candidate/heal-repair-candidate-blob-*') != ''
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
         with:
           components: rustfmt
           cache: false
           rustflags: -D warnings
+        if: hashFiles('heal-candidate/heal-repair-candidate-blob-*') != ''
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |-
           # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
@@ -71,6 +73,7 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+        if: hashFiles('heal-candidate/heal-repair-candidate-blob-*') != ''
       - name: Build the publisher this job runs from the default branch
         id: build_witness_fold
         run: |+
@@ -95,6 +98,7 @@ jobs:
           if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
           'exit' "$GUNBC_FLOOR_EXIT"
 
+        if: hashFiles('heal-candidate/heal-repair-candidate-blob-*') != ''
       - name: Admit the candidate against this checkout's policy, with no publication credential
         run: |-
           set -euo pipefail

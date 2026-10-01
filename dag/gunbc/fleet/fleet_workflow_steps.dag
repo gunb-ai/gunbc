@@ -41,14 +41,14 @@ import v2.workflow.ci_workflow_run_emit {
 }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import gunbc.fleet_release_bins_key {
-  release_bins_key_script, release_bins_lookup_script, release_bins_outcome_script,
+  release_bins_key_script, release_bins_lookup_script, release_bins_dispatch_scope_ref_env, release_bins_dispatch_scope_ref_expression, release_bins_outcome_script,
   release_bins_pack_manifest_script, release_bins_consumer_key_check_script,
   release_bins_key_expression, release_bins_consumer_key_expression,
   release_bins_lookup_standing_expression, release_bins_lookup_entry_expression,
   release_bins_cache_hit_expression,
   release_bins_build_condition, release_bins_key_step_id, release_bins_lookup_step_id,
   release_bins_cache_step_id, release_bins_outcome_step_id, release_bins_preimage_name,
-  release_bins_manifest_name, release_bins_staging_dir,
+  release_bins_manifest_name, release_bins_staging_dir, release_bins_download_path_expression,
 }
 import gunbc.ci_spec {
   ci_release_bins_archive_name,
@@ -347,6 +347,7 @@ fn ci_release_bins_lookup_step() -> Step {
       value: [
         kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression())),
         kv(key: "GH_TOKEN", value: yaml_string(s: join(["$", "{{ github.token }}"], ""))),
+        kv(key: release_bins_dispatch_scope_ref_env, value: yaml_string(s: release_bins_dispatch_scope_ref_expression())),
       ]
     },
     working_directory: none,
@@ -442,7 +443,10 @@ fn ci_release_bins_download_step() -> Step {
     id: none,
     uses: download_artifact_action,
     with: Present {
-      value: [kv(key: "name", value: yaml_string(s: ci_release_bins_artifact_name))]
+      value: [
+        kv(key: "name", value: yaml_string(s: ci_release_bins_artifact_name)),
+        kv(key: "path", value: yaml_string(s: release_bins_download_path_expression())),
+      ]
     },
     env: none,
     if_condition: none,

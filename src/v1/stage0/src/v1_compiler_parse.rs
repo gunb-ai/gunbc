@@ -342,6 +342,7 @@ pub fn parsed_node_with_ident(node: Rc<Node>, ident: i64) -> Rc<Node> {
         match_pattern: node.match_pattern.clone(),
         module_item_kind: node.module_item_kind.clone(),
         declaration_marker: node.declaration_marker.clone(),
+        declaration: node.declaration.clone(),
         expr_data: node.expr_data.clone(),
     })
 }
@@ -1711,6 +1712,7 @@ pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -
                         match_pattern: std::option::Option::None,
                         module_item_kind: ParsedModuleItemKind::ModuleItemUnrecognized,
                         declaration_marker: DeclarationMarker::Unmarked,
+                        declaration: std::option::Option::None,
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     }),
@@ -1750,6 +1752,7 @@ pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -
                 match_pattern: n.match_pattern.clone(),
                 module_item_kind: n.module_item_kind.clone(),
                 declaration_marker: DeclarationMarker::TestMarked,
+                declaration: std::option::Option::None,
                 expr_data: n.expr_data.clone(),
             }),
             tokens: r.tokens.clone(),
@@ -2541,6 +2544,7 @@ pub fn leaf_type_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -2571,6 +2575,7 @@ pub fn literal_width_nat_type_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::ExprLiteral {
             value: Rc::new(LiteralValue::LitInt {
                 value: value.clone(),
@@ -3830,6 +3835,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4354,6 +4360,7 @@ pub fn parse_unmarked_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc
     match_pattern: std::option::Option::None,
     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
     declaration_marker: DeclarationMarker::Unmarked,
+    declaration: std::option::Option::None,
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 }),
@@ -4540,6 +4547,7 @@ pub fn parse_item_by_form(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4651,6 +4659,7 @@ pub fn field_to_child_node(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4694,6 +4703,7 @@ pub fn variant_to_child_node(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4733,6 +4743,7 @@ pub fn outputs_to_inferred(
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                 declaration_marker: DeclarationMarker::Unmarked,
+                declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
@@ -4797,6 +4808,7 @@ pub fn make_operation_node(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4845,6 +4857,7 @@ pub fn make_capability_node(
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4873,6 +4886,7 @@ pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4920,6 +4934,7 @@ pub fn parse_type_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4967,6 +4982,7 @@ pub fn parse_type_after_kw(
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5022,6 +5038,7 @@ pub fn parse_type_after_kw(
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5075,6 +5092,7 @@ pub fn parse_type_after_kw(
                             match_pattern: std::option::Option::None,
                             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
                             declaration_marker: DeclarationMarker::Unmarked,
+                            declaration: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
@@ -5120,6 +5138,7 @@ pub fn parse_type_body_from_prefix(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -5184,6 +5203,7 @@ pub fn parse_type_body_from_prefix(
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5237,6 +5257,7 @@ pub fn parse_type_body_from_prefix(
                             match_pattern: std::option::Option::None,
                             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
                             declaration_marker: DeclarationMarker::Unmarked,
+                            declaration: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
@@ -5289,6 +5310,7 @@ pub fn type_item_from_alias_rhs(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -5313,6 +5335,7 @@ pub fn type_item_from_alias_rhs(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -5349,6 +5372,7 @@ pub fn parse_type_body_after_eq(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -5422,6 +5446,7 @@ pub fn parse_type_body_after_eq(
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5513,6 +5538,7 @@ pub fn parse_type_body_after_eq(
                                     module_item_kind:
                                         ParsedModuleItemKind::ModuleItemTypeDeclaration,
                                     declaration_marker: DeclarationMarker::Unmarked,
+                                    declaration: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 });
@@ -5670,6 +5696,7 @@ pub fn try_where_clause(
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5693,6 +5720,7 @@ pub fn try_where_clause(
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -6553,6 +6581,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -6714,6 +6743,7 @@ pub fn parse_callable_type_expr(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -6853,6 +6883,7 @@ pub fn finish_type_expr_from_name(
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -7042,6 +7073,7 @@ pub fn with_type_param_kind_property(param: Rc<Node>, kind: Option<Rc<Node>>) ->
                 match_pattern: param.match_pattern.clone(),
                 module_item_kind: param.module_item_kind.clone(),
                 declaration_marker: param.declaration_marker.clone(),
+                declaration: param.declaration.clone(),
                 expr_data: param.expr_data.clone(),
                 ident: None,
             })
@@ -7130,6 +7162,7 @@ pub fn maybe_optional(
                 match_pattern: te.match_pattern.clone(),
                 module_item_kind: te.module_item_kind.clone(),
                 declaration_marker: te.declaration_marker.clone(),
+                declaration: te.declaration.clone(),
                 expr_data: te.expr_data.clone(),
                 ident: None,
             });
@@ -7509,6 +7542,7 @@ pub fn parse_fn_body_from_prefix(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7598,6 +7632,7 @@ pub fn parse_fn_body_from_prefix(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemFunction,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7641,6 +7676,7 @@ pub fn parse_block_body_from_prefix(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7675,6 +7711,7 @@ pub fn parse_block_body_from_prefix(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemFunction,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7713,6 +7750,7 @@ pub fn parse_no_body_from_prefix(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemUnrecognized,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7889,6 +7927,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     match_pattern: r3.type_expr.clone().match_pattern.clone(),
                     module_item_kind: r3.type_expr.clone().module_item_kind.clone(),
                     declaration_marker: r3.type_expr.clone().declaration_marker.clone(),
+                    declaration: r3.type_expr.clone().declaration.clone(),
                     expr_data: r3.type_expr.clone().expr_data.clone(),
                     ident: None,
                 });
@@ -8075,6 +8114,7 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -8122,6 +8162,7 @@ pub fn parse_service_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -8163,6 +8204,7 @@ pub fn parse_service_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -8245,6 +8287,7 @@ pub fn parse_service_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemService,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -10662,23 +10705,12 @@ pub fn parse_exit_entries_acc(
                 _ => r3.tokens.clone(),
             };
             let code_str = status_expr_to_str(code.clone(), ctx.source_indices.clone());
-            let type_name = node_to_name_str(r3.type_expr.clone(), ctx.source_indices.clone());
             let prop_name = v1_rt::concat("exit_".to_string(), code_str.clone());
             let minted = mint_parsed_node_identity(r3.ctx.clone());
             let entry = crate::v1_std_core::make_field_init_node(
                 minted.identity.clone(),
                 prop_name.clone(),
-                crate::v1_std_core::make_named_expr_node(
-                    r3.type_expr.clone().occurrence_identity.clone(),
-                    type_name.clone(),
-                    Rc::new(ExprData::ExprVar {
-                        binding_kind: std::option::Option::None,
-                    }),
-                    Rc::new(vec![]),
-                    std::option::Option::None,
-                    r3.type_expr.clone().span.clone(),
-                    r3.type_expr.clone().span.clone(),
-                ),
+                r3.type_expr.clone(),
                 r3.type_expr.clone().span.clone(),
                 crate::v1_std_core::no_span(),
             );
@@ -11255,6 +11287,7 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11302,6 +11335,7 @@ pub fn parse_resource_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11336,6 +11370,7 @@ pub fn parse_resource_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11395,6 +11430,7 @@ pub fn parse_resource_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemResource,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -12021,6 +12057,7 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -12068,6 +12105,7 @@ pub fn parse_alias_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -12102,6 +12140,7 @@ pub fn parse_alias_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -12164,6 +12203,7 @@ pub fn parse_alias_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -12202,6 +12242,7 @@ pub fn parse_data_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -12236,6 +12277,7 @@ pub fn parse_data_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -12302,6 +12344,7 @@ pub fn parse_data_after_kw(
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemDataValue,
             declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -13093,6 +13136,7 @@ pub fn parse_constrained_assignment(
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                 declaration_marker: DeclarationMarker::Unmarked,
+                declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -13182,6 +13226,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                 declaration_marker: DeclarationMarker::Unmarked,
+                declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -13247,6 +13292,7 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                 declaration_marker: DeclarationMarker::Unmarked,
+                declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -16473,6 +16519,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::ExprLet),
                     ident: None,
                 });

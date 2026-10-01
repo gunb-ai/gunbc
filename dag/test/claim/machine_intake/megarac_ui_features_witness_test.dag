@@ -1,0 +1,136 @@
+module test.claim.machine_intake.megarac_ui_features_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { any }
+import extdeps.bmc.megarac { megarac_ui_features_json, megarac_firmware_0_32 }
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.endpoint { AmiMegaRac }
+import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }
+import gunbc.machine_intake_megarac_ui_features {
+  MegaRacUiFeatures, MegaRacUiFeaturesRead, MegaRacUiFeaturesUnread,
+  megarac_ui_features_of_bundle, megarac_ui_feature_name_admitted, megarac_ui_features_reading, megarac_ui_features_row_text,
+  megarac_ui_features_0_32, megarac_ui_features_0_32_receipt, megarac_ui_features,
+  MegaRacRmediaStatus, MegaRacRmediaStatusTable, MegaRacRmediaStatusTableRead, MegaRacRmediaStatusTableUnread,
+  RmediaStatusNamed, RmediaStatusOutsideTable, RmediaStatusTableUnread,
+  megarac_rmedia_status_0_32, megarac_rmedia_status_0_32_receipt, megarac_rmedia_status_of_wire,
+  megarac_rmedia_status_entries_of_bundle, megarac_rmedia_status_bound_of_bundle, megarac_rmedia_status_table_reading, megarac_rmedia_status_row_text,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The module as source.min.js 0.32 spells it (run 36778446928's bytes), abbreviated to three entries,
+// between the neighbouring modules so the parse is held to its own boundaries.
+data bundle_fragment: String = "o(\"x\",[],function()\{return 1}),o(\"features\",[],function()\{var e=[\{feature:\"RMEDIA_MULTI_IMAGE_SUPPORT\"},\{feature:\"KVM_SESSION_RECONNECT\"},\{feature:\"HTML5_KVM\"}];return e}),o(\"collection/project-configurations\",[\"jquery\"],function()\{var q=\{feature:\"NOT_IN_THE_MODULE\"}})"
+
+test fn the_features_module_yields_its_names_in_order_and_nothing_outside_it() -> Bool {
+  match megarac_ui_features_of_bundle(text: bundle_fragment) {
+    Present { value: names } => names == ["RMEDIA_MULTI_IMAGE_SUPPORT", "KVM_SESSION_RECONNECT", "HTML5_KVM"]
+    Absent => false
+  }
+}
+
+test fn a_bundle_without_the_module_yields_nothing() -> Bool {
+  match megarac_ui_features_of_bundle(text: "o(\"collection/project-configurations\",[],function()\{})") { Absent => true  Present { value: _ } => false }
+}
+
+// THE PIN: bytes that are not the 2026-09-27 build are not read, however well they parse.
+test fn only_the_pinned_build_is_read() -> Bool {
+  (match megarac_ui_features_reading(observed_sha256: megarac_source_min_js_sha256_2026_09_27 as String, text: bundle_fragment) { MegaRacUiFeaturesRead { names: n, source_sha256: _ } => n == ["RMEDIA_MULTI_IMAGE_SUPPORT", "KVM_SESSION_RECONNECT", "HTML5_KVM"]  _ => false })
+    && (match megarac_ui_features_reading(observed_sha256: "0000000000000000000000000000000000000000000000000000000000000000", text: bundle_fragment) { MegaRacUiFeaturesUnread { cause: c } => string_contains(s: c as String, pattern: "not the pinned")  _ => false })
+}
+
+// A NAME OUTSIDE THE VENDOR IDENTIFIER SHAPE IS REFUSED, so nothing can escape the JSON it is written into.
+test fn a_name_outside_the_identifier_shape_is_refused() -> Bool {
+  megarac_ui_feature_name_admitted(name: "HTML5_KVM")
+    && !megarac_ui_feature_name_admitted(name: "")
+    && !megarac_ui_feature_name_admitted(name: "a\"b")
+    && !megarac_ui_feature_name_admitted(name: "lower")
+    && (match megarac_ui_features_reading(observed_sha256: megarac_source_min_js_sha256_2026_09_27 as String, text: "o(\"features\",[],function()\{var e=[\{feature:\"OK_ONE\"},\{feature:\"bad name\"}];return e}") { MegaRacUiFeaturesUnread { cause: c } => string_contains(s: c as String, pattern: "bad name")  _ => false })
+}
+
+// THE EMITTED ROW IS THE FILE'S TEXT FOR THE NAMES, and the committed 0.32 row is that emission: every
+// name in the vendor shape, the names the viewer reads among them.
+test fn the_committed_row_holds_the_names_the_viewer_reads() -> Bool {
+  let names = map(megarac_ui_features_0_32, n => n as String)
+  count(names) > 0
+    && all(names, n => megarac_ui_feature_name_admitted(name: n))
+    && any(names, n => n == "KVM_SESSION_RECONNECT")
+    && any(names, n => n == "HTML5_KVM")
+    && string_contains(s: megarac_ui_features_row_text(names: ["A_B", "C"]), pattern: "data megarac_ui_features_0_32: List<NonEmptyStr> = [\n  \"A_B\",\n  \"C\",\n]")
+}
+
+// THE STORED VALUE AND ITS FIRMWARE KEY: the vendor's JSON shape -- the same value JSON.stringify
+// writes, in the canonical emitter's spacing, which the viewer's indexOf reads and any JSON reader are
+// indifferent to -- and a list only for the 0.32 build.
+test fn the_stored_value_is_the_vendor_shape_and_only_0_32_has_one() -> Bool {
+  megarac_ui_features_json(names: ["A_B" as NonEmptyStr, "C" as NonEmptyStr]) == "[\{\"feature\": \"A_B\"}, \{\"feature\": \"C\"}]"
+    && (match megarac_ui_features(firmware: megarac_firmware_0_32) { Present { value: l } => count(l) == count(megarac_ui_features_0_32)  Absent => false })
+    && (match megarac_ui_features(firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33")) { Absent => true  Present { value: _ } => false })
+}
+
+// THE ROW IS AN OBSERVATION RECEIPT, NOT A CLAIMED DERIVATION (review 73613): it names the build, the
+// pinned bundle digest and the producing run, and its standing is TranscribedUncited with the
+// re-derivation route as its read obligation -- the emitter, which refuses any other digest.
+test fn the_feature_list_is_a_receipt_with_its_read_obligation() -> Bool {
+  let r = megarac_ui_features_0_32_receipt
+  (r.bundle_sha256 as String) == (megarac_source_min_js_sha256_2026_09_27 as String)
+    && (r.producing_run as String) == "36787375313"
+    && count(r.names) == count(megarac_ui_features_0_32)
+    && (match r.standing {
+      TranscribedUncited { read_obligation: o } => string_contains(s: o as String, pattern: "megarac_ui_bundle_rows_emit") && string_contains(s: o as String, pattern: "mtcollins1_ui_bundle_observe")
+      _ => false
+    })
+}
+
+// ─── THE RMEDIA STOP-REASON TABLE ───────────────────────────────────────────────────────────────
+// The dictionaries and the range check as source.min.js 0.32 spells them (run 36787375313's bytes),
+// abbreviated to three reasons. The lmedia dictionary comes first and carries the same keys with
+// other names, so a parse that is not held to the rmedia dictionary reads the wrong table.
+fn rmedia_fragment(bound: String, third: String) -> String {
+  join([
+    "lmedia:\{home:\"Home\",halted:\"Stopped\",status_0:\"~\",status_1:\" - LOCAL ONE\",status_2:\" - LOCAL TWO\"},",
+    "rmedia:\{home:\"Home\",image_redirection:\"Image Redirection\",halted:\"Stopped\",started:\"Started\",status_0:\"~\",status_1:\" - Connection Accepted\",status_2:\" - Connection Denied\",", third, "status_100:\" Starting..\",session_index:\"Connected Server Session Index\"},",
+    "changeInSingleImages:function()\{return 0==r&&l>=1&&", bound, ">=l?(t.$(\".redirection_status\").html(a.t(\"rmedia:halted\")+a.t(\"rmedia:status_\"+l))):0}",
+  ], "")
+}
+
+data rmedia_three: String = rmedia_fragment(bound: "3", third: "status_3:\" - Login Failed\",")
+
+test fn the_rmedia_dictionary_yields_its_stop_reasons_and_nothing_else() -> Bool {
+  (match megarac_rmedia_status_entries_of_bundle(text: rmedia_three) {
+    Present { value: rows } => map(rows, r => r.code) == [1, 2, 3] && map(rows, r => r.name as String) == ["Connection Accepted", "Connection Denied", "Login Failed"]
+    Absent => false
+  })
+    && (match megarac_rmedia_status_bound_of_bundle(text: rmedia_three) { Present { value: b } => b == 3  Absent => false })
+    && (match megarac_rmedia_status_entries_of_bundle(text: "lmedia:\{home:\"Home\",status_1:\" - LOCAL ONE\"}") { Absent => true  Present { value: _ } => false })
+}
+
+test fn the_table_is_read_only_from_the_pinned_build() -> Bool {
+  (match megarac_rmedia_status_table_reading(observed_sha256: megarac_source_min_js_sha256_2026_09_27 as String, text: rmedia_three) { MegaRacRmediaStatusTableRead { rows: r, source_sha256: _ } => count(r) == 3  _ => false })
+    && (match megarac_rmedia_status_table_reading(observed_sha256: "0000000000000000000000000000000000000000000000000000000000000000", text: rmedia_three) { MegaRacRmediaStatusTableUnread { cause: c } => string_contains(s: c as String, pattern: "not the pinned")  _ => false })
+}
+
+// THE TWO READINGS MUST AGREE: a dictionary longer or shorter than the view's range check, or codes
+// that are not 1..N in order, is a build this parse does not understand.
+test fn a_dictionary_that_disagrees_with_the_range_check_is_refused() -> Bool {
+  let pinned = megarac_source_min_js_sha256_2026_09_27 as String
+  (match megarac_rmedia_status_table_reading(observed_sha256: pinned, text: rmedia_fragment(bound: "17", third: "status_3:\" - Login Failed\",")) { MegaRacRmediaStatusTableUnread { cause: c } => string_contains(s: c as String, pattern: "range check reads 1..17")  _ => false })
+    && (match megarac_rmedia_status_table_reading(observed_sha256: pinned, text: rmedia_fragment(bound: "3", third: "status_4:\" - MAX Session Reached\",")) { MegaRacRmediaStatusTableUnread { cause: c } => string_contains(s: c as String, pattern: "not codes 1..N")  _ => false })
+    && (match megarac_rmedia_status_table_reading(observed_sha256: pinned, text: "rmedia:\{home:\"Home\",status_1:\" - A\"}") { MegaRacRmediaStatusTableUnread { cause: c } => string_contains(s: c as String, pattern: "range check was not found")  _ => false })
+}
+
+// THE 0.32 RECEIPT IS THAT EMISSION, CITING THE FEATURE RECEIPT'S DIGEST AND RUN: seventeen reasons, codes 1..17, the vendor's names, keyed to
+// the 0.32 build only.
+test fn the_committed_table_is_the_vendors_and_keyed_to_0_32() -> Bool {
+  count(megarac_rmedia_status_0_32) == 17
+    && megarac_rmedia_status_0_32_receipt.bundle_sha256 == megarac_ui_features_0_32_receipt.bundle_sha256
+    && megarac_rmedia_status_0_32_receipt.producing_run == megarac_ui_features_0_32_receipt.producing_run
+    && map(megarac_rmedia_status_0_32, r => r.code) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+    && (match megarac_rmedia_status_of_wire(firmware: megarac_firmware_0_32, wire: 11) { RmediaStatusNamed { status: st } => (st.name as String) == "Mount Error"  _ => false })
+    && (match megarac_rmedia_status_of_wire(firmware: megarac_firmware_0_32, wire: 18) { RmediaStatusOutsideTable { firmware: _, wire: w } => w == 18  _ => false })
+    && (match megarac_rmedia_status_of_wire(firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33"), wire: 11) { RmediaStatusTableUnread { firmware: _, wire: w } => w == 11  _ => false })
+    && string_contains(s: megarac_rmedia_status_row_text(rows: [MegaRacRmediaStatus { code: 1, name: "A b" }]), pattern: "data megarac_rmedia_status_0_32: List<MegaRacRmediaStatus> = [\n  MegaRacRmediaStatus \{ code: 1, name: \"A b\" },\n]")
+}

@@ -1,7 +1,6 @@
 module v2.compiler.reference_conservation
 
 import v2.compiler.parse { ParseArtifact, PreparedGrammar }
-import v2.compiler.body_lowering_fold { body_lower_resolved_type_binding }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly {
   program_assembly_phase_normalize,
@@ -10,8 +9,11 @@ import v2.compiler.program_assembly {
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag {
+  dag_kernel_type_binding_optional,
   dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
+  dag_node_is_string_literal_atom,
+  dag_string_literal_value_symbol_optional,
   dag_language_model,
   parse_production_emitted_identity_optional,
   qualified_name_from_module_node
@@ -65,7 +67,7 @@ import v2.compiler.occurrence_role {
   occurrence_role_index
 }
 import v2.std.anonymous_binder { anonymous_param_label, is_anonymous_param_label }
-import v2.std.node_query { pattern_wildcard_name }
+import v2.std.node_query { is_wildcard_pattern_identity, pattern_wildcard_name }
 
 // REFERENCE CONSERVATION ACROSS LOWERING (XL-2).
 //
@@ -119,9 +121,13 @@ type DroppedReference {
 // A module the check could not measure is its own typed outcome, never an empty (green) report:
 // a module that does not tokenize or parse has no parse tree to enumerate, and reporting it as
 // "zero drops" would be the fabricated green.
+// StringLiteralValueUncarried: a string literal whose value the parse did not carry cannot be
+// conserved by value -- the value is in neither tree, so comparing the bare class atom on both
+// sides would count as conserved exactly the loss this check exists to see (population_walk_node).
 type ReferenceConservationUnmeasured
   = TokenizeOrParseRefused { diagnostics: NonEmptyDiagnostics }
   | AtomExtentUnreadable { occurrence: OccurrenceId }
+  | StringLiteralValueUncarried { occurrence: OccurrenceId }
   | OccurrenceRoleTableUnadmitted { unlisted: List<Symbol>, unknown: List<Symbol>, unkeyed: List<Symbol> }
 
 // SEPARATE NUMBERS, NEVER SUMMED: `conserved` (the atom's own occurrence survives with its
@@ -211,6 +217,29 @@ fn node_atom_identity_of(node: Node) -> Optional<Symbol> {
   }
 }
 
+fn population_snoc_unreadable(acc: AuthoredAtomPopulation, item: ReferenceConservationUnmeasured) -> AuthoredAtomPopulation {
+  AuthoredAtomPopulation {
+    atoms: acc.atoms,
+    import_channel: acc.import_channel,
+    test_marker_channel: acc.test_marker_channel,
+    unreadable: list_snoc_item(xs: acc.unreadable, item: item),
+    items: acc.items,
+    item_names: acc.item_names
+  }
+}
+
+// THE IDENTITY CONSERVATION COMPARES. For a string literal it is the decoded value it carries
+// (v2.extdeps.languages.dag dag_string_literal_value_symbol_optional), read the same way on both
+// sides, so a lowering that keeps the literal's occurrence but drops or changes its value is
+// RespelledInNormalizedTree rather than conserved. A string literal with no value payload keeps its
+// class identity, which no value equals. Every other atom is compared by its own identity.
+fn conserved_identity_of(node: Node) -> Optional<Symbol> {
+  match dag_string_literal_value_symbol_optional(node: node) {
+    Present { value: v } => Present { value: v }
+    Absent => node_atom_identity_of(node: node)
+  }
+}
+
 fn minted_occurrence_of(node: Node) -> Optional<OccurrenceId> {
   match node.occurrence_id {
     OccurrenceMinted { id: id } => Present { value: id }
@@ -239,7 +268,10 @@ fn authored_atom_from_identity(
 ) -> Optional<AuthoredAtom> {
   let authored = match map_lookup(m: token_classes, key: identity) {
     Absent => true
-    Present { value: _ } => dag_node_is_int_literal_atom(node: node) || dag_node_is_float_literal_atom(node: node)
+    Present { value: _ } =>
+      dag_node_is_int_literal_atom(node: node)
+        || dag_node_is_float_literal_atom(node: node)
+        || dag_node_is_string_literal_atom(node: node)
   }
   match authored {
     true => optional_present(value: AuthoredAtom { occurrence: id, identity: identity, locus: locus, context: frame.context, item: frame.item })
@@ -405,12 +437,27 @@ fn population_walk_node(
   token_classes: Map<Symbol, Bool>,
   frame: PopulationFrame
 ) -> AuthoredAtomPopulation {
-  let observed = match node_atom_identity_of(node: node) {
+  let observed = match conserved_identity_of(node: node) {
     Absent => acc
     Present { value: identity } =>
       match minted_occurrence_of(node: node) {
         Absent => acc
         Present { value: id } =>
+          match dag_string_literal_value_symbol_optional(node: node) {
+            Present { value: _ } =>
+              population_observe_atom(
+                acc: acc,
+                node: node,
+                id: id,
+                identity: identity,
+                span_index: span_index,
+                token_classes: token_classes,
+                frame: frame
+              )
+            Absent =>
+              if dag_node_is_string_literal_atom(node: node) {
+                population_snoc_unreadable(acc: acc, item: StringLiteralValueUncarried { occurrence: id })
+              } else {
           population_observe_atom(
             acc: acc,
             node: node,
@@ -420,6 +467,8 @@ fn population_walk_node(
             token_classes: token_classes,
             frame: frame
           )
+              }
+          }
       }
   }
   population_walk_children(acc: observed, node: node, span_index: span_index, token_classes: token_classes, frame: frame)
@@ -452,7 +501,7 @@ fn authored_atom_population(artifact: ParseArtifact, token_classes: Map<Symbol, 
 // One pass over the normalized tree, keyed by occurrence, so each authored atom is answered by a
 // lookup rather than a rescan (DESIGN section 6: a per-atom rescan is the quadratic this refuses).
 fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<OccurrenceId, Symbol> {
-  let here = match node_atom_identity_of(node: node) {
+  let here = match conserved_identity_of(node: node) {
     Absent => acc
     Present { value: identity } =>
       match minted_occurrence_of(node: node) {
@@ -778,11 +827,18 @@ fn item_pool(
   }
 }
 
-// A REBUILT TYPE ATOM IS SPELLED BY LOWERING'S OWN CANONICAL BINDING, and the pool is asked in
-// that spelling: v2.compiler.body_lowering_fold body_lower_resolved_type_binding is the single
-// authority that rewrites `Int` / `Bool` to their canonical bindings when it rebuilds a type atom,
-// so the fallback consults that function rather than restating its table. The authored spelling
+// A RESOLVED KERNEL TYPE ATOM IS SPELLED BY ITS CANONICAL BINDING, and the pool is asked in that
+// spelling: v2.extdeps.languages.dag dag_kernel_type_binding_optional is the single table
+// v2.compiler.resolve consults when it rewrites an unshadowed `Int` / `Bool`, so the fallback
+// consults that table rather than restating it. The authored spelling
 // is asked first; the canonical one only when the authored spelling has no copy left.
+fn kernel_type_spelling_of(sym: Symbol) -> Symbol {
+  match dag_kernel_type_binding_optional(sym: sym) {
+    Present { value: canonical } => canonical
+    Absent => sym
+  }
+}
+
 fn pool_spelling_of(pool: Map<Symbol, Int>, identity: Symbol) -> Symbol {
   match map_lookup(m: pool, key: identity) {
     Present { value: n } => if n > 0 { identity } else { pool_fallback_spelling_of(identity: identity) }
@@ -796,7 +852,7 @@ fn pool_fallback_spelling_of(identity: Symbol) -> Symbol {
   if identity == pattern_wildcard_name() {
     anonymous_slot_pool_key()
   } else {
-    body_lower_resolved_type_binding(sym: identity)
+    kernel_type_spelling_of(sym: identity)
   }
 }
 
@@ -834,13 +890,17 @@ fn absent_cause(declared: ItemDeclarationStanding) -> DroppedReferenceCause {
 }
 
 // THE SAME OCCURRENCE UNDER LOWERING'S CANONICAL SPELLING IS CONSERVED. Since #11985 a type atom
-// keeps its minted occurrence through lowering, and v2.compiler.body_lowering_fold
-// body_lower_resolved_type_binding rewrites its spelling (`Bool` -> `bool_node_symbol`, `Int` ->
+// keeps its minted occurrence through lowering, and v2.compiler.resolve rewrites an unshadowed
+// kernel spelling through v2.extdeps.languages.dag dag_kernel_type_binding_optional (`Bool` -> `bool_node_symbol`, `Int` ->
 // `dag_binding_type_int`) at that same occurrence. That is the single authority the spelling pool
 // below already consults, so it is asked here too: the locus is held and the spelling is the one
 // the rewrite derives. Any other spelling at the occurrence is still RespelledInNormalizedTree.
+// An authored `_` pattern is conserved by the wildcard pattern form lowering mints at its occurrence
+// (v2.std.node_query is_wildcard_pattern_identity); the form is the `_`'s lowering, not a different atom.
 fn occurrence_spelling_conserved(found: Symbol, identity: Symbol) -> Bool {
-  found == identity || found == body_lower_resolved_type_binding(sym: identity)
+  found == identity
+    || found == kernel_type_spelling_of(sym: identity)
+    || ((identity == pattern_wildcard_name()) && is_wildcard_pattern_identity(sym: found))
 }
 
 // WHERE AN ERASED ATOM IS COUNTED. The module header first (its item is -1), then an atom whose

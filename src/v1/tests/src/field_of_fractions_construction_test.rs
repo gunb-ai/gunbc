@@ -64,17 +64,20 @@ fn field_of_fractions_pair_stays_boxed_record_not_native_collapse() {
             [("one_half", 1i64, 2i64), ("three_quarters", 3i64, 4i64)]
         {
             match v1_interpreter::run_in_context(ctx, f, false) {
-                Ok(Value::Record { type_name, fields }) => {
+                Ok(Value::Record {
+                    type_name,
+                    ref fields,
+                }) => {
                     assert!(
                         ctx.sym_eq(type_name, "FieldOfFractions"),
                         "{f}: expected type_name FieldOfFractions, got {}",
                         ctx.resolve(type_name)
                     );
-                    match ctx.field(&fields, "num") {
+                    match ctx.field(fields, "num") {
                         Some(Value::Int(n)) if *n == expected_num => {}
                         other => panic!("{f}: num field mismatch, got {other:?}"),
                     }
-                    match ctx.field(&fields, "denom") {
+                    match ctx.field(fields, "denom") {
                         Some(Value::Int(n)) if *n == expected_denom => {}
                         other => panic!("{f}: denom field mismatch, got {other:?}"),
                     }
