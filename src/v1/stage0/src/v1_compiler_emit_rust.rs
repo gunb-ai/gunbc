@@ -7226,7 +7226,7 @@ pub fn emit_emitted_population_manifest(paths: Rc<Vec<String>>) -> Rc<TextFile> 
                 __sorted.sort_by(|a: &String, b: &String| {
                     let __ka = (|path: String| path.clone())(a.clone());
                     let __kb = (|path: String| path.clone())(b.clone());
-                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                    v1_rt::canonical_key_cmp(&__ka, &__kb)
                 });
                 __sorted
             })
@@ -27722,8 +27722,7 @@ pub fn emit_rust_sort_by_method_call(
                 ),
                 b_clone.clone(),
             ),
-            "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"
-                .to_string(),
+            "); v1_rt::canonical_key_cmp(&__ka, &__kb) }); __sorted }".to_string(),
         ))
     }
 }
@@ -32089,8 +32088,7 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
                                             __sorted.sort_by(|a: &String, b: &String| {
                                                 let __ka = (|name: String| name.clone())(a.clone());
                                                 let __kb = (|name: String| name.clone())(b.clone());
-                                                __ka.partial_cmp(&__kb)
-                                                    .unwrap_or(std::cmp::Ordering::Equal)
+                                                v1_rt::canonical_key_cmp(&__ka, &__kb)
                                             });
                                             __sorted
                                         });
