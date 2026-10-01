@@ -21,7 +21,7 @@ import v2.compiler.resolve {
   resolve_loop_carrier_binder,
 }
 import v2.std.resolution_policy { default_name_resolution_policy }
-import v2.compiler.fold_lowering { fold_call_seam_loop }
+import v2.compiler.fold_lowering { fold_carrier_binder_atom, fold_iteration_measure_atom }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import std.algebra { Cons, Empty }
 import v2.std.language_model { void_language_model }
@@ -29,6 +29,7 @@ import v2.std.text { String }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.std.node {
   Arrow,
+  Loop,
   Atom,
   ComputationNode,
   Conj,
@@ -54,6 +55,24 @@ import std.occurrence_identity { OccurrenceSynthetic }
 // resolve with resolve_unbound_name_is_declared_in_several_modules on `found`. The rows below locate
 // that in the lowering rather than in resolve's binder model: the Arrow path admits its binders, and
 // the fold seam the step is lowered to carries none.
+
+// THE LOOP THESE ROWS SUPPLY MIRRORS THE FOLD ENCODING'S, and it is built here rather than by calling the
+// producer because gunbc#12550 retired the old single-purpose seam builder: the encoding is now a Bind
+// whose body is this Loop (v2.compiler.fold_lowering fold_recurrence_encoding), and calling THAT to obtain
+// a Loop would drag a collection, an init and a realized head into a row whose subject is one edge. The
+// carrier atom still comes from the production constructor (fold_carrier_binder_atom), so a change to how
+// a carrier binder is spelled reaches these rows.
+fn cbs_carrier_loop(body: Node, carrier: Symbol) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: body },
+      Edge { label: Named { name: ^loop_carrier_edge }, target: fold_carrier_binder_atom(binder: carrier) },
+      Edge { label: Named { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
 
 fn cbs_atom(id: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceSynthetic }
@@ -119,7 +138,7 @@ test fn cbs_the_arrow_path_admits_no_undeclared_name_holds() -> Bool {
 // binders and this row must be rewritten to assert that, not deleted (DESIGN section 4b(4)).
 test fn cbs_the_fold_seam_admits_no_binder_today_holds() -> Bool {
   let seam_locals = add_arrow_domain_named_params(
-    n: fold_call_seam_loop(body: cbs_atom(id: ^step_body), carrier: ^found),
+    n: cbs_carrier_loop(body: cbs_atom(id: ^step_body), carrier: ^found),
     acc: empty_map()
   )
   !cbs_admits(locals: seam_locals, name: ^found)
@@ -235,20 +254,20 @@ fn cbs_walk_accepts(n: Node) -> Bool {
 }
 
 test fn cbs_a_loop_body_use_of_the_carrier_resolves_holds() -> Bool {
-  cbs_walk_accepts(n: fold_call_seam_loop(body: cbs_atom(id: ^found), carrier: ^found))
+  cbs_walk_accepts(n: cbs_carrier_loop(body: cbs_atom(id: ^found), carrier: ^found))
 }
 
 // (9) THE DISCRIMINATING NEGATIVE. The same Loop whose body uses a name the carrier does NOT introduce
 // still refuses, so row (8) is not a frame that answers for everything.
 test fn cbs_a_loop_body_use_of_an_unrelated_name_still_refuses_holds() -> Bool {
-  !cbs_walk_accepts(n: fold_call_seam_loop(body: cbs_atom(id: ^unrelated_name), carrier: ^found))
+  !cbs_walk_accepts(n: cbs_carrier_loop(body: cbs_atom(id: ^unrelated_name), carrier: ^found))
 }
 
 // (10) THE CARRIER IS FOUND BY ITS ROLE. Row (8) would also pass if the reader found the carrier by edge
 // position; this asserts the role reader answers, which is what keeps this walk from being a second place
 // that knows the edge's spelling.
 test fn cbs_the_carrier_is_read_by_its_role_holds() -> Bool {
-  match resolve_loop_carrier_binder(n: fold_call_seam_loop(body: cbs_atom(id: ^found), carrier: ^found)) {
+  match resolve_loop_carrier_binder(n: cbs_carrier_loop(body: cbs_atom(id: ^found), carrier: ^found)) {
     Present { value: c } => c.name == ^found
     Absent => false
   }
