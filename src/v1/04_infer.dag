@@ -13170,15 +13170,11 @@ fn type_env_cache_from_bindings(
   source_indices: Map<String, NewlineIndex>,
   cycle_set_str: Map<String, Bool>
 ) -> TypeEnvCache {
-  let str_bindings = fold(bindings |> map_values, init: empty_map(), f: (acc, b) =>
-    map_insert(acc, b.name, b)
-  )
   let deps_map = fold(bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, deps_excluding_leaf_self(b: b, source_indices: source_indices))
   )
   TypeEnvCache {
     deps_map: deps_map,
-    str_bindings: str_bindings,
     cycle_set_str: cycle_set_str,
     variant_locals: empty_map()
   }
