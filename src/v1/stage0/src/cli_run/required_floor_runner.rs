@@ -5808,6 +5808,68 @@ pub(crate) fn floor_authority_frame(
 // vector this function never contributed to. Bounded by neither is not the same as billed to
 // preparation. One observation per warm row, measured on the same clock and RSS reads as every
 // other shared build, so all five phases go through ONE refusal.
+/// AT MOST ONE MODULE'S AUTHORITY FRAME RESIDENT DURING THE PURE-PRODUCER WARM. A frame is a claim
+/// scope over its module's closure -- scoped graph plus scope indexes -- and a warm row needs it only
+/// while that module's rows are looked up and warmed. Holding every producer module's frame for the
+/// whole warm phase kept them all live at once beside the prepared graph; freed together at the end,
+/// they left the allocator's arena grown by their SUM, so the floor's resident peak carried several
+/// GB of freed-but-unreturned memory (the uncensored #12799 floor-memory-qualification: the
+/// prepared-subject-warm seam's arena and free columns). What outlives a frame is what the floor
+/// keeps on purpose: producer nodes (Rc into the prepared graph) and portable stored values.
+/// `builds` counts frame constructions, so the CPU side of re-framing on a module change is
+/// reported beside the memory it saves.
+#[derive(Default)]
+struct WarmFrameSlot {
+    module: Option<String>,
+    frame: Option<v1_interpreter::InterpContext>,
+    builds: usize,
+}
+
+impl WarmFrameSlot {
+    fn frame(
+        &mut self,
+        prepared: &PreparedRepository,
+        corpus_modules: &std::collections::HashSet<String>,
+        outside_subject: &mut std::collections::BTreeSet<String>,
+        module: &str,
+        row_kind: &str,
+        row: &str,
+    ) -> Result<Option<&v1_interpreter::InterpContext>, String> {
+        if self.module.as_deref() == Some(module) {
+            return Ok(self.frame.as_ref());
+        }
+        if outside_subject.contains(module) {
+            return Ok(None);
+        }
+        // The held frame goes BEFORE the next is built, so two are never resident together.
+        self.frame = None;
+        self.module = None;
+        match floor_authority_frame(prepared, module) {
+            Ok(frame) => {
+                self.builds += 1;
+                self.module = Some(module.to_string());
+                self.frame = Some(frame);
+                Ok(self.frame.as_ref())
+            }
+            Err(_) if !corpus_modules.contains(module) => Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRowModuleAbsentFromCorpus \
+                 {row_kind}={row} module={module} — the roster row names a module no source \
+                 root carries; the row is stale: delete it or restore the module"
+            )),
+            Err(why) if why.contains("cause=EntryModuleOutsidePreparedSubject") => {
+                outside_subject.insert(module.to_string());
+                Ok(None)
+            }
+            Err(why) => Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRowModuleUnframeable \
+                 {row_kind}={row} module={module} — the module is in the corpus and was not \
+                 excluded as outside the prepared subject, yet it does not frame; the row is \
+                 NOT shown stale by this, do not delete it to get green: {why}"
+            )),
+        }
+    }
+}
+
 pub(crate) fn install_pure_producer_share(
     prepared: &PreparedRepository,
     corpus_modules: &std::collections::HashSet<String>,
@@ -5864,45 +5926,12 @@ pub(crate) fn install_pure_producer_share(
     // Pulling every rostered module into every subject instead would re-grow the per-PR
     // closure toward the corpus on every roster append — cost denominated in the corpus, not
     // the change (DESIGN section 5), for fills no claim in the subject can consume.
-    let mut resolution_frames: std::collections::HashMap<String, v1_interpreter::InterpContext> =
-        std::collections::HashMap::new();
+    // ONE FRAME RESIDENT AT A TIME (WarmFrameSlot): a frame is a claim scope over its module's
+    // closure, needed only while that module's rows are looked up and warmed.
+    let mut frames = WarmFrameSlot::default();
     let mut outside_subject: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     // Returns Ok(true) when the module framed, Ok(false) when it is outside this subject but
     // present in the corpus (disposition 2), Err on staleness or any other framing failure.
-    let mut frame_rostered_module =
-        |module: &str,
-         row_kind: &str,
-         row: &str,
-         frames: &mut std::collections::HashMap<String, v1_interpreter::InterpContext>|
-         -> Result<bool, String> {
-            if frames.contains_key(module) {
-                return Ok(true);
-            }
-            if outside_subject.contains(module) {
-                return Ok(false);
-            }
-            match floor_authority_frame(prepared, module) {
-                Ok(frame) => {
-                    frames.insert(module.to_string(), frame);
-                    Ok(true)
-                }
-                Err(_) if !corpus_modules.contains(module) => Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRowModuleAbsentFromCorpus \
-                 {row_kind}={row} module={module} — the roster row names a module no source \
-                 root carries; the row is stale: delete it or restore the module"
-                )),
-                Err(why) if why.contains("cause=EntryModuleOutsidePreparedSubject") => {
-                    outside_subject.insert(module.to_string());
-                    Ok(false)
-                }
-                Err(why) => Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRowModuleUnframeable \
-                 {row_kind}={row} module={module} — the module is in the corpus and was not \
-                 excluded as outside the prepared subject, yet it does not frame; the row is \
-                 NOT shown stale by this, do not delete it to get green: {why}"
-                )),
-            }
-        };
     let mut admitted_nodes = Vec::new();
     let mut admitted_qualified: Vec<String> = Vec::new();
     let carried_producers: Vec<String> = carried_rows.iter().map(|r| r.producer.clone()).collect();
@@ -5915,18 +5944,24 @@ pub(crate) fn install_pure_producer_share(
             Some((module, _)) => module.to_string(),
             None => qualified.clone(),
         };
-        if !frame_rostered_module(&module, "producer", qualified, &mut resolution_frames)? {
+        let Some(frame) = frames.frame(
+            prepared,
+            corpus_modules,
+            &mut outside_subject,
+            &module,
+            "producer",
+            qualified,
+        )?
+        else {
             continue;
-        }
-        let node = resolution_frames[&module]
-            .lookup_fn_node(qualified)
-            .ok_or_else(|| {
-                format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerUnresolved \
+        };
+        let node = frame.lookup_fn_node(qualified).ok_or_else(|| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerUnresolved \
                      producer={qualified} — the rostered spelling names no declaration in its \
                      module's frame; fix or delete the roster row"
-                )
-            })?;
+            )
+        })?;
         admitted_nodes.push(node);
         admitted_qualified.push(qualified.clone());
     }
@@ -5987,16 +6022,18 @@ pub(crate) fn install_pure_producer_share(
             Some((module, _)) => module.to_string(),
             None => input.acquisition.clone(),
         };
-        if !frame_rostered_module(
+        let Some(frame) = frames.frame(
+            prepared,
+            corpus_modules,
+            &mut outside_subject,
             &module,
             "acquisition",
             &input.acquisition,
-            &mut resolution_frames,
-        )? {
+        )?
+        else {
             inputs_outside_subject.insert(input.acquisition.clone());
             continue;
-        }
-        let frame = &resolution_frames[&module];
+        };
         let node = frame.lookup_fn_node(&input.acquisition).ok_or_else(|| {
             format!(
                 "REQUIRED-FLOOR REFUSAL cause=PreparedEffectInputUnresolved acquisition={} — the rostered spelling names no declaration in its module's frame; fix or delete the roster row",
@@ -6058,7 +6095,17 @@ pub(crate) fn install_pure_producer_share(
         };
         // Resolution above already framed every rostered producer's module, carried-input rows
         // included (they are part of the admitted population), so the frame is present.
-        let frame = &resolution_frames[&module];
+        let Some(frame) = frames.frame(
+            prepared,
+            corpus_modules,
+            &mut outside_subject,
+            &module,
+            "producer",
+            &row.producer,
+        )?
+        else {
+            continue;
+        };
         let producer_node = frame.lookup_fn_node(&row.producer).ok_or_else(|| {
             format!(
                 "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerUnresolved producer={} — the rostered spelling names no declaration in its module's frame",
@@ -6138,7 +6185,15 @@ pub(crate) fn install_pure_producer_share(
         };
         // Resolution above either framed this row's module or recorded it as outside the
         // prepared subject (not evaluated here, counted below); a stale row already refused.
-        let Some(producer_frame) = resolution_frames.get(&module) else {
+        let Some(producer_frame) = frames.frame(
+            prepared,
+            corpus_modules,
+            &mut outside_subject,
+            &module,
+            "producer",
+            qualified,
+        )?
+        else {
             continue;
         };
         // PROVENANCE IS DERIVED FROM THE TYPED OUTCOME, NOT ASSERTED BEFORE THE CALL, and the
@@ -6252,6 +6307,12 @@ pub(crate) fn install_pure_producer_share(
             .collect::<Vec<_>>()
             .join(",")
     );
+    eprintln!(
+        "[floor-phase] phase=pure-producer-share-frames state=completed frame_builds={} \
+         (one frame resident at a time; a build per module change)",
+        frames.builds
+    );
+    drop(frames);
     Ok(warm_observations)
 }
 
