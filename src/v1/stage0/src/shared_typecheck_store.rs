@@ -199,7 +199,18 @@ impl SharedTypecheckCaches {
     /// Encode a typed result **without** holding the store lock.
     pub fn encode_typed_snapshot(result: &TypecheckModuleResult) -> Result<Arc<Vec<u8>>, String> {
         record_shared_store_encode();
-        let bytes = serde_json::to_vec(result)
+        // The surface pool is graph-wide; it is not part of one module's result and is stripped here.
+        // Importers read their own pool, and the graph's final pool is re-attached at assembly
+        // (`v1.compiler.infer` `modules_with_final_surface_pool`).
+        let stripped = TypecheckModuleResult {
+            typed: crate::v1_compiler_infer::typed_module_with_surface_pool(
+                result.typed.clone(),
+                crate::v1_compiler_infer_env::empty_surface_pool(),
+            ),
+            diagnostics: result.diagnostics.clone(),
+            binding_forks: result.binding_forks.clone(),
+        };
+        let bytes = serde_json::to_vec(&stripped)
             .map_err(|e| format!("shared typecheck store encode: {e}"))?;
         SHARED_STORE_ENCODE_BYTES.fetch_add(bytes.len(), Ordering::SeqCst);
         Ok(Arc::new(bytes))
@@ -262,7 +273,7 @@ use std::path::{Path, PathBuf};
 
 /// Bumped when the encoded payload's meaning changes. Entries under an older
 /// version live in a different namespace directory and are never decoded.
-const PERSIST_FORMAT_VERSION: u32 = 1;
+const PERSIST_FORMAT_VERSION: u32 = 2;
 const PERSIST_MAGIC: &[u8; 8] = b"gunbctms";
 /// Default host byte ceiling. Overridable by `GUNBC_TYPED_STORE_PERSIST_MAX_BYTES`;
 /// the modeled authority is `gunbc.floor_materialization`

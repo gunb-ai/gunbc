@@ -491,31 +491,35 @@ pub fn surface_union_winner(
     imports: Rc<Vec<Rc<SurfaceImport>>>,
     name: String,
 ) -> Option<Rc<TypeBinding>> {
-    let last = imports.iter().cloned().fold(
-        std::option::Option::None,
-        |acc: Option<Rc<ModuleSurface>>, imp: Rc<SurfaceImport>| match v1_rt::map_get(
-            &pool.surfaces.clone(),
-            imp.module_path.clone(),
-        ) {
-            Some(parent) => {
-                if surface_has(
-                    pool.clone(),
-                    kernel.clone(),
-                    parent.module_path.clone(),
-                    parent.reach.clone(),
-                    name.clone(),
-                ) {
-                    Some(parent.clone())
-                } else {
-                    acc.clone()
+    {
+        let last = imports.iter().cloned().fold(
+            std::option::Option::None,
+            |acc: _, imp: Rc<SurfaceImport>| match v1_rt::map_get(
+                &pool.surfaces.clone(),
+                imp.module_path.clone(),
+            ) {
+                Some(parent) => {
+                    if surface_has(
+                        pool.clone(),
+                        kernel.clone(),
+                        parent.module_path.clone(),
+                        parent.reach.clone(),
+                        name.clone(),
+                    ) {
+                        Some(parent.clone())
+                    } else {
+                        acc.clone()
+                    }
                 }
+                std::option::Option::None => acc.clone(),
+            },
+        );
+        match last.clone() {
+            Some(parent) => {
+                surface_value(pool.clone(), kernel.clone(), parent.clone(), name.clone())
             }
-            std::option::Option::None => acc.clone(),
-        },
-    );
-    match last {
-        Some(parent) => surface_value(pool.clone(), kernel.clone(), parent.clone(), name.clone()),
-        std::option::Option::None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
+        }
     }
 }
 
@@ -536,30 +540,6 @@ pub fn surface_value(
     }
 }
 
-pub fn surface_declarers_in_reach(
-    pool: Rc<SurfacePool>,
-    kernel: Rc<HashMap<String, Rc<TypeBinding>>>,
-    reach: Rc<Vec<i64>>,
-    name: String,
-) -> i64 {
-    let from_kernel: i64 = if v1_rt::map_get(&kernel, name.clone()).is_some() { 1 } else { 0 };
-    match v1_rt::map_get(&pool.exporters.clone(), name.clone()) {
-        std::option::Option::None => from_kernel,
-        Some(paths) => paths.iter().fold(from_kernel, |acc, p| {
-            match v1_rt::map_get(&pool.surfaces.clone(), p.clone()) {
-                Some(e) => {
-                    if reach_has(reach.clone(), e.ordinal) {
-                        acc + 1
-                    } else {
-                        acc
-                    }
-                }
-                std::option::Option::None => acc,
-            }
-        }),
-    }
-}
-
 pub fn surface_fork_rows(
     pool: Rc<SurfacePool>,
     kernel: Rc<HashMap<String, Rc<TypeBinding>>>,
@@ -576,13 +556,25 @@ pub fn surface_fork_rows(
                 std::option::Option::None => acc.clone(),
             },
         );
+        let reach = surface_reach_of(imports.clone(), pool.clone());
+        let forkable = Rc::new({
+            let mut __result = Vec::new();
+            for name in Rc::new(v1_rt::sorted_map_keys(&candidates)).iter().cloned() {
+                if (surface_declarers_in_reach(
+                    pool.clone(),
+                    kernel.clone(),
+                    reach.clone(),
+                    name.clone(),
+                ) >= 2)
+                {
+                    __result.push(name);
+                }
+            }
+            __result
+        });
         let rows = Rc::new({
             let mut __result = Vec::new();
-            let fork_reach = surface_reach_of(imports.clone(), pool.clone());
-            for name in Rc::new(v1_rt::sorted_map_keys(&candidates)).iter().cloned() {
-                if surface_declarers_in_reach(pool.clone(), kernel.clone(), fork_reach.clone(), name.clone()) < 2 {
-                    continue;
-                }
+            for name in forkable.iter().cloned() {
                 __result.extend((*{
             let walked = imports.iter().cloned().fold(Rc::new(SurfaceForkWalk {
     winner: std::option::Option::None,
@@ -668,6 +660,44 @@ walked.rows.clone()
             );
             __sorted
         })
+    }
+}
+
+pub fn surface_declarers_in_reach(
+    pool: Rc<SurfacePool>,
+    kernel: Rc<HashMap<String, Rc<TypeBinding>>>,
+    reach: Rc<Vec<i64>>,
+    name: String,
+) -> i64 {
+    {
+        let from_kernel = match v1_rt::map_get(&kernel, name.clone()) {
+            Some(_) => 1,
+            std::option::Option::None => 0,
+        };
+        match v1_rt::map_get(&pool.exporters.clone(), name.clone()) {
+            std::option::Option::None => from_kernel.clone(),
+            Some(paths) => {
+                paths
+                    .iter()
+                    .cloned()
+                    .fold(
+                        from_kernel.clone(),
+                        |acc: i64, p: String| match v1_rt::map_get(
+                            &pool.surfaces.clone(),
+                            p.clone(),
+                        ) {
+                            Some(e) => {
+                                if reach_has(reach.clone(), e.ordinal.clone()) {
+                                    v1_rt::int_add(acc.clone(), 1)
+                                } else {
+                                    acc.clone()
+                                }
+                            }
+                            std::option::Option::None => acc.clone(),
+                        },
+                    )
+            }
+        }
     }
 }
 

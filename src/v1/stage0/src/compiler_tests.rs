@@ -4556,7 +4556,7 @@ mod compiler_tests {
 
     // White-box witnesses for gunbc#12132: the measured compile's binding authority consumes the
     // resolver's exact-one judgment (lookup_unit_variant_phantom_type), not bare key presence.
-    // str_bindings and ancestry_str_bindings are EMPTY, so the first arm cannot intercept and only the
+    // str_bindings and the ancestry view are EMPTY, so the first arm cannot intercept and only the
     // contribution map decides. One test per case, so each reading fails on its own. The census claims
     // beside these cannot discriminate the two readings: the resolver and emitter refuse those leaves
     // before the measure runs.
@@ -5991,11 +5991,16 @@ mod compiler_tests {
                     eprint!("  {:>35} ({:>3} items) ... ", name, item_count);
 
                     let module_index = std::rc::Rc::new(mi_raw.clone());
+                    let pool = crate::v1_compiler_infer::surface_pool_from_index(
+                        module_index.clone(),
+                        source_indices.clone(),
+                    );
 
                     let t_unres = Instant::now();
                     let _unres = crate::v1_compiler_infer::build_type_env_unresolved(
                         resolved.clone(),
                         module_index.clone(),
+                        pool.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
                     );
@@ -6022,6 +6027,7 @@ mod compiler_tests {
                     let env_result = crate::v1_compiler_infer::build_type_env(
                         resolved.clone(),
                         module_index.clone(),
+                        pool.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
                         crate::v1_compiler_infer_env::empty_symbol_index(),
@@ -6059,6 +6065,7 @@ mod compiler_tests {
                     let tc_result = crate::v1_compiler_infer::typecheck_module(
                         resolved.clone(),
                         module_index.clone(),
+                        pool.clone(),
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),

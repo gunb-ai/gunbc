@@ -25900,9 +25900,11 @@ pub fn build_type_env(
                                     )
                                 },
                             );
-                            crate::v1_compiler_infer_env::ancestry_names(
-                                parent_mod.interface.clone().env.clone().ancestry.clone(),
-                            )
+                            crate::v1_compiler_infer_env::ancestry_names(Rc::new(AncestryView {
+                                pool: pool.clone(),
+                                ..(*parent_mod.interface.clone().env.clone().ancestry.clone())
+                                    .clone()
+                            }))
                             .iter()
                             .cloned()
                             .fold(
@@ -29053,6 +29055,79 @@ pub fn ancestry_binding_is_kernel_identity(view: Rc<AncestryView>, name: String)
 }
 
 pub fn rewire_type_env_import_str_binding_identity(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<TypedModule>>> {
+    rewire_type_env_import_str_binding_identity_unpooled(
+        modules_with_final_surface_pool(modules.clone(), source_indices.clone()),
+        source_indices.clone(),
+    )
+}
+
+pub fn modules_with_final_surface_pool(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<TypedModule>>> {
+    {
+        let index = modules.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+            |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
+                v1_rt::rc_map_insert(acc, m.type_env.clone().module_path.clone(), m.clone())
+            },
+        );
+        let pool = surface_pool_from_index(index.clone(), source_indices.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.iter().cloned() {
+                __result.push(typed_module_with_surface_pool(m.clone(), pool.clone()));
+            }
+            __result
+        })
+    }
+}
+
+pub fn modules_without_surface_pools(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<Vec<Rc<TypedModule>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for m in modules.iter().cloned() {
+            __result.push(typed_module_with_surface_pool(
+                m.clone(),
+                crate::v1_compiler_infer_env::empty_surface_pool(),
+            ));
+        }
+        __result
+    })
+}
+
+pub fn typed_module_with_surface_pool(
+    m: Rc<TypedModule>,
+    pool: Rc<SurfacePool>,
+) -> Rc<TypedModule> {
+    Rc::new(TypedModule {
+        type_env: Rc::new(TypeEnv {
+            ancestry: Rc::new(AncestryView {
+                pool: pool.clone(),
+                ..(*m.type_env.clone().ancestry.clone()).clone()
+            }),
+            ..(*m.type_env.clone()).clone()
+        }),
+        interface: Rc::new(ModuleInterface {
+            env: Rc::new(TypeEnv {
+                ancestry: Rc::new(AncestryView {
+                    pool: pool.clone(),
+                    ..(*m.interface.clone().env.clone().ancestry.clone()).clone()
+                }),
+                ..(*m.interface.clone().env.clone()).clone()
+            }),
+            ..(*m.interface.clone()).clone()
+        }),
+        ..(*m.clone()).clone()
+    })
+}
+
+pub fn rewire_type_env_import_str_binding_identity_unpooled(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
