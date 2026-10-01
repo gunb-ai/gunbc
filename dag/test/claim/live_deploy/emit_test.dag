@@ -24,6 +24,7 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   ensured_subject_identity,
   deployment_fabric_storage_steps,
+  deployment_approval_broker_front_door_steps,
   deployment_fabric_storage_serve_endpoint,
   EnsuredPackage,
   EnsuredManagedHostDirectory,
@@ -816,19 +817,38 @@ fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
 }
 
 
+// THE TWIN MIRRORS PRODUCTION AS AN IDENTITY JOIN ON ARTIFACT KIND, NOT A COUNT. The host-singleton
+// members -- the fabric storage placement's two and, since #12747, the approval broker's front door --
+// are named by the functions that decide them and subtracted from production by path; every other
+// production member must have a twin member of the same kind and vice versa, and the twin must own
+// no host singleton at all. The count form this replaces (`twin + fabric == live`) went red the day
+// #12747 added a second host-scoped member, though nothing about the twin was wrong.
+fn live_host_singleton_paths(live: DeploymentSpec) -> List<String> {
+  concat(
+    deployment_fabric_storage_steps(instance: srv1_live_dashboard_instance(), names: live.names),
+    deployment_approval_broker_front_door_steps(instance: srv1_live_dashboard_instance()),
+  ) |> map(s => s.path as String)
+}
+
 test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
   let live = deployment_spec_srv1()
   let twin = srv1_twin_spec()
   let live_paths = spec_owned_paths(spec: live)
   let twin_paths = spec_owned_paths(spec: twin)
+  let singletons = live_host_singleton_paths(live: live)
+  let live_instance_scoped = filter(deployment_owned_steps_retract_order(spec: live), l => !any(singletons, h => h == (l.path as String)))
+  let twin_steps = deployment_owned_steps_retract_order(spec: twin)
   deployment_plan_host_identity(spec: live) == deployment_plan_host_identity(spec: twin)
     && !(deployment_plan_listen_port(spec: live) == deployment_plan_listen_port(spec: twin))
     && !(live.service.unit_name == twin.service.unit_name)
     && !(live.service.repo_root == twin.service.repo_root)
     && !(live.service.serve_binary == twin.service.serve_binary)
-    && count(live_paths) > 0
-    && count(twin_paths) + count(deployment_fabric_storage_steps(instance: srv1_live_dashboard_instance(), names: live.names)) == count(live_paths)
+    && count(live_instance_scoped) > 0
+    && all(singletons, h => any(live_paths, l => l == h))
+    && all(live_instance_scoped, l => any(twin_steps, t => t.kind == l.kind))
+    && all(twin_steps, t => any(live_instance_scoped, l => l.kind == t.kind))
     && count(deployment_fabric_storage_steps(instance: srv1_lab_dashboard_instance(), names: twin.names)) == 0
+    && count(deployment_approval_broker_front_door_steps(instance: srv1_lab_dashboard_instance())) == 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
@@ -1775,3 +1795,4 @@ test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_i
     && (route.backend as String) == join(["unix:", fabric_storage_door_socket() as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }
+

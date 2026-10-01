@@ -18,14 +18,14 @@ import gunbc.runner_browser_toolchain {
   host_library_readback_of, library_readback_text,
   VersionMatches, VersionMismatch, VersionUnreadable, exact_version_readback_of,
   BrowserLaunchReadback, BrowserLaunchRendered, BrowserLaunchWrongPage, BrowserLaunchWrongModule, launch_readback_of,
-  BrowserToolchainArchive, runner_browser_toolchain_recipe_identity, runner_browser_toolchain_tree_sha256,
+  runner_browser_toolchain_recipe_identity, runner_browser_toolchain_tree_sha256,
   TreeAdmitted, TreeAbsent, TreeContentMismatch, TreeUnobservable, TreeDigestObserved, TreeDigestUnobservable,
   tree_admission_of, tree_manifest_text_of, runner_browser_toolchain_node_command, superseded_entries_of,
   browser_toolchain_probe_fragment,
   runner_browser_toolchain_archives, runner_browser_toolchain_apt_requirements,
 }
 import extdeps.dpkg { dpkg_query_status_verdict_of, dpkg_query_status_argv, DpkgInstalledState, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
-import gunbc.verified_archive_install { ArchiveSha256 }
+import gunbc.verified_archive_install { ArchiveSha256, StagedArchive }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import extdeps.exec.command { argv_words }
 import extdeps.browser.chromium { chromium_151_0_7922_34, chromium_version_line }
@@ -133,7 +133,7 @@ test fn a_digest_only_pin_change_names_a_different_tree() -> Bool {
   let base = runner_browser_toolchain_recipe_identity(archives: runner_browser_toolchain_archives, tree_sha256: runner_browser_toolchain_tree_sha256)
   let repinned = map(runner_browser_toolchain_archives, a =>
     if (a.file_name as String) == "chromium-1234-linux-arm64.zip" {
-      BrowserToolchainArchive { file_name: a.file_name, url: a.url, pin: ArchiveSha256 { hex: "0000000000000000000000000000000000000000000000000000000000000000" }, destination_relative: a.destination_relative, extraction: a.extraction }
+      StagedArchive { file_name: a.file_name, url: a.url, pin: ArchiveSha256 { hex: "0000000000000000000000000000000000000000000000000000000000000000" }, destination_relative: a.destination_relative, extraction: a.extraction }
     } else { a })
   let by_archive = runner_browser_toolchain_recipe_identity(archives: repinned, tree_sha256: runner_browser_toolchain_tree_sha256)
   let by_tree = runner_browser_toolchain_recipe_identity(archives: runner_browser_toolchain_archives, tree_sha256: "1111111111111111111111111111111111111111111111111111111111111111")
